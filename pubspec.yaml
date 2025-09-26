@@ -1,0 +1,22 @@
+name: productivitwo_v1
+description: "Starter V1 for Productivitwo: local JSON storage, activities, timers, daily total."
+publish_to: "none"
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  path_provider: ^2.1.4
+  share_plus: ^10.0.2
+  uuid: ^4.4.2
+  fl_chart: ^1.1.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
