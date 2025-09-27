@@ -1049,6 +1049,98 @@ class _AppRootState extends State<AppRoot> {
     );
   }
 
+  Widget _runningBanner() {
+    final s = _state!.sessions.where((x) => x.endAt == null).last;
+    final a = _state!.activities.firstWhere((x) => x.id == s.activityId);
+    final dur = DateTime.now().difference(s.startAt);
+
+    String _fmt(Duration d) {
+      final h = d.inHours;
+      final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+      final sec = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+      return h > 0 ? "${h}h ${m}m ${sec}s" : "${m}m ${sec}s";
+    }
+
+    return ConstrainedBox(
+      // ← hauteur fixe = pas de “saut” de layout
+      constraints: const BoxConstraints(minHeight: 84),
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const Icon(Icons.play_arrow_rounded, color: Colors.green, size: 24),
+            const SizedBox(width: 10),
+
+            // ---- Texte à gauche
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Nom d’activité
+                  Text(
+                    a.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 16),
+                  ),
+                  const SizedBox(height: 2),
+
+                  // Ligne 1
+                  Text(
+                    "En cours depuis",
+                    style: TextStyle(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(0.75),
+                      fontSize: 13,
+                    ),
+                  ),
+
+                  // Ligne 2 : temps seul (monospace pour éviter les micro-décalages)
+                  Text(
+                    _fmt(dur),
+                    style: const TextStyle(
+                      fontFeatures: [
+                        FontFeature.tabularFigures()
+                      ], // monospace numérique
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(width: 12),
+
+            // ---- Bouton Stop à droite (taille fixe)
+            SizedBox(
+              width: 104,
+              height: 40,
+              child: FilledButton.icon(
+                onPressed: () => setState(() {
+                  logic.stopActive();
+                }),
+                icon: const Icon(Icons.stop, size: 18),
+                label: const Text("Stop"),
+                style: FilledButton.styleFrom(shape: const StadiumBorder()),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildDashboardBody(BuildContext context) {
 // 1) Portée (calendaire)
     final now = DateTime.now();
@@ -1090,42 +1182,11 @@ class _AppRootState extends State<AppRoot> {
     final totalHabitProgress = totalHabitsTarget == 0
         ? 0.0
         : (totalHabitsDone / totalHabitsTarget).clamp(0.0, 1.0);
+    final running = _state!.sessions.any((x) => x.endAt == null);
 
     return Column(
       children: [
-        // Bandeau "Activité en cours"
-        Builder(builder: (context) {
-          final s = _currentSession();
-          if (s == null) return const SizedBox.shrink();
-          final a = _activityById(s.activityId);
-          final dur = DateTime.now().difference(s.startAt);
-          return SectionCard(
-            child: Row(
-              children: [
-                const Icon(Icons.play_arrow, color: Colors.green),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(a?.name ?? 'Activité',
-                          style: const TextStyle(fontWeight: FontWeight.bold)),
-                      Text('En cours depuis ${_fmtDuration(dur)}'),
-                    ],
-                  ),
-                ),
-                FilledButton.icon(
-                  onPressed: () async {
-                    logic.stopActive();
-                    await _saveAndRefresh();
-                  },
-                  icon: const Icon(Icons.stop),
-                  label: const Text('Stop'),
-                ),
-              ],
-            ),
-          );
-        }),
+        if (running) _runningBanner(),
 
         // Anneaux globaux (Temps & Habitudes)
         SectionCard(
@@ -1971,6 +2032,32 @@ class _AppRootState extends State<AppRoot> {
     await _saveAndRefresh();
   }
 
+  String _fmtMinHM(int min) {
+    final h = min ~/ 60, m = min % 60;
+    return h > 0 ? "${h}h ${m}m" : "${m}m";
+  }
+
+  Widget _miniBar(double frac) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: LinearProgressIndicator(
+        value: frac.clamp(0, 1),
+        minHeight: 8,
+      ),
+    );
+  }
+
+  Widget _miniProgressRow({required String left, required String right}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(left, style: const TextStyle(fontSize: 12, color: Colors.white70)),
+        Text(right,
+            style: const TextStyle(fontSize: 12, color: Colors.white70)),
+      ],
+    );
+  }
+
   void _openFocusPanel({String? domainId}) {
     final candidates = logic.buildFocusCandidates(domainId: domainId);
     showModalBottomSheet(
@@ -1985,57 +2072,231 @@ class _AppRootState extends State<AppRoot> {
 
             Widget _tile(FocusItem it) {
               if (it.kind == 'time') {
+                final now = DateTime.now();
+                final done = logic.totalForRangeByActivity(
+                  it.activity.id,
+                  now.subtract(const Duration(hours: 24)),
+                  now,
+                );
+                final goalMin = it.activity.goalMin;
+                final p = goalMin > 0
+                    ? (done.inMinutes / goalMin).clamp(0.0, 1.0)
+                    : 0.0;
+
                 final running = _state!.sessions.any(
                   (s) => s.activityId == it.activity.id && s.endAt == null,
                 );
-                return ListTile(
-                  leading: const Icon(Icons.timelapse),
-                  title: Text(it.activity.name),
-                  subtitle: Text(it.reason),
-                  trailing: FilledButton.icon(
-                    onPressed: () {
-                      if (running) {
-                        logic.stopActive();
-                        setSB(() {});
-                      } else {
-                        logic.start(it.activity.id);
-                        Navigator.of(ctx).pop(); // lancer et fermer
-                      }
-                    },
-                    icon: Icon(running ? Icons.stop : Icons.play_arrow),
-                    label: Text(running ? "Stop" : "Lancer"),
+
+                return Card(
+                  margin: const EdgeInsets.symmetric(vertical: 6),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                    child: Column(
+                      children: [
+                        // Ligne 1 : titre + actions compactes
+                        Row(
+                          children: [
+                            const Icon(Icons.schedule, size: 18),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                it.activity.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    fontSize: 15, fontWeight: FontWeight.w700),
+                                softWrap: false,
+                              ),
+                            ),
+                            // Snooze 30 min
+                            IconButton(
+                              tooltip: "Plus tard (30 min)",
+                              onPressed: () {
+                                logic.snooze(it.activity.id, minutes: 30);
+                                setSB(() {
+                                  candidates
+                                    ..clear()
+                                    ..addAll(logic.buildFocusCandidates(
+                                        domainId: domainId));
+                                });
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                      content: Text(
+                                          "Suggestion reportée de 30 min")),
+                                );
+                              },
+                              icon: const Icon(Icons.snooze, size: 18),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
+                            const SizedBox(width: 2),
+                            // Lancer icône seule
+                            IconButton.filled(
+                              onPressed: () {
+                                if (running) {
+                                  logic.stopActive();
+                                  setSB(() {}); // rafraîchit les boutons
+                                } else {
+                                  logic.start(it.activity.id);
+                                  Navigator.of(context).pop();
+                                }
+                              },
+                              icon: Icon(
+                                  running ? Icons.stop : Icons.play_arrow,
+                                  size: 18),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 6),
+                              style: IconButton.styleFrom(
+                                minimumSize: const Size(32, 32),
+                                shape: const StadiumBorder(),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        // Ligne 2 : barre + labels
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child:
+                              LinearProgressIndicator(value: p, minHeight: 15),
+                        ),
+                        const SizedBox(height: 2),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text("${done.inMinutes}m",
+                                style: const TextStyle(fontSize: 11)),
+                            Text("${goalMin}m",
+                                style: const TextStyle(fontSize: 11)),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 );
               } else {
-                // habit
-                final today = DateTime.now();
-                return ListTile(
-                  leading: const Icon(Icons.checklist_rtl),
-                  title: Text(it.activity.name),
-                  subtitle: Text(it.reason),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        onPressed: () {
-                          logic.incHabit(it.activity.id, -1, today);
-                          setSB(() {});
-                        },
-                        icon: const Icon(Icons.remove),
-                      ),
-                      IconButton(
-                        onPressed: () {
-                          logic.incHabit(it.activity.id, 1, today);
-                          setSB(() {});
-                        },
-                        icon: const Icon(Icons.add),
-                      ),
-                    ],
+                final now = DateTime.now();
+                final done = logic.habitValueOn(
+                    it.activity.id, DateTime(now.year, now.month, now.day));
+                final target = it.activity.dailyTarget ?? 0;
+                final unit = it.activity.unit ?? '';
+                final ratio =
+                    target > 0 ? (done / target).clamp(0.0, 1.0) : 0.0;
+
+                return Card(
+                  margin: const EdgeInsets.symmetric(vertical: 6),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                    child: Column(
+                      children: [
+                        // Ligne 1 : titre + actions compactes
+                        Row(
+                          children: [
+                            const Icon(Icons.checklist, size: 18),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                it.activity.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    fontSize: 15, fontWeight: FontWeight.w700),
+                                softWrap: false,
+                              ),
+                            ),
+                            // Snooze 30 min
+                            IconButton(
+                              tooltip: "Plus tard (30 min)",
+                              onPressed: () {
+                                logic.snooze(it.activity.id, minutes: 30);
+                                setSB(() {
+                                  candidates
+                                    ..clear()
+                                    ..addAll(logic.buildFocusCandidates(
+                                        domainId: domainId));
+                                });
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                      content: Text(
+                                          "Suggestion reportée de 30 min")),
+                                );
+                              },
+                              icon: const Icon(Icons.snooze, size: 18),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
+                            const SizedBox(width: 2),
+                            // +1 rapide (tap = incrémente et reste ouvert)
+                            IconButton.filled(
+                              tooltip: "+1",
+                              onPressed: () {
+                                logic.incHabit(it.activity.id, 1, now);
+                                setSB(
+                                    () {}); // met à jour le compteur et la barre
+                              },
+                              icon: const Icon(Icons.add, size: 18),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 6),
+                              style: IconButton.styleFrom(
+                                minimumSize: const Size(32, 32),
+                                shape: const StadiumBorder(),
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 6),
+
+                        // Ligne 2 : barre + labels (done / target)
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: LinearProgressIndicator(
+                              value: ratio, minHeight: 15),
+                        ),
+                        const SizedBox(height: 2),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              target > 0
+                                  ? "$done / $target ${unit.isNotEmpty ? unit : ''}"
+                                      .trim()
+                                  : "$done ${unit}".trim(),
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                            // Contrôles − / +
+                            Row(
+                              children: [
+                                IconButton(
+                                  tooltip: "-1",
+                                  onPressed: () {
+                                    logic.incHabit(it.activity.id, -1, now);
+                                    setSB(() {});
+                                  },
+                                  icon: const Icon(Icons.remove, size: 18),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(
+                                      minWidth: 32, minHeight: 32),
+                                ),
+                                const SizedBox(width: 4),
+                                IconButton(
+                                  tooltip: "+1",
+                                  onPressed: () {
+                                    logic.incHabit(it.activity.id, 1, now);
+                                    setSB(() {});
+                                  },
+                                  icon: const Icon(Icons.add, size: 18),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(
+                                      minWidth: 32, minHeight: 32),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                  onTap: () {
-                    logic.incHabit(it.activity.id, 1, today);
-                    setSB(() {});
-                  },
                 );
               }
             }
@@ -2051,15 +2312,31 @@ class _AppRootState extends State<AppRoot> {
                       Expanded(
                         child: Text(
                           domainId == null
-                              ? "Focus — Tout"
+                              ? "Focus"
                               : "Focus — ${_state!.domains.firstWhere((d) => d.id == domainId).name}",
                           style: const TextStyle(
                               fontSize: 16, fontWeight: FontWeight.bold),
                         ),
                       ),
                       IconButton(
-                        tooltip: "Rafraîchir",
-                        onPressed: () => setSB(() {}),
+                        tooltip: "Proposer autre chose (30 min)",
+                        onPressed: () {
+                          if (candidates.isNotEmpty) {
+                            logic.snooze(candidates.first.activity.id,
+                                minutes: 30);
+                            setSB(() {
+                              candidates
+                                ..clear()
+                                ..addAll(logic.buildFocusCandidates(
+                                    domainId: domainId));
+                            });
+                            ScaffoldMessenger.of(ctx).showSnackBar(
+                              const SnackBar(
+                                  content:
+                                      Text("Suggestion reportée de 30 min")),
+                            );
+                          }
+                        },
                         icon: const Icon(Icons.refresh),
                       ),
                     ],

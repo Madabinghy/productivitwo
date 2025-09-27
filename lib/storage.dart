@@ -28,6 +28,7 @@ class FileStore {
       sessions: [],
       habitProgress: [],
       lastGoalsReview: null,
+      snoozedUntil: {},
     );
 
     await save(st);

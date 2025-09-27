@@ -207,6 +207,34 @@ class AppLogic {
     }
     return t;
   }
+
+
+  // ---------  SNOOZE ---------
+  bool isSnoozed(String activityId, {DateTime? now}) {
+  final untilIso = state.snoozedUntil[activityId];
+  if (untilIso == null) return false;
+  final t = now ?? DateTime.now();
+  return DateTime.parse(untilIso).isAfter(t);
+}
+
+void snooze(String activityId, {int minutes = 30}) {
+  final until = DateTime.now().add(Duration(minutes: minutes));
+  state.snoozedUntil[activityId] = until.toIso8601String();
+  onChange(); // persiste via _saveAndRefresh
+}
+
+void clearExpiredSnoozes({DateTime? now}) {
+  final t = now ?? DateTime.now();
+  final toRemove = <String>[];
+  state.snoozedUntil.forEach((id, iso) {
+    if (!DateTime.parse(iso).isAfter(t)) toRemove.add(id);
+  });
+  for (final id in toRemove) {
+    state.snoozedUntil.remove(id);
+  }
+  if (toRemove.isNotEmpty) onChange();
+}
+
 }
 
 extension DomainGoals on AppLogic {
@@ -378,6 +406,7 @@ extension DomainGoals on AppLogic {
 
     for (final a in state.activities) {
       if (domainId != null && a.domainId != domainId) continue;
+      if (isSnoozed(a.id, now: t)) continue;            // <— skip snoozed
 
       if (!a.isHabit) {
         // TIME

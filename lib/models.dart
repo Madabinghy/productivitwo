@@ -130,6 +130,8 @@ class AppState {
   List<Session> sessions;
   List<HabitProgress> habitProgress;
   DateTime? lastGoalsReview;
+    // NEW: activité → ISO8601 jusqu’à quand elle est “snoozed”
+  Map<String, String> snoozedUntil;
 
   AppState({
     required this.domains,
@@ -137,7 +139,8 @@ class AppState {
     required this.sessions,
     required this.habitProgress,
     this.lastGoalsReview,
-  });
+    Map<String, String>? snoozedUntil,       
+  }) : snoozedUntil = snoozedUntil ?? {};
 
   Map<String, dynamic> toJson() => {
         'domains': domains.map((e) => e.toJson()).toList(),
@@ -145,6 +148,7 @@ class AppState {
         'sessions': sessions.map((e) => e.toJson()).toList(),
         'habitProgress': habitProgress.map((e) => e.toJson()).toList(),
         'lastGoalsReview': lastGoalsReview?.toIso8601String(),
+        'snoozedUntil': snoozedUntil,
       };
 
   static AppState from(Map j) => AppState(
@@ -160,6 +164,7 @@ class AppState {
         lastGoalsReview: j['lastGoalsReview'] == null
             ? null
             : DateTime.parse(j['lastGoalsReview']),
+            snoozedUntil: (j['snoozedUntil'] as Map?)?.map((k, v) => MapEntry(k as String, v as String)) ?? {},
       );
 
   String encode() => jsonEncode(toJson());
