@@ -8,6 +8,41 @@ import 'utils/pacing.dart';
 
 enum _Tab { dashboard, stats }
 
+class MiniRing extends StatelessWidget {
+  final double progress; // 0..1
+  final double size;
+  final double stroke;
+  final Widget? center;
+  const MiniRing(
+      {super.key,
+      required this.progress,
+      this.size = 52,
+      this.stroke = 6,
+      this.center});
+
+  Color _ringColor(BuildContext c, double p) {
+    if (p >= 1) return Colors.green;
+    if (p >= .5) return const Color(0xFFFFA000); // orange
+    return Theme.of(c).colorScheme.primary;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final track = Theme.of(context).colorScheme.onSurface.withOpacity(.12);
+    final col = _ringColor(context, progress);
+    final p = progress.clamp(0.0, 1.0);
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(alignment: Alignment.center, children: [
+        CircularProgressIndicator(value: 1, strokeWidth: stroke, color: track),
+        CircularProgressIndicator(value: p, strokeWidth: stroke, color: col),
+        if (center != null) center!,
+      ]),
+    );
+  }
+}
+
 class GaugeRing extends StatelessWidget {
   final String label;
   final String valueText;
@@ -1756,6 +1791,11 @@ class _AppRootState extends State<AppRoot> {
           return "${m ~/ 60}h ${m % 60}m";
         }
 
+        String _fmt(Duration dur) {
+          final h = dur.inHours, m = dur.inMinutes.remainder(60);
+          return h > 0 ? "${h}h ${m}m" : "${m}m";
+        }
+
         // Récupère toutes les activités (du domaine si fourni)
         List<Activity> _activities() {
           final it = _state!.activities.where(
@@ -1806,6 +1846,11 @@ class _AppRootState extends State<AppRoot> {
               itemCount: items.length,
               itemBuilder: (_, i) {
                 final a = items[i];
+                final now = DateTime.now();
+                final done = logic.totalForRangeByActivity(
+                    a.id, now.subtract(const Duration(hours: 24)), now);
+                final goalMin = a.goalMin;
+                final prog = goalMin > 0 ? (done.inMinutes / goalMin) : 0.0;
 
                 Widget tile;
                 if (!a.isHabit) {
@@ -1816,35 +1861,20 @@ class _AppRootState extends State<AppRoot> {
                       .any((s) => s.activityId == a.id && s.endAt == null);
 
                   tile = ListTile(
-                    title: Text(a.name),
-                    subtitle: Text(
-                        "Sur la période : ${_fmtHoursHM(h)} • Obj/jour : ${a.goalMin} min"),
-                    onLongPress: () {
-                      try {
-                        _editActivityDialog(a);
-                      } catch (_) {}
-                    },
-                    onTap: () {
-                      if (running) {
-                        logic.stopActive();
-                        setSB(() {});
-                      } else {
-                        logic.start(a.id);
-                        Navigator.of(ctx).pop(); // lancer et fermer
-                      }
-                    },
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    leading: MiniRing(
+                      progress: prog,
+                      center: Text("${(prog * 100).round()}%",
+                          style: const TextStyle(
+                              fontSize: 10, fontWeight: FontWeight.w700)),
+                    ),
+                    title: Text(a.name,
+                        style: const TextStyle(fontWeight: FontWeight.w700)),
                     trailing: FilledButton.icon(
-                      onPressed: () {
-                        if (running) {
-                          logic.stopActive();
-                          setSB(() {});
-                        } else {
-                          logic.start(a.id);
-                          Navigator.of(ctx).pop();
-                        }
-                      },
-                      icon: Icon(running ? Icons.stop : Icons.play_arrow),
-                      label: Text(running ? "Stop" : "Start"),
+                      onPressed: () => logic.start(a.id),
+                      icon: const Icon(Icons.play_arrow),
+                      label: const Text("Start"),
                     ),
                   );
                 } else {
@@ -1853,36 +1883,38 @@ class _AppRootState extends State<AppRoot> {
                   final tgt = (a.dailyTarget ?? 0) * days;
                   final today = DateTime.now();
 
+                  final d = DateTime(now.year, now.month, now.day);
+                  final doneH = logic.habitValueOn(a.id, d);
+                  final target = a.dailyTarget ?? 0;
+                  final ratio = target > 0 ? (doneH / target) : 0.0;
+
                   tile = ListTile(
-                    title: Text(a.name),
-                    subtitle:
-                        Text("Sur la période : $sum / $tgt ${a.unit ?? ''}"),
-                    onLongPress: () {
-                      try {
-                        _editActivityDialog(a);
-                      } catch (_) {}
-                    },
-                    onTap: () {
-                      logic.incHabit(a.id, 1, today);
-                      setSB(() {});
-                    },
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    leading: MiniRing(
+                      progress: ratio,
+                      center: Text(target > 0 ? "$doneH" : "—",
+                          style: const TextStyle(
+                              fontSize: 11, fontWeight: FontWeight.w700)),
+                    ),
+                    title: Text(a.name,
+                        style: const TextStyle(fontWeight: FontWeight.w700)),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
-                          onPressed: () {
-                            logic.incHabit(a.id, -1, today);
-                            setSB(() {});
-                          },
-                          icon: const Icon(Icons.remove),
-                        ),
+                            onPressed: () {
+                              logic.incHabit(
+                                  a.id, -1, d); // met à jour le state
+                              setSB(() {}); // ← rebuild la feuille
+                            },
+                            icon: const Icon(Icons.remove)),
                         IconButton(
-                          onPressed: () {
-                            logic.incHabit(a.id, 1, today);
-                            setSB(() {});
-                          },
-                          icon: const Icon(Icons.add),
-                        ),
+                            onPressed: () {
+                              logic.incHabit(a.id, 1, d); // met à jour le state
+                              setSB(() {}); // ← rebuild la feuille
+                            },
+                            icon: const Icon(Icons.add)),
                       ],
                     ),
                   );
