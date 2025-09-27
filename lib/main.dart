@@ -4,6 +4,7 @@ import 'storage.dart';
 import 'app_logic.dart';
 import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
+import 'utils/pacing.dart';
 
 enum _Tab { dashboard, stats }
 
@@ -1028,8 +1029,8 @@ class _AppRootState extends State<AppRoot> {
               label: const Text('Lancer'),
             )
           : null, */
-  floatingActionButton: _tab == _Tab.dashboard ? _buildFocusFab() : null,
-  floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: _tab == _Tab.dashboard ? _buildFocusFab() : null,
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _tab == _Tab.dashboard ? 0 : 1,
         onTap: (i) =>
@@ -1181,6 +1182,10 @@ class _AppRootState extends State<AppRoot> {
                 final progHabit =
                     tgtH > 0 ? (doneH / tgtH).clamp(0.0, 1.0) : 0.0;
 
+                final agg = computeDailyPacingAggregate(logic, domainId: d.id);
+                final progHab =
+                    agg.target > 0 ? (agg.done / agg.target).clamp(0, 1) : 0.0;
+
                 return SectionCard(
                   // si tu n’utilises pas SectionCard, remplace par ton Container/Card
                   child: Column(
@@ -1216,7 +1221,19 @@ class _AppRootState extends State<AppRoot> {
                           }),
                         ],
                       ),
-                      const SizedBox(height: 6),
+/*                       const SizedBox(height: 6),
+                      // NEW: pacing centré sur les 2 jauges
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Builder(builder: (_) {
+                            final agg = computeDailyPacingAggregate(logic,
+                                domainId: d.id); // NEW
+                            return Center(child: buildPacingChip(agg)); // NEW
+                          }),
+                        ],
+                      ), */
+                      const SizedBox(height: 8),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
@@ -1231,6 +1248,7 @@ class _AppRootState extends State<AppRoot> {
                               onTap: () => _showDomainDetail(
                                   d, startCal, endCal, days,
                                   focus: 'time')),
+
                           // Jauge HABITUDES : / cible cumulée sur la période
                           GaugeRing(
                             label: "Habitudes",
@@ -1258,24 +1276,23 @@ class _AppRootState extends State<AppRoot> {
   }
 
   Widget _buildFocusFab() {
-  return GestureDetector(
-    onLongPress: () {
-      // Focus “domaine courant” si dispo, sinon global
-      final domId = selectedDomainId;
-      if (domId != null) {
-        _openFocusPanel(domainId: domId);
-      } else {
-        _openFocusPanel();
-      }
-    },
-    child: FloatingActionButton.extended(
-      onPressed: () => _openFocusPanel(), // Focus global
-      icon: const Icon(Icons.lightbulb),
-      label: const Text('Focus'),
-    ),
-  );
-}
-
+    return GestureDetector(
+      onLongPress: () {
+        // Focus “domaine courant” si dispo, sinon global
+        final domId = selectedDomainId;
+        if (domId != null) {
+          _openFocusPanel(domainId: domId);
+        } else {
+          _openFocusPanel();
+        }
+      },
+      child: FloatingActionButton.extended(
+        onPressed: () => _openFocusPanel(), // Focus global
+        icon: const Icon(Icons.lightbulb),
+        label: const Text('Focus'),
+      ),
+    );
+  }
 
   Future<void> _createActivityDialog({
     String? domainId, // si null -> on affiche un dropdown
