@@ -1017,7 +1017,7 @@ class _AppRootState extends State<AppRoot> {
           : StatsView(
               logic: logic,
               state: _state!,
-              selectedDomainId: selectedDomainId,
+              selectedDomainId: null,
             ),
 
       // FAB seulement sur le Dashboard
@@ -1028,7 +1028,7 @@ class _AppRootState extends State<AppRoot> {
               label: const Text('Lancer'),
             )
           : null, */
-  floatingActionButton: _buildFocusFab(), // ← FAB Focus
+  floatingActionButton: _tab == _Tab.dashboard ? _buildFocusFab() : null,
   floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _tab == _Tab.dashboard ? 0 : 1,
