@@ -1021,14 +1021,15 @@ class _AppRootState extends State<AppRoot> {
             ),
 
       // FAB seulement sur le Dashboard
-      floatingActionButton: _tab == _Tab.dashboard
+/*       floatingActionButton: _tab == _Tab.dashboard
           ? FloatingActionButton.extended(
               onPressed: _openLauncher,
               icon: const Icon(Icons.play_circle),
               label: const Text('Lancer'),
             )
-          : null,
-
+          : null, */
+  floatingActionButton: _buildFocusFab(), // ← FAB Focus
+  floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _tab == _Tab.dashboard ? 0 : 1,
         onTap: (i) =>
@@ -1137,7 +1138,8 @@ class _AppRootState extends State<AppRoot> {
                     "${_fmtHoursHM(totalHours)} / ${_fmtHoursHM(maxHours)}",
                 progress: totalTimeProgress,
                 color: _colorForProgress(totalTimeProgress, context),
-                onTap: () {/* inchangé */},
+                onTap: () => _showDomainDetail(null, startCal, endCal, days,
+                    focus: 'time'),
               ),
               GaugeRing(
                 label: "${_scopeLabel()} — Habitudes",
@@ -1146,7 +1148,8 @@ class _AppRootState extends State<AppRoot> {
                     : "$totalHabitsDone / $totalHabitsTarget",
                 progress: totalHabitProgress,
                 color: _colorForProgress(totalHabitProgress, context),
-                onTap: () {/* idem */},
+                onTap: () => _showDomainDetail(null, startCal, endCal, days,
+                    focus: 'habit'),
               ),
             ],
           ),
@@ -1219,15 +1222,15 @@ class _AppRootState extends State<AppRoot> {
                         children: [
                           // Jauge TEMPS : / objectif domaine
                           GaugeRing(
-                            label: "Temps",
-                            valueText:
-                                "${_fmtHoursHM(h)} / ${_fmtHoursHM(maxHoursD)}",
-                            progress: progTime,
-                            size: 110,
-                            color: _colorForProgress(progTime, context),
-                            onTap: () =>
-                                _showDomainDetail(d, startCal, endCal, days),
-                          ),
+                              label: "Temps",
+                              valueText:
+                                  "${_fmtHoursHM(h)} / ${_fmtHoursHM(maxHoursD)}",
+                              progress: progTime,
+                              size: 110,
+                              color: _colorForProgress(progTime, context),
+                              onTap: () => _showDomainDetail(
+                                  d, startCal, endCal, days,
+                                  focus: 'time')),
                           // Jauge HABITUDES : / cible cumulée sur la période
                           GaugeRing(
                             label: "Habitudes",
@@ -1235,8 +1238,9 @@ class _AppRootState extends State<AppRoot> {
                             progress: progHabit,
                             size: 110,
                             color: _colorForProgress(progHabit, context),
-                            onTap: () =>
-                                _showDomainDetail(d, startCal, endCal, days),
+                            onTap: () => _showDomainDetail(
+                                d, startCal, endCal, days,
+                                focus: 'habit'),
                           ),
                         ],
                       ),
@@ -1250,6 +1254,125 @@ class _AppRootState extends State<AppRoot> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildFocusFab() {
+  return GestureDetector(
+    onLongPress: () {
+      // Focus “domaine courant” si dispo, sinon global
+      final domId = selectedDomainId;
+      if (domId != null) {
+        _openFocusPanel(domainId: domId);
+      } else {
+        _openFocusPanel();
+      }
+    },
+    child: FloatingActionButton.extended(
+      onPressed: () => _openFocusPanel(), // Focus global
+      icon: const Icon(Icons.lightbulb),
+      label: const Text('Focus'),
+    ),
+  );
+}
+
+
+  Future<void> _createActivityDialog({
+    String? domainId, // si null -> on affiche un dropdown
+    required bool isHabit,
+  }) async {
+    final nameCtrl = TextEditingController();
+    final unitCtrl = TextEditingController();
+    final targetCtrl = TextEditingController(text: "1");
+    final goalCtrl = TextEditingController(text: "15");
+    String? selectedDomainId = domainId ??
+        (_state!.domains.isNotEmpty ? _state!.domains.first.id : null);
+
+    await showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text(isHabit ? "Nouvelle routine" : "Nouvelle activité"),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (domainId == null) // choix du domaine si "Tous"
+                  DropdownButtonFormField<String>(
+                    value: selectedDomainId,
+                    onChanged: (v) => selectedDomainId = v,
+                    decoration: const InputDecoration(labelText: "Domaine"),
+                    items: _state!.domains
+                        .map((d) =>
+                            DropdownMenuItem(value: d.id, child: Text(d.name)))
+                        .toList(),
+                  ),
+                TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(labelText: "Nom"),
+                  textInputAction: TextInputAction.next,
+                ),
+                const SizedBox(height: 8),
+                if (isHabit) ...[
+                  TextField(
+                    controller: unitCtrl,
+                    decoration: const InputDecoration(
+                        labelText: "Unité (ex: verres, pompes)"),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: targetCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                        labelText: "Objectif quotidien (nombre)"),
+                  ),
+                ] else ...[
+                  TextField(
+                    controller: goalCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                        labelText: "Objectif/jour (minutes)"),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text("Annuler")),
+            FilledButton(
+              onPressed: () {
+                final name = nameCtrl.text.trim();
+                if (name.isEmpty || selectedDomainId == null) return;
+                if (isHabit) {
+                  final tgt = int.tryParse(targetCtrl.text.trim()) ?? 0;
+                  _state!.activities.add(Activity(
+                    domainId: selectedDomainId!,
+                    name: name,
+                    type: 'habit',
+                    unit: unitCtrl.text.trim().isEmpty
+                        ? null
+                        : unitCtrl.text.trim(),
+                    dailyTarget: tgt,
+                  ));
+                } else {
+                  final goal = int.tryParse(goalCtrl.text.trim()) ?? 15;
+                  _state!.activities.add(Activity(
+                    domainId: selectedDomainId!,
+                    name: name,
+                    type: 'time',
+                    goalMin: goal,
+                  ));
+                }
+                _saveAndRefresh();
+                Navigator.of(ctx).pop();
+              },
+              child: const Text("Créer"),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -1533,77 +1656,205 @@ class _AppRootState extends State<AppRoot> {
     );
   }
 
-  void _showDomainDetail(Domain d, DateTime start, DateTime end, int days) {
-    final acts = logic.activitiesOfDomain(d.id);
+  void _showDomainDetail(
+    Domain? domain,
+    DateTime start,
+    DateTime end,
+    int days, {
+    String focus = 'time', // 'time' | 'habit'
+  }) {
+    final domainId = domain?.id; // null => Tous domaines
 
     showModalBottomSheet(
       context: context,
-      showDragHandle: true,
       isScrollControlled: true,
-      builder: (_) {
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Détail — ${d.name}',
-                  style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              Flexible(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: acts.length,
-                  separatorBuilder: (_, __) => const Divider(height: 12),
-                  itemBuilder: (_, i) {
-                    final a = acts[i];
-                    if (a.isHabit) {
-                      final done = logic.habitSumForRange(a.id, start, end);
-                      final target = (a.dailyTarget ?? 0) * days;
-                      final prog =
-                          target == 0 ? 0.0 : (done / target).clamp(0.0, 1.0);
-                      return ListTile(
-                        title: Text(a.name),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Habitude: $done / $target ${a.unit ?? ''}'),
-                            LinearProgressIndicator(
-                              value: prog,
-                              color: _colorForProgress(prog, context),
-                            ),
-                          ],
-                        ),
-                        trailing: Text('${(prog * 100).round()}%'),
-                      );
-                    } else {
-                      final dur =
-                          logic.totalForRangeByActivity(a.id, start, end);
-                      final h = dur.inMinutes / 60.0;
-                      // Objectif de temps : objectif/jour × nb jours
-                      final maxH = (a.goalMin * days) / 60.0;
-                      final prog = maxH == 0 ? 0.0 : (h / maxH).clamp(0.0, 1.0);
-                      return ListTile(
-                        title: Text(a.name),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                                'Temps: ${h.toStringAsFixed(1)}h / ${maxH.toStringAsFixed(1)}h'),
-                            LinearProgressIndicator(
-                              value: prog,
-                              color: _colorForProgress(prog, context),
-                            ),
-                          ],
-                        ),
-                        trailing: Text('${(prog * 100).round()}%'),
-                      );
-                    }
-                  },
+      showDragHandle: true,
+      builder: (ctx) {
+        String tab = (focus == 'habit') ? 'habit' : 'time'; // onglet courant
+        final scrollCtrl = ScrollController();
+
+        String _fmtHoursHM(double h) {
+          final m = (h * 60).round();
+          return "${m ~/ 60}h ${m % 60}m";
+        }
+
+        // Récupère toutes les activités (du domaine si fourni)
+        List<Activity> _activities() {
+          final it = _state!.activities.where(
+            (a) => domainId == null ? true : a.domainId == domainId,
+          );
+          final list = it.toList()
+            ..sort((a, b) {
+              if (a.isHabit == b.isHabit) return a.name.compareTo(b.name);
+              return a.isHabit ? 1 : -1; // temps d’abord
+            });
+          return list;
+        }
+
+        // Filtrage amont selon l’onglet (PAS d’items vides => pas de séparateurs fantômes)
+        List<Activity> _filteredItems(String currentTab) {
+          final all = _activities();
+          return (currentTab == 'habit')
+              ? all.where((a) => a.isHabit).toList()
+              : all.where((a) => !a.isHabit).toList();
+        }
+
+        return StatefulBuilder(
+          builder: (ctx, setSB) {
+            final items = _filteredItems(tab);
+            final title = domain?.name ?? "Tous les domaines";
+
+            final header = Row(
+              children: [
+                Expanded(
+                  child: Text(title,
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.bold)),
                 ),
+                const SizedBox(width: 8),
+                SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(value: 'time', label: Text('Temps')),
+                    ButtonSegment(value: 'habit', label: Text('Habitudes')),
+                  ],
+                  selected: {tab},
+                  onSelectionChanged: (s) => setSB(() => tab = s.first),
+                ),
+              ],
+            );
+
+            final list = ListView.builder(
+              controller: scrollCtrl,
+              itemCount: items.length,
+              itemBuilder: (_, i) {
+                final a = items[i];
+
+                Widget tile;
+                if (!a.isHabit) {
+                  // ---------- Activité TEMPS ----------
+                  final dur = logic.totalForRangeByActivity(a.id, start, end);
+                  final h = dur.inMinutes / 60.0;
+                  final running = _state!.sessions
+                      .any((s) => s.activityId == a.id && s.endAt == null);
+
+                  tile = ListTile(
+                    title: Text(a.name),
+                    subtitle: Text(
+                        "Sur la période : ${_fmtHoursHM(h)} • Obj/jour : ${a.goalMin} min"),
+                    onLongPress: () {
+                      try {
+                        _editActivityDialog(a);
+                      } catch (_) {}
+                    },
+                    onTap: () {
+                      if (running) {
+                        logic.stopActive();
+                        setSB(() {});
+                      } else {
+                        logic.start(a.id);
+                        Navigator.of(ctx).pop(); // lancer et fermer
+                      }
+                    },
+                    trailing: FilledButton.icon(
+                      onPressed: () {
+                        if (running) {
+                          logic.stopActive();
+                          setSB(() {});
+                        } else {
+                          logic.start(a.id);
+                          Navigator.of(ctx).pop();
+                        }
+                      },
+                      icon: Icon(running ? Icons.stop : Icons.play_arrow),
+                      label: Text(running ? "Stop" : "Start"),
+                    ),
+                  );
+                } else {
+                  // ---------- Routine / HABITUDE ----------
+                  final sum = logic.habitSumForRange(a.id, start, end);
+                  final tgt = (a.dailyTarget ?? 0) * days;
+                  final today = DateTime.now();
+
+                  tile = ListTile(
+                    title: Text(a.name),
+                    subtitle:
+                        Text("Sur la période : $sum / $tgt ${a.unit ?? ''}"),
+                    onLongPress: () {
+                      try {
+                        _editActivityDialog(a);
+                      } catch (_) {}
+                    },
+                    onTap: () {
+                      logic.incHabit(a.id, 1, today);
+                      setSB(() {});
+                    },
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          onPressed: () {
+                            logic.incHabit(a.id, -1, today);
+                            setSB(() {});
+                          },
+                          icon: const Icon(Icons.remove),
+                        ),
+                        IconButton(
+                          onPressed: () {
+                            logic.incHabit(a.id, 1, today);
+                            setSB(() {});
+                          },
+                          icon: const Icon(Icons.add),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                // Divider manuel uniquement entre de vrais items
+                return Column(
+                  children: [
+                    if (i == 0) const SizedBox(height: 4),
+                    tile,
+                    if (i < items.length - 1) const Divider(height: 8),
+                  ],
+                );
+              },
+            );
+
+            // Corps avec padding
+            final body = Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: Column(
+                children: [
+                  header,
+                  const SizedBox(height: 8),
+                  Expanded(child: list),
+                ],
               ),
-            ],
-          ),
+            );
+
+            // Scaffold pour afficher un FAB contextuel qui suit l’onglet
+            return Scaffold(
+              backgroundColor: Colors.transparent,
+              body: body,
+              floatingActionButton: FloatingActionButton.extended(
+                onPressed: () async {
+                  final isHabit = (tab == 'habit');
+                  await _createActivityDialog(
+                    domainId:
+                        domainId, // null => le dialog proposera un dropdown
+                    isHabit: isHabit,
+                  );
+                  setSB(() {}); // rafraîchir la liste après création
+                },
+                icon: Icon(tab == 'habit' ? Icons.add_task : Icons.timelapse),
+                label: Text(
+                    tab == 'habit' ? "Nouvelle routine" : "Nouvelle activité"),
+              ),
+              floatingActionButtonLocation:
+                  FloatingActionButtonLocation.endFloat,
+            );
+          },
         );
       },
     );
@@ -1701,6 +1952,130 @@ class _AppRootState extends State<AppRoot> {
           dailyTarget: target));
     }
     await _saveAndRefresh();
+  }
+
+  void _openFocusPanel({String? domainId}) {
+    final candidates = logic.buildFocusCandidates(domainId: domainId);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSB) {
+            // top 3
+            final top = candidates.take(3).toList();
+
+            Widget _tile(FocusItem it) {
+              if (it.kind == 'time') {
+                final running = _state!.sessions.any(
+                  (s) => s.activityId == it.activity.id && s.endAt == null,
+                );
+                return ListTile(
+                  leading: const Icon(Icons.timelapse),
+                  title: Text(it.activity.name),
+                  subtitle: Text(it.reason),
+                  trailing: FilledButton.icon(
+                    onPressed: () {
+                      if (running) {
+                        logic.stopActive();
+                        setSB(() {});
+                      } else {
+                        logic.start(it.activity.id);
+                        Navigator.of(ctx).pop(); // lancer et fermer
+                      }
+                    },
+                    icon: Icon(running ? Icons.stop : Icons.play_arrow),
+                    label: Text(running ? "Stop" : "Lancer"),
+                  ),
+                );
+              } else {
+                // habit
+                final today = DateTime.now();
+                return ListTile(
+                  leading: const Icon(Icons.checklist_rtl),
+                  title: Text(it.activity.name),
+                  subtitle: Text(it.reason),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        onPressed: () {
+                          logic.incHabit(it.activity.id, -1, today);
+                          setSB(() {});
+                        },
+                        icon: const Icon(Icons.remove),
+                      ),
+                      IconButton(
+                        onPressed: () {
+                          logic.incHabit(it.activity.id, 1, today);
+                          setSB(() {});
+                        },
+                        icon: const Icon(Icons.add),
+                      ),
+                    ],
+                  ),
+                  onTap: () {
+                    logic.incHabit(it.activity.id, 1, today);
+                    setSB(() {});
+                  },
+                );
+              }
+            }
+
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // en-tête
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          domainId == null
+                              ? "Focus — Tout"
+                              : "Focus — ${_state!.domains.firstWhere((d) => d.id == domainId).name}",
+                          style: const TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: "Rafraîchir",
+                        onPressed: () => setSB(() {}),
+                        icon: const Icon(Icons.refresh),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+
+                  if (top.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text("Tout est au vert pour l’instant ✨"),
+                    )
+                  else
+                    Column(
+                      children: [
+                        // reco principale
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: _tile(top[0]),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        // alternatives
+                        ...top.skip(1).map((it) => Card(child: _tile(it))),
+                      ],
+                    ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   void _openManagementSheet() {

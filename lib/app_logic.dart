@@ -1,5 +1,36 @@
 import 'models.dart';
 
+class GoalChange {
+  final String kind; // 'activity' | 'domain'
+  final String id; // activityId ou domainId
+  final int deltaMin;
+  final int newGoalMin;
+  GoalChange({
+    required this.kind,
+    required this.id,
+    required this.deltaMin,
+    required this.newGoalMin,
+  });
+}
+
+class FocusItem {
+  final Activity activity;
+  final String kind; // 'time' | 'habit'
+  final double score; // plus haut = plus prioritaire
+  final String reason; // explication courte
+  final Duration? timeDeficit; // pour time
+  final int? habitDeficit; // pour habit
+
+  FocusItem({
+    required this.activity,
+    required this.kind,
+    required this.score,
+    required this.reason,
+    this.timeDeficit,
+    this.habitDeficit,
+  });
+}
+
 class AppLogic {
   AppState state;
   final void Function() onChange;
@@ -178,20 +209,6 @@ class AppLogic {
   }
 }
 
-class GoalChange {
-  final String kind; // 'activity' | 'domain'
-  final String id;   // activityId ou domainId
-  final int deltaMin;
-  final int newGoalMin;
-  GoalChange({
-    required this.kind,
-    required this.id,
-    required this.deltaMin,
-    required this.newGoalMin,
-  });
-}
-
-
 extension DomainGoals on AppLogic {
   // Objectif/jour d’un domaine en minutes : auto = somme des activités time, sinon valeur manuelle
   int domainGoalMinDay(String domainId) {
@@ -213,135 +230,210 @@ extension DomainGoals on AppLogic {
   }
 
   // Auto-ajustement simple : si sur les N derniers jours on atteint la cible >= T jours → +step
-Future<List<GoalChange>> reviewGoals({
-  DateTime? now,
-  int lookbackDays = 7,      // nombre de jours regardés (hier inclus)
-  int neededHits = 5,        // nb de jours “au-dessus/au-dessous” nécessaires
-  double lower = 0.85,       // zone neutre bas  (≤ 85% => “en dessous”)
-  double upper = 1.15,       // zone neutre haut (≥115% => “au dessus”)
-  double high  = 1.50,       // très au-dessus (≥150%) active un petit boost
-  double pctStep = 0.10,     // pas = 10% de l’objectif courant
-  int minStepMin = 15,       // mais au moins 15 min
-  int maxPerDayMin = 12 * 60,// plafond journalier 12h
-  double maxWeeklyPct = 0.20 // cap de +20% / “revue” (style hebdo)
-}) async {
-  final changes = <GoalChange>[];
-  final t = now ?? DateTime.now();
-  final today = DateTime(t.year, t.month, t.day);
+  Future<List<GoalChange>> reviewGoals(
+      {DateTime? now,
+      int lookbackDays = 7, // nombre de jours regardés (hier inclus)
+      int neededHits = 5, // nb de jours “au-dessus/au-dessous” nécessaires
+      double lower = 0.85, // zone neutre bas  (≤ 85% => “en dessous”)
+      double upper = 1.15, // zone neutre haut (≥115% => “au dessus”)
+      double high = 1.50, // très au-dessus (≥150%) active un petit boost
+      double pctStep = 0.10, // pas = 10% de l’objectif courant
+      int minStepMin = 15, // mais au moins 15 min
+      int maxPerDayMin = 12 * 60, // plafond journalier 12h
+      double maxWeeklyPct = 0.20 // cap de +20% / “revue” (style hebdo)
+      }) async {
+    final changes = <GoalChange>[];
+    final t = now ?? DateTime.now();
+    final today = DateTime(t.year, t.month, t.day);
 
-  // 1) une seule passe par jour (sauf si tu passes un "now" de test)
-  if (state.lastGoalsReview != null) {
-    final last = DateTime(state.lastGoalsReview!.year, state.lastGoalsReview!.month, state.lastGoalsReview!.day);
-    if (last == today) return changes;
+    // 1) une seule passe par jour (sauf si tu passes un "now" de test)
+    if (state.lastGoalsReview != null) {
+      final last = DateTime(state.lastGoalsReview!.year,
+          state.lastGoalsReview!.month, state.lastGoalsReview!.day);
+      if (last == today) return changes;
+    }
+
+    // 2) liste des jours observés (J-1, J-2, ..., J-lookback)
+    final daysBack = List<DateTime>.generate(
+      lookbackDays,
+      (i) {
+        final d = today.subtract(Duration(days: i + 1));
+        return DateTime(d.year, d.month, d.day);
+      },
+    );
+
+    int clampNonNeg(int v) => v < 0 ? 0 : v;
+
+    int clampToWeeklyCap(int base, int delta) {
+      final cap = (base * maxWeeklyPct).round();
+      if (cap <= 0) return delta;
+      return delta > cap ? cap : delta;
+    }
+
+    // ---------- ACTIVITÉS (type "time") ----------
+    for (final a in state.activities.where((x) => !x.isHabit)) {
+      final base = a.goalMin; // minutes/jour
+      if (base <= 0) continue;
+
+      int above = 0, below = 0, wayAbove = 0;
+
+      for (final d in daysBack) {
+        final start = d;
+        final end = d.add(const Duration(days: 1));
+        final doneMin = totalForRangeByActivity(a.id, start, end).inMinutes;
+        final ratio = base > 0 ? (doneMin / base) : 0.0;
+
+        if (ratio >= upper) above++;
+        if (ratio <= lower) below++;
+        if (ratio >= high) wayAbove++;
+      }
+
+      var newGoal = base;
+
+      if (above >= neededHits) {
+        // hausse
+        var step = (base * pctStep).round();
+        if (step < minStepMin) step = minStepMin;
+        step = clampToWeeklyCap(base, step);
+        final boost = wayAbove >= (neededHits ~/ 2) ? (step ~/ 2) : 0;
+        newGoal = (base + step + boost).clamp(0, maxPerDayMin);
+      } else if (below >= neededHits) {
+        // baisse (symétrique, sans cap hebdo nécessaire)
+        var step = (base * pctStep).round();
+        if (step < minStepMin) step = minStepMin;
+        newGoal = clampNonNeg(base - step);
+      }
+
+      if (newGoal != base) {
+        final delta = newGoal - base;
+        a.goalMin = newGoal;
+        changes.add(GoalChange(
+          kind: 'activity',
+          id: a.id,
+          deltaMin: delta,
+          newGoalMin: newGoal,
+        ));
+      }
+    }
+
+    // ---------- DOMAINES (seulement si objectif MANUEL) ----------
+    for (final d in state.domains.where((dom) => !dom.autoGoal)) {
+      final base = d.goalMinDay ?? 0; // minutes/jour
+      if (base <= 0) continue;
+
+      int above = 0, below = 0, wayAbove = 0;
+
+      for (final day in daysBack) {
+        final ratio =
+            domainProgressOnDay(d.id, day); // (minutes faites) / (goalMinDay)
+        if (ratio >= upper) above++;
+        if (ratio <= lower) below++;
+        if (ratio >= high) wayAbove++;
+      }
+
+      var newGoal = base;
+
+      if (above >= neededHits) {
+        var step = (base * pctStep).round();
+        if (step < minStepMin) step = minStepMin;
+        step = clampToWeeklyCap(base, step);
+        final boost = wayAbove >= (neededHits ~/ 2) ? (step ~/ 2) : 0;
+        newGoal = (base + step + boost).clamp(0, maxPerDayMin);
+      } else if (below >= neededHits) {
+        var step = (base * pctStep).round();
+        if (step < minStepMin) step = minStepMin;
+        newGoal = clampNonNeg(base - step);
+      }
+
+      if (newGoal != base) {
+        final delta = newGoal - base;
+        d.goalMinDay = newGoal;
+        changes.add(GoalChange(
+          kind: 'domain',
+          id: d.id,
+          deltaMin: delta,
+          newGoalMin: newGoal,
+        ));
+      }
+    }
+
+    // 3) finalisation
+    state.lastGoalsReview = t;
+    onChange(); // déclenche ta sauvegarde via _saveAndRefresh
+    return changes; // pour afficher les badges, logs, etc.
   }
 
-  // 2) liste des jours observés (J-1, J-2, ..., J-lookback)
-  final daysBack = List<DateTime>.generate(
-    lookbackDays,
-    (i) {
-      final d = today.subtract(Duration(days: i + 1));
-      return DateTime(d.year, d.month, d.day);
-    },
-  );
+  /// Calcule des recommandations Focus (MVP jour: 24h glissantes pour le temps, aujourd'hui pour les habitudes)
+  List<FocusItem> buildFocusCandidates({
+    DateTime? now,
+    String? domainId, // si fourni : filtre par domaine
+  }) {
+    final t = now ?? DateTime.now();
 
-  int clampNonNeg(int v) => v < 0 ? 0 : v;
+    // --- TEMPS : 24h glissantes ---
+    final start24 = t.subtract(const Duration(hours: 24));
+    final end24 = t;
 
-  int clampToWeeklyCap(int base, int delta) {
-    final cap = (base * maxWeeklyPct).round();
-    if (cap <= 0) return delta;
-    return delta > cap ? cap : delta;
+    final items = <FocusItem>[];
+
+    for (final a in state.activities) {
+      if (domainId != null && a.domainId != domainId) continue;
+
+      if (!a.isHabit) {
+        // TIME
+        final done = totalForRangeByActivity(a.id, start24, end24);
+        final needMin = a.goalMin;
+        final doneMin = done.inMinutes;
+        final deficitMin = (needMin - doneMin).clamp(0, 1 << 30);
+        final ratio = (needMin > 0) ? (doneMin / needMin) : 1.0;
+
+        // score simple : plus de déficit => plus prioritaire
+        final score = (needMin > 0) ? (deficitMin / needMin) : 0.0;
+
+        final reason = (needMin <= 0)
+            ? "Pas d’objectif"
+            : (deficitMin <= 0
+                ? "Objectif du jour atteint"
+                : "Manque ${deficitMin} min sur ${needMin} min");
+
+        items.add(FocusItem(
+          activity: a,
+          kind: 'time',
+          score: score,
+          reason: reason,
+          timeDeficit: Duration(minutes: deficitMin),
+        ));
+      } else {
+        // HABIT (MVP quotidien)
+        final todayKey = yyyymmdd(t);
+        final doneToday = state.habitProgress
+            .where((h) => h.activityId == a.id && h.yyyymmdd == todayKey)
+            .map((h) => h.value)
+            .fold(0, (s, v) => s + v);
+        final target = a.dailyTarget ?? 0;
+        final deficit = (target - doneToday);
+        final score = (target > 0) ? (deficit.clamp(0, 1 << 30) / target) : 0.0;
+
+        final reason = (target <= 0)
+            ? "Pas de cible"
+            : (deficit <= 0
+                ? "Cible du jour atteinte"
+                : "Il reste $deficit ${a.unit ?? ''}");
+
+        items.add(FocusItem(
+          activity: a,
+          kind: 'habit',
+          score: score,
+          reason: reason,
+          habitDeficit: deficit > 0 ? deficit : 0,
+        ));
+      }
+    }
+
+    // filtrer les items déjà “verts” (score ≈ 0), mais garder au moins quelque chose
+    items.sort((b, a) => a.score.compareTo(b.score)); // desc
+    final nonZero = items.where((it) => it.score > 0).toList();
+    if (nonZero.isNotEmpty) return nonZero;
+    return items.take(5).toList(); // fallback
   }
-
-  // ---------- ACTIVITÉS (type "time") ----------
-  for (final a in state.activities.where((x) => !x.isHabit)) {
-    final base = a.goalMin; // minutes/jour
-    if (base <= 0) continue;
-
-    int above = 0, below = 0, wayAbove = 0;
-
-    for (final d in daysBack) {
-      final start = d;
-      final end = d.add(const Duration(days: 1));
-      final doneMin = totalForRangeByActivity(a.id, start, end).inMinutes;
-      final ratio = base > 0 ? (doneMin / base) : 0.0;
-
-      if (ratio >= upper) above++;
-      if (ratio <= lower) below++;
-      if (ratio >= high)  wayAbove++;
-    }
-
-    var newGoal = base;
-
-    if (above >= neededHits) {
-      // hausse
-      var step = (base * pctStep).round();
-      if (step < minStepMin) step = minStepMin;
-      step = clampToWeeklyCap(base, step);
-      final boost = wayAbove >= (neededHits ~/ 2) ? (step ~/ 2) : 0;
-      newGoal = (base + step + boost).clamp(0, maxPerDayMin);
-    } else if (below >= neededHits) {
-      // baisse (symétrique, sans cap hebdo nécessaire)
-      var step = (base * pctStep).round();
-      if (step < minStepMin) step = minStepMin;
-      newGoal = clampNonNeg(base - step);
-    }
-
-    if (newGoal != base) {
-      final delta = newGoal - base;
-      a.goalMin = newGoal;
-      changes.add(GoalChange(
-        kind: 'activity',
-        id: a.id,
-        deltaMin: delta,
-        newGoalMin: newGoal,
-      ));
-    }
-  }
-
-  // ---------- DOMAINES (seulement si objectif MANUEL) ----------
-  for (final d in state.domains.where((dom) => !dom.autoGoal)) {
-    final base = d.goalMinDay ?? 0; // minutes/jour
-    if (base <= 0) continue;
-
-    int above = 0, below = 0, wayAbove = 0;
-
-    for (final day in daysBack) {
-      final ratio = domainProgressOnDay(d.id, day); // (minutes faites) / (goalMinDay)
-      if (ratio >= upper) above++;
-      if (ratio <= lower) below++;
-      if (ratio >= high)  wayAbove++;
-    }
-
-    var newGoal = base;
-
-    if (above >= neededHits) {
-      var step = (base * pctStep).round();
-      if (step < minStepMin) step = minStepMin;
-      step = clampToWeeklyCap(base, step);
-      final boost = wayAbove >= (neededHits ~/ 2) ? (step ~/ 2) : 0;
-      newGoal = (base + step + boost).clamp(0, maxPerDayMin);
-    } else if (below >= neededHits) {
-      var step = (base * pctStep).round();
-      if (step < minStepMin) step = minStepMin;
-      newGoal = clampNonNeg(base - step);
-    }
-
-    if (newGoal != base) {
-      final delta = newGoal - base;
-      d.goalMinDay = newGoal;
-      changes.add(GoalChange(
-        kind: 'domain',
-        id: d.id,
-        deltaMin: delta,
-        newGoalMin: newGoal,
-      ));
-    }
-  }
-
-  // 3) finalisation
-  state.lastGoalsReview = t;
-  onChange();           // déclenche ta sauvegarde via _saveAndRefresh
-  return changes;       // pour afficher les badges, logs, etc.
-}
-
 }
