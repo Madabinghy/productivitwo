@@ -54,14 +54,18 @@ class AppLogic {
     }
     state.sessions
         .add(Session(activityId: activityId, startAt: DateTime.now()));
+    maybeAutoAdjustActivity(activityId);
     onChange();
   }
 
   void stopActive() {
     final run = state.sessions.where((s) => s.endAt == null).toList();
     if (run.isNotEmpty) {
-      run.last.endAt = DateTime.now();
+      final ended = run.last;
+      ended.endAt = DateTime.now();
       onChange();
+      // auto-ajuste l’activité qui vient de finir
+      maybeAutoAdjustActivity(ended.activityId);
     }
   }
 
@@ -155,6 +159,7 @@ class AppLogic {
       state.habitProgress[idx].value = v < 0 ? 0 : v;
     }
     onChange();
+    maybeAutoAdjustActivity(activityId);
   }
 
   // Sommes d'habitudes par domaine (range)
@@ -287,6 +292,322 @@ class AppLogic {
     final g = state.goals.firstWhere((x) => x.id == goalId);
     g.stepsDone = (g.stepsDone + delta).clamp(0, g.stepsPlanned ?? 9999);
     onChange();
+  }
+
+//------- Helpers “progress %” (glissants jour/7j/30j)
+
+  // --- fenêtres glissantes
+  ({DateTime start, DateTime end, int days}) _dayWin(DateTime now) {
+    final s = DateTime(now.year, now.month, now.day);
+    return (start: s, end: s.add(const Duration(days: 1)), days: 1);
+  }
+
+  ({DateTime start, DateTime end, int days}) _weekWin(DateTime now) {
+    final e =
+        DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
+    final s = e.subtract(const Duration(days: 7));
+    return (start: s, end: e, days: 7);
+  }
+
+// --- % pour une activité time
+  double timePct(String activityId, DateTime start, DateTime end, int days) {
+    final doneMin = totalForRangeByActivity(activityId, start, end).inMinutes;
+    final goalDay =
+        state.activities.firstWhere((a) => a.id == activityId).goalMin;
+    final target = goalDay * days;
+    if (target <= 0) return 0.0;
+    return doneMin / target; // 1.0 == 100%
+  }
+
+// --- % pour une activité habit
+  double habitPct(String activityId, DateTime start, DateTime end, int days) {
+    final a = state.activities.firstWhere((x) => x.id == activityId);
+    final target = (a.dailyTarget ?? 0) * days;
+    if (target <= 0) return 0.0;
+    int sum = 0;
+    var d = DateTime(start.year, start.month, start.day);
+    while (d.isBefore(end)) {
+      sum += habitValueOn(activityId, d);
+      d = d.add(const Duration(days: 1));
+    }
+    return sum / target;
+  }
+
+  // ----  Filtrage + tri (proche de 100% en premier)
+// items pour l’écran "lanceur / gestion" (type='time' ou 'habit')
+  List<Activity> listUnderCapSorted({
+    String? domainId,
+    required bool habits,
+    DateTime? now,
+  }) {
+    final t = now ?? DateTime.now();
+
+    ({DateTime start, DateTime end, int days}) dayWin() {
+      final s = DateTime(t.year, t.month, t.day);
+      return (start: s, end: s.add(const Duration(days: 1)), days: 1);
+    }
+
+    ({DateTime start, DateTime end, int days}) weekWin() {
+      final e = DateTime(t.year, t.month, t.day).add(const Duration(days: 1));
+      return (start: e.subtract(const Duration(days: 7)), end: e, days: 7);
+    }
+
+    ({DateTime start, DateTime end, int days}) monthWin() {
+      final e = DateTime(t.year, t.month, t.day).add(const Duration(days: 1));
+      return (start: e.subtract(const Duration(days: 30)), end: e, days: 30);
+    }
+
+    double pct(Activity a, DateTime s, DateTime e, int d) {
+      if (a.isHabit) {
+        // habits
+        final target = (a.dailyTarget ?? 0) * d;
+        if (target <= 0) return 0.0;
+        int sum = 0;
+        var x = DateTime(s.year, s.month, s.day);
+        while (x.isBefore(e)) {
+          sum += habitValueOn(a.id, x);
+          x = x.add(const Duration(days: 1));
+        }
+        return sum / target;
+      } else {
+        // time
+        final done = totalForRangeByActivity(a.id, s, e).inMinutes;
+        final target = a.goalMin * d;
+        if (target <= 0) return 0.0;
+        return done / target;
+      }
+    }
+
+    final wD = dayWin(), wW = weekWin(), wM = monthWin();
+
+    bool keep(Activity a) {
+      if (domainId != null && a.domainId != domainId) return false;
+      if (habits != a.isHabit) return false;
+      final pD = pct(a, wD.start, wD.end, wD.days);
+      final pW = pct(a, wW.start, wW.end, wW.days);
+      final pM = pct(a, wM.start, wM.end, wM.days);
+      // garder SI au moins une jauge < 100%
+      return (pD < 1.0) || (pW < 1.0) || (pM < 1.0);
+    }
+
+    // Score de priorité = 1 - (plus petit GAP à 100% parmi les jauges <100%)
+    // → plus le score est grand, plus on est proche de 100% (à remonter en tête)
+    double priorityScore(Activity a) {
+      final pD = pct(a, wD.start, wD.end, wD.days);
+      final pW = pct(a, wW.start, wW.end, wW.days);
+      final pM = pct(a, wM.start, wM.end, wM.days);
+      final gaps = <double>[];
+      if (pD < 1.0) gaps.add(1.0 - pD);
+      if (pW < 1.0) gaps.add(1.0 - pW);
+      if (pM < 1.0) gaps.add(1.0 - pM);
+      if (gaps.isEmpty)
+        return -1.0; // ne devrait pas arriver (filtré plus haut)
+      final minGap = gaps.reduce((a, b) => a < b ? a : b);
+      return 1.0 - minGap; // dans [0,1)
+    }
+
+    final list = state.activities.where(keep).toList();
+    list.sort((a, b) => priorityScore(b).compareTo(priorityScore(a)));
+
+    // (facultatif) tie-breakers stables : si mêmes scores, trier par mois %, puis nom
+    int tie(Activity x, Activity y) {
+      final px = pct(x, wM.start, wM.end, wM.days);
+      final py = pct(y, wM.start, wM.end, wM.days);
+      final c = py.compareTo(px);
+      if (c != 0) return c;
+      return x.name.compareTo(y.name);
+    }
+
+    // applique tie-breaker pour scores égaux
+    int i = 0;
+    while (i + 1 < list.length) {
+      final s1 = priorityScore(list[i]);
+      int j = i + 1;
+      while (j < list.length && (priorityScore(list[j]) - s1).abs() < 1e-9) j++;
+      if (j - i > 1) list.replaceRange(i, j, list.sublist(i, j)..sort(tie));
+      i = j;
+    }
+
+    return list;
+  }
+
+  Future<void> monthlyAutoAdjust({
+    DateTime? now,
+    double threshold = 1.20,
+    double targetTime = 0.95,
+    double targetHabit = 1.00,
+    int minTimeFloorMin = 15, // ne jamais descendre sous ce plancher (sécurité)
+    int maxTimeCeilMin = 12 * 60, // borne haute
+    int maxDailyHabit = 9999, // borne haute
+  }) async {
+    final t = now ?? DateTime.now();
+    final win = _monthWin(t);
+    bool changed = false;
+
+    for (final a in state.activities) {
+      if (!a.isHabit) {
+        // -- TIME
+        final doneMin =
+            totalForRangeByActivity(a.id, win.start, win.end).inMinutes;
+        final targetMin = (a.goalMin * win.days);
+        if (targetMin <= 0) continue;
+        final ratio = doneMin / targetMin;
+
+        if (ratio > threshold) {
+          // nouveau objectif/jour tel que doneMin / (newGoal*days) = targetTime
+          final newGoal = (doneMin / (targetTime * win.days)).ceil();
+          final adj = newGoal.clamp(minTimeFloorMin, maxTimeCeilMin);
+          if (adj > a.goalMin) {
+            a.goalMin = adj;
+            changed = true;
+          }
+        }
+      } else {
+        // -- HABIT
+        int sum = 0;
+        var d = DateTime(win.start.year, win.start.month, win.start.day);
+        while (d.isBefore(win.end)) {
+          sum += habitValueOn(a.id, d);
+          d = d.add(const Duration(days: 1));
+        }
+        final daily = (a.dailyTarget ?? 0);
+        final target = daily * win.days;
+        if (target <= 0) continue;
+        final ratio = sum / target;
+
+        if (ratio > threshold) {
+          // done / (newDaily * days) = targetHabit
+          final newDaily = (sum / (targetHabit * win.days)).ceil();
+          final adj = newDaily.clamp(1, maxDailyHabit);
+          if (adj > daily) {
+            a.dailyTarget = adj;
+            changed = true;
+          }
+        }
+      }
+    }
+
+    if (changed) onChange();
+  }
+
+  // Auto Ajustement des activités
+// --- déjà présent ---
+  final Map<String, DateTime> _lastAutoAdjust = {}; // cooldown horodaté
+
+// --- nouveau : anti-doublon (1 bump max / jour / activité quand scan global) ---
+  final Map<String, String> _autoAdjustDay = {}; // key -> 'YYYYMMDD'
+
+  String _ymd(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}${d.month.toString().padLeft(2, '0')}${d.day.toString().padLeft(2, '0')}';
+
+  ({DateTime start, DateTime end, int days}) _monthWin(DateTime now) {
+    final end =
+        DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
+    final start = end.subtract(const Duration(days: 30));
+    return (start: start, end: end, days: 30);
+  }
+
+  Future<int?> maybeAutoAdjustActivity(
+    String activityId, {
+    DateTime? now,
+    double threshold = 1.20,
+    double targetTime = 0.95,
+    double targetHabit = 1.00,
+    int minStepMin = 5,
+    int floorMin = 15,
+    int cooldownHours = 3,
+    bool ignoreCooldown = false, // <-- AJOUT
+  }) async {
+    final t = now ?? DateTime.now();
+
+    // Cooldown horaire (sauf scan global)
+    final last = _lastAutoAdjust[activityId];
+    if (!ignoreCooldown &&
+        last != null &&
+        t.difference(last) < Duration(hours: cooldownHours)) {
+      return null;
+    }
+
+    // Anti-doublon au scan : max 1 bump / jour / activité
+    if (ignoreCooldown) {
+      final today = _ymd(t);
+      if (_autoAdjustDay[activityId] == today) return null;
+    }
+
+    final a = state.activities.firstWhere(
+      (x) => x.id == activityId,
+      orElse: () => Activity(domainId: '', name: 'deleted'),
+    );
+
+    // fenêtre 30j glissants
+    ({DateTime start, DateTime end, int days}) _monthWin(DateTime now) {
+      final end =
+          DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
+      final start = end.subtract(const Duration(days: 30));
+      return (start: start, end: end, days: 30);
+    }
+
+    final win = _monthWin(t);
+
+    if (!a.isHabit) {
+      final doneMin =
+          totalForRangeByActivity(a.id, win.start, win.end).inMinutes;
+      final target = a.goalMin * win.days;
+      if (target <= 0) return null;
+      final ratio = doneMin / target;
+      if (ratio <= threshold) return null;
+
+      final computed = (doneMin / (targetTime * win.days)).ceil();
+      final stepped = (computed / minStepMin).ceil() * minStepMin;
+      final adj = stepped.clamp(floorMin, 12 * 60);
+      if (adj > a.goalMin) {
+        final delta = adj - a.goalMin;
+        a.goalMin = adj;
+        _lastAutoAdjust[activityId] = t;
+        if (ignoreCooldown) _autoAdjustDay[activityId] = _ymd(t);
+        onChange();
+        return delta;
+      }
+    } else {
+      // HABITS
+      int sum = 0;
+      var d = DateTime(win.start.year, win.start.month, win.start.day);
+      while (d.isBefore(win.end)) {
+        sum += habitValueOn(activityId, d);
+        d = d.add(const Duration(days: 1));
+      }
+
+      final daily = a.dailyTarget ?? 0;
+      final target = daily * win.days;
+      if (target <= 0) return null;
+      final ratio = sum / target;
+      if (ratio <= threshold) return null;
+
+      final newDaily = (sum / (targetHabit * win.days)).ceil();
+      if (newDaily > daily) {
+        final delta = newDaily - daily;
+        a.dailyTarget = newDaily.clamp(1, 9999);
+        _lastAutoAdjust[activityId] = t;
+        if (ignoreCooldown) _autoAdjustDay[activityId] = _ymd(t);
+        onChange();
+        return delta;
+      }
+    }
+    return null;
+  }
+
+  /// Parcourt toutes les activités/routines et applique l’auto-ajustement si nécessaire.
+  /// Retourne le nombre de bumps effectués.
+  Future<int> scanAllActivities({DateTime? now}) async {
+    final t = now ?? DateTime.now();
+    int bumps = 0;
+    for (final a in state.activities) {
+      final delta =
+          await maybeAutoAdjustActivity(a.id, now: t, ignoreCooldown: true);
+      if (delta != null && delta > 0) bumps++;
+    }
+    if (bumps > 0) onChange();
+    return bumps;
   }
 }
 

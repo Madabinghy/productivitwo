@@ -498,9 +498,9 @@ class AppRoot extends StatefulWidget {
   State<AppRoot> createState() => _AppRootState();
 }
 
-class _AppRootState extends State<AppRoot> {
+class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   final store = FileStore();
-
+  DateTime _lastGlobalScan = DateTime.fromMillisecondsSinceEpoch(0);
   AppState? _state;
   late AppLogic logic;
   String? selectedDomainId;
@@ -519,6 +519,7 @@ class _AppRootState extends State<AppRoot> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _init(); // lance l'async proprement
 
     _heartbeat = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -526,11 +527,61 @@ class _AppRootState extends State<AppRoot> {
     });
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) async {
+    if (state == AppLifecycleState.resumed) {
+      // évite de scanner trop souvent (ex: toutes les 6h)
+      if (DateTime.now().difference(_lastGlobalScan) >
+          const Duration(hours: 6)) {
+        final bumps = await logic.scanAllActivities();
+        _lastGlobalScan = DateTime.now();
+        if (bumps > 0 && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text("$bumps objectif(s) ajusté(s) d’après les 30j"),
+                duration: const Duration(seconds: 2)),
+          );
+          await store.save(_state!);
+        }
+      }
+    }
+  }
+
+  Future<void> _runDevScan() async {
+    final bumps = await logic.scanAllActivities();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("Scan global terminé : $bumps objectif(s) ajusté(s)"),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+    await store.save(_state!); // sauve le nouvel état
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _heartbeat?.cancel();
+    super.dispose();
+  }
+
   Future<void> _init() async {
     final s = await store.loadOrInit();
     setState(() {
       _state = s;
       logic = AppLogic(_state!, _saveAndRefresh);
+      () async {
+        final bumps = await logic.scanAllActivities();
+        if (bumps > 0 && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text("$bumps objectif(s) ajusté(s) d’après les 30j"),
+                duration: const Duration(seconds: 2)),
+          );
+          await store.save(_state!);
+        }
+      }();
       if (_state!.domains.isEmpty) {
         _state!.domains.add(Domain(name: 'Général'));
       }
@@ -584,12 +635,6 @@ class _AppRootState extends State<AppRoot> {
         });
       });
     }
-  }
-
-  @override
-  void dispose() {
-    _heartbeat?.cancel();
-    super.dispose();
   }
 
   GoalChange? _changeForDomain(String domainId) {
@@ -1050,6 +1095,11 @@ class _AppRootState extends State<AppRoot> {
             tooltip: "Inbox",
             onPressed: _openInboxSheet,
             icon: const Icon(Icons.inbox_outlined),
+          ),
+          IconButton(
+            tooltip: "Scan global (dev)",
+            onPressed: _runDevScan,
+            icon: const Icon(Icons.bug_report_outlined),
           ),
         ],
       ),
@@ -1731,7 +1781,11 @@ class _AppRootState extends State<AppRoot> {
           child: StatefulBuilder(
             builder: (ctx, setSB) {
               final domains = _state!.domains;
-              final acts = _filtered();
+              //final acts = _filtered();
+              final acts = logic.listUnderCapSorted(
+                  domainId: launcherDomainId, habits: false); // temps
+              final habits = logic.listUnderCapSorted(
+                  domainId: launcherDomainId, habits: true); // routines
 
               Widget hint(StateSetter setSB) {
                 if (_launcherHintSeen) return const SizedBox.shrink();
@@ -2001,30 +2055,21 @@ class _AppRootState extends State<AppRoot> {
           return h > 0 ? "${h}h ${m}m" : "${m}m";
         }
 
-        // Récupère toutes les activités (du domaine si fourni)
-        List<Activity> _activities() {
-          final it = _state!.activities.where(
-            (a) => domainId == null ? true : a.domainId == domainId,
-          );
-          final list = it.toList()
-            ..sort((a, b) {
-              if (a.isHabit == b.isHabit) return a.name.compareTo(b.name);
-              return a.isHabit ? 1 : -1; // temps d’abord
-            });
-          return list;
-        }
+        // --- SUPPRIMER _activities() et _filteredItems() ---
+        // et coller ces 2 helpers à la place :
 
-        // Filtrage amont selon l’onglet (PAS d’items vides => pas de séparateurs fantômes)
-        List<Activity> _filteredItems(String currentTab) {
-          final all = _activities();
-          return (currentTab == 'habit')
-              ? all.where((a) => a.isHabit).toList()
-              : all.where((a) => !a.isHabit).toList();
-        }
+        // Récupération triée par proximité de 100% (jour/sem/mois), déjà filtrée par domaine & type
+        List<Activity> _itemsTime() =>
+            logic.listUnderCapSorted(domainId: domainId, habits: false);
+
+        List<Activity> _itemsHabit() =>
+            logic.listUnderCapSorted(domainId: domainId, habits: true);
 
         return StatefulBuilder(
           builder: (ctx, setSB) {
-            final items = _filteredItems(tab);
+        // APRÈS
+            final items = (tab == 'habit') ? _itemsHabit() : _itemsTime();
+
             final title = domain?.name ?? "Tous les domaines";
 
             final header = Row(
@@ -2142,7 +2187,7 @@ class _AppRootState extends State<AppRoot> {
                           style: const TextStyle(
                               fontSize: 11, fontWeight: FontWeight.w700)),
                     ),
-// Colonne à droite :
+                    // Colonne à droite :
                     title: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
