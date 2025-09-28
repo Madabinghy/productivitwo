@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/time_scope.dart';
+import 'package:productivitwo_v1/widgets/tiny_bar.dart';
 import 'models.dart';
 import 'storage.dart';
 import 'app_logic.dart';
@@ -1852,6 +1854,16 @@ class _AppRootState extends State<AppRoot> {
                 final goalMin = a.goalMin;
                 final prog = goalMin > 0 ? (done.inMinutes / goalMin) : 0.0;
 
+                final dayDur = logic.totalForRangeByActivity(
+                    a.id, now.subtract(const Duration(hours: 24)), now);
+                final dayGoal = a.goalMin;
+                final dayRatio = dayGoal > 0
+                    ? (dayDur.inMinutes / dayGoal).clamp(0.0, 1.0)
+                    : 0.0;
+
+                final w = logic.timeSliding(a.id, 7);
+                final m = logic.timeSliding(a.id, 30);
+
                 Widget tile;
                 if (!a.isHabit) {
                   // ---------- Activité TEMPS ----------
@@ -1869,10 +1881,29 @@ class _AppRootState extends State<AppRoot> {
                           style: const TextStyle(
                               fontSize: 10, fontWeight: FontWeight.w700)),
                     ),
-                    title: Text(a.name,
-                        style: const TextStyle(fontWeight: FontWeight.w700)),
+                    title: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(a.name,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w700, fontSize: 16)),
+                        // Mois (en haut), puis Semaine
+                        TinyBar(
+                          ratio: m.ratio,
+                          labelLeft: "Mois ${fmtCompactFromMin(m.doneMin)} / ${fmtCompactFromMin(m.targetMin)}",
+                        ),
+                        TinyBar(
+                          ratio: w.ratio,
+                          labelLeft: "Sem ${fmtCompactFromMin(w.doneMin)} / ${fmtCompactFromMin(w.targetMin)}",
+                          padding: const EdgeInsets.only(top: 2),
+                        ),
+                      ],
+                    ),
                     trailing: FilledButton.icon(
-                      onPressed: () => logic.start(a.id),
+                      onPressed: () {
+                        logic.start(a.id);
+                        Navigator.pop(ctx);
+                      },
                       icon: const Icon(Icons.play_arrow),
                       label: const Text("Start"),
                     ),
@@ -1881,24 +1912,52 @@ class _AppRootState extends State<AppRoot> {
                   // ---------- Routine / HABITUDE ----------
                   final sum = logic.habitSumForRange(a.id, start, end);
                   final tgt = (a.dailyTarget ?? 0) * days;
-                  final today = DateTime.now();
+                  final today = DateTime(now.year, now.month, now.day);
 
                   final d = DateTime(now.year, now.month, now.day);
                   final doneH = logic.habitValueOn(a.id, d);
                   final target = a.dailyTarget ?? 0;
                   final ratio = target > 0 ? (doneH / target) : 0.0;
 
+                  
+                  final doneToday = logic.habitValueOn(a.id, today);
+                  final targetDay = a.dailyTarget ?? 0;
+                  final dayRatioH = targetDay > 0
+                      ? (doneToday / targetDay).clamp(0.0, 1.0)
+                      : 0.0;
+
+                  final wH = logic.habitSliding(a.id, 7);
+                  final mH = logic.habitSliding(a.id, 30);
+
                   tile = ListTile(
                     contentPadding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     leading: MiniRing(
-                      progress: ratio,
-                      center: Text(target > 0 ? "$doneH" : "—",
+                      progress: dayRatioH,
+                      center: Text(targetDay > 0 ? "$doneToday" : "—",
                           style: const TextStyle(
                               fontSize: 11, fontWeight: FontWeight.w700)),
                     ),
-                    title: Text(a.name,
-                        style: const TextStyle(fontWeight: FontWeight.w700)),
+// Colonne à droite :
+                    title: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(a.name,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w700, fontSize: 16)),
+                        TinyBar(
+                          ratio: mH.ratio,
+                          labelLeft:
+                              "Mois ${mH.done} / ${mH.target}${(a.unit ?? '').isNotEmpty ? ' ${a.unit}' : ''}",
+                        ),
+                        TinyBar(
+                          ratio: wH.ratio,
+                          labelLeft:
+                              "Semaine ${wH.done} / ${wH.target}${(a.unit ?? '').isNotEmpty ? ' ${a.unit}' : ''}",
+                          padding: const EdgeInsets.only(top: 2),
+                        ),
+                      ],
+                    ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [

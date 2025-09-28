@@ -27,3 +27,12 @@ enum TimeScope { day, week, month }
       return (start: start, end: end, days: days);
   }
 }
+
+String fmtCompactFromMin(int minutes) => fmtCompact(Duration(minutes: minutes));
+
+String fmtCompact(Duration d) {
+  final h = d.inHours;
+  final m = d.inMinutes.remainder(60);
+  if (h == 0) return "${m}m";
+  return "${h}h ${m.toString().padLeft(2,'0')}m";
+}

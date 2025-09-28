@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'models.dart';
 
 class GoalChange {
@@ -464,5 +465,43 @@ extension DomainGoals on AppLogic {
     final nonZero = items.where((it) => it.score > 0).toList();
     if (nonZero.isNotEmpty) return nonZero;
     return items.take(5).toList(); // fallback
+  }
+}
+
+extension SlidingProgress on AppLogic {
+  // bornes [start, end) glissantes
+  DateTimeRange lastNDays(int n, {DateTime? now}) {
+    final t = now ?? DateTime.now();
+    final end = t;
+    final start = t.subtract(Duration(days: n));
+    return DateTimeRange(start: start, end: end);
+  }
+
+  // ---- Temps (activity.type == 'time')
+  ({int doneMin, int targetMin, double ratio}) timeSliding(
+    String activityId, int days, {
+    DateTime? now,
+  }) {
+    final r = lastNDays(days, now: now);
+    final dur = totalForRangeByActivity(activityId, r.start, r.end);
+    final a = state.activities.firstWhere((x) => x.id == activityId);
+    final target = (a.goalMin * days).clamp(0, 24 * 60 * days); // simple: goal/j * n
+    final done = dur.inMinutes;
+    final ratio = target > 0 ? (done / target).clamp(0.0, 1.0) : 0.0;
+    return (doneMin: done, targetMin: target, ratio: ratio);
+  }
+
+  // ---- Habitudes (activity.type == 'habit')
+  ({int done, int target, double ratio}) habitSliding(
+    String activityId, int days, {
+    DateTime? now,
+  }) {
+    final r = lastNDays(days, now: now);
+    final done = habitSumForRange(activityId, r.start, r.end);
+    final a = state.activities.firstWhere((x) => x.id == activityId);
+    final targetPerDay = a.dailyTarget ?? 0;
+    final target = targetPerDay * days;
+    final ratio = target > 0 ? (done / target).clamp(0.0, 1.0) : 0.0;
+    return (done: done, target: target, ratio: ratio);
   }
 }
