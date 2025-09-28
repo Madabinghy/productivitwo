@@ -513,46 +513,55 @@ extension DomainGoals on AppLogic {
     }
 
     // ---- GOALS avec prochaine action (GTD light) ----
-    for (final g in state.goals.where((x) =>
-        x.status == 'active' && (x.nextAction?.trim().isNotEmpty ?? false))) {
+// ---- GOALS (afficher même sans nextAction) ----
+    for (final g in state.goals.where((x) => x.status == 'active')) {
       if (domainId != null && g.domainId != domainId) continue;
 
-      // snooze côté "goal" (clé spécifique)
+      // Optionnel: si tu veux pouvoir snoozer un goal entier
       final snoozeKey = 'goal:${g.id}';
       if (isSnoozed(snoozeKey, now: t)) continue;
 
-      // Si lié à une activité, on calcule un "déficit" pour scorer
-      Activity? act;
-      double score = 0.8; // base priorité pour les goals
-      String reason = "Prochaine action à faire";
+      final hasNext = (g.nextAction?.trim().isNotEmpty ?? false);
 
+      // Récupérer l’activité liée *en nullable* (sans orElse null)
+      Activity? act;
       if (g.activityId != null) {
-        act = state.activities.firstWhere((a) => a.id == g.activityId,
-            orElse: () => Activity(
-                domainId: g.domainId, name: "(activité liée introuvable)"));
-        if (!act.isHabit) {
-          final done =
-              totalForRangeByActivity(act.id, start24, end24).inMinutes;
-          final need = act.goalMin;
-          final deficit = (need - done);
+        final idx = state.activities.indexWhere((a) => a.id == g.activityId);
+        if (idx != -1) act = state.activities[idx];
+      }
+
+      double score = hasNext ? 0.8 : 0.2;
+      String reason =
+          hasNext ? "Prochaine action à faire" : "Définir une prochaine action";
+      Duration? timeDef;
+      int? habitDef;
+
+      // Si prochaine action ET activité liée -> calcule un "déficit" pour affiner le score/raison
+      if (hasNext && act != null) {
+        if (!act!.isHabit) {
+          final m = totalForRangeByActivity(act!.id, start24, end24).inMinutes;
+          final need = act!.goalMin;
+          final deficit = need - m;
           if (need > 0) {
             score =
                 (deficit > 0 ? deficit / need : 0).clamp(0.0, 1.0).toDouble();
             reason = deficit > 0
                 ? "Manque ${deficit} min sur ${need} min"
                 : "Objectif du jour atteint";
+            timeDef = Duration(minutes: deficit.clamp(0, need));
           }
         } else {
           final today = DateTime(t.year, t.month, t.day);
-          final doneH = habitValueOn(act.id, today);
-          final target = act.dailyTarget ?? 0;
-          final deficit = (target - doneH);
+          final done = habitValueOn(act!.id, today);
+          final target = act!.dailyTarget ?? 0;
+          final deficit = target - done;
           if (target > 0) {
             score =
                 (deficit > 0 ? deficit / target : 0).clamp(0.0, 1.0).toDouble();
             reason = deficit > 0
-                ? "Il reste $deficit ${act.unit ?? ''}"
+                ? "Il reste $deficit ${act!.unit ?? ''}"
                 : "Cible du jour atteinte";
+            habitDef = deficit.clamp(0, target);
           }
         }
       }
@@ -563,8 +572,10 @@ extension DomainGoals on AppLogic {
         reason: reason,
         goal: g,
         activity: act, // peut être null
+        timeDeficit: timeDef,
+        habitDeficit: habitDef,
         titleOverride: g.title,
-        subtitleOverride: g.nextAction, // la "prochaine action"
+        subtitleOverride: g.nextAction, // peut être null/vidé
       ));
     }
 

@@ -1013,7 +1013,7 @@ class _AppRootState extends State<AppRoot> {
     // 2) App prête -> Scaffold complet
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Productivitwo'),
+        title: const Text('Go Get It'),
         actions: [
           // Pastille rouge si une activité tourne (facultatif si tu l’as déjà)
           if (_currentSession() != null)
