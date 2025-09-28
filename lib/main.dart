@@ -1046,6 +1046,11 @@ class _AppRootState extends State<AppRoot> {
             onPressed: _openManagementSheet,
             icon: const Icon(Icons.tune),
           ),
+          IconButton(
+            tooltip: "Inbox",
+            onPressed: _openInboxSheet,
+            icon: const Icon(Icons.inbox_outlined),
+          ),
         ],
       ),
 
@@ -1083,6 +1088,204 @@ class _AppRootState extends State<AppRoot> {
           ),
         ],
       ),
+    );
+  }
+
+  void _openInboxSheet() {
+    final txtCtrl = TextEditingController();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetCtx) {
+        return StatefulBuilder(
+          builder: (sheetCtx, setSB) {
+            final items = _state!.inbox.toList()
+              ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 8,
+                bottom: 16 + MediaQuery.of(sheetCtx).viewInsets.bottom,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // champ d'ajout rapide
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: txtCtrl,
+                          decoration: const InputDecoration(
+                            hintText:
+                                "Capture rapide (idée / tâche / objectif)",
+                          ),
+                          onSubmitted: (_) {
+                            logic.inboxAdd(txtCtrl.text);
+                            setSB(() {
+                              txtCtrl.clear();
+                            });
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: () {
+                          logic.inboxAdd(txtCtrl.text);
+                          setSB(() {
+                            txtCtrl.clear();
+                          });
+                        },
+                        child: const Text("Ajouter"),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (items.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text("Inbox vide ✨"),
+                    )
+                  else
+                    Flexible(
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: items.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (_, i) {
+                          final it = items[i];
+                          return ListTile(
+                            dense: true,
+                            title: Text(it.title,
+                                maxLines: 2, overflow: TextOverflow.ellipsis),
+                            subtitle: Text("Ajouté le ${it.createdAt}"),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                TextButton(
+                                  onPressed: () => _clarifyInboxItem(
+                                      sheetCtx, setSB, it.id, it.title),
+                                  child: const Text("Clarifier"),
+                                ),
+                                IconButton(
+                                  tooltip: "Archiver",
+                                  onPressed: () {
+                                    logic.inboxRemove(it.id);
+                                    setSB(() {});
+                                  },
+                                  icon: const Icon(Icons.archive_outlined),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _clarifyInboxItem(
+      BuildContext parentCtx,
+      void Function(void Function()) setSB,
+      String inboxId,
+      String initialTitle) {
+    final titleCtrl = TextEditingController(text: initialTitle);
+    String? pickedDomainId = selectedDomainId ??
+        (_state!.domains.isNotEmpty ? _state!.domains.first.id : null);
+    String? pickedActivityId; // optionnel
+    final nextCtrl = TextEditingController(); // prochaine action optionnelle
+    final ctxCtrl = TextEditingController(); // contexte optionnel
+
+    showDialog(
+      context: parentCtx,
+      builder: (dlgCtx) {
+        return AlertDialog(
+          title: const Text("Clarifier"),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: titleCtrl,
+                  decoration:
+                      const InputDecoration(labelText: "Titre de l’objectif"),
+                ),
+                const SizedBox(height: 8),
+                // Domaine
+                DropdownButtonFormField<String>(
+                  value: pickedDomainId,
+                  items: _state!.domains
+                      .map((d) =>
+                          DropdownMenuItem(value: d.id, child: Text(d.name)))
+                      .toList(),
+                  onChanged: (v) => pickedDomainId = v,
+                  decoration: const InputDecoration(labelText: "Domaine"),
+                ),
+                const SizedBox(height: 8),
+                // Activité support (optionnelle)
+                DropdownButtonFormField<String>(
+                  value: pickedActivityId,
+                  items: [
+                    const DropdownMenuItem(
+                        value: null, child: Text("— Aucune activité —")),
+                    ..._state!.activities.map((a) =>
+                        DropdownMenuItem(value: a.id, child: Text(a.name))),
+                  ],
+                  onChanged: (v) => pickedActivityId = v,
+                  decoration:
+                      const InputDecoration(labelText: "Activité (optionnel)"),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: nextCtrl,
+                  decoration: const InputDecoration(
+                      labelText: "Prochaine action (optionnel)"),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: ctxCtrl,
+                  decoration: const InputDecoration(
+                      labelText: "Contexte ex. maison, ordi (optionnel)"),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.of(dlgCtx).pop(),
+                child: const Text("Annuler")),
+            FilledButton(
+              onPressed: () {
+                if (pickedDomainId == null) return;
+                logic.inboxToGoal(
+                  inboxId: inboxId,
+                  domainId: pickedDomainId!,
+                  title: titleCtrl.text.trim().isEmpty
+                      ? initialTitle
+                      : titleCtrl.text.trim(),
+                  activityId: pickedActivityId,
+                  nextAction: nextCtrl.text.trim().isEmpty
+                      ? null
+                      : nextCtrl.text.trim(),
+                  context:
+                      ctxCtrl.text.trim().isEmpty ? null : ctxCtrl.text.trim(),
+                );
+                setSB(() {}); // refresh la feuille Inbox
+                Navigator.of(dlgCtx).pop();
+              },
+              child: const Text("Créer l’objectif"),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -1890,11 +2093,13 @@ class _AppRootState extends State<AppRoot> {
                         // Mois (en haut), puis Semaine
                         TinyBar(
                           ratio: m.ratio,
-                          labelLeft: "Mois ${fmtCompactFromMin(m.doneMin)} / ${fmtCompactFromMin(m.targetMin)}",
+                          labelLeft:
+                              "Mois ${fmtCompactFromMin(m.doneMin)} / ${fmtCompactFromMin(m.targetMin)}",
                         ),
                         TinyBar(
                           ratio: w.ratio,
-                          labelLeft: "Sem ${fmtCompactFromMin(w.doneMin)} / ${fmtCompactFromMin(w.targetMin)}",
+                          labelLeft:
+                              "Sem ${fmtCompactFromMin(w.doneMin)} / ${fmtCompactFromMin(w.targetMin)}",
                           padding: const EdgeInsets.only(top: 2),
                         ),
                       ],
@@ -1919,7 +2124,6 @@ class _AppRootState extends State<AppRoot> {
                   final target = a.dailyTarget ?? 0;
                   final ratio = target > 0 ? (doneH / target) : 0.0;
 
-                  
                   final doneToday = logic.habitValueOn(a.id, today);
                   final targetDay = a.dailyTarget ?? 0;
                   final dayRatioH = targetDay > 0

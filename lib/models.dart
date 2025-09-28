@@ -3,6 +3,72 @@ import 'package:uuid/uuid.dart';
 
 const _uuid = Uuid();
 
+
+class InboxItem {
+  String id;
+  String title;
+  DateTime createdAt;
+  InboxItem({String? id, required this.title, DateTime? createdAt})
+      : id = id ?? _uuid.v4(),
+        createdAt = createdAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+    'id': id, 'title': title, 'createdAt': createdAt.toIso8601String(),
+  };
+  static InboxItem from(Map j) => InboxItem(
+    id: j['id'], title: j['title'], createdAt: DateTime.parse(j['createdAt']),
+  );
+}
+
+// --- OBJECTIFS (GTD light) ---
+// status: 'active' | 'done' | 'archived'
+class Goal {
+  String id, domainId, title;
+  String status; // 'active' par défaut
+  String? activityId; // activité support (optionnel)
+  String? nextAction; // une seule "prochaine action"
+  String? context; // ex: "maison", "travail" (optionnel)
+  DateTime createdAt;
+  DateTime? doneAt;
+
+  Goal({
+    String? id,
+    required this.domainId,
+    required this.title,
+    this.status = 'active',
+    this.activityId,
+    this.nextAction,
+    this.context,
+    DateTime? createdAt,
+    this.doneAt,
+  })  : id = id ?? _uuid.v4(),
+        createdAt = createdAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'domainId': domainId,
+        'title': title,
+        'status': status,
+        'activityId': activityId,
+        'nextAction': nextAction,
+        'context': context,
+        'createdAt': createdAt.toIso8601String(),
+        'doneAt': doneAt?.toIso8601String(),
+      };
+
+  static Goal from(Map j) => Goal(
+        id: j['id'],
+        domainId: j['domainId'],
+        title: j['title'],
+        status: j['status'] ?? 'active',
+        activityId: j['activityId'],
+        nextAction: j['nextAction'],
+        context: j['context'],
+        createdAt: DateTime.parse(j['createdAt']),
+        doneAt: j['doneAt'] != null ? DateTime.parse(j['doneAt']) : null,
+      );
+}
+
 /// --- DOMAINES ---
 class Domain {
   String id, name;
@@ -130,8 +196,10 @@ class AppState {
   List<Session> sessions;
   List<HabitProgress> habitProgress;
   DateTime? lastGoalsReview;
-    // NEW: activité → ISO8601 jusqu’à quand elle est “snoozed”
+  // NEW: activité → ISO8601 jusqu’à quand elle est “snoozed”
   Map<String, String> snoozedUntil;
+  List<Goal> goals;
+  List<InboxItem> inbox;
 
   AppState({
     required this.domains,
@@ -139,8 +207,12 @@ class AppState {
     required this.sessions,
     required this.habitProgress,
     this.lastGoalsReview,
-    Map<String, String>? snoozedUntil,       
-  }) : snoozedUntil = snoozedUntil ?? {};
+    Map<String, String>? snoozedUntil,
+    List<Goal>? goals,
+    List<InboxItem>? inbox, 
+  })  : snoozedUntil = snoozedUntil ?? {},
+        goals = goals ?? [],
+        inbox = inbox ?? [];
 
   Map<String, dynamic> toJson() => {
         'domains': domains.map((e) => e.toJson()).toList(),
@@ -149,6 +221,8 @@ class AppState {
         'habitProgress': habitProgress.map((e) => e.toJson()).toList(),
         'lastGoalsReview': lastGoalsReview?.toIso8601String(),
         'snoozedUntil': snoozedUntil,
+        'goals': goals.map((e) => e.toJson()).toList(),
+        'inbox': inbox.map((e) => e.toJson()).toList(),
       };
 
   static AppState from(Map j) => AppState(
@@ -164,7 +238,14 @@ class AppState {
         lastGoalsReview: j['lastGoalsReview'] == null
             ? null
             : DateTime.parse(j['lastGoalsReview']),
-            snoozedUntil: (j['snoozedUntil'] as Map?)?.map((k, v) => MapEntry(k as String, v as String)) ?? {},
+        snoozedUntil: (j['snoozedUntil'] as Map?)
+                ?.map((k, v) => MapEntry(k as String, v as String)) ??
+            {},
+        goals: (j['goals'] == null)
+            ? <Goal>[]
+            : (j['goals'] as List).map((e) => Goal.from(e)).toList(),
+            inbox: (j['inbox'] == null) ? <InboxItem>[] : (j['inbox'] as List).map((e) => InboxItem.from(e)).toList(),
+  
       );
 
   String encode() => jsonEncode(toJson());

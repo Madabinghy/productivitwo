@@ -209,33 +209,31 @@ class AppLogic {
     return t;
   }
 
-
   // ---------  SNOOZE ---------
   bool isSnoozed(String activityId, {DateTime? now}) {
-  final untilIso = state.snoozedUntil[activityId];
-  if (untilIso == null) return false;
-  final t = now ?? DateTime.now();
-  return DateTime.parse(untilIso).isAfter(t);
-}
-
-void snooze(String activityId, {int minutes = 30}) {
-  final until = DateTime.now().add(Duration(minutes: minutes));
-  state.snoozedUntil[activityId] = until.toIso8601String();
-  onChange(); // persiste via _saveAndRefresh
-}
-
-void clearExpiredSnoozes({DateTime? now}) {
-  final t = now ?? DateTime.now();
-  final toRemove = <String>[];
-  state.snoozedUntil.forEach((id, iso) {
-    if (!DateTime.parse(iso).isAfter(t)) toRemove.add(id);
-  });
-  for (final id in toRemove) {
-    state.snoozedUntil.remove(id);
+    final untilIso = state.snoozedUntil[activityId];
+    if (untilIso == null) return false;
+    final t = now ?? DateTime.now();
+    return DateTime.parse(untilIso).isAfter(t);
   }
-  if (toRemove.isNotEmpty) onChange();
-}
 
+  void snooze(String activityId, {int minutes = 30}) {
+    final until = DateTime.now().add(Duration(minutes: minutes));
+    state.snoozedUntil[activityId] = until.toIso8601String();
+    onChange(); // persiste via _saveAndRefresh
+  }
+
+  void clearExpiredSnoozes({DateTime? now}) {
+    final t = now ?? DateTime.now();
+    final toRemove = <String>[];
+    state.snoozedUntil.forEach((id, iso) {
+      if (!DateTime.parse(iso).isAfter(t)) toRemove.add(id);
+    });
+    for (final id in toRemove) {
+      state.snoozedUntil.remove(id);
+    }
+    if (toRemove.isNotEmpty) onChange();
+  }
 }
 
 extension DomainGoals on AppLogic {
@@ -407,7 +405,7 @@ extension DomainGoals on AppLogic {
 
     for (final a in state.activities) {
       if (domainId != null && a.domainId != domainId) continue;
-      if (isSnoozed(a.id, now: t)) continue;            // <— skip snoozed
+      if (isSnoozed(a.id, now: t)) continue; // <— skip snoozed
 
       if (!a.isHabit) {
         // TIME
@@ -479,13 +477,15 @@ extension SlidingProgress on AppLogic {
 
   // ---- Temps (activity.type == 'time')
   ({int doneMin, int targetMin, double ratio}) timeSliding(
-    String activityId, int days, {
+    String activityId,
+    int days, {
     DateTime? now,
   }) {
     final r = lastNDays(days, now: now);
     final dur = totalForRangeByActivity(activityId, r.start, r.end);
     final a = state.activities.firstWhere((x) => x.id == activityId);
-    final target = (a.goalMin * days).clamp(0, 24 * 60 * days); // simple: goal/j * n
+    final target =
+        (a.goalMin * days).clamp(0, 24 * 60 * days); // simple: goal/j * n
     final done = dur.inMinutes;
     final ratio = target > 0 ? (done / target).clamp(0.0, 1.0) : 0.0;
     return (doneMin: done, targetMin: target, ratio: ratio);
@@ -493,7 +493,8 @@ extension SlidingProgress on AppLogic {
 
   // ---- Habitudes (activity.type == 'habit')
   ({int done, int target, double ratio}) habitSliding(
-    String activityId, int days, {
+    String activityId,
+    int days, {
     DateTime? now,
   }) {
     final r = lastNDays(days, now: now);
@@ -503,5 +504,83 @@ extension SlidingProgress on AppLogic {
     final target = targetPerDay * days;
     final ratio = target > 0 ? (done / target).clamp(0.0, 1.0) : 0.0;
     return (done: done, target: target, ratio: ratio);
+  }
+
+  // --- GOALS: helpers ---
+  List<Goal> goalsOfDomain(String domainId, {bool onlyActive = true}) {
+    final it = state.goals.where((g) => g.domainId == domainId);
+    return onlyActive
+        ? it.where((g) => g.status == 'active').toList()
+        : it.toList();
+  }
+
+  Goal createGoal({
+    required String domainId,
+    required String title,
+    String? activityId,
+    String? nextAction,
+    String? context,
+  }) {
+    final g = Goal(
+      domainId: domainId,
+      title: title,
+      activityId: activityId,
+      nextAction: nextAction,
+      context: context,
+    );
+    state.goals.add(g);
+    onChange();
+    return g;
+  }
+
+  void setGoalNextAction(String goalId, String? nextAction) {
+    final g = state.goals.firstWhere((x) => x.id == goalId);
+    g.nextAction = nextAction; // null = aucune action active
+    onChange();
+  }
+
+  void markGoalDone(String goalId) {
+    final g = state.goals.firstWhere((x) => x.id == goalId);
+    g.status = 'done';
+    g.doneAt = DateTime.now();
+    onChange();
+  }
+
+  void archiveGoal(String goalId) {
+    final g = state.goals.firstWhere((x) => x.id == goalId);
+    g.status = 'archived';
+    onChange();
+  }
+
+  // INBOX
+  void inboxAdd(String title) {
+    if (title.trim().isEmpty) return;
+    state.inbox.add(InboxItem(title: title.trim()));
+    onChange();
+  }
+
+  void inboxRemove(String id) {
+    state.inbox.removeWhere((x) => x.id == id);
+    onChange();
+  }
+
+// Clarify -> créer un Goal depuis un InboxItem
+  Goal inboxToGoal({
+    required String inboxId,
+    required String domainId,
+    required String title,
+    String? activityId,
+    String? nextAction,
+    String? context,
+  }) {
+    final g = createGoal(
+      domainId: domainId,
+      title: title,
+      activityId: activityId,
+      nextAction: nextAction,
+      context: context,
+    );
+    inboxRemove(inboxId);
+    return g;
   }
 }

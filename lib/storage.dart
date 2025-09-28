@@ -29,6 +29,8 @@ class FileStore {
       habitProgress: [],
       lastGoalsReview: null,
       snoozedUntil: {},
+      goals: [],
+      inbox: [],
     );
 
     await save(st);
