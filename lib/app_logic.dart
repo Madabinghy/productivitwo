@@ -457,7 +457,7 @@ extension DomainGoals on AppLogic {
 
     final items = <FocusItem>[];
 
-    for (final a in state.activities) {
+/*     for (final a in state.activities) {
       if (domainId != null && a.domainId != domainId) continue;
       if (isSnoozed(a.id, now: t)) continue; // <— skip snoozed
 
@@ -510,7 +510,7 @@ extension DomainGoals on AppLogic {
           habitDeficit: deficit > 0 ? deficit : 0,
         ));
       }
-    }
+    } */
 
     // ---- GOALS avec prochaine action (GTD light) ----
 // ---- GOALS (afficher même sans nextAction) ----
