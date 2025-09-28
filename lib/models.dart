@@ -3,7 +3,6 @@ import 'package:uuid/uuid.dart';
 
 const _uuid = Uuid();
 
-
 class InboxItem {
   String id;
   String title;
@@ -13,11 +12,15 @@ class InboxItem {
         createdAt = createdAt ?? DateTime.now();
 
   Map<String, dynamic> toJson() => {
-    'id': id, 'title': title, 'createdAt': createdAt.toIso8601String(),
-  };
+        'id': id,
+        'title': title,
+        'createdAt': createdAt.toIso8601String(),
+      };
   static InboxItem from(Map j) => InboxItem(
-    id: j['id'], title: j['title'], createdAt: DateTime.parse(j['createdAt']),
-  );
+        id: j['id'],
+        title: j['title'],
+        createdAt: DateTime.parse(j['createdAt']),
+      );
 }
 
 // --- OBJECTIFS (GTD light) ---
@@ -31,6 +34,11 @@ class Goal {
   DateTime createdAt;
   DateTime? doneAt;
 
+  int? effortEstimateMin; // estimation totale en minutes (ex: 600 = 10 h)
+  int? stepsPlanned; // nb d'étapes prévues (ex: 5 chapitres)
+  int stepsDone; // nb d'étapes réalisées
+  DateTime? dueDate; // (optionnel) pour plus tard
+
   Goal({
     String? id,
     required this.domainId,
@@ -41,6 +49,10 @@ class Goal {
     this.context,
     DateTime? createdAt,
     this.doneAt,
+    this.effortEstimateMin,
+    this.stepsPlanned,
+    this.stepsDone = 0,
+    this.dueDate,
   })  : id = id ?? _uuid.v4(),
         createdAt = createdAt ?? DateTime.now();
 
@@ -54,6 +66,10 @@ class Goal {
         'context': context,
         'createdAt': createdAt.toIso8601String(),
         'doneAt': doneAt?.toIso8601String(),
+        'effortEstimateMin': effortEstimateMin,
+        'stepsPlanned': stepsPlanned,
+        'stepsDone': stepsDone,
+        'dueDate': dueDate?.toIso8601String(),
       };
 
   static Goal from(Map j) => Goal(
@@ -66,6 +82,10 @@ class Goal {
         context: j['context'],
         createdAt: DateTime.parse(j['createdAt']),
         doneAt: j['doneAt'] != null ? DateTime.parse(j['doneAt']) : null,
+        effortEstimateMin: j['effortEstimateMin'],
+        stepsPlanned: j['stepsPlanned'],
+        stepsDone: (j['stepsDone'] ?? 0),
+        dueDate: j['dueDate'] != null ? DateTime.parse(j['dueDate']) : null,
       );
 }
 
@@ -209,7 +229,7 @@ class AppState {
     this.lastGoalsReview,
     Map<String, String>? snoozedUntil,
     List<Goal>? goals,
-    List<InboxItem>? inbox, 
+    List<InboxItem>? inbox,
   })  : snoozedUntil = snoozedUntil ?? {},
         goals = goals ?? [],
         inbox = inbox ?? [];
@@ -244,8 +264,9 @@ class AppState {
         goals: (j['goals'] == null)
             ? <Goal>[]
             : (j['goals'] as List).map((e) => Goal.from(e)).toList(),
-            inbox: (j['inbox'] == null) ? <InboxItem>[] : (j['inbox'] as List).map((e) => InboxItem.from(e)).toList(),
-  
+        inbox: (j['inbox'] == null)
+            ? <InboxItem>[]
+            : (j['inbox'] as List).map((e) => InboxItem.from(e)).toList(),
       );
 
   String encode() => jsonEncode(toJson());

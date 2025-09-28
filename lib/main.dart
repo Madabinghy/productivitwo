@@ -2366,123 +2366,170 @@ class _AppRootState extends State<AppRoot> {
             final top = candidates.take(3).toList();
 
             Widget _tile(FocusItem it) {
-if (it.kind == 'goal') {
-  final g = it.goal!;
-  return Card(
-    margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-    color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.1),
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // --- Titre complet
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(Icons.flag, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  g.title,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                  softWrap: true,
-                ),
-              ),
-              PopupMenuButton<String>(
-                tooltip: "Options objectif",
-                onSelected: (v) async {
-                  if (v == 'next') {
-                    await _editNextActionDialog(context, g, setSB, initial: g.nextAction);
-                  } else if (v == 'done') {
-                    logic.markGoalDone(g.id);
-                    setSB(() {
-                      candidates
-                        ..clear()
-                        ..addAll(logic.buildFocusCandidates(domainId: domainId));
-                    });
-                  } else if (v == 'archive') {
-                    logic.archiveGoal(g.id);
-                    setSB(() {
-                      candidates
-                        ..clear()
-                        ..addAll(logic.buildFocusCandidates(domainId: domainId));
-                    });
-                  }
-                },
-                itemBuilder: (c) => const [
-                  PopupMenuItem(value: 'next',    child: Text("Définir/modifier prochaine action")),
-                  PopupMenuItem(value: 'done',    child: Text("Marquer objectif atteint")),
-                  PopupMenuItem(value: 'archive', child: Text("Archiver")),
-                ],
-                icon: const Icon(Icons.more_vert, size: 18),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 8),
-
-          // --- Prochaine action
-          Text(
-            g.nextAction?.isNotEmpty == true
-                ? "Prochaine action : ${g.nextAction}"
-                : "Définir une prochaine action…",
-            style: TextStyle(
-              fontSize: 14,
-              fontStyle: g.nextAction?.isNotEmpty == true ? FontStyle.normal : FontStyle.italic,
-              color: Theme.of(context).colorScheme.onSurface.withOpacity(
-                  g.nextAction?.isNotEmpty == true ? 0.9 : 0.5),
-            ),
-          ),
-
-          const SizedBox(height: 12),
-
-          // --- Boutons
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.snooze, size: 20),
-                tooltip: "Snoozer 30 min",
-                onPressed: () {
-                  logic.snooze(g.id, minutes: 30);
-                  setSB(() {
-                    candidates
-                      ..clear()
-                      ..addAll(logic.buildFocusCandidates(domainId: domainId));
-                  });
-                },
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton.icon(
-                onPressed: () {
-                  if (g.nextAction?.isNotEmpty == true) {
-                    // Tu peux aussi lancer un timer ou une session ici
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text("Action lancée : ${g.nextAction}")),
-                    );
-                  }
-                },
-                icon: const Icon(Icons.play_arrow),
-                label: const Text("Lancer"),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
+              if (it.kind == 'goal') {
+                final g = it.goal!;
+                final mainP = logic.goalProgress(g);
+                final weekP = logic.goalWeeklyPace(g);
+                return Card(
+                  margin:
+                      const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24),
+                      borderRadius: BorderRadius.circular(12)),
+                  color: Theme.of(context)
+                      .colorScheme
+                      .surfaceVariant
+                      .withOpacity(0.1),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // --- Titre complet
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.flag, size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                g.title,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                softWrap: true,
+                              ),
+                            ),
+                            PopupMenuButton<String>(
+                              tooltip: "Options objectif",
+                              onSelected: (v) async {
+                                if (v == 'next') {
+                                  await _editNextActionDialog(context, g, setSB,
+                                      initial: g.nextAction);
+                                } else if (v == 'done') {
+                                  logic.markGoalDone(g.id);
+                                  setSB(() {
+                                    candidates
+                                      ..clear()
+                                      ..addAll(logic.buildFocusCandidates(
+                                          domainId: domainId));
+                                  });
+                                } else if (v == 'archive') {
+                                  logic.archiveGoal(g.id);
+                                  setSB(() {
+                                    candidates
+                                      ..clear()
+                                      ..addAll(logic.buildFocusCandidates(
+                                          domainId: domainId));
+                                  });
+                                } else if (v == 'step+1') {
+                                  logic.incGoalStep(g.id, delta: 1);
+                                  setSB(() {});
+                                }
+                              },
+                              itemBuilder: (c) => const [
+                                PopupMenuItem(
+                                    value: 'next',
+                                    child: Text(
+                                        "Définir/modifier prochaine action")),
+                                PopupMenuItem(
+                                    value: 'done',
+                                    child: Text("Marquer objectif atteint")),
+                                PopupMenuItem(
+                                    value: 'archive', child: Text("Archiver")),
+                                PopupMenuItem(
+                                    value: 'step+1', child: Text("Étape +1")),
+                              ],
+                              icon: const Icon(Icons.more_vert, size: 18),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 8),
+
+                        // --- Prochaine action
+                        Text(
+                          g.nextAction?.isNotEmpty == true
+                              ? "Prochaine action : ${g.nextAction}"
+                              : "Définir une prochaine action…",
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontStyle: g.nextAction?.isNotEmpty == true
+                                ? FontStyle.normal
+                                : FontStyle.italic,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withOpacity(g.nextAction?.isNotEmpty == true
+                                    ? 0.9
+                                    : 0.5),
+                          ),
+                        ),
+
+                        if (mainP.ratio != null) ...[
+                          TinyBar(
+                            ratio: mainP.ratio!,
+                            labelLeft: "Avancement — ${mainP.label}",
+                          ),
+                          const SizedBox(height: 6),
+                        ],
+                        TinyBar(
+                          ratio: weekP.ratio,
+                          labelLeft: weekP.label,
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        // --- Boutons
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.snooze, size: 20),
+                              tooltip: "Snoozer 30 min",
+                              onPressed: () {
+                                logic.snooze(g.id, minutes: 30);
+                                setSB(() {
+                                  candidates
+                                    ..clear()
+                                    ..addAll(logic.buildFocusCandidates(
+                                        domainId: domainId));
+                                });
+                              },
+                            ),
+                            const SizedBox(width: 8),
+                            ElevatedButton.icon(
+                              onPressed: () {
+                                if (g.nextAction?.isNotEmpty == true) {
+                                  // Tu peux aussi lancer un timer ou une session ici
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                        content: Text(
+                                            "Action lancée : ${g.nextAction}")),
+                                  );
+                                }
+                              },
+                              icon: const Icon(Icons.play_arrow),
+                              label: const Text("Lancer"),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor:
+                                    Theme.of(context).colorScheme.primary,
+                                foregroundColor:
+                                    Theme.of(context).colorScheme.onPrimary,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(24),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    ),
-  );
-} else if (it.kind == 'time') {
+                );
+              } else if (it.kind == 'time') {
                 final activity = it.activity!;
                 final now = DateTime.now();
                 final done = logic.totalForRangeByActivity(
