@@ -15,20 +15,30 @@ class GoalChange {
 }
 
 class FocusItem {
-  final Activity activity;
-  final String kind; // 'time' | 'habit'
-  final double score; // plus haut = plus prioritaire
-  final String reason; // explication courte
-  final Duration? timeDeficit; // pour time
-  final int? habitDeficit; // pour habit
+  final String kind; // 'time' | 'habit' | 'goal'
+  final double score;        // priorité (plus haut = plus prioritaire)
+  final String reason;       // explication courte
+
+  // charge utile
+  final Activity? activity;  // pour time/habit OU goal lié à une activité
+  final Goal? goal;          // pour goal
+  final Duration? timeDeficit;
+  final int? habitDeficit;
+
+  // affichage
+  final String? titleOverride;    // ex. titre de l’objectif
+  final String? subtitleOverride; // ex. prochaine action
 
   FocusItem({
-    required this.activity,
     required this.kind,
     required this.score,
     required this.reason,
+    this.activity,
+    this.goal,
     this.timeDeficit,
     this.habitDeficit,
+    this.titleOverride,
+    this.subtitleOverride,
   });
 }
 
@@ -457,6 +467,52 @@ extension DomainGoals on AppLogic {
         ));
       }
     }
+
+    // ---- GOALS avec prochaine action (GTD light) ----
+for (final g in state.goals.where((x) => x.status == 'active' && (x.nextAction?.trim().isNotEmpty ?? false))) {
+  if (domainId != null && g.domainId != domainId) continue;
+
+  // snooze côté "goal" (clé spécifique)
+  final snoozeKey = 'goal:${g.id}';
+  if (isSnoozed(snoozeKey, now: t)) continue;
+
+  // Si lié à une activité, on calcule un "déficit" pour scorer
+  Activity? act;
+  double score = 0.8; // base priorité pour les goals
+  String reason = "Prochaine action à faire";
+
+  if (g.activityId != null) {
+    act = state.activities.firstWhere((a) => a.id == g.activityId, orElse: ()=> Activity(domainId: g.domainId, name: "(activité liée introuvable)"));
+    if (!act.isHabit) {
+      final done = totalForRangeByActivity(act.id, start24, end24).inMinutes;
+      final need = act.goalMin;
+      final deficit = (need - done);
+      if (need > 0) {
+        score = (deficit > 0 ? deficit / need : 0).clamp(0.0, 1.0).toDouble();
+        reason = deficit > 0 ? "Manque ${deficit} min sur ${need} min" : "Objectif du jour atteint";
+      }
+    } else {
+      final today = DateTime(t.year, t.month, t.day);
+      final doneH = habitValueOn(act.id, today);
+      final target = act.dailyTarget ?? 0;
+      final deficit = (target - doneH);
+      if (target > 0) {
+        score = (deficit > 0 ? deficit / target : 0).clamp(0.0, 1.0).toDouble();
+        reason = deficit > 0 ? "Il reste $deficit ${act.unit ?? ''}" : "Cible du jour atteinte";
+      }
+    }
+  }
+
+  items.add(FocusItem(
+    kind: 'goal',
+    score: score,
+    reason: reason,
+    goal: g,
+    activity: act, // peut être null
+    titleOverride: g.title,
+    subtitleOverride: g.nextAction, // la "prochaine action"
+  ));
+}
 
     // filtrer les items déjà “verts” (score ≈ 0), mais garder au moins quelque chose
     items.sort((b, a) => a.score.compareTo(b.score)); // desc
