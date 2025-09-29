@@ -1079,20 +1079,17 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     // 2) App prête -> Scaffold complet
     return Scaffold(
       appBar: AppBar(
-        title: const Text(''),
-        //title: const Text('Go Get It'),
-        actions: [
-          // Pastille rouge si une activité tourne (facultatif si tu l’as déjà)
-          if (_currentSession() != null)
-            const Padding(
-              padding: EdgeInsets.only(right: 8.0),
-              child:
-                  Icon(Icons.fiber_manual_record, color: Colors.red, size: 16),
-            ),
-          // Sélecteur Jour/Semaine/Mois (si tu l’utilises)
-          Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: DropdownButton<TimeScope>(
+        automaticallyImplyLeading: false, // pas de flèche retour
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (_currentSession() != null)
+              const Padding(
+                padding: EdgeInsets.only(right: 8.0),
+                child: Icon(Icons.fiber_manual_record,
+                    color: Colors.red, size: 16),
+              ),
+            DropdownButton<TimeScope>(
               value: scope,
               underline: const SizedBox.shrink(),
               items: const [
@@ -1102,28 +1099,28 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               ],
               onChanged: (v) => setState(() => scope = v ?? TimeScope.day),
             ),
-          ),
-          IconButton(
-            tooltip: 'Ajouter un domaine',
-            onPressed: _addDomainDialog,
-            icon: const Icon(Icons.create_new_folder_outlined),
-          ),
-          IconButton(
-            tooltip: 'Gérer domaines & activités',
-            onPressed: _openManagementSheet,
-            icon: const Icon(Icons.tune),
-          ),
-          IconButton(
-            tooltip: "Inbox",
-            onPressed: _openInboxSheet,
-            icon: const Icon(Icons.inbox_outlined),
-          ),
-          IconButton(
-            tooltip: "Scan global (dev)",
-            onPressed: _runDevScan,
-            icon: const Icon(Icons.bug_report_outlined),
-          ),
-        ],
+            IconButton(
+              tooltip: 'Ajouter un domaine',
+              onPressed: _addDomainDialog,
+              icon: const Icon(Icons.create_new_folder_outlined),
+            ),
+            IconButton(
+              tooltip: 'Gérer domaines & activités',
+              onPressed: _openManagementSheet,
+              icon: const Icon(Icons.tune),
+            ),
+            IconButton(
+              tooltip: "Inbox",
+              onPressed: _openInboxSheet,
+              icon: const Icon(Icons.inbox_outlined),
+            ),
+            IconButton(
+              tooltip: "Scan global (dev)",
+              onPressed: _runDevScan,
+              icon: const Icon(Icons.bug_report_outlined),
+            ),
+          ],
+        ),
       ),
 
 // --- Dans build(...) ---

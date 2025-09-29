@@ -17,7 +17,7 @@ class _TodayViewState extends State<TodayView> {
   bool _planTomorrow = false;
 
   String get _ymd {
-    final d = _planTomorrow ? _base.add(const Duration(days:1)) : _base;
+    final d = _planTomorrow ? _base.add(const Duration(days: 1)) : _base;
     return yyyymmdd(d);
   }
 
@@ -31,97 +31,38 @@ class _TodayViewState extends State<TodayView> {
 
   @override
   Widget build(BuildContext context) {
-    final items = widget.logic.planFor(_ymd);
+    final ymd = _ymd; // aujourd’hui ou demain selon ton toggle
+    final items = widget.logic.planFor(ymd); // triés par 'order'
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Aujourd’hui'),
-        actions: [
-          // toggle Aujourd’hui / Demain
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment(value: false, label: Text('Aujourd’hui')),
-                ButtonSegment(value: true,  label: Text('Demain')),
-              ],
-              selected: {_planTomorrow},
-              onSelectionChanged: (s) => setState(() => _planTomorrow = s.first),
-            ),
+        automaticallyImplyLeading: false, // pas de flèche retour
+        title: Center(
+          child: SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(value: false, label: Text('Aujourd’hui')),
+              ButtonSegment(value: true, label: Text('Demain')),
+            ],
+            selected: {_planTomorrow},
+            onSelectionChanged: (s) => setState(() => _planTomorrow = s.first),
           ),
-        ],
+        ),
       ),
+
+      // 🔁 Réorganisation par drag & drop
       body: ReorderableListView.builder(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
         itemCount: items.length,
-        onReorder: (o, n) {
-          setState(() => widget.logic.reorderPlan(_ymd, o, n));
+        onReorder: (oldIndex, newIndex) {
+          setState(() => widget.logic.reorderPlan(ymd, oldIndex, newIndex));
         },
         itemBuilder: (ctx, i) {
           final it = items[i];
-          final key = ValueKey(it.id);
-
-          // Rendu différent selon type
-          Widget trailing;
-          Widget title;
-          Widget? subtitle;
-
-          if (it.kind == PlanKind.action) {
-            title = Text(it.title, style: const TextStyle(fontWeight: FontWeight.w600));
-            trailing = Checkbox(
-              value: it.done,
-              onChanged: (v) => setState(() => widget.logic.toggleDone(it.id, v ?? false)),
-            );
-          } else if (it.kind == PlanKind.activityTime) {
-            // bouton "Lancer"
-            title = Text(it.title, style: const TextStyle(fontWeight: FontWeight.w600));
-            trailing = FilledButton.icon(
-              onPressed: () => widget.logic.start(it.refId!),
-              icon: const Icon(Icons.play_arrow),
-              label: const Text('Lancer'),
-            );
-            // petite info: temps fait sur 24h
-            final now = DateTime.now();
-            final dur = widget.logic.totalForRangeByActivity(it.refId!, now.subtract(const Duration(hours:24)), now);
-            subtitle = Text("Aujourd’hui : ${dur.inMinutes ~/ 60}h ${dur.inMinutes % 60}m");
-          } else {
-            // HABITUDE
-            title = Text(it.title, style: const TextStyle(fontWeight: FontWeight.w600));
-            final today = DateTime.now();
-            final done = widget.logic.habitValueOn(it.refId!, today);
-            final target = widget.state.activities.firstWhere((a) => a.id == it.refId!).dailyTarget ?? 0;
-
-            trailing = Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  onPressed: () { setState(() => widget.logic.incHabit(it.refId!, -1, today)); },
-                  icon: const Icon(Icons.remove),
-                ),
-                Text("$done / $target"),
-                IconButton(
-                  onPressed: () { setState(() => widget.logic.incHabit(it.refId!,  1, today)); },
-                  icon: const Icon(Icons.add),
-                ),
-              ],
-            );
-          }
-
-          return Card(
-            key: key,
-            margin: const EdgeInsets.only(bottom: 8),
-            child: ListTile(
-              title: title,
-              subtitle: subtitle,
-              trailing: trailing,
-              // long press -> supprimer
-              onLongPress: () => _showItemMenu(it),
-            ),
-          );
+          return _todayTile(ctx, it, key: ValueKey(it.id));
         },
       ),
 
-      floatingActionButton: _buildFab(),
+      floatingActionButton: _buildFab(), // ton FAB existant pour ajouter
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
@@ -131,6 +72,127 @@ class _TodayViewState extends State<TodayView> {
       onPressed: _openAddSheet,
       icon: const Icon(Icons.add),
       label: const Text('Ajouter'),
+    );
+  }
+
+  Widget _todayTile(BuildContext context, DayPlanItem it, {required Key key}) {
+    // rendu différent selon le type
+    Widget leading;
+    Widget title;
+    Widget? subtitle;
+    Widget trailing;
+
+    switch (it.kind) {
+      case PlanKind.action:
+        leading = const Icon(Icons.drag_handle);
+        title =
+            Text(it.title, style: const TextStyle(fontWeight: FontWeight.w600));
+        trailing = Checkbox(
+          value: it.done,
+          onChanged: (v) =>
+              setState(() => widget.logic.toggleDone(it.id, v ?? false)),
+        );
+        break;
+
+      case PlanKind.activityTime:
+        leading = const Icon(Icons.drag_handle);
+        title =
+            Text(it.title, style: const TextStyle(fontWeight: FontWeight.w600));
+        // info temps sur 24h
+        final now = DateTime.now();
+        final dur = widget.logic.totalForRangeByActivity(
+            it.refId!, now.subtract(const Duration(hours: 24)), now);
+        subtitle = Text(
+            "Aujourd’hui : ${dur.inMinutes ~/ 60}h ${dur.inMinutes % 60}m");
+
+        trailing = FilledButton.icon(
+          onPressed: () => widget.logic.start(it.refId!),
+          icon: const Icon(Icons.play_arrow),
+          label: const Text('Lancer'),
+        );
+        break;
+
+      case PlanKind.habit:
+        leading = const Icon(Icons.drag_handle);
+        title =
+            Text(it.title, style: const TextStyle(fontWeight: FontWeight.w600));
+
+        final today = DateTime.now();
+        final done = widget.logic.habitValueOn(it.refId!, today);
+        final act =
+            widget.state.activities.firstWhere((a) => a.id == it.refId!);
+        final target = act.dailyTarget ?? 0;
+        final unit = (act.unit ?? '').isNotEmpty ? ' ${act.unit}' : '';
+
+        subtitle = Text("Aujourd’hui : $done / $target$unit");
+
+        trailing = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              onPressed: () {
+                setState(() => widget.logic.incHabit(it.refId!, -1, today));
+              },
+              icon: const Icon(Icons.remove),
+            ),
+            Text("$done / $target"),
+            IconButton(
+              onPressed: () {
+                setState(() => widget.logic.incHabit(it.refId!, 1, today));
+              },
+              icon: const Icon(Icons.add),
+            ),
+          ],
+        );
+        break;
+    }
+
+    // 🗑️ menu “…” pour supprimer de la liste (au lieu d’appui long)
+    final more = PopupMenuButton<String>(
+      onSelected: (v) {
+        if (v == 'delete') {
+          setState(() {
+            widget.state.dayPlan.removeWhere((e) => e.id == it.id);
+            widget.logic.onChange(); // persiste
+          });
+        }
+      },
+      itemBuilder: (ctx) => const [
+        PopupMenuItem(value: 'delete', child: Text('Supprimer de la journée')),
+      ],
+    );
+
+    return Card(
+      key: key,
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          // poignée de drag dédiée (meilleure UX que l’appui long)
+          ReorderableDragStartListener(
+            index: widget.logic
+                .planFor(yyyymmdd(_planTomorrow
+                    ? DateTime.now().add(const Duration(days: 1))
+                    : DateTime.now()))
+                .indexWhere((e) => e.id == it.id),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: leading,
+            ),
+          ),
+          // contenu principal
+          Expanded(
+            child: ListTile(
+              contentPadding: const EdgeInsets.only(right: 8),
+              title: title,
+              subtitle: subtitle,
+            ),
+          ),
+          // actions + menu
+          if (it.kind != PlanKind.action) trailing,
+          if (it.kind == PlanKind.action) trailing, // checkbox pour action
+          more,
+        ],
+      ),
     );
   }
 
@@ -152,7 +214,8 @@ class _TodayViewState extends State<TodayView> {
                   Navigator.pop(ctx);
                   final title = await _askText(context, 'Nouvelle action');
                   if (title != null && title.trim().isNotEmpty) {
-                    setState(() => widget.logic.addPlanAction(ymd: _ymd, title: title.trim()));
+                    setState(() => widget.logic
+                        .addPlanAction(ymd: _ymd, title: title.trim()));
                   }
                 },
               ),
@@ -166,7 +229,7 @@ class _TodayViewState extends State<TodayView> {
                   final act = await _pickActivity(isHabit: false);
                   if (act != null) {
                     setState(() => widget.logic.addPlanActivity(
-                      ymd: _ymd, activityId: act.id, isHabit: false));
+                        ymd: _ymd, activityId: act.id, isHabit: false));
                   }
                 },
               ),
@@ -181,7 +244,10 @@ class _TodayViewState extends State<TodayView> {
                   if (act != null) {
                     // pour l’instant, on met allDay=true par défaut (modifiable plus tard)
                     setState(() => widget.logic.addPlanActivity(
-                      ymd: _ymd, activityId: act.id, isHabit: true, allDay: true));
+                        ymd: _ymd,
+                        activityId: act.id,
+                        isHabit: true,
+                        allDay: true));
                   }
                 },
               ),
@@ -200,24 +266,32 @@ class _TodayViewState extends State<TodayView> {
         title: Text(title),
         content: TextField(controller: ctrl, autofocus: true),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('OK')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text),
+              child: const Text('OK')),
         ],
       ),
     );
   }
 
   Future<Activity?> _pickActivity({required bool isHabit}) async {
-    final acts = widget.state.activities.where((a) => a.isHabit == isHabit).toList()
-      ..sort((a,b) => a.name.compareTo(b.name));
+    final acts = widget.state.activities
+        .where((a) => a.isHabit == isHabit)
+        .toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
     return await showModalBottomSheet<Activity>(
       context: context,
       showDragHandle: true,
       builder: (ctx) => ListView(
-        children: acts.map((a) => ListTile(
-          title: Text(a.name),
-          onTap: () => Navigator.pop(ctx, a),
-        )).toList(),
+        children: acts
+            .map((a) => ListTile(
+                  title: Text(a.name),
+                  onTap: () => Navigator.pop(ctx, a),
+                ))
+            .toList(),
       ),
     );
   }
