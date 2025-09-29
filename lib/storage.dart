@@ -31,6 +31,7 @@ class FileStore {
       snoozedUntil: {},
       goals: [],
       inbox: [],
+      dayPlan: [],
     );
 
     await save(st);

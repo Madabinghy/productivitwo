@@ -3,6 +3,52 @@ import 'package:uuid/uuid.dart';
 
 const _uuid = Uuid();
 
+enum PlanKind { action, activityTime, habit }
+
+class DayPlanItem {
+  String id;
+  PlanKind kind;
+  String? refId; // activityId si activity/habit, sinon null pour action volante
+  String title; // libellé si action volante
+  String yyyymmdd; // jour planifié
+  bool done; // pour actions & activités
+  bool allDay; // pour les habitudes "à suivre toute la journée"
+  int order; // tri visuel
+
+  DayPlanItem({
+    required this.id,
+    required this.kind,
+    this.refId,
+    required this.title,
+    required this.yyyymmdd,
+    this.done = false,
+    this.allDay = false,
+    this.order = 0,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'kind': kind.name,
+        'refId': refId,
+        'title': title,
+        'yyyymmdd': yyyymmdd,
+        'done': done,
+        'allDay': allDay,
+        'order': order,
+      };
+
+  static DayPlanItem from(Map j) => DayPlanItem(
+        id: j['id'],
+        kind: PlanKind.values.firstWhere((k) => k.name == j['kind']),
+        refId: j['refId'],
+        title: j['title'] ?? '',
+        yyyymmdd: j['yyyymmdd'],
+        done: j['done'] ?? false,
+        allDay: j['allDay'] ?? false,
+        order: j['order'] ?? 0,
+      );
+}
+
 class InboxItem {
   String id;
   String title;
@@ -220,6 +266,7 @@ class AppState {
   Map<String, String> snoozedUntil;
   List<Goal> goals;
   List<InboxItem> inbox;
+  List<DayPlanItem> dayPlan;
 
   AppState({
     required this.domains,
@@ -230,6 +277,7 @@ class AppState {
     Map<String, String>? snoozedUntil,
     List<Goal>? goals,
     List<InboxItem>? inbox,
+    this.dayPlan = const [],
   })  : snoozedUntil = snoozedUntil ?? {},
         goals = goals ?? [],
         inbox = inbox ?? [];
@@ -243,6 +291,7 @@ class AppState {
         'snoozedUntil': snoozedUntil,
         'goals': goals.map((e) => e.toJson()).toList(),
         'inbox': inbox.map((e) => e.toJson()).toList(),
+        'dayPlan': dayPlan.map((e) => e.toJson()).toList(),
       };
 
   static AppState from(Map j) => AppState(
@@ -267,6 +316,9 @@ class AppState {
         inbox: (j['inbox'] == null)
             ? <InboxItem>[]
             : (j['inbox'] as List).map((e) => InboxItem.from(e)).toList(),
+        dayPlan: (j['dayPlan'] == null)
+            ? <DayPlanItem>[]
+            : (j['dayPlan'] as List).map((e) => DayPlanItem.from(e)).toList(),
       );
 
   String encode() => jsonEncode(toJson());

@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
 import 'package:productivitwo_v1/widgets/tiny_bar.dart';
-import 'models.dart';
-import 'storage.dart';
-import 'app_logic.dart';
+import 'package:productivitwo_v1/widgets/today_view.dart';
+import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/storage.dart';
 import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
-import 'utils/pacing.dart';
+import 'package:productivitwo_v1/utils/pacing.dart';
 
-enum _Tab { dashboard, stats }
+enum _Tab { dashboard, stats, today }
 
 class MiniRing extends StatelessWidget {
   final double progress; // 0..1
@@ -1044,6 +1045,26 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     return "${hh}h ${mm}m";
   }
 
+// 1) Helpers d’index <-> enum
+  int _tabIndex(_Tab t) => t == _Tab.dashboard ? 0 : (t == _Tab.today ? 1 : 2);
+  _Tab _tabFromIndex(int i) =>
+      i == 0 ? _Tab.dashboard : (i == 1 ? _Tab.today : _Tab.stats);
+
+// 2) Body : route correctement vers TodayView
+  Widget _buildBody(BuildContext context) {
+    switch (_tab) {
+      case _Tab.dashboard:
+        return _buildDashboardBody(context);
+      case _Tab.today:
+        return TodayView(logic: logic, state: _state!);
+      case _Tab.stats:
+        return StatsView(
+          logic: logic,
+          state: _state!,
+          selectedDomainId: null,
+        );
+    }
+  }
   // ---------- UI ----------
 
   @override
@@ -1058,7 +1079,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     // 2) App prête -> Scaffold complet
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Go Get It'),
+        title: const Text(''),
+        //title: const Text('Go Get It'),
         actions: [
           // Pastille rouge si une activité tourne (facultatif si tu l’as déjà)
           if (_currentSession() != null)
@@ -1104,33 +1126,25 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         ],
       ),
 
-      // 👉 Bascule entre Dashboard et Stats
-      body: _tab == _Tab.dashboard
-          ? _buildDashboardBody(context)
-          : StatsView(
-              logic: logic,
-              state: _state!,
-              selectedDomainId: null,
-            ),
+// --- Dans build(...) ---
 
-      // FAB seulement sur le Dashboard
-/*       floatingActionButton: _tab == _Tab.dashboard
-          ? FloatingActionButton.extended(
-              onPressed: _openLauncher,
-              icon: const Icon(Icons.play_circle),
-              label: const Text('Lancer'),
-            )
-          : null, */
+      body: _buildBody(context),
+
+// FAB uniquement sur Dashboard (ou adapte si tu veux aussi sur Today)
       floatingActionButton: _tab == _Tab.dashboard ? _buildFocusFab() : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+
       bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _tab == _Tab.dashboard ? 0 : 1,
-        onTap: (i) =>
-            setState(() => _tab = i == 0 ? _Tab.dashboard : _Tab.stats),
+        currentIndex: _tabIndex(_tab),
+        onTap: (i) => setState(() => _tab = _tabFromIndex(i)),
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.dashboard_outlined),
             label: 'Dashboard',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.checklist),
+            label: 'Aujourd’hui',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.show_chart),

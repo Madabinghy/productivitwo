@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'models.dart';
+import 'package:uuid/uuid.dart';
+import 'package:productivitwo_v1/models.dart';
 
 class GoalChange {
   final String kind; // 'activity' | 'domain'
@@ -1025,5 +1026,95 @@ extension SlidingProgress on AppLogic {
     );
     inboxRemove(inboxId);
     return g;
+  }
+}
+
+final _uuid = const Uuid();
+
+extension TodayLogic on AppLogic {
+  List<DayPlanItem> planFor(String ymd) {
+    final list = state.dayPlan.where((e) => e.yyyymmdd == ymd).toList();
+    list.sort((a,b) => a.order.compareTo(b.order));
+    return list;
+  }
+
+  Future<void> addPlanAction({
+    required String ymd,
+    required String title,
+  }) async {
+    final ord = planFor(ymd).isEmpty ? 0 : planFor(ymd).last.order + 1;
+    state.dayPlan.add(DayPlanItem(
+      id: _uuid.v4(),
+      kind: PlanKind.action,
+      title: title,
+      yyyymmdd: ymd,
+      order: ord,
+    ));
+    onChange();
+  }
+
+  Future<void> addPlanActivity({
+    required String ymd,
+    required String activityId,
+    required bool isHabit,
+    bool allDay = false,   // si habit "suivie toute la journée"
+  }) async {
+    final act = state.activities.firstWhere((a) => a.id == activityId);
+    final ord = planFor(ymd).isEmpty ? 0 : planFor(ymd).last.order + 1;
+    state.dayPlan.add(DayPlanItem(
+      id: _uuid.v4(),
+      kind: isHabit ? PlanKind.habit : PlanKind.activityTime,
+      refId: activityId,
+      title: act.name,
+      yyyymmdd: ymd,
+      allDay: isHabit ? allDay : false,
+      order: ord,
+    ));
+    onChange();
+  }
+
+  void toggleDone(String itemId, bool done) {
+    final i = state.dayPlan.indexWhere((e) => e.id == itemId);
+    if (i >= 0) {
+      state.dayPlan[i].done = done;
+      onChange();
+    }
+  }
+
+  void reorderPlan(String ymd, int oldIndex, int newIndex) {
+    final list = planFor(ymd);
+    if (newIndex > oldIndex) newIndex -= 1;
+    final item = list.removeAt(oldIndex);
+    list.insert(newIndex, item);
+    // réécrire orders
+    for (int i = 0; i < list.length; i++) {
+      list[i].order = i;
+    }
+    // propager dans state.dayPlan (mêmes objets, déjà mutés)
+    onChange();
+  }
+
+  /// Appelée au démarrage (ou à minuit) : reporte les non-faits d’hier vers aujourd’hui (optionnel).
+  void rolloverUndone({DateTime? now}) {
+    final t = now ?? DateTime.now();
+    final today = yyyymmdd(t);
+    final yesterday = yyyymmdd(t.subtract(const Duration(days:1)));
+    final carry = state.dayPlan.where((e) => e.yyyymmdd == yesterday && !e.done).toList();
+    if (carry.isEmpty) return;
+    final baseOrder = planFor(today).length;
+    for (int i = 0; i < carry.length; i++) {
+      final e = carry[i];
+      state.dayPlan.add(DayPlanItem(
+        id: _uuid.v4(),
+        kind: e.kind,
+        refId: e.refId,
+        title: e.title,
+        yyyymmdd: today,
+        done: false,
+        allDay: e.allDay,
+        order: baseOrder + i,
+      ));
+    }
+    onChange();
   }
 }
