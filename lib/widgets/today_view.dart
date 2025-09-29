@@ -75,136 +75,150 @@ class _TodayViewState extends State<TodayView> {
     );
   }
 
-  Widget _todayTile(BuildContext context, DayPlanItem it, {required Key key}) {
-    // rendu différent selon le type
-    Widget leading;
-    Widget title;
-    Widget? subtitle;
-    Widget trailing;
+Widget _todayTile(BuildContext context, DayPlanItem it, {required Key key}) {
+  Widget leading;
+  Widget title;
+  Widget? subtitle;
+  Widget trailing;
 
-    switch (it.kind) {
-      case PlanKind.action:
-        leading = const Icon(Icons.drag_handle);
-        title =
-            Text(it.title, style: const TextStyle(fontWeight: FontWeight.w600));
-        trailing = Checkbox(
-          value: it.done,
-          onChanged: (v) =>
-              setState(() => widget.logic.toggleDone(it.id, v ?? false)),
-        );
-        break;
+  final menu = PopupMenuButton<String>(
+    onSelected: (v) {
+      if (v == 'delete') {
+        setState(() {
+          widget.state.dayPlan.removeWhere((e) => e.id == it.id);
+          widget.logic.onChange();
+        });
+      }
+    },
+    itemBuilder: (_) => const [
+      PopupMenuItem(value: 'delete', child: Text('Supprimer de la journée')),
+    ],
+  );
 
-      case PlanKind.activityTime:
-        leading = const Icon(Icons.drag_handle);
-        title =
-            Text(it.title, style: const TextStyle(fontWeight: FontWeight.w600));
-        // info temps sur 24h
-        final now = DateTime.now();
-        final dur = widget.logic.totalForRangeByActivity(
-            it.refId!, now.subtract(const Duration(hours: 24)), now);
-        subtitle = Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text("Aujourd’hui :",
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w400)),
-            Text(
-              "${dur.inMinutes ~/ 60}h ${dur.inMinutes % 60}m", // ex: "4h 51m" ou "1/10 verres"
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-            ),
-          ],
-        );
+  switch (it.kind) {
+    // ---------------- ACTION ----------------
+    case PlanKind.action:
+      leading = const Icon(Icons.drag_handle);
+      title = Text(it.title,
+          style: const TextStyle(fontWeight: FontWeight.w600));
+      subtitle = null;
+      trailing = Checkbox(
+        value: it.done,
+        onChanged: (v) =>
+            setState(() => widget.logic.toggleDone(it.id, v ?? false)),
+      );
+      break;
 
-        trailing = FilledButton.icon(
-          onPressed: () => widget.logic.start(it.refId!),
-          icon: const Icon(Icons.play_arrow),
-          label: const Text('Lancer'),
-        );
-        break;
-
-      case PlanKind.habit:
-        leading = const Icon(Icons.drag_handle);
-        title =
-            Text(it.title, style: const TextStyle(fontWeight: FontWeight.w600));
-
-        final today = DateTime.now();
-        final done = widget.logic.habitValueOn(it.refId!, today);
-        final act =
-            widget.state.activities.firstWhere((a) => a.id == it.refId!);
-        final target = act.dailyTarget ?? 0;
-        final unit = (act.unit ?? '').isNotEmpty ? ' ${act.unit}' : '';
-
-        subtitle = Text("Aujourd’hui : $done / $target$unit");
-
-        trailing = Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              onPressed: () {
-                setState(() => widget.logic.incHabit(it.refId!, -1, today));
-              },
-              icon: const Icon(Icons.remove),
-            ),
-            Text("$done / $target"),
-            IconButton(
-              onPressed: () {
-                setState(() => widget.logic.incHabit(it.refId!, 1, today));
-              },
-              icon: const Icon(Icons.add),
-            ),
-          ],
-        );
-        break;
-    }
-
-    // 🗑️ menu “…” pour supprimer de la liste (au lieu d’appui long)
-    final more = PopupMenuButton<String>(
-      onSelected: (v) {
-        if (v == 'delete') {
-          setState(() {
-            widget.state.dayPlan.removeWhere((e) => e.id == it.id);
-            widget.logic.onChange(); // persiste
-          });
-        }
-      },
-      itemBuilder: (ctx) => const [
-        PopupMenuItem(value: 'delete', child: Text('Supprimer de la journée')),
-      ],
-    );
-
-    return Card(
-      key: key,
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Row(
+    // ---------------- ACTIVITY (time) ----------------
+    case PlanKind.activityTime:
+      leading = const Icon(Icons.drag_handle);
+      title = Text(it.title,
+          style: const TextStyle(fontWeight: FontWeight.w600));
+      final now = DateTime.now();
+      final dur = widget.logic.totalForRangeByActivity(
+          it.refId!, now.subtract(const Duration(hours: 24)), now);
+      subtitle = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // poignée de drag dédiée (meilleure UX que l’appui long)
-          ReorderableDragStartListener(
-            index: widget.logic
-                .planFor(yyyymmdd(_planTomorrow
-                    ? DateTime.now().add(const Duration(days: 1))
-                    : DateTime.now()))
-                .indexWhere((e) => e.id == it.id),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: leading,
-            ),
-          ),
-          // contenu principal
-          Expanded(
-            child: ListTile(
-              contentPadding: const EdgeInsets.only(right: 8),
-              title: title,
-              subtitle: subtitle,
-            ),
-          ),
-          // actions + menu
-          if (it.kind != PlanKind.action) trailing,
-          if (it.kind == PlanKind.action) trailing, // checkbox pour action
-          more,
+          const Text("Aujourd’hui :",
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w400)),
+          Text("${dur.inMinutes ~/ 60}h ${dur.inMinutes % 60}m",
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
         ],
-      ),
-    );
+      );
+      trailing = FilledButton.icon(
+        onPressed: () => widget.logic.start(it.refId!),
+        icon: const Icon(Icons.play_arrow),
+        label: const Text('Lancer'),
+      );
+      break;
+
+    // ---------------- HABIT (new compact layout) ----------------
+    case PlanKind.habit:
+      leading = const Icon(Icons.drag_handle);
+      final today = DateTime.now();
+      final done = widget.logic.habitValueOn(it.refId!, today);
+      final act = widget.state.activities.firstWhere((a) => a.id == it.refId!);
+      final target = act.dailyTarget ?? 0;
+      final unit = (act.unit ?? '').isNotEmpty ? ' ${act.unit}' : '';
+
+      title = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            it.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+          ),
+          const SizedBox(height: 6),
+          const Text("Aujourd’hui :",
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w400)),
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => setState(
+                      () => widget.logic.incHabit(it.refId!, -1, today)),
+                  icon: const Icon(Icons.remove),
+                ),
+                Text("$done / $target$unit",
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w600)),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => setState(
+                      () => widget.logic.incHabit(it.refId!, 1, today)),
+                  icon: const Icon(Icons.add),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+
+      subtitle = null;
+      trailing = const SizedBox.shrink();
+      break;
   }
 
+  return Card(
+    key: key,
+    margin: const EdgeInsets.only(bottom: 8),
+    child: Row(
+      children: [
+        // poignée drag
+        ReorderableDragStartListener(
+          index: widget.logic
+              .planFor(yyyymmdd(_planTomorrow
+                  ? DateTime.now().add(const Duration(days: 1))
+                  : DateTime.now()))
+              .indexWhere((e) => e.id == it.id),
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12),
+            child: Icon(Icons.drag_handle),
+          ),
+        ),
+        // contenu principal
+        Expanded(
+          child: ListTile(
+            contentPadding: const EdgeInsets.only(right: 8, left: 0),
+            title: title,
+            subtitle: subtitle,
+            trailing: menu, // uniquement le "…" reste
+          ),
+        ),
+        if (it.kind != PlanKind.habit &&
+            it.kind != PlanKind.action) trailing, // activité → bouton "Lancer"
+        if (it.kind == PlanKind.action) trailing, // action → checkbox
+      ],
+    ),
+  );
+}
   void _openAddSheet() {
     showModalBottomSheet(
       context: context,
