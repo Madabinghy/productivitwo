@@ -339,6 +339,7 @@ class AppLogic {
     String? domainId,
     required bool habits,
     DateTime? now,
+    bool onlyUnderCap = true, // <-- NEW: true = cacher les >=100% partout
   }) {
     final t = now ?? DateTime.now();
 
@@ -359,7 +360,6 @@ class AppLogic {
 
     double pct(Activity a, DateTime s, DateTime e, int d) {
       if (a.isHabit) {
-        // habits
         final target = (a.dailyTarget ?? 0) * d;
         if (target <= 0) return 0.0;
         int sum = 0;
@@ -370,7 +370,6 @@ class AppLogic {
         }
         return sum / target;
       } else {
-        // time
         final done = totalForRangeByActivity(a.id, s, e).inMinutes;
         final target = a.goalMin * d;
         if (target <= 0) return 0.0;
@@ -383,51 +382,45 @@ class AppLogic {
     bool keep(Activity a) {
       if (domainId != null && a.domainId != domainId) return false;
       if (habits != a.isHabit) return false;
+      if (!onlyUnderCap) return true; // <-- en mode domaine: on garde tout
       final pD = pct(a, wD.start, wD.end, wD.days);
       final pW = pct(a, wW.start, wW.end, wW.days);
       final pM = pct(a, wM.start, wM.end, wM.days);
-      // garder SI au moins une jauge < 100%
+      // garder si AU MOINS une jauge < 100% (mode global)
       return (pD < 1.0) || (pW < 1.0) || (pM < 1.0);
     }
 
-    // Score de priorité = 1 - (plus petit GAP à 100% parmi les jauges <100%)
-    // → plus le score est grand, plus on est proche de 100% (à remonter en tête)
+    // Score priorité:
+    // - si au moins une jauge <100%: score = 1 - minGapUnder (proche de 1 en tête)
+    // - sinon (toutes >=100%): score négatif = -minOver, pour les mettre APRÈS celles sous 100%
     double priorityScore(Activity a) {
       final pD = pct(a, wD.start, wD.end, wD.days);
       final pW = pct(a, wW.start, wW.end, wW.days);
       final pM = pct(a, wM.start, wM.end, wM.days);
-      final gaps = <double>[];
-      if (pD < 1.0) gaps.add(1.0 - pD);
-      if (pW < 1.0) gaps.add(1.0 - pW);
-      if (pM < 1.0) gaps.add(1.0 - pM);
-      if (gaps.isEmpty)
-        return -1.0; // ne devrait pas arriver (filtré plus haut)
-      final minGap = gaps.reduce((a, b) => a < b ? a : b);
-      return 1.0 - minGap; // dans [0,1)
+
+      final gapsUnder = <double>[];
+      if (pD < 1.0) gapsUnder.add(1.0 - pD);
+      if (pW < 1.0) gapsUnder.add(1.0 - pW);
+      if (pM < 1.0) gapsUnder.add(1.0 - pM);
+
+      if (gapsUnder.isNotEmpty) {
+        final minGap = gapsUnder.reduce((a, b) => a < b ? a : b);
+        return 1.0 - minGap; // [0,1)
+      }
+
+      // Toutes >=100% : si onlyUnderCap=true on ne les verra pas,
+      // sinon on les classe après celles sous 100%, les plus proches d'abord
+      if (!onlyUnderCap) {
+        final overs = <double>[pD - 1.0, pW - 1.0, pM - 1.0];
+        final minOver = overs.reduce((a, b) => a < b ? a : b);
+        return -minOver; // ex: -0.05 (105%) mieux que -0.50 (150%)
+      }
+
+      return -999.0; // cas non utilisé
     }
 
     final list = state.activities.where(keep).toList();
     list.sort((a, b) => priorityScore(b).compareTo(priorityScore(a)));
-
-    // (facultatif) tie-breakers stables : si mêmes scores, trier par mois %, puis nom
-    int tie(Activity x, Activity y) {
-      final px = pct(x, wM.start, wM.end, wM.days);
-      final py = pct(y, wM.start, wM.end, wM.days);
-      final c = py.compareTo(px);
-      if (c != 0) return c;
-      return x.name.compareTo(y.name);
-    }
-
-    // applique tie-breaker pour scores égaux
-    int i = 0;
-    while (i + 1 < list.length) {
-      final s1 = priorityScore(list[i]);
-      int j = i + 1;
-      while (j < list.length && (priorityScore(list[j]) - s1).abs() < 1e-9) j++;
-      if (j - i > 1) list.replaceRange(i, j, list.sublist(i, j)..sort(tie));
-      i = j;
-    }
-
     return list;
   }
 

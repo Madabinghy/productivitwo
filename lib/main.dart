@@ -2068,7 +2068,10 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         return StatefulBuilder(
           builder: (ctx, setSB) {
         // APRÈS
-            final items = (tab == 'habit') ? _itemsHabit() : _itemsTime();
+            //final items = (tab == 'habit') ? _itemsHabit() : _itemsTime();
+List<Activity> items = (tab == 'habit')
+  ? logic.listUnderCapSorted(domainId: domainId, habits: true,  onlyUnderCap: domain == null)
+  : logic.listUnderCapSorted(domainId: domainId, habits: false, onlyUnderCap: domain == null);
 
             final title = domain?.name ?? "Tous les domaines";
 
