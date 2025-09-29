@@ -550,6 +550,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
   Future<void> _runDevScan() async {
     final bumps = await logic.scanAllActivities();
+    await logic.autoAdjustStandardsRealtime();
+setState(() {});
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(

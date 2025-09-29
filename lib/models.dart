@@ -167,21 +167,27 @@ class Domain {
 /// type = "time" (timer) ou "habit" (compteur)
 class Activity {
   String id, domainId, name;
-  String type; // "time" | "habit"
-  int goalMin; // pour type=time
-  // Pour type=habit :
-  String? unit; // ex: "verres", "pompes"
-  int? dailyTarget; // objectif quotidien (nombre)
+  String type;      // "time" | "habit"
+  int goalMin;      // pour type=time
+  String? unit;
+  int? dailyTarget;
+
+  // NEW: quand créée + quand dernier ajustement
+  DateTime createdAt;
+  DateTime? lastTunedAt;
 
   Activity({
     String? id,
     required this.domainId,
     required this.name,
     this.type = 'time',
-    this.goalMin = 15,
+    this.goalMin = 1,                 // 👈 démarre à 1 min
     this.unit,
     this.dailyTarget,
-  }) : id = id ?? _uuid.v4();
+    DateTime? createdAt,
+    this.lastTunedAt,
+  })  : id = id ?? _uuid.v4(),
+        createdAt = createdAt ?? DateTime.now();
 
   bool get isHabit => type == 'habit';
 
@@ -193,6 +199,8 @@ class Activity {
         'goalMin': goalMin,
         'unit': unit,
         'dailyTarget': dailyTarget,
+        'createdAt': createdAt.toIso8601String(),
+        'lastTunedAt': lastTunedAt?.toIso8601String(),
       };
 
   static Activity from(Map j) => Activity(
@@ -200,9 +208,11 @@ class Activity {
         domainId: j['domainId'],
         name: j['name'],
         type: (j['type'] ?? 'time'),
-        goalMin: j['goalMin'] ?? 15,
+        goalMin: j['goalMin'] ?? 1,             // 👈 migration douce
         unit: j['unit'],
         dailyTarget: j['dailyTarget'],
+        createdAt: j['createdAt'] != null ? DateTime.parse(j['createdAt']) : DateTime.now(),
+        lastTunedAt: j['lastTunedAt'] != null ? DateTime.parse(j['lastTunedAt']) : null,
       );
 }
 

@@ -102,8 +102,17 @@ class _TodayViewState extends State<TodayView> {
         final now = DateTime.now();
         final dur = widget.logic.totalForRangeByActivity(
             it.refId!, now.subtract(const Duration(hours: 24)), now);
-        subtitle = Text(
-            "Aujourd’hui : ${dur.inMinutes ~/ 60}h ${dur.inMinutes % 60}m");
+        subtitle = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("Aujourd’hui :",
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w400)),
+            Text(
+              "${dur.inMinutes ~/ 60}h ${dur.inMinutes % 60}m", // ex: "4h 51m" ou "1/10 verres"
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+            ),
+          ],
+        );
 
         trailing = FilledButton.icon(
           onPressed: () => widget.logic.start(it.refId!),
