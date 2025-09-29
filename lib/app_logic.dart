@@ -340,6 +340,7 @@ class AppLogic {
     required bool habits,
     DateTime? now,
     bool onlyUnderCap = true, // <-- NEW: true = cacher les >=100% partout
+    bool dailyStrict = false,
   }) {
     final t = now ?? DateTime.now();
 
@@ -382,12 +383,19 @@ class AppLogic {
     bool keep(Activity a) {
       if (domainId != null && a.domainId != domainId) return false;
       if (habits != a.isHabit) return false;
-      if (!onlyUnderCap) return true; // <-- en mode domaine: on garde tout
+      if (!onlyUnderCap) return true; // en vue domaine: on garde tout
+
       final pD = pct(a, wD.start, wD.end, wD.days);
       final pW = pct(a, wW.start, wW.end, wW.days);
       final pM = pct(a, wM.start, wM.end, wM.days);
-      // garder si AU MOINS une jauge < 100% (mode global)
-      return (pD < 1.0) || (pW < 1.0) || (pM < 1.0);
+
+      if (dailyStrict) {
+        // STRICT JOUR : on ne garde que si le jour n'est pas encore rempli
+        return pD < 1.0;
+      } else {
+        // Règle précédente : au moins UNE jauge < 100%
+        return (pD < 1.0) || (pW < 1.0) || (pM < 1.0);
+      }
     }
 
     // Score priorité:

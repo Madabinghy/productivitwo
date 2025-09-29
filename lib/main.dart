@@ -1996,6 +1996,19 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     );
   }
 
+  Widget _wrapTile(Activity a, int i, int len, Widget tile) {
+    return KeyedSubtree(
+      key: ValueKey(a.id),
+      child: Column(
+        children: [
+          if (i == 0) const SizedBox(height: 4),
+          tile, // directement ta tuile
+          if (i < len - 1) const Divider(height: 8),
+        ],
+      ),
+    );
+  }
+
   Widget _domainPickerRow(Domain domain) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -2036,247 +2049,334 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     String focus = 'time', // 'time' | 'habit'
   }) {
     final domainId = domain?.id; // null => Tous domaines
+    final cs = Theme.of(context).colorScheme;
+
+    // ----- LOCK HABITS : fige sections + ordre quand on édite -----
+    bool _habitLockActive = false;
+    List<String> _habitLockUnderIds = <String>[]; // ordre "À rattraper" figé
+    List<String> _habitLockOverIds = <String>[]; // ordre "Déjà atteint" figé
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
+      backgroundColor: cs.surface,
       builder: (ctx) {
-        String tab = (focus == 'habit') ? 'habit' : 'time'; // onglet courant
+        String tab = (focus == 'habit') ? 'habit' : 'time';
         final scrollCtrl = ScrollController();
 
-        String _fmtHoursHM(double h) {
-          final m = (h * 60).round();
-          return "${m ~/ 60}h ${m % 60}m";
-        }
+        return StatefulBuilder(builder: (ctx, setSB) {
+          final bool isGlobal = (domain == null);
+          final bool isHabitsTab = (tab == 'habit');
 
-        String _fmt(Duration dur) {
-          final h = dur.inHours, m = dur.inMinutes.remainder(60);
-          return h > 0 ? "${h}h ${m}m" : "${m}m";
-        }
-
-        // --- SUPPRIMER _activities() et _filteredItems() ---
-        // et coller ces 2 helpers à la place :
-
-        // Récupération triée par proximité de 100% (jour/sem/mois), déjà filtrée par domaine & type
-        List<Activity> _itemsTime() =>
-            logic.listUnderCapSorted(domainId: domainId, habits: false);
-
-        List<Activity> _itemsHabit() =>
-            logic.listUnderCapSorted(domainId: domainId, habits: true);
-
-        return StatefulBuilder(
-          builder: (ctx, setSB) {
-        // APRÈS
-            //final items = (tab == 'habit') ? _itemsHabit() : _itemsTime();
-List<Activity> items = (tab == 'habit')
-  ? logic.listUnderCapSorted(domainId: domainId, habits: true,  onlyUnderCap: domain == null)
-  : logic.listUnderCapSorted(domainId: domainId, habits: false, onlyUnderCap: domain == null);
-
-            final title = domain?.name ?? "Tous les domaines";
-
-            final header = Row(
-              children: [
-                Expanded(
-                  child: Text(title,
-                      style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.bold)),
+          // ---- helpers UI locaux ----
+          Widget _sectionTitle(String text) {
+            return Padding(
+              padding:
+                  const EdgeInsets.symmetric(vertical: 6.0, horizontal: 12.0),
+              child: Text(
+                text,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color:
+                      Theme.of(context).colorScheme.onSurface.withOpacity(.6),
                 ),
-                const SizedBox(width: 8),
-                SegmentedButton<String>(
-                  segments: const [
-                    ButtonSegment(value: 'time', label: Text('Temps')),
-                    ButtonSegment(value: 'habit', label: Text('Habitudes')),
-                  ],
-                  selected: {tab},
-                  onSelectionChanged: (s) => setSB(() => tab = s.first),
-                ),
-              ],
+              ),
             );
+          }
 
-            final list = ListView.builder(
-              controller: scrollCtrl,
-              itemCount: items.length,
-              itemBuilder: (_, i) {
-                final a = items[i];
-                final now = DateTime.now();
-                final done = logic.totalForRangeByActivity(
-                    a.id, now.subtract(const Duration(hours: 24)), now);
-                final goalMin = a.goalMin;
-                final prog = goalMin > 0 ? (done.inMinutes / goalMin) : 0.0;
-
-                final dayDur = logic.totalForRangeByActivity(
-                    a.id, now.subtract(const Duration(hours: 24)), now);
-                final dayGoal = a.goalMin;
-                final dayRatio = dayGoal > 0
-                    ? (dayDur.inMinutes / dayGoal).clamp(0.0, 1.0)
-                    : 0.0;
-
-                final w = logic.timeSliding(a.id, 7);
-                final m = logic.timeSliding(a.id, 30);
-
-                Widget tile;
-                if (!a.isHabit) {
-                  // ---------- Activité TEMPS ----------
-                  final dur = logic.totalForRangeByActivity(a.id, start, end);
-                  final h = dur.inMinutes / 60.0;
-                  final running = _state!.sessions
-                      .any((s) => s.activityId == a.id && s.endAt == null);
-
-                  tile = ListTile(
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    leading: MiniRing(
-                      progress: prog,
-                      center: Text("${(prog * 100).round()}%",
-                          style: const TextStyle(
-                              fontSize: 10, fontWeight: FontWeight.w700)),
-                    ),
-                    title: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(a.name,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w700, fontSize: 16)),
-                        // Mois (en haut), puis Semaine
-                        TinyBar(
-                          ratio: m.ratio,
-                          labelLeft:
-                              "Mois ${fmtCompactFromMin(m.doneMin)} / ${fmtCompactFromMin(m.targetMin)}",
-                        ),
-                        TinyBar(
-                          ratio: w.ratio,
-                          labelLeft:
-                              "Sem ${fmtCompactFromMin(w.doneMin)} / ${fmtCompactFromMin(w.targetMin)}",
-                          padding: const EdgeInsets.only(top: 2),
-                        ),
-                      ],
-                    ),
-                    trailing: FilledButton.icon(
-                      onPressed: () {
-                        logic.start(a.id);
-                        Navigator.pop(ctx);
-                      },
-                      icon: const Icon(Icons.play_arrow),
-                      label: const Text("Start"),
-                    ),
-                  );
-                } else {
-                  // ---------- Routine / HABITUDE ----------
-                  final sum = logic.habitSumForRange(a.id, start, end);
-                  final tgt = (a.dailyTarget ?? 0) * days;
-                  final today = DateTime(now.year, now.month, now.day);
-
-                  final d = DateTime(now.year, now.month, now.day);
-                  final doneH = logic.habitValueOn(a.id, d);
-                  final target = a.dailyTarget ?? 0;
-                  final ratio = target > 0 ? (doneH / target) : 0.0;
-
-                  final doneToday = logic.habitValueOn(a.id, today);
-                  final targetDay = a.dailyTarget ?? 0;
-                  final dayRatioH = targetDay > 0
-                      ? (doneToday / targetDay).clamp(0.0, 1.0)
-                      : 0.0;
-
-                  final wH = logic.habitSliding(a.id, 7);
-                  final mH = logic.habitSliding(a.id, 30);
-
-                  tile = ListTile(
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    leading: MiniRing(
-                      progress: dayRatioH,
-                      center: Text(targetDay > 0 ? "$doneToday" : "—",
-                          style: const TextStyle(
-                              fontSize: 11, fontWeight: FontWeight.w700)),
-                    ),
-                    // Colonne à droite :
-                    title: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(a.name,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w700, fontSize: 16)),
-                        TinyBar(
-                          ratio: mH.ratio,
-                          labelLeft:
-                              "Mois ${mH.done} / ${mH.target}${(a.unit ?? '').isNotEmpty ? ' ${a.unit}' : ''}",
-                        ),
-                        TinyBar(
-                          ratio: wH.ratio,
-                          labelLeft:
-                              "Semaine ${wH.done} / ${wH.target}${(a.unit ?? '').isNotEmpty ? ' ${a.unit}' : ''}",
-                          padding: const EdgeInsets.only(top: 2),
-                        ),
-                      ],
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                            onPressed: () {
-                              logic.incHabit(
-                                  a.id, -1, d); // met à jour le state
-                              setSB(() {}); // ← rebuild la feuille
-                            },
-                            icon: const Icon(Icons.remove)),
-                        IconButton(
-                            onPressed: () {
-                              logic.incHabit(a.id, 1, d); // met à jour le state
-                              setSB(() {}); // ← rebuild la feuille
-                            },
-                            icon: const Icon(Icons.add)),
-                      ],
-                    ),
-                  );
-                }
-
-                // Divider manuel uniquement entre de vrais items
-                return Column(
-                  children: [
-                    if (i == 0) const SizedBox(height: 4),
-                    tile,
-                    if (i < items.length - 1) const Divider(height: 8),
-                  ],
-                );
-              },
-            );
-
-            // Corps avec padding
-            final body = Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          Widget _wrapTile(Activity a, int i, int len, Widget tile) {
+            return KeyedSubtree(
+              key: ValueKey(a.id),
               child: Column(
                 children: [
-                  header,
-                  const SizedBox(height: 8),
-                  Expanded(child: list),
+                  if (i == 0) const SizedBox(height: 4),
+                  tile,
+                  if (i < len - 1) const Divider(height: 8),
                 ],
               ),
             );
+          }
 
-            // Scaffold pour afficher un FAB contextuel qui suit l’onglet
-            return Scaffold(
-              backgroundColor: Colors.transparent,
-              body: body,
-              floatingActionButton: FloatingActionButton.extended(
-                onPressed: () async {
-                  final isHabit = (tab == 'habit');
-                  await _createActivityDialog(
-                    domainId:
-                        domainId, // null => le dialog proposera un dropdown
-                    isHabit: isHabit,
-                  );
-                  setSB(() {}); // rafraîchir la liste après création
-                },
-                icon: Icon(tab == 'habit' ? Icons.add_task : Icons.timelapse),
-                label: Text(
-                    tab == 'habit' ? "Nouvelle routine" : "Nouvelle activité"),
+          void _maybeUnlockOnTabChange(String newTab) {
+            if (newTab != 'habit' && _habitLockActive) {
+              _habitLockActive = false;
+              _habitLockUnderIds.clear();
+              _habitLockOverIds.clear();
+            }
+          }
+
+          // ---- source triée (proche de 100%) + filtres globaux ----
+          final baseItems = (tab == 'habit')
+              ? logic.listUnderCapSorted(
+                  domainId: domainId,
+                  habits: true,
+                  onlyUnderCap: isGlobal, // global: garder <100% au moins
+                  dailyStrict: isGlobal, // global: masquer si Jour ≥ 100%
+                )
+              : logic.listUnderCapSorted(
+                  domainId: domainId,
+                  habits: false,
+                  onlyUnderCap: isGlobal,
+                  dailyStrict: isGlobal,
+                );
+
+          // ---- split en sections (en vue domaine uniquement) ----
+          List<Activity> under = baseItems, over = const [];
+          if (!isGlobal) {
+            bool isOverCap(Activity a) {
+              if (a.isHabit) {
+                // HABITUDES → on regarde juste la cible du jour
+                final today = DateTime.now();
+                final doneToday = logic.habitValueOn(a.id, today);
+                final targetDay = a.dailyTarget ?? 0;
+                return targetDay > 0 && doneToday >= targetDay;
+              } else {
+                // ACTIVITÉS TEMPS → logique existante
+                final d1 = logic.timeSliding(a.id, 1).ratio;
+                final d7 = logic.timeSliding(a.id, 7).ratio;
+                final d30 = logic.timeSliding(a.id, 30).ratio;
+                return (d1 >= 1.0) || ((d7 >= 1.0) && (d30 >= 1.0));
+              }
+            }
+
+            under = baseItems.where((a) => !isOverCap(a)).toList();
+            over = baseItems.where(isOverCap).toList();
+          }
+
+          // ====== APPLY HABIT LOCK ======
+          if (isHabitsTab && _habitLockActive) {
+            // reconstruire à partir des IDs figés
+            final byId = {for (final a in baseItems) a.id: a};
+            under = _habitLockUnderIds
+                .map((id) => byId[id])
+                .whereType<Activity>()
+                .toList();
+            over = _habitLockOverIds
+                .map((id) => byId[id])
+                .whereType<Activity>()
+                .toList();
+          } else if (isHabitsTab && !_habitLockActive) {
+            // capturer l’ordre et les sections
+            _habitLockUnderIds = under.map((a) => a.id).toList();
+            _habitLockOverIds = over.map((a) => a.id).toList();
+          }
+
+          // ---- header ----
+          final title = domain?.name ?? "Tous les domaines";
+          final header = Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.bold),
+                ),
               ),
-              floatingActionButtonLocation:
-                  FloatingActionButtonLocation.endFloat,
+              const SizedBox(width: 8),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'time', label: Text('Temps')),
+                  ButtonSegment(value: 'habit', label: Text('Habitudes')),
+                ],
+                selected: {tab},
+                onSelectionChanged: (s) => setSB(() {
+                  tab = s.first;
+                  _maybeUnlockOnTabChange(tab);
+                }),
+              ),
+            ],
+          );
+
+          // ---- builders de tuiles INLINE ----
+
+          // Activité TEMPS
+          Widget _buildTimeTile(Activity a) {
+            final now = DateTime.now();
+            final done24h = logic.totalForRangeByActivity(
+                a.id, now.subtract(const Duration(hours: 24)), now);
+            final goalMin = a.goalMin;
+            final dayRatio = goalMin > 0
+                ? (done24h.inMinutes / goalMin).clamp(0.0, 1.0)
+                : 0.0;
+
+            final w = logic.timeSliding(a.id, 7);
+            final m = logic.timeSliding(a.id, 30);
+
+            return ListTile(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              leading: MiniRing(
+                progress: dayRatio,
+                center: Text("${(dayRatio * 100).round()}%",
+                    style: const TextStyle(
+                        fontSize: 10, fontWeight: FontWeight.w700)),
+              ),
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(a.name,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700, fontSize: 16)),
+                  TinyBar(
+                    ratio: m.ratio,
+                    labelLeft:
+                        "Mois ${fmtCompactFromMin(m.doneMin)} / ${fmtCompactFromMin(m.targetMin)}",
+                  ),
+                  TinyBar(
+                    ratio: w.ratio,
+                    labelLeft:
+                        "Sem ${fmtCompactFromMin(w.doneMin)} / ${fmtCompactFromMin(w.targetMin)}",
+                    padding: const EdgeInsets.only(top: 2),
+                  ),
+                ],
+              ),
+              trailing: FilledButton.icon(
+                onPressed: () {
+                  logic.start(a.id);
+                  Navigator.pop(ctx); // fermer après start
+                },
+                icon: const Icon(Icons.play_arrow),
+                label: const Text("Start"),
+              ),
             );
-          },
-        );
+          }
+
+          // Routine / HABITUDE
+          Widget _buildHabitTile(Activity a) {
+            final now = DateTime.now();
+            final today = DateTime(now.year, now.month, now.day);
+            final int doneToday = logic.habitValueOn(a.id, today);
+            final int targetDay = a.dailyTarget ?? 0;
+            final double ringRatio =
+                (targetDay > 0) ? (doneToday / targetDay).clamp(0.0, 1.0) : 0.0;
+
+            final wH = logic.habitSliding(a.id, 7);
+            final mH = logic.habitSliding(a.id, 30);
+            final unit = (a.unit ?? '').isNotEmpty ? ' ${a.unit}' : '';
+
+            return ListTile(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              leading: MiniRing(
+                progress: ringRatio,
+                center: Text(targetDay > 0 ? "$doneToday" : "0",
+                    style: const TextStyle(
+                        fontSize: 11, fontWeight: FontWeight.w700)),
+              ),
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(a.name,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700, fontSize: 16)),
+                  TinyBar(
+                    ratio: mH.ratio,
+                    labelLeft: "Mois ${mH.done} / ${mH.target}$unit",
+                  ),
+                  TinyBar(
+                    ratio: wH.ratio,
+                    labelLeft: "Semaine ${wH.done} / ${wH.target}$unit",
+                    padding: const EdgeInsets.only(top: 2),
+                  ),
+                ],
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    onPressed: () {
+                      setSB(() {
+                        _habitLockActive = true;
+                      }); // fige sections + ordre
+                      logic.incHabit(a.id, -1, today);
+                      setSB(() {}); // refresh
+                    },
+                    icon: const Icon(Icons.remove),
+                  ),
+                  IconButton(
+                    onPressed: () {
+                      setSB(() {
+                        _habitLockActive = true;
+                      });
+                      logic.incHabit(a.id, 1, today);
+                      setSB(() {});
+                    },
+                    icon: const Icon(Icons.add),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          // ---- rendu des sections ----
+          final list = ListView(
+            controller: scrollCtrl,
+            padding: const EdgeInsets.only(bottom: 16),
+            children: [
+              // section "À rattraper"
+              if (under.isNotEmpty) _sectionTitle("À rattraper"),
+              ...List.generate(under.length, (i) {
+                final a = under[i];
+                final tile = a.isHabit ? _buildHabitTile(a) : _buildTimeTile(a);
+                return _wrapTile(a, i, under.length, tile);
+              }),
+
+              if (over.isNotEmpty && under.isNotEmpty)
+                const SizedBox(height: 8),
+
+              // section "Déjà atteint"
+              if (over.isNotEmpty) _sectionTitle("Déjà atteint"),
+              ...List.generate(over.length, (i) {
+                final a = over[i];
+                final tile = a.isHabit ? _buildHabitTile(a) : _buildTimeTile(a);
+                return _wrapTile(a, i, over.length, tile);
+              }),
+
+              if (under.isEmpty && over.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Center(child: Text("Rien à afficher.")),
+                ),
+            ],
+          );
+
+          final body = Padding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 8,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom,
+            ),
+            child: Column(
+              children: [
+                header,
+                const SizedBox(height: 8),
+                Expanded(child: list),
+              ],
+            ),
+          );
+
+          return Scaffold(
+            backgroundColor: Colors.transparent,
+            body: body,
+            floatingActionButton: FloatingActionButton.extended(
+              onPressed: () async {
+                final isHabit = (tab == 'habit'); // <-- ajoute cette ligne ici
+                await _createActivityDialog(
+                  domainId: domainId,
+                  isHabit: isHabit,
+                );
+                setSB(() {});
+              },
+              icon: Icon(tab == 'habit' ? Icons.add_task : Icons.timelapse),
+              label: Text(
+                  tab == 'habit' ? "Nouvelle routine" : "Nouvelle activité"),
+            ),
+            floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+          );
+        });
       },
     );
   }
