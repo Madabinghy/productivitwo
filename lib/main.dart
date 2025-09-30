@@ -551,7 +551,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   Future<void> _runDevScan() async {
     final bumps = await logic.scanAllActivities();
     await logic.autoAdjustStandardsRealtime();
-setState(() {});
+    setState(() {});
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -2054,6 +2054,41 @@ setState(() {});
     );
   }
 
+  // ---- Helpers HABIT ----
+  bool _habitDayReached(AppLogic l, Activity a) {
+    final int tgt = a.dailyTarget ?? 0;
+    if (tgt <= 0) return false;
+    final now = DateTime.now();
+    final d = DateTime(now.year, now.month, now.day);
+    final done = l.habitValueOn(a.id, d);
+    return done >= tgt;
+  }
+
+  bool _habitWeekMonthReached(AppLogic l, Activity a) {
+    final w = l.habitSliding(a.id, 7);
+    final m = l.habitSliding(a.id, 30);
+    final wOK = (w.target > 0) && (w.done >= w.target);
+    final mOK = (m.target > 0) && (m.done >= m.target);
+    return wOK && mOK;
+  }
+
+  /// dailyStrict: global => vrai (on juge uniquement le JOUR)
+  bool isHabitOverCap(AppLogic l, Activity a, {required bool dailyStrict}) {
+    final dayOK = _habitDayReached(l, a);
+    return dailyStrict ? dayOK : (dayOK || _habitWeekMonthReached(l, a));
+  }
+
+// ---- Helpers TEMPS ----
+  bool isTimeOverCap(AppLogic l, Activity a, {required bool dailyStrict}) {
+    final d1 = l.timeSliding(a.id, 1); // {doneMin, targetMin}
+    final d7 = l.timeSliding(a.id, 7);
+    final d30 = l.timeSliding(a.id, 30);
+    final dayOK = (d1.targetMin > 0) && (d1.doneMin >= d1.targetMin);
+    final weekOK = (d7.targetMin > 0) && (d7.doneMin >= d7.targetMin);
+    final monthOK = (d30.targetMin > 0) && (d30.doneMin >= d30.targetMin);
+    return dailyStrict ? dayOK : (dayOK || (weekOK && monthOK));
+  }
+
   void _showDomainDetail(
     Domain? domain,
     DateTime start,
@@ -2068,6 +2103,19 @@ setState(() {});
     bool _habitLockActive = false;
     List<String> _habitLockUnderIds = <String>[]; // ordre "À rattraper" figé
     List<String> _habitLockOverIds = <String>[]; // ordre "Déjà atteint" figé
+    bool _lockActive = false;
+    List<String> _lockUnderIds = <String>[];
+    List<String> _lockOverIds = <String>[];
+
+    void _lockNow() {
+      _lockActive = true;
+    }
+
+    void _unlockSoon(StateSetter setSB) {
+      Future.delayed(const Duration(milliseconds: 1400), () {
+        setSB(() => _lockActive = false);
+      });
+    }
 
     showModalBottomSheet(
       context: context,
@@ -2079,9 +2127,6 @@ setState(() {});
         final scrollCtrl = ScrollController();
 
         return StatefulBuilder(builder: (ctx, setSB) {
-          final bool isGlobal = (domain == null);
-          final bool isHabitsTab = (tab == 'habit');
-
           // ---- helpers UI locaux ----
           Widget _sectionTitle(String text) {
             return Padding(
@@ -2120,62 +2165,71 @@ setState(() {});
             }
           }
 
-          // ---- source triée (proche de 100%) + filtres globaux ----
-          final baseItems = (tab == 'habit')
+          final bool isGlobal = (domain == null);
+          final bool isHabitsTab = (tab == 'habit');
+
+// source triée (pas de filtre ici)
+          final base = (isHabitsTab)
               ? logic.listUnderCapSorted(
                   domainId: domainId,
                   habits: true,
-                  onlyUnderCap: isGlobal, // global: garder <100% au moins
-                  dailyStrict: isGlobal, // global: masquer si Jour ≥ 100%
-                )
+                  onlyUnderCap: false,
+                  dailyStrict: false)
               : logic.listUnderCapSorted(
                   domainId: domainId,
                   habits: false,
-                  onlyUnderCap: isGlobal,
-                  dailyStrict: isGlobal,
-                );
+                  onlyUnderCap: false,
+                  dailyStrict: false);
 
-          // ---- split en sections (en vue domaine uniquement) ----
-          List<Activity> under = baseItems, over = const [];
-          if (!isGlobal) {
-            bool isOverCap(Activity a) {
-              if (a.isHabit) {
-                // HABITUDES → on regarde juste la cible du jour
-                final today = DateTime.now();
-                final doneToday = logic.habitValueOn(a.id, today);
-                final targetDay = a.dailyTarget ?? 0;
-                return targetDay > 0 && doneToday >= targetDay;
-              } else {
-                // ACTIVITÉS TEMPS → logique existante
-                final d1 = logic.timeSliding(a.id, 1).ratio;
-                final d7 = logic.timeSliding(a.id, 7).ratio;
-                final d30 = logic.timeSliding(a.id, 30).ratio;
-                return (d1 >= 1.0) || ((d7 >= 1.0) && (d30 >= 1.0));
-              }
+          List<Activity> under, over;
+
+          if (isHabitsTab) {
+            if (isGlobal) {
+              under = base
+                  .where((a) => !isHabitOverCap(logic, a, dailyStrict: true))
+                  .toList();
+              over = base
+                  .where((a) => isHabitOverCap(logic, a, dailyStrict: true))
+                  .toList();
+            } else {
+              under = base
+                  .where((a) => !isHabitOverCap(logic, a, dailyStrict: false))
+                  .toList();
+              over = base
+                  .where((a) => isHabitOverCap(logic, a, dailyStrict: false))
+                  .toList();
             }
-
-            under = baseItems.where((a) => !isOverCap(a)).toList();
-            over = baseItems.where(isOverCap).toList();
+          } else {
+            if (isGlobal) {
+              under = base
+                  .where((a) => !isTimeOverCap(logic, a, dailyStrict: true))
+                  .toList();
+              over = base
+                  .where((a) => isTimeOverCap(logic, a, dailyStrict: true))
+                  .toList();
+            } else {
+              under = base
+                  .where((a) => !isTimeOverCap(logic, a, dailyStrict: false))
+                  .toList();
+              over = base
+                  .where((a) => isTimeOverCap(logic, a, dailyStrict: false))
+                  .toList();
+            }
           }
-
-          // ====== APPLY HABIT LOCK ======
-          if (isHabitsTab && _habitLockActive) {
-            // reconstruire à partir des IDs figés
-            final byId = {for (final a in baseItems) a.id: a};
-            under = _habitLockUnderIds
+          if (_lockActive) {
+            final byId = {for (final a in base) a.id: a};
+            under = _lockUnderIds
                 .map((id) => byId[id])
                 .whereType<Activity>()
                 .toList();
-            over = _habitLockOverIds
+            over = _lockOverIds
                 .map((id) => byId[id])
                 .whereType<Activity>()
                 .toList();
-          } else if (isHabitsTab && !_habitLockActive) {
-            // capturer l’ordre et les sections
-            _habitLockUnderIds = under.map((a) => a.id).toList();
-            _habitLockOverIds = over.map((a) => a.id).toList();
+          } else {
+            _lockUnderIds = under.map((a) => a.id).toList();
+            _lockOverIds = over.map((a) => a.id).toList();
           }
-
           // ---- header ----
           final title = domain?.name ?? "Tous les domaines";
           final header = Row(
@@ -2299,22 +2353,25 @@ setState(() {});
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
+                    // Habitude - et +
                     onPressed: () {
                       setSB(() {
-                        _habitLockActive = true;
-                      }); // fige sections + ordre
+                        _lockNow();
+                      });
                       logic.incHabit(a.id, -1, today);
-                      setSB(() {}); // refresh
+                      setSB(() {}); // repaint
+                      _unlockSoon(setSB); // relâche après 800ms
                     },
                     icon: const Icon(Icons.remove),
                   ),
                   IconButton(
                     onPressed: () {
                       setSB(() {
-                        _habitLockActive = true;
+                        _lockNow();
                       });
                       logic.incHabit(a.id, 1, today);
-                      setSB(() {});
+                      setSB(() {}); // repaint
+                      _unlockSoon(setSB); // relâche après 800ms
                     },
                     icon: const Icon(Icons.add),
                   ),
