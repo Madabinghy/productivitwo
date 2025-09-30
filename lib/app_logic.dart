@@ -54,6 +54,65 @@ class AppLogic {
   String _tomorrowKey() =>
       yyyymmdd(DateTime.now().add(const Duration(days: 1)));
 
+  int _nextOrderForDay(String ymd) {
+    final same = state.dayPlan.where((e) => e.yyyymmdd == ymd);
+    if (same.isEmpty) return 0;
+    return same.map((e) => e.order).reduce((a, b) => a > b ? a : b) + 1;
+  }
+
+// Ajoute Demain si absent (sans toucher Aujourd’hui)
+  void ensurePlannedTomorrow(PlanKind kind, String refId) {
+    final tomoKey = _tomorrowKey();
+    final exists = state.dayPlan.any(
+      (e) => e.yyyymmdd == tomoKey && e.kind == kind && e.refId == refId,
+    );
+    if (exists) return;
+
+    String title;
+    switch (kind) {
+      case PlanKind.activityTime:
+        title = state.activities
+            .firstWhere(
+              (a) => a.id == refId,
+              orElse: () => Activity(domainId: '', name: 'Activité'),
+            )
+            .name;
+        break;
+      case PlanKind.habit:
+        title = state.activities
+            .firstWhere(
+              (a) => a.id == refId,
+              orElse: () =>
+                  Activity(domainId: '', name: 'Routine', type: 'habit'),
+            )
+            .name;
+        break;
+      case PlanKind.action:
+        title = 'Action';
+        break;
+    }
+
+    state.dayPlan.add(DayPlanItem(
+      id: const Uuid().v4(),
+      kind: kind,
+      refId: refId,
+      title: title,
+      yyyymmdd: tomoKey,
+      done: false,
+      allDay: false,
+      order: _nextOrderForDay(tomoKey),
+    ));
+  }
+
+// Supprime de la journée donnée (retourne true si quelque chose a été retiré)
+  bool removeFromDay(String ymd, PlanKind kind, String refId) {
+    final before = state.dayPlan.length;
+    state.dayPlan.removeWhere(
+      (e) => e.yyyymmdd == ymd && e.kind == kind && e.refId == refId,
+    );
+    return state.dayPlan.length != before;
+  }
+
   void movePlannedToTomorrowIfPresent(PlanKind kind, String refId,
       {bool addIfMissing = false}) {
     final todayKey = _todayKey();
@@ -142,9 +201,11 @@ class AppLogic {
         .add(Session(activityId: activityId, startAt: DateTime.now()));
     onChange();
 
-    // déplace vers Demain si présent dans Aujourd’hui (ou ajoute si absent)
-    movePlannedToTomorrowIfPresent(PlanKind.activityTime, activityId,
-        addIfMissing: true);
+    // Préparer demain + retirer d'aujourd'hui si présent
+    ensurePlannedTomorrow(PlanKind.activityTime, activityId);
+/*     final removed =
+        removeFromDay(_todayKey(), PlanKind.activityTime, activityId);
+    if (removed) onChange(); */
   }
 
   void stopActive() {
@@ -252,6 +313,7 @@ class AppLogic {
     onChange();
 
     // --- déplacement auto si atteint ---
+// --- déplacement logique routine atteinte ---
     final act = state.activities.firstWhere(
       (a) => a.id == activityId,
       orElse: () => Activity(domainId: '', name: 'Routine', type: 'habit'),
@@ -259,13 +321,15 @@ class AppLogic {
     final target = act.dailyTarget ?? 0;
     if (target > 0) {
       final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
-      final doneToday = habitValueOn(activityId, today);
+      final todayDate = DateTime(now.year, now.month, now.day);
+      final doneToday = habitValueOn(activityId, todayDate);
 
       if (doneToday >= target) {
-        // ✅ move centralisé: marche de partout
-        movePlannedToTomorrowIfPresent(PlanKind.habit, activityId,
-            addIfMissing: true);
+        // 1) préparer demain (ajout si absent, non coché)
+        ensurePlannedTomorrow(PlanKind.habit, activityId);
+        // 2) retirer de la liste "Aujourd'hui" (vider visuellement)
+        final removed = removeFromDay(_todayKey(), PlanKind.habit, activityId);
+        if (removed) onChange(); // persiste + notifie l’UI
       }
     }
   }

@@ -95,6 +95,14 @@ class _TodayViewState extends State<TodayView> {
       _dayStart(tomorrow: tomorrow).add(const Duration(days: 1));
 
   Widget _todayTile(BuildContext context, DayPlanItem it, {required Key key}) {
+    // Jour affiché selon l’onglet
+    final now = DateTime.now();
+    final viewed = _planTomorrow ? now.add(const Duration(days: 1)) : now;
+    final day = DateTime(viewed.year, viewed.month, viewed.day);
+
+// Libellé dyn. "Aujourd’hui :" / "Demain :"
+    final todayLabel = _planTomorrow ? 'Demain :' : 'Aujourd’hui :';
+
     // menu "…"
     final more = PopupMenuButton<String>(
       onSelected: (v) {
@@ -245,99 +253,97 @@ class _TodayViewState extends State<TodayView> {
         }
 
       // ---------------- HABITUDE ----------------
-case PlanKind.habit: {
-  final today  = DateTime.now();
-  final done   = widget.logic.habitValueOn(it.refId!, today);
-  final act    = widget.state.activities.firstWhere((a) => a.id == it.refId!);
-  final target = act.dailyTarget ?? 0;
-  final unit   = (act.unit ?? '').isNotEmpty ? ' ${act.unit}' : '';
+      case PlanKind.habit:
+        {
+          final done = widget.logic.habitValueOn(it.refId!, day);
+          final act =
+              widget.state.activities.firstWhere((a) => a.id == it.refId!);
+          final target = act.dailyTarget ?? 0;
+          final unit = (act.unit ?? '').isNotEmpty ? ' ${act.unit}' : '';
 
-  // Trailing en haut à droite (checkbox si target <= 1, sinon vide)
-  Widget trailingTop;
-  if (target <= 1) {
-    trailingTop = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Checkbox(
-          value: done >= 1,
-          onChanged: (v) => setState(() {
-            final want  = (v == true) ? 1 : 0;
-            final delta = want - done;
-            if (delta != 0) widget.logic.incHabit(it.refId!, delta, today);
-          }),
-        ),
-        more, // menu "…"
-      ],
-    );
-  } else {
-    trailingTop = more; // juste le menu si cible > 1
-  }
+          void inc(int delta) => setState(() {
+                widget.logic
+                    .incHabit(it.refId!, delta, day); // ⚠️ basé sur "day"
+              });
 
-  return Card(
-    key: key,
-    margin: const EdgeInsets.only(bottom: 8),
-    child: Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          dragHandleFor(it),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          // Trailing en haut à droite (checkbox si cible 1, sinon juste le menu)
+          Widget trailingTop;
+          if (target <= 1) {
+            trailingTop = Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                // Ligne 1 — titre + trailing (checkbox/…)
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(child: buildTitle(it.title)),
-                    const SizedBox(width: 8),
-                    trailingTop,
-                  ],
+                Checkbox(
+                  value: done >= 1, // ⚠️ basé sur "day"
+                  onChanged: (v) => inc((v == true ? 1 : 0) - done),
                 ),
-                const SizedBox(height: 4),
+                more,
+              ],
+            );
+          } else {
+            trailingTop = more;
+          }
 
-                // Ligne 2 — texte Aujourd’hui
-                Text(
-                  "Aujourd’hui : $done / $target$unit",
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+          return Card(
+            key: key,
+            margin: const EdgeInsets.only(bottom: 8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  dragHandleFor(it),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Ligne 1 — Titre + trailing (checkbox si cible 1 + menu …)
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Expanded(child: buildTitle(it.title)),
+                            const SizedBox(width: 8),
+                            trailingTop,
+                          ],
+                        ),
+                        const SizedBox(height: 4),
 
-                // Ligne 3 — pastilles si cible > 1
-                if (target > 1) ...[
-                  const SizedBox(height: 4),
-                  HabitTicksRow(
-                    done: done,
-                    target: target,
-                    onIncOne: () =>
-                        setState(() => widget.logic.incHabit(it.refId!, 1, today)),
-                    onDecOne: () =>
-                        setState(() => widget.logic.incHabit(it.refId!, -1, today)),
-                    onOpenFull: () => showHabitChecklist(
-                      context,
-                      title: it.title,
-                      done: done,
-                      target: target,
-                      onSet: (newDone) => setState(() {
-                        final delta = newDone - done;
-                        if (delta != 0) {
-                          widget.logic.incHabit(it.refId!, delta, today);
-                        }
-                      }),
+                        // Ligne 2 — "Aujourd’hui/Demain : X / Y"
+                        Text(
+                          "$todayLabel $done / $target$unit",
+                          style: const TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w600),
+                        ),
+
+                        // Ligne 3 — Pastilles si cible > 1 (à gauche)
+                        if (target > 1) ...[
+                          const SizedBox(height: 4),
+                          // version simple (sans scroll, collé à gauche)
+                          HabitTicksRow(
+                            done: done,
+                            target: target,
+                            onIncOne: () => inc(1),
+                            onDecOne: () => inc(-1),
+                            onOpenFull: () => showHabitChecklist(
+                              context,
+                              title: it.title,
+                              done: done,
+                              target: target,
+                              onSet: (newDone) {
+                                final delta = newDone - done;
+                                if (delta != 0)
+                                  widget.logic.incHabit(it.refId!, delta, day);
+                              },
+                            ),
+                          ),
+                        ]
+                      ],
                     ),
                   ),
                 ],
-              ],
+              ),
             ),
-          ),
-        ],
-      ),
-    ),
-  );
-}
+          );
+        }
     }
   }
 
