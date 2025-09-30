@@ -31,9 +31,19 @@ class _TodayViewState extends State<TodayView> {
     return yyyymmdd(d);
   }
 
+  void _maybeDailyRollover() {
+    final today = yyyymmdd(DateTime.now());
+    if (widget.state.lastRolloverYmd != today) {
+      widget.logic.rolloverUnfinishedToTomorrow();
+      widget.state.lastRolloverYmd = today;
+      widget.logic.onChange();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    _maybeDailyRollover();
     _base = DateTime.now();
     // Suggestion : si on est après 18h, basculer l’UI par défaut sur "Demain"
     if (_base.hour >= 18) _planTomorrow = true;
@@ -46,18 +56,30 @@ class _TodayViewState extends State<TodayView> {
 
     return Scaffold(
       appBar: AppBar(
-        automaticallyImplyLeading: false, // pas de flèche retour
-        title: Center(
-          child: SegmentedButton<bool>(
-            segments: const [
-              ButtonSegment(value: false, label: Text('Aujourd’hui')),
-              ButtonSegment(value: true, label: Text('Demain')),
-            ],
-            selected: {_planTomorrow},
-            onSelectionChanged: (s) => setState(() => _planTomorrow = s.first),
+          automaticallyImplyLeading: false, // pas de flèche retour
+          title: Center(
+            child: SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(value: false, label: Text('Aujourd’hui')),
+                ButtonSegment(value: true, label: Text('Demain')),
+              ],
+              selected: {_planTomorrow},
+              onSelectionChanged: (s) =>
+                  setState(() => _planTomorrow = s.first),
+            ),
           ),
-        ),
-      ),
+          actions: [
+            // … tes autres actions …
+            IconButton(
+              tooltip: 'Reporter le non-fait → Demain',
+              icon: const Icon(Icons.redo),
+              onPressed: () {
+                setState(() {
+                  widget.logic.rolloverUnfinishedToTomorrow();
+                });
+              },
+            ),
+          ]),
 
       // 🔁 Réorganisation par drag & drop
       body: ReorderableListView.builder(

@@ -280,6 +280,7 @@ class AppState {
   List<Goal> goals;
   List<InboxItem> inbox;
   List<DayPlanItem> dayPlan;
+  String? lastRolloverYmd;
 
   AppState({
     required this.domains,

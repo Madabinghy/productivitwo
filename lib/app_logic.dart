@@ -49,6 +49,54 @@ class AppLogic {
   final void Function() onChange;
   AppLogic(this.state, this.onChange);
 
+
+  // Déplace vers demain les items non réalisés aujourd’hui.
+// - action     : si !done
+// - habit      : si doneAujourd’hui < target
+// - activity   : si 0 minute aujourd’hui
+void rolloverUnfinishedToTomorrow({DateTime? now}) {
+  final _now = now ?? DateTime.now();
+  final String todayKey    = yyyymmdd(_now);
+  final String tomorrowKey = yyyymmdd(_now.add(const Duration(days: 1)));
+
+  // ordre de base pour demain (on append)
+  int nextOrder = 1;
+  for (final e in state.dayPlan.where((e) => e.yyyymmdd == tomorrowKey)) {
+    if (e.order >= nextOrder) nextOrder = e.order + 1;
+  }
+
+  // on itère sur une copie (on modifie l’original)
+  final todayItems = state.dayPlan.where((e) => e.yyyymmdd == todayKey).toList();
+
+  bool _shouldMove(DayPlanItem it) {
+    switch (it.kind) {
+      case PlanKind.action:
+        return it.done == false;
+
+      case PlanKind.habit:
+        final d = DateTime(_now.year, _now.month, _now.day);
+        final done = habitValueOn(it.refId!, d);
+        final act  = state.activities.firstWhere((a) => a.id == it.refId!);
+        final target = act.dailyTarget ?? 0;
+        return done < target; // pas atteint → on reporte
+
+      case PlanKind.activityTime:
+        final dayStart = DateTime(_now.year, _now.month, _now.day);
+        final dur = totalForRangeByActivity(it.refId!, dayStart, _now);
+        return dur.inMinutes == 0; // aucune minute → on reporte
+    }
+  }
+
+  for (final it in todayItems) {
+    if (_shouldMove(it)) {
+      it.yyyymmdd = tomorrowKey;
+      it.order    = nextOrder++;
+    }
+  }
+
+  onChange(); // persiste + notifie
+}
+
 // --- jour courant / demain avec TA clé (sans tirets)
   String _todayKey() => yyyymmdd(DateTime.now());
   String _tomorrowKey() =>
