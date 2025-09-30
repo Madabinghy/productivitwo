@@ -2353,25 +2353,56 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
-                    // Habitude - et +
+                    // Habitude -
                     onPressed: () {
                       setSB(() {
                         _lockNow();
                       });
                       logic.incHabit(a.id, -1, today);
                       setSB(() {}); // repaint
-                      _unlockSoon(setSB); // relâche après 800ms
+                      _unlockSoon(setSB);
+
+                      // Vérifie si routine atteinte et déplace
+                      final act = logic.state.activities
+                          .firstWhere((x) => x.id == a.id);
+                      final target = act.dailyTarget ?? 0;
+                      if (target > 0) {
+                        final doneToday = logic.habitValueOn(a.id, today);
+                        if (doneToday >= target) {
+                          logic.movePlannedToTomorrowIfPresent(
+                            PlanKind.habit,
+                            a.id,
+                            addIfMissing: true,
+                          );
+                        }
+                      }
                     },
                     icon: const Icon(Icons.remove),
                   ),
                   IconButton(
+                    // Habitude +
                     onPressed: () {
                       setSB(() {
                         _lockNow();
                       });
                       logic.incHabit(a.id, 1, today);
                       setSB(() {}); // repaint
-                      _unlockSoon(setSB); // relâche après 800ms
+                      _unlockSoon(setSB);
+
+                      // Vérifie si routine atteinte et déplace
+                      final act = logic.state.activities
+                          .firstWhere((x) => x.id == a.id);
+                      final target = act.dailyTarget ?? 0;
+                      if (target > 0) {
+                        final doneToday = logic.habitValueOn(a.id, today);
+                        if (doneToday >= target) {
+                          logic.movePlannedToTomorrowIfPresent(
+                            PlanKind.habit,
+                            a.id,
+                            addIfMissing: true,
+                          );
+                        }
+                      }
                     },
                     icon: const Icon(Icons.add),
                   ),

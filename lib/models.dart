@@ -167,8 +167,8 @@ class Domain {
 /// type = "time" (timer) ou "habit" (compteur)
 class Activity {
   String id, domainId, name;
-  String type;      // "time" | "habit"
-  int goalMin;      // pour type=time
+  String type; // "time" | "habit"
+  int goalMin; // pour type=time
   String? unit;
   int? dailyTarget;
 
@@ -181,7 +181,7 @@ class Activity {
     required this.domainId,
     required this.name,
     this.type = 'time',
-    this.goalMin = 1,                 // 👈 démarre à 1 min
+    this.goalMin = 1, // 👈 démarre à 1 min
     this.unit,
     this.dailyTarget,
     DateTime? createdAt,
@@ -208,11 +208,14 @@ class Activity {
         domainId: j['domainId'],
         name: j['name'],
         type: (j['type'] ?? 'time'),
-        goalMin: j['goalMin'] ?? 1,             // 👈 migration douce
+        goalMin: j['goalMin'] ?? 1, // 👈 migration douce
         unit: j['unit'],
         dailyTarget: j['dailyTarget'],
-        createdAt: j['createdAt'] != null ? DateTime.parse(j['createdAt']) : DateTime.now(),
-        lastTunedAt: j['lastTunedAt'] != null ? DateTime.parse(j['lastTunedAt']) : null,
+        createdAt: j['createdAt'] != null
+            ? DateTime.parse(j['createdAt'])
+            : DateTime.now(),
+        lastTunedAt:
+            j['lastTunedAt'] != null ? DateTime.parse(j['lastTunedAt']) : null,
       );
 }
 

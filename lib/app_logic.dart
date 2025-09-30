@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:uuid/uuid.dart';
 
 class GoalChange {
   final String kind; // 'activity' | 'domain'
@@ -48,6 +49,90 @@ class AppLogic {
   final void Function() onChange;
   AppLogic(this.state, this.onChange);
 
+// --- jour courant / demain avec TA clé (sans tirets)
+  String _todayKey() => yyyymmdd(DateTime.now());
+  String _tomorrowKey() =>
+      yyyymmdd(DateTime.now().add(const Duration(days: 1)));
+
+  void movePlannedToTomorrowIfPresent(PlanKind kind, String refId,
+      {bool addIfMissing = false}) {
+    final todayKey = _todayKey();
+    final tomoKey = _tomorrowKey();
+
+    // 1) retirer de la vraie source (state.dayPlan)
+    final idx = _indexInDay(todayKey, kind, refId);
+    DayPlanItem? removed;
+    if (idx >= 0) {
+      removed = state.dayPlan.removeAt(idx);
+    }
+
+    // 2) éviter doublon demain
+    final existsTomorrow = _indexInDay(tomoKey, kind, refId) >= 0;
+    if (existsTomorrow) {
+      onChange();
+      return;
+    }
+
+    // 3) construire l'item pour demain
+    DayPlanItem? toAdd;
+    if (removed != null) {
+      toAdd = DayPlanItem(
+        id: removed.id,
+        kind: removed.kind,
+        refId: removed.refId,
+        title: removed.title,
+        yyyymmdd: tomoKey,
+        done: false,
+        allDay: removed.allDay,
+        order: _nextOrderForDay(tomoKey),
+      );
+    } else if (addIfMissing) {
+      String title;
+      switch (kind) {
+        case PlanKind.activityTime:
+          title = state.activities
+              .firstWhere(
+                (a) => a.id == refId,
+                orElse: () => Activity(domainId: '', name: 'Activité'),
+              )
+              .name;
+          break;
+        case PlanKind.habit:
+          title = state.activities
+              .firstWhere(
+                (a) => a.id == refId,
+                orElse: () =>
+                    Activity(domainId: '', name: 'Routine', type: 'habit'),
+              )
+              .name;
+          break;
+        case PlanKind.action:
+          title = 'Action';
+          break;
+      }
+      toAdd = DayPlanItem(
+        id: const Uuid().v4(),
+        kind: kind,
+        refId: refId,
+        title: title,
+        yyyymmdd: tomoKey,
+        done: false,
+        allDay: false,
+        order: _nextOrderForDay(tomoKey),
+      );
+    }
+
+    if (toAdd != null) {
+      state.dayPlan.add(toAdd);
+    }
+
+    print('[DEBUG MOVE] total=${state.dayPlan.length}');
+    for (final e in state.dayPlan) {
+      print(' - ${e.kind} ${e.refId} ${e.yyyymmdd}');
+    }
+    onChange(); // persiste + notifie
+  }
+
   // ---------- SESSIONS TEMPS ----------
   void start(String activityId) {
     for (final s in state.sessions.where((s) => s.endAt == null)) {
@@ -55,8 +140,11 @@ class AppLogic {
     }
     state.sessions
         .add(Session(activityId: activityId, startAt: DateTime.now()));
-    maybeAutoAdjustActivity(activityId);
     onChange();
+
+    // déplace vers Demain si présent dans Aujourd’hui (ou ajoute si absent)
+    movePlannedToTomorrowIfPresent(PlanKind.activityTime, activityId,
+        addIfMissing: true);
   }
 
   void stopActive() {
@@ -148,19 +236,38 @@ class AppLogic {
 
   void incHabit(String activityId, int delta, DateTime day) {
     final key = yyyymmdd(day);
-    final idx = state.habitProgress
-        .indexWhere((h) => h.activityId == activityId && h.yyyymmdd == key);
+    final idx = state.habitProgress.indexWhere(
+      (h) => h.activityId == activityId && h.yyyymmdd == key,
+    );
     if (idx < 0) {
       state.habitProgress.add(HabitProgress(
-          activityId: activityId,
-          yyyymmdd: key,
-          value: delta.clamp(0, 1000000)));
+        activityId: activityId,
+        yyyymmdd: key,
+        value: delta.clamp(0, 1000000),
+      ));
     } else {
-      final v = (state.habitProgress[idx].value + delta);
+      final v = state.habitProgress[idx].value + delta;
       state.habitProgress[idx].value = v < 0 ? 0 : v;
     }
     onChange();
-    maybeAutoAdjustActivity(activityId);
+
+    // --- déplacement auto si atteint ---
+    final act = state.activities.firstWhere(
+      (a) => a.id == activityId,
+      orElse: () => Activity(domainId: '', name: 'Routine', type: 'habit'),
+    );
+    final target = act.dailyTarget ?? 0;
+    if (target > 0) {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final doneToday = habitValueOn(activityId, today);
+
+      if (doneToday >= target) {
+        // ✅ move centralisé: marche de partout
+        movePlannedToTomorrowIfPresent(PlanKind.habit, activityId,
+            addIfMissing: true);
+      }
+    }
   }
 
   // Sommes d'habitudes par domaine (range)
@@ -338,60 +445,62 @@ class AppLogic {
 // items pour l’écran "lanceur / gestion" (type='time' ou 'habit')
 // AppLogic
 // Tri + filtre des activités/routines sous le “cap”
-List<Activity> listUnderCapSorted({
-  String? domainId,
-  required bool habits,
-  bool onlyUnderCap = false, // ne garder que < 100% ?
-  bool dailyStrict = false,  // “strict jour” (global) vs règle souple (vue domaine)
-}) {
-  // 1) Source (type + domaine)
-  Iterable<Activity> src = state.activities.where((a) => a.isHabit == habits);
-  if (domainId != null) src = src.where((a) => a.domainId == domainId);
-  final items = src.toList();
+  List<Activity> listUnderCapSorted({
+    String? domainId,
+    required bool habits,
+    bool onlyUnderCap = false, // ne garder que < 100% ?
+    bool dailyStrict =
+        false, // “strict jour” (global) vs règle souple (vue domaine)
+  }) {
+    // 1) Source (type + domaine)
+    Iterable<Activity> src = state.activities.where((a) => a.isHabit == habits);
+    if (domainId != null) src = src.where((a) => a.domainId == domainId);
+    final items = src.toList();
 
-  // 2) Règle “sous cap”
-  bool underCap(Activity a) {
-    if (a.isHabit) {
-      final d1  = habitSliding(a.id, 1).ratio;
-      final d7  = habitSliding(a.id, 7).ratio;
-      final d30 = habitSliding(a.id, 30).ratio;
-      return dailyStrict
-          ? (d1 < 1.0)                             // global: strict jour
-          : !((d1 >= 1.0) || (d7 >= 1.0 && d30 >= 1.0)); // domaine: souple
-    } else {
-      final d1  = timeSliding(a.id, 1).ratio;
-      final d7  = timeSliding(a.id, 7).ratio;
-      final d30 = timeSliding(a.id, 30).ratio;
-      return dailyStrict
-          ? (d1 < 1.0)
-          : !((d1 >= 1.0) || (d7 >= 1.0 && d30 >= 1.0));
+    // 2) Règle “sous cap”
+    bool underCap(Activity a) {
+      if (a.isHabit) {
+        final d1 = habitSliding(a.id, 1).ratio;
+        final d7 = habitSliding(a.id, 7).ratio;
+        final d30 = habitSliding(a.id, 30).ratio;
+        return dailyStrict
+            ? (d1 < 1.0) // global: strict jour
+            : !((d1 >= 1.0) || (d7 >= 1.0 && d30 >= 1.0)); // domaine: souple
+      } else {
+        final d1 = timeSliding(a.id, 1).ratio;
+        final d7 = timeSliding(a.id, 7).ratio;
+        final d30 = timeSliding(a.id, 30).ratio;
+        return dailyStrict
+            ? (d1 < 1.0)
+            : !((d1 >= 1.0) || (d7 >= 1.0 && d30 >= 1.0));
+      }
     }
-  }
 
-  // 3) Filtre optionnel
-  final filtered = onlyUnderCap ? items.where(underCap).toList() : items;
+    // 3) Filtre optionnel
+    final filtered = onlyUnderCap ? items.where(underCap).toList() : items;
 
-  // 4) Urgence = plus proche du 100% en tête
-  double urgency(Activity a) {
-    if (a.isHabit) {
-      final r1 = habitSliding(a.id, 1).ratio;
-      final r7 = habitSliding(a.id, 7).ratio;
-      final r30= habitSliding(a.id, 30).ratio;
-      final pick = dailyStrict ? r1 : [r1, r7, r30].reduce((x, y) => x > y ? x : y);
-      return 1.0 - pick; // plus petit = plus urgent
-    } else {
-      final r1 = timeSliding(a.id, 1).ratio;
-      final r7 = timeSliding(a.id, 7).ratio;
-      final r30= timeSliding(a.id, 30).ratio;
-      final pick = dailyStrict ? r1 : [r1, r7, r30].reduce((x, y) => x > y ? x : y);
-      return 1.0 - pick;
+    // 4) Urgence = plus proche du 100% en tête
+    double urgency(Activity a) {
+      if (a.isHabit) {
+        final r1 = habitSliding(a.id, 1).ratio;
+        final r7 = habitSliding(a.id, 7).ratio;
+        final r30 = habitSliding(a.id, 30).ratio;
+        final pick =
+            dailyStrict ? r1 : [r1, r7, r30].reduce((x, y) => x > y ? x : y);
+        return 1.0 - pick; // plus petit = plus urgent
+      } else {
+        final r1 = timeSliding(a.id, 1).ratio;
+        final r7 = timeSliding(a.id, 7).ratio;
+        final r30 = timeSliding(a.id, 30).ratio;
+        final pick =
+            dailyStrict ? r1 : [r1, r7, r30].reduce((x, y) => x > y ? x : y);
+        return 1.0 - pick;
+      }
     }
+
+    filtered.sort((a, b) => urgency(a).compareTo(urgency(b)));
+    return filtered;
   }
-
-  filtered.sort((a, b) => urgency(a).compareTo(urgency(b)));
-  return filtered;
-}
-
 
   Future<void> monthlyAutoAdjust({
     DateTime? now,
@@ -992,6 +1101,17 @@ extension SlidingProgress on AppLogic {
 final _uuid = const Uuid();
 
 extension TodayLogic on AppLogic {
+  int _indexInDay(String ymd, PlanKind kind, String refId) {
+    return state.dayPlan.indexWhere(
+        (e) => e.yyyymmdd == ymd && e.kind == kind && e.refId == refId);
+  }
+
+  int _nextOrderForDay(String ymd) {
+    final sameDay = state.dayPlan.where((e) => e.yyyymmdd == ymd);
+    if (sameDay.isEmpty) return 0;
+    return sameDay.map((e) => e.order).reduce((a, b) => a > b ? a : b) + 1;
+  }
+
   List<DayPlanItem> planFor(String ymd) {
     final list = state.dayPlan.where((e) => e.yyyymmdd == ymd).toList();
     list.sort((a, b) => a.order.compareTo(b.order));
@@ -1080,20 +1200,19 @@ extension TodayLogic on AppLogic {
   }
 }
 
-
 int _roundTo5(num x) => (x / 5.0).round() * 5;
 
 extension AutoAdjust on AppLogic {
   Future<void> autoAdjustStandardsRealtime({
     DateTime? now,
-    int floorMin = 1,              // 👈 plancher absolu
+    int floorMin = 1, // 👈 plancher absolu
     int maxPerDayMin = 12 * 60,
-    double raiseTrigger = 1.20,    // >=120% → hausse
-    double aimUp = 0.95,           // on vise ~95% après hausse
-    double deadbandLow = 0.80,     // entre 80% et 110% → ne rien faire
+    double raiseTrigger = 1.20, // >=120% → hausse
+    double aimUp = 0.95, // on vise ~95% après hausse
+    double deadbandLow = 0.80, // entre 80% et 110% → ne rien faire
     double deadbandHigh = 1.10,
-    double lowerHard = 0.50,       // <=50% → baisse
-    double aimDown = 0.90,         // on vise ~90% après baisse
+    double lowerHard = 0.50, // <=50% → baisse
+    double aimDown = 0.90, // on vise ~90% après baisse
     int minStepMin = 5,
     double maxWeeklyPct = 0.20,
     Duration coolDown = const Duration(hours: 48), // 👈 anti-yoyo
@@ -1115,7 +1234,8 @@ extension AutoAdjust on AppLogic {
 
       // Seeding doux si target=0 (peu probable avec floor=1, mais safe)
       if (s30.targetMin <= 0 && s30.doneMin > 0) {
-        final avg = (s30.doneMin / 30.0).clamp(floorMin.toDouble(), maxPerDayMin.toDouble());
+        final avg = (s30.doneMin / 30.0)
+            .clamp(floorMin.toDouble(), maxPerDayMin.toDouble());
         final seed = _roundTo5(avg * 0.80);
         if (seed > a.goalMin) {
           a.goalMin = seed;
@@ -1144,7 +1264,8 @@ extension AutoAdjust on AppLogic {
       if (s30.ratio >= raiseTrigger) {
         final desired = (s30.doneMin / 30.0) / aimUp;
         var proposed = _roundTo5(desired);
-        if (proposed < a.goalMin + minStepMin) proposed = a.goalMin + minStepMin;
+        if (proposed < a.goalMin + minStepMin)
+          proposed = a.goalMin + minStepMin;
         proposed = capUp(proposed);
         if (proposed > a.goalMin) {
           a.goalMin = proposed;
@@ -1158,7 +1279,8 @@ extension AutoAdjust on AppLogic {
       if (s30.ratio <= lowerHard) {
         final desired = (s30.doneMin / 30.0) / aimDown;
         var proposed = _roundTo5(desired);
-        if (proposed > a.goalMin - minStepMin) proposed = a.goalMin - minStepMin;
+        if (proposed > a.goalMin - minStepMin)
+          proposed = a.goalMin - minStepMin;
         proposed = capDown(proposed);
         if (proposed < a.goalMin) {
           a.goalMin = proposed;
