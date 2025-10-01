@@ -1,8 +1,9 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:uuid/uuid.dart';
 
 const _uuid = Uuid();
-
+const int kMinDailyGoalMin = 1;
 enum PlanKind { action, activityTime, habit }
 
 enum HabitFreq { daily, weekly, monthly }
@@ -189,7 +190,7 @@ class Activity {
     required this.domainId,
     required this.name,
     this.type = 'time',
-    this.goalMin = 1, // 👈 démarre à 1 min
+    this.goalMin = kMinDailyGoalMin,
     this.unit,
     this.dailyTarget,
     DateTime? createdAt,
@@ -224,7 +225,7 @@ class Activity {
         domainId: j['domainId'],
         name: j['name'],
         type: (j['type'] ?? 'time'),
-        goalMin: j['goalMin'] ?? 1, // 👈 migration douce
+        goalMin: math.max(kMinDailyGoalMin, j['goalMin'] ?? kMinDailyGoalMin),
         unit: j['unit'],
         dailyTarget: 1,
         createdAt: j['createdAt'] != null
@@ -237,6 +238,7 @@ class Activity {
         autoTune: true,
         lastTuneAt:
             j['lastTuneAt'] != null ? DateTime.parse(j['lastTuneAt']) : null,
+            
       );
 }
 

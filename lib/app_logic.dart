@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -1092,7 +1094,7 @@ extension DomainGoals on AppLogic {
       } else if (below >= neededHits) {
         var step = (base * pctStep).round();
         if (step < minStepMin) step = minStepMin;
-        newGoal = clampNonNeg(base - step);
+        newGoal = math.max(kMinDailyGoalMin, base - step);
       }
 
       if (newGoal != base) {
