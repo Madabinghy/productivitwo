@@ -2016,341 +2016,479 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     return dailyStrict ? dayOK : (dayOK || (weekOK && monthOK));
   }
 
-void _showDomainDetail(
-  Domain? domain,
-  DateTime start,
-  DateTime end,
-  int days, {
-  String focus = 'time', // 'time' | 'habit'
-}) {
-  final domainId = domain?.id; // null => Tous domaines
-  final cs = Theme.of(context).colorScheme;
+  void _showDomainDetail(
+    Domain? domain,
+    DateTime start,
+    DateTime end,
+    int days, {
+    String focus = 'time', // 'time' | 'habit'
+  }) {
+    final domainId = domain?.id; // null => Tous domaines
+    final cs = Theme.of(context).colorScheme;
 
-  // ----- LOCK : fige sections + ordre quand on édite (habits & time) -----
-  bool _lockActive = false;
-  List<String> _lockUnderIds = <String>[];
-  List<String> _lockOverIds  = <String>[];
-  void _lockNow() => _lockActive = true;
-  void _unlockSoon(StateSetter setSB) {
-    Future.delayed(const Duration(milliseconds: 1400), () {
-      setSB(() => _lockActive = false);
-    });
+    // ----- LOCK : fige sections + ordre quand on édite (habits & time) -----
+    bool _lockActive = false;
+    List<String> _lockUnderIds = <String>[];
+    List<String> _lockOverIds = <String>[];
+    void _lockNow() => _lockActive = true;
+    void _unlockSoon(StateSetter setSB) {
+      Future.delayed(const Duration(milliseconds: 1400), () {
+        setSB(() => _lockActive = false);
+      });
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: cs.surface,
+      builder: (ctx) {
+        String tab = (focus == 'habit') ? 'habit' : 'time';
+        final scrollCtrl = ScrollController();
+
+        return StatefulBuilder(builder: (ctx, setSB) {
+          void _openHabitRationale(Activity a) {
+            final d = logic.habitSliding(a.id, 1);
+            final w = logic.habitSliding(a.id, 7);
+            final m = logic.habitSliding(a.id, 30);
+
+            final freq = a.habitFreq ?? HabitFreq.monthly;
+            final unit = (a.unit ?? '').isNotEmpty ? ' ${a.unit}' : '';
+
+            // Cibles dérivées (tes helpers)
+            final dayTarget = logic.dayQuotaFor(a); // ex. 1 (si daily)
+            final weekTarget = logic.weekTargetFrom(a); // ex. 1 (si weekly)
+            final monthTarget = logic.monthTargetFrom(a); // ex. 4 (si monthly)
+
+            String freqLabel(HabitFreq f) => f == HabitFreq.daily
+                ? 'quotidienne'
+                : (f == HabitFreq.weekly ? 'hebdomadaire' : 'mensuelle');
+
+            String primaryLine;
+            String rules;
+            if (freq == HabitFreq.daily) {
+              primaryLine =
+                  "Fréquence active : quotidienne \nCible ${dayTarget} $unit / jour.\n\n"
+                  "Aujourd’hui : ${d.done} $unit / ${d.target}  •  "
+                  "Semaine : ${w.done} $unit / ${w.target}  •  "
+                  "Mois : ${m.done} $unit / ${m.target}.";
+              rules =
+                  "Règles : au-delà de 120% sur le mois, la cible monte automatiquement.\nPatientez le temps d'atteindre votre vitesse de croisière.\nVers ~4/mois on devient « hebdomadaire »\nvers ~30/mois, « quotidienne ».";
+            } else if (freq == HabitFreq.weekly) {
+              primaryLine =
+                  "Fréquence active : hebdomadaire \nCible ${weekTarget} $unit / semaine.\n"
+                  "Semaine : ${w.done} $unit / ${w.target}  •  "
+                  "Mois : ${m.done} $unit / ${m.target}.";
+              rules =
+                  "Règles : au-delà de 120% sur le mois, la cible monte automatiquement.\nPatientez le temps d'atteindre votre vitesse de croisière.\nVers ~4/mois on devient « hebdomadaire »\nvers ~30/mois, « quotidienne ».";
+            } else {
+              primaryLine =
+                  "Fréquence active : mensuelle \nCible ${monthTarget} $unit / mois.\n"
+                  "• Mois : ${m.done} $unit / ${m.target}\n"
+                  "• Semaine : ${w.done} $unit / ${w.target}.";
+              rules =
+                  "Règles : au-delà de 120% sur le mois, la cible monte automatiquement.\nPatientez le temps d'atteindre votre vitesse de croisière.\nVers ~4/mois on devient « hebdomadaire »\nvers ~30/mois, « quotidienne ».";
+            }
+
+            showModalBottomSheet(
+              context: ctx,
+              showDragHandle: true,
+              builder: (_) => Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(a.name,
+                        style: const TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 8),
+                    Text(primaryLine),
+                    const SizedBox(height: 10),
+                    Text(rules,
+                        style: TextStyle(
+                            color: Theme.of(ctx)
+                                .colorScheme
+                                .onSurface
+                                .withOpacity(.75))),
+                    const SizedBox(height: 16),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: FilledButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text("OK"),
+                      ),
+                    )
+                  ],
+                ),
+              ),
+            );
+          }
+
+          // ---------- Helpers “Option B” (primaire) ----------
+          double _habitPrimaryRatio(Activity a) {
+            final d = logic.habitSliding(a.id, 1).ratio;
+            final w = logic.habitSliding(a.id, 7).ratio;
+            final m = logic.habitSliding(a.id, 30).ratio;
+            final f = a.habitFreq ?? HabitFreq.monthly; // par défaut: mois
+            return (f == HabitFreq.daily) ? d : (f == HabitFreq.weekly ? w : m);
+          }
+
+          bool _habitReached(Activity a) => _habitPrimaryRatio(a) >= 1.0;
+          int _cmpByExit(Activity a, Activity b) {
+            final ra = 1.0 - _habitPrimaryRatio(a);
+            final rb = 1.0 - _habitPrimaryRatio(b);
+            return ra.compareTo(rb); // plus proche des 100% en haut
+          }
+
+          // ---------- UI helpers ----------
+          Widget _sectionTitle(String text) => Padding(
+                padding:
+                    const EdgeInsets.symmetric(vertical: 6.0, horizontal: 12.0),
+                child: Text(
+                  text,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color:
+                        Theme.of(context).colorScheme.onSurface.withOpacity(.6),
+                  ),
+                ),
+              );
+
+          Widget _wrapTile(Activity a, int i, int len, Widget tile) =>
+              KeyedSubtree(
+                key: ValueKey(a.id),
+                child: Column(
+                  children: [
+                    if (i == 0) const SizedBox(height: 4),
+                    tile,
+                    if (i < len - 1) const Divider(height: 8),
+                  ],
+                ),
+              );
+
+          // ---------- Source triée ----------
+          final bool isGlobal = (domain == null);
+          final bool isHabitsTab = (tab == 'habit');
+
+          final base = isHabitsTab
+              ? logic.listUnderCapSorted(
+                  domainId: domainId,
+                  habits: true,
+                  onlyUnderCap: false,
+                  dailyStrict: false)
+              : logic.listUnderCapSorted(
+                  domainId: domainId,
+                  habits: false,
+                  onlyUnderCap: false,
+                  dailyStrict: false);
+
+          // ---------- Split under/over ----------
+          List<Activity> under, over;
+          if (isHabitsTab) {
+            // Habitudes : séparation via la primaire
+            under = base.where((a) => !_habitReached(a)).toList();
+            over = base.where(_habitReached).toList();
+            // tri “sortie la plus proche” en haut
+            under.sort(_cmpByExit);
+            over.sort(_cmpByExit);
+            // Global : on masque les atteintes (on ne montre que under)
+            if (isGlobal) {
+              over = const [];
+            }
+          } else {
+            // Temps : on garde ta règle existante
+            if (isGlobal) {
+              under = base
+                  .where((a) => !isTimeOverCap(logic, a, dailyStrict: true))
+                  .toList();
+              over = base
+                  .where((a) => isTimeOverCap(logic, a, dailyStrict: true))
+                  .toList();
+            } else {
+              under = base
+                  .where((a) => !isTimeOverCap(logic, a, dailyStrict: false))
+                  .toList();
+              over = base
+                  .where((a) => isTimeOverCap(logic, a, dailyStrict: false))
+                  .toList();
+            }
+          }
+
+          // ---------- Lock d'ordre visuel pendant +/− ----------
+          if (_lockActive) {
+            final byId = {for (final a in base) a.id: a};
+            under = _lockUnderIds
+                .map((id) => byId[id])
+                .whereType<Activity>()
+                .toList();
+            over = _lockOverIds
+                .map((id) => byId[id])
+                .whereType<Activity>()
+                .toList();
+          } else {
+            _lockUnderIds = under.map((a) => a.id).toList();
+            _lockOverIds = over.map((a) => a.id).toList();
+          }
+
+          // ---------- Header ----------
+          final title = domain?.name ?? "Tous les domaines";
+          final header = Row(
+            children: [
+              Expanded(
+                child: Text(title,
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(width: 8),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'time', label: Text('Temps')),
+                  ButtonSegment(value: 'habit', label: Text('Habitudes')),
+                ],
+                selected: {tab},
+                onSelectionChanged: (s) => setSB(() => tab = s.first),
+              ),
+            ],
+          );
+
+          // ---------- Tuiles ----------
+          Widget _buildTimeTile(Activity a) {
+            final now = DateTime.now();
+            final done24h = logic.totalForRangeByActivity(
+                a.id, DateTime(now.year, now.month, now.day), now);
+            final dayRatio = a.goalMin > 0
+                ? (done24h.inMinutes / a.goalMin).clamp(0.0, 1.0)
+                : 0.0;
+
+            final w = logic.timeSliding(a.id, 7);
+            final m = logic.timeSliding(a.id, 30);
+
+            return ListTile(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              leading: MiniRing(
+                progress: dayRatio,
+                center: Text("${(dayRatio * 100).round()}%",
+                    style: const TextStyle(
+                        fontSize: 10, fontWeight: FontWeight.w700)),
+              ),
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(a.name,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700, fontSize: 16)),
+                  TinyBar(
+                    ratio: m.ratio,
+                    labelLeft:
+                        "Mois ${fmtCompactFromMin(m.doneMin)} / ${fmtCompactFromMin(m.targetMin)}",
+                  ),
+                  TinyBar(
+                    ratio: w.ratio,
+                    labelLeft:
+                        "Sem ${fmtCompactFromMin(w.doneMin)} / ${fmtCompactFromMin(w.targetMin)}",
+                    padding: const EdgeInsets.only(top: 2),
+                  ),
+                ],
+              ),
+              trailing: FilledButton.icon(
+                onPressed: () {
+                  logic.start(a.id);
+                  Navigator.pop(ctx);
+                },
+                icon: const Icon(Icons.play_arrow),
+                label: const Text("Start"),
+              ),
+            );
+          }
+
+          Widget _buildHabitTile(Activity a) {
+            final now = DateTime.now();
+            final today = DateTime(now.year, now.month, now.day);
+
+            // Totaux (jour/semaine/mois) + cibles déduites
+            final dH = logic.habitSliding(a.id, 1);
+            final wH = logic.habitSliding(a.id, 7);
+            final mH = logic.habitSliding(a.id, 30);
+            final quotaD = logic.dayQuotaFor(a); // cible jour (déduite)
+            final tgtW = logic.weekTargetFrom(a); // cible semaine (déduite)
+            final tgtM = logic.monthTargetFrom(a); // cible mois (déduite)
+
+            final f = a.habitFreq ?? HabitFreq.monthly;
+// ringRatio
+            final double ringRatio = (f == HabitFreq.daily)
+                ? (quotaD > 0
+                    ? ((dH.done / quotaD).clamp(0.0, 1.0)).toDouble()
+                    : 0.0)
+                : (f == HabitFreq.weekly)
+                    ? (tgtW > 0
+                        ? ((wH.done / tgtW).clamp(0.0, 1.0)).toDouble()
+                        : 0.0)
+                    : (tgtM > 0
+                        ? ((mH.done / tgtM).clamp(0.0, 1.0)).toDouble()
+                        : 0.0);
+
+            final isDayPrimary = f == HabitFreq.daily;
+            final isWeekPrimary = f == HabitFreq.weekly;
+            final isMonthPrimary = f == HabitFreq.monthly;
+
+            final unit = (a.unit ?? '').isNotEmpty ? ' ${a.unit}' : '';
+
+            return ListTile(
+              onTap: () => _openHabitRationale(a),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              leading: MiniRing(
+                progress: ringRatio,
+                center: Text("${(ringRatio * 100).round()}%",
+                    style: const TextStyle(
+                        fontSize: 11, fontWeight: FontWeight.w700)),
+              ),
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(a.name,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700, fontSize: 16)),
+                  Opacity(
+                    opacity: isMonthPrimary ? 1.0 : .45,
+                    child: TinyBar(
+                      ratio: tgtM > 0 ? (mH.done / tgtM).clamp(0, 1) : 0,
+                      labelLeft: "Mois ${mH.done} / $tgtM$unit",
+                    ),
+                  ),
+                  Opacity(
+                    opacity: isWeekPrimary ? 1.0 : .45,
+                    child: TinyBar(
+                      ratio: tgtW > 0 ? (wH.done / tgtW).clamp(0, 1) : 0,
+                      labelLeft: "Semaine ${wH.done} / $tgtW$unit",
+                      padding: const EdgeInsets.only(top: 2),
+                    ),
+                  ),
+                  if (isDayPrimary)
+                    TinyBar(
+                      ratio: quotaD > 0 ? (dH.done / quotaD).clamp(0, 1) : 0,
+                      labelLeft: "Jour ${dH.done} / $quotaD$unit",
+                      padding: const EdgeInsets.only(top: 2),
+                    ),
+                ],
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    onPressed: () {
+                      setSB(() {
+                        _lockNow();
+                      });
+                      logic.incHabit(a.id, -1, today);
+                      setSB(() {});
+                      _unlockSoon(setSB);
+
+                      final act = logic.state.activities
+                          .firstWhere((x) => x.id == a.id);
+                      final tgt = effectiveTarget(act); // ← unifié
+                      if ((tgt ?? 0) > 0 &&
+                          logic.habitValueOn(a.id, today) >= (tgt ?? 0)) {
+                        logic.movePlannedToTomorrowIfPresent(
+                            PlanKind.habit, a.id,
+                            addIfMissing: true);
+                      }
+                    },
+                    icon: const Icon(Icons.remove),
+                  ),
+                  IconButton(
+                    onPressed: () {
+                      setSB(() {
+                        _lockNow();
+                      });
+                      logic.incHabit(a.id, 1, today);
+                      setSB(() {});
+                      _unlockSoon(setSB);
+
+                      final act = logic.state.activities
+                          .firstWhere((x) => x.id == a.id);
+                      final tgt = effectiveTarget(act); // ← unifié
+                      if ((tgt ?? 0) > 0 &&
+                          logic.habitValueOn(a.id, today) >= (tgt ?? 0)) {
+                        logic.movePlannedToTomorrowIfPresent(
+                            PlanKind.habit, a.id,
+                            addIfMissing: true);
+                      }
+                    },
+                    icon: const Icon(Icons.add),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          // ---------- Rendu des sections ----------
+          final list = ListView(
+            controller: scrollCtrl,
+            padding: const EdgeInsets.only(bottom: 16),
+            children: [
+              if (under.isNotEmpty) _sectionTitle("À rattraper"),
+              ...List.generate(under.length, (i) {
+                final a = under[i];
+                final tile = a.isHabit ? _buildHabitTile(a) : _buildTimeTile(a);
+                return _wrapTile(a, i, under.length, tile);
+              }),
+              if (over.isNotEmpty && under.isNotEmpty)
+                const SizedBox(height: 8),
+              if (over.isNotEmpty) _sectionTitle("Déjà atteint"),
+              ...List.generate(over.length, (i) {
+                final a = over[i];
+                final tile = a.isHabit ? _buildHabitTile(a) : _buildTimeTile(a);
+                return _wrapTile(a, i, over.length, tile);
+              }),
+              if (under.isEmpty && over.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Center(child: Text("Rien à afficher.")),
+                ),
+            ],
+          );
+
+          final body = Padding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 8,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom,
+            ),
+            child: Column(
+              children: [
+                header,
+                const SizedBox(height: 8),
+                Expanded(child: list),
+              ],
+            ),
+          );
+
+          return Scaffold(
+            backgroundColor: Colors.transparent,
+            body: body,
+            floatingActionButton: FloatingActionButton.extended(
+              onPressed: () async {
+                final isHabit = (tab == 'habit');
+                await _createActivityDialog(
+                    domainId: domainId, isHabit: isHabit);
+                setSB(() {});
+              },
+              icon: Icon(tab == 'habit' ? Icons.add_task : Icons.timelapse),
+              label: Text(
+                  tab == 'habit' ? "Nouvelle routine" : "Nouvelle activité"),
+            ),
+            floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+          );
+        });
+      },
+    );
   }
 
-  showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
-    backgroundColor: cs.surface,
-    builder: (ctx) {
-      String tab = (focus == 'habit') ? 'habit' : 'time';
-      final scrollCtrl = ScrollController();
-
-      return StatefulBuilder(builder: (ctx, setSB) {
-        // ---------- Helpers “Option B” (primaire) ----------
-        double _habitPrimaryRatio(Activity a) {
-          final d = logic.habitSliding(a.id, 1).ratio;
-          final w = logic.habitSliding(a.id, 7).ratio;
-          final m = logic.habitSliding(a.id, 30).ratio;
-          final f = a.habitFreq ?? HabitFreq.monthly;        // par défaut: mois
-          return (f == HabitFreq.daily) ? d : (f == HabitFreq.weekly ? w : m);
-        }
-        bool _habitReached(Activity a) => _habitPrimaryRatio(a) >= 1.0;
-        int _cmpByExit(Activity a, Activity b) {
-          final ra = 1.0 - _habitPrimaryRatio(a);
-          final rb = 1.0 - _habitPrimaryRatio(b);
-          return ra.compareTo(rb); // plus proche des 100% en haut
-        }
-
-        // ---------- UI helpers ----------
-        Widget _sectionTitle(String text) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 12.0),
-          child: Text(
-            text,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              color: Theme.of(context).colorScheme.onSurface.withOpacity(.6),
-            ),
-          ),
-        );
-
-        Widget _wrapTile(Activity a, int i, int len, Widget tile) => KeyedSubtree(
-          key: ValueKey(a.id),
-          child: Column(
-            children: [
-              if (i == 0) const SizedBox(height: 4),
-              tile,
-              if (i < len - 1) const Divider(height: 8),
-            ],
-          ),
-        );
-
-        // ---------- Source triée ----------
-        final bool isGlobal   = (domain == null);
-        final bool isHabitsTab= (tab == 'habit');
-
-        final base = isHabitsTab
-          ? logic.listUnderCapSorted(
-              domainId: domainId, habits: true,
-              onlyUnderCap: false, dailyStrict: false)
-          : logic.listUnderCapSorted(
-              domainId: domainId, habits: false,
-              onlyUnderCap: false, dailyStrict: false);
-
-        // ---------- Split under/over ----------
-        List<Activity> under, over;
-        if (isHabitsTab) {
-          // Habitudes : séparation via la primaire
-          under = base.where((a) => !_habitReached(a)).toList();
-          over  = base.where(_habitReached).toList();
-          // tri “sortie la plus proche” en haut
-          under.sort(_cmpByExit);
-          over.sort(_cmpByExit);
-          // Global : on masque les atteintes (on ne montre que under)
-          if (isGlobal) { over = const []; }
-        } else {
-          // Temps : on garde ta règle existante
-          if (isGlobal) {
-            under = base.where((a) => !isTimeOverCap(logic, a, dailyStrict: true)).toList();
-            over  = base.where((a) =>  isTimeOverCap(logic, a, dailyStrict: true)).toList();
-          } else {
-            under = base.where((a) => !isTimeOverCap(logic, a, dailyStrict: false)).toList();
-            over  = base.where((a) =>  isTimeOverCap(logic, a, dailyStrict: false)).toList();
-          }
-        }
-
-        // ---------- Lock d'ordre visuel pendant +/− ----------
-        if (_lockActive) {
-          final byId = {for (final a in base) a.id: a};
-          under = _lockUnderIds.map((id) => byId[id]).whereType<Activity>().toList();
-          over  = _lockOverIds .map((id) => byId[id]).whereType<Activity>().toList();
-        } else {
-          _lockUnderIds = under.map((a) => a.id).toList();
-          _lockOverIds  = over .map((a) => a.id).toList();
-        }
-
-        // ---------- Header ----------
-        final title = domain?.name ?? "Tous les domaines";
-        final header = Row(
-          children: [
-            Expanded(
-              child: Text(title,
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            ),
-            const SizedBox(width: 8),
-            SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: 'time',  label: Text('Temps')),
-                ButtonSegment(value: 'habit', label: Text('Habitudes')),
-              ],
-              selected: {tab},
-              onSelectionChanged: (s) => setSB(() => tab = s.first),
-            ),
-          ],
-        );
-
-        // ---------- Tuiles ----------
-        Widget _buildTimeTile(Activity a) {
-          final now = DateTime.now();
-          final done24h = logic.totalForRangeByActivity(
-              a.id, DateTime(now.year, now.month, now.day), now);
-          final dayRatio = a.goalMin > 0
-              ? (done24h.inMinutes / a.goalMin).clamp(0.0, 1.0)
-              : 0.0;
-
-          final w = logic.timeSliding(a.id, 7);
-          final m = logic.timeSliding(a.id, 30);
-
-          return ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            leading: MiniRing(
-              progress: dayRatio,
-              center: Text("${(dayRatio * 100).round()}%",
-                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
-            ),
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(a.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-                TinyBar(
-                  ratio: m.ratio,
-                  labelLeft: "Mois ${fmtCompactFromMin(m.doneMin)} / ${fmtCompactFromMin(m.targetMin)}",
-                ),
-                TinyBar(
-                  ratio: w.ratio,
-                  labelLeft: "Sem ${fmtCompactFromMin(w.doneMin)} / ${fmtCompactFromMin(w.targetMin)}",
-                  padding: const EdgeInsets.only(top: 2),
-                ),
-              ],
-            ),
-            trailing: FilledButton.icon(
-              onPressed: () { logic.start(a.id); Navigator.pop(ctx); },
-              icon: const Icon(Icons.play_arrow), label: const Text("Start"),
-            ),
-          );
-        }
-
-        Widget _buildHabitTile(Activity a) {
-          final now    = DateTime.now();
-          final today  = DateTime(now.year, now.month, now.day);
-
-          // Totaux (jour/semaine/mois) + cibles déduites
-          final dH      = logic.habitSliding(a.id, 1);
-          final wH      = logic.habitSliding(a.id, 7);
-          final mH      = logic.habitSliding(a.id, 30);
-          final quotaD  = logic.dayQuotaFor(a);     // cible jour (déduite)
-          final tgtW    = logic.weekTargetFrom(a);  // cible semaine (déduite)
-          final tgtM    = logic.monthTargetFrom(a); // cible mois (déduite)
-
-          final f = a.habitFreq ?? HabitFreq.monthly;
-// ringRatio
-final double ringRatio = (f == HabitFreq.daily)
-    ? (quotaD > 0 ? ((dH.done / quotaD).clamp(0.0, 1.0)).toDouble() : 0.0)
-    : (f == HabitFreq.weekly)
-        ? (tgtW > 0 ? ((wH.done / tgtW).clamp(0.0, 1.0)).toDouble() : 0.0)
-        : (tgtM > 0 ? ((mH.done / tgtM).clamp(0.0, 1.0)).toDouble() : 0.0);
-
-          final isDayPrimary   = f == HabitFreq.daily;
-          final isWeekPrimary  = f == HabitFreq.weekly;
-          final isMonthPrimary = f == HabitFreq.monthly;
-
-          final unit = (a.unit ?? '').isNotEmpty ? ' ${a.unit}' : '';
-
-          return ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            leading: MiniRing(
-              progress: ringRatio,
-              center: Text("${(ringRatio * 100).round()}%",
-                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
-            ),
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(a.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-
-                Opacity(
-                  opacity: isMonthPrimary ? 1.0 : .45,
-                  child: TinyBar(
-                    ratio: tgtM > 0 ? (mH.done / tgtM).clamp(0, 1) : 0,
-                    labelLeft: "Mois ${mH.done} / $tgtM$unit",
-                  ),
-                ),
-                Opacity(
-                  opacity: isWeekPrimary ? 1.0 : .45,
-                  child: TinyBar(
-                    ratio: tgtW > 0 ? (wH.done / tgtW).clamp(0, 1) : 0,
-                    labelLeft: "Semaine ${wH.done} / $tgtW$unit",
-                    padding: const EdgeInsets.only(top: 2),
-                  ),
-                ),
-                if (isDayPrimary)
-                  TinyBar(
-                    ratio: quotaD > 0 ? (dH.done / quotaD).clamp(0, 1) : 0,
-                    labelLeft: "Jour ${dH.done} / $quotaD$unit",
-                    padding: const EdgeInsets.only(top: 2),
-                  ),
-              ],
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  onPressed: () {
-                    setSB(() { _lockNow(); });
-                    logic.incHabit(a.id, -1, today);
-                    setSB(() {});
-                    _unlockSoon(setSB);
-
-                    final act = logic.state.activities.firstWhere((x) => x.id == a.id);
-                    final tgt = effectiveTarget(act); // ← unifié
-                    if ((tgt ?? 0) > 0 && logic.habitValueOn(a.id, today) >= (tgt ?? 0)) {
-                      logic.movePlannedToTomorrowIfPresent(PlanKind.habit, a.id, addIfMissing: true);
-                    }
-                  },
-                  icon: const Icon(Icons.remove),
-                ),
-                IconButton(
-                  onPressed: () {
-                    setSB(() { _lockNow(); });
-                    logic.incHabit(a.id, 1, today);
-                    setSB(() {});
-                    _unlockSoon(setSB);
-
-                    final act = logic.state.activities.firstWhere((x) => x.id == a.id);
-                    final tgt = effectiveTarget(act); // ← unifié
-                    if ((tgt ?? 0) > 0 && logic.habitValueOn(a.id, today) >= (tgt ?? 0)) {
-                      logic.movePlannedToTomorrowIfPresent(PlanKind.habit, a.id, addIfMissing: true);
-                    }
-                  },
-                  icon: const Icon(Icons.add),
-                ),
-              ],
-            ),
-          );
-        }
-
-        // ---------- Rendu des sections ----------
-        final list = ListView(
-          controller: scrollCtrl,
-          padding: const EdgeInsets.only(bottom: 16),
-          children: [
-            if (under.isNotEmpty) _sectionTitle("À rattraper"),
-            ...List.generate(under.length, (i) {
-              final a = under[i];
-              final tile = a.isHabit ? _buildHabitTile(a) : _buildTimeTile(a);
-              return _wrapTile(a, i, under.length, tile);
-            }),
-
-            if (over.isNotEmpty && under.isNotEmpty) const SizedBox(height: 8),
-
-            if (over.isNotEmpty) _sectionTitle("Déjà atteint"),
-            ...List.generate(over.length, (i) {
-              final a = over[i];
-              final tile = a.isHabit ? _buildHabitTile(a) : _buildTimeTile(a);
-              return _wrapTile(a, i, over.length, tile);
-            }),
-
-            if (under.isEmpty && over.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(child: Text("Rien à afficher.")),
-              ),
-          ],
-        );
-
-        final body = Padding(
-          padding: EdgeInsets.only(
-            left: 16, right: 16, top: 8,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom,
-          ),
-          child: Column(
-            children: [
-              header,
-              const SizedBox(height: 8),
-              Expanded(child: list),
-            ],
-          ),
-        );
-
-        return Scaffold(
-          backgroundColor: Colors.transparent,
-          body: body,
-          floatingActionButton: FloatingActionButton.extended(
-            onPressed: () async {
-              final isHabit = (tab == 'habit');
-              await _createActivityDialog(domainId: domainId, isHabit: isHabit);
-              setSB(() {});
-            },
-            icon: Icon(tab == 'habit' ? Icons.add_task : Icons.timelapse),
-            label: Text(tab == 'habit' ? "Nouvelle routine" : "Nouvelle activité"),
-          ),
-          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-        );
-      });
-    },
-  );
-}
   Color _colorForProgress(double p, BuildContext ctx) {
     if (p >= 0.90) return Colors.green;
     if (p >= 0.50) return Colors.orange;
