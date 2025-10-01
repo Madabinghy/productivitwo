@@ -164,6 +164,35 @@ class AppLogic {
   final void Function() onChange;
   AppLogic(this.state, this.onChange);
 
+// Sum of HABIT "done" over the last N days, for a domain (or all)
+  int sumHabitDone(String? domainId, int days) {
+    final acts = state.activities.where(
+        (a) => a.isHabit && (domainId == null || a.domainId == domainId));
+    int done = 0;
+    for (final a in acts) {
+      final s = habitSliding(a.id, days); // your existing sliding window
+      done += s.done;
+    }
+    return done;
+  }
+
+// Sum of HABIT targets for the period, using the new helpers
+  int sumHabitTarget(String? domainId, int days) {
+    final acts = state.activities.where(
+        (a) => a.isHabit && (domainId == null || a.domainId == domainId));
+    int tgt = 0;
+    for (final a in acts) {
+      if (days == 1) {
+        tgt += dayQuotaFor(a); // ← derived daily quota
+      } else if (days == 7) {
+        tgt += weekTargetFrom(a); // ← derived weekly target
+      } else if (days == 30) {
+        tgt += monthTargetFrom(a); // ← derived monthly target
+      }
+    }
+    return tgt;
+  }
+
 // — Helpers “effective” pour routines —
   HabitFreq effectiveHabitFreq(Activity a) {
     // si tu gardes dailyTarget (legacy), on le mappe sur “daily”

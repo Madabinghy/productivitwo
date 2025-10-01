@@ -212,8 +212,9 @@ class _StatsViewState extends State<StatsView> {
     final hours = widget.logic.timeHoursPerDay(start, days, domainId: domainId);
     final habits =
         widget.logic.habitCountPerDay(start, days, domainId: domainId);
-    final habitDailyTarget = widget.logic.habitDailyTarget(domainId: domainId);
-
+    //final habitDailyTarget = widget.logic.habitDailyTarget(domainId: domainId);
+// AFTER (derived from the new habit model)
+final habitDailyTarget = widget.logic.sumHabitTarget(domainId, 1);
     final habitTotalTarget = habitDailyTarget * days;
     // avant de construire les charts :
     final maxHoursY =
@@ -464,6 +465,7 @@ class _StatsViewState extends State<StatsView> {
       ],
     );
   }
+  
 }
 
 void main() => runApp(const ProductivitwoApp());
