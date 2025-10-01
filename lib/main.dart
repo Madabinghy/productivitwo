@@ -2047,6 +2047,84 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         final scrollCtrl = ScrollController();
 
         return StatefulBuilder(builder: (ctx, setSB) {
+
+          Future<void> showTimeExplainer(
+  BuildContext context, {
+  required Activity a,
+  required AppLogic logic,
+}) async {
+  final cs = Theme.of(context).colorScheme;
+
+  // Stats glissantes utiles
+  final d = logic.timeSliding(a.id, 1);   // ~jour civil (ou 24h glissant selon ton impl)
+  final w = logic.timeSliding(a.id, 7);
+  final m = logic.timeSliding(a.id, 30);
+
+  final goal = a.goalMin; // objectif/jour courant (minutes)
+  String fmtMin(int min) => "${min ~/ 60}h ${min % 60}m";
+
+  // Petites lignes pédagogiques
+  final howItWorks =
+      "Principe : tu as un objectif quotidien (en minutes). "
+      "La jauge de l’anneau montre le progrès d’aujourd’hui. "
+      "Les barres indiquent tes cumuls récent (semaine/mois) vs leurs cibles dérivées.";
+
+  final tuning =
+      "Ajustement auto : si tu dépasses régulièrement l’objectif (≥120% sur plusieurs jours), "
+      "la cible augmente par petits pas. À l’inverse, si tu es souvent en-dessous (≤85%), elle descend. "
+      "L’algorithme vise un objectif réaliste proche de ta cadence réelle.";
+
+  await showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (ctx) {
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(a.name,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: cs.onSurface,
+                  )),
+              const SizedBox(height: 8),
+
+              // Objectif du jour
+              Text("Cible quotidienne : ${fmtMin(goal)}",
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+
+              // Récap rapides
+              Text("Aujourd’hui : ${fmtMin(d.doneMin)} / ${fmtMin(goal)}"),
+              Text("Semaine (7j) : ${fmtMin(w.doneMin)} / ${fmtMin(w.targetMin)}"),
+              Text("Mois (30j) : ${fmtMin(m.doneMin)} / ${fmtMin(m.targetMin)}"),
+              const SizedBox(height: 16),
+
+              Text(howItWorks),
+              const SizedBox(height: 12),
+              Text(tuning),
+
+              const SizedBox(height: 16),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text("OK"),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
           void _openHabitRationale(Activity a) {
             final d = logic.habitSliding(a.id, 1);
             final w = logic.habitSliding(a.id, 7);
@@ -2067,28 +2145,25 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             String primaryLine;
             String rules;
             if (freq == HabitFreq.daily) {
-              primaryLine =
-                  "Fréquence active : quotidienne \nCible ${dayTarget} $unit / jour.\n\n"
-                  "Aujourd’hui : ${d.done} $unit / ${d.target}  •  "
-                  "Semaine : ${w.done} $unit / ${w.target}  •  "
-                  "Mois : ${m.done} $unit / ${m.target}.";
-              rules =
-                  "Règles : au-delà de 120% sur le mois, la cible monte automatiquement.\nPatientez le temps d'atteindre votre vitesse de croisière.\nVers ~4/mois on devient « hebdomadaire »\nvers ~30/mois, « quotidienne ».";
+              primaryLine = "Fréquence active : quotidienne \n"
+                  "Cible $dayTarget $unit / jour.\n\n"
+                  "Aujourd’hui : ${d.done} $unit / $dayTarget  •  "
+                  "Semaine : ${w.done} $unit / $weekTarget  •  "
+                  "Mois : ${m.done} $unit / $monthTarget.";
             } else if (freq == HabitFreq.weekly) {
-              primaryLine =
-                  "Fréquence active : hebdomadaire \nCible ${weekTarget} $unit / semaine.\n"
-                  "Semaine : ${w.done} $unit / ${w.target}  •  "
-                  "Mois : ${m.done} $unit / ${m.target}.";
-              rules =
-                  "Règles : au-delà de 120% sur le mois, la cible monte automatiquement.\nPatientez le temps d'atteindre votre vitesse de croisière.\nVers ~4/mois on devient « hebdomadaire »\nvers ~30/mois, « quotidienne ».";
+              primaryLine = "Fréquence active : hebdomadaire \n"
+                  "Cible $weekTarget $unit / semaine.\n"
+                  "Semaine : ${w.done} $unit / $weekTarget  •  "
+                  "Mois : ${m.done} $unit / $monthTarget.";
             } else {
-              primaryLine =
-                  "Fréquence active : mensuelle \nCible ${monthTarget} $unit / mois.\n"
-                  "• Mois : ${m.done} $unit / ${m.target}\n"
-                  "• Semaine : ${w.done} $unit / ${w.target}.";
-              rules =
-                  "Règles : au-delà de 120% sur le mois, la cible monte automatiquement.\nPatientez le temps d'atteindre votre vitesse de croisière.\nVers ~4/mois on devient « hebdomadaire »\nvers ~30/mois, « quotidienne ».";
+              primaryLine = "Fréquence active : mensuelle \n"
+                  "Cible $monthTarget $unit / mois.\n"
+                  "• Mois : ${m.done} $unit / $monthTarget\n"
+                  "• Semaine : ${w.done} $unit / $weekTarget.";
             }
+
+            rules =
+                "Règles : au-delà de 120% sur le mois, la cible monte automatiquement.\nPatientez le temps d'atteindre votre vitesse de croisière.\nVers ~4/mois on devient « hebdomadaire »\nvers ~30/mois, « quotidienne ».";
 
             showModalBottomSheet(
               context: ctx,
@@ -2266,6 +2341,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             final m = logic.timeSliding(a.id, 30);
 
             return ListTile(
+              onTap: () => showTimeExplainer(context, a: a, logic: logic),
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               leading: MiniRing(
