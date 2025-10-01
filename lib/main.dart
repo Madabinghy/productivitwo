@@ -548,20 +548,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _runDevScan() async {
-    final bumps = await logic.scanAllActivities();
-    await logic.autoAdjustStandardsRealtime();
-    setState(() {});
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("Scan global terminé : $bumps objectif(s) ajusté(s)"),
-        duration: const Duration(seconds: 2),
-      ),
-    );
-    await store.save(_state!); // sauve le nouvel état
-  }
-
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -617,7 +603,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         _domainAutoDeltas = {};
         for (final ch in changes.where((c) => c.kind == 'activity')) {
           final act = _state!.activities.firstWhere((a) => a.id == ch.id,
-              orElse: () => Activity(domainId: '', name: 'deleted'));
+              orElse: () =>
+                  Activity(domainId: '', name: 'deleted', habitTarget: 1));
           final dom = _state!.domains.firstWhere((d) => d.id == act.domainId,
               orElse: () => Domain(name: 'deleted'));
           if (dom.autoGoal) {
@@ -912,7 +899,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             domainId: selectedDomainId!,
             name: name,
             type: 'time',
-            goalMin: goal));
+            goalMin: goal,
+            habitTarget: 1));
       } else {
         final unit =
             unitCtrl.text.trim().isEmpty ? 'unités' : unitCtrl.text.trim();
@@ -922,7 +910,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             name: name,
             type: 'habit',
             unit: unit,
-            dailyTarget: target));
+            dailyTarget: target,
+            habitTarget: 1));
       }
       await _saveAndRefresh();
     }
@@ -1027,7 +1016,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     if (_state == null) return null;
     return _state!.activities.firstWhere(
       (a) => a.id == id,
-      orElse: () => Activity(domainId: '', name: 'Activité supprimée'),
+      orElse: () =>
+          Activity(domainId: '', name: 'Activité supprimée', habitTarget: 1),
     );
   }
 
@@ -1116,10 +1106,11 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               onPressed: _openInboxSheet,
               icon: const Icon(Icons.inbox_outlined),
             ),
+            // Dans ton AppBar actions:
             IconButton(
-              tooltip: "Scan global (dev)",
-              onPressed: _runDevScan,
-              icon: const Icon(Icons.bug_report_outlined),
+              tooltip: 'Panneau Dev',
+              icon: const Icon(Icons.developer_mode),
+              onPressed: () => _openDevPanel(context),
             ),
           ],
         ),
@@ -1152,6 +1143,236 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         ],
       ),
     );
+  }
+
+  void _openDevPanel(BuildContext context) {
+    final habits = _state!.activities.where((a) => a.isHabit).toList();
+    habits.sort((a, b) => a.name.compareTo(b.name));
+
+    // petits contrôleurs pour le form
+    Activity? _selectedHabit = habits.isNotEmpty ? habits.first : null;
+    final daysCtrl = TextEditingController(text: '5');
+    final perDayCtrl = TextEditingController(text: '1');
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSB) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 12,
+                bottom: 16 + MediaQuery.of(ctx).viewInsets.bottom,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Panneau Dev',
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 8),
+
+                  // Choix de l’habitude
+                  if (habits.isEmpty)
+                    const Text(
+                        "Aucune routine trouvée. Crée d'abord une habitude."),
+                  if (habits.isNotEmpty) ...[
+                    const Text('Routine cible'),
+                    const SizedBox(height: 6),
+                    DropdownButton<Activity>(
+                      value: _selectedHabit,
+                      isExpanded: true,
+                      items: habits.map((a) {
+                        final freq = a.habitFreq?.name ?? 'daily?';
+                        final tgt = a.habitTarget ?? (a.dailyTarget ?? 0);
+                        return DropdownMenuItem(
+                          value: a,
+                          child: Text(
+                            '${a.name}  ·  $freq x$tgt',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (a) => setSB(() => _selectedHabit = a),
+                    ),
+                  ],
+
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: daysCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Jours (dernier N jours)',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: perDayCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Incréments / jour',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      FilledButton.icon(
+                        icon: const Icon(Icons.add_reaction),
+                        label: const Text('Créer routine de test (auto)'),
+                        onPressed: () {
+                          final d = _state!.domains.first;
+                          final h = Activity(
+                            domainId: d.id,
+                            name: 'TEST auto',
+                            type: 'habit',
+                            habitFreq: HabitFreq.monthly, // démarre à 1/mois
+                            habitTarget: 1,
+                            autoTune: true,
+                          );
+                          _state!.activities.add(h);
+                          setState(() => logic.onChange());
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Routine test créée')),
+                          );
+                          // rafraîchir la liste locale
+                          habits.add(h);
+                          habits.sort((a, b) => a.name.compareTo(b.name));
+                          setSB(() => _selectedHabit = h);
+                        },
+                      ),
+                      FilledButton.icon(
+                        icon: const Icon(Icons.history),
+                        label: const Text('Injecter historique'),
+                        onPressed: (_selectedHabit == null)
+                            ? null
+                            : () async {
+                                final days =
+                                    int.tryParse(daysCtrl.text.trim()) ?? 5;
+                                final per =
+                                    int.tryParse(perDayCtrl.text.trim()) ?? 1;
+                                await logic.devAddHabitHistory(
+                                    _selectedHabit!.id,
+                                    days: days,
+                                    perDay: per);
+                                if (mounted) {
+                                  setState(() {}); // refresh UI globale
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                        content: Text(
+                                            'Ajouté $per/j sur $days jours')),
+                                  );
+                                }
+                              },
+                      ),
+                      FilledButton.icon(
+                        icon: const Icon(Icons.tune),
+                        label: const Text('Scan global (objectifs)'),
+                        onPressed: () async {
+                          final changes = await logic.reviewGoals(force: true);
+                          if (mounted) {
+                            setState(() {}); // rafraîchir l’UI
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                  content: Text(
+                                      'Scan exécuté (${changes.length} changements)')),
+                            );
+                          }
+                        },
+                      ),
+                      FilledButton.icon(
+                        icon: const Icon(Icons.list_alt),
+                        label: const Text('Log 7j/30j'),
+                        onPressed: () {
+                          final hs = _state!.activities.where((a) => a.isHabit);
+                          for (final a in hs) {
+                            final w = logic.habitSliding(a.id, 7);
+                            final m = logic.habitSliding(a.id, 30);
+                            debugPrint('[HAB] ${a.name} '
+                                'freq=${a.habitFreq} tgt=${a.habitTarget ?? a.dailyTarget} '
+                                '7j=${w.done}/${w.target} 30j=${m.done}/${m.target}');
+                          }
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Voir la console')),
+                          );
+                        },
+                      ),
+                      FilledButton.icon(
+                        icon: const Icon(Icons.delete_forever),
+                        label: const Text('Reset app (tout effacer)'),
+                        style:
+                            FilledButton.styleFrom(backgroundColor: Colors.red),
+                        onPressed: () async {
+                          // stop session en cours si tu veux être clean
+                          logic.stopActive();
+
+                          await store.wipe(); // 1) supprime le fichier
+                          setState(() => _state =
+                              null); // 2) vide l’état pour montrer le loader
+                          final s =
+                              await store.loadOrInit(); // 3) recrée état seed
+                          setState(() {
+                            _state = s;
+                            logic = AppLogic(_state!, _saveAndRefresh);
+                            // (optionnel) relancer un reviewGoals si tu veux, mais pas nécessaire
+                          });
+
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text('Données réinitialisées')),
+                            );
+                          }
+                        },
+                      )
+                    ],
+                  ),
+
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Fermer'),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  int? effectiveTarget(Activity act) {
+    switch (act.habitFreq) {
+      case HabitFreq.daily:
+        return act.habitTarget;
+      case HabitFreq.weekly:
+        return act.habitTarget;
+      case HabitFreq.monthly:
+        return act.habitTarget;
+      default:
+        return 0;
+    }
   }
 
   void _openInboxSheet() {
@@ -1663,9 +1884,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     required bool isHabit,
   }) async {
     final nameCtrl = TextEditingController();
-    final unitCtrl = TextEditingController();
-    final targetCtrl = TextEditingController(text: "1");
-    final goalCtrl = TextEditingController(text: "15");
+    final unitCtrl = TextEditingController(); // seulement pertinent pour habit
     String? selectedDomainId = domainId ??
         (_state!.domains.isNotEmpty ? _state!.domains.first.id : null);
 
@@ -1682,6 +1901,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                   DropdownButtonFormField<String>(
                     value: selectedDomainId,
                     onChanged: (v) => selectedDomainId = v,
+                    isExpanded: true,
                     decoration: const InputDecoration(labelText: "Domaine"),
                     items: _state!.domains
                         .map((d) =>
@@ -1698,21 +1918,18 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                   TextField(
                     controller: unitCtrl,
                     decoration: const InputDecoration(
-                        labelText: "Unité (ex: verres, pompes)"),
+                      labelText: "Unité (facultatif) ex: verres, pompes",
+                    ),
                   ),
                   const SizedBox(height: 8),
-                  TextField(
-                    controller: targetCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                        labelText: "Objectif quotidien (nombre)"),
+                  const Text(
+                    "Objectif automatique : 1 / mois (s’ajuste tout seul chaque jour).",
+                    style: TextStyle(fontSize: 12),
                   ),
                 ] else ...[
-                  TextField(
-                    controller: goalCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                        labelText: "Objectif/jour (minutes)"),
+                  const Text(
+                    "Objectif automatique : 1 minute (s’ajuste tout seul chaque jour).",
+                    style: TextStyle(fontSize: 12),
                   ),
                 ],
               ],
@@ -1720,32 +1937,39 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text("Annuler")),
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text("Annuler"),
+            ),
             FilledButton(
               onPressed: () {
                 final name = nameCtrl.text.trim();
                 if (name.isEmpty || selectedDomainId == null) return;
+
                 if (isHabit) {
-                  final tgt = int.tryParse(targetCtrl.text.trim()) ?? 0;
-                  _state!.activities.add(Activity(
+                  // ROUTINE : 1 / mois par défaut (auto-tune actif)
+                  final a = Activity(
                     domainId: selectedDomainId!,
                     name: name,
                     type: 'habit',
+                    habitFreq: HabitFreq.monthly, // 👈 1 / mois
+                    habitTarget: 1,
+                    autoTune: true,
                     unit: unitCtrl.text.trim().isEmpty
                         ? null
                         : unitCtrl.text.trim(),
-                    dailyTarget: tgt,
-                  ));
+                  );
+                  _state!.activities.add(a);
                 } else {
-                  final goal = int.tryParse(goalCtrl.text.trim()) ?? 15;
-                  _state!.activities.add(Activity(
+                  // ACTIVITÉ TEMPS : 1 minute par défaut
+                  final a = Activity(
                     domainId: selectedDomainId!,
                     name: name,
                     type: 'time',
-                    goalMin: goal,
-                  ));
+                    goalMin: 1, habitTarget: 1, // 👈 1 min
+                  );
+                  _state!.activities.add(a);
                 }
+
                 _saveAndRefresh();
                 Navigator.of(ctx).pop();
               },
@@ -1754,303 +1978,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
           ],
         );
       },
-    );
-  }
-
-  void _openLauncher() {
-    String? launcherDomainId =
-        selectedDomainId; // point de départ = domaine courant
-    final searchCtrl = TextEditingController();
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (ctx) {
-        List<Activity> _filtered() {
-          final q = searchCtrl.text.trim().toLowerCase();
-          Iterable<Activity> items = _state!.activities;
-          if (launcherDomainId != null) {
-            items = items.where((a) => a.domainId == launcherDomainId);
-          }
-          if (q.isNotEmpty) {
-            items = items.where((a) => a.name.toLowerCase().contains(q));
-          }
-          final list = items.toList();
-          list.sort((a, b) {
-            if (a.isHabit == b.isHabit) return a.name.compareTo(b.name);
-            return a.isHabit ? 1 : -1;
-          });
-          return list;
-        }
-
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            top: 8,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
-          ),
-          child: StatefulBuilder(
-            builder: (ctx, setSB) {
-              final domains = _state!.domains;
-              //final acts = _filtered();
-              final acts = logic.listUnderCapSorted(
-                  domainId: launcherDomainId, habits: false); // temps
-              final habits = logic.listUnderCapSorted(
-                  domainId: launcherDomainId, habits: true); // routines
-
-              Widget hint(StateSetter setSB) {
-                if (_launcherHintSeen) return const SizedBox.shrink();
-                final cs = Theme.of(ctx).colorScheme;
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: cs.surfaceVariant.withValues(
-                        alpha: 0.6), // ok si tu gardes l’API ancienne
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.lightbulb_outline),
-                      const SizedBox(width: 8),
-                      const Expanded(
-                        child: Text(
-                          "Astuce :\n• Tap activité = Start/Stop\n• Tap habitude = +1\n• Appui long = Modifier",
-                          style: TextStyle(fontSize: 13),
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () => _dismissLauncherHint(setSB), // <-- clé
-                        child: const Text("OK"),
-                      ),
-                    ],
-                  ),
-                );
-              }
-
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Titre + ajout
-                  Row(
-                    children: [
-                      const Text('Lanceur',
-                          style: TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.bold)),
-                      const Spacer(),
-                      IconButton(
-                        tooltip: 'Ajouter activité / habitude',
-                        onPressed: () async {
-                          Navigator.pop(ctx);
-                          await _addActivityDialog();
-                          _openLauncher(); // rouvre
-                        },
-                        icon: const Icon(Icons.add),
-                      ),
-                    ],
-                  ),
-
-                  // HINT
-                  hint(setSB),
-
-                  // Chips domaines
-                  SizedBox(
-                    height: 40,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: ChoiceChip(
-                            label: const Text('Tous'),
-                            selected: launcherDomainId == null,
-                            onSelected: (_) =>
-                                setSB(() => launcherDomainId = null),
-                          ),
-                        ),
-                        ...domains.map((d) => Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: ChoiceChip(
-                                label: Text(d.name),
-                                selected: launcherDomainId == d.id,
-                                onSelected: (_) =>
-                                    setSB(() => launcherDomainId = d.id),
-                              ),
-                            )),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Recherche
-                  TextField(
-                    controller: searchCtrl,
-                    onChanged: (_) => setSB(() {}),
-                    decoration: InputDecoration(
-                      hintText: 'Rechercher une activité…',
-                      prefixIcon: const Icon(Icons.search),
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                      isDense: true,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Liste
-                  Flexible(
-                    child: acts.isEmpty
-                        ? const Padding(
-                            padding: EdgeInsets.all(24),
-                            child: Text('Aucune activité. Ajoute-en avec le +'),
-                          )
-                        : ListView.separated(
-                            shrinkWrap: true,
-                            itemCount: acts.length,
-                            separatorBuilder: (_, __) =>
-                                const Divider(height: 8),
-                            itemBuilder: (_, i) {
-                              final a = acts[i];
-                              if (!a.isHabit) {
-                                final running = _state!.sessions.any((s) =>
-                                    s.activityId == a.id && s.endAt == null);
-                                return ListTile(
-                                  title: Text(a.name),
-                                  subtitle: Text("Objectif: ${a.goalMin} min"),
-                                  // tap = Start/Stop
-// Activité temps — tap
-                                  onTap: () {
-                                    final run = _state!.sessions.any((s) =>
-                                        s.activityId == a.id &&
-                                        s.endAt == null);
-                                    if (run) {
-                                      logic.stopActive(); // ne ferme pas
-                                      setSB(() {});
-                                    } else {
-                                      logic.start(a.id);
-                                      _dismissLauncherHint(
-                                          setSB); // <-- ajoute cette ligne
-                                      Navigator.of(ctx)
-                                          .pop(); // ferme le lanceur
-
-                                      Navigator.of(ctx)
-                                          .pop(); // ferme après Start
-                                    }
-                                  },
-
-                                  // long-press = éditer
-                                  onLongPress: () => _editActivityDialog(a),
-                                  trailing: FilledButton.icon(
-                                    onPressed: () {
-                                      final run = _state!.sessions.any((s) =>
-                                          s.activityId == a.id &&
-                                          s.endAt == null);
-                                      if (run) {
-                                        logic.stopActive();
-                                        setSB(() {});
-                                      } else {
-                                        logic.start(a.id);
-                                        Navigator.of(ctx)
-                                            .pop(); // ← auto-fermeture à START
-                                      }
-                                    },
-                                    icon: Icon(running
-                                        ? Icons.stop
-                                        : Icons.play_arrow),
-                                    label: Text(running ? 'Stop' : 'Start'),
-                                  ),
-                                );
-                              } else {
-                                final today = DateTime.now();
-                                final value = logic.habitValueOn(a.id, today);
-                                final target = a.dailyTarget ?? 1;
-                                return ListTile(
-                                  title: Text(a.name),
-                                  subtitle: Text(
-                                      "$target ${a.unit ?? ''} / jour • Réalisé: $value"),
-
-                                  // Habitude — tap / tap = +1
-                                  onTap: () {
-                                    logic.incHabit(a.id, 1, DateTime.now());
-                                    _dismissLauncherHint(setSB);
-                                  },
-
-                                  // long-press = éditer
-                                  onLongPress: () => _editActivityDialog(a),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
-                                          onPressed: () {
-                                            logic.incHabit(a.id, -1, today);
-                                            setSB(() {});
-                                          },
-                                          icon: const Icon(Icons.remove)),
-                                      IconButton(
-                                          onPressed: () {
-                                            logic.incHabit(a.id, 1, today);
-                                            setSB(() {});
-                                          },
-                                          icon: const Icon(Icons.add)),
-                                    ],
-                                  ),
-                                );
-                              }
-                            },
-                          ),
-                  ),
-                ],
-              );
-            },
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _wrapTile(Activity a, int i, int len, Widget tile) {
-    return KeyedSubtree(
-      key: ValueKey(a.id),
-      child: Column(
-        children: [
-          if (i == 0) const SizedBox(height: 4),
-          tile, // directement ta tuile
-          if (i < len - 1) const Divider(height: 8),
-        ],
-      ),
-    );
-  }
-
-  Widget _domainPickerRow(Domain domain) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-      child: Row(
-        children: [
-          const Text('Domaine : ', style: TextStyle(fontSize: 16)),
-          Expanded(
-            child: DropdownButton<String>(
-              isExpanded: true,
-              value: domain.id,
-              items: _state!.domains
-                  .map(
-                      (d) => DropdownMenuItem(value: d.id, child: Text(d.name)))
-                  .toList(),
-              onChanged: (v) => setState(() => selectedDomainId = v),
-            ),
-          ),
-          IconButton(
-            tooltip: 'Renommer',
-            onPressed: () => _renameDomainDialog(domain),
-            icon: const Icon(Icons.edit_outlined),
-          ),
-          IconButton(
-            tooltip: 'Supprimer',
-            onPressed: () => _deleteDomain(domain),
-            icon: const Icon(Icons.delete_outline),
-          ),
-        ],
-      ),
     );
   }
 
@@ -2314,14 +2241,19 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
           Widget _buildHabitTile(Activity a) {
             final now = DateTime.now();
             final today = DateTime(now.year, now.month, now.day);
-            final int doneToday = logic.habitValueOn(a.id, today);
+            //final int doneToday = logic.habitValueOn(a.id, today);
             final int targetDay = a.dailyTarget ?? 0;
-            final double ringRatio =
-                (targetDay > 0) ? (doneToday / targetDay).clamp(0.0, 1.0) : 0.0;
-
-            final wH = logic.habitSliding(a.id, 7);
-            final mH = logic.habitSliding(a.id, 30);
+/*             final double ringRatio =
+                (targetDay > 0) ? (doneToday / targetDay).clamp(0.0, 1.0) : 0.0; */
+            final quota = logic.dayQuotaFor(a);
+            final doneToday = logic.habitValueOn(a.id, today);
+            final ringRatio =
+                quota > 0 ? (doneToday / quota).clamp(0.0, 1.0) : 0.0;
             final unit = (a.unit ?? '').isNotEmpty ? ' ${a.unit}' : '';
+            final wH = logic.habitSliding(a.id, 7);
+            final wTarget = logic.weekTargetFrom(a);
+            final mH = logic.habitSliding(a.id, 30);
+            final mTarget = logic.monthTargetFrom(a);
 
             return ListTile(
               contentPadding:
@@ -2339,14 +2271,11 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                       style: const TextStyle(
                           fontWeight: FontWeight.w700, fontSize: 16)),
                   TinyBar(
-                    ratio: mH.ratio,
-                    labelLeft: "Mois ${mH.done} / ${mH.target}$unit",
-                  ),
+                      ratio: mTarget > 0 ? (mH.done / mTarget).clamp(0, 1) : 0,
+                      labelLeft: "Mois ${mH.done} / $mTarget"),
                   TinyBar(
-                    ratio: wH.ratio,
-                    labelLeft: "Semaine ${wH.done} / ${wH.target}$unit",
-                    padding: const EdgeInsets.only(top: 2),
-                  ),
+                      ratio: wTarget > 0 ? (wH.done / wTarget).clamp(0, 1) : 0,
+                      labelLeft: "Semaine ${wH.done} / $wTarget")
                 ],
               ),
               trailing: Row(
@@ -2365,8 +2294,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                       // Vérifie si routine atteinte et déplace
                       final act = logic.state.activities
                           .firstWhere((x) => x.id == a.id);
-                      final target = act.dailyTarget ?? 0;
-                      if (target > 0) {
+                      final target = effectiveTarget(act);
+                      if (target! > 0) {
                         final doneToday = logic.habitValueOn(a.id, today);
                         if (doneToday >= target) {
                           logic.movePlannedToTomorrowIfPresent(
@@ -2558,20 +2487,23 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     if (kind == 'time') {
       final goal = int.tryParse(goalCtrl.text.trim()) ?? 15;
       _state!.activities.add(Activity(
-          domainId: domainId, name: name, type: 'time', goalMin: goal));
+          domainId: domainId,
+          name: name,
+          type: 'time',
+          goalMin: goal,
+          habitTarget: 1));
     } else {
       final unit = unitCtrl.text.trim().isEmpty
           ? 'unités'
           : nameCtrl.text.trim().isEmpty
               ? 'unités'
               : unitCtrl.text.trim();
-      final target = int.tryParse(targetCtrl.text.trim()) ?? 1;
       _state!.activities.add(Activity(
           domainId: domainId,
           name: name,
           type: 'habit',
           unit: unit,
-          dailyTarget: target));
+          habitTarget: 1));
     }
     await _saveAndRefresh();
   }

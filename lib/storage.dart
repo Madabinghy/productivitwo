@@ -10,6 +10,14 @@ class FileStore {
     return File('${dir.path}/$_fileName');
   }
 
+  // NEW: supprime le fichier de données
+  Future<void> wipe() async {
+    final f = await _file();
+    if (await f.exists()) {
+      await f.delete();
+    }
+  }
+
   Future<AppState> loadOrInit() async {
     final f = await _file();
     if (await f.exists()) {
@@ -20,7 +28,7 @@ class FileStore {
     // Seed minimal
     final d = Domain(name: 'Production', autoGoal: true);
     final a = Activity(
-        domainId: d.id, name: 'Focus deep work', type: 'time', goalMin: 30);
+        domainId: d.id, name: 'Focus deep work', type: 'time', goalMin: 1, habitTarget: 1);
 
     final st = AppState(
       domains: [d],

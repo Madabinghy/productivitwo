@@ -5,6 +5,8 @@ const _uuid = Uuid();
 
 enum PlanKind { action, activityTime, habit }
 
+enum HabitFreq { daily, weekly, monthly }
+
 class DayPlanItem {
   String id;
   PlanKind kind;
@@ -176,6 +178,12 @@ class Activity {
   DateTime createdAt;
   DateTime? lastTunedAt;
 
+  // Habitudes (nouveau modèle unifié)
+  HabitFreq? habitFreq; // null => legacy (dailyTarget)
+  int habitTarget; // nombre par période (jour/sem/mois)
+  bool autoTune; // true par défaut
+  DateTime? lastTuneAt; // anti spam (cooldown)
+
   Activity({
     String? id,
     required this.domainId,
@@ -186,6 +194,10 @@ class Activity {
     this.dailyTarget,
     DateTime? createdAt,
     this.lastTunedAt,
+    this.habitFreq,
+    required this.habitTarget,
+    this.autoTune = true,
+    this.lastTuneAt,
   })  : id = id ?? _uuid.v4(),
         createdAt = createdAt ?? DateTime.now();
 
@@ -201,6 +213,10 @@ class Activity {
         'dailyTarget': dailyTarget,
         'createdAt': createdAt.toIso8601String(),
         'lastTunedAt': lastTunedAt?.toIso8601String(),
+        'habitFreq': habitFreq?.index,
+        'habitTarget': habitTarget,
+        'autoTune': autoTune,
+        'lastTuneAt': lastTuneAt?.toIso8601String(),
       };
 
   static Activity from(Map j) => Activity(
@@ -210,12 +226,17 @@ class Activity {
         type: (j['type'] ?? 'time'),
         goalMin: j['goalMin'] ?? 1, // 👈 migration douce
         unit: j['unit'],
-        dailyTarget: j['dailyTarget'],
+        dailyTarget: 1,
         createdAt: j['createdAt'] != null
             ? DateTime.parse(j['createdAt'])
             : DateTime.now(),
         lastTunedAt:
             j['lastTunedAt'] != null ? DateTime.parse(j['lastTunedAt']) : null,
+        habitFreq: HabitFreq.monthly,
+        habitTarget: 1,
+        autoTune: true,
+        lastTuneAt:
+            j['lastTuneAt'] != null ? DateTime.parse(j['lastTuneAt']) : null,
       );
 }
 

@@ -3,6 +3,119 @@ import 'package:uuid/uuid.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:uuid/uuid.dart';
 
+class PeriodCount {
+  final int done, target;
+  double get ratio => target > 0 ? done / target : 0.0;
+  const PeriodCount(this.done, this.target);
+}
+
+PeriodCount habitPeriod(AppLogic l, Activity a, {DateTime? now}) {
+  final t = now ?? DateTime.now();
+  switch (a.habitFreq ?? HabitFreq.daily) {
+    case HabitFreq.daily:
+      final d = DateTime(t.year, t.month, t.day);
+      final done = l.habitValueOn(a.id, d);
+      final target = a.habitTarget ?? (a.dailyTarget ?? 0);
+      return PeriodCount(done, target);
+    case HabitFreq.weekly:
+      final done = l.habitSliding(a.id, 7).done; // tu l’as déjà
+      final target = a.habitTarget ?? 1;
+      return PeriodCount(done, target);
+    case HabitFreq.monthly:
+      final done = l.habitSliding(a.id, 30).done;
+      final target = a.habitTarget ?? 1;
+      return PeriodCount(done, target);
+  }
+}
+
+class TuneChange {
+  String activityId;
+  String note;
+  TuneChange(this.activityId, this.note);
+}
+
+List<TuneChange> autoTuneHabit(AppLogic l, Activity a, {DateTime? now}) {
+  final res = <TuneChange>[];
+  if (!a.isHabit || !(a.autoTune)) return res;
+
+  final t = now ?? DateTime.now();
+  // cooldown 7 jours
+  if (a.lastTuneAt != null && t.difference(a.lastTuneAt!).inDays < 7)
+    return res;
+
+  final freq = a.habitFreq ?? HabitFreq.daily;
+  int target = a.habitTarget ?? (a.dailyTarget ?? 1);
+
+  // Mesures
+  final w = l.habitSliding(a.id, 7).done; // total 7j
+  final m = l.habitSliding(a.id, 30).done; // total 30j
+
+  bool changed = false;
+
+  int clampMin(int v) => v < 1 ? 1 : v;
+
+  // ---- Règles d’escalade
+  if (freq == HabitFreq.monthly) {
+    // si l'utilisateur dépasse la cible de façon robuste → +1/mois
+    if (m >= target + 1) {
+      target += 1;
+      changed = true;
+    }
+    // seuils de pivot vers weekly (lisible pour l’utilisateur)
+    if (!changed && target >= 4) {
+      a.habitFreq = HabitFreq.weekly;
+      target = (target / 4.0).ceil();
+      changed = true;
+    }
+  } else if (freq == HabitFreq.weekly) {
+    // si l'utilisateur dépasse sur la semaine → +1/sem
+    if (w >= target + 1) {
+      target += 1;
+      changed = true;
+    }
+    // pivot vers daily si très haut (≈6–7/sem)
+    if (!changed && target >= 6) {
+      a.habitFreq = HabitFreq.daily;
+      target = 1;
+      changed = true;
+    }
+  } else {
+    // daily
+    // escalade daily (facultatif)
+    // if (m >= 30 && target < 2) { target = 2; changed = true; }
+  }
+
+  // ---- Règle de baisse douce (si sous 60% sur 2 fenêtres)
+  if (!changed) {
+    bool lowMonth = (m <
+        (target * (freq == HabitFreq.monthly ? 1 : 4))); // approx équivalence
+    bool lowWeek = (w < (freq == HabitFreq.weekly ? target : (target / 4.0)));
+    // pour simplifier: si ratio global <~0.6 et on a de l’historique
+    final PeriodCount p = habitPeriod(l, a, now: t);
+    final ratio = p.ratio; // jour/sem/mois selon freq
+    if (ratio < 0.6) {
+      if (freq == HabitFreq.daily && target > 1) {
+        target -= 1;
+        changed = true;
+      } else if (freq == HabitFreq.weekly && target > 1) {
+        target -= 1;
+        changed = true;
+      } else if (freq == HabitFreq.monthly && target > 1) {
+        target -= 1;
+        changed = true;
+      }
+    }
+  }
+
+  if (changed) {
+    a.habitTarget = clampMin(target);
+    a.lastTuneAt = t;
+    l.onChange();
+    res.add(TuneChange(a.id, 'auto-tune → ${a.habitFreq} x${a.habitTarget}'));
+  }
+  return res;
+}
+
 class GoalChange {
   final String kind; // 'activity' | 'domain'
   final String id; // activityId ou domainId
@@ -49,53 +162,103 @@ class AppLogic {
   final void Function() onChange;
   AppLogic(this.state, this.onChange);
 
+// — Helpers “effective” pour routines —
+  HabitFreq effectiveHabitFreq(Activity a) {
+    // si tu gardes dailyTarget (legacy), on le mappe sur “daily”
+    if (a.habitFreq != null) return a.habitFreq!;
+    if (a.dailyTarget != null) return HabitFreq.daily;
+    return HabitFreq.monthly; // fallback raisonnable pour l’affichage
+  }
+
+  int effectiveHabitTarget(Activity a) {
+    if (a.habitTarget != null) return a.habitTarget!;
+    if (a.dailyTarget != null) return a.dailyTarget!;
+    return 1; // routine sans cible explicite → 1 par défaut pour l’UI
+  }
+
+// Targets dérivés pour semaine/mois (affichage)
+  int weekTargetFrom(Activity a) {
+    final f = effectiveHabitFreq(a);
+    final t = effectiveHabitTarget(a);
+    switch (f) {
+      case HabitFreq.daily:
+        return t * 7;
+      case HabitFreq.weekly:
+        return t;
+      case HabitFreq.monthly:
+        return (t / 4).ceil(); // approx 4 semaines
+    }
+  }
+
+  int monthTargetFrom(Activity a) {
+    final f = effectiveHabitFreq(a);
+    final t = effectiveHabitTarget(a);
+    switch (f) {
+      case HabitFreq.daily:
+        return t * 30;
+      case HabitFreq.weekly:
+        return t * 4; // approx 4 semaines
+      case HabitFreq.monthly:
+        return t;
+    }
+  }
+
+// Quota du ring “jour” pour routines
+  int dayQuotaFor(Activity a) {
+    final f = effectiveHabitFreq(a);
+    final t = effectiveHabitTarget(a);
+    return (f == HabitFreq.daily)
+        ? t
+        : 1; // hebdo/mensuel : 1 occurrence planifiée
+  }
 
   // Déplace vers demain les items non réalisés aujourd’hui.
 // - action     : si !done
 // - habit      : si doneAujourd’hui < target
 // - activity   : si 0 minute aujourd’hui
-void rolloverUnfinishedToTomorrow({DateTime? now}) {
-  final _now = now ?? DateTime.now();
-  final String todayKey    = yyyymmdd(_now);
-  final String tomorrowKey = yyyymmdd(_now.add(const Duration(days: 1)));
+  void rolloverUnfinishedToTomorrow({DateTime? now}) {
+    final _now = now ?? DateTime.now();
+    final String todayKey = yyyymmdd(_now);
+    final String tomorrowKey = yyyymmdd(_now.add(const Duration(days: 1)));
 
-  // ordre de base pour demain (on append)
-  int nextOrder = 1;
-  for (final e in state.dayPlan.where((e) => e.yyyymmdd == tomorrowKey)) {
-    if (e.order >= nextOrder) nextOrder = e.order + 1;
-  }
-
-  // on itère sur une copie (on modifie l’original)
-  final todayItems = state.dayPlan.where((e) => e.yyyymmdd == todayKey).toList();
-
-  bool _shouldMove(DayPlanItem it) {
-    switch (it.kind) {
-      case PlanKind.action:
-        return it.done == false;
-
-      case PlanKind.habit:
-        final d = DateTime(_now.year, _now.month, _now.day);
-        final done = habitValueOn(it.refId!, d);
-        final act  = state.activities.firstWhere((a) => a.id == it.refId!);
-        final target = act.dailyTarget ?? 0;
-        return done < target; // pas atteint → on reporte
-
-      case PlanKind.activityTime:
-        final dayStart = DateTime(_now.year, _now.month, _now.day);
-        final dur = totalForRangeByActivity(it.refId!, dayStart, _now);
-        return dur.inMinutes == 0; // aucune minute → on reporte
+    // ordre de base pour demain (on append)
+    int nextOrder = 1;
+    for (final e in state.dayPlan.where((e) => e.yyyymmdd == tomorrowKey)) {
+      if (e.order >= nextOrder) nextOrder = e.order + 1;
     }
-  }
 
-  for (final it in todayItems) {
-    if (_shouldMove(it)) {
-      it.yyyymmdd = tomorrowKey;
-      it.order    = nextOrder++;
+    // on itère sur une copie (on modifie l’original)
+    final todayItems =
+        state.dayPlan.where((e) => e.yyyymmdd == todayKey).toList();
+
+    bool _shouldMove(DayPlanItem it) {
+      switch (it.kind) {
+        case PlanKind.action:
+          return it.done == false;
+
+        case PlanKind.habit:
+          final d = DateTime(_now.year, _now.month, _now.day);
+          final done = habitValueOn(it.refId!, d);
+          final act = state.activities.firstWhere((a) => a.id == it.refId!);
+          final target = act.dailyTarget ?? 0;
+          return done < target; // pas atteint → on reporte
+
+        case PlanKind.activityTime:
+          final dayStart = DateTime(_now.year, _now.month, _now.day);
+          final dur = totalForRangeByActivity(it.refId!, dayStart, _now);
+          return dur.inMinutes == 0; // aucune minute → on reporte
+      }
     }
-  }
 
-  onChange(); // persiste + notifie
-}
+    for (final it in todayItems) {
+      if (_shouldMove(it)) {
+        it.yyyymmdd = tomorrowKey;
+        it.order = nextOrder++;
+      }
+    }
+
+    onChange(); // persiste + notifie
+  }
 
 // --- jour courant / demain avec TA clé (sans tirets)
   String _todayKey() => yyyymmdd(DateTime.now());
@@ -122,7 +285,8 @@ void rolloverUnfinishedToTomorrow({DateTime? now}) {
         title = state.activities
             .firstWhere(
               (a) => a.id == refId,
-              orElse: () => Activity(domainId: '', name: 'Activité'),
+              orElse: () =>
+                  Activity(domainId: '', name: 'Activité', habitTarget: 1),
             )
             .name;
         break;
@@ -130,8 +294,8 @@ void rolloverUnfinishedToTomorrow({DateTime? now}) {
         title = state.activities
             .firstWhere(
               (a) => a.id == refId,
-              orElse: () =>
-                  Activity(domainId: '', name: 'Routine', type: 'habit'),
+              orElse: () => Activity(
+                  domainId: '', name: 'Routine', type: 'habit', habitTarget: 1),
             )
             .name;
         break;
@@ -200,7 +364,8 @@ void rolloverUnfinishedToTomorrow({DateTime? now}) {
           title = state.activities
               .firstWhere(
                 (a) => a.id == refId,
-                orElse: () => Activity(domainId: '', name: 'Activité'),
+                orElse: () =>
+                    Activity(domainId: '', name: 'Activité', habitTarget: 1),
               )
               .name;
           break;
@@ -208,8 +373,11 @@ void rolloverUnfinishedToTomorrow({DateTime? now}) {
           title = state.activities
               .firstWhere(
                 (a) => a.id == refId,
-                orElse: () =>
-                    Activity(domainId: '', name: 'Routine', type: 'habit'),
+                orElse: () => Activity(
+                    domainId: '',
+                    name: 'Routine',
+                    type: 'habit',
+                    habitTarget: 1),
               )
               .name;
           break;
@@ -283,7 +451,7 @@ void rolloverUnfinishedToTomorrow({DateTime? now}) {
       if (domainId == null) return true;
       final act = state.activities.firstWhere(
         (a) => a.id == s.activityId,
-        orElse: () => Activity(domainId: '', name: 'deleted'),
+        orElse: () => Activity(domainId: '', name: 'deleted', habitTarget: 1),
       );
       return act.domainId == domainId;
     }
@@ -345,14 +513,17 @@ void rolloverUnfinishedToTomorrow({DateTime? now}) {
 
   void incHabit(String activityId, int delta, DateTime day) {
     final key = yyyymmdd(day);
+
+    // --- maj compteur ---
     final idx = state.habitProgress.indexWhere(
       (h) => h.activityId == activityId && h.yyyymmdd == key,
     );
     if (idx < 0) {
+      final v = delta < 0 ? 0 : delta; // pas de négatif à la création
       state.habitProgress.add(HabitProgress(
         activityId: activityId,
         yyyymmdd: key,
-        value: delta.clamp(0, 1000000),
+        value: v.clamp(0, 1000000),
       ));
     } else {
       final v = state.habitProgress[idx].value + delta;
@@ -360,25 +531,45 @@ void rolloverUnfinishedToTomorrow({DateTime? now}) {
     }
     onChange();
 
-    // --- déplacement auto si atteint ---
-// --- déplacement logique routine atteinte ---
+    // --- déplacer/copier pour Demain si cible atteinte (quotidien uniquement) ---
     final act = state.activities.firstWhere(
       (a) => a.id == activityId,
-      orElse: () => Activity(domainId: '', name: 'Routine', type: 'habit'),
+      orElse: () => Activity(
+          domainId: '', name: 'Routine', type: 'habit', habitTarget: 1),
     );
-    final target = act.dailyTarget ?? 0;
-    if (target > 0) {
-      final now = DateTime.now();
-      final todayDate = DateTime(now.year, now.month, now.day);
-      final doneToday = habitValueOn(activityId, todayDate);
 
-      if (doneToday >= target) {
+    // Support legacy (dailyTarget) et nouveau modèle (habitFreq/habitTarget)
+    final isDaily =
+        (act.habitFreq == null) || (act.habitFreq == HabitFreq.daily);
+    final targetDay = (act.habitTarget ?? act.dailyTarget ?? 0);
+
+    if (isDaily && targetDay > 0) {
+      final dayKeyDate = DateTime(day.year, day.month, day.day);
+      final doneOnThatDay = habitValueOn(activityId, dayKeyDate);
+
+      if (doneOnThatDay >= targetDay) {
         // 1) préparer demain (ajout si absent, non coché)
         ensurePlannedTomorrow(PlanKind.habit, activityId);
         // 2) retirer de la liste "Aujourd'hui" (vider visuellement)
-        final removed = removeFromDay(_todayKey(), PlanKind.habit, activityId);
-        if (removed) onChange(); // persiste + notifie l’UI
+        final removed =
+            removeFromDay(yyyymmdd(dayKeyDate), PlanKind.habit, activityId);
+        if (removed) onChange();
       }
+    }
+
+    // --- auto-tune tolérant (n’affecte rien si tu n’as pas encore ajouté les nouveaux champs) ---
+    _autoTuneHabitSafe(act);
+  }
+
+  void _autoTuneHabitSafe(Activity a, {DateTime? now}) {
+    // Si pas habit → rien
+    if (!a.isHabit) return;
+
+    // Si tu n’as pas encore ajouté habitFreq/habitTarget, on ne fait rien (safe)
+    try {
+      autoTuneHabit(this, a, now: now);
+    } catch (_) {
+      // silencieux : la fonction n’existe pas encore ou le modèle n’est pas prêt
     }
   }
 
@@ -719,7 +910,7 @@ void rolloverUnfinishedToTomorrow({DateTime? now}) {
 
     final a = state.activities.firstWhere(
       (x) => x.id == activityId,
-      orElse: () => Activity(domainId: '', name: 'deleted'),
+      orElse: () => Activity(domainId: '', name: 'deleted', habitTarget: 1),
     );
 
     // fenêtre 30j glissants
@@ -792,6 +983,20 @@ void rolloverUnfinishedToTomorrow({DateTime? now}) {
     if (bumps > 0) onChange();
     return bumps;
   }
+
+  // -- DEV: injecte de l'historique sur les N derniers jours --
+// perDay = combien d'incréments par jour (ex: 2) ; days = nb de jours à remplir
+  Future<void> devAddHabitHistory(String activityId,
+      {int days = 5, int perDay = 1}) async {
+    final now = DateTime.now();
+    for (int i = 0; i < days; i++) {
+      final d =
+          DateTime(now.year, now.month, now.day).subtract(Duration(days: i));
+      for (int k = 0; k < perDay; k++) {
+        incHabit(activityId, 1, d);
+      }
+    }
+  }
 }
 
 extension DomainGoals on AppLogic {
@@ -815,30 +1020,34 @@ extension DomainGoals on AppLogic {
   }
 
   // Auto-ajustement simple : si sur les N derniers jours on atteint la cible >= T jours → +step
-  Future<List<GoalChange>> reviewGoals(
-      {DateTime? now,
-      int lookbackDays = 7, // nombre de jours regardés (hier inclus)
-      int neededHits = 5, // nb de jours “au-dessus/au-dessous” nécessaires
-      double lower = 0.85, // zone neutre bas  (≤ 85% => “en dessous”)
-      double upper = 1.15, // zone neutre haut (≥115% => “au dessus”)
-      double high = 1.50, // très au-dessus (≥150%) active un petit boost
-      double pctStep = 0.10, // pas = 10% de l’objectif courant
-      int minStepMin = 15, // mais au moins 15 min
-      int maxPerDayMin = 12 * 60, // plafond journalier 12h
-      double maxWeeklyPct = 0.20 // cap de +20% / “revue” (style hebdo)
-      }) async {
+  Future<List<GoalChange>> reviewGoals({
+    DateTime? now,
+    int lookbackDays = 7,
+    int neededHits = 5,
+    double lower = 0.85,
+    double upper = 1.15,
+    double high = 1.50,
+    double pctStep = 0.10,
+    int minStepMin = 15,
+    int maxPerDayMin = 12 * 60,
+    double maxWeeklyPct = 0.20,
+    bool force = false, // 👈 NEW: permet de forcer depuis le panneau Dev
+  }) async {
     final changes = <GoalChange>[];
     final t = now ?? DateTime.now();
     final today = DateTime(t.year, t.month, t.day);
 
-    // 1) une seule passe par jour (sauf si tu passes un "now" de test)
-    if (state.lastGoalsReview != null) {
-      final last = DateTime(state.lastGoalsReview!.year,
-          state.lastGoalsReview!.month, state.lastGoalsReview!.day);
+    // 1) une seule passe par jour (sauf si force=true)
+    if (!force && state.lastGoalsReview != null) {
+      final last = DateTime(
+        state.lastGoalsReview!.year,
+        state.lastGoalsReview!.month,
+        state.lastGoalsReview!.day,
+      );
       if (last == today) return changes;
     }
 
-    // 2) liste des jours observés (J-1, J-2, ..., J-lookback)
+    // 2) liste des jours observés (J-1 ... J-lookback)
     final daysBack = List<DateTime>.generate(
       lookbackDays,
       (i) {
@@ -848,7 +1057,6 @@ extension DomainGoals on AppLogic {
     );
 
     int clampNonNeg(int v) => v < 0 ? 0 : v;
-
     int clampToWeeklyCap(int base, int delta) {
       final cap = (base * maxWeeklyPct).round();
       if (cap <= 0) return delta;
@@ -857,7 +1065,7 @@ extension DomainGoals on AppLogic {
 
     // ---------- ACTIVITÉS (type "time") ----------
     for (final a in state.activities.where((x) => !x.isHabit)) {
-      final base = a.goalMin; // minutes/jour
+      final base = a.goalMin;
       if (base <= 0) continue;
 
       int above = 0, below = 0, wayAbove = 0;
@@ -876,14 +1084,12 @@ extension DomainGoals on AppLogic {
       var newGoal = base;
 
       if (above >= neededHits) {
-        // hausse
         var step = (base * pctStep).round();
         if (step < minStepMin) step = minStepMin;
         step = clampToWeeklyCap(base, step);
         final boost = wayAbove >= (neededHits ~/ 2) ? (step ~/ 2) : 0;
         newGoal = (base + step + boost).clamp(0, maxPerDayMin);
       } else if (below >= neededHits) {
-        // baisse (symétrique, sans cap hebdo nécessaire)
         var step = (base * pctStep).round();
         if (step < minStepMin) step = minStepMin;
         newGoal = clampNonNeg(base - step);
@@ -901,16 +1107,15 @@ extension DomainGoals on AppLogic {
       }
     }
 
-    // ---------- DOMAINES (seulement si objectif MANUEL) ----------
+    // ---------- DOMAINES (objectif MANUEL) ----------
     for (final d in state.domains.where((dom) => !dom.autoGoal)) {
-      final base = d.goalMinDay ?? 0; // minutes/jour
+      final base = d.goalMinDay ?? 0;
       if (base <= 0) continue;
 
       int above = 0, below = 0, wayAbove = 0;
 
       for (final day in daysBack) {
-        final ratio =
-            domainProgressOnDay(d.id, day); // (minutes faites) / (goalMinDay)
+        final ratio = domainProgressOnDay(d.id, day);
         if (ratio >= upper) above++;
         if (ratio <= lower) below++;
         if (ratio >= high) wayAbove++;
@@ -942,10 +1147,106 @@ extension DomainGoals on AppLogic {
       }
     }
 
+    // ---------- ROUTINES (HABIT) : hausse immédiate si >120% ----------
+    for (final a in state.activities.where((x) => x.isHabit)) {
+      autoTuneHabitImmediate(this, a);
+    }
+
+    // ---------- ROUTINES (HABIT) : auto-tune au scan ----------
+    for (final a in state.activities.where((x) => x.isHabit)) {
+      _autoTuneHabitSafe(a,
+          now: t); // n’ajoute pas à 'changes', ajuste en place
+    }
+
     // 3) finalisation
     state.lastGoalsReview = t;
-    onChange(); // déclenche ta sauvegarde via _saveAndRefresh
-    return changes; // pour afficher les badges, logs, etc.
+    onChange();
+    return changes;
+  }
+
+  void _autoTuneHabitSafe(Activity a, {DateTime? now}) {
+    try {
+      // si tu as déjà autoTuneHabit(AppLogic, Activity, {DateTime? now})
+      autoTuneHabit(this, a, now: now);
+    } catch (_) {
+      // pas encore implémenté → on ignore silencieusement
+    }
+  }
+
+// --- helpers pour lire la cible/frequence actuelles de façon robuste ---
+  HabitFreq _effFreq(Activity a) {
+    if (a.habitFreq != null) return a.habitFreq!;
+    if (a.dailyTarget != null) return HabitFreq.daily; // legacy
+    return HabitFreq.monthly; // fallback
+  }
+
+  int _effTarget(Activity a) {
+    if (a.habitTarget != null) return a.habitTarget!;
+    if (a.dailyTarget != null) return a.dailyTarget!; // legacy
+    return 1; // défaut raisonnable
+  }
+
+// --- mesure du fait/période courant (glissant) ---
+  int _periodDone(AppLogic l, Activity a) {
+    switch (_effFreq(a)) {
+      case HabitFreq.daily:
+        return l.habitSliding(a.id, 1).done;
+      case HabitFreq.weekly:
+        return l.habitSliding(a.id, 7).done;
+      case HabitFreq.monthly:
+        return l.habitSliding(a.id, 30).done;
+    }
+  }
+
+// --- auto-tune "immédiat" : si >120% on remonte la cible pour retomber ~95% ---
+  void autoTuneHabitImmediate(AppLogic l, Activity a) {
+    if (!a.isHabit) return;
+
+    final freq = _effFreq(a);
+    final target = _effTarget(a);
+    if (target <= 0) return;
+
+    final done = _periodDone(l, a);
+    final ratio = target > 0 ? (done / target) : 0.0;
+
+    // Seulement hausse simple ici (pour tester tout de suite)
+    if (ratio >= 1.20) {
+      int newTarget;
+
+      if (freq == HabitFreq.monthly) {
+        // si on dépasse clairement la logique "mensuelle", on peut pivoter vers weekly
+        // seuil simple : si "fait" >= 4/mois -> 1/sem
+        if (done >= 4) {
+          a.habitFreq = HabitFreq.weekly;
+          a.habitTarget = 1;
+          return;
+        }
+        // sinon on augmente en visant ~95% du nouveau standard
+        newTarget = (done / 0.95).ceil(); // ex: 10 -> 11
+        if (newTarget < target + 1) newTarget = target + 1;
+        a.habitTarget = newTarget;
+        return;
+      }
+
+      if (freq == HabitFreq.weekly) {
+        // si "hebdo" trop bas au regard du fait, on peut grimper lentement
+        // et si done ~ 7+ → bascule daily(1)
+        if (done >= 7) {
+          a.habitFreq = HabitFreq.daily;
+          a.habitTarget = 1;
+          return;
+        }
+        newTarget = (done / 0.95).ceil();
+        if (newTarget < target + 1) newTarget = target + 1;
+        a.habitTarget = newTarget;
+        return;
+      }
+
+      // daily : on augmente la cible jour
+      newTarget = (done / 0.95).ceil();
+      if (newTarget < target + 1) newTarget = target + 1;
+      a.habitTarget = newTarget;
+    }
   }
 
   /// Calcule des recommandations Focus (MVP jour: 24h glissantes pour le temps, aujourd'hui pour les habitudes)
