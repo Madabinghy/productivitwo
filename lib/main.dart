@@ -2445,7 +2445,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               leading: MiniRing(
                 progress: ringRatio,
-                center: Text("${(ringRatio * 100).round()}%",
+                center: Text("${dH.done}",
                     style: const TextStyle(
                         fontSize: 11, fontWeight: FontWeight.w700)),
               ),
