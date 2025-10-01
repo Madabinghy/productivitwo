@@ -164,6 +164,33 @@ class AppLogic {
   final void Function() onChange;
   AppLogic(this.state, this.onChange);
 
+  // Active target for a habit based on its current frequency
+int activeHabitTarget(Activity a) {
+  final f = a.habitFreq ?? HabitFreq.monthly;
+  switch (f) {
+    case HabitFreq.daily:   return dayQuotaFor(a);
+    case HabitFreq.weekly:  return weekTargetFrom(a);
+    case HabitFreq.monthly: return monthTargetFrom(a);
+  }
+}
+
+// Done-so-far on the active window
+int activeHabitDone(Activity a) {
+  final f = a.habitFreq ?? HabitFreq.monthly;
+  switch (f) {
+    case HabitFreq.daily:   return habitSliding(a.id, 1).done;
+    case HabitFreq.weekly:  return habitSliding(a.id, 7).done;
+    case HabitFreq.monthly: return habitSliding(a.id, 30).done;
+  }
+}
+
+// Has the habit reached its active target?
+bool habitReached(Activity a) {
+  final tgt = activeHabitTarget(a);
+  if (tgt <= 0) return false; // defensive
+  return activeHabitDone(a) >= tgt;
+}
+
 // Sum of HABIT "done" over the last N days, for a domain (or all)
   int sumHabitDone(String? domainId, int days) {
     final acts = state.activities.where(

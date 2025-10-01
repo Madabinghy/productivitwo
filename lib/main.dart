@@ -214,7 +214,7 @@ class _StatsViewState extends State<StatsView> {
         widget.logic.habitCountPerDay(start, days, domainId: domainId);
     //final habitDailyTarget = widget.logic.habitDailyTarget(domainId: domainId);
 // AFTER (derived from the new habit model)
-final habitDailyTarget = widget.logic.sumHabitTarget(domainId, 1);
+    final habitDailyTarget = widget.logic.sumHabitTarget(domainId, 1);
     final habitTotalTarget = habitDailyTarget * days;
     // avant de construire les charts :
     final maxHoursY =
@@ -465,7 +465,6 @@ final habitDailyTarget = widget.logic.sumHabitTarget(domainId, 1);
       ],
     );
   }
-  
 }
 
 void main() => runApp(const ProductivitwoApp());
@@ -2049,83 +2048,87 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         final scrollCtrl = ScrollController();
 
         return StatefulBuilder(builder: (ctx, setSB) {
-
           Future<void> showTimeExplainer(
-  BuildContext context, {
-  required Activity a,
-  required AppLogic logic,
-}) async {
-  final cs = Theme.of(context).colorScheme;
+            BuildContext context, {
+            required Activity a,
+            required AppLogic logic,
+          }) async {
+            final cs = Theme.of(context).colorScheme;
 
-  // Stats glissantes utiles
-  final d = logic.timeSliding(a.id, 1);   // ~jour civil (ou 24h glissant selon ton impl)
-  final w = logic.timeSliding(a.id, 7);
-  final m = logic.timeSliding(a.id, 30);
+            // Stats glissantes utiles
+            final d = logic.timeSliding(
+                a.id, 1); // ~jour civil (ou 24h glissant selon ton impl)
+            final w = logic.timeSliding(a.id, 7);
+            final m = logic.timeSliding(a.id, 30);
 
-  final goal = a.goalMin; // objectif/jour courant (minutes)
-  String fmtMin(int min) => "${min ~/ 60}h ${min % 60}m";
+            final goal = a.goalMin; // objectif/jour courant (minutes)
+            String fmtMin(int min) => "${min ~/ 60}h ${min % 60}m";
 
-  // Petites lignes pédagogiques
-  final howItWorks =
-      "Principe : tu as un objectif quotidien (en minutes). "
-      "La jauge de l’anneau montre le progrès d’aujourd’hui. "
-      "Les barres indiquent tes cumuls récent (semaine/mois) vs leurs cibles dérivées.";
+            // Petites lignes pédagogiques
+            final howItWorks =
+                "Principe : tu as un objectif quotidien (en minutes). "
+                "La jauge de l’anneau montre le progrès d’aujourd’hui. "
+                "Les barres indiquent tes cumuls récent (semaine/mois) vs leurs cibles dérivées.";
 
-  final tuning =
-      "Ajustement auto : si tu dépasses régulièrement l’objectif (≥120% sur plusieurs jours), "
-      "la cible augmente par petits pas. À l’inverse, si tu es souvent en-dessous (≤85%), elle descend. "
-      "L’algorithme vise un objectif réaliste proche de ta cadence réelle.";
+            final tuning =
+                "Ajustement auto : si tu dépasses régulièrement l’objectif (≥120% sur plusieurs jours), "
+                "la cible augmente par petits pas. À l’inverse, si tu es souvent en-dessous (≤85%), elle descend. "
+                "L’algorithme vise un objectif réaliste proche de ta cadence réelle.";
 
-  await showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
-    builder: (ctx) {
-      return SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(a.name,
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: cs.onSurface,
-                  )),
-              const SizedBox(height: 8),
+            await showModalBottomSheet(
+              context: context,
+              isScrollControlled: true,
+              showDragHandle: true,
+              builder: (ctx) {
+                return SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(a.name,
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                              color: cs.onSurface,
+                            )),
+                        const SizedBox(height: 8),
 
-              // Objectif du jour
-              Text("Cible quotidienne : ${fmtMin(goal)}",
-                  style: const TextStyle(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 8),
+                        // Objectif du jour
+                        Text("Cible quotidienne : ${fmtMin(goal)}",
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 8),
 
-              // Récap rapides
-              Text("Aujourd’hui : ${fmtMin(d.doneMin)} / ${fmtMin(goal)}"),
-              Text("Semaine (7j) : ${fmtMin(w.doneMin)} / ${fmtMin(w.targetMin)}"),
-              Text("Mois (30j) : ${fmtMin(m.doneMin)} / ${fmtMin(m.targetMin)}"),
-              const SizedBox(height: 16),
+                        // Récap rapides
+                        Text(
+                            "Aujourd’hui : ${fmtMin(d.doneMin)} / ${fmtMin(goal)}"),
+                        Text(
+                            "Semaine (7j) : ${fmtMin(w.doneMin)} / ${fmtMin(w.targetMin)}"),
+                        Text(
+                            "Mois (30j) : ${fmtMin(m.doneMin)} / ${fmtMin(m.targetMin)}"),
+                        const SizedBox(height: 16),
 
-              Text(howItWorks),
-              const SizedBox(height: 12),
-              Text(tuning),
+                        Text(howItWorks),
+                        const SizedBox(height: 12),
+                        Text(tuning),
 
-              const SizedBox(height: 16),
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text("OK"),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    },
-  );
-}
+                        const SizedBox(height: 16),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: FilledButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text("OK"),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            );
+          }
 
           void _openHabitRationale(Activity a) {
             final d = logic.habitSliding(a.id, 1);
@@ -2246,36 +2249,58 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               );
 
           // ---------- Source triée ----------
-          final bool isGlobal = (domain == null);
+// 1) Source BRUTE (pas de filtrage "cap" ici)
           final bool isHabitsTab = (tab == 'habit');
+          final String? domainId = domain?.id;
 
-          final base = isHabitsTab
-              ? logic.listUnderCapSorted(
-                  domainId: domainId,
-                  habits: true,
-                  onlyUnderCap: false,
-                  dailyStrict: false)
-              : logic.listUnderCapSorted(
-                  domainId: domainId,
-                  habits: false,
-                  onlyUnderCap: false,
-                  dailyStrict: false);
+          List<Activity> base = isHabitsTab
+              ? logic.state.activities
+                  .where((a) =>
+                      a.isHabit && (domainId == null || a.domainId == domainId))
+                  .toList()
+              : logic.state.activities
+                  .where((a) =>
+                      !a.isHabit &&
+                      (domainId == null || a.domainId == domainId))
+                  .toList();
 
-          // ---------- Split under/over ----------
-          List<Activity> under, over;
+// 2) Listes cibles
+          List<Activity> under = [];
+          List<Activity> over = [];
+
           if (isHabitsTab) {
-            // Habitudes : séparation via la primaire
-            under = base.where((a) => !_habitReached(a)).toList();
-            over = base.where(_habitReached).toList();
-            // tri “sortie la plus proche” en haut
-            under.sort(_cmpByExit);
-            over.sort(_cmpByExit);
-            // Global : on masque les atteintes (on ne montre que under)
-            if (isGlobal) {
-              over = const [];
+            // ---- regroupement via ta logique "primary meter" ----
+            final notReached = <Activity>[];
+            final reached = <Activity>[];
+
+            for (final a in base) {
+              (logic.habitReached(a) ? reached : notReached).add(a);
             }
+
+            // tri “proche de 100% en haut”
+            int cmpByExit(Activity x, Activity y) {
+              double ratio(Activity a) {
+                final tgt = logic.activeHabitTarget(a);
+                if (tgt <= 0) return 0.0;
+                final done = logic.activeHabitDone(a);
+                return (done / tgt).clamp(0.0, 1.0);
+              }
+
+              return (1 - ratio(x)).compareTo(1 - ratio(y));
+            }
+
+            notReached.sort(cmpByExit);
+            reached.sort(cmpByExit);
+
+            under = notReached;
+            over = reached;
+
+            // (option) dans "Tous les domaines", on cache la section "Déjà atteint"
+            final bool isGlobal = (domain == null);
+            if (isGlobal) over = [];
           } else {
-            // Temps : on garde ta règle existante
+            // ---- TEMPS : garde ta logique existante ----
+            final bool isGlobal = (domain == null);
             if (isGlobal) {
               under = base
                   .where((a) => !isTimeOverCap(logic, a, dailyStrict: true))
