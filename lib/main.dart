@@ -2494,6 +2494,149 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             ctrlTarget.dispose();
           }
 
+          Future<void> _openHabitManualEditor(Activity a, void Function(void Function()) refresh) async {
+  final cs = Theme.of(context).colorScheme;
+
+  // Etats initiaux
+  bool manual = a.manualTarget;
+  bool auto   = a.autoTune;
+  HabitFreq freq = a.habitFreq ?? HabitFreq.monthly;
+  final int initialTarget = a.habitTarget ?? 1;
+
+  final targetCtrl = TextEditingController(text: initialTarget.toString());
+
+  String freqLabel(HabitFreq f) => f == HabitFreq.daily
+      ? 'Jour'
+      : (f == HabitFreq.weekly ? 'Semaine' : 'Mois');
+
+  await showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (ctx) {
+      return SafeArea(
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 16, right: 16, top: 8,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+          ),
+          child: StatefulBuilder(
+            builder: (ctx, setLocal) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(a.name, style: TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.w800, color: cs.onSurface)),
+                  const SizedBox(height: 8),
+
+                  // Basculer en "manuel"
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text("Définir la cible manuellement"),
+                    value: manual,
+                    onChanged: (v) {
+                      setLocal(() {
+                        manual = v;
+                        if (manual) {
+                          auto = false; // manuel > auto (évite l’ambiguïté)
+                        }
+                      });
+                    },
+                  ),
+
+                  // Auto-tune (désactivé si manuel)
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text("Ajustement automatique"),
+                    value: auto,
+                    onChanged: manual
+                        ? null // verrouillé si manuel
+                        : (v) => setLocal(() => auto = v ?? false),
+                  ),
+
+                  // Si manuel → afficher fréquence + cible
+                  if (manual) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<HabitFreq>(
+                            value: freq,
+                            decoration: const InputDecoration(labelText: "Période"),
+                            items: HabitFreq.values.map((f) {
+                              return DropdownMenuItem(
+                                value: f,
+                                child: Text(freqLabel(f)),
+                              );
+                            }).toList(),
+                            onChanged: (f) => setLocal(() => freq = f ?? freq),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        SizedBox(
+                          width: 120,
+                          child: TextFormField(
+                            controller: targetCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: InputDecoration(
+                              labelText: "Cible / ${freqLabel(freq).toLowerCase()}",
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      "Ex.: 10 ${a.unit ?? ''} / ${freqLabel(freq).toLowerCase()}",
+                      style: TextStyle(color: cs.onSurface.withOpacity(.7)),
+                    ),
+                  ],
+
+                  const SizedBox(height: 16),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text("Annuler"),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton(
+                          onPressed: () {
+                            // Appliquer
+                            a.manualTarget = manual;
+                            a.autoTune     = auto;
+
+                            if (manual) {
+                              final parsed = int.tryParse(targetCtrl.text.trim());
+                              final tgt = (parsed == null || parsed < 1) ? 1 : parsed;
+                              a.habitFreq   = freq;
+                              a.habitTarget = tgt;
+                            }
+
+                            // Persiste + rafraîchit la feuille & la liste appelante
+                            logic.onChange();
+                            refresh((){});
+                            Navigator.pop(ctx);
+                          },
+                          child: const Text("Enregistrer"),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      );
+    },
+  );
+}
+
           void _openHabitRationale(Activity a) {
             final d = logic.habitSliding(a.id, 1);
             final w = logic.habitSliding(a.id, 7);
@@ -2804,7 +2947,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             final unit = (a.unit ?? '').isNotEmpty ? ' ${a.unit}' : '';
 
             return ListTile(
-              onTap: () => _openHabitManualTargetSheet(context, activity: a, logic: logic, refreshParent: () => setSB(() {})),
+              //onTap: () => _openHabitManualTargetSheet(context, activity: a, logic: logic, refreshParent: () => setSB(() {})),
               // exemple: sur onTap de la ListTile routine
               onLongPress: () => openHabitEditSheet(
                 context: context,
@@ -2813,6 +2956,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                 onSaved: () =>
                     setSB(() {}), // ou setState(() {}) selon le contexte
               ),
+              onTap: () => _openHabitManualEditor(a, setSB),
+
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               leading: MiniRing(
