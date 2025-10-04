@@ -2126,149 +2126,373 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             );
           }
 
-Future<void> _openHabitManualTargetSheet(
-  BuildContext context, {
-  required Activity activity,
-  required AppLogic logic,
-  required VoidCallback refreshParent, // pour rafraîchir la liste après "Enregistrer"
-}) async {
-  final cs = Theme.of(context).colorScheme;
+          Future<void> openHabitEditSheet({
+            required BuildContext context,
+            required AppLogic logic,
+            required Activity habit,
+            VoidCallback? onSaved, // optional: pour rafraîchir l'écran parent
+          }) async {
+            final cs = Theme.of(context).colorScheme;
 
-  // ÉTAT LOCAL (copié depuis l’activité, pour éviter les reset pendant la saisie)
-  bool manual = activity.manualTarget;
-  final ctrlTarget = TextEditingController(
-    text: logic.dayQuotaFor(activity).toString(),
-  );
+            // État local (copié de l'activité pour édition non destructive)
+            bool manual = habit.manualTarget;
+            HabitFreq freq = habit.habitFreq ?? HabitFreq.monthly;
+            int target = habit.habitTarget ?? 1;
+            bool autoTune = habit.autoTune;
 
-  // Optionnel : focus propre pour le champ
-  final targetFocus = FocusNode();
+            // Pour éviter la perte de focus du TextField quand on change de radio/switch
+            final targetCtrl = TextEditingController(text: '$target');
+            final targetNode = FocusNode();
 
-  await showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
-    builder: (ctx) {
-      return StatefulBuilder(
-        builder: (ctx, setSB) {
-          void setManual(bool v) {
-            setSB(() {
-              manual = v;
-              // si on passe en manuel et que la cible est 0 ⇒ seed à 1
-              if (manual && (int.tryParse(ctrlTarget.text) ?? 0) <= 0) {
-                ctrlTarget.text = '1';
+            // petit helper pour afficher l’unité / libellé
+            String unitSuffix() {
+              final unit = (habit.unit ?? '').trim();
+              return unit.isEmpty ? '' : ' $unit';
+            }
+
+            String freqLabel(HabitFreq f) {
+              switch (f) {
+                case HabitFreq.daily:
+                  return 'par jour';
+                case HabitFreq.weekly:
+                  return 'par semaine';
+                case HabitFreq.monthly:
+                  return 'par mois';
               }
-            });
-          }
+            }
 
-          void applyQuick(int v) {
-            setSB(() {
-              manual = true;
-              ctrlTarget.text = v.toString();
-            });
-          }
+            await showModalBottomSheet(
+              context: context,
+              isScrollControlled: true,
+              showDragHandle: true,
+              builder: (ctx) {
+                return StatefulBuilder(builder: (ctx, setSB) {
+                  void saveAndClose() {
+                    // parse + clamp
+                    final parsed = int.tryParse(targetCtrl.text.trim());
+                    if (manual) {
+                      target = (parsed == null || parsed < 1) ? 1 : parsed;
+                    }
+                    // Écrit dans l’objet
+                    habit.manualTarget = manual;
+                    habit.habitFreq = manual
+                        ? freq
+                        : habit.habitFreq; // si auto, on garde la freq actuelle
+                    habit.habitTarget = manual ? target : habit.habitTarget;
+                    habit.autoTune = autoTune;
 
-          Widget quickChip(int v) => Padding(
-            padding: const EdgeInsets.only(right: 6, top: 6),
-            child: ActionChip(
-              label: Text('$v'),
-              onPressed: () => applyQuick(v),
-            ),
-          );
+                    logic.onChange(); // persiste
+                    onSaved?.call();
+                    Navigator.pop(ctx);
+                  }
 
-          return SafeArea(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                16, 8, 16,
-                16 + MediaQuery.of(ctx).viewInsets.bottom,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Titre
-                  Text(activity.name,
-                      style: TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.w800, color: cs.onSurface)),
-                  const SizedBox(height: 8),
+                  // Contenu
+                  return SafeArea(
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        left: 16,
+                        right: 16,
+                        top: 8,
+                        bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Titre
+                          Text(habit.name,
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: cs.onSurface,
+                              )),
+                          const SizedBox(height: 8),
 
-                  // Explication courte
-                  Text(
-                    "Tu peux définir une cible quotidienne fixe (ex: 10 ${activity.unit ?? ''}). "
-                    "Si tu la désactives, l’app ajustera automatiquement selon tes usages.",
-                  ),
-                  const SizedBox(height: 12),
+                          // Switch manuel / auto
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  "Définir une cible manuellement",
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: cs.onSurface,
+                                  ),
+                                ),
+                              ),
+                              Switch(
+                                value: manual,
+                                onChanged: (v) {
+                                  setSB(() {
+                                    manual = v;
+                                    if (manual) {
+                                      // seed si jamais absent
+                                      if (habit.habitTarget == null) {
+                                        target = (target <= 0) ? 1 : target;
+                                        targetCtrl.text = '$target';
+                                      }
+                                    }
+                                  });
+                                  // ne pas toucher au focus du TextField
+                                },
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
 
-                  // Switch manuel
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text("Définir la cible manuellement"),
-                    value: manual,
-                    onChanged: setManual,
-                  ),
-
-                  // Champ cible (affiché seulement si manuel)
-                  if (manual) ...[
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            focusNode: targetFocus,
-                            controller: ctrlTarget,
-                            keyboardType: TextInputType.number,
-                            decoration: InputDecoration(
-                              labelText: "Cible par jour",
-                              hintText: "ex: 10",
-                              suffixText: activity.unit?.isNotEmpty == true ? activity.unit : null,
+                          // Choix fréquence (désactivé si pas manuel)
+                          Opacity(
+                            opacity: manual ? 1.0 : 0.4,
+                            child: IgnorePointer(
+                              ignoring: !manual,
+                              child: Column(
+                                children: [
+                                  RadioListTile<HabitFreq>(
+                                    title: const Text("Quotidienne"),
+                                    value: HabitFreq.daily,
+                                    groupValue: freq,
+                                    onChanged: (v) =>
+                                        setSB(() => freq = v ?? freq),
+                                    dense: true,
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
+                                  RadioListTile<HabitFreq>(
+                                    title: const Text("Hebdomadaire"),
+                                    value: HabitFreq.weekly,
+                                    groupValue: freq,
+                                    onChanged: (v) =>
+                                        setSB(() => freq = v ?? freq),
+                                    dense: true,
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
+                                  RadioListTile<HabitFreq>(
+                                    title: const Text("Mensuelle"),
+                                    value: HabitFreq.monthly,
+                                    groupValue: freq,
+                                    onChanged: (v) =>
+                                        setSB(() => freq = v ?? freq),
+                                    dense: true,
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
+                          const SizedBox(height: 8),
+
+                          // Champ cible
+                          Opacity(
+                            opacity: manual ? 1.0 : 0.4,
+                            child: IgnorePointer(
+                              ignoring: !manual,
+                              child: TextField(
+                                controller: targetCtrl,
+                                focusNode: targetNode,
+                                keyboardType: TextInputType.number,
+                                decoration: InputDecoration(
+                                  labelText: "Cible ${freqLabel(freq)}",
+                                  helperText:
+                                      "Entier ≥ 1${unitSuffix().isNotEmpty ? " (${unitSuffix().trim()})" : ""}",
+                                  border: const OutlineInputBorder(),
+                                ),
+                                onChanged: (_) {
+                                  // ne rien faire, on parse à l’enregistrement
+                                },
+                                onTapOutside: (_) => targetNode.unfocus(),
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 12),
+                          // Switch auto-tune
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  "Ajustement automatique",
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: cs.onSurface,
+                                  ),
+                                ),
+                              ),
+                              Switch(
+                                value: autoTune,
+                                onChanged: (v) => setSB(() => autoTune = v),
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 12),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: FilledButton(
+                              onPressed: saveAndClose,
+                              child: const Text("Enregistrer"),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                });
+              },
+            );
+          }
+
+          Future<void> _openHabitManualTargetSheet(
+            BuildContext context, {
+            required Activity activity,
+            required AppLogic logic,
+            required VoidCallback
+                refreshParent, // pour rafraîchir la liste après "Enregistrer"
+          }) async {
+            final cs = Theme.of(context).colorScheme;
+
+            // ÉTAT LOCAL (copié depuis l’activité, pour éviter les reset pendant la saisie)
+            bool manual = activity.manualTarget;
+            final ctrlTarget = TextEditingController(
+              text: logic.dayQuotaFor(activity).toString(),
+            );
+
+            // Optionnel : focus propre pour le champ
+            final targetFocus = FocusNode();
+
+            await showModalBottomSheet(
+              context: context,
+              isScrollControlled: true,
+              showDragHandle: true,
+              builder: (ctx) {
+                return StatefulBuilder(
+                  builder: (ctx, setSB) {
+                    void setManual(bool v) {
+                      setSB(() {
+                        manual = v;
+                        // si on passe en manuel et que la cible est 0 ⇒ seed à 1
+                        if (manual &&
+                            (int.tryParse(ctrlTarget.text) ?? 0) <= 0) {
+                          ctrlTarget.text = '1';
+                        }
+                      });
+                    }
+
+                    void applyQuick(int v) {
+                      setSB(() {
+                        manual = true;
+                        ctrlTarget.text = v.toString();
+                      });
+                    }
+
+                    Widget quickChip(int v) => Padding(
+                          padding: const EdgeInsets.only(right: 6, top: 6),
+                          child: ActionChip(
+                            label: Text('$v'),
+                            onPressed: () => applyQuick(v),
+                          ),
+                        );
+
+                    return SafeArea(
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          16,
+                          8,
+                          16,
+                          16 + MediaQuery.of(ctx).viewInsets.bottom,
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      children: [
-                        quickChip(1),
-                        quickChip(2),
-                        quickChip(3),
-                        quickChip(5),
-                        quickChip(10),
-                      ],
-                    ),
-                  ],
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Titre
+                            Text(activity.name,
+                                style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
+                                    color: cs.onSurface)),
+                            const SizedBox(height: 8),
 
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        child: const Text("Annuler"),
-                      ),
-                      const SizedBox(width: 12),
-                      FilledButton.icon(
-                        icon: const Icon(Icons.save),
-                        label: const Text("Enregistrer"),
-                        onPressed: () {
-                          logic.onChange();     // persiste
-                          refreshParent();      // rafraîchir la liste appelante
-                          Navigator.pop(ctx);   // fermer
-                        },
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      );
-    },
-  );
+                            // Explication courte
+                            Text(
+                              "Tu peux définir une cible quotidienne fixe (ex: 10 ${activity.unit ?? ''}). "
+                              "Si tu la désactives, l’app ajustera automatiquement selon tes usages.",
+                            ),
+                            const SizedBox(height: 12),
 
-  targetFocus.dispose();
-  ctrlTarget.dispose();
-}
+                            // Switch manuel
+                            SwitchListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title:
+                                  const Text("Définir la cible manuellement"),
+                              value: manual,
+                              onChanged: setManual,
+                            ),
+
+                            // Champ cible (affiché seulement si manuel)
+                            if (manual) ...[
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      focusNode: targetFocus,
+                                      controller: ctrlTarget,
+                                      keyboardType: TextInputType.number,
+                                      decoration: InputDecoration(
+                                        labelText: "Cible par jour",
+                                        hintText: "ex: 10",
+                                        suffixText:
+                                            activity.unit?.isNotEmpty == true
+                                                ? activity.unit
+                                                : null,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                children: [
+                                  quickChip(1),
+                                  quickChip(2),
+                                  quickChip(3),
+                                  quickChip(5),
+                                  quickChip(10),
+                                ],
+                              ),
+                            ],
+
+                            const SizedBox(height: 16),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx),
+                                  child: const Text("Annuler"),
+                                ),
+                                const SizedBox(width: 12),
+                                FilledButton.icon(
+                                  icon: const Icon(Icons.save),
+                                  label: const Text("Enregistrer"),
+                                  onPressed: () {
+                                    logic.onChange(); // persiste
+                                    refreshParent(); // rafraîchir la liste appelante
+                                    Navigator.pop(ctx); // fermer
+                                  },
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            );
+
+            targetFocus.dispose();
+            ctrlTarget.dispose();
+          }
 
           void _openHabitRationale(Activity a) {
             final d = logic.habitSliding(a.id, 1);
@@ -2581,6 +2805,14 @@ Future<void> _openHabitManualTargetSheet(
 
             return ListTile(
               onTap: () => _openHabitManualTargetSheet(context, activity: a, logic: logic, refreshParent: () => setSB(() {})),
+              // exemple: sur onTap de la ListTile routine
+              onLongPress: () => openHabitEditSheet(
+                context: context,
+                logic: logic,
+                habit: a,
+                onSaved: () =>
+                    setSB(() {}), // ou setState(() {}) selon le contexte
+              ),
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               leading: MiniRing(

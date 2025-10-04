@@ -193,10 +193,10 @@ class Activity {
   int? habitTarget;
 
   /// Si true, on n’applique pas l’auto-tune (l’utilisateur pilote la cible).
-  final bool manualTarget;
+  bool manualTarget;
 
   /// Si true (par défaut), la routine peut être ajustée automatiquement.
-  final bool autoTune;
+  bool autoTune;
 
   /// Métadonnées
   final DateTime createdAt;
