@@ -38,7 +38,7 @@ HabitPacingAgg computeDailyPacingAggregate(AppLogic logic, {String? domainId, in
   int target = 0;
   int done = 0;
   for (final a in acts) {
-    target += (a.dailyTarget ?? 0);
+    target += logic.dayQuotaFor(a);
     done   += logic.habitValueOn(a.id, DateTime(now.year, now.month, now.day));
   }
 

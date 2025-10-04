@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 
 const _uuid = Uuid();
 const int kMinDailyGoalMin = 1;
+
 enum PlanKind { action, activityTime, habit }
 
 enum HabitFreq { daily, weekly, monthly }
@@ -168,42 +169,65 @@ class Domain {
 
 /// --- ACTIVITÉS ---
 /// type = "time" (timer) ou "habit" (compteur)
+
 class Activity {
-  String id, domainId, name;
-  String type; // "time" | "habit"
-  int goalMin; // pour type=time
+  // Identité / base
+  final String id;
+  final String domainId;
+  String name;
+
+  /// "time" | "habit"
+  final String type;
+
+  /// Objectif/jour pour les activités TEMPS (minutes). Plancher logique = 1.
+  int goalMin;
+
+  /// Unité d’une routine (ex: "verres", "pompes")
   String? unit;
-  int? dailyTarget;
 
-  // NEW: quand créée + quand dernier ajustement
-  DateTime createdAt;
-  DateTime? lastTunedAt;
+  // ---------- Routines (nouveau modèle unifié) ----------
+  /// Fréquence active : daily / weekly / monthly (null si aucun réglage encore)
+  HabitFreq? habitFreq;
 
-  // Habitudes (nouveau modèle unifié)
-  HabitFreq? habitFreq; // null => legacy (dailyTarget)
-  int habitTarget; // nombre par période (jour/sem/mois)
-  bool autoTune; // true par défaut
-  DateTime? lastTuneAt; // anti spam (cooldown)
+  /// Cible pour la période active (ex: 10/mois, 1/sem, 1/jour). Peut rester null.
+  int? habitTarget;
+
+  /// Si true, on n’applique pas l’auto-tune (l’utilisateur pilote la cible).
+  final bool manualTarget;
+
+  /// Si true (par défaut), la routine peut être ajustée automatiquement.
+  final bool autoTune;
+
+  /// Métadonnées
+  final DateTime createdAt;
+  DateTime? lastTuneAt;
 
   Activity({
     String? id,
     required this.domainId,
     required this.name,
     this.type = 'time',
-    this.goalMin = kMinDailyGoalMin,
+    this.goalMin = 1,
     this.unit,
-    this.dailyTarget,
-    DateTime? createdAt,
-    this.lastTunedAt,
     this.habitFreq,
-    required this.habitTarget,
+    this.habitTarget,
+    this.manualTarget = false,
     this.autoTune = true,
+    DateTime? createdAt,
     this.lastTuneAt,
-  })  : id = id ?? _uuid.v4(),
+  })  : id = id ?? _uuid.v4(), // <-- sans const ici
         createdAt = createdAt ?? DateTime.now();
 
+  // -------- Helpers --------
   bool get isHabit => type == 'habit';
 
+  /// Fréquence « effective » (fallback mensuel si rien n’est défini).
+  HabitFreq get effHabitFreq => habitFreq ?? HabitFreq.monthly;
+
+  /// Cible « effective » (fallback 1 si rien n’est défini).
+  int get effHabitTarget => (habitTarget ?? 1);
+
+  // -------- Serialization --------
   Map<String, dynamic> toJson() => {
         'id': id,
         'domainId': domainId,
@@ -211,34 +235,121 @@ class Activity {
         'type': type,
         'goalMin': goalMin,
         'unit': unit,
-        'dailyTarget': dailyTarget,
-        'createdAt': createdAt.toIso8601String(),
-        'lastTunedAt': lastTunedAt?.toIso8601String(),
+        // plus de dailyTarget ici
         'habitFreq': habitFreq?.index,
         'habitTarget': habitTarget,
+        'manualTarget': manualTarget,
         'autoTune': autoTune,
+        'createdAt': createdAt.toIso8601String(),
         'lastTuneAt': lastTuneAt?.toIso8601String(),
       };
 
-  static Activity from(Map j) => Activity(
-        id: j['id'],
-        domainId: j['domainId'],
-        name: j['name'],
-        type: (j['type'] ?? 'time'),
-        goalMin: math.max(kMinDailyGoalMin, j['goalMin'] ?? kMinDailyGoalMin),
-        unit: j['unit'],
-        dailyTarget: 1,
-        createdAt: j['createdAt'] != null
-            ? DateTime.parse(j['createdAt'])
-            : DateTime.now(),
-        lastTunedAt:
-            j['lastTunedAt'] != null ? DateTime.parse(j['lastTunedAt']) : null,
-        habitFreq: HabitFreq.monthly,
-        habitTarget: 1,
-        autoTune: true,
-        lastTuneAt:
-            j['lastTuneAt'] != null ? DateTime.parse(j['lastTuneAt']) : null,
-            
+  /// Migration douce :
+  /// - Si l’ancien JSON contient `dailyTarget`, on l’interprète comme (freq=daily, target=dailyTarget).
+  /// - Si `habitFreq` est présent on le respecte, sinon on déduit depuis dailyTarget.
+  factory Activity.from(Map j) {
+    // Legacy
+    final int? legacyDaily = j['dailyTarget'];
+
+    HabitFreq? parsedFreq;
+    if (j['habitFreq'] != null) {
+      try {
+        parsedFreq = HabitFreq.values[j['habitFreq']];
+      } catch (_) {
+        parsedFreq = null; // fallback plus bas
+      }
+    } else if (legacyDaily != null) {
+      parsedFreq = HabitFreq.daily;
+    }
+
+    final int? parsedTarget = j['habitTarget'] ?? legacyDaily;
+
+    return Activity(
+      id: j['id'],
+      domainId: j['domainId'],
+      name: j['name'],
+      type: (j['type'] ?? 'time'),
+      goalMin: (j['goalMin'] ?? 1) is int ? (j['goalMin'] ?? 1) : 1,
+      unit: j['unit'],
+      habitFreq: parsedFreq,
+      habitTarget: parsedTarget,
+      manualTarget: j['manualTarget'] ?? false,
+      autoTune: j['autoTune'] ?? true,
+      createdAt: j['createdAt'] != null
+          ? DateTime.parse(j['createdAt'])
+          : DateTime.now(),
+      lastTuneAt:
+          j['lastTuneAt'] != null ? DateTime.parse(j['lastTuneAt']) : null,
+    );
+  }
+
+  // -------- Utilities --------
+  Activity copyWith({
+    String? id,
+    String? domainId,
+    String? name,
+    String? type,
+    int? goalMin,
+    String? unit,
+    HabitFreq? habitFreq,
+    int? habitTarget,
+    bool? manualTarget,
+    bool? autoTune,
+    DateTime? createdAt,
+    DateTime? lastTuneAt,
+  }) {
+    return Activity(
+      id: id ?? this.id,
+      domainId: domainId ?? this.domainId,
+      name: name ?? this.name,
+      type: type ?? this.type,
+      goalMin: goalMin ?? this.goalMin,
+      unit: unit ?? this.unit,
+      habitFreq: habitFreq ?? this.habitFreq,
+      habitTarget: habitTarget ?? this.habitTarget,
+      manualTarget: manualTarget ?? this.manualTarget,
+      autoTune: autoTune ?? this.autoTune,
+      createdAt: createdAt ?? this.createdAt,
+      lastTuneAt: lastTuneAt ?? this.lastTuneAt,
+    );
+  }
+
+  @override
+  String toString() => 'Activity($id, $name, type=$type, '
+      'goalMin=$goalMin, freq=$habitFreq, target=$habitTarget, '
+      'manual=$manualTarget, auto=$autoTune)';
+
+  @override
+  bool operator ==(Object other) {
+    return other is Activity &&
+        other.id == id &&
+        other.domainId == domainId &&
+        other.name == name &&
+        other.type == type &&
+        other.goalMin == goalMin &&
+        other.unit == unit &&
+        other.habitFreq == habitFreq &&
+        other.habitTarget == habitTarget &&
+        other.manualTarget == manualTarget &&
+        other.autoTune == autoTune &&
+        other.createdAt == createdAt &&
+        other.lastTuneAt == lastTuneAt;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        id,
+        domainId,
+        name,
+        type,
+        goalMin,
+        unit,
+        habitFreq,
+        habitTarget,
+        manualTarget,
+        autoTune,
+        createdAt,
+        lastTuneAt,
       );
 }
 

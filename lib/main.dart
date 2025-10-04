@@ -905,13 +905,11 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       } else {
         final unit =
             unitCtrl.text.trim().isEmpty ? 'unités' : unitCtrl.text.trim();
-        final target = int.tryParse(targetCtrl.text.trim()) ?? 1;
         _state!.activities.add(Activity(
             domainId: selectedDomainId!,
             name: name,
             type: 'habit',
             unit: unit,
-            dailyTarget: target,
             habitTarget: 1));
       }
       await _saveAndRefresh();
@@ -923,7 +921,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     final goalCtrl = TextEditingController(text: a.goalMin.toString());
     final unitCtrl = TextEditingController(text: a.unit ?? 'unités');
     final targetCtrl =
-        TextEditingController(text: (a.dailyTarget ?? 1).toString());
+        TextEditingController(text: (logic.dayQuotaFor(a)).toString());
     final ok = await showDialog<bool>(
           context: context,
           builder: (_) => AlertDialog(
@@ -965,8 +963,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       a.name = nameCtrl.text.trim().isEmpty ? a.name : nameCtrl.text.trim();
       if (a.isHabit) {
         a.unit = unitCtrl.text.trim().isEmpty ? a.unit : unitCtrl.text.trim();
-        a.dailyTarget =
-            int.tryParse(targetCtrl.text.trim()) ?? a.dailyTarget ?? 1;
       } else {
         a.goalMin = int.tryParse(goalCtrl.text.trim()) ?? a.goalMin;
       }
@@ -1190,7 +1186,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                       isExpanded: true,
                       items: habits.map((a) {
                         final freq = a.habitFreq?.name ?? 'daily?';
-                        final tgt = a.habitTarget ?? (a.dailyTarget ?? 0);
+                        final tgt = a.habitTarget ?? logic.dayQuotaFor(a);
                         return DropdownMenuItem(
                           value: a,
                           child: Text(
@@ -1307,7 +1303,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                             final w = logic.habitSliding(a.id, 7);
                             final m = logic.habitSliding(a.id, 30);
                             debugPrint('[HAB] ${a.name} '
-                                'freq=${a.habitFreq} tgt=${a.habitTarget ?? a.dailyTarget} '
+                                'freq=${a.habitFreq}'
                                 '7j=${w.done}/${w.target} 30j=${m.done}/${m.target}');
                           }
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -1699,7 +1695,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       for (final d in _state!.domains)
         d.id: _state!.activities
             .where((a) => a.domainId == d.id && a.isHabit)
-            .fold<int>(0, (sum, a) => sum + (a.dailyTarget ?? 0) * days),
+            .fold<int>(0, (sum, a) => sum + logic.dayQuotaFor(a) * days),
     };
     final totalHabitsDone = habitByDomain.values.fold<int>(0, (a, b) => a + b);
     final totalHabitsTarget =
@@ -1984,7 +1980,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
   // ---- Helpers HABIT ----
   bool _habitDayReached(AppLogic l, Activity a) {
-    final int tgt = a.dailyTarget ?? 0;
+    final int tgt = logic.dayQuotaFor(a);
     if (tgt <= 0) return false;
     final now = DateTime.now();
     final d = DateTime(now.year, now.month, now.day);
@@ -2129,6 +2125,150 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               },
             );
           }
+
+Future<void> _openHabitManualTargetSheet(
+  BuildContext context, {
+  required Activity activity,
+  required AppLogic logic,
+  required VoidCallback refreshParent, // pour rafraîchir la liste après "Enregistrer"
+}) async {
+  final cs = Theme.of(context).colorScheme;
+
+  // ÉTAT LOCAL (copié depuis l’activité, pour éviter les reset pendant la saisie)
+  bool manual = activity.manualTarget;
+  final ctrlTarget = TextEditingController(
+    text: logic.dayQuotaFor(activity).toString(),
+  );
+
+  // Optionnel : focus propre pour le champ
+  final targetFocus = FocusNode();
+
+  await showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (ctx) {
+      return StatefulBuilder(
+        builder: (ctx, setSB) {
+          void setManual(bool v) {
+            setSB(() {
+              manual = v;
+              // si on passe en manuel et que la cible est 0 ⇒ seed à 1
+              if (manual && (int.tryParse(ctrlTarget.text) ?? 0) <= 0) {
+                ctrlTarget.text = '1';
+              }
+            });
+          }
+
+          void applyQuick(int v) {
+            setSB(() {
+              manual = true;
+              ctrlTarget.text = v.toString();
+            });
+          }
+
+          Widget quickChip(int v) => Padding(
+            padding: const EdgeInsets.only(right: 6, top: 6),
+            child: ActionChip(
+              label: Text('$v'),
+              onPressed: () => applyQuick(v),
+            ),
+          );
+
+          return SafeArea(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                16, 8, 16,
+                16 + MediaQuery.of(ctx).viewInsets.bottom,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Titre
+                  Text(activity.name,
+                      style: TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.w800, color: cs.onSurface)),
+                  const SizedBox(height: 8),
+
+                  // Explication courte
+                  Text(
+                    "Tu peux définir une cible quotidienne fixe (ex: 10 ${activity.unit ?? ''}). "
+                    "Si tu la désactives, l’app ajustera automatiquement selon tes usages.",
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Switch manuel
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text("Définir la cible manuellement"),
+                    value: manual,
+                    onChanged: setManual,
+                  ),
+
+                  // Champ cible (affiché seulement si manuel)
+                  if (manual) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            focusNode: targetFocus,
+                            controller: ctrlTarget,
+                            keyboardType: TextInputType.number,
+                            decoration: InputDecoration(
+                              labelText: "Cible par jour",
+                              hintText: "ex: 10",
+                              suffixText: activity.unit?.isNotEmpty == true ? activity.unit : null,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      children: [
+                        quickChip(1),
+                        quickChip(2),
+                        quickChip(3),
+                        quickChip(5),
+                        quickChip(10),
+                      ],
+                    ),
+                  ],
+
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text("Annuler"),
+                      ),
+                      const SizedBox(width: 12),
+                      FilledButton.icon(
+                        icon: const Icon(Icons.save),
+                        label: const Text("Enregistrer"),
+                        onPressed: () {
+                          logic.onChange();     // persiste
+                          refreshParent();      // rafraîchir la liste appelante
+                          Navigator.pop(ctx);   // fermer
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
+
+  targetFocus.dispose();
+  ctrlTarget.dispose();
+}
 
           void _openHabitRationale(Activity a) {
             final d = logic.habitSliding(a.id, 1);
@@ -2440,7 +2580,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             final unit = (a.unit ?? '').isNotEmpty ? ' ${a.unit}' : '';
 
             return ListTile(
-              onTap: () => _openHabitRationale(a),
+              onTap: () => _openHabitManualTargetSheet(context, activity: a, logic: logic, refreshParent: () => setSB(() {})),
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               leading: MiniRing(
@@ -3000,7 +3140,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                 final now = DateTime.now();
                 final done = logic.habitValueOn(
                     activity.id, DateTime(now.year, now.month, now.day));
-                final target = activity.dailyTarget ?? 0;
+                final target = logic.dayQuotaFor(activity);
                 final unit = activity.unit ?? '';
                 final ratio =
                     target > 0 ? (done / target).clamp(0.0, 1.0) : 0.0;
@@ -3285,7 +3425,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                                         title: Text(a.name),
                                         subtitle: a.isHabit
                                             ? Text(
-                                                'Objectif: ${a.dailyTarget ?? 1} ${a.unit ?? ''} / jour')
+                                                'Objectif: ${logic.dayQuotaFor(a)} ${a.unit ?? ''} / jour')
                                             : Text(
                                                 'Objectif: ${a.goalMin} min'),
                                         trailing: Row(

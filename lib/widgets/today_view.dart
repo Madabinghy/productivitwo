@@ -280,7 +280,7 @@ class _TodayViewState extends State<TodayView> {
           final done = widget.logic.habitValueOn(it.refId!, day);
           final act =
               widget.state.activities.firstWhere((a) => a.id == it.refId!);
-          final target = act.dailyTarget ?? 0;
+          final target = widget.logic.dayQuotaFor(act);
           final unit = (act.unit ?? '').isNotEmpty ? ' ${act.unit}' : '';
 
           void inc(int delta) => setState(() {

@@ -1,486 +1,188 @@
-import 'dart:math' as math;
+// applogic.dart — version sans dailyTarget, cibles dérivées partout ✨
 
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:productivitwo_v1/models.dart';
-import 'package:uuid/uuid.dart';
 
+// ---------- Constantes ----------
+const int kMinDailyGoalMin = 1; // plancher dur pour activités "time"
+final _uuid = const Uuid();
+
+// ---------- Périodes / compteurs ----------
 class PeriodCount {
   final int done, target;
   double get ratio => target > 0 ? done / target : 0.0;
   const PeriodCount(this.done, this.target);
 }
 
-PeriodCount habitPeriod(AppLogic l, Activity a, {DateTime? now}) {
-  final t = now ?? DateTime.now();
-  switch (a.habitFreq ?? HabitFreq.daily) {
-    case HabitFreq.daily:
-      final d = DateTime(t.year, t.month, t.day);
-      final done = l.habitValueOn(a.id, d);
-      final target = a.habitTarget ?? (a.dailyTarget ?? 0);
-      return PeriodCount(done, target);
-    case HabitFreq.weekly:
-      final done = l.habitSliding(a.id, 7).done; // tu l’as déjà
-      final target = a.habitTarget ?? 1;
-      return PeriodCount(done, target);
-    case HabitFreq.monthly:
-      final done = l.habitSliding(a.id, 30).done;
-      final target = a.habitTarget ?? 1;
-      return PeriodCount(done, target);
-  }
-}
-
+// ---------- Auto-tune (trace) ----------
 class TuneChange {
   String activityId;
   String note;
   TuneChange(this.activityId, this.note);
 }
 
-List<TuneChange> autoTuneHabit(AppLogic l, Activity a, {DateTime? now}) {
-  final res = <TuneChange>[];
-  if (!a.isHabit || !(a.autoTune)) return res;
-
-  final t = now ?? DateTime.now();
-  // cooldown 7 jours
-  if (a.lastTuneAt != null && t.difference(a.lastTuneAt!).inDays < 7)
-    return res;
-
-  final freq = a.habitFreq ?? HabitFreq.daily;
-  int target = a.habitTarget ?? (a.dailyTarget ?? 1);
-
-  // Mesures
-  final w = l.habitSliding(a.id, 7).done; // total 7j
-  final m = l.habitSliding(a.id, 30).done; // total 30j
-
-  bool changed = false;
-
-  int clampMin(int v) => v < 1 ? 1 : v;
-
-  // ---- Règles d’escalade
-  if (freq == HabitFreq.monthly) {
-    // si l'utilisateur dépasse la cible de façon robuste → +1/mois
-    if (m >= target + 1) {
-      target += 1;
-      changed = true;
-    }
-    // seuils de pivot vers weekly (lisible pour l’utilisateur)
-    if (!changed && target >= 4) {
-      a.habitFreq = HabitFreq.weekly;
-      target = (target / 4.0).ceil();
-      changed = true;
-    }
-  } else if (freq == HabitFreq.weekly) {
-    // si l'utilisateur dépasse sur la semaine → +1/sem
-    if (w >= target + 1) {
-      target += 1;
-      changed = true;
-    }
-    // pivot vers daily si très haut (≈6–7/sem)
-    if (!changed && target >= 6) {
-      a.habitFreq = HabitFreq.daily;
-      target = 1;
-      changed = true;
-    }
-  } else {
-    // daily
-    // escalade daily (facultatif)
-    // if (m >= 30 && target < 2) { target = 2; changed = true; }
-  }
-
-  // ---- Règle de baisse douce (si sous 60% sur 2 fenêtres)
-  if (!changed) {
-    bool lowMonth = (m <
-        (target * (freq == HabitFreq.monthly ? 1 : 4))); // approx équivalence
-    bool lowWeek = (w < (freq == HabitFreq.weekly ? target : (target / 4.0)));
-    // pour simplifier: si ratio global <~0.6 et on a de l’historique
-    final PeriodCount p = habitPeriod(l, a, now: t);
-    final ratio = p.ratio; // jour/sem/mois selon freq
-    if (ratio < 0.6) {
-      if (freq == HabitFreq.daily && target > 1) {
-        target -= 1;
-        changed = true;
-      } else if (freq == HabitFreq.weekly && target > 1) {
-        target -= 1;
-        changed = true;
-      } else if (freq == HabitFreq.monthly && target > 1) {
-        target -= 1;
-        changed = true;
-      }
-    }
-  }
-
-  if (changed) {
-    a.habitTarget = clampMin(target);
-    a.lastTuneAt = t;
-    l.onChange();
-    res.add(TuneChange(a.id, 'auto-tune → ${a.habitFreq} x${a.habitTarget}'));
-  }
-  return res;
-}
-
-class GoalChange {
-  final String kind; // 'activity' | 'domain'
-  final String id; // activityId ou domainId
-  final int deltaMin;
-  final int newGoalMin;
-  GoalChange({
-    required this.kind,
-    required this.id,
-    required this.deltaMin,
-    required this.newGoalMin,
-  });
-}
-
-class FocusItem {
-  final String kind; // 'time' | 'habit' | 'goal'
-  final double score; // priorité (plus haut = plus prioritaire)
-  final String reason; // explication courte
-
-  // charge utile
-  final Activity? activity; // pour time/habit OU goal lié à une activité
-  final Goal? goal; // pour goal
-  final Duration? timeDeficit;
-  final int? habitDeficit;
-
-  // affichage
-  final String? titleOverride; // ex. titre de l’objectif
-  final String? subtitleOverride; // ex. prochaine action
-
-  FocusItem({
-    required this.kind,
-    required this.score,
-    required this.reason,
-    this.activity,
-    this.goal,
-    this.timeDeficit,
-    this.habitDeficit,
-    this.titleOverride,
-    this.subtitleOverride,
-  });
-}
+// =====================================================
+// ===============  LOGIQUE PRINCIPALE  ================
+// =====================================================
 
 class AppLogic {
   AppState state;
   final void Function() onChange;
   AppLogic(this.state, this.onChange);
 
-  // Active target for a habit based on its current frequency
-int activeHabitTarget(Activity a) {
-  final f = a.habitFreq ?? HabitFreq.monthly;
-  switch (f) {
-    case HabitFreq.daily:   return dayQuotaFor(a);
-    case HabitFreq.weekly:  return weekTargetFrom(a);
-    case HabitFreq.monthly: return monthTargetFrom(a);
-  }
-}
-
-// Done-so-far on the active window
-int activeHabitDone(Activity a) {
-  final f = a.habitFreq ?? HabitFreq.monthly;
-  switch (f) {
-    case HabitFreq.daily:   return habitSliding(a.id, 1).done;
-    case HabitFreq.weekly:  return habitSliding(a.id, 7).done;
-    case HabitFreq.monthly: return habitSliding(a.id, 30).done;
-  }
-}
-
-// Has the habit reached its active target?
-bool habitReached(Activity a) {
-  final tgt = activeHabitTarget(a);
-  if (tgt <= 0) return false; // defensive
-  return activeHabitDone(a) >= tgt;
-}
-
-// Sum of HABIT "done" over the last N days, for a domain (or all)
-  int sumHabitDone(String? domainId, int days) {
-    final acts = state.activities.where(
-        (a) => a.isHabit && (domainId == null || a.domainId == domainId));
-    int done = 0;
-    for (final a in acts) {
-      final s = habitSliding(a.id, days); // your existing sliding window
-      done += s.done;
-    }
-    return done;
-  }
-
-// Sum of HABIT targets for the period, using the new helpers
-  int sumHabitTarget(String? domainId, int days) {
-    final acts = state.activities.where(
-        (a) => a.isHabit && (domainId == null || a.domainId == domainId));
-    int tgt = 0;
-    for (final a in acts) {
-      if (days == 1) {
-        tgt += dayQuotaFor(a); // ← derived daily quota
-      } else if (days == 7) {
-        tgt += weekTargetFrom(a); // ← derived weekly target
-      } else if (days == 30) {
-        tgt += monthTargetFrom(a); // ← derived monthly target
-      }
-    }
-    return tgt;
-  }
-
-// — Helpers “effective” pour routines —
-  HabitFreq effectiveHabitFreq(Activity a) {
-    // si tu gardes dailyTarget (legacy), on le mappe sur “daily”
-    if (a.habitFreq != null) return a.habitFreq!;
-    if (a.dailyTarget != null) return HabitFreq.daily;
-    return HabitFreq.monthly; // fallback raisonnable pour l’affichage
-  }
-
-  int effectiveHabitTarget(Activity a) {
-    if (a.habitTarget != null) return a.habitTarget!;
-    if (a.dailyTarget != null) return a.dailyTarget!;
-    return 1; // routine sans cible explicite → 1 par défaut pour l’UI
-  }
-
-// Targets dérivés pour semaine/mois (affichage)
-  int weekTargetFrom(Activity a) {
-    final f = effectiveHabitFreq(a);
-    final t = effectiveHabitTarget(a);
-    switch (f) {
-      case HabitFreq.daily:
-        return t * 7;
-      case HabitFreq.weekly:
-        return t;
-      case HabitFreq.monthly:
-        return (t / 4).ceil(); // approx 4 semaines
-    }
-  }
-
-  int monthTargetFrom(Activity a) {
-    final f = effectiveHabitFreq(a);
-    final t = effectiveHabitTarget(a);
-    switch (f) {
-      case HabitFreq.daily:
-        return t * 30;
-      case HabitFreq.weekly:
-        return t * 4; // approx 4 semaines
-      case HabitFreq.monthly:
-        return t;
-    }
-  }
-
-// Quota du ring “jour” pour routines
-  int dayQuotaFor(Activity a) {
-    final f = effectiveHabitFreq(a);
-    final t = effectiveHabitTarget(a);
-    return (f == HabitFreq.daily)
-        ? t
-        : 1; // hebdo/mensuel : 1 occurrence planifiée
-  }
-
-  // Déplace vers demain les items non réalisés aujourd’hui.
-// - action     : si !done
-// - habit      : si doneAujourd’hui < target
-// - activity   : si 0 minute aujourd’hui
-  void rolloverUnfinishedToTomorrow({DateTime? now}) {
-    final _now = now ?? DateTime.now();
-    final String todayKey = yyyymmdd(_now);
-    final String tomorrowKey = yyyymmdd(_now.add(const Duration(days: 1)));
-
-    // ordre de base pour demain (on append)
-    int nextOrder = 1;
-    for (final e in state.dayPlan.where((e) => e.yyyymmdd == tomorrowKey)) {
-      if (e.order >= nextOrder) nextOrder = e.order + 1;
-    }
-
-    // on itère sur une copie (on modifie l’original)
-    final todayItems =
-        state.dayPlan.where((e) => e.yyyymmdd == todayKey).toList();
-
-    bool _shouldMove(DayPlanItem it) {
-      switch (it.kind) {
-        case PlanKind.action:
-          return it.done == false;
-
-        case PlanKind.habit:
-          final d = DateTime(_now.year, _now.month, _now.day);
-          final done = habitValueOn(it.refId!, d);
-          final act = state.activities.firstWhere((a) => a.id == it.refId!);
-          final target = act.dailyTarget ?? 0;
-          return done < target; // pas atteint → on reporte
-
-        case PlanKind.activityTime:
-          final dayStart = DateTime(_now.year, _now.month, _now.day);
-          final dur = totalForRangeByActivity(it.refId!, dayStart, _now);
-          return dur.inMinutes == 0; // aucune minute → on reporte
-      }
-    }
-
-    for (final it in todayItems) {
-      if (_shouldMove(it)) {
-        it.yyyymmdd = tomorrowKey;
-        it.order = nextOrder++;
-      }
-    }
-
-    onChange(); // persiste + notifie
-  }
-
-// --- jour courant / demain avec TA clé (sans tirets)
-  String _todayKey() => yyyymmdd(DateTime.now());
-  String _tomorrowKey() =>
-      yyyymmdd(DateTime.now().add(const Duration(days: 1)));
-
-  int _nextOrderForDay(String ymd) {
-    final same = state.dayPlan.where((e) => e.yyyymmdd == ymd);
-    if (same.isEmpty) return 0;
-    return same.map((e) => e.order).reduce((a, b) => a > b ? a : b) + 1;
-  }
-
-// Ajoute Demain si absent (sans toucher Aujourd’hui)
-  void ensurePlannedTomorrow(PlanKind kind, String refId) {
-    final tomoKey = _tomorrowKey();
-    final exists = state.dayPlan.any(
-      (e) => e.yyyymmdd == tomoKey && e.kind == kind && e.refId == refId,
-    );
-    if (exists) return;
-
-    String title;
-    switch (kind) {
-      case PlanKind.activityTime:
-        title = state.activities
-            .firstWhere(
-              (a) => a.id == refId,
-              orElse: () =>
-                  Activity(domainId: '', name: 'Activité', habitTarget: 1),
-            )
-            .name;
-        break;
-      case PlanKind.habit:
-        title = state.activities
-            .firstWhere(
-              (a) => a.id == refId,
-              orElse: () => Activity(
-                  domainId: '', name: 'Routine', type: 'habit', habitTarget: 1),
-            )
-            .name;
-        break;
-      case PlanKind.action:
-        title = 'Action';
-        break;
-    }
-
-    state.dayPlan.add(DayPlanItem(
-      id: const Uuid().v4(),
-      kind: kind,
-      refId: refId,
-      title: title,
-      yyyymmdd: tomoKey,
-      done: false,
-      allDay: false,
-      order: _nextOrderForDay(tomoKey),
-    ));
-  }
-
-// Supprime de la journée donnée (retourne true si quelque chose a été retiré)
-  bool removeFromDay(String ymd, PlanKind kind, String refId) {
-    final before = state.dayPlan.length;
-    state.dayPlan.removeWhere(
-      (e) => e.yyyymmdd == ymd && e.kind == kind && e.refId == refId,
-    );
-    return state.dayPlan.length != before;
-  }
-
-  void movePlannedToTomorrowIfPresent(PlanKind kind, String refId,
-      {bool addIfMissing = false}) {
-    final todayKey = _todayKey();
-    final tomoKey = _tomorrowKey();
-
-    // 1) retirer de la vraie source (state.dayPlan)
-    final idx = _indexInDay(todayKey, kind, refId);
-    DayPlanItem? removed;
-    if (idx >= 0) {
-      removed = state.dayPlan.removeAt(idx);
-    }
-
-    // 2) éviter doublon demain
-    final existsTomorrow = _indexInDay(tomoKey, kind, refId) >= 0;
-    if (existsTomorrow) {
-      onChange();
-      return;
-    }
-
-    // 3) construire l'item pour demain
-    DayPlanItem? toAdd;
-    if (removed != null) {
-      toAdd = DayPlanItem(
-        id: removed.id,
-        kind: removed.kind,
-        refId: removed.refId,
-        title: removed.title,
-        yyyymmdd: tomoKey,
-        done: false,
-        allDay: removed.allDay,
-        order: _nextOrderForDay(tomoKey),
-      );
-    } else if (addIfMissing) {
-      String title;
-      switch (kind) {
-        case PlanKind.activityTime:
-          title = state.activities
-              .firstWhere(
-                (a) => a.id == refId,
-                orElse: () =>
-                    Activity(domainId: '', name: 'Activité', habitTarget: 1),
-              )
-              .name;
-          break;
-        case PlanKind.habit:
-          title = state.activities
-              .firstWhere(
-                (a) => a.id == refId,
-                orElse: () => Activity(
-                    domainId: '',
-                    name: 'Routine',
-                    type: 'habit',
-                    habitTarget: 1),
-              )
-              .name;
-          break;
-        case PlanKind.action:
-          title = 'Action';
-          break;
-      }
-      toAdd = DayPlanItem(
-        id: const Uuid().v4(),
-        kind: kind,
-        refId: refId,
-        title: title,
-        yyyymmdd: tomoKey,
-        done: false,
-        allDay: false,
-        order: _nextOrderForDay(tomoKey),
-      );
-    }
-
-    if (toAdd != null) {
-      state.dayPlan.add(toAdd);
-    }
-
-    print('[DEBUG MOVE] total=${state.dayPlan.length}');
-    for (final e in state.dayPlan) {
-      print(' - ${e.kind} ${e.refId} ${e.yyyymmdd}');
-    }
-    onChange(); // persiste + notifie
-  }
-
-  // ---------- SESSIONS TEMPS ----------
+  // ---------- TEMPS (type=time) ----------
   void start(String activityId) {
     for (final s in state.sessions.where((s) => s.endAt == null)) {
       s.endAt = DateTime.now();
     }
-    state.sessions
-        .add(Session(activityId: activityId, startAt: DateTime.now()));
+    state.sessions.add(Session(activityId: activityId, startAt: DateTime.now()));
     onChange();
 
-    // Préparer demain + retirer d'aujourd'hui si présent
+    // Préparer demain (optionnel)
     ensurePlannedTomorrow(PlanKind.activityTime, activityId);
-/*     final removed =
-        removeFromDay(_todayKey(), PlanKind.activityTime, activityId);
-    if (removed) onChange(); */
+    // Si tu veux retirer de "Aujourd’hui", décommente :
+    // final removed = removeFromDay(_todayKey(), PlanKind.activityTime, activityId);
+    // if (removed) onChange();
   }
+
+  // AppLogic
+Future<int> scanAllActivities({DateTime? now}) async {
+  final t = now ?? DateTime.now();
+
+  // 1) Revue des objectifs temps & domaines (force = même jour)
+  try {
+    await reviewGoals(now: t, force: true);
+  } catch (_) {
+    // si reviewGoals sans 'force' dans ta version:
+    try { await reviewGoals(now: t); } catch (_) {}
+  }
+
+  // 2) Auto-tune des routines (si dispo dans ta base)
+  int bumps = 0;
+  try {
+    for (final a in state.activities.where((x) => x.isHabit)) {
+      // version "immédiate" si tu l'as:
+      try { autoTuneHabitImmediate(this, a); } catch (_) {}
+      // version tolérante:
+      try { autoTuneHabit(this, a, now: t); } catch (_) {}
+      // si tu veux compter les changements, incrémente 'bumps' ici
+    }
+  } catch (_) {
+    // no-op si pas encore implémenté
+  }
+
+  onChange(); // persiste + notifie l’UI
+  return bumps;
+}
+
+// AppLogic
+Future<void> devAddHabitHistory(
+  String activityId, {
+  int days = 7,          // nb de jours à remplir (en remontant depuis aujourd’hui)
+  int perDay = 1,        // nb d’incréments par jour (ex: 2 verres/jour)
+  DateTime? now,         // pour tests (sinon DateTime.now())
+}) async {
+  final t = now ?? DateTime.now();
+
+  // sécurité : ne fait rien si ce n’est pas une routine
+  final idx = state.activities.indexWhere((a) => a.id == activityId);
+  if (idx < 0 || !state.activities[idx].isHabit) return;
+
+  for (int i = 0; i < days; i++) {
+    final d = DateTime(t.year, t.month, t.day).subtract(Duration(days: i));
+    for (int k = 0; k < perDay; k++) {
+      incHabit(activityId, 1, d); // incHabit appelle déjà onChange()
+    }
+  }
+}
+
+// ---------------- INBOX ----------------
+void inboxAdd(String title) {
+  if (title.trim().isEmpty) return;
+  state.inbox.add(InboxItem(title: title.trim()));
+  onChange();
+}
+
+void inboxRemove(String id) {
+  state.inbox.removeWhere((x) => x.id == id);
+  onChange();
+}
+
+// Clarify -> créer un Goal depuis un InboxItem
+Goal inboxToGoal({
+  required String inboxId,
+  required String domainId,
+  required String title,
+  String? activityId,
+  String? nextAction,
+  String? context,
+}) {
+  final g = createGoal(
+    domainId: domainId,
+    title: title,
+    activityId: activityId,
+    nextAction: nextAction,
+    context: context,
+  );
+  inboxRemove(inboxId);
+  return g;
+}
+
+// ---------------- GOALS ----------------
+Goal createGoal({
+  required String domainId,
+  required String title,
+  String? activityId,
+  String? nextAction,
+  String? context,
+}) {
+  final g = Goal(
+    domainId: domainId,
+    title: title,
+    activityId: activityId,
+    nextAction: nextAction,
+    context: context,
+    status: 'active',           // <- ajuste si ton modèle utilise un enum/const
+    createdAt: DateTime.now(),  // <- si ton modèle a ce champ
+  );
+  state.goals.add(g);
+  onChange();
+  return g;
+}
+
+void setGoalNextAction(String goalId, String? nextAction) {
+  final g = state.goals.firstWhere((x) => x.id == goalId);
+  g.nextAction = nextAction;
+  onChange();
+}
+
+void markGoalDone(String goalId) {
+  final g = state.goals.firstWhere((x) => x.id == goalId);
+  g.status = 'done';
+  g.doneAt = DateTime.now(); // si ton modèle a ce champ
+  onChange();
+}
+
+void archiveGoal(String goalId) {
+  final g = state.goals.firstWhere((x) => x.id == goalId);
+  g.status = 'archived';
+  onChange();
+}
+
+// Sommes d'habitudes par domaine (range de dates)
+Map<String, int> habitTotalsByDomain(DateTime start, DateTime end) {
+  final map = <String, int>{};
+  for (final d in state.domains) {
+    int sum = 0;
+    for (final a in state.activities.where((a) => a.isHabit && a.domainId == d.id)) {
+      sum += habitSumForRange(a.id, start, end);
+    }
+    map[d.id] = sum;
+  }
+  return map;
+}
 
   void stopActive() {
     final run = state.sessions.where((s) => s.endAt == null).toList();
@@ -488,7 +190,7 @@ bool habitReached(Activity a) {
       final ended = run.last;
       ended.endAt = DateTime.now();
       onChange();
-      // auto-ajuste l’activité qui vient de finir
+      // boost auto (time)
       maybeAutoAdjustActivity(ended.activityId);
     }
   }
@@ -514,19 +216,15 @@ bool habitReached(Activity a) {
       return act.domainId == domainId;
     }
 
-    return state.sessions.where(inRange).where(inDomain).fold(Duration.zero,
-        (sum, s) {
+    return state.sessions.where(inRange).where(inDomain).fold(Duration.zero, (sum, s) {
       final st = s.startAt.isBefore(start) ? start : s.startAt;
-      final en = (s.endAt ?? DateTime.now()).isAfter(end)
-          ? end
-          : (s.endAt ?? DateTime.now());
+      final en = (s.endAt ?? DateTime.now()).isAfter(end) ? end : (s.endAt ?? DateTime.now());
       if (!en.isAfter(st)) return sum;
       return sum + en.difference(st);
     });
   }
 
-  Duration totalForRangeByActivity(
-      String activityId, DateTime start, DateTime end) {
+  Duration totalForRangeByActivity(String activityId, DateTime start, DateTime end) {
     Duration sum = Duration.zero;
     for (final s in state.sessions.where((s) => s.activityId == activityId)) {
       final e = s.endAt ?? DateTime.now();
@@ -539,7 +237,6 @@ bool habitReached(Activity a) {
     return sum;
   }
 
-  // Totaux temps par domaine sur une plage
   Map<String, Duration> timeTotalsByDomain(DateTime start, DateTime end) {
     final map = <String, Duration>{};
     for (final d in state.domains) {
@@ -548,20 +245,16 @@ bool habitReached(Activity a) {
     return map;
   }
 
-  // ---------- HABITUDES (compteur) ----------
+  // ---------- HABITUDES (type=habit) ----------
   int habitValueOn(String activityId, DateTime day) {
     final key = yyyymmdd(day);
-    final hp = state.habitProgress
-        .where((h) => h.activityId == activityId && h.yyyymmdd == key)
-        .toList();
+    final hp = state.habitProgress.where((h) => h.activityId == activityId && h.yyyymmdd == key).toList();
     return hp.isEmpty ? 0 : hp.first.value;
   }
 
   int habitSumForRange(String activityId, DateTime start, DateTime end) {
-    // somme inclusive: jours [start, end)
     int sum = 0;
     DateTime d = DateTime(start.year, start.month, start.day);
-    final last = DateTime(end.year, end.month, end.day);
     while (d.isBefore(end)) {
       sum += habitValueOn(activityId, d);
       d = d.add(const Duration(days: 1));
@@ -571,17 +264,12 @@ bool habitReached(Activity a) {
 
   void incHabit(String activityId, int delta, DateTime day) {
     final key = yyyymmdd(day);
-
-    // --- maj compteur ---
-    final idx = state.habitProgress.indexWhere(
-      (h) => h.activityId == activityId && h.yyyymmdd == key,
-    );
+    final idx = state.habitProgress.indexWhere((h) => h.activityId == activityId && h.yyyymmdd == key);
     if (idx < 0) {
-      final v = delta < 0 ? 0 : delta; // pas de négatif à la création
       state.habitProgress.add(HabitProgress(
         activityId: activityId,
         yyyymmdd: key,
-        value: v.clamp(0, 1000000),
+        value: math.max(0, delta),
       ));
     } else {
       final v = state.habitProgress[idx].value + delta;
@@ -589,122 +277,61 @@ bool habitReached(Activity a) {
     }
     onChange();
 
-    // --- déplacer/copier pour Demain si cible atteinte (quotidien uniquement) ---
+    // Atteinte quotidienne ? → préparer demain & retirer de "Aujourd’hui"
     final act = state.activities.firstWhere(
       (a) => a.id == activityId,
-      orElse: () => Activity(
-          domainId: '', name: 'Routine', type: 'habit', habitTarget: 1),
+      orElse: () => Activity(domainId: '', name: 'Routine', type: 'habit', habitTarget: 1),
     );
-
-    // Support legacy (dailyTarget) et nouveau modèle (habitFreq/habitTarget)
-    final isDaily =
-        (act.habitFreq == null) || (act.habitFreq == HabitFreq.daily);
-    final targetDay = (act.habitTarget ?? act.dailyTarget ?? 0);
-
-    if (isDaily && targetDay > 0) {
-      final dayKeyDate = DateTime(day.year, day.month, day.day);
-      final doneOnThatDay = habitValueOn(activityId, dayKeyDate);
-
-      if (doneOnThatDay >= targetDay) {
-        // 1) préparer demain (ajout si absent, non coché)
+    final isDaily = (effectiveHabitFreq(act) == HabitFreq.daily);
+    final dayQuota = dayQuotaFor(act);
+    if (isDaily && dayQuota > 0) {
+      final today = DateTime(day.year, day.month, day.day);
+      if (habitValueOn(activityId, today) >= dayQuota) {
         ensurePlannedTomorrow(PlanKind.habit, activityId);
-        // 2) retirer de la liste "Aujourd'hui" (vider visuellement)
-        final removed =
-            removeFromDay(yyyymmdd(dayKeyDate), PlanKind.habit, activityId);
+        final removed = removeFromDay(yyyymmdd(today), PlanKind.habit, activityId);
         if (removed) onChange();
       }
     }
 
-    // --- auto-tune tolérant (n’affecte rien si tu n’as pas encore ajouté les nouveaux champs) ---
+    // auto-tune (safe)
     _autoTuneHabitSafe(act);
   }
 
-  void _autoTuneHabitSafe(Activity a, {DateTime? now}) {
-    // Si pas habit → rien
-    if (!a.isHabit) return;
+  // ---------- Cibles dérivées (habits) ----------
+  HabitFreq effectiveHabitFreq(Activity a) {
+    return a.habitFreq ?? HabitFreq.monthly; // défaut raisonnable
+  }
 
-    // Si tu n’as pas encore ajouté habitFreq/habitTarget, on ne fait rien (safe)
-    try {
-      autoTuneHabit(this, a, now: now);
-    } catch (_) {
-      // silencieux : la fonction n’existe pas encore ou le modèle n’est pas prêt
+  int effectiveHabitTarget(Activity a) {
+    return (a.habitTarget ?? 1); // défaut : 1
+  }
+
+  // Période active -> "fait" & "cible" (utile à l'UI)
+  PeriodCount habitPeriod(Activity a, {DateTime? now}) {
+    final t = now ?? DateTime.now();
+    switch (effectiveHabitFreq(a)) {
+      case HabitFreq.daily:
+        final d = DateTime(t.year, t.month, t.day);
+        return PeriodCount(habitValueOn(a.id, d), dayQuotaFor(a));
+      case HabitFreq.weekly:
+        return PeriodCount(habitSliding(a.id, 7).done, weekTargetFrom(a));
+      case HabitFreq.monthly:
+        return PeriodCount(habitSliding(a.id, 30).done, monthTargetFrom(a));
     }
   }
 
-  // Sommes d'habitudes par domaine (range)
-  Map<String, int> habitTotalsByDomain(DateTime start, DateTime end) {
-    final map = <String, int>{};
-    for (final d in state.domains) {
-      int sum = 0;
-      for (final a
-          in state.activities.where((a) => a.domainId == d.id && a.isHabit)) {
-        sum += habitSumForRange(a.id, start, end);
-      }
-      map[d.id] = sum;
-    }
-    return map;
-  }
-
-  // ---------- DOMAINES ----------
-  List<Activity> activitiesOfDomain(String domainId) =>
-      state.activities.where((a) => a.domainId == domainId).toList();
-
-  //Graph helpers
-  // Série d'heures par jour (double en heures), pour [start, start+days)
-  List<double> timeHoursPerDay(DateTime start, int days, {String? domainId}) {
-    final List<double> res = List.filled(days, 0);
-    for (int i = 0; i < days; i++) {
-      final s =
-          DateTime(start.year, start.month, start.day).add(Duration(days: i));
-      final e = s.add(const Duration(days: 1));
-      final dur = totalForRange(s, e, domainId: domainId);
-      res[i] = dur.inMinutes / 60.0;
-    }
-    return res;
-  }
-
-// Série d'habitudes par jour (sommes), pour [start, start+days)
-  List<int> habitCountPerDay(DateTime start, int days, {String? domainId}) {
-    final List<int> res = List.filled(days, 0);
-    for (int i = 0; i < days; i++) {
-      final d =
-          DateTime(start.year, start.month, start.day).add(Duration(days: i));
-      int sum = 0;
-      final acts = (domainId == null)
-          ? state.activities.where((a) => a.isHabit)
-          : state.activities.where((a) => a.isHabit && a.domainId == domainId);
-      for (final a in acts) {
-        sum += habitValueOn(a.id, d);
-      }
-      res[i] = sum;
-    }
-    return res;
-  }
-
-// Objectif d’habitudes/jour (somme des cibles quotidiennes)
-  int habitDailyTarget({String? domainId}) {
-    final acts = (domainId == null)
-        ? state.activities.where((a) => a.isHabit)
-        : state.activities.where((a) => a.isHabit && a.domainId == domainId);
-    int t = 0;
-    for (final a in acts) {
-      t += (a.dailyTarget ?? 0);
-    }
-    return t;
-  }
-
-  // ---------  SNOOZE ---------
+  // ---------- Snooze ----------
   bool isSnoozed(String activityId, {DateTime? now}) {
     final untilIso = state.snoozedUntil[activityId];
     if (untilIso == null) return false;
     final t = now ?? DateTime.now();
     return DateTime.parse(untilIso).isAfter(t);
-  }
+    }
 
   void snooze(String activityId, {int minutes = 30}) {
     final until = DateTime.now().add(Duration(minutes: minutes));
     state.snoozedUntil[activityId] = until.toIso8601String();
-    onChange(); // persiste via _saveAndRefresh
+    onChange();
   }
 
   void clearExpiredSnoozes({DateTime? now}) {
@@ -719,142 +346,141 @@ bool habitReached(Activity a) {
     if (toRemove.isNotEmpty) onChange();
   }
 
-  // Temps cumulé sur l'activité liée à l'objectif depuis sa création
-  int goalEffortSpentMin(Goal g, {DateTime? now}) {
-    if (g.activityId == null) return 0;
-    final aId = g.activityId!;
-    final start = g.createdAt;
-    final end = now ?? DateTime.now();
-    return totalForRangeByActivity(aId, start, end).inMinutes;
+  // ---------- Domaines ----------
+  List<Activity> activitiesOfDomain(String domainId) =>
+      state.activities.where((a) => a.domainId == domainId).toList();
+
+  int domainGoalMinDay(String domainId) {
+    final d = state.domains.firstWhere((x) => x.id == domainId);
+    if (!d.autoGoal) return d.goalMinDay ?? 0;
+    return state.activities
+        .where((a) => a.domainId == domainId && !a.isHabit)
+        .fold<int>(0, (s, a) => s + a.goalMin);
   }
 
-// Ratio principal de progression (0..1) + libellé
-  ({double? ratio, String? label}) goalProgress(Goal g) {
-    // 1) Étapes si définies
-    if (g.stepsPlanned != null && g.stepsPlanned! > 0) {
-      final done = g.stepsDone.clamp(0, g.stepsPlanned!);
-      final r = (done / g.stepsPlanned!).clamp(0.0, 1.0);
-      return (ratio: r, label: "Étapes ${done}/${g.stepsPlanned}");
+  double domainProgressOnDay(String domainId, DateTime day) {
+    final start = DateTime(day.year, day.month, day.day);
+    final end = start.add(const Duration(days: 1));
+    final dur = totalForRange(start, end, domainId: domainId);
+    final goalMin = domainGoalMinDay(domainId);
+    if (goalMin <= 0) return 0.0;
+    return dur.inMinutes / goalMin;
+  }
+
+  // ---------- Focus (MVP : items objectifs — partie time/habit possible si tu veux) ----------
+  List<FocusItem> buildFocusCandidates({DateTime? now, String? domainId}) {
+    final t = now ?? DateTime.now();
+    final start24 = t.subtract(const Duration(hours: 24));
+    final items = <FocusItem>[];
+
+    // GOALS — toujours affichés
+    for (final g in state.goals.where((x) => x.status == 'active')) {
+      if (domainId != null && g.domainId != domainId) continue;
+
+      final snoozeKey = 'goal:${g.id}';
+      if (isSnoozed(snoozeKey, now: t)) continue;
+
+      final hasNext = (g.nextAction?.trim().isNotEmpty ?? false);
+
+      Activity? act;
+      if (g.activityId != null) {
+        final idx = state.activities.indexWhere((a) => a.id == g.activityId);
+        if (idx != -1) act = state.activities[idx];
+      }
+
+      double score = hasNext ? 0.8 : 0.2;
+      String reason = hasNext ? "Prochaine action à faire" : "Définir une prochaine action";
+      Duration? timeDef;
+      int? habitDef;
+
+      if (hasNext && act != null) {
+        if (!act!.isHabit) {
+          final m = totalForRangeByActivity(act!.id, start24, t).inMinutes;
+          final need = act!.goalMin;
+          final deficit = need - m;
+          if (need > 0) {
+            score = (deficit > 0 ? deficit / need : 0).clamp(0.0, 1.0).toDouble();
+            reason = deficit > 0 ? "Manque ${deficit} min sur ${need} min" : "Objectif du jour atteint";
+            timeDef = Duration(minutes: deficit.clamp(0, need));
+          }
+        } else {
+          // si la routine est quotidienne, calcule un "déficit" sur le quota jour
+          if (effectiveHabitFreq(act!) == HabitFreq.daily) {
+            final today = DateTime(t.year, t.month, t.day);
+            final done = habitValueOn(act!.id, today);
+            final target = dayQuotaFor(act!);
+            final deficit = target - done;
+            if (target > 0) {
+              score = (deficit > 0 ? deficit / target : 0).clamp(0.0, 1.0).toDouble();
+              reason = deficit > 0 ? "Il reste $deficit ${act!.unit ?? ''}" : "Cible du jour atteinte";
+              habitDef = deficit.clamp(0, target);
+            }
+          } else {
+            // hebdo/mensuel — garder un score modeste
+            score = 0.3;
+            reason = "Rattraper la routine ${effectiveHabitFreq(act!) == HabitFreq.weekly ? 'hebdo' : 'mensuelle'}";
+          }
+        }
+      }
+
+      items.add(FocusItem(
+        kind: 'goal',
+        score: score,
+        reason: reason,
+        goal: g,
+        activity: act,
+        timeDeficit: timeDef,
+        habitDeficit: habitDef,
+        titleOverride: g.title,
+        subtitleOverride: g.nextAction,
+      ));
     }
-    // 2) Effort total si estimé et activité liée
-    if (g.effortEstimateMin != null &&
-        g.effortEstimateMin! > 0 &&
-        g.activityId != null) {
-      final spent = goalEffortSpentMin(g);
-      final r = (spent / g.effortEstimateMin!).clamp(0.0, 1.0);
-      return (ratio: r, label: "Effort ${spent}/${g.effortEstimateMin}m");
-    }
-    // 3) Rien à mesurer pour l’instant
-    return (ratio: null, label: null);
+
+    items.sort((b, a) => a.score.compareTo(b.score));
+    final nonZero = items.where((it) => it.score > 0).toList();
+    if (nonZero.isNotEmpty) return nonZero;
+    return items.take(5).toList();
   }
 
-// Rythme semaine glissante basé sur l’activité liée
-  ({double ratio, String label}) goalWeeklyPace(Goal g) {
-    if (g.activityId == null) return (ratio: 0.0, label: "Semaine 0m / 0m");
-    final w = timeSliding(g.activityId!, 7); // déjà implémenté plus tôt
-    // w.doneMin vs w.targetMin (goal/jour de l'activité × 7)
-    return (ratio: w.ratio, label: "Semaine ${w.doneMin}/${w.targetMin}m");
-  }
-
-// Incrémenter une étape (utile dans le menu ...)
-  void incGoalStep(String goalId, {int delta = 1}) {
-    final g = state.goals.firstWhere((x) => x.id == goalId);
-    g.stepsDone = (g.stepsDone + delta).clamp(0, g.stepsPlanned ?? 9999);
-    onChange();
-  }
-
-//------- Helpers “progress %” (glissants jour/7j/30j)
-
-  // --- fenêtres glissantes
-  ({DateTime start, DateTime end, int days}) _dayWin(DateTime now) {
-    final s = DateTime(now.year, now.month, now.day);
-    return (start: s, end: s.add(const Duration(days: 1)), days: 1);
-  }
-
-  ({DateTime start, DateTime end, int days}) _weekWin(DateTime now) {
-    final e =
-        DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
-    final s = e.subtract(const Duration(days: 7));
-    return (start: s, end: e, days: 7);
-  }
-
-// --- % pour une activité time
-  double timePct(String activityId, DateTime start, DateTime end, int days) {
-    final doneMin = totalForRangeByActivity(activityId, start, end).inMinutes;
-    final goalDay =
-        state.activities.firstWhere((a) => a.id == activityId).goalMin;
-    final target = goalDay * days;
-    if (target <= 0) return 0.0;
-    return doneMin / target; // 1.0 == 100%
-  }
-
-// --- % pour une activité habit
-  double habitPct(String activityId, DateTime start, DateTime end, int days) {
-    final a = state.activities.firstWhere((x) => x.id == activityId);
-    final target = (a.dailyTarget ?? 0) * days;
-    if (target <= 0) return 0.0;
-    int sum = 0;
-    var d = DateTime(start.year, start.month, start.day);
-    while (d.isBefore(end)) {
-      sum += habitValueOn(activityId, d);
-      d = d.add(const Duration(days: 1));
-    }
-    return sum / target;
-  }
-
-  // ----  Filtrage + tri (proche de 100% en premier)
-// items pour l’écran "lanceur / gestion" (type='time' ou 'habit')
-// AppLogic
-// Tri + filtre des activités/routines sous le “cap”
+  // ---------- Tri/filtre “sous cap” ----------
   List<Activity> listUnderCapSorted({
     String? domainId,
     required bool habits,
-    bool onlyUnderCap = false, // ne garder que < 100% ?
-    bool dailyStrict =
-        false, // “strict jour” (global) vs règle souple (vue domaine)
+    bool onlyUnderCap = false,
+    bool dailyStrict = false,
   }) {
-    // 1) Source (type + domaine)
     Iterable<Activity> src = state.activities.where((a) => a.isHabit == habits);
     if (domainId != null) src = src.where((a) => a.domainId == domainId);
     final items = src.toList();
 
-    // 2) Règle “sous cap”
     bool underCap(Activity a) {
       if (a.isHabit) {
-        final d1 = habitSliding(a.id, 1).ratio;
-        final d7 = habitSliding(a.id, 7).ratio;
-        final d30 = habitSliding(a.id, 30).ratio;
-        return dailyStrict
-            ? (d1 < 1.0) // global: strict jour
-            : !((d1 >= 1.0) || (d7 >= 1.0 && d30 >= 1.0)); // domaine: souple
+        final r1  = habitSliding(a.id, 1).ratio;
+        final r7  = habitSliding(a.id, 7).ratio;
+        final r30 = habitSliding(a.id, 30).ratio;
+        return dailyStrict ? (r1 < 1.0) : !((r1 >= 1.0) || (r7 >= 1.0 && r30 >= 1.0));
       } else {
-        final d1 = timeSliding(a.id, 1).ratio;
-        final d7 = timeSliding(a.id, 7).ratio;
-        final d30 = timeSliding(a.id, 30).ratio;
-        return dailyStrict
-            ? (d1 < 1.0)
-            : !((d1 >= 1.0) || (d7 >= 1.0 && d30 >= 1.0));
+        final r1  = timeSliding(a.id, 1).ratio;
+        final r7  = timeSliding(a.id, 7).ratio;
+        final r30 = timeSliding(a.id, 30).ratio;
+        return dailyStrict ? (r1 < 1.0) : !((r1 >= 1.0) || (r7 >= 1.0 && r30 >= 1.0));
       }
     }
 
-    // 3) Filtre optionnel
     final filtered = onlyUnderCap ? items.where(underCap).toList() : items;
 
-    // 4) Urgence = plus proche du 100% en tête
     double urgency(Activity a) {
       if (a.isHabit) {
         final r1 = habitSliding(a.id, 1).ratio;
         final r7 = habitSliding(a.id, 7).ratio;
         final r30 = habitSliding(a.id, 30).ratio;
-        final pick =
-            dailyStrict ? r1 : [r1, r7, r30].reduce((x, y) => x > y ? x : y);
-        return 1.0 - pick; // plus petit = plus urgent
+        final pick = dailyStrict ? r1 : [r1, r7, r30].reduce((x, y) => x > y ? x : y);
+        return 1.0 - pick;
       } else {
         final r1 = timeSliding(a.id, 1).ratio;
         final r7 = timeSliding(a.id, 7).ratio;
         final r30 = timeSliding(a.id, 30).ratio;
-        final pick =
-            dailyStrict ? r1 : [r1, r7, r30].reduce((x, y) => x > y ? x : y);
+        final pick = dailyStrict ? r1 : [r1, r7, r30].reduce((x, y) => x > y ? x : y);
         return 1.0 - pick;
       }
     }
@@ -863,78 +489,13 @@ bool habitReached(Activity a) {
     return filtered;
   }
 
-  Future<void> monthlyAutoAdjust({
-    DateTime? now,
-    double threshold = 1.20,
-    double targetTime = 0.95,
-    double targetHabit = 1.00,
-    int minTimeFloorMin = 15, // ne jamais descendre sous ce plancher (sécurité)
-    int maxTimeCeilMin = 12 * 60, // borne haute
-    int maxDailyHabit = 9999, // borne haute
-  }) async {
-    final t = now ?? DateTime.now();
-    final win = _monthWin(t);
-    bool changed = false;
-
-    for (final a in state.activities) {
-      if (!a.isHabit) {
-        // -- TIME
-        final doneMin =
-            totalForRangeByActivity(a.id, win.start, win.end).inMinutes;
-        final targetMin = (a.goalMin * win.days);
-        if (targetMin <= 0) continue;
-        final ratio = doneMin / targetMin;
-
-        if (ratio > threshold) {
-          // nouveau objectif/jour tel que doneMin / (newGoal*days) = targetTime
-          final newGoal = (doneMin / (targetTime * win.days)).ceil();
-          final adj = newGoal.clamp(minTimeFloorMin, maxTimeCeilMin);
-          if (adj > a.goalMin) {
-            a.goalMin = adj;
-            changed = true;
-          }
-        }
-      } else {
-        // -- HABIT
-        int sum = 0;
-        var d = DateTime(win.start.year, win.start.month, win.start.day);
-        while (d.isBefore(win.end)) {
-          sum += habitValueOn(a.id, d);
-          d = d.add(const Duration(days: 1));
-        }
-        final daily = (a.dailyTarget ?? 0);
-        final target = daily * win.days;
-        if (target <= 0) continue;
-        final ratio = sum / target;
-
-        if (ratio > threshold) {
-          // done / (newDaily * days) = targetHabit
-          final newDaily = (sum / (targetHabit * win.days)).ceil();
-          final adj = newDaily.clamp(1, maxDailyHabit);
-          if (adj > daily) {
-            a.dailyTarget = adj;
-            changed = true;
-          }
-        }
-      }
-    }
-
-    if (changed) onChange();
-  }
-
-  // Auto Ajustement des activités
-// --- déjà présent ---
-  final Map<String, DateTime> _lastAutoAdjust = {}; // cooldown horodaté
-
-// --- nouveau : anti-doublon (1 bump max / jour / activité quand scan global) ---
-  final Map<String, String> _autoAdjustDay = {}; // key -> 'YYYYMMDD'
-
-  String _ymd(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}${d.month.toString().padLeft(2, '0')}${d.day.toString().padLeft(2, '0')}';
+  // ---------- Auto-ajustement (TIME) en temps réel (soft) ----------
+  final Map<String, DateTime> _lastAutoAdjust = {};
+  final Map<String, String> _autoAdjustDay = {};
+  String _ymd(DateTime d) => '${d.year.toString().padLeft(4,'0')}${d.month.toString().padLeft(2,'0')}${d.day.toString().padLeft(2,'0')}';
 
   ({DateTime start, DateTime end, int days}) _monthWin(DateTime now) {
-    final end =
-        DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
+    final end = DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
     final start = end.subtract(const Duration(days: 30));
     return (start: start, end: end, days: 30);
   }
@@ -944,23 +505,19 @@ bool habitReached(Activity a) {
     DateTime? now,
     double threshold = 1.20,
     double targetTime = 0.95,
-    double targetHabit = 1.00,
+    double targetHabit = 1.00, // (pas utilisé ici)
     int minStepMin = 5,
-    int floorMin = 15,
+    int floorMin = kMinDailyGoalMin,
     int cooldownHours = 3,
-    bool ignoreCooldown = false, // <-- AJOUT
+    bool ignoreCooldown = false,
   }) async {
     final t = now ?? DateTime.now();
 
-    // Cooldown horaire (sauf scan global)
     final last = _lastAutoAdjust[activityId];
-    if (!ignoreCooldown &&
-        last != null &&
-        t.difference(last) < Duration(hours: cooldownHours)) {
+    if (!ignoreCooldown && last != null && t.difference(last) < Duration(hours: cooldownHours)) {
       return null;
     }
 
-    // Anti-doublon au scan : max 1 bump / jour / activité
     if (ignoreCooldown) {
       final today = _ymd(t);
       if (_autoAdjustDay[activityId] == today) return null;
@@ -971,26 +528,17 @@ bool habitReached(Activity a) {
       orElse: () => Activity(domainId: '', name: 'deleted', habitTarget: 1),
     );
 
-    // fenêtre 30j glissants
-    ({DateTime start, DateTime end, int days}) _monthWin(DateTime now) {
-      final end =
-          DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
-      final start = end.subtract(const Duration(days: 30));
-      return (start: start, end: end, days: 30);
-    }
-
     final win = _monthWin(t);
 
     if (!a.isHabit) {
-      final doneMin =
-          totalForRangeByActivity(a.id, win.start, win.end).inMinutes;
-      final target = a.goalMin * win.days;
+      final doneMin = totalForRangeByActivity(a.id, win.start, win.end).inMinutes;
+      final target  = a.goalMin * win.days;
       if (target <= 0) return null;
       final ratio = doneMin / target;
       if (ratio <= threshold) return null;
 
       final computed = (doneMin / (targetTime * win.days)).ceil();
-      final stepped = (computed / minStepMin).ceil() * minStepMin;
+      final stepped  = (computed / minStepMin).ceil() * minStepMin;
       final adj = stepped.clamp(floorMin, 12 * 60);
       if (adj > a.goalMin) {
         final delta = adj - a.goalMin;
@@ -1000,84 +548,93 @@ bool habitReached(Activity a) {
         onChange();
         return delta;
       }
-    } else {
-      // HABITS
-      int sum = 0;
-      var d = DateTime(win.start.year, win.start.month, win.start.day);
-      while (d.isBefore(win.end)) {
-        sum += habitValueOn(activityId, d);
-        d = d.add(const Duration(days: 1));
-      }
-
-      final daily = a.dailyTarget ?? 0;
-      final target = daily * win.days;
-      if (target <= 0) return null;
-      final ratio = sum / target;
-      if (ratio <= threshold) return null;
-
-      final newDaily = (sum / (targetHabit * win.days)).ceil();
-      if (newDaily > daily) {
-        final delta = newDaily - daily;
-        a.dailyTarget = newDaily.clamp(1, 9999);
-        _lastAutoAdjust[activityId] = t;
-        if (ignoreCooldown) _autoAdjustDay[activityId] = _ymd(t);
-        onChange();
-        return delta;
-      }
     }
+
     return null;
   }
 
-  /// Parcourt toutes les activités/routines et applique l’auto-ajustement si nécessaire.
-  /// Retourne le nombre de bumps effectués.
-  Future<int> scanAllActivities({DateTime? now}) async {
+  Future<void> autoAdjustStandardsRealtime({
+    DateTime? now,
+    int floorMin = kMinDailyGoalMin,
+    int maxPerDayMin = 12 * 60,
+    double raiseTrigger = 1.20,
+    double aimUp = 0.95,
+    double deadbandLow = 0.80,
+    double deadbandHigh = 1.10,
+    double lowerHard = 0.50,
+    double aimDown = 0.90,
+    int minStepMin = 5,
+    double maxWeeklyPct = 0.20,
+    Duration coolDown = const Duration(hours: 48),
+  }) async {
     final t = now ?? DateTime.now();
-    int bumps = 0;
-    for (final a in state.activities) {
-      final delta =
-          await maybeAutoAdjustActivity(a.id, now: t, ignoreCooldown: true);
-      if (delta != null && delta > 0) bumps++;
-    }
-    if (bumps > 0) onChange();
-    return bumps;
-  }
+    bool touched = false;
 
-  // -- DEV: injecte de l'historique sur les N derniers jours --
-// perDay = combien d'incréments par jour (ex: 2) ; days = nb de jours à remplir
-  Future<void> devAddHabitHistory(String activityId,
-      {int days = 5, int perDay = 1}) async {
-    final now = DateTime.now();
-    for (int i = 0; i < days; i++) {
-      final d =
-          DateTime(now.year, now.month, now.day).subtract(Duration(days: i));
-      for (int k = 0; k < perDay; k++) {
-        incHabit(activityId, 1, d);
+    for (final a in state.activities.where((x) => !x.isHabit)) {
+      final s30 = timeSliding(a.id, 30); // doneMin/targetMin/ratio
+
+      if (a.goalMin < floorMin) a.goalMin = floorMin;
+
+      if (a.lastTuneAt != null && t.difference(a.lastTuneAt!).compareTo(coolDown) < 0) {
+        continue;
+      }
+
+      if (s30.targetMin <= 0 && s30.doneMin > 0) {
+        final avg = (s30.doneMin / 30.0).clamp(floorMin.toDouble(), maxPerDayMin.toDouble());
+        final seed = _roundTo5(avg * 0.80);
+        if (seed > a.goalMin) {
+          a.goalMin = seed;
+          a.lastTuneAt = t;
+          touched = true;
+        }
+        continue;
+      }
+
+      if (s30.ratio >= deadbandLow && s30.ratio <= deadbandHigh) continue;
+
+      int capUp(int proposed) {
+        final maxDelta = (a.goalMin * maxWeeklyPct).round();
+        final ceil = (a.goalMin + maxDelta).clamp(floorMin, maxPerDayMin);
+        return proposed.clamp(floorMin, ceil);
+      }
+
+      int capDown(int proposed) {
+        final maxDelta = (a.goalMin * maxWeeklyPct).round();
+        final floor = (a.goalMin - maxDelta).clamp(floorMin, maxPerDayMin);
+        return proposed.clamp(floor, a.goalMin);
+      }
+
+      if (s30.ratio >= raiseTrigger) {
+        final desired = (s30.doneMin / 30.0) / aimUp;
+        var proposed = _roundTo5(desired);
+        if (proposed < a.goalMin + minStepMin) proposed = a.goalMin + minStepMin;
+        proposed = capUp(proposed);
+        if (proposed > a.goalMin) {
+          a.goalMin = proposed;
+          a.lastTuneAt = t;
+          touched = true;
+        }
+        continue;
+      }
+
+      if (s30.ratio <= lowerHard) {
+        final desired = (s30.doneMin / 30.0) / aimDown;
+        var proposed = _roundTo5(desired);
+        if (proposed > a.goalMin - minStepMin) proposed = a.goalMin - minStepMin;
+        proposed = capDown(proposed);
+        if (proposed < a.goalMin) {
+          a.goalMin = proposed;
+          if (a.goalMin < floorMin) a.goalMin = floorMin;
+          a.lastTuneAt = t;
+          touched = true;
+        }
       }
     }
-  }
-}
 
-extension DomainGoals on AppLogic {
-  // Objectif/jour d’un domaine en minutes : auto = somme des activités time, sinon valeur manuelle
-  int domainGoalMinDay(String domainId) {
-    final d = state.domains.firstWhere((x) => x.id == domainId);
-    if (!d.autoGoal) return d.goalMinDay ?? 0;
-    return state.activities
-        .where((a) => a.domainId == domainId && !a.isHabit)
-        .fold<int>(0, (s, a) => s + a.goalMin);
+    if (touched) onChange();
   }
 
-  // Progression d’un domaine sur une journée calendaire (0..+inf)
-  double domainProgressOnDay(String domainId, DateTime day) {
-    final start = DateTime(day.year, day.month, day.day);
-    final end = start.add(const Duration(days: 1));
-    final dur = totalForRange(start, end, domainId: domainId);
-    final goalMin = domainGoalMinDay(domainId);
-    if (goalMin <= 0) return 0.0;
-    return dur.inMinutes / goalMin;
-  }
-
-  // Auto-ajustement simple : si sur les N derniers jours on atteint la cible >= T jours → +step
+  // ---------- Revue périodique des objectifs ----------
   Future<List<GoalChange>> reviewGoals({
     DateTime? now,
     int lookbackDays = 7,
@@ -1089,30 +646,21 @@ extension DomainGoals on AppLogic {
     int minStepMin = 15,
     int maxPerDayMin = 12 * 60,
     double maxWeeklyPct = 0.20,
-    bool force = false, // 👈 NEW: permet de forcer depuis le panneau Dev
+    bool force = false,
   }) async {
     final changes = <GoalChange>[];
     final t = now ?? DateTime.now();
     final today = DateTime(t.year, t.month, t.day);
 
-    // 1) une seule passe par jour (sauf si force=true)
     if (!force && state.lastGoalsReview != null) {
-      final last = DateTime(
-        state.lastGoalsReview!.year,
-        state.lastGoalsReview!.month,
-        state.lastGoalsReview!.day,
-      );
+      final last = DateTime(state.lastGoalsReview!.year, state.lastGoalsReview!.month, state.lastGoalsReview!.day);
       if (last == today) return changes;
     }
 
-    // 2) liste des jours observés (J-1 ... J-lookback)
-    final daysBack = List<DateTime>.generate(
-      lookbackDays,
-      (i) {
-        final d = today.subtract(Duration(days: i + 1));
-        return DateTime(d.year, d.month, d.day);
-      },
-    );
+    final daysBack = List<DateTime>.generate(lookbackDays, (i) {
+      final d = today.subtract(Duration(days: i + 1));
+      return DateTime(d.year, d.month, d.day);
+    });
 
     int clampNonNeg(int v) => v < 0 ? 0 : v;
     int clampToWeeklyCap(int base, int delta) {
@@ -1121,7 +669,7 @@ extension DomainGoals on AppLogic {
       return delta > cap ? cap : delta;
     }
 
-    // ---------- ACTIVITÉS (type "time") ----------
+    // TIME
     for (final a in state.activities.where((x) => !x.isHabit)) {
       final base = a.goalMin;
       if (base <= 0) continue;
@@ -1156,16 +704,11 @@ extension DomainGoals on AppLogic {
       if (newGoal != base) {
         final delta = newGoal - base;
         a.goalMin = newGoal;
-        changes.add(GoalChange(
-          kind: 'activity',
-          id: a.id,
-          deltaMin: delta,
-          newGoalMin: newGoal,
-        ));
+        changes.add(GoalChange(kind: 'activity', id: a.id, deltaMin: delta, newGoalMin: newGoal));
       }
     }
 
-    // ---------- DOMAINES (objectif MANUEL) ----------
+    // DOMAINES (manuel)
     for (final d in state.domains.where((dom) => !dom.autoGoal)) {
       final base = d.goalMinDay ?? 0;
       if (base <= 0) continue;
@@ -1196,27 +739,16 @@ extension DomainGoals on AppLogic {
       if (newGoal != base) {
         final delta = newGoal - base;
         d.goalMinDay = newGoal;
-        changes.add(GoalChange(
-          kind: 'domain',
-          id: d.id,
-          deltaMin: delta,
-          newGoalMin: newGoal,
-        ));
+        changes.add(GoalChange(kind: 'domain', id: d.id, deltaMin: delta, newGoalMin: newGoal));
       }
     }
 
-    // ---------- ROUTINES (HABIT) : hausse immédiate si >120% ----------
+    // HABITS : ajustements
     for (final a in state.activities.where((x) => x.isHabit)) {
-      autoTuneHabitImmediate(this, a);
+      autoTuneHabitImmediate(this, a);    // hausse immédiate si >120%
+      _autoTuneHabitSafe(a, now: t);      // finetune avec cooldown
     }
 
-    // ---------- ROUTINES (HABIT) : auto-tune au scan ----------
-    for (final a in state.activities.where((x) => x.isHabit)) {
-      _autoTuneHabitSafe(a,
-          now: t); // n’ajoute pas à 'changes', ajuste en place
-    }
-
-    // 3) finalisation
     state.lastGoalsReview = t;
     onChange();
     return changes;
@@ -1224,234 +756,13 @@ extension DomainGoals on AppLogic {
 
   void _autoTuneHabitSafe(Activity a, {DateTime? now}) {
     try {
-      // si tu as déjà autoTuneHabit(AppLogic, Activity, {DateTime? now})
       autoTuneHabit(this, a, now: now);
     } catch (_) {
-      // pas encore implémenté → on ignore silencieusement
+      // no-op
     }
   }
 
-// --- helpers pour lire la cible/frequence actuelles de façon robuste ---
-  HabitFreq _effFreq(Activity a) {
-    if (a.habitFreq != null) return a.habitFreq!;
-    if (a.dailyTarget != null) return HabitFreq.daily; // legacy
-    return HabitFreq.monthly; // fallback
-  }
-
-  int _effTarget(Activity a) {
-    if (a.habitTarget != null) return a.habitTarget!;
-    if (a.dailyTarget != null) return a.dailyTarget!; // legacy
-    return 1; // défaut raisonnable
-  }
-
-// --- mesure du fait/période courant (glissant) ---
-  int _periodDone(AppLogic l, Activity a) {
-    switch (_effFreq(a)) {
-      case HabitFreq.daily:
-        return l.habitSliding(a.id, 1).done;
-      case HabitFreq.weekly:
-        return l.habitSliding(a.id, 7).done;
-      case HabitFreq.monthly:
-        return l.habitSliding(a.id, 30).done;
-    }
-  }
-
-// --- auto-tune "immédiat" : si >120% on remonte la cible pour retomber ~95% ---
-  void autoTuneHabitImmediate(AppLogic l, Activity a) {
-    if (!a.isHabit) return;
-
-    final freq = _effFreq(a);
-    final target = _effTarget(a);
-    if (target <= 0) return;
-
-    final done = _periodDone(l, a);
-    final ratio = target > 0 ? (done / target) : 0.0;
-
-    // Seulement hausse simple ici (pour tester tout de suite)
-    if (ratio >= 1.20) {
-      int newTarget;
-
-      if (freq == HabitFreq.monthly) {
-        // si on dépasse clairement la logique "mensuelle", on peut pivoter vers weekly
-        // seuil simple : si "fait" >= 4/mois -> 1/sem
-        if (done >= 4) {
-          a.habitFreq = HabitFreq.weekly;
-          a.habitTarget = 1;
-          return;
-        }
-        // sinon on augmente en visant ~95% du nouveau standard
-        newTarget = (done / 0.95).ceil(); // ex: 10 -> 11
-        if (newTarget < target + 1) newTarget = target + 1;
-        a.habitTarget = newTarget;
-        return;
-      }
-
-      if (freq == HabitFreq.weekly) {
-        // si "hebdo" trop bas au regard du fait, on peut grimper lentement
-        // et si done ~ 7+ → bascule daily(1)
-        if (done >= 7) {
-          a.habitFreq = HabitFreq.daily;
-          a.habitTarget = 1;
-          return;
-        }
-        newTarget = (done / 0.95).ceil();
-        if (newTarget < target + 1) newTarget = target + 1;
-        a.habitTarget = newTarget;
-        return;
-      }
-
-      // daily : on augmente la cible jour
-      newTarget = (done / 0.95).ceil();
-      if (newTarget < target + 1) newTarget = target + 1;
-      a.habitTarget = newTarget;
-    }
-  }
-
-  /// Calcule des recommandations Focus (MVP jour: 24h glissantes pour le temps, aujourd'hui pour les habitudes)
-  List<FocusItem> buildFocusCandidates({
-    DateTime? now,
-    String? domainId, // si fourni : filtre par domaine
-  }) {
-    final t = now ?? DateTime.now();
-
-    // --- TEMPS : 24h glissantes ---
-    final start24 = t.subtract(const Duration(hours: 24));
-    final end24 = t;
-
-    final items = <FocusItem>[];
-
-/*     for (final a in state.activities) {
-      if (domainId != null && a.domainId != domainId) continue;
-      if (isSnoozed(a.id, now: t)) continue; // <— skip snoozed
-
-      if (!a.isHabit) {
-        // TIME
-        final done = totalForRangeByActivity(a.id, start24, end24);
-        final needMin = a.goalMin;
-        final doneMin = done.inMinutes;
-        final deficitMin = (needMin - doneMin).clamp(0, 1 << 30);
-        final ratio = (needMin > 0) ? (doneMin / needMin) : 1.0;
-
-        // score simple : plus de déficit => plus prioritaire
-        final score = (needMin > 0) ? (deficitMin / needMin) : 0.0;
-
-        final reason = (needMin <= 0)
-            ? "Pas d’objectif"
-            : (deficitMin <= 0
-                ? "Objectif du jour atteint"
-                : "Manque ${deficitMin} min sur ${needMin} min");
-
-        items.add(FocusItem(
-          activity: a,
-          kind: 'time',
-          score: score,
-          reason: reason,
-          timeDeficit: Duration(minutes: deficitMin),
-        ));
-      } else {
-        // HABIT (MVP quotidien)
-        final todayKey = yyyymmdd(t);
-        final doneToday = state.habitProgress
-            .where((h) => h.activityId == a.id && h.yyyymmdd == todayKey)
-            .map((h) => h.value)
-            .fold(0, (s, v) => s + v);
-        final target = a.dailyTarget ?? 0;
-        final deficit = (target - doneToday);
-        final score = (target > 0) ? (deficit.clamp(0, 1 << 30) / target) : 0.0;
-
-        final reason = (target <= 0)
-            ? "Pas de cible"
-            : (deficit <= 0
-                ? "Cible du jour atteinte"
-                : "Il reste $deficit ${a.unit ?? ''}");
-
-        items.add(FocusItem(
-          activity: a,
-          kind: 'habit',
-          score: score,
-          reason: reason,
-          habitDeficit: deficit > 0 ? deficit : 0,
-        ));
-      }
-    } */
-
-    // ---- GOALS avec prochaine action (GTD light) ----
-// ---- GOALS (afficher même sans nextAction) ----
-    for (final g in state.goals.where((x) => x.status == 'active')) {
-      if (domainId != null && g.domainId != domainId) continue;
-
-      // Optionnel: si tu veux pouvoir snoozer un goal entier
-      final snoozeKey = 'goal:${g.id}';
-      if (isSnoozed(snoozeKey, now: t)) continue;
-
-      final hasNext = (g.nextAction?.trim().isNotEmpty ?? false);
-
-      // Récupérer l’activité liée *en nullable* (sans orElse null)
-      Activity? act;
-      if (g.activityId != null) {
-        final idx = state.activities.indexWhere((a) => a.id == g.activityId);
-        if (idx != -1) act = state.activities[idx];
-      }
-
-      double score = hasNext ? 0.8 : 0.2;
-      String reason =
-          hasNext ? "Prochaine action à faire" : "Définir une prochaine action";
-      Duration? timeDef;
-      int? habitDef;
-
-      // Si prochaine action ET activité liée -> calcule un "déficit" pour affiner le score/raison
-      if (hasNext && act != null) {
-        if (!act!.isHabit) {
-          final m = totalForRangeByActivity(act!.id, start24, end24).inMinutes;
-          final need = act!.goalMin;
-          final deficit = need - m;
-          if (need > 0) {
-            score =
-                (deficit > 0 ? deficit / need : 0).clamp(0.0, 1.0).toDouble();
-            reason = deficit > 0
-                ? "Manque ${deficit} min sur ${need} min"
-                : "Objectif du jour atteint";
-            timeDef = Duration(minutes: deficit.clamp(0, need));
-          }
-        } else {
-          final today = DateTime(t.year, t.month, t.day);
-          final done = habitValueOn(act!.id, today);
-          final target = act!.dailyTarget ?? 0;
-          final deficit = target - done;
-          if (target > 0) {
-            score =
-                (deficit > 0 ? deficit / target : 0).clamp(0.0, 1.0).toDouble();
-            reason = deficit > 0
-                ? "Il reste $deficit ${act!.unit ?? ''}"
-                : "Cible du jour atteinte";
-            habitDef = deficit.clamp(0, target);
-          }
-        }
-      }
-
-      items.add(FocusItem(
-        kind: 'goal',
-        score: score,
-        reason: reason,
-        goal: g,
-        activity: act, // peut être null
-        timeDeficit: timeDef,
-        habitDeficit: habitDef,
-        titleOverride: g.title,
-        subtitleOverride: g.nextAction, // peut être null/vidé
-      ));
-    }
-
-    // filtrer les items déjà “verts” (score ≈ 0), mais garder au moins quelque chose
-    items.sort((b, a) => a.score.compareTo(b.score)); // desc
-    final nonZero = items.where((it) => it.score > 0).toList();
-    if (nonZero.isNotEmpty) return nonZero;
-    return items.take(5).toList(); // fallback
-  }
-}
-
-extension SlidingProgress on AppLogic {
-  // bornes [start, end) glissantes
+  // ---------- Mesures glissantes ----------
   DateTimeRange lastNDays(int n, {DateTime? now}) {
     final t = now ?? DateTime.now();
     final end = t;
@@ -1459,128 +770,426 @@ extension SlidingProgress on AppLogic {
     return DateTimeRange(start: start, end: end);
   }
 
-  // ---- Temps (activity.type == 'time')
-  ({int doneMin, int targetMin, double ratio}) timeSliding(
-    String activityId,
-    int days, {
-    DateTime? now,
-  }) {
+  ({int doneMin, int targetMin, double ratio}) timeSliding(String activityId, int days, {DateTime? now}) {
     final r = lastNDays(days, now: now);
     final dur = totalForRangeByActivity(activityId, r.start, r.end);
     final a = state.activities.firstWhere((x) => x.id == activityId);
-    final target =
-        (a.goalMin * days).clamp(0, 24 * 60 * days); // simple: goal/j * n
+    final target = (a.goalMin * days).clamp(0, 24 * 60 * days);
     final done = dur.inMinutes;
     final ratio = target > 0 ? (done / target).clamp(0.0, 1.0) : 0.0;
     return (doneMin: done, targetMin: target, ratio: ratio);
   }
 
-  // ---- Habitudes (activity.type == 'habit')
-  ({int done, int target, double ratio}) habitSliding(
-    String activityId,
-    int days, {
-    DateTime? now,
-  }) {
+  ({int done, int target, double ratio}) habitSliding(String activityId, int days, {DateTime? now}) {
     final r = lastNDays(days, now: now);
     final done = habitSumForRange(activityId, r.start, r.end);
     final a = state.activities.firstWhere((x) => x.id == activityId);
-    final targetPerDay = a.dailyTarget ?? 0;
-    final target = targetPerDay * days;
-    final ratio = target > 0 ? (done / target).clamp(0.0, 1.0) : 0.0;
+
+    // cible "par jour" dérivée (en l’absence de dailyTarget)
+    int perDay;
+    switch (effectiveHabitFreq(a)) {
+      case HabitFreq.daily:   perDay = effectiveHabitTarget(a); break;
+      case HabitFreq.weekly:  perDay = (effectiveHabitTarget(a) / 7).ceil(); break;
+      case HabitFreq.monthly: perDay = (effectiveHabitTarget(a) / 30).ceil(); break;
+    }
+
+    final target = perDay * days;
+    final ratio  = target > 0 ? (done / target).clamp(0.0, 1.0) : 0.0;
     return (done: done, target: target, ratio: ratio);
   }
 
-  // --- GOALS: helpers ---
-  List<Goal> goalsOfDomain(String domainId, {bool onlyActive = true}) {
-    final it = state.goals.where((g) => g.domainId == domainId);
-    return onlyActive
-        ? it.where((g) => g.status == 'active').toList()
-        : it.toList();
+  // ---------- Graph helpers ----------
+  List<double> timeHoursPerDay(DateTime start, int days, {String? domainId}) {
+    final List<double> res = List.filled(days, 0);
+    for (int i = 0; i < days; i++) {
+      final s = DateTime(start.year, start.month, start.day).add(Duration(days: i));
+      final e = s.add(const Duration(days: 1));
+      final dur = totalForRange(s, e, domainId: domainId);
+      res[i] = dur.inMinutes / 60.0;
+    }
+    return res;
   }
 
-  Goal createGoal({
-    required String domainId,
-    required String title,
-    String? activityId,
-    String? nextAction,
-    String? context,
-  }) {
-    final g = Goal(
-      domainId: domainId,
+  List<int> habitCountPerDay(DateTime start, int days, {String? domainId}) {
+    final List<int> res = List.filled(days, 0);
+    for (int i = 0; i < days; i++) {
+      final d = DateTime(start.year, start.month, start.day).add(Duration(days: i));
+      int sum = 0;
+      final acts = (domainId == null)
+          ? state.activities.where((a) => a.isHabit)
+          : state.activities.where((a) => a.isHabit && a.domainId == domainId);
+      for (final a in acts) {
+        sum += habitValueOn(a.id, d);
+      }
+      res[i] = sum;
+    }
+    return res;
+  }
+
+  /// Objectif total d’habitudes/jour (somme des quotas journaliers dérivés)
+  int habitDailyTarget({String? domainId}) {
+    final acts = (domainId == null)
+        ? state.activities.where((a) => a.isHabit)
+        : state.activities.where((a) => a.isHabit && a.domainId == domainId);
+    int t = 0;
+    for (final a in acts) {
+      t += dayQuotaFor(a); // ✅ plus de dailyTarget
+    }
+    return t;
+  }
+
+  // ---------- Aujourd’hui / Demain ----------
+  String _todayKey() => yyyymmdd(DateTime.now());
+  String _tomorrowKey() => yyyymmdd(DateTime.now().add(const Duration(days: 1)));
+
+  int _nextOrderForDay(String ymd) {
+    final same = state.dayPlan.where((e) => e.yyyymmdd == ymd);
+    if (same.isEmpty) return 0;
+    return same.map((e) => e.order).reduce((a, b) => a > b ? a : b) + 1;
+  }
+
+  void ensurePlannedTomorrow(PlanKind kind, String refId) {
+    final tomoKey = _tomorrowKey();
+    final exists = state.dayPlan.any((e) => e.yyyymmdd == tomoKey && e.kind == kind && e.refId == refId);
+    if (exists) return;
+
+    String title;
+    switch (kind) {
+      case PlanKind.activityTime:
+        title = state.activities.firstWhere(
+          (a) => a.id == refId,
+          orElse: () => Activity(domainId: '', name: 'Activité', habitTarget: 1),
+        ).name;
+        break;
+      case PlanKind.habit:
+        title = state.activities.firstWhere(
+          (a) => a.id == refId,
+          orElse: () => Activity(domainId: '', name: 'Routine', type: 'habit', habitTarget: 1),
+        ).name;
+        break;
+      case PlanKind.action:
+        title = 'Action';
+        break;
+    }
+
+    state.dayPlan.add(DayPlanItem(
+      id: _uuid.v4(),
+      kind: kind,
+      refId: refId,
       title: title,
-      activityId: activityId,
-      nextAction: nextAction,
-      context: context,
-    );
-    state.goals.add(g);
-    onChange();
-    return g;
+      yyyymmdd: tomoKey,
+      done: false,
+      allDay: false,
+      order: _nextOrderForDay(tomoKey),
+    ));
   }
 
-  void setGoalNextAction(String goalId, String? nextAction) {
-    final g = state.goals.firstWhere((x) => x.id == goalId);
-    g.nextAction = nextAction; // null = aucune action active
+  bool removeFromDay(String ymd, PlanKind kind, String refId) {
+    final before = state.dayPlan.length;
+    state.dayPlan.removeWhere((e) => e.yyyymmdd == ymd && e.kind == kind && e.refId == refId);
+    return state.dayPlan.length != before;
+  }
+
+  void movePlannedToTomorrowIfPresent(PlanKind kind, String refId, {bool addIfMissing = false}) {
+    final todayKey = _todayKey();
+    final tomoKey = _tomorrowKey();
+
+    final idx = _indexInDay(todayKey, kind, refId);
+    DayPlanItem? removed;
+    if (idx >= 0) {
+      removed = state.dayPlan.removeAt(idx);
+    }
+
+    final existsTomorrow = _indexInDay(tomoKey, kind, refId) >= 0;
+    if (existsTomorrow) {
+      onChange();
+      return;
+    }
+
+    DayPlanItem? toAdd;
+    if (removed != null) {
+      toAdd = DayPlanItem(
+        id: removed.id,
+        kind: removed.kind,
+        refId: removed.refId,
+        title: removed.title,
+        yyyymmdd: tomoKey,
+        done: false,
+        allDay: removed.allDay,
+        order: _nextOrderForDay(tomoKey),
+      );
+    } else if (addIfMissing) {
+      String title;
+      switch (kind) {
+        case PlanKind.activityTime:
+          title = state.activities.firstWhere(
+            (a) => a.id == refId,
+            orElse: () => Activity(domainId: '', name: 'Activité', habitTarget: 1),
+          ).name;
+          break;
+        case PlanKind.habit:
+          title = state.activities.firstWhere(
+            (a) => a.id == refId,
+            orElse: () => Activity(domainId: '', name: 'Routine', type: 'habit', habitTarget: 1),
+          ).name;
+          break;
+        case PlanKind.action:
+          title = 'Action';
+          break;
+      }
+      toAdd = DayPlanItem(
+        id: _uuid.v4(),
+        kind: kind,
+        refId: refId,
+        title: title,
+        yyyymmdd: tomoKey,
+        done: false,
+        allDay: false,
+        order: _nextOrderForDay(tomoKey),
+      );
+    }
+
+    if (toAdd != null) state.dayPlan.add(toAdd);
     onChange();
   }
 
-  void markGoalDone(String goalId) {
-    final g = state.goals.firstWhere((x) => x.id == goalId);
-    g.status = 'done';
-    g.doneAt = DateTime.now();
+  // ---------- Rollover (facultatif) ----------
+  void rolloverUnfinishedToTomorrow({DateTime? now}) {
+    final _now = now ?? DateTime.now();
+    final String todayKey = yyyymmdd(_now);
+    final String tomorrowKey = yyyymmdd(_now.add(const Duration(days: 1)));
+
+    int nextOrder = 1;
+    for (final e in state.dayPlan.where((e) => e.yyyymmdd == tomorrowKey)) {
+      if (e.order >= nextOrder) nextOrder = e.order + 1;
+    }
+
+    final todayItems = state.dayPlan.where((e) => e.yyyymmdd == todayKey).toList();
+
+    bool _shouldMove(DayPlanItem it) {
+      switch (it.kind) {
+        case PlanKind.action:
+          return it.done == false;
+        case PlanKind.habit:
+          final a = state.activities.firstWhere((x) => x.id == it.refId);
+          final freq = effectiveHabitFreq(a);
+          if (freq != HabitFreq.daily) return false; // on ne déplace auto que le quotidien
+          final d = DateTime(_now.year, _now.month, _now.day);
+          final done = habitValueOn(it.refId!, d);
+          final target = dayQuotaFor(a);
+          return done < target;
+        case PlanKind.activityTime:
+          final dayStart = DateTime(_now.year, _now.month, _now.day);
+          final dur = totalForRangeByActivity(it.refId!, dayStart, _now);
+          return dur.inMinutes == 0;
+      }
+    }
+
+    for (final it in todayItems) {
+      if (_shouldMove(it)) {
+        it.yyyymmdd = tomorrowKey;
+        it.order = nextOrder++;
+      }
+    }
+
     onChange();
   }
 
-  void archiveGoal(String goalId) {
-    final g = state.goals.firstWhere((x) => x.id == goalId);
-    g.status = 'archived';
-    onChange();
-  }
+  // =====================
+// HABITS: helpers cible/done + atteint ?
+// =====================
 
-  // INBOX
-  void inboxAdd(String title) {
-    if (title.trim().isEmpty) return;
-    state.inbox.add(InboxItem(title: title.trim()));
-    onChange();
-  }
+// Quota "jour" pour l’anneau
+int dayQuotaFor(Activity a) {
+  final f = a.habitFreq ?? HabitFreq.monthly;
+  final t = a.habitTarget ?? 1;
+  return (f == HabitFreq.daily) ? t : 1; // hebdo/mensuel = 1/jour
+}
 
-  void inboxRemove(String id) {
-    state.inbox.removeWhere((x) => x.id == id);
-    onChange();
-  }
-
-// Clarify -> créer un Goal depuis un InboxItem
-  Goal inboxToGoal({
-    required String inboxId,
-    required String domainId,
-    required String title,
-    String? activityId,
-    String? nextAction,
-    String? context,
-  }) {
-    final g = createGoal(
-      domainId: domainId,
-      title: title,
-      activityId: activityId,
-      nextAction: nextAction,
-      context: context,
-    );
-    inboxRemove(inboxId);
-    return g;
+// Cible semaine (affichage)
+int weekTargetFrom(Activity a) {
+  final f = a.habitFreq ?? HabitFreq.monthly;
+  final t = a.habitTarget ?? 1;
+  switch (f) {
+    case HabitFreq.daily:   return t * 7;
+    case HabitFreq.weekly:  return t;
+    case HabitFreq.monthly: return (t / 4).ceil(); // approx 4 semaines
   }
 }
 
-final _uuid = const Uuid();
+// Cible mois (affichage)
+int monthTargetFrom(Activity a) {
+  final f = a.habitFreq ?? HabitFreq.monthly;
+  final t = a.habitTarget ?? 1;
+  switch (f) {
+    case HabitFreq.daily:   return t * 30;
+    case HabitFreq.weekly:  return t * 4;          // approx 4 semaines
+    case HabitFreq.monthly: return t;
+  }
+}
+
+// A-t-on atteint la cible active (selon la fréquence actuelle) ?
+bool habitReached(Activity a) {
+  final f = a.habitFreq ?? HabitFreq.monthly;
+
+  int target;
+  int done;
+
+  if (f == HabitFreq.daily) {
+    target = dayQuotaFor(a);
+    done   = habitSliding(a.id, 1).done;
+  } else if (f == HabitFreq.weekly) {
+    target = weekTargetFrom(a);
+    done   = habitSliding(a.id, 7).done;
+  } else {
+    target = monthTargetFrom(a);
+    done   = habitSliding(a.id, 30).done;
+  }
+
+  return target > 0 && done >= target;
+}
+
+// ========= GOALS: progression globale d’un objectif =========
+// 1) Priorité aux étapes (steps planned / done)
+// 2) Sinon, si effort estimé (en minutes) + activité liée → calcule via sessions temps
+// 3) Sinon, pas de métrique (ratio/label = null)
+({double? ratio, String? label}) goalProgress(Goal g, {DateTime? now}) {
+  // 1) Étapes
+  if (g.stepsPlanned != null && g.stepsPlanned! > 0) {
+    final planned = g.stepsPlanned!;
+    final done    = g.stepsDone.clamp(0, planned);
+    final r = (done / planned).clamp(0.0, 1.0);
+    return (ratio: r, label: "Étapes ${done}/${planned}");
+  }
+
+  // 2) Effort Temps (nécessite une activité liée et une estimation en minutes)
+  if (g.effortEstimateMin != null &&
+      g.effortEstimateMin! > 0 &&
+      g.activityId != null) {
+    final start = g.createdAt;                // début de l’obj (supposé présent dans Goal)
+    final end   = now ?? DateTime.now();
+    final spent = totalForRangeByActivity(g.activityId!, start, end).inMinutes;
+    final est   = g.effortEstimateMin!;
+    final r = (spent / est).clamp(0.0, 1.0);
+    return (ratio: r, label: "Effort ${spent}/${est}m");
+  }
+
+  // 3) Pas de métrique mesurable pour l’instant
+  return (ratio: null, label: null);
+}
+
+// ========= GOALS: rythme hebdo sur l’activité liée =========
+// - Temps: utilise timeSliding(7j) → "Semaine Xm / Ym"
+// - Habitude: utilise habitSliding(7j) → "Semaine X / Y <unité>"
+({double ratio, String label}) goalWeeklyPace(Goal g, {DateTime? now}) {
+  if (g.activityId == null) return (ratio: 0.0, label: "Semaine 0 / 0");
+
+  // Récupère l’activité (si absente → neutre)
+  final idx = state.activities.indexWhere((a) => a.id == g.activityId);
+  if (idx < 0) return (ratio: 0.0, label: "Semaine 0 / 0");
+  final act = state.activities[idx];
+
+  if (!act.isHabit) {
+    final w = timeSliding(act.id, 7, now: now); // {doneMin,targetMin,ratio}
+    return (ratio: w.ratio, label: "Semaine ${w.doneMin}/${w.targetMin}m");
+  } else {
+    final w = habitSliding(act.id, 7, now: now); // {done,target,ratio}
+    final unit = (act.unit ?? '').isNotEmpty ? ' ${act.unit}' : '';
+    return (ratio: w.ratio, label: "Semaine ${w.done}/${w.target}$unit");
+  }
+}
+
+// ========= GOALS: incrémenter/décrémenter le nombre d’étapes =========
+void incGoalStep(String goalId, {int delta = 1}) {
+  final i = state.goals.indexWhere((x) => x.id == goalId);
+  if (i < 0) return;
+  final g = state.goals[i];
+
+  // stepsPlanned peut être null → on clamp seulement sur 0..(planned?) si présent
+  if (g.stepsPlanned != null) {
+    final maxSteps = g.stepsPlanned!;
+    g.stepsDone = (g.stepsDone + delta).clamp(0, maxSteps);
+  } else {
+    // pas de plafond connu : clamp 0..999999 (ou ce que tu veux)
+    g.stepsDone = (g.stepsDone + delta).clamp(0, 999999);
+  }
+
+  onChange(); // persiste + notifie l’UI
+}
+
+// Cible active (selon la fréquence courante de la routine)
+int activeHabitTarget(Activity a) {
+  final f = a.habitFreq ?? HabitFreq.monthly; // défaut raisonnable
+  switch (f) {
+    case HabitFreq.daily:
+      return dayQuotaFor(a);        // ex: 1/jour
+    case HabitFreq.weekly:
+      return weekTargetFrom(a);     // ex: 1/sem
+    case HabitFreq.monthly:
+      return monthTargetFrom(a);    // ex: 4/mois
+  }
+}
+
+// Réalisé à date sur la fenêtre active (1, 7 ou 30 jours)
+int activeHabitDone(Activity a) {
+  final f = a.habitFreq ?? HabitFreq.monthly;
+  switch (f) {
+    case HabitFreq.daily:
+      return habitSliding(a.id, 1).done;
+    case HabitFreq.weekly:
+      return habitSliding(a.id, 7).done;
+    case HabitFreq.monthly:
+      return habitSliding(a.id, 30).done;
+  }
+}
+
+/// Somme des cibles actives pour un domaine (ou tous si null).
+int sumHabitTarget(String? domainId, int days) {
+  // on choisit le mode : si days=1 → daily, si 7 → weekly, si 30 → monthly
+  return state.activities
+      .where((a) =>
+          a.isHabit &&
+          (domainId == null || a.domainId == domainId))
+      .fold<int>(0, (sum, a) {
+    final freq = a.habitFreq ?? HabitFreq.monthly;
+    int perDay;
+    switch (freq) {
+      case HabitFreq.daily:
+        perDay = effectiveHabitTarget(a);
+        break;
+      case HabitFreq.weekly:
+        perDay = (effectiveHabitTarget(a) / 7).ceil();
+        break;
+      case HabitFreq.monthly:
+        perDay = (effectiveHabitTarget(a) / 30).ceil();
+        break;
+    }
+    return sum + perDay * days;
+  });
+}
+
+/// Somme des réalisés sur N jours pour un domaine.
+int sumHabitDone(String? domainId, int days) {
+  final r = lastNDays(days);
+  return state.habitProgress
+      .where((h) {
+        final act = state.activities.firstWhere(
+          (a) => a.id == h.activityId,
+          orElse: () => Activity(domainId: '', name: 'orphan'),
+        );
+        return act.isHabit && (domainId == null || act.domainId == domainId);
+      })
+      .fold<int>(0, (sum, h) => sum + h.value);
+}
+}
+
+// =====================================================
+// ===================  EXTENSIONS  ====================
+// =====================================================
 
 extension TodayLogic on AppLogic {
   int _indexInDay(String ymd, PlanKind kind, String refId) {
-    return state.dayPlan.indexWhere(
-        (e) => e.yyyymmdd == ymd && e.kind == kind && e.refId == refId);
-  }
-
-  int _nextOrderForDay(String ymd) {
-    final sameDay = state.dayPlan.where((e) => e.yyyymmdd == ymd);
-    if (sameDay.isEmpty) return 0;
-    return sameDay.map((e) => e.order).reduce((a, b) => a > b ? a : b) + 1;
+    return state.dayPlan.indexWhere((e) => e.yyyymmdd == ymd && e.kind == kind && e.refId == refId);
   }
 
   List<DayPlanItem> planFor(String ymd) {
@@ -1589,10 +1198,7 @@ extension TodayLogic on AppLogic {
     return list;
   }
 
-  Future<void> addPlanAction({
-    required String ymd,
-    required String title,
-  }) async {
+  Future<void> addPlanAction({required String ymd, required String title}) async {
     final ord = planFor(ymd).isEmpty ? 0 : planFor(ymd).last.order + 1;
     state.dayPlan.add(DayPlanItem(
       id: _uuid.v4(),
@@ -1608,7 +1214,7 @@ extension TodayLogic on AppLogic {
     required String ymd,
     required String activityId,
     required bool isHabit,
-    bool allDay = false, // si habit "suivie toute la journée"
+    bool allDay = false,
   }) async {
     final act = state.activities.firstWhere((a) => a.id == activityId);
     final ord = planFor(ymd).isEmpty ? 0 : planFor(ymd).last.order + 1;
@@ -1637,21 +1243,17 @@ extension TodayLogic on AppLogic {
     if (newIndex > oldIndex) newIndex -= 1;
     final item = list.removeAt(oldIndex);
     list.insert(newIndex, item);
-    // réécrire orders
     for (int i = 0; i < list.length; i++) {
       list[i].order = i;
     }
-    // propager dans state.dayPlan (mêmes objets, déjà mutés)
     onChange();
   }
 
-  /// Appelée au démarrage (ou à minuit) : reporte les non-faits d’hier vers aujourd’hui (optionnel).
   void rolloverUndone({DateTime? now}) {
     final t = now ?? DateTime.now();
     final today = yyyymmdd(t);
     final yesterday = yyyymmdd(t.subtract(const Duration(days: 1)));
-    final carry =
-        state.dayPlan.where((e) => e.yyyymmdd == yesterday && !e.done).toList();
+    final carry = state.dayPlan.where((e) => e.yyyymmdd == yesterday && !e.done).toList();
     if (carry.isEmpty) return;
     final baseOrder = planFor(today).length;
     for (int i = 0; i < carry.length; i++) {
@@ -1671,99 +1273,149 @@ extension TodayLogic on AppLogic {
   }
 }
 
-int _roundTo5(num x) => (x / 5.0).round() * 5;
+// =====================================================
+// =================  OUTILS ANNEXES  ==================
+// =====================================================
 
-extension AutoAdjust on AppLogic {
-  Future<void> autoAdjustStandardsRealtime({
-    DateTime? now,
-    int floorMin = 1, // 👈 plancher absolu
-    int maxPerDayMin = 12 * 60,
-    double raiseTrigger = 1.20, // >=120% → hausse
-    double aimUp = 0.95, // on vise ~95% après hausse
-    double deadbandLow = 0.80, // entre 80% et 110% → ne rien faire
-    double deadbandHigh = 1.10,
-    double lowerHard = 0.50, // <=50% → baisse
-    double aimDown = 0.90, // on vise ~90% après baisse
-    int minStepMin = 5,
-    double maxWeeklyPct = 0.20,
-    Duration coolDown = const Duration(hours: 48), // 👈 anti-yoyo
-  }) async {
-    final t = now ?? DateTime.now();
-    bool touched = false;
+class FocusItem {
+  final String kind; // 'time' | 'habit' | 'goal'
+  final double score;
+  final String reason;
+  final Activity? activity;
+  final Goal? goal;
+  final Duration? timeDeficit;
+  final int? habitDeficit;
+  final String? titleOverride;
+  final String? subtitleOverride;
 
-    for (final a in state.activities.where((x) => !x.isHabit)) {
-      final s30 = timeSliding(a.id, 30); // {doneMin,targetMin,ratio}
+  FocusItem({
+    required this.kind,
+    required this.score,
+    required this.reason,
+    this.activity,
+    this.goal,
+    this.timeDeficit,
+    this.habitDeficit,
+    this.titleOverride,
+    this.subtitleOverride,
+  });
+}
 
-      // Normalise les objectifs aberrants (0 ou négatifs)
-      if (a.goalMin < floorMin) a.goalMin = floorMin;
+// Auto-tune “intelligent” (respecte manualTarget, cooldown)
+List<TuneChange> autoTuneHabit(AppLogic l, Activity a, {DateTime? now}) {
+  final res = <TuneChange>[];
+  if (!a.isHabit || (a.autoTune == false) || (a.manualTarget == true)) return res;
 
-      // cooldown: on ne touche pas si ajusté il y a < 48h
-      if (a.lastTunedAt != null &&
-          t.difference(a.lastTunedAt!).compareTo(coolDown) < 0) {
-        continue;
-      }
+  final t = now ?? DateTime.now();
+  if (a.lastTuneAt != null && t.difference(a.lastTuneAt!).inDays < 7) return res;
 
-      // Seeding doux si target=0 (peu probable avec floor=1, mais safe)
-      if (s30.targetMin <= 0 && s30.doneMin > 0) {
-        final avg = (s30.doneMin / 30.0)
-            .clamp(floorMin.toDouble(), maxPerDayMin.toDouble());
-        final seed = _roundTo5(avg * 0.80);
-        if (seed > a.goalMin) {
-          a.goalMin = seed;
-          a.lastTunedAt = t;
-          touched = true;
-        }
-        continue;
-      }
+  final freq = l.effectiveHabitFreq(a);
+  int target = l.effectiveHabitTarget(a);
 
-      // Zone morte → on ne bouge pas
-      if (s30.ratio >= deadbandLow && s30.ratio <= deadbandHigh) continue;
+  final w = l.habitSliding(a.id, 7).done;
+  final m = l.habitSliding(a.id, 30).done;
 
-      int capUp(int proposed) {
-        final maxDelta = (a.goalMin * maxWeeklyPct).round();
-        final ceil = (a.goalMin + maxDelta).clamp(floorMin, maxPerDayMin);
-        return proposed.clamp(floorMin, ceil);
-      }
+  bool changed = false;
 
-      int capDown(int proposed) {
-        final maxDelta = (a.goalMin * maxWeeklyPct).round();
-        final floor = (a.goalMin - maxDelta).clamp(floorMin, maxPerDayMin);
-        return proposed.clamp(floor, a.goalMin);
-      }
+  int clampMin(int v) => v < 1 ? 1 : v;
 
-      // HAUSSE
-      if (s30.ratio >= raiseTrigger) {
-        final desired = (s30.doneMin / 30.0) / aimUp;
-        var proposed = _roundTo5(desired);
-        if (proposed < a.goalMin + minStepMin)
-          proposed = a.goalMin + minStepMin;
-        proposed = capUp(proposed);
-        if (proposed > a.goalMin) {
-          a.goalMin = proposed;
-          a.lastTunedAt = t;
-          touched = true;
-        }
-        continue;
-      }
+  if (freq == HabitFreq.monthly) {
+    if (m >= target + 1) { target += 1; changed = true; }
+    if (!changed && target >= 4) { a.habitFreq = HabitFreq.weekly; target = (target / 4.0).ceil(); changed = true; }
+  } else if (freq == HabitFreq.weekly) {
+    if (w >= target + 1) { target += 1; changed = true; }
+    if (!changed && target >= 6) { a.habitFreq = HabitFreq.daily; target = 1; changed = true; }
+  } else {
+    // daily : optionnel (on garde simple)
+  }
 
-      // BAISSE (dès J0, mais bornée + plancher 1min)
-      if (s30.ratio <= lowerHard) {
-        final desired = (s30.doneMin / 30.0) / aimDown;
-        var proposed = _roundTo5(desired);
-        if (proposed > a.goalMin - minStepMin)
-          proposed = a.goalMin - minStepMin;
-        proposed = capDown(proposed);
-        if (proposed < a.goalMin) {
-          a.goalMin = proposed;
-          if (a.goalMin < floorMin) a.goalMin = floorMin; // sécurité
-          a.lastTunedAt = t;
-          touched = true;
-        }
-      }
-    }
-
-    if (touched) {
-      onChange();
+  if (!changed) {
+    final p = l.habitPeriod(a, now: t);
+    if (p.ratio < 0.6 && target > 1) {
+      target -= 1;
+      changed = true;
     }
   }
+
+  if (changed) {
+    a.habitTarget = clampMin(target);
+    a.lastTuneAt = t;
+    l.onChange();
+    res.add(TuneChange(a.id, 'auto-tune → ${a.habitFreq} x${a.habitTarget}'));
+  }
+  return res;
+}
+
+// Hausse immédiate si >120% de la période active (respecte manualTarget)
+void autoTuneHabitImmediate(AppLogic l, Activity a) {
+  if (!a.isHabit || (a.manualTarget == true)) return;
+
+  final freq = l.effectiveHabitFreq(a);
+  final target = l.effectiveHabitTarget(a);
+  if (target <= 0) return;
+
+  int done;
+  switch (freq) {
+    case HabitFreq.daily:   done = l.habitSliding(a.id, 1).done;  break;
+    case HabitFreq.weekly:  done = l.habitSliding(a.id, 7).done;  break;
+    case HabitFreq.monthly: done = l.habitSliding(a.id, 30).done; break;
+  }
+
+  final ratio = target > 0 ? (done / target) : 0.0;
+
+  if (ratio >= 1.20) {
+    int newTarget;
+    if (freq == HabitFreq.monthly) {
+      if (done >= 4) { a.habitFreq = HabitFreq.weekly; a.habitTarget = 1; return; }
+      newTarget = (done / 0.95).ceil();
+      if (newTarget < target + 1) newTarget = target + 1;
+      a.habitTarget = newTarget;
+      return;
+    }
+    if (freq == HabitFreq.weekly) {
+      if (done >= 7) { a.habitFreq = HabitFreq.daily; a.habitTarget = 1; return; }
+      newTarget = (done / 0.95).ceil();
+      if (newTarget < target + 1) newTarget = target + 1;
+      a.habitTarget = newTarget;
+      return;
+    }
+    // daily
+    newTarget = (done / 0.95).ceil();
+    if (newTarget < target + 1) newTarget = target + 1;
+    a.habitTarget = newTarget;
+  }
+}
+
+// ---------- Utilitaires ----------
+int _roundTo5(num x) => (x / 5.0).round() * 5;
+
+// ---------- Sliding helpers pour domaines/graphs ----------
+extension SlidingProgress on AppLogic {
+  ({DateTime start, DateTime end, int days}) _dayWin(DateTime now) {
+    final s = DateTime(now.year, now.month, now.day);
+    return (start: s, end: s.add(const Duration(days: 1)), days: 1);
+  }
+
+  ({DateTime start, DateTime end, int days}) _weekWin(DateTime now) {
+    final e = DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
+    final s = e.subtract(const Duration(days: 7));
+    return (start: s, end: e, days: 7);
+  }
+
+  double timePct(String activityId, DateTime start, DateTime end, int days) {
+    final doneMin = totalForRangeByActivity(activityId, start, end).inMinutes;
+    final goalDay = state.activities.firstWhere((a) => a.id == activityId).goalMin;
+    final target = goalDay * days;
+    if (target <= 0) return 0.0;
+    return doneMin / target;
+  }
+}
+
+// ---------- Focus/Goals annexes ----------
+class GoalChange {
+  final String kind; // 'activity' | 'domain'
+  final String id;
+  final int deltaMin;
+  final int newGoalMin;
+  GoalChange({required this.kind, required this.id, required this.deltaMin, required this.newGoalMin});
 }
