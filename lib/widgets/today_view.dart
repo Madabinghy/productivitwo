@@ -31,22 +31,23 @@ class _TodayViewState extends State<TodayView> {
     return yyyymmdd(d);
   }
 
-  void _maybeDailyRollover() {
-    final today = yyyymmdd(DateTime.now());
-    if (widget.state.lastRolloverYmd != today) {
-      widget.logic.rolloverUnfinishedToTomorrow();
-      widget.state.lastRolloverYmd = today;
-      widget.logic.onChange();
-    }
+  void _startupHousekeeping() {
+    widget.logic.maybeCarryFromYesterday();
+    widget.logic.ensureDailyHabitsPlanned();
   }
 
   @override
   void initState() {
     super.initState();
-    _maybeDailyRollover();
+    _startupHousekeeping();
+
     _base = DateTime.now();
-    // Suggestion : si on est après 18h, basculer l’UI par défaut sur "Demain"
+    // Option purement UI : si après 18h, afficher l’onglet "Demain" par défaut
     if (_base.hour >= 18) _planTomorrow = true;
+
+    // ⚠️ NE PAS déplacer ici "Aujourd'hui → Demain".
+    // Laisse ça à un bouton ou à un appel tardif :
+    // widget.logic.maybePrepTomorrow();  // <-- si tu veux l'automatique le soir
   }
 
   @override
@@ -379,21 +380,23 @@ class _TodayViewState extends State<TodayView> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // 1) Action volante
+              // 1) Ajouter une action volante
               ListTile(
-                leading: const Icon(Icons.checklist),
+                leading: const Icon(Icons.check_box_outlined),
                 title: const Text('Ajouter une action'),
                 onTap: () async {
                   Navigator.pop(ctx);
-                  final title = await _askText(context, 'Nouvelle action');
-                  if (title != null && title.trim().isNotEmpty) {
-                    setState(() => widget.logic
-                        .addPlanAction(ymd: _ymd, title: title.trim()));
+                  final title = await _askText(context, "Nouvelle action");
+                  if ((title ?? '').trim().isNotEmpty) {
+                    await widget.logic
+                        .addPlanAction(ymd: _ymd, title: title!.trim());
+                    if (!mounted) return;
+                    setState(() {});
                   }
                 },
               ),
               const Divider(),
-              // 2) Sélectionner une activité temps existante
+              // 2) Ajouter une activité
               ListTile(
                 leading: const Icon(Icons.timelapse),
                 title: const Text('Ajouter une activité (temps)'),
@@ -401,26 +404,31 @@ class _TodayViewState extends State<TodayView> {
                   Navigator.pop(ctx);
                   final act = await _pickActivity(isHabit: false);
                   if (act != null) {
-                    setState(() => widget.logic.addPlanActivity(
-                        ymd: _ymd, activityId: act.id, isHabit: false));
+                    await widget.logic.addPlanActivity(
+                      ymd: _ymd,
+                      activityId: act.id,
+                      isHabit: false,
+                    );
+                    if (!mounted) return;
+                    setState(() {}); // synchrone, après l’await
                   }
                 },
               ),
-              // 3) Sélectionner une habitude existante
+              // 2) Ajouter une routine (habitude)
               ListTile(
                 leading: const Icon(Icons.task_alt),
                 title: const Text('Ajouter une routine'),
-                subtitle: const Text('Option : suivre toute la journée'),
                 onTap: () async {
                   Navigator.pop(ctx);
                   final act = await _pickActivity(isHabit: true);
                   if (act != null) {
-                    // pour l’instant, on met allDay=true par défaut (modifiable plus tard)
-                    setState(() => widget.logic.addPlanActivity(
-                        ymd: _ymd,
-                        activityId: act.id,
-                        isHabit: true,
-                        allDay: true));
+                    await widget.logic.addPlanActivity(
+                      ymd: _ymd,
+                      activityId: act.id,
+                      isHabit: true,
+                    );
+                    if (!mounted) return;
+                    setState(() {});
                   }
                 },
               ),

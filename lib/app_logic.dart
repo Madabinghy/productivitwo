@@ -546,6 +546,41 @@ class AppLogic {
     return (start: start, end: end, days: 30);
   }
 
+  void ensureDailyHabitsPlanned({DateTime? now}) {
+    final t = now ?? DateTime.now();
+    final ymd = yyyymmdd(t);
+
+    int nextOrder = _nextOrderForDay(ymd);
+    bool touched = false;
+
+    // Only daily habits
+    for (final a in state.activities.where(
+      (x) => x.isHabit && effectiveHabitFreq(x) == HabitFreq.daily,
+    )) {
+      final already = state.dayPlan.any((p) =>
+              p.yyyymmdd == ymd &&
+              p.kind == PlanKind.habit &&
+              p.refId == a.id // <-- use refId here
+          );
+
+      if (!already) {
+        state.dayPlan.add(DayPlanItem(
+          id: _uuid.v4(),
+          kind: PlanKind.habit,
+          refId: a.id, // <-- and here
+          title: a.name,
+          yyyymmdd: ymd,
+          done: false,
+          allDay: true,
+          order: nextOrder++,
+        ));
+        touched = true;
+      }
+    }
+
+    if (touched) onChange();
+  }
+
   Future<int?> maybeAutoAdjustActivity(
     String activityId, {
     DateTime? now,
@@ -1045,6 +1080,31 @@ class AppLogic {
     onChange();
   }
 
+// Hier → Aujourd'hui (copie les non-faits d'hier). À appeler 1x/jour au lancement.
+  void maybeCarryFromYesterday({DateTime? now}) {
+    final t = now ?? DateTime.now();
+    final today = _ymd(t);
+    if (state.lastCarryYmd == today) return;
+    rolloverUndone(now: t); // ta fonction existante (yesterday -> today)
+    state.lastCarryYmd = today;
+    onChange();
+  }
+
+// Aujourd'hui → Demain (déplace les non-faits). À appeler le soir (ou via bouton).
+  void maybePrepTomorrow(
+      {DateTime? now, int cutoffHour = 22, bool force = false}) {
+    final t = now ?? DateTime.now();
+    final today = _ymd(t);
+    if (!force) {
+      if (t.hour < cutoffHour) return; // pas encore l’heure
+      if (state.lastPrepYmd == today) return; // déjà fait aujourd’hui
+    }
+    rolloverUnfinishedToTomorrow(
+        now: t); // ta fonction existante (today -> tomorrow)
+    state.lastPrepYmd = today;
+    onChange();
+  }
+
   // ---------- Rollover (facultatif) ----------
   void rolloverUnfinishedToTomorrow({DateTime? now}) {
     final _now = now ?? DateTime.now();
@@ -1298,14 +1358,25 @@ extension TodayLogic on AppLogic {
     return list;
   }
 
-  Future<void> addPlanAction(
-      {required String ymd, required String title}) async {
-    final ord = planFor(ymd).isEmpty ? 0 : planFor(ymd).last.order + 1;
+  String _todayKeyLocal() {
+    final now = DateTime.now();
+    return yyyymmdd(DateTime(now.year, now.month, now.day));
+  }
+
+  Future<void> addPlanAction({
+    required String ymd, // <- tu peux garder le param pour compat,
+    required String title,
+  }) async {
+    final todayKey = _todayKeyLocal(); // toujours le jour local
+    final ord = planFor(todayKey).isEmpty // ← corriger ici
+        ? 0
+        : planFor(todayKey).last.order + 1;
+
     state.dayPlan.add(DayPlanItem(
       id: _uuid.v4(),
       kind: PlanKind.action,
       title: title,
-      yyyymmdd: ymd,
+      yyyymmdd: todayKey, // on force la clé locale
       order: ord,
     ));
     onChange();
@@ -1318,13 +1389,16 @@ extension TodayLogic on AppLogic {
     bool allDay = false,
   }) async {
     final act = state.activities.firstWhere((a) => a.id == activityId);
-    final ord = planFor(ymd).isEmpty ? 0 : planFor(ymd).last.order + 1;
+    final todayKey = _todayKeyLocal();
+    final ord =
+        planFor(todayKey).isEmpty ? 0 : planFor(todayKey).last.order + 1;
+
     state.dayPlan.add(DayPlanItem(
-      id: _uuid.v4(),
+      id: const Uuid().v4(),
       kind: isHabit ? PlanKind.habit : PlanKind.activityTime,
       refId: activityId,
       title: act.name,
-      yyyymmdd: ymd,
+      yyyymmdd: todayKey, // 👈 toujours le jour local
       allDay: isHabit ? allDay : false,
       order: ord,
     ));
@@ -1352,16 +1426,19 @@ extension TodayLogic on AppLogic {
 
   void rolloverUndone({DateTime? now}) {
     final t = now ?? DateTime.now();
-    final today = yyyymmdd(t);
-    final yesterday = yyyymmdd(t.subtract(const Duration(days: 1)));
+    final today = yyyymmdd(DateTime(t.year, t.month, t.day));
+    final yesterday = yyyymmdd(
+        DateTime(t.year, t.month, t.day).subtract(const Duration(days: 1)));
+
     final carry =
         state.dayPlan.where((e) => e.yyyymmdd == yesterday && !e.done).toList();
     if (carry.isEmpty) return;
+
     final baseOrder = planFor(today).length;
     for (int i = 0; i < carry.length; i++) {
       final e = carry[i];
       state.dayPlan.add(DayPlanItem(
-        id: _uuid.v4(),
+        id: const Uuid().v4(),
         kind: e.kind,
         refId: e.refId,
         title: e.title,
@@ -1371,6 +1448,9 @@ extension TodayLogic on AppLogic {
         order: baseOrder + i,
       ));
     }
+
+    // Optionnel : supprimer les doublons anciens
+    state.dayPlan.removeWhere((e) => e.yyyymmdd == yesterday);
     onChange();
   }
 }

@@ -416,6 +416,9 @@ class AppState {
   List<DayPlanItem> dayPlan;
   String? lastRolloverYmd;
 
+  String? lastCarryYmd; // on a déjà fait "Hier → Aujourd'hui" pour ce jour ?
+  String? lastPrepYmd; // on a déjà fait "Aujourd'hui → Demain" pour ce jour ?
+
   AppState({
     required this.domains,
     required this.activities,
