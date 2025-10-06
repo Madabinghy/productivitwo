@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/main.dart';
 import 'package:productivitwo_v1/models.dart';
 
 class TodayView extends StatefulWidget {
@@ -49,6 +50,96 @@ class _TodayViewState extends State<TodayView> {
     if (_base.hour >= 18) _planTomorrow = true;
   }
 
+  Widget _focusSection(AppLogic logic) {
+    final acts = logic.focusToday;
+    if (acts.isEmpty) return const SizedBox.shrink();
+
+    Widget ringFor(Activity a) {
+      if (a.isHabit) {
+        final done = logic.activeHabitDone(a);
+        final tgt = logic.activeHabitTarget(a);
+        final prog = (tgt > 0) ? (done / tgt).clamp(0.0, 1.0) : 0.0;
+        return MiniRing(
+          progress: prog,
+          center: Text("$done/$tgt",
+              style:
+                  const TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
+        );
+      } else {
+        final now = DateTime.now();
+        final doneMin = logic
+            .totalForRangeByActivity(
+                a.id, now.subtract(const Duration(hours: 24)), now)
+            .inMinutes;
+        final tgt = a.goalMin;
+        final prog = (tgt > 0) ? (doneMin / tgt).clamp(0.0, 1.0) : 0.0;
+        return MiniRing(
+          progress: prog,
+          center: Text("${doneMin}m",
+              style:
+                  const TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
+        );
+      }
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("🎯 Focus du jour",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 8),
+          ...acts.map((a) => Card(
+                child: ListTile(
+                  leading: ringFor(a),
+                  title: Text(a.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                  trailing: IconButton(
+                    tooltip: "Retirer du focus",
+                    onPressed: () => setState(() => logic.toggleFocus(a.id)),
+                    icon: const Icon(Icons.close),
+                  ),
+                  // Optionnel : tap → lancer / inc / explications…
+                  onTap: () {
+                    if (!a.isHabit) {
+                      logic.start(a.id);
+                    } else {
+                      // par ex. incrémenter 1 pour une routine
+                      final today = DateTime.now();
+                      logic.incHabit(a.id, 1, today);
+                      setState(() {});
+                    }
+                  },
+                ),
+              )),
+          // Ligne d’actions rapide
+          Row(
+            children: [
+              TextButton.icon(
+                onPressed: () =>
+                    setState(() => logic.suggestAutoFocusForToday()),
+                icon: const Icon(Icons.auto_awesome),
+                label: const Text("Proposer"),
+              ),
+              const SizedBox(width: 8),
+              TextButton.icon(
+                onPressed: () => setState(() {
+                  logic.state.focusTodayIds.clear();
+                  logic.onChange();
+                }),
+                icon: const Icon(Icons.clear_all),
+                label: const Text("Vider"),
+              ),
+            ],
+          )
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final ymd = _ymd; // aujourd’hui ou demain selon ton toggle
@@ -82,16 +173,27 @@ class _TodayViewState extends State<TodayView> {
           ]),
 
       // 🔁 Réorganisation par drag & drop
-      body: ReorderableListView.builder(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
-        itemCount: items.length,
-        onReorder: (oldIndex, newIndex) {
-          setState(() => widget.logic.reorderPlan(ymd, oldIndex, newIndex));
-        },
-        itemBuilder: (ctx, i) {
-          final it = items[i];
-          return _todayTile(ctx, it, key: ValueKey(it.id));
-        },
+      body: Column(
+        children: [
+          // Section Focus en haut (ne prend de la place que s’il y a des items)
+          _focusSection(widget.logic),
+
+          // Ta liste réordonnable existante
+          Expanded(
+            child: ReorderableListView.builder(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
+              itemCount: items.length,
+              onReorder: (oldIndex, newIndex) {
+                setState(
+                    () => widget.logic.reorderPlan(ymd, oldIndex, newIndex));
+              },
+              itemBuilder: (ctx, i) {
+                final it = items[i];
+                return _todayTile(ctx, it, key: ValueKey(it.id));
+              },
+            ),
+          ),
+        ],
       ),
 
       floatingActionButton: _buildFab(), // ton FAB existant pour ajouter

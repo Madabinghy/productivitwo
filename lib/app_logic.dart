@@ -32,6 +32,67 @@ class AppLogic {
   final void Function() onChange;
   AppLogic(this.state, this.onChange);
 
+  // Retourne la liste d'activités du focus (en respectant les IDs)
+  List<Activity> get focusToday {
+    final ids = state.focusTodayIds.toSet();
+    if (ids.isEmpty) return [];
+    return state.activities.where((a) => ids.contains(a.id)).toList();
+  }
+
+  bool isInFocus(String activityId) => state.focusTodayIds.contains(activityId);
+
+  void toggleFocus(String activityId) {
+    if (state.focusTodayIds.contains(activityId)) {
+      state.focusTodayIds.remove(activityId);
+    } else {
+      state.focusTodayIds.add(activityId);
+    }
+    onChange();
+  }
+
+  /// Optionnel : proposer automatiquement les habitudes quotidiennes non atteintes
+  void suggestAutoFocusForToday({int maxCount = 4}) {
+    final candidates = <Activity>[];
+
+    // 1) routines quotidiennes non atteintes en priorité
+    for (final a in state.activities.where((x) => x.isHabit)) {
+      if (effectiveHabitFreq(a) == HabitFreq.daily) {
+        final tgt = activeHabitTarget(a);
+        if (tgt > 0 && activeHabitDone(a) < tgt) {
+          candidates.add(a);
+        }
+      }
+    }
+
+    // 2) compléter si besoin avec une ou deux activités "time" (déficitaires)
+    if (candidates.length < maxCount) {
+      final now = DateTime.now();
+      final start = now.subtract(const Duration(hours: 24));
+      final deficits = state.activities.where((a) => !a.isHabit).map((a) {
+        final done = totalForRangeByActivity(a.id, start, now).inMinutes;
+        final need = a.goalMin;
+        final deficit = (need - done).clamp(0, 1 << 30);
+        return (a: a, deficit: deficit);
+      }).toList()
+        ..sort((b, a) => a.deficit.compareTo(b.deficit));
+
+      for (final it in deficits) {
+        if (candidates.length >= maxCount) break;
+        if (it.deficit > 0) candidates.add(it.a);
+      }
+    }
+
+    // écrire (sans dupliquer)
+    final set = state.focusTodayIds.toSet();
+    for (final a in candidates.take(maxCount)) {
+      set.add(a.id);
+    }
+    state.focusTodayIds = set.toList();
+    onChange();
+  }
+
+  bool isFocused(String activityId) => state.focusTodayIds.contains(activityId);
+
   // ---------- TEMPS (type=time) ----------
   void start(String activityId) {
     for (final s in state.sessions.where((s) => s.endAt == null)) {

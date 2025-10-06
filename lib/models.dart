@@ -418,6 +418,7 @@ class AppState {
 
   String? lastCarryYmd; // on a déjà fait "Hier → Aujourd'hui" pour ce jour ?
   String? lastPrepYmd; // on a déjà fait "Aujourd'hui → Demain" pour ce jour ?
+  List<String> focusTodayIds;
 
   AppState({
     required this.domains,
@@ -428,10 +429,12 @@ class AppState {
     Map<String, String>? snoozedUntil,
     List<Goal>? goals,
     List<InboxItem>? inbox,
+    List<String>? focusTodayIds,
     this.dayPlan = const [],
   })  : snoozedUntil = snoozedUntil ?? {},
         goals = goals ?? [],
-        inbox = inbox ?? [];
+        inbox = inbox ?? [],
+        focusTodayIds = focusTodayIds ?? [];
 
   Map<String, dynamic> toJson() => {
         'domains': domains.map((e) => e.toJson()).toList(),
@@ -443,6 +446,7 @@ class AppState {
         'goals': goals.map((e) => e.toJson()).toList(),
         'inbox': inbox.map((e) => e.toJson()).toList(),
         'dayPlan': dayPlan.map((e) => e.toJson()).toList(),
+        'focusTodayIds': focusTodayIds,
       };
 
   static AppState from(Map j) => AppState(
@@ -470,6 +474,7 @@ class AppState {
         dayPlan: (j['dayPlan'] == null)
             ? <DayPlanItem>[]
             : (j['dayPlan'] as List).map((e) => DayPlanItem.from(e)).toList(),
+            focusTodayIds: (j['focusTodayIds'] as List?)?.cast<String>() ?? [],
       );
 
   String encode() => jsonEncode(toJson());

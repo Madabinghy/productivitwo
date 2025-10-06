@@ -2728,6 +2728,29 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                                 .colorScheme
                                 .onSurface
                                 .withOpacity(.75))),
+                    // ... après `Text(rules, ...)`
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(ctx)
+                            .colorScheme
+                            .surfaceVariant
+                            .withOpacity(.5),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text("Astuce",
+                              style: TextStyle(fontWeight: FontWeight.w800)),
+                          SizedBox(height: 6),
+                          Text("• Touchez l’anneau pour +1"),
+                          Text("• Double-touchez l’anneau pour −1"),
+                          Text("• Appui long : réglages & explications"),
+                        ],
+                      ),
+                    ),
                     const SizedBox(height: 16),
                     Align(
                       alignment: Alignment.centerRight,
@@ -2892,20 +2915,73 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             ],
           );
 
-          // ---------- Tuiles ----------
           Widget _buildTimeTile(Activity a) {
             final now = DateTime.now();
-            final done24h = logic.totalForRangeByActivity(
-                a.id, DateTime(now.year, now.month, now.day), now);
+            final dayStart = DateTime(now.year, now.month, now.day);
+            final doneToday =
+                logic.totalForRangeByActivity(a.id, dayStart, now);
             final dayRatio = a.goalMin > 0
-                ? (done24h.inMinutes / a.goalMin).clamp(0.0, 1.0)
+                ? (doneToday.inMinutes / a.goalMin).clamp(0.0, 1.0)
                 : 0.0;
 
             final w = logic.timeSliding(a.id, 7);
             final m = logic.timeSliding(a.id, 30);
+            final focused = logic.isFocused(a.id);
+
+            final more = PopupMenuButton<String>(
+              onSelected: (key) {
+                switch (key) {
+                  case 'focus':
+                    setSB(() => logic.toggleFocus(a.id));
+                    break;
+                  case 'start':
+                    logic.start(a.id);
+                    Navigator.pop(ctx); // on ferme le sheet
+                    break;
+                  case 'explain':
+                    showTimeExplainer(context, a: a, logic: logic);
+                    break;
+                }
+              },
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  value: 'focus',
+                  child: Row(
+                    children: [
+                      Icon(focused ? Icons.push_pin : Icons.push_pin_outlined),
+                      const SizedBox(width: 8),
+                      Text(focused ? 'Retirer du focus' : 'Ajouter au focus'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'start',
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.play_arrow),
+                    title: Text('Lancer'),
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'explain',
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.info_outline),
+                    title: Text('Explications'),
+                  ),
+                ),
+              ],
+            );
 
             return ListTile(
-              onTap: () => showTimeExplainer(context, a: a, logic: logic),
+              onTap: () {
+                // action principale = Start
+                logic.start(a.id);
+                Navigator.pop(ctx);
+              },
+              onLongPress: () => showTimeExplainer(context, a: a, logic: logic),
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               leading: MiniRing(
@@ -2917,9 +2993,22 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               title: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(a.name,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 16)),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(a.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w700, fontSize: 16)),
+                      ),
+                      if (focused)
+                        const Padding(
+                          padding: EdgeInsets.only(left: 6),
+                          child: Icon(Icons.push_pin, size: 16),
+                        ),
+                    ],
+                  ),
                   TinyBar(
                     ratio: m.ratio,
                     labelLeft:
@@ -2933,14 +3022,90 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                   ),
                 ],
               ),
-              trailing: FilledButton.icon(
-                onPressed: () {
-                  logic.start(a.id);
-                  Navigator.pop(ctx);
-                },
-                icon: const Icon(Icons.play_arrow),
-                label: const Text("Start"),
-              ),
+              trailing: more, // ← un seul bouton
+            );
+          }
+
+          void openHabitQuickAdjustSheet({
+            required BuildContext context,
+            required AppLogic logic,
+            required Activity habit,
+            required VoidCallback refresh, // setSB((){}) ou setState((){})
+          }) {
+            final now = DateTime.now();
+            final today = DateTime(now.year, now.month, now.day);
+
+            showModalBottomSheet(
+              context: context,
+              showDragHandle: true,
+              builder: (ctx) {
+                return StatefulBuilder(
+                  builder: (ctx, setLocal) {
+                    final d =
+                        logic.habitSliding(habit.id, 1).done; // valeur live
+
+                    void _bump(int delta) {
+                      logic.incHabit(habit.id, delta, today);
+                      setLocal(() {}); // refresh dans le sheet
+                      refresh(); // refresh parent si besoin
+                    }
+
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(habit.name,
+                              style: const TextStyle(
+                                  fontSize: 16, fontWeight: FontWeight.w800)),
+                          const SizedBox(height: 8),
+                          Text("Aujourd’hui : $d ${habit.unit ?? ''}",
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 12),
+
+                          // Ligne de gros boutons
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              FilledButton.tonal(
+                                onPressed: () => _bump(-1),
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 8),
+                                  child: Icon(Icons.remove),
+                                ),
+                              ),
+                              FilledButton(
+                                onPressed: () => _bump(1),
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 8),
+                                  child: Icon(Icons.add),
+                                ),
+                              ),
+                              // (optionnel) +5 pour aller vite
+                              OutlinedButton(
+                                onPressed: () => _bump(5),
+                                child: const Text("+5"),
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 12),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              child: const Text("Terminé"),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                );
+              },
             );
           }
 
@@ -2948,16 +3113,15 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             final now = DateTime.now();
             final today = DateTime(now.year, now.month, now.day);
 
-            // Totaux (jour/semaine/mois) + cibles déduites
+            // Totaux + cibles déduites
             final dH = logic.habitSliding(a.id, 1);
             final wH = logic.habitSliding(a.id, 7);
             final mH = logic.habitSliding(a.id, 30);
-            final quotaD = logic.dayQuotaFor(a); // cible jour (déduite)
-            final tgtW = logic.weekTargetFrom(a); // cible semaine (déduite)
-            final tgtM = logic.monthTargetFrom(a); // cible mois (déduite)
+            final quotaD = logic.dayQuotaFor(a);
+            final tgtW = logic.weekTargetFrom(a);
+            final tgtM = logic.monthTargetFrom(a);
 
             final f = a.habitFreq ?? HabitFreq.monthly;
-// ringRatio
             final double ringRatio = (f == HabitFreq.daily)
                 ? (quotaD > 0
                     ? ((dH.done / quotaD).clamp(0.0, 1.0)).toDouble()
@@ -2973,35 +3137,145 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             final isDayPrimary = f == HabitFreq.daily;
             final isWeekPrimary = f == HabitFreq.weekly;
             final isMonthPrimary = f == HabitFreq.monthly;
-
             final unit = (a.unit ?? '').isNotEmpty ? ' ${a.unit}' : '';
+            final focused = logic.isFocused(a.id);
 
-            return ListTile(
-              //onTap: () => _openHabitManualTargetSheet(context, activity: a, logic: logic, refreshParent: () => setSB(() {})),
-              // exemple: sur onTap de la ListTile routine
-              onLongPress: () => openHabitEditSheet(
-                context: context,
-                logic: logic,
-                habit: a,
-                onSaved: () =>
-                    setSB(() {}), // ou setState(() {}) selon le contexte
-              ),
-              onTap: () => _openHabitManualEditor(a, setSB),
-
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              leading: MiniRing(
+            // Menu …
+            final more = PopupMenuButton<String>(
+              onSelected: (key) {
+                switch (key) {
+                  case 'focus':
+                    setSB(() => logic.toggleFocus(a.id));
+                    break;
+                  case 'ajust':
+                    openHabitQuickAdjustSheet(
+                      context: context,
+                      logic: logic,
+                      habit: a,
+                      refresh: () =>
+                          setSB(() {}), // ou setState((){}) selon le contexte
+                    );
+                    break;
+                  case 'edit':
+                    openHabitEditSheet(
+                      context: context,
+                      logic: logic,
+                      habit: a,
+                      onSaved: () => setSB(() {}),
+                    );
+                    break;
+                  case 'explain':
+                    _openHabitRationale(a);
+                    break;
+                }
+              },
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  value: 'focus',
+                  child: Row(
+                    children: [
+                      Icon(focused ? Icons.push_pin : Icons.push_pin_outlined),
+                      const SizedBox(width: 8),
+                      Text(focused ? 'Retirer du focus' : 'Ajouter au focus'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'ajust',
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.exposure_plus_1),
+                    title: Text('Ajuster rapidement…'),
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'edit',
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.tune),
+                    title: Text('Objectif manuel'),
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'explain',
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.info_outline),
+                    title: Text('Explications'),
+                  ),
+                ),
+              ],
+            );
+            // Leading cliquable: tap = +1, double-tap = -1
+            Widget tappableRing = GestureDetector(
+              onTap: () {
+                setSB(() {
+                  _lockNow();
+                });
+                logic.incHabit(a.id, 1, today);
+                setSB(() {});
+                _unlockSoon(setSB);
+              },
+              onDoubleTap: () {
+                setSB(() {
+                  _lockNow();
+                });
+                logic.incHabit(a.id, -1, today);
+                setSB(() {});
+                _unlockSoon(setSB);
+              },
+              child: MiniRing(
                 progress: ringRatio,
                 center: Text("${dH.done}",
                     style: const TextStyle(
                         fontSize: 11, fontWeight: FontWeight.w700)),
               ),
+            );
+
+            return ListTile(
+              // Tap = éditeur manuel (ou garde “rationale” si tu préfères)
+/*               onTap: () => _openHabitManualEditor(a, setSB),
+              onLongPress: () => _openHabitRationale(a), */
+              onLongPress: () => _openHabitManualEditor(a, setSB),
+              onTap: () => _openQuickAdjustHabitSheet(
+                context: context,
+                logic: logic,
+                habit: a,
+                refresh: () =>
+                    setSB(() {}), // ou setState(() {}) selon l’endroit
+              ),
+/*               onLongPress: () => openHabitEditSheet(
+                context: context,
+                logic: logic,
+                habit: a,
+                onSaved: () => setSB(() {}),
+              ), */
+
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              leading: tappableRing,
               title: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(a.name,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 16)),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(a.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w700, fontSize: 16)),
+                      ),
+                      if (focused)
+                        const Padding(
+                          padding: EdgeInsets.only(left: 6),
+                          child: Icon(Icons.push_pin, size: 16),
+                        ),
+                    ],
+                  ),
                   Opacity(
                     opacity: isMonthPrimary ? 1.0 : .45,
                     child: TinyBar(
@@ -3025,53 +3299,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                     ),
                 ],
               ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    onPressed: () {
-                      setSB(() {
-                        _lockNow();
-                      });
-                      logic.incHabit(a.id, -1, today);
-                      setSB(() {});
-                      _unlockSoon(setSB);
-
-                      final act = logic.state.activities
-                          .firstWhere((x) => x.id == a.id);
-                      final tgt = effectiveTarget(act); // ← unifié
-                      if ((tgt ?? 0) > 0 &&
-                          logic.habitValueOn(a.id, today) >= (tgt ?? 0)) {
-                        logic.movePlannedToTomorrowIfPresent(
-                            PlanKind.habit, a.id,
-                            addIfMissing: true);
-                      }
-                    },
-                    icon: const Icon(Icons.remove),
-                  ),
-                  IconButton(
-                    onPressed: () {
-                      setSB(() {
-                        _lockNow();
-                      });
-                      logic.incHabit(a.id, 1, today);
-                      setSB(() {});
-                      _unlockSoon(setSB);
-
-                      final act = logic.state.activities
-                          .firstWhere((x) => x.id == a.id);
-                      final tgt = effectiveTarget(act); // ← unifié
-                      if ((tgt ?? 0) > 0 &&
-                          logic.habitValueOn(a.id, today) >= (tgt ?? 0)) {
-                        logic.movePlannedToTomorrowIfPresent(
-                            PlanKind.habit, a.id,
-                            addIfMissing: true);
-                      }
-                    },
-                    icon: const Icon(Icons.add),
-                  ),
-                ],
-              ),
+              trailing: more, // ← un seul bouton
             );
           }
 
@@ -3737,6 +3965,138 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                         ...top.skip(1).map((it) => Card(child: _tile(it))),
                       ],
                     ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _openQuickAdjustHabitSheet({
+    required BuildContext context,
+    required AppLogic logic,
+    required Activity habit,
+    required VoidCallback refresh,
+  }) async {
+    final unit = (habit.unit ?? '').isNotEmpty ? ' ${habit.unit}' : '';
+
+    await showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSB) {
+            int todayVal() {
+              final now = DateTime.now();
+              final d = DateTime(now.year, now.month, now.day);
+              return logic.habitValueOn(habit.id, d);
+            }
+
+            final dayQuota = logic.dayQuotaFor(habit);
+
+            void bump(int delta) {
+              final now = DateTime.now();
+              final d = DateTime(now.year, now.month, now.day);
+              logic.incHabit(habit.id, delta, d);
+              setSB(() {}); // refresh dans le sheet
+              refresh(); // refresh parent
+            }
+
+            void resetToday() {
+              final now = DateTime.now();
+              final d = DateTime(now.year, now.month, now.day);
+              final cur = logic.habitValueOn(habit.id, d);
+              if (cur > 0) {
+                logic.incHabit(habit.id, -cur, d);
+                setSB(() {});
+                refresh();
+              }
+            }
+
+            final val = todayVal();
+
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    habit.name,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  Center(
+                    child: Text(
+                      "Aujourd’hui : $val / $dayQuota$unit",
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // 🌟 Les deux gros boutons centraux
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      FilledButton.tonalIcon(
+                        onPressed: () => bump(-1),
+                        icon: const Icon(Icons.remove, size: 28),
+                        label: const Padding(
+                          padding: EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 12),
+                          child: Text("1", style: TextStyle(fontSize: 18)),
+                        ),
+                      ),
+                      FilledButton.icon(
+                        onPressed: () => bump(1),
+                        icon: const Icon(Icons.add, size: 28),
+                        label: const Padding(
+                          padding: EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 12),
+                          child: Text("1", style: TextStyle(fontSize: 18)),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // 🔁 Reset + Fermer
+                  Row(
+                    children: [
+                      TextButton.icon(
+                        onPressed: resetToday,
+                        icon: const Icon(Icons.restore),
+                        label: const Text("Réinitialiser"),
+                      ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text("Fermer"),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 8),
+                  Text(
+                    "Astuce : touchez l’anneau pour +1, \ndouble-touchez pour −1.",
+                    style: TextStyle(
+                      fontSize: 12,
+                      color:
+                          Theme.of(ctx).colorScheme.onSurface.withOpacity(.6),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
                 ],
               ),
             );
