@@ -1678,6 +1678,51 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   Widget _buildDashboardBody(BuildContext context) {
 // 1) Portée (calendaire)
     final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    int _doneHabitsForDomainCalendar(
+        String domainId, DateTime start, DateTime end) {
+      // somme calendaire: [start, end)
+      int sum = 0;
+      DateTime d = DateTime(start.year, start.month, start.day);
+      while (d.isBefore(end)) {
+        for (final a in _state!.activities
+            .where((a) => a.isHabit && a.domainId == domainId)) {
+          sum += logic.habitValueOn(a.id, d);
+        }
+        d = d.add(const Duration(days: 1));
+      }
+      return sum;
+    }
+
+    int _targetHabitsForDomainCalendar(
+        String domainId, DateTime start, DateTime end) {
+      final days = end.difference(start).inDays;
+      int sum = 0;
+      for (final a in _state!.activities
+          .where((a) => a.isHabit && a.domainId == domainId)) {
+        sum += logic.dayQuotaFor(a) * days; // cible/jour (dérivée) × nb jours
+      }
+      return sum;
+    }
+
+// Version “Tous domaines”
+    int _doneHabitsAllCalendar(DateTime start, DateTime end) {
+      int sum = 0;
+      for (final d in _state!.domains) {
+        sum += _doneHabitsForDomainCalendar(d.id, start, end);
+      }
+      return sum;
+    }
+
+    int _targetHabitsAllCalendar(DateTime start, DateTime end) {
+      int sum = 0;
+      for (final d in _state!.domains) {
+        sum += _targetHabitsForDomainCalendar(d.id, start, end);
+      }
+      return sum;
+    }
+
     final (startCal, endCal, days) = _rangeForScope(now);
 
 // 2) Fenêtre de TEMPS (glissante si scope == day)
@@ -1710,12 +1755,14 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             .where((a) => a.domainId == d.id && a.isHabit)
             .fold<int>(0, (sum, a) => sum + logic.dayQuotaFor(a) * days),
     };
-    final totalHabitsDone = habitByDomain.values.fold<int>(0, (a, b) => a + b);
-    final totalHabitsTarget =
-        targetHabitsByDomain.values.fold<int>(0, (a, b) => a + b);
+
+// ---- HABITUDES (calendaire uniquement) ----
+    final totalHabitsDone = _doneHabitsAllCalendar(startCal, endCal);
+    final totalHabitsTarget = _targetHabitsAllCalendar(startCal, endCal);
     final totalHabitProgress = totalHabitsTarget == 0
         ? 0.0
         : (totalHabitsDone / totalHabitsTarget).clamp(0.0, 1.0);
+
     final running = _state!.sessions.any((x) => x.endAt == null);
 
     return Column(
@@ -1772,8 +1819,10 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                     maxHoursD > 0 ? (h / maxHoursD).clamp(0.0, 1.0) : 0.0;
 
                 // HABITUDES (calendaires)
-                final doneH = habitByDomain[d.id] ?? 0;
-                final tgtH = targetHabitsByDomain[d.id] ?? 0;
+                final doneH =
+                    _doneHabitsForDomainCalendar(d.id, startCal, endCal);
+                final tgtH =
+                    _targetHabitsForDomainCalendar(d.id, startCal, endCal);
                 final progHabit =
                     tgtH > 0 ? (doneH / tgtH).clamp(0.0, 1.0) : 0.0;
 
