@@ -546,39 +546,54 @@ class AppLogic {
     return (start: start, end: end, days: 30);
   }
 
+// AppLogic (ou extension TodayLogic)
   void ensureDailyHabitsPlanned({DateTime? now}) {
     final t = now ?? DateTime.now();
-    final ymd = yyyymmdd(t);
+    final todayKey = yyyymmdd(t);
+    final todayDate = DateTime(t.year, t.month, t.day);
 
-    int nextOrder = _nextOrderForDay(ymd);
-    bool touched = false;
+    bool changed = false;
 
-    // Only daily habits
-    for (final a in state.activities.where(
-      (x) => x.isHabit && effectiveHabitFreq(x) == HabitFreq.daily,
-    )) {
-      final already = state.dayPlan.any((p) =>
-              p.yyyymmdd == ymd &&
-              p.kind == PlanKind.habit &&
-              p.refId == a.id // <-- use refId here
-          );
+    for (final a in state.activities.where((x) => x.isHabit)) {
+      if (effectiveHabitFreq(a) != HabitFreq.daily) continue;
 
-      if (!already) {
-        state.dayPlan.add(DayPlanItem(
-          id: _uuid.v4(),
-          kind: PlanKind.habit,
-          refId: a.id, // <-- and here
-          title: a.name,
-          yyyymmdd: ymd,
-          done: false,
-          allDay: true,
-          order: nextOrder++,
-        ));
-        touched = true;
+      final quota = dayQuotaFor(a);
+      if (quota <= 0) continue;
+
+      final done = habitValueOn(a.id, todayDate);
+      final existsToday = state.dayPlan.any((e) =>
+          e.yyyymmdd == todayKey &&
+          e.kind == PlanKind.habit &&
+          e.refId == a.id);
+
+      if (done >= quota) {
+        // Déjà atteint → s’assurer que ce n’est PAS dans Aujourd’hui
+        if (existsToday) {
+          state.dayPlan.removeWhere((e) =>
+              e.yyyymmdd == todayKey &&
+              e.kind == PlanKind.habit &&
+              e.refId == a.id);
+          changed = true;
+        }
+      } else {
+        // Pas encore atteint → s’assurer que c’est DANS Aujourd’hui
+        if (!existsToday) {
+          state.dayPlan.add(DayPlanItem(
+            id: const Uuid().v4(),
+            kind: PlanKind.habit,
+            refId: a.id,
+            title: a.name,
+            yyyymmdd: todayKey,
+            done: false,
+            allDay: true,
+            order: _nextOrderForDay(todayKey),
+          ));
+          changed = true;
+        }
       }
     }
 
-    if (touched) onChange();
+    if (changed) onChange();
   }
 
   Future<int?> maybeAutoAdjustActivity(
@@ -1452,6 +1467,52 @@ extension TodayLogic on AppLogic {
     // Optionnel : supprimer les doublons anciens
     state.dayPlan.removeWhere((e) => e.yyyymmdd == yesterday);
     onChange();
+  }
+
+  void ensureTodayDailyHabits({DateTime? now}) {
+    final t = now ?? DateTime.now();
+    final todayKey = yyyymmdd(t);
+    final todayDate = DateTime(t.year, t.month, t.day);
+
+    bool changed = false;
+
+    for (final a in state.activities.where((x) => x.isHabit)) {
+      // On ne gère que les routines "quotidiennes" actives
+      if (effectiveHabitFreq(a) != HabitFreq.daily) continue;
+
+      final quota = dayQuotaFor(a);
+      if (quota <= 0) continue;
+
+      final done = habitValueOn(a.id, todayDate);
+
+      if (done >= quota) {
+        // Déjà atteinte aujourd’hui → s’assurer qu’elle N’EST PAS dans "Aujourd’hui"
+        final removed = removeFromDay(todayKey, PlanKind.habit, a.id);
+        if (removed) changed = true;
+        continue;
+      }
+
+      // Pas encore atteinte → s’assurer qu’elle EST dans "Aujourd’hui"
+      final exists = state.dayPlan.any((e) =>
+          e.yyyymmdd == todayKey &&
+          e.kind == PlanKind.habit &&
+          e.refId == a.id);
+      if (!exists) {
+        state.dayPlan.add(DayPlanItem(
+          id: const Uuid().v4(),
+          kind: PlanKind.habit,
+          refId: a.id,
+          title: a.name,
+          yyyymmdd: todayKey,
+          done: false,
+          allDay: true, // utile pour visuel "sur la journée"
+          order: _nextOrderForDay(todayKey),
+        ));
+        changed = true;
+      }
+    }
+
+    if (changed) onChange(); // persiste + notifie l’UI
   }
 }
 

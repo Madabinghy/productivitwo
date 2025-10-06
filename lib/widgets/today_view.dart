@@ -39,15 +39,14 @@ class _TodayViewState extends State<TodayView> {
   @override
   void initState() {
     super.initState();
-    _startupHousekeeping();
+
+    // Décaler la maintenance après le 1er frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _startupHousekeeping(); // -> maybeCarryFromYesterday + ensureDailyHabitsPlanned
+    });
 
     _base = DateTime.now();
-    // Option purement UI : si après 18h, afficher l’onglet "Demain" par défaut
     if (_base.hour >= 18) _planTomorrow = true;
-
-    // ⚠️ NE PAS déplacer ici "Aujourd'hui → Demain".
-    // Laisse ça à un bouton ou à un appel tardif :
-    // widget.logic.maybePrepTomorrow();  // <-- si tu veux l'automatique le soir
   }
 
   @override
