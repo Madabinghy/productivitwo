@@ -340,9 +340,12 @@ class AppLogic {
   }
 
   int habitSumForRange(String activityId, DateTime start, DateTime end) {
-    int sum = 0;
+    // normalise les bornes sur minuit
     DateTime d = DateTime(start.year, start.month, start.day);
-    while (d.isBefore(end)) {
+    final until = DateTime(end.year, end.month, end.day); // exclusif
+
+    int sum = 0;
+    while (d.isBefore(until)) {
       sum += habitValueOn(activityId, d);
       d = d.add(const Duration(days: 1));
     }
@@ -950,13 +953,22 @@ class AppLogic {
   }
 
   ({int done, int target, double ratio}) habitSliding(
-      String activityId, int days,
-      {DateTime? now}) {
-    final r = lastNDays(days, now: now);
-    final done = habitSumForRange(activityId, r.start, r.end);
+    String activityId,
+    int days, {
+    DateTime? now,
+  }) {
+    final t = now ?? DateTime.now();
+
+    // Fenêtre CALENDAIRE (pas glissante à l’heure) :
+    final today0 = DateTime(t.year, t.month, t.day);
+    final start = today0.subtract(Duration(days: days - 1)); // J-(days-1) 00:00
+    final end = today0.add(const Duration(days: 1)); // demain 00:00
+
+    final done = habitSumForRange(activityId, start, end);
+
     final a = state.activities.firstWhere((x) => x.id == activityId);
 
-    // cible "par jour" dérivée (en l’absence de dailyTarget)
+    // cible "par jour" dérivée (selon ta fréquence effective)
     int perDay;
     switch (effectiveHabitFreq(a)) {
       case HabitFreq.daily:
@@ -972,6 +984,7 @@ class AppLogic {
 
     final target = perDay * days;
     final ratio = target > 0 ? (done / target).clamp(0.0, 1.0) : 0.0;
+
     return (done: done, target: target, ratio: ratio);
   }
 
