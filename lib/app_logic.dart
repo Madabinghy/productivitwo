@@ -627,54 +627,41 @@ class AppLogic {
     return (start: start, end: end, days: 30);
   }
 
-// AppLogic
   void ensureDailyHabitsPlanned({DateTime? now}) {
     final t = now ?? DateTime.now();
-    final today = DateTime(t.year, t.month, t.day);
-    final todayKey = yyyymmdd(today);
-
-    // Habits déjà présents aujourd’hui (pour dédup & nettoyage)
-    final presentToday = state.dayPlan
-        .where((e) => e.yyyymmdd == todayKey && e.kind == PlanKind.habit)
-        .map((e) => e.refId)
-        .whereType<String>()
-        .toSet();
-
-    int nextOrder = _nextOrderForDay(todayKey);
+    final todayKey = yyyymmdd(t);
+    final tomorrowKey = yyyymmdd(t.add(const Duration(days: 1)));
 
     for (final a in state.activities.where((x) => x.isHabit)) {
-      // On ne s’occupe que des QUOTIDIENNES
+      // On ne pousse que les routines QUOTIDIENNES ici
       if (effectiveHabitFreq(a) != HabitFreq.daily) continue;
 
       final quota = dayQuotaFor(a);
       if (quota <= 0) continue;
 
+      // Déjà présent aujourd’hui ? → OK
+      if (_existsInDay(todayKey, PlanKind.habit, a.id)) continue;
+
+      // Déjà atteint aujourd’hui ? → ne pas re-ajouter
+      final today = DateTime(t.year, t.month, t.day);
       final doneToday = habitValueOn(a.id, today);
+      if (doneToday >= quota) continue;
 
-      if (doneToday >= quota) {
-        // Déjà atteinte : ne pas (ré)ajouter, et nettoyer si présent
-        if (presentToday.contains(a.id)) {
-          state.dayPlan.removeWhere((e) =>
-              e.yyyymmdd == todayKey &&
-              e.kind == PlanKind.habit &&
-              e.refId == a.id);
-        }
-        continue;
-      }
+      // *** CLÉ DU FIX ***
+      // Si l’utilisateur l’a déplacée vers DEMAIN, ne PAS la ré-ajouter dans AUJOURD’HUI.
+      if (_existsInDay(tomorrowKey, PlanKind.habit, a.id)) continue;
 
-      // Pas encore atteinte : s'assurer qu’elle est planifiée
-      if (!presentToday.contains(a.id)) {
-        state.dayPlan.add(DayPlanItem(
-          id: _uuid.v4(),
-          kind: PlanKind.habit,
-          refId: a.id,
-          title: a.name,
-          yyyymmdd: todayKey,
-          done: false,
-          allDay: true,
-          order: nextOrder++,
-        ));
-      }
+      // Sinon on l’ajoute à AUJOURD’HUI (à la fin, comme d’hab)
+      state.dayPlan.add(DayPlanItem(
+        id: const Uuid().v4(),
+        kind: PlanKind.habit,
+        refId: a.id,
+        title: a.name,
+        yyyymmdd: todayKey,
+        done: false,
+        allDay: false,
+        order: _nextOrderForDay(todayKey),
+      ));
     }
 
     onChange();
@@ -1470,6 +1457,12 @@ extension TodayLogic on AppLogic {
   String _todayKeyLocal() {
     final now = DateTime.now();
     return yyyymmdd(DateTime(now.year, now.month, now.day));
+  }
+
+  bool _existsInDay(String ymd, PlanKind kind, String refId) {
+    return state.dayPlan.any(
+      (e) => e.yyyymmdd == ymd && e.kind == kind && e.refId == refId,
+    );
   }
 
   Future<void> addPlanAction({
