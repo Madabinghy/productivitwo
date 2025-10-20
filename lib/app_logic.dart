@@ -354,40 +354,57 @@ class AppLogic {
 
   void incHabit(String activityId, int delta, DateTime day) {
     final key = yyyymmdd(day);
-    final idx = state.habitProgress
-        .indexWhere((h) => h.activityId == activityId && h.yyyymmdd == key);
-    if (idx < 0) {
+
+    // valeur AVANT modif (pour détecter le franchissement)
+    final prevIdx = state.habitProgress.indexWhere(
+      (h) => h.activityId == activityId && h.yyyymmdd == key,
+    );
+    final prevVal = (prevIdx >= 0) ? state.habitProgress[prevIdx].value : 0;
+
+    // --- MAJ compteur ---
+    if (prevIdx < 0) {
       state.habitProgress.add(HabitProgress(
         activityId: activityId,
         yyyymmdd: key,
-        value: math.max(0, delta),
+        value: math.max(0, delta), // pas de négatif à la création
       ));
     } else {
-      final v = state.habitProgress[idx].value + delta;
-      state.habitProgress[idx].value = v < 0 ? 0 : v;
+      final v = state.habitProgress[prevIdx].value + delta;
+      state.habitProgress[prevIdx].value = v < 0 ? 0 : v;
     }
-    onChange();
 
-    // Atteinte quotidienne ? → préparer demain & retirer de "Aujourd’hui"
-    final act = state.activities.firstWhere(
-      (a) => a.id == activityId,
-      orElse: () => Activity(
-          domainId: '', name: 'Routine', type: 'habit', habitTarget: 1),
-    );
+    // Récupère l’activité
+    final act = state.activities.firstWhere((a) => a.id == activityId);
+
+    // Conditions "quotidienne" + quotas
     final isDaily = (effectiveHabitFreq(act) == HabitFreq.daily);
     final dayQuota = dayQuotaFor(act);
-    if (isDaily && dayQuota > 0) {
-      final today = DateTime(day.year, day.month, day.day);
-      if (habitValueOn(activityId, today) >= dayQuota) {
-        ensurePlannedTomorrow(PlanKind.habit, activityId);
-        final removed =
-            removeFromDay(yyyymmdd(today), PlanKind.habit, activityId);
-        if (removed) onChange();
-      }
+
+    // Valeur APRÈS modif
+    final today = DateTime(day.year, day.month, day.day);
+    final nowIsToday = (yyyymmdd(DateTime.now()) == key);
+    final newVal = habitValueOn(activityId, today);
+
+    // Ne déclenche que si on vient de FRANCHIR le seuil aujourd'hui
+    final crossedNow = isDaily &&
+        dayQuota > 0 &&
+        nowIsToday &&
+        (prevVal < dayQuota) &&
+        (newVal >= dayQuota);
+
+    if (crossedNow) {
+      // 1) append dans DEMAIN (conserve l'ordre d'achèvement)
+      ensurePlannedTomorrow(PlanKind.habit, activityId);
+
+      // 2) retirer d'Aujourd'hui pour alléger la liste
+      removeFromDay(yyyymmdd(today), PlanKind.habit, activityId);
     }
 
     // auto-tune (safe)
     _autoTuneHabitSafe(act);
+
+    // Un seul onChange() à la fin
+    onChange();
   }
 
   // ---------- Cibles dérivées (habits) ----------
@@ -610,54 +627,32 @@ class AppLogic {
     return (start: start, end: end, days: 30);
   }
 
-// AppLogic (ou extension TodayLogic)
   void ensureDailyHabitsPlanned({DateTime? now}) {
     final t = now ?? DateTime.now();
     final todayKey = yyyymmdd(t);
-    final todayDate = DateTime(t.year, t.month, t.day);
 
-    bool changed = false;
+    final dailyHabits = state.activities
+        .where((a) => a.isHabit && (effectiveHabitFreq(a) == HabitFreq.daily));
 
-    for (final a in state.activities.where((x) => x.isHabit)) {
-      if (effectiveHabitFreq(a) != HabitFreq.daily) continue;
-
-      final quota = dayQuotaFor(a);
-      if (quota <= 0) continue;
-
-      final done = habitValueOn(a.id, todayDate);
+    for (final a in dailyHabits) {
       final existsToday = state.dayPlan.any((e) =>
           e.yyyymmdd == todayKey &&
           e.kind == PlanKind.habit &&
           e.refId == a.id);
-
-      if (done >= quota) {
-        // Déjà atteint → s’assurer que ce n’est PAS dans Aujourd’hui
-        if (existsToday) {
-          state.dayPlan.removeWhere((e) =>
-              e.yyyymmdd == todayKey &&
-              e.kind == PlanKind.habit &&
-              e.refId == a.id);
-          changed = true;
-        }
-      } else {
-        // Pas encore atteint → s’assurer que c’est DANS Aujourd’hui
-        if (!existsToday) {
-          state.dayPlan.add(DayPlanItem(
-            id: const Uuid().v4(),
-            kind: PlanKind.habit,
-            refId: a.id,
-            title: a.name,
-            yyyymmdd: todayKey,
-            done: false,
-            allDay: true,
-            order: _nextOrderForDay(todayKey),
-          ));
-          changed = true;
-        }
+      if (!existsToday) {
+        state.dayPlan.add(DayPlanItem(
+          id: const Uuid().v4(),
+          kind: PlanKind.habit,
+          refId: a.id,
+          title: a.name,
+          yyyymmdd: todayKey,
+          done: false,
+          allDay: true,
+          order: _nextOrderForDay(todayKey),
+        ));
       }
     }
-
-    if (changed) onChange();
+    onChange();
   }
 
   Future<int?> maybeAutoAdjustActivity(
