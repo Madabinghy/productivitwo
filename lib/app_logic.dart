@@ -103,7 +103,7 @@ class AppLogic {
     onChange();
 
     // Préparer demain (optionnel)
-    ensurePlannedTomorrow(PlanKind.activityTime, activityId);
+    //ensurePlannedTomorrow(PlanKind.activityTime, activityId);
     // Si tu veux retirer de "Aujourd’hui", décommente :
     // final removed = removeFromDay(_todayKey(), PlanKind.activityTime, activityId);
     // if (removed) onChange();
@@ -627,31 +627,56 @@ class AppLogic {
     return (start: start, end: end, days: 30);
   }
 
+// AppLogic
   void ensureDailyHabitsPlanned({DateTime? now}) {
     final t = now ?? DateTime.now();
-    final todayKey = yyyymmdd(t);
+    final today = DateTime(t.year, t.month, t.day);
+    final todayKey = yyyymmdd(today);
 
-    final dailyHabits = state.activities
-        .where((a) => a.isHabit && (effectiveHabitFreq(a) == HabitFreq.daily));
+    // Habits déjà présents aujourd’hui (pour dédup & nettoyage)
+    final presentToday = state.dayPlan
+        .where((e) => e.yyyymmdd == todayKey && e.kind == PlanKind.habit)
+        .map((e) => e.refId)
+        .whereType<String>()
+        .toSet();
 
-    for (final a in dailyHabits) {
-      final existsToday = state.dayPlan.any((e) =>
-          e.yyyymmdd == todayKey &&
-          e.kind == PlanKind.habit &&
-          e.refId == a.id);
-      if (!existsToday) {
+    int nextOrder = _nextOrderForDay(todayKey);
+
+    for (final a in state.activities.where((x) => x.isHabit)) {
+      // On ne s’occupe que des QUOTIDIENNES
+      if (effectiveHabitFreq(a) != HabitFreq.daily) continue;
+
+      final quota = dayQuotaFor(a);
+      if (quota <= 0) continue;
+
+      final doneToday = habitValueOn(a.id, today);
+
+      if (doneToday >= quota) {
+        // Déjà atteinte : ne pas (ré)ajouter, et nettoyer si présent
+        if (presentToday.contains(a.id)) {
+          state.dayPlan.removeWhere((e) =>
+              e.yyyymmdd == todayKey &&
+              e.kind == PlanKind.habit &&
+              e.refId == a.id);
+        }
+        continue;
+      }
+
+      // Pas encore atteinte : s'assurer qu’elle est planifiée
+      if (!presentToday.contains(a.id)) {
         state.dayPlan.add(DayPlanItem(
-          id: const Uuid().v4(),
+          id: _uuid.v4(),
           kind: PlanKind.habit,
           refId: a.id,
           title: a.name,
           yyyymmdd: todayKey,
           done: false,
           allDay: true,
-          order: _nextOrderForDay(todayKey),
+          order: nextOrder++,
         ));
       }
     }
+
     onChange();
   }
 

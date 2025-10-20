@@ -224,7 +224,10 @@ class _TodayViewState extends State<TodayView> {
     final viewed = _planTomorrow ? now.add(const Duration(days: 1)) : now;
     final day = DateTime(viewed.year, viewed.month, viewed.day);
 
-// Libellé dyn. "Aujourd’hui :" / "Demain :"
+    // Sommes-nous sur l'onglet "Aujourd'hui" ?
+    final bool isTodayTab = !_planTomorrow;
+
+    // Libellé dyn. "Aujourd’hui :" / "Demain :"
     final todayLabel = _planTomorrow ? 'Demain :' : 'Aujourd’hui :';
 
     // menu "…"
@@ -275,7 +278,6 @@ class _TodayViewState extends State<TodayView> {
 
     switch (it.kind) {
       // ---------------- ACTION ----------------
-
       case PlanKind.action:
         {
           return Card(
@@ -295,9 +297,9 @@ class _TodayViewState extends State<TodayView> {
                             it.title,
                             style: const TextStyle(
                               fontWeight: FontWeight.w700,
-                              fontSize: 16, // un peu plus petit pour 2 lignes
+                              fontSize: 16,
                             ),
-                            maxLines: 3, // peut s’étendre sur 2 lignes
+                            maxLines: 3,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -320,7 +322,7 @@ class _TodayViewState extends State<TodayView> {
       case PlanKind.activityTime:
         {
           final now = DateTime.now();
-          final dayStart = DateTime(now.year, now.month, now.day); // jour civil
+          final dayStart = DateTime(now.year, now.month, now.day);
           final dur =
               widget.logic.totalForRangeByActivity(it.refId!, dayStart, now);
 
@@ -347,7 +349,7 @@ class _TodayViewState extends State<TodayView> {
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            // à gauche : "Aujourd’hui" + valeur
+                            // "Aujourd’hui :" + valeur
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -386,25 +388,52 @@ class _TodayViewState extends State<TodayView> {
           final unit = (act.unit ?? '').isNotEmpty ? ' ${act.unit}' : '';
 
           void inc(int delta) => setState(() {
-                widget.logic
-                    .incHabit(it.refId!, delta, day); // ⚠️ basé sur "day"
+                widget.logic.incHabit(it.refId!, delta, day); // basé sur "day"
               });
 
-          // Trailing en haut à droite (checkbox si cible 1, sinon juste le menu)
+          // ---- Bouton flèche "→ Demain" (routines / onglet Aujourd'hui) ----
+          Widget moveArrowIfAny() {
+            if (!isTodayTab) return const SizedBox.shrink();
+            if (it.refId == null) return const SizedBox.shrink();
+            return IconButton(
+              tooltip: 'Déplacer cette routine vers demain',
+              icon: const Icon(Icons.arrow_forward),
+              onPressed: () {
+                widget.logic.movePlannedToTomorrowIfPresent(
+                  PlanKind.habit,
+                  it.refId!,
+                  addIfMissing: true,
+                );
+                setState(() {});
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Routine déplacée vers demain')),
+                );
+              },
+            );
+          }
+
+          // Trailing haut (checkbox si cible 1), + flèche → Demain + menu …
           Widget trailingTop;
           if (target <= 1) {
             trailingTop = Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Checkbox(
-                  value: done >= 1, // ⚠️ basé sur "day"
+                  value: done >= 1, // basé sur "day"
                   onChanged: (v) => inc((v == true ? 1 : 0) - done),
                 ),
                 more,
+                moveArrowIfAny(),
               ],
             );
           } else {
-            trailingTop = more;
+            trailingTop = Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                more,
+                moveArrowIfAny(),
+              ],
+            );
           }
 
           return Card(
@@ -420,7 +449,7 @@ class _TodayViewState extends State<TodayView> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Ligne 1 — Titre + trailing (checkbox si cible 1 + menu …)
+                        // Ligne 1 — Titre + trailing
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
@@ -438,10 +467,9 @@ class _TodayViewState extends State<TodayView> {
                               fontSize: 14, fontWeight: FontWeight.w600),
                         ),
 
-                        // Ligne 3 — Pastilles si cible > 1 (à gauche)
+                        // Ligne 3 — Pastilles si cible > 1
                         if (target > 1) ...[
                           const SizedBox(height: 4),
-                          // version simple (sans scroll, collé à gauche)
                           HabitTicksRow(
                             done: done,
                             target: target,
@@ -454,8 +482,10 @@ class _TodayViewState extends State<TodayView> {
                               target: target,
                               onSet: (newDone) {
                                 final delta = newDone - done;
-                                if (delta != 0)
+                                if (delta != 0) {
                                   widget.logic.incHabit(it.refId!, delta, day);
+                                  setState(() {});
+                                }
                               },
                             ),
                           ),
