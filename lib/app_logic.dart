@@ -359,7 +359,6 @@ class AppLogic {
     final prevIdx = state.habitProgress.indexWhere(
       (h) => h.activityId == activityId && h.yyyymmdd == key,
     );
-    final prevVal = (prevIdx >= 0) ? state.habitProgress[prevIdx].value : 0;
 
     // --- MAJ compteur ---
     if (prevIdx < 0) {
@@ -373,31 +372,27 @@ class AppLogic {
       state.habitProgress[prevIdx].value = v < 0 ? 0 : v;
     }
 
-    // Récupère l’activité
+    // après maj du compteur :
     final act = state.activities.firstWhere((a) => a.id == activityId);
-
-    // Conditions "quotidienne" + quotas
     final isDaily = (effectiveHabitFreq(act) == HabitFreq.daily);
     final dayQuota = dayQuotaFor(act);
 
-    // Valeur APRÈS modif
-    final today = DateTime(day.year, day.month, day.day);
-    final nowIsToday = (yyyymmdd(DateTime.now()) == key);
-    final newVal = habitValueOn(activityId, today);
+    if (isDaily && dayQuota > 0) {
+      final today = DateTime(day.year, day.month, day.day);
+      final doneToday = habitValueOn(activityId, today);
 
-    // Ne déclenche que si on vient de FRANCHIR le seuil aujourd'hui
-    final crossedNow = isDaily &&
-        dayQuota > 0 &&
-        nowIsToday &&
-        (prevVal < dayQuota) &&
-        (newVal >= dayQuota);
+      // 1) Dès le 1er +1 du jour → préparer Demain (sans retirer Aujourd'hui)
+      if (doneToday >= 1) {
+        ensurePlannedTomorrow(
+            PlanKind.habit, activityId); // no-op si déjà présent
+      }
 
-    if (crossedNow) {
-      // 1) append dans DEMAIN (conserve l'ordre d'achèvement)
-      ensurePlannedTomorrow(PlanKind.habit, activityId);
-
-      // 2) retirer d'Aujourd'hui pour alléger la liste
-      removeFromDay(yyyymmdd(today), PlanKind.habit, activityId);
+      // 2) Quand la cible du jour est atteinte → retirer d'Aujourd'hui
+      if (doneToday >= dayQuota) {
+        final removed =
+            removeFromDay(yyyymmdd(today), PlanKind.habit, activityId);
+        if (removed) onChange();
+      }
     }
 
     // auto-tune (safe)
