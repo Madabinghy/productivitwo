@@ -2966,112 +2966,51 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
           Widget _buildTimeTile(Activity a) {
             final now = DateTime.now();
-            final dayStart = DateTime(now.year, now.month, now.day);
-            final doneToday =
-                logic.totalForRangeByActivity(a.id, dayStart, now);
-            final dayRatio = a.goalMin > 0
-                ? (doneToday.inMinutes / a.goalMin).clamp(0.0, 1.0)
-                : 0.0;
 
-            final w = logic.timeSliding(a.id, 7);
-            final m = logic.timeSliding(a.id, 30);
-            final focused = logic.isFocused(a.id);
-
-            final more = PopupMenuButton<String>(
-              onSelected: (key) {
-                switch (key) {
-                  case 'focus':
-                    setSB(() => logic.toggleFocus(a.id));
-                    break;
-                  case 'start':
-                    logic.start(a.id);
-                    Navigator.pop(ctx); // on ferme le sheet
-                    break;
-                  case 'explain':
-                    showTimeExplainer(context, a: a, logic: logic);
-                    break;
-                }
-              },
-              itemBuilder: (_) => [
-                PopupMenuItem(
-                  value: 'focus',
-                  child: Row(
-                    children: [
-                      Icon(focused ? Icons.push_pin : Icons.push_pin_outlined),
-                      const SizedBox(width: 8),
-                      Text(focused ? 'Retirer du focus' : 'Ajouter au focus'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'start',
-                  child: ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.play_arrow),
-                    title: Text('Lancer'),
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'explain',
-                  child: ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.info_outline),
-                    title: Text('Explications'),
-                  ),
-                ),
-              ],
-            );
+            // Fenêtres glissantes
+            final s7 = logic.timeSliding(a.id, 7);
+            final s30 = logic.timeSliding(a.id, 30);
+            final s90 = logic.timeSliding(a.id, 90); // 👈 NOUVEAU
 
             return ListTile(
-              onTap: () {
-                // action principale = Start
-                logic.start(a.id);
-                Navigator.pop(ctx);
-              },
-              onLongPress: () => showTimeExplainer(context, a: a, logic: logic),
+              onTap: () => showTimeExplainer(context, a: a, logic: logic),
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               leading: MiniRing(
-                progress: dayRatio,
-                center: Text("${(dayRatio * 100).round()}%",
-                    style: const TextStyle(
-                        fontSize: 10, fontWeight: FontWeight.w700)),
+                progress: s90.ratio, // 👈 90 jours glissants
+                center: Text(
+                  "${(s90.ratio * 100).round()}%",
+                  style: const TextStyle(
+                      fontSize: 10, fontWeight: FontWeight.w700),
+                ),
               ),
               title: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(a.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w700, fontSize: 16)),
-                      ),
-                      if (focused)
-                        const Padding(
-                          padding: EdgeInsets.only(left: 6),
-                          child: Icon(Icons.push_pin, size: 16),
-                        ),
-                    ],
+                  Text(a.name,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700, fontSize: 16)),
+                  TinyBar(
+                    ratio: s30.ratio,
+                    labelLeft:
+                        "30 j ${fmtCompactFromMin(s30.doneMin)} / ${fmtCompactFromMin(s30.targetMin)}",
                   ),
                   TinyBar(
-                    ratio: m.ratio,
+                    ratio: s7.ratio,
                     labelLeft:
-                        "Mois ${fmtCompactFromMin(m.doneMin)} / ${fmtCompactFromMin(m.targetMin)}",
-                  ),
-                  TinyBar(
-                    ratio: w.ratio,
-                    labelLeft:
-                        "Sem ${fmtCompactFromMin(w.doneMin)} / ${fmtCompactFromMin(w.targetMin)}",
+                        "7 j ${fmtCompactFromMin(s7.doneMin)} / ${fmtCompactFromMin(s7.targetMin)}",
                     padding: const EdgeInsets.only(top: 2),
                   ),
                 ],
               ),
-              trailing: more, // ← un seul bouton
+              trailing: FilledButton.icon(
+                onPressed: () {
+                  logic.start(a.id);
+                  Navigator.pop(ctx);
+                },
+                icon: const Icon(Icons.play_arrow),
+                label: const Text("Start"),
+              ),
             );
           }
 
@@ -3162,193 +3101,99 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             final now = DateTime.now();
             final today = DateTime(now.year, now.month, now.day);
 
-            // Totaux + cibles déduites
+            // Totaux glissants
             final dH = logic.habitSliding(a.id, 1);
             final wH = logic.habitSliding(a.id, 7);
             final mH = logic.habitSliding(a.id, 30);
+            final h90 = logic.habitSliding(a.id, 90); // 👈 NOUVEAU
+
             final quotaD = logic.dayQuotaFor(a);
             final tgtW = logic.weekTargetFrom(a);
             final tgtM = logic.monthTargetFrom(a);
 
             final f = a.habitFreq ?? HabitFreq.monthly;
-            final double ringRatio = (f == HabitFreq.daily)
-                ? (quotaD > 0
-                    ? ((dH.done / quotaD).clamp(0.0, 1.0)).toDouble()
-                    : 0.0)
-                : (f == HabitFreq.weekly)
-                    ? (tgtW > 0
-                        ? ((wH.done / tgtW).clamp(0.0, 1.0)).toDouble()
-                        : 0.0)
-                    : (tgtM > 0
-                        ? ((mH.done / tgtM).clamp(0.0, 1.0)).toDouble()
-                        : 0.0);
 
             final isDayPrimary = f == HabitFreq.daily;
             final isWeekPrimary = f == HabitFreq.weekly;
             final isMonthPrimary = f == HabitFreq.monthly;
-            final unit = (a.unit ?? '').isNotEmpty ? ' ${a.unit}' : '';
-            final focused = logic.isFocused(a.id);
 
-            // Menu …
-            final more = PopupMenuButton<String>(
-              onSelected: (key) {
-                switch (key) {
-                  case 'focus':
-                    setSB(() => logic.toggleFocus(a.id));
-                    break;
-                  case 'ajust':
-                    openHabitQuickAdjustSheet(
-                      context: context,
-                      logic: logic,
-                      habit: a,
-                      refresh: () =>
-                          setSB(() {}), // ou setState((){}) selon le contexte
-                    );
-                    break;
-                  case 'edit':
-                    openHabitEditSheet(
-                      context: context,
-                      logic: logic,
-                      habit: a,
-                      onSaved: () => setSB(() {}),
-                    );
-                    break;
-                  case 'explain':
-                    _openHabitRationale(a);
-                    break;
-                }
-              },
-              itemBuilder: (_) => [
-                PopupMenuItem(
-                  value: 'focus',
-                  child: Row(
-                    children: [
-                      Icon(focused ? Icons.push_pin : Icons.push_pin_outlined),
-                      const SizedBox(width: 8),
-                      Text(focused ? 'Retirer du focus' : 'Ajouter au focus'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'ajust',
-                  child: ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.exposure_plus_1),
-                    title: Text('Ajuster rapidement…'),
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'edit',
-                  child: ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.tune),
-                    title: Text('Objectif manuel'),
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'explain',
-                  child: ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.info_outline),
-                    title: Text('Explications'),
-                  ),
-                ),
-              ],
-            );
-            // Leading cliquable: tap = +1, double-tap = -1
-            Widget tappableRing = GestureDetector(
-              onTap: () {
-                setSB(() {
-                  _lockNow();
-                });
-                logic.incHabit(a.id, 1, today);
-                setSB(() {});
-                _unlockSoon(setSB);
-              },
-              onDoubleTap: () {
-                setSB(() {
-                  _lockNow();
-                });
-                logic.incHabit(a.id, -1, today);
-                setSB(() {});
-                _unlockSoon(setSB);
-              },
-              child: MiniRing(
-                progress: ringRatio,
-                center: Text("${dH.done}",
-                    style: const TextStyle(
-                        fontSize: 11, fontWeight: FontWeight.w700)),
-              ),
-            );
+            final unit = (a.unit ?? '').isNotEmpty ? ' ${a.unit}' : '';
 
             return ListTile(
-              // Tap = éditeur manuel (ou garde “rationale” si tu préfères)
-/*               onTap: () => _openHabitManualEditor(a, setSB),
-              onLongPress: () => _openHabitRationale(a), */
-              onLongPress: () => _openHabitManualEditor(a, setSB),
-              onTap: () => _openQuickAdjustHabitSheet(
-                context: context,
-                logic: logic,
-                habit: a,
-                refresh: () =>
-                    setSB(() {}), // ou setState(() {}) selon l’endroit
-              ),
-/*               onLongPress: () => openHabitEditSheet(
+              onLongPress: () => openHabitEditSheet(
                 context: context,
                 logic: logic,
                 habit: a,
                 onSaved: () => setSB(() {}),
-              ), */
-
+              ),
+              onTap: () => _openHabitManualEditor(a, setSB),
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              leading: tappableRing,
+              leading: MiniRing(
+                progress: h90.ratio, // 👈 ratio sur 90 jours glissants
+                center: Text(
+                  "${(h90.ratio * 100).round()}%",
+                  style: const TextStyle(
+                      fontSize: 11, fontWeight: FontWeight.w700),
+                ),
+              ),
               title: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(a.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w700, fontSize: 16)),
-                      ),
-                      if (focused)
-                        const Padding(
-                          padding: EdgeInsets.only(left: 6),
-                          child: Icon(Icons.push_pin, size: 16),
-                        ),
-                    ],
-                  ),
+                  Text(a.name,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700, fontSize: 16)),
                   Opacity(
                     opacity: isMonthPrimary ? 1.0 : .45,
                     child: TinyBar(
                       ratio: tgtM > 0 ? (mH.done / tgtM).clamp(0, 1) : 0,
-                      labelLeft: "Mois ${mH.done} / $tgtM$unit",
+                      labelLeft: "30 j ${mH.done} / $tgtM$unit",
                     ),
                   ),
                   Opacity(
                     opacity: isWeekPrimary ? 1.0 : .45,
                     child: TinyBar(
                       ratio: tgtW > 0 ? (wH.done / tgtW).clamp(0, 1) : 0,
-                      labelLeft: "Semaine ${wH.done} / $tgtW$unit",
+                      labelLeft: "7 j ${wH.done} / $tgtW$unit",
                       padding: const EdgeInsets.only(top: 2),
                     ),
                   ),
                   if (isDayPrimary)
                     TinyBar(
                       ratio: quotaD > 0 ? (dH.done / quotaD).clamp(0, 1) : 0,
-                      labelLeft: "Jour ${dH.done} / $quotaD$unit",
+                      labelLeft: "1 j ${dH.done} / $quotaD$unit",
                       padding: const EdgeInsets.only(top: 2),
                     ),
                 ],
               ),
-              trailing: more, // ← un seul bouton
+              // trailing: tes boutons +/- etc (tu peux laisser tel quel)
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    onPressed: () {
+                      setSB(() {
+                        _lockNow();
+                      });
+                      logic.incHabit(a.id, -1, today);
+                      setSB(() {});
+                      _unlockSoon(setSB);
+                    },
+                    icon: const Icon(Icons.remove),
+                  ),
+                  IconButton(
+                    onPressed: () {
+                      setSB(() {
+                        _lockNow();
+                      });
+                      logic.incHabit(a.id, 1, today);
+                      setSB(() {});
+                      _unlockSoon(setSB);
+                    },
+                    icon: const Icon(Icons.add),
+                  ),
+                ],
+              ),
             );
           }
 
