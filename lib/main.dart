@@ -1725,6 +1725,18 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
     final (startCal, endCal, days) = _rangeForScope(now);
 
+    // --- Fenêtre pour les HABITUDES ---
+    // Si scope == day : on prend les 7 derniers jours calendaires (aujourd'hui inclus)
+    final bool rollingHabits7d = (scope == TimeScope.day);
+
+    // today = date tronquée à minuit (tu l'as déjà défini plus haut)
+    final DateTime startHabits =
+        rollingHabits7d ? today.subtract(const Duration(days: 6)) : startCal;
+    final DateTime endHabits =
+        rollingHabits7d ? today.add(const Duration(days: 1)) : endCal;
+    // Nombre de jours pour la cible (= 7 si on est en fenêtre 7j, sinon nb jours du scope)
+    final int habitDays = rollingHabits7d ? 7 : days;
+
 // 2) Fenêtre de TEMPS (glissante si scope == day)
     final bool rolling24h = (scope == TimeScope.day);
     final DateTime startTime =
@@ -1747,18 +1759,20 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         : (goalMinDayAll * days) / 60.0;
     final totalTimeProgress = (totalHours / maxHours).clamp(0.0, 1.0);
 
-// 4) Totaux HABITUDES (global + par domaine) — reste CALENDAIRE
-    final habitByDomain = logic.habitTotalsByDomain(startCal, endCal);
+    // 4) Totaux HABITUDES (global + par domaine)
+    // -> utilisent désormais startHabits / endHabits et habitDays
+    final habitByDomain = logic.habitTotalsByDomain(startHabits, endHabits);
+
     final targetHabitsByDomain = {
       for (final d in _state!.domains)
         d.id: _state!.activities
             .where((a) => a.domainId == d.id && a.isHabit)
-            .fold<int>(0, (sum, a) => sum + logic.dayQuotaFor(a) * days),
+            .fold<int>(0, (sum, a) => sum + logic.dayQuotaFor(a) * habitDays),
     };
 
-// ---- HABITUDES (calendaire uniquement) ----
-    final totalHabitsDone = _doneHabitsAllCalendar(startCal, endCal);
-    final totalHabitsTarget = _targetHabitsAllCalendar(startCal, endCal);
+    final totalHabitsDone = _doneHabitsAllCalendar(startHabits, endHabits);
+    final totalHabitsTarget = _targetHabitsAllCalendar(startHabits, endHabits);
+
     final totalHabitProgress = totalHabitsTarget == 0
         ? 0.0
         : (totalHabitsDone / totalHabitsTarget).clamp(0.0, 1.0);
@@ -1818,11 +1832,12 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                 final progTime =
                     maxHoursD > 0 ? (h / maxHoursD).clamp(0.0, 1.0) : 0.0;
 
-                // HABITUDES (calendaires)
-                final doneH =
-                    _doneHabitsForDomainCalendar(d.id, startCal, endCal);
-                final tgtH =
-                    _targetHabitsForDomainCalendar(d.id, startCal, endCal);
+                // HABITUDES (sur la fenêtre habitude : 7j si scope == day, sinon scope calendaire)
+                final doneH = _doneHabitsForDomainCalendar(
+                    d.id, startHabits, endHabits);
+                final tgtH = _targetHabitsForDomainCalendar(
+                    d.id, startHabits, endHabits);
+
                 final progHabit =
                     tgtH > 0 ? (doneH / tgtH).clamp(0.0, 1.0) : 0.0;
 
