@@ -48,20 +48,25 @@ class MiniRing extends StatelessWidget {
 
 class GaugeRing extends StatelessWidget {
   final String label;
-  final String valueText;
+  final String? valueText;
   final double progress; // 0..1
   final double size;
   final Color? color;
   final VoidCallback? onTap;
 
+    final String? centerText;
+  final String? subText;
+
   const GaugeRing({
     super.key,
     required this.label,
-    required this.valueText,
+    this.valueText,
     required this.progress,
     this.size = 140,
     this.color,
     this.onTap,
+    this.centerText,
+    this.subText,
   });
 
   @override
@@ -69,6 +74,11 @@ class GaugeRing extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final fg = color ?? cs.primary;
     final bg = cs.surfaceContainerHighest.withValues(alpha: 0.35);
+
+    final main = (centerText != null && centerText!.isNotEmpty)
+    ? centerText!
+    : (valueText ?? "");
+
 
     // largeur utile pour le texte au centre
     final innerW = size * 0.74; // tu peux ajuster 0.70–0.78
@@ -114,15 +124,25 @@ class GaugeRing extends StatelessWidget {
                     // valueText s’adapte à la largeur (une seule ligne)
                     FittedBox(
                       fit: BoxFit.scaleDown,
-                      child: Text(
-                        valueText,
-                        maxLines: 1,
-                        softWrap: false,
-                        overflow:
-                            TextOverflow.visible, // on scale plutôt que couper
-                        style: const TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
+                      child: Column(
+  mainAxisSize: MainAxisSize.min,
+  children: [
+    Text(
+      main,
+      textAlign: TextAlign.center,
+      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+    ),
+    if ((subText ?? "").isNotEmpty) ...[
+      const SizedBox(height: 4),
+      Text(
+        subText!,
+        textAlign: TextAlign.center,
+        style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.70)),
+      ),
+    ],
+  ],
+)
+
                     ),
                     const SizedBox(height: 4),
                     // label : plus petit et atténué
@@ -722,6 +742,31 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         final days = nextMonth.difference(start).inDays;
         return (start, nextMonth, days);
     }
+  }
+
+  double _timeProgressAllOverRange(DateTime start, DateTime end, int days) {
+    final timeByDomain = logic.timeTotalsByDomain(start, end);
+    final total =
+        timeByDomain.values.fold<Duration>(Duration.zero, (a, b) => a + b);
+    final totalHours = total.inMinutes / 60.0;
+
+    final goalMinDayAll = _state!.domains
+        .map((d) => logic.domainGoalMinDay(d.id))
+        .fold<int>(0, (a, b) => a + b);
+
+    final maxHours = (goalMinDayAll * days) / 60.0;
+    return maxHours > 0 ? (totalHours / maxHours).clamp(0.0, 1.0) : 0.0;
+  }
+
+  double _timeProgressDomainOverRange(
+      String domainId, DateTime start, DateTime end, int days) {
+    final timeByDomain = logic.timeTotalsByDomain(start, end);
+    final dur = timeByDomain[domainId] ?? Duration.zero;
+    final hours = dur.inMinutes / 60.0;
+
+    final goalMinDay = logic.domainGoalMinDay(domainId);
+    final maxHours = (goalMinDay * days) / 60.0;
+    return maxHours > 0 ? (hours / maxHours).clamp(0.0, 1.0) : 0.0;
   }
 
   String _scopeLabel() {
@@ -1680,6 +1725,10 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
+    final start90 = today.subtract(const Duration(days: 89));
+    final end90 = today.add(const Duration(days: 1)); // end exclusif
+    final progTimeAll90 = _timeProgressAllOverRange(start90, end90, 90);
+
     int _doneHabitsForDomainCalendar(
         String domainId, DateTime start, DateTime end) {
       // somme calendaire: [start, end)
@@ -1778,6 +1827,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         : (totalHabitsDone / totalHabitsTarget).clamp(0.0, 1.0);
 
     final running = _state!.sessions.any((x) => x.endAt == null);
+    final avg90Txt = "Moy 90j : ${(progTimeAll90 * 100).round()}%";
 
     return Column(
       children: [
@@ -1789,17 +1839,17 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
+GaugeRing(
+  label: "${_scopeLabel()} — Temps",
+  centerText: _fmtHoursHM(maxHours),      // => "0h13m"
+  subText: avg90Txt,                      // => "Moy 90j : 42%"
+  progress: progTimeAll90,            // ou progTimeAll90 (voir note ci-dessous)
+  color: _colorForProgress(progTimeAll90, context), // couleur basée sur 90j ✅
+  onTap: () => _showDomainDetail(null, startCal, endCal, days, focus: 'time'),
+),
+
               GaugeRing(
-                label: "${_scopeLabel()} — Temps",
-                valueText:
-                    "${_fmtHoursHM(totalHours)} / ${_fmtHoursHM(maxHours)}",
-                progress: totalTimeProgress,
-                color: _colorForProgress(totalTimeProgress, context),
-                onTap: () => _showDomainDetail(null, startCal, endCal, days,
-                    focus: 'time'),
-              ),
-              GaugeRing(
-                label: "${_scopeLabel()} — Habitudes",
+                label: "Habitudes",
                 valueText: totalHabitsTarget == 0
                     ? "0 / 0"
                     : "$totalHabitsDone / $totalHabitsTarget",
@@ -1832,9 +1882,13 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                 final progTime =
                     maxHoursD > 0 ? (h / maxHoursD).clamp(0.0, 1.0) : 0.0;
 
+                // --- TEMPS : moyenne / score sur 90 jours (pour la couleur & le sous-texte)
+                final progTime90 =
+                    _timeProgressDomainOverRange(d.id, start90, end90, 90);
+
                 // HABITUDES (sur la fenêtre habitude : 7j si scope == day, sinon scope calendaire)
-                final doneH = _doneHabitsForDomainCalendar(
-                    d.id, startHabits, endHabits);
+                final doneH =
+                    _doneHabitsForDomainCalendar(d.id, startHabits, endHabits);
                 final tgtH = _targetHabitsForDomainCalendar(
                     d.id, startHabits, endHabits);
 
@@ -1844,6 +1898,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                 final agg = computeDailyPacingAggregate(logic, domainId: d.id);
                 final progHab =
                     agg.target > 0 ? (agg.done / agg.target).clamp(0, 1) : 0.0;
+
+                final avg90TxtD = "Moy 90j : ${(progTime90 * 100).round()}%";
 
                 return SectionCard(
                   // si tu n’utilises pas SectionCard, remplace par ton Container/Card
@@ -1897,16 +1953,15 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
                           // Jauge TEMPS : / objectif domaine
-                          GaugeRing(
-                              label: "Temps",
-                              valueText:
-                                  "${_fmtHoursHM(h)} / ${_fmtHoursHM(maxHoursD)}",
-                              progress: progTime,
-                              size: 110,
-                              color: _colorForProgress(progTime, context),
-                              onTap: () => _showDomainDetail(
-                                  d, startCal, endCal, days,
-                                  focus: 'time')),
+GaugeRing(
+  label: "Temps",
+  centerText: _fmtHoursHM(maxHoursD), // ex: 0h13m
+  subText: "Moy 90j : ${(progTime90 * 100).round()}%",
+  progress: progTime90,
+  size: 110,
+  color: _colorForProgress(progTime90, context),
+  onTap: () => _showDomainDetail(d, startCal, endCal, days, focus: 'time'),
+),
 
                           // Jauge HABITUDES : / cible cumulée sur la période
                           GaugeRing(
@@ -3277,9 +3332,10 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   }
 
   Color _colorForProgress(double p, BuildContext ctx) {
-    if (p >= 0.90) return Colors.green;
-    if (p >= 0.50) return Colors.orange;
-    return Colors.red;
+    if (p >= 0.75) return Colors.green;
+    //if (p >= 0.50) return Colors.orange;
+    if (p >= 0.25) return Colors.orange;
+    return Colors.tealAccent;
   }
 
   Future<void> _addActivityDialogForDomain(String domainId) async {
