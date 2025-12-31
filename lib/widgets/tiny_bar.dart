@@ -27,7 +27,7 @@ class TinyBar extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
             child: LinearProgressIndicator(
               value: ratio.clamp(0.0, 1.0),
-              minHeight: 6,
+              minHeight: 15,
               color: color,
               backgroundColor: track,
             ),

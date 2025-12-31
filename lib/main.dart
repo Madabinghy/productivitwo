@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
+import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/widgets/tiny_bar.dart';
 import 'package:productivitwo_v1/widgets/today_view.dart';
 import 'package:productivitwo_v1/app_logic.dart';
@@ -54,19 +55,25 @@ class GaugeRing extends StatelessWidget {
   final Color? color;
   final VoidCallback? onTap;
 
-    final String? centerText;
+  final String? centerText;
   final String? subText;
+
+  // NEW
+  final double strokeWidth;
+  final StrokeCap strokeCap;
 
   const GaugeRing({
     super.key,
     required this.label,
     this.valueText,
     required this.progress,
-    this.size = 140,
+    this.size = 130,
     this.color,
     this.onTap,
     this.centerText,
     this.subText,
+    this.strokeWidth = 20,
+    this.strokeCap = StrokeCap.round, // ⬅️ ICI tu changes round/butt/square
   });
 
   @override
@@ -76,12 +83,10 @@ class GaugeRing extends StatelessWidget {
     final bg = cs.surfaceContainerHighest.withValues(alpha: 0.35);
 
     final main = (centerText != null && centerText!.isNotEmpty)
-    ? centerText!
-    : (valueText ?? "");
+        ? centerText!
+        : (valueText ?? "");
 
-
-    // largeur utile pour le texte au centre
-    final innerW = size * 0.74; // tu peux ajuster 0.70–0.78
+    final innerW = size * 0.74;
 
     final ring = TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: progress.clamp(0.0, 1.0)),
@@ -94,58 +99,50 @@ class GaugeRing extends StatelessWidget {
           child: Stack(
             alignment: Alignment.center,
             children: [
-              // piste
-              SizedBox(
-                width: size,
-                height: size,
-                child: CircularProgressIndicator(
-                  value: 1,
-                  strokeWidth: 10,
-                  valueColor: AlwaysStoppedAnimation<Color>(bg),
+              // ✅ Un seul painter = track + progress
+              CustomPaint(
+                size: Size.square(size),
+                painter: GaugeRingPainter(
+                  progress: val,
+                  fg: fg,
+                  bg: bg,
+                  strokeWidth: strokeWidth,
+                  cap: strokeCap,
                 ),
               ),
-              // progression
-              SizedBox(
-                width: size,
-                height: size,
-                child: CircularProgressIndicator(
-                  value: val,
-                  strokeWidth: 10,
-                  valueColor: AlwaysStoppedAnimation<Color>(fg),
-                  backgroundColor: Colors.transparent,
-                ),
-              ),
-              // ----- contenu centré anti-overflow -----
+
+              // ----- contenu centré -----
               SizedBox(
                 width: innerW,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // valueText s’adapte à la largeur (une seule ligne)
                     FittedBox(
                       fit: BoxFit.scaleDown,
                       child: Column(
-  mainAxisSize: MainAxisSize.min,
-  children: [
-    Text(
-      main,
-      textAlign: TextAlign.center,
-      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-    ),
-    if ((subText ?? "").isNotEmpty) ...[
-      const SizedBox(height: 4),
-      Text(
-        subText!,
-        textAlign: TextAlign.center,
-        style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.70)),
-      ),
-    ],
-  ],
-)
-
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            main,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                                fontSize: 20, fontWeight: FontWeight.w700),
+                          ),
+                          if ((subText ?? "").isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              subText!,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.white.withValues(alpha: 0.70),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 4),
-                    // label : plus petit et atténué
                     FittedBox(
                       fit: BoxFit.scaleDown,
                       child: Text(
@@ -154,8 +151,9 @@ class GaugeRing extends StatelessWidget {
                         softWrap: false,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                            fontSize: 12,
-                            color: cs.onSurface.withValues(alpha: 0.7)),
+                          fontSize: 12,
+                          color: cs.onSurface.withValues(alpha: 0.7),
+                        ),
                       ),
                     ),
                   ],
@@ -172,7 +170,8 @@ class GaugeRing extends StatelessWidget {
         : InkWell(
             borderRadius: BorderRadius.circular(size),
             onTap: onTap,
-            child: ring);
+            child: ring,
+          );
   }
 }
 
@@ -1839,13 +1838,21 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-GaugeRing(
+/* GaugeRing(
   label: "${_scopeLabel()} — Temps",
   centerText: _fmtHoursHM(maxHours),      // => "0h13m"
   subText: avg90Txt,                      // => "Moy 90j : 42%"
   progress: progTimeAll90,            // ou progTimeAll90 (voir note ci-dessous)
   color: _colorForProgress(progTimeAll90, context), // couleur basée sur 90j ✅
   onTap: () => _showDomainDetail(null, startCal, endCal, days, focus: 'time'),
+), */
+NestedGauge(
+  bigProgress: maxHours/24,     // 19h23/24h (ou ce que tu veux)
+  smallProgress: progTimeAll90,       // 16%
+  bigColor: _colorForProgress(totalTimeProgress, context),
+  smallColor: _colorForProgress(progTimeAll90, context),
+  centerText: "",
+  label: _fmtHoursHM(maxHours),
 ),
 
               GaugeRing(
@@ -1857,6 +1864,7 @@ GaugeRing(
                 color: _colorForProgress(totalHabitProgress, context),
                 onTap: () => _showDomainDetail(null, startCal, endCal, days,
                     focus: 'habit'),
+              
               ),
             ],
           ),
@@ -1958,7 +1966,7 @@ GaugeRing(
   centerText: _fmtHoursHM(maxHoursD), // ex: 0h13m
   subText: "Moy 90j : ${(progTime90 * 100).round()}%",
   progress: progTime90,
-  size: 110,
+  size: 140,
   color: _colorForProgress(progTime90, context),
   onTap: () => _showDomainDetail(d, startCal, endCal, days, focus: 'time'),
 ),
