@@ -62,6 +62,12 @@ class GaugeRing extends StatelessWidget {
   final double strokeWidth;
   final StrokeCap strokeCap;
 
+  final double? innerProgress; // ex: 90j
+  final Color? innerColor;
+
+  final double? outerProgress; // ex: 24h glissantes
+  final Color? outerColor;
+
   const GaugeRing({
     super.key,
     required this.label,
@@ -74,6 +80,10 @@ class GaugeRing extends StatelessWidget {
     this.subText,
     this.strokeWidth = 20,
     this.strokeCap = StrokeCap.round, // ⬅️ ICI tu changes round/butt/square
+    this.innerProgress,
+    this.innerColor,
+    this.outerProgress,
+    this.outerColor,
   });
 
   @override
@@ -93,13 +103,28 @@ class GaugeRing extends StatelessWidget {
       duration: const Duration(milliseconds: 500),
       curve: Curves.easeOutCubic,
       builder: (_, val, __) {
+        final hasOuter = outerProgress != null;
+        final outerAbove = hasOuter && outerProgress! > val;
+
         return SizedBox(
           width: size,
           height: size,
           child: Stack(
             alignment: Alignment.center,
             children: [
-              // ✅ Un seul painter = track + progress
+// Halo “derrière” si outer > main, sinon “devant”
+              if (hasOuter && outerAbove)
+                CustomPaint(
+                  size: Size.square(size * 1.08),
+                  painter: GaugeRingPainter(
+                    progress: outerProgress!.clamp(0.0, 1.0),
+                    fg: Colors.cyanAccent.withValues(alpha: 0.45),
+                    bg: Colors.transparent,
+                    strokeWidth: strokeWidth,
+                    cap: StrokeCap.round,
+                  ),
+                ),
+
               CustomPaint(
                 size: Size.square(size),
                 painter: GaugeRingPainter(
@@ -111,7 +136,32 @@ class GaugeRing extends StatelessWidget {
                 ),
               ),
 
-              // ----- contenu centré -----
+              if (hasOuter && !outerAbove)
+                CustomPaint(
+                  size: Size.square(size * 1.08),
+                  painter: GaugeRingPainter(
+                    progress: outerProgress!.clamp(0.0, 1.0),
+                    fg: Colors.cyanAccent.withValues(alpha: 0.45),
+                    bg: Colors.transparent,
+                    strokeWidth: strokeWidth,
+                    cap: StrokeCap.round,
+                  ),
+                ),
+
+              // ✅ INNER ring (90j)
+              if (innerProgress != null)
+                CustomPaint(
+                  size: Size.square(size * 0.78),
+                  painter: GaugeRingPainter(
+                    progress: innerProgress!.clamp(0.0, 1.0),
+                    fg: (innerColor ?? fg).withValues(alpha: 0.80),
+                    bg: Colors.transparent,
+                    strokeWidth: strokeWidth * 0.55,
+                    cap: strokeCap,
+                  ),
+                ),
+
+              // ✅ TEXTE AU CENTRE (il doit être après les CustomPaint)
               SizedBox(
                 width: innerW,
                 child: Column(
@@ -1728,6 +1778,15 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     final end90 = today.add(const Duration(days: 1)); // end exclusif
     final progTimeAll90 = _timeProgressAllOverRange(start90, end90, 90);
 
+final start24 = now.subtract(const Duration(hours: 24));
+final totals24 = logic.timeTotalsByDomain(start24, now);
+final total24Dur =
+    totals24.values.fold<Duration>(Duration.zero, (a, b) => a + b);
+
+final total24Hours = total24Dur.inMinutes / 60.0;
+final outerProgressAll24 = (total24Hours / 24.0).clamp(0.0, 1.0);
+
+
     int _doneHabitsForDomainCalendar(
         String domainId, DateTime start, DateTime end) {
       // somme calendaire: [start, end)
@@ -1807,6 +1866,11 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         : (goalMinDayAll * days) / 60.0;
     final totalTimeProgress = (totalHours / maxHours).clamp(0.0, 1.0);
 
+    final goalHours24All = goalMinDayAll / 60.0;
+    final prog24All = goalHours24All > 0
+        ? (total24Hours / goalHours24All).clamp(0.0, 1.0)
+        : 0.0;
+
     // 4) Totaux HABITUDES (global + par domaine)
     // -> utilisent désormais startHabits / endHabits et habitDays
     final habitByDomain = logic.habitTotalsByDomain(startHabits, endHabits);
@@ -1846,13 +1910,16 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   color: _colorForProgress(progTimeAll90, context), // couleur basée sur 90j ✅
   onTap: () => _showDomainDetail(null, startCal, endCal, days, focus: 'time'),
 ), */
+
 NestedGauge(
-  bigProgress: maxHours/24,     // 19h23/24h (ou ce que tu veux)
-  smallProgress: progTimeAll90,       // 16%
+  bigProgress: maxHours / 24,      // ton ring principal (objectif période)
+  smallProgress: progTimeAll90,        // ton ring 90j
+  outerProgress: outerProgressAll24,   // ✅ halo “brut 24h”
   bigColor: _colorForProgress(totalTimeProgress, context),
   smallColor: _colorForProgress(progTimeAll90, context),
+  outerColor: Colors.cyanAccent,       // ou blanc discret
   centerText: "",
-  label: _fmtHoursHM(maxHours),
+  label: _fmtHoursHM(totalHours),      // ou maxHours selon ton choix
 ),
 
               GaugeRing(
@@ -1864,7 +1931,6 @@ NestedGauge(
                 color: _colorForProgress(totalHabitProgress, context),
                 onTap: () => _showDomainDetail(null, startCal, endCal, days,
                     focus: 'habit'),
-              
               ),
             ],
           ),
@@ -1908,6 +1974,12 @@ NestedGauge(
                     agg.target > 0 ? (agg.done / agg.target).clamp(0, 1) : 0.0;
 
                 final avg90TxtD = "Moy 90j : ${(progTime90 * 100).round()}%";
+
+                final h24 = dur.inMinutes / 60.0;
+
+                final goalH24 = goalMinD / 60.0; // standard fixe / jour
+                final prog24 =
+                    goalH24 > 0 ? (h24 / goalH24).clamp(0.0, 1.0) : 0.0;
 
                 return SectionCard(
                   // si tu n’utilises pas SectionCard, remplace par ton Container/Card
@@ -1961,15 +2033,21 @@ NestedGauge(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
                           // Jauge TEMPS : / objectif domaine
-GaugeRing(
-  label: "Temps",
-  centerText: _fmtHoursHM(maxHoursD), // ex: 0h13m
-  subText: "Moy 90j : ${(progTime90 * 100).round()}%",
-  progress: progTime90,
-  size: 140,
-  color: _colorForProgress(progTime90, context),
-  onTap: () => _showDomainDetail(d, startCal, endCal, days, focus: 'time'),
-),
+                          GaugeRing(
+                            label: "Temps",
+                            centerText: _fmtHoursHM(maxHoursD), // ex: 0h13m
+                            subText: "Moy 90j : ${(progTime90 * 100).round()}%",
+                            progress: progTime90,
+                            size: 140,
+                            color: _colorForProgress(progTime90, context),
+                            onTap: () => _showDomainDetail(
+                                d, startCal, endCal, days,
+                                focus: 'time'),
+                            // ✅ halo externe 24h
+                            outerProgress: prog24,
+                            outerColor: Colors
+                                .white, // ou fg, ou _colorForProgress(prog24, context)
+                          ),
 
                           // Jauge HABITUDES : / cible cumulée sur la période
                           GaugeRing(

@@ -7,6 +7,7 @@ class RingPainter extends CustomPainter {
   final double stroke;
   final Color trackColor;
   final double startAngle; // radians
+  final StrokeCap cap; // NEW
 
   RingPainter({
     required this.progress,
@@ -14,6 +15,7 @@ class RingPainter extends CustomPainter {
     required this.stroke,
     required this.trackColor,
     this.startAngle = -math.pi / 2, // en haut
+    this.cap = StrokeCap.round, // NEW
   });
 
   @override
@@ -26,18 +28,20 @@ class RingPainter extends CustomPainter {
       ..color = trackColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke
-      ..strokeCap = StrokeCap.round;
+      ..strokeCap = cap;
 
     final progPaint = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke
-      ..strokeCap = StrokeCap.round;
+      ..strokeCap = cap;
 
     final rRect = Rect.fromCircle(center: center, radius: radius);
 
     // track
-    canvas.drawArc(rRect, 0, math.pi * 2, false, trackPaint);
+    if (trackColor.opacity > 0) {
+      canvas.drawArc(rRect, 0, math.pi * 2, false, trackPaint);
+    }
 
     // progress
     final sweep = (math.pi * 2) * progress.clamp(0.0, 1.0);
@@ -50,19 +54,27 @@ class RingPainter extends CustomPainter {
         old.color != color ||
         old.stroke != stroke ||
         old.trackColor != trackColor ||
-        old.startAngle != startAngle;
+        old.startAngle != startAngle ||
+        old.cap != cap;
   }
 }
 
 class NestedGauge extends StatelessWidget {
-  final double bigProgress;   // ex: période actuelle (jour) 0..1
-  final double smallProgress; // ex: moyenne 90j 0..1
+  final double bigProgress;   // 0..1 (ta jauge principale)
+  final double smallProgress; // 0..1 (90j)
+
+  // ✅ NEW : halo extérieur 24h brut = trackedHours24 / 24
+  final double? outerProgress; // 0..1
+  final Color? outerColor;     // couleur du halo
+  final double outerSizeFactor; // taille relative (halo plus grand)
+  final double outerStroke;     // épaisseur du halo
+
   final Color bigColor;
   final Color smallColor;
   final double size;
 
-  final String centerText; // "19h23m" ou "0h13m"
-  final String label;      // "Jour — Temps"
+  final String centerText;
+  final String label;
 
   const NestedGauge({
     super.key,
@@ -73,6 +85,12 @@ class NestedGauge extends StatelessWidget {
     required this.centerText,
     required this.label,
     this.size = 160,
+
+    // ✅ defaults halo
+    this.outerProgress,
+    this.outerColor,
+    this.outerSizeFactor = 1.12,
+    this.outerStroke = 10,
   });
 
   @override
@@ -85,40 +103,66 @@ class NestedGauge extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
+          // ✅ HALO EXTERIEUR (24h brut)
+          if (outerProgress != null)
+            CustomPaint(
+              size: Size.square(size * outerSizeFactor),
+              painter: RingPainter(
+                progress: outerProgress!.clamp(0.0, 1.0),
+                color: (outerColor ?? Colors.cyanAccent)
+                    .withValues(alpha: 0.45),
+                stroke: outerStroke,
+                trackColor: Colors.transparent,
+              ),
+            ),
+
           // Grand anneau
           CustomPaint(
-            size: Size.square(size *0.90),
+            size: Size.square(size * 0.90),
             painter: RingPainter(
-              progress: bigProgress,
+              progress: bigProgress.clamp(0.0, 1.0),
               color: bigColor,
               stroke: 35,
               trackColor: track,
             ),
           ),
 
-          // Petit anneau (à l'intérieur)
+          // Petit anneau (90j)
           CustomPaint(
             size: Size.square(size * 0.45),
             painter: RingPainter(
-              progress: smallProgress,
+              progress: smallProgress.clamp(0.0, 1.0),
               color: smallColor,
               stroke: 25,
               trackColor: track,
             ),
           ),
 
-          // Texte au centre
+          // Texte
           Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(centerText,
-                  style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w800)),
+              Text(
+                centerText,
+                style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w800),
+              ),
               const SizedBox(height: 15),
-              Text("${(smallProgress * 100).round()}%",
-                  style: TextStyle(fontSize: 14, color: Colors.white.withValues(alpha: 0.75))),
+              Text(
+                "${(smallProgress * 100).round()}%",
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.white.withValues(alpha: 0.75),
+                ),
+              ),
               const SizedBox(height: 25),
-              Text(label,
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white.withValues(alpha: 0.85))),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white.withValues(alpha: 0.85),
+                ),
+              ),
             ],
           ),
         ],
@@ -180,4 +224,3 @@ class GaugeRingPainter extends CustomPainter {
         old.cap != cap;
   }
 }
-
