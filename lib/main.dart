@@ -1787,6 +1787,18 @@ final total24Hours = total24Dur.inMinutes / 60.0;
 final outerProgressAll24 = (total24Hours / 24.0).clamp(0.0, 1.0);
 
 
+final start7 = today.subtract(const Duration(days: 7));
+final end7 = today; // exclut aujourd’hui
+
+final totals7 = logic.timeTotalsByDomain(start7, end7);
+final total7Dur = totals7.values.fold<Duration>(Duration.zero, (a,b)=>a+b);
+
+final avg7HoursPerDay = (total7Dur.inMinutes / 60.0) / 7.0;
+
+final mainProgress = (avg7HoursPerDay / 24.0).clamp(0.0, 1.0);
+final mainText = _fmtHoursHM(avg7HoursPerDay); // ex: 15h10
+
+
     int _doneHabitsForDomainCalendar(
         String domainId, DateTime start, DateTime end) {
       // somme calendaire: [start, end)
@@ -1912,14 +1924,14 @@ final outerProgressAll24 = (total24Hours / 24.0).clamp(0.0, 1.0);
 ), */
 
 NestedGauge(
-  bigProgress: maxHours / 24,      // ton ring principal (objectif période)
+  bigProgress: mainProgress,      // ton ring principal (objectif période)
   smallProgress: progTimeAll90,        // ton ring 90j
   outerProgress: outerProgressAll24,   // ✅ halo “brut 24h”
-  bigColor: _colorForProgress(totalTimeProgress, context),
+  bigColor: _colorForProgress(mainProgress, context),
   smallColor: _colorForProgress(progTimeAll90, context),
   outerColor: Colors.cyanAccent,       // ou blanc discret
   centerText: "",
-  label: _fmtHoursHM(totalHours),      // ou maxHours selon ton choix
+  label: mainText,      // ou maxHours selon ton choix
 ),
 
               GaugeRing(
@@ -3418,10 +3430,10 @@ NestedGauge(
   }
 
   Color _colorForProgress(double p, BuildContext ctx) {
-    if (p >= 0.75) return Colors.green;
-    //if (p >= 0.50) return Colors.orange;
+    if (p >= 0.75) return Colors.tealAccent;
+    if (p >= 0.50) return Colors.green;
     if (p >= 0.25) return Colors.orange;
-    return Colors.tealAccent;
+    return Colors.redAccent;
   }
 
   Future<void> _addActivityDialogForDomain(String domainId) async {
