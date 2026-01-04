@@ -91,6 +91,7 @@ class GaugeRing extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final fg = color ?? cs.primary;
     final bg = cs.surfaceContainerHighest.withValues(alpha: 0.35);
+    //final bg = Colors.transparent;
 
     final main = (centerText != null && centerText!.isNotEmpty)
         ? centerText!
@@ -144,7 +145,7 @@ class GaugeRing extends StatelessWidget {
                     fg: Colors.cyanAccent.withValues(alpha: 0.45),
                     bg: Colors.transparent,
                     strokeWidth: strokeWidth,
-                    cap: StrokeCap.round,
+                    cap: StrokeCap.butt,
                   ),
                 ),
 
@@ -3430,7 +3431,7 @@ NestedGauge(
   }
 
   Color _colorForProgress(double p, BuildContext ctx) {
-    if (p >= 0.75) return Colors.tealAccent;
+    if (p >= 0.99) return Colors.transparent;
     if (p >= 0.50) return Colors.green;
     if (p >= 0.25) return Colors.orange;
     return Colors.redAccent;
