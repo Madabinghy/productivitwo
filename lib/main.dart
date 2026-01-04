@@ -1779,26 +1779,25 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     final end90 = today.add(const Duration(days: 1)); // end exclusif
     final progTimeAll90 = _timeProgressAllOverRange(start90, end90, 90);
 
-final start24 = now.subtract(const Duration(hours: 24));
-final totals24 = logic.timeTotalsByDomain(start24, now);
-final total24Dur =
-    totals24.values.fold<Duration>(Duration.zero, (a, b) => a + b);
+    final start24 = now.subtract(const Duration(hours: 24));
+    final totals24 = logic.timeTotalsByDomain(start24, now);
+    final total24Dur =
+        totals24.values.fold<Duration>(Duration.zero, (a, b) => a + b);
 
-final total24Hours = total24Dur.inMinutes / 60.0;
-final outerProgressAll24 = (total24Hours / 24.0).clamp(0.0, 1.0);
+    final total24Hours = total24Dur.inMinutes / 60.0;
+    final outerProgressAll24 = (total24Hours / 24.0).clamp(0.0, 1.0);
 
+    final start7 = today.subtract(const Duration(days: 7));
+    final end7 = today; // exclut aujourd’hui
 
-final start7 = today.subtract(const Duration(days: 7));
-final end7 = today; // exclut aujourd’hui
+    final totals7 = logic.timeTotalsByDomain(start7, end7);
+    final total7Dur =
+        totals7.values.fold<Duration>(Duration.zero, (a, b) => a + b);
 
-final totals7 = logic.timeTotalsByDomain(start7, end7);
-final total7Dur = totals7.values.fold<Duration>(Duration.zero, (a,b)=>a+b);
+    final avg7HoursPerDay = (total7Dur.inMinutes / 60.0) / 7.0;
 
-final avg7HoursPerDay = (total7Dur.inMinutes / 60.0) / 7.0;
-
-final mainProgress = (avg7HoursPerDay / 24.0).clamp(0.0, 1.0);
-final mainText = _fmtHoursHM(avg7HoursPerDay); // ex: 15h10
-
+    final mainProgress = (avg7HoursPerDay / 24.0).clamp(0.0, 1.0);
+    final mainText = _fmtHoursHM(avg7HoursPerDay); // ex: 15h10
 
     int _doneHabitsForDomainCalendar(
         String domainId, DateTime start, DateTime end) {
@@ -1905,6 +1904,61 @@ final mainText = _fmtHoursHM(avg7HoursPerDay); // ex: 15h10
     final running = _state!.sessions.any((x) => x.endAt == null);
     final avg90Txt = "Moy 90j : ${(progTimeAll90 * 100).round()}%";
 
+    final tomorrow = today.add(const Duration(days: 1));
+// ✅ Routines aujourd’hui
+    final doneToday = _doneHabitsAllCalendar(today, tomorrow);
+    final tgtToday = _targetHabitsAllCalendar(today, tomorrow);
+
+// ✅ Moyenne “semaine” (ratio global sur 7 jours)
+    final done7 = _doneHabitsAllCalendar(start7, end7);
+    final tgt7 = _targetHabitsAllCalendar(start7, end7);
+
+    final done90 = _doneHabitsAllCalendar(start90, end90);
+    final tgt90 = _targetHabitsAllCalendar(start90, end90);
+    final rate90 = tgt90 == 0 ? 0.0 : (done90 / tgt90).clamp(0.0, 1.0);
+
+    final rateToday = tgtToday == 0 ? 0.0 : doneToday / tgtToday;
+    final rateWeek = tgt7 == 0 ? 0.0 : done7 / tgt7;
+
+int _neededToBeatWeek({
+  required int doneToday,
+  required int tgtToday,
+  required int done7,
+  required int tgt7,
+}) {
+  // Pas de cible => pas de seuil utile
+  if (tgtToday <= 0 || tgt7 <= 0) return 0;
+
+  final rateWeek = done7 / tgt7; // double
+  final threshold = tgtToday * rateWeek; // double (cible "équivalente" pour être >= semaine)
+  final need = threshold - doneToday; // double
+
+  if (need <= 0) return 0;
+  return need.ceil(); // arrondi au-dessus : il faut AU MOINS ce nombre
+}
+
+final isBelowWeek = rateToday < rateWeek;
+
+final need = _neededToBeatWeek(
+  doneToday: doneToday,
+  tgtToday: tgtToday,
+  done7: done7,
+  tgt7: tgt7,
+);
+
+// Label épuré :
+// - si on est en dessous de la semaine -> "done / +X" (objectif pour basculer)
+// - sinon -> "done / tgtToday" (objectif du jour normal)
+// + garde-fous 0/0
+final String habitsLabel;
+if (tgtToday == 0) {
+  habitsLabel = "0 / 0";
+} else if (isBelowWeek && need > 0) {
+  habitsLabel = "$doneToday / ${doneToday+need}";
+} else {
+  habitsLabel = "$doneToday / $tgtToday";
+}
+
     return Column(
       children: [
         if (running) _runningBanner(),
@@ -1924,18 +1978,19 @@ final mainText = _fmtHoursHM(avg7HoursPerDay); // ex: 15h10
   onTap: () => _showDomainDetail(null, startCal, endCal, days, focus: 'time'),
 ), */
 
-NestedGauge(
-  bigProgress: mainProgress,      // ton ring principal (objectif période)
-  smallProgress: progTimeAll90,        // ton ring 90j
-  outerProgress: outerProgressAll24,   // ✅ halo “brut 24h”
-  bigColor: _colorForProgress(mainProgress, context),
-  smallColor: _colorForProgress(progTimeAll90, context),
-  outerColor: Colors.cyanAccent,       // ou blanc discret
-  centerText: "",
-  label: mainText,      // ou maxHours selon ton choix
-),
+              NestedGauge(
+                bigProgress:
+                    mainProgress, // ton ring principal (objectif période)
+                smallProgress: progTimeAll90, // ton ring 90j
+                outerProgress: outerProgressAll24, // ✅ halo “brut 24h”
+                bigColor: _colorForProgress(mainProgress, context),
+                smallColor: _colorForProgress(progTimeAll90, context),
+                outerColor: Colors.cyanAccent, // ou blanc discret
+                centerText: "",
+                label: mainText, // ou maxHours selon ton choix
+              ),
 
-              GaugeRing(
+/*               GaugeRing(
                 label: "Habitudes",
                 valueText: totalHabitsTarget == 0
                     ? "0 / 0"
@@ -1944,6 +1999,20 @@ NestedGauge(
                 color: _colorForProgress(totalHabitProgress, context),
                 onTap: () => _showDomainDetail(null, startCal, endCal, days,
                     focus: 'habit'),
+              ), */
+
+              NestedGauge(
+                bigProgress: rateWeek, // ✅ norme semaine
+                smallProgress:
+                    rate90, // option : tu peux mettre autre chose (voir note)
+                outerProgress: rateToday, // ✅ halo = aujourd’hui
+
+                bigColor: _colorForProgress(rateWeek, context),
+                smallColor: _colorForProgress(rate90, context), // ou neutre
+                outerColor: Colors.cyanAccent,
+                centerText: "",
+                label: habitsLabel,
+                size: 160,
               ),
             ],
           ),
