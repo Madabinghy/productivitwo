@@ -1920,44 +1920,45 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     final rateToday = tgtToday == 0 ? 0.0 : doneToday / tgtToday;
     final rateWeek = tgt7 == 0 ? 0.0 : done7 / tgt7;
 
-int _neededToBeatWeek({
-  required int doneToday,
-  required int tgtToday,
-  required int done7,
-  required int tgt7,
-}) {
-  // Pas de cible => pas de seuil utile
-  if (tgtToday <= 0 || tgt7 <= 0) return 0;
+    int _neededToBeatWeek({
+      required int doneToday,
+      required int tgtToday,
+      required int done7,
+      required int tgt7,
+    }) {
+      // Pas de cible => pas de seuil utile
+      if (tgtToday <= 0 || tgt7 <= 0) return 0;
 
-  final rateWeek = done7 / tgt7; // double
-  final threshold = tgtToday * rateWeek; // double (cible "équivalente" pour être >= semaine)
-  final need = threshold - doneToday; // double
+      final rateWeek = done7 / tgt7; // double
+      final threshold = tgtToday *
+          rateWeek; // double (cible "équivalente" pour être >= semaine)
+      final need = threshold - doneToday; // double
 
-  if (need <= 0) return 0;
-  return need.ceil(); // arrondi au-dessus : il faut AU MOINS ce nombre
-}
+      if (need <= 0) return 0;
+      return need.ceil(); // arrondi au-dessus : il faut AU MOINS ce nombre
+    }
 
-final isBelowWeek = rateToday < rateWeek;
+    final isBelowWeek = rateToday < rateWeek;
 
-final need = _neededToBeatWeek(
-  doneToday: doneToday,
-  tgtToday: tgtToday,
-  done7: done7,
-  tgt7: tgt7,
-);
+    final need = _neededToBeatWeek(
+      doneToday: doneToday,
+      tgtToday: tgtToday,
+      done7: done7,
+      tgt7: tgt7,
+    );
 
 // Label épuré :
 // - si on est en dessous de la semaine -> "done / +X" (objectif pour basculer)
 // - sinon -> "done / tgtToday" (objectif du jour normal)
 // + garde-fous 0/0
-final String habitsLabel;
-if (tgtToday == 0) {
-  habitsLabel = "0 / 0";
-} else if (isBelowWeek && need > 0) {
-  habitsLabel = "$doneToday / ${doneToday+need}";
-} else {
-  habitsLabel = "$doneToday / $tgtToday";
-}
+    final String habitsLabel;
+    if (tgtToday == 0) {
+      habitsLabel = "0 / 0";
+    } else if (isBelowWeek && need > 0) {
+      habitsLabel = "$doneToday / ${doneToday + need}";
+    } else {
+      habitsLabel = "$doneToday / $tgtToday";
+    }
 
     return Column(
       children: [
@@ -1988,6 +1989,7 @@ if (tgtToday == 0) {
                 outerColor: Colors.cyanAccent, // ou blanc discret
                 centerText: "",
                 label: mainText, // ou maxHours selon ton choix
+                onTap: () => _showDomainDetail(null, startCal, endCal, days, focus: 'time'),
               ),
 
 /*               GaugeRing(
@@ -2013,6 +2015,8 @@ if (tgtToday == 0) {
                 centerText: "",
                 label: habitsLabel,
                 size: 160,
+                onTap: () => _showDomainDetail(null, startCal, endCal, days,
+                    focus: 'habit'),
               ),
             ],
           ),
@@ -2062,6 +2066,56 @@ if (tgtToday == 0) {
                 final goalH24 = goalMinD / 60.0; // standard fixe / jour
                 final prog24 =
                     goalH24 > 0 ? (h24 / goalH24).clamp(0.0, 1.0) : 0.0;
+
+                // ✅ Routines aujourd’hui (domaine)
+                final doneTodayD =
+                    _doneHabitsForDomainCalendar(d.id, today, tomorrow);
+                final tgtTodayD =
+                    _targetHabitsForDomainCalendar(d.id, today, tomorrow);
+                final rateTodayD =
+                    tgtTodayD == 0 ? 0.0 : (doneTodayD / tgtTodayD);
+
+// ✅ Moyenne 7j (domaine)
+                final done7D = _doneHabitsForDomainCalendar(d.id, start7, end7);
+                final tgt7D =
+                    _targetHabitsForDomainCalendar(d.id, start7, end7);
+                final rateWeekD = tgt7D == 0 ? 0.0 : (done7D / tgt7D);
+
+// ✅ Anneau principal = norme 7j (ramenée sur 24h ?)
+// Ici routines = taux, donc on garde direct 0..1
+                final bigProgressD = rateWeekD.clamp(0.0, 1.0);
+
+// ✅ Halo = aujourd’hui
+                final outerProgressD = rateTodayD.clamp(0.0, 1.0);
+
+// ✅ Label dynamique (done / +X tant qu’on est sous la semaine)
+                final isBelowWeekD = rateTodayD < rateWeekD;
+                final needD = _neededToBeatWeek(
+                  doneToday: doneTodayD,
+                  tgtToday: tgtTodayD,
+                  done7: done7D,
+                  tgt7: tgt7D,
+                );
+
+                final String routinesLabelD;
+                if (tgtTodayD == 0) {
+                  routinesLabelD = "0 / 0";
+                } else if (isBelowWeekD && needD > 0) {
+                  routinesLabelD = "$doneTodayD / ${doneTodayD+needD}";
+                } else {
+                  routinesLabelD = "$doneTodayD / $tgtTodayD";
+                }
+
+                final done90D =
+                    _doneHabitsForDomainCalendar(d.id, start90, end90);
+                final tgt90D =
+                    _targetHabitsForDomainCalendar(d.id, start90, end90);
+                final rate90D = tgt90D == 0 ? 0.0 : (done90D / tgt90D);
+
+                smallProgress:
+                rate90D.clamp(0.0, 1.0);
+                smallColor:
+                _colorForProgress(rate90D, context);
 
                 return SectionCard(
                   // si tu n’utilises pas SectionCard, remplace par ton Container/Card
@@ -2132,12 +2186,30 @@ if (tgtToday == 0) {
                           ),
 
                           // Jauge HABITUDES : / cible cumulée sur la période
-                          GaugeRing(
+
+/*                           GaugeRing(
                             label: "Habitudes",
                             valueText: "$doneH / $tgtH",
                             progress: progHabit,
                             size: 110,
                             color: _colorForProgress(progHabit, context),
+                            onTap: () => _showDomainDetail(
+                                d, startCal, endCal, days,
+                                focus: 'habit'),
+                          ), */
+                          NestedGauge(
+                            bigProgress: bigProgressD, // ✅ norme 7j
+                            smallProgress: rate90D.clamp(0.0,
+                                1.0), // option : tu peux mettre 90j routines domaine si tu veux
+                            outerProgress: outerProgressD, // ✅ halo jour
+
+                            bigColor: _colorForProgress(bigProgressD, context),
+                            smallColor: _colorForProgress(rate90D, context),
+                            outerColor: Colors.cyanAccent,
+
+                            centerText: "", // tu as choisi épuré
+                            label: routinesLabelD,
+                            size: 140, // ajuste selon ton UI
                             onTap: () => _showDomainDetail(
                                 d, startCal, endCal, days,
                                 focus: 'habit'),

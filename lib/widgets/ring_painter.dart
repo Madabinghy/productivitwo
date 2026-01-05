@@ -60,14 +60,14 @@ class RingPainter extends CustomPainter {
 }
 
 class NestedGauge extends StatelessWidget {
-  final double bigProgress;   // 0..1 (ta jauge principale)
+  final double bigProgress; // 0..1 (ta jauge principale)
   final double smallProgress; // 0..1 (90j)
 
   // ✅ NEW : halo extérieur 24h brut = trackedHours24 / 24
   final double? outerProgress; // 0..1
-  final Color? outerColor;     // couleur du halo
+  final Color? outerColor; // couleur du halo
   final double outerSizeFactor; // taille relative (halo plus grand)
-  final double outerStroke;     // épaisseur du halo
+  final double outerStroke; // épaisseur du halo
 
   final Color bigColor;
   final Color smallColor;
@@ -75,6 +75,8 @@ class NestedGauge extends StatelessWidget {
 
   final String centerText;
   final String label;
+
+  final VoidCallback? onTap;
 
   const NestedGauge({
     super.key,
@@ -85,6 +87,7 @@ class NestedGauge extends StatelessWidget {
     required this.centerText,
     required this.label,
     this.size = 160,
+    this.onTap,
 
     // ✅ defaults halo
     this.outerProgress,
@@ -97,7 +100,7 @@ class NestedGauge extends StatelessWidget {
   Widget build(BuildContext context) {
     final track = Colors.white.withValues(alpha: 0.08);
 
-    return SizedBox(
+    final content = SizedBox(
       width: size,
       height: size,
       child: Stack(
@@ -109,8 +112,8 @@ class NestedGauge extends StatelessWidget {
               size: Size.square(size * outerSizeFactor),
               painter: RingPainter(
                 progress: outerProgress!.clamp(0.0, 1.0),
-                color: (outerColor ?? Colors.cyanAccent)
-                    .withValues(alpha: 0.45),
+                color:
+                    (outerColor ?? Colors.cyanAccent).withValues(alpha: 0.45),
                 stroke: outerStroke,
                 trackColor: Colors.transparent,
               ),
@@ -144,7 +147,8 @@ class NestedGauge extends StatelessWidget {
             children: [
               Text(
                 centerText,
-                style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w800),
+                style:
+                    const TextStyle(fontSize: 25, fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 15),
               Text(
@@ -168,9 +172,16 @@ class NestedGauge extends StatelessWidget {
         ],
       ),
     );
+
+    return onTap == null
+        ? content
+        : InkWell(
+            borderRadius: BorderRadius.circular(size),
+            onTap: onTap,
+            child: content,
+          );
   }
 }
-
 
 class GaugeRingPainter extends CustomPainter {
   final double progress; // 0..1
