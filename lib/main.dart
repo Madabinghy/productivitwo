@@ -630,9 +630,11 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
   Future<void> _init() async {
     final s = await store.loadOrInit();
+
     setState(() {
       _state = s;
       logic = AppLogic(_state!, _saveAndRefresh);
+
       () async {
         final bumps = await logic.scanAllActivities();
         if (bumps > 0 && mounted) {
@@ -644,35 +646,23 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
           await store.save(_state!);
         }
       }();
+
       if (_state!.domains.isEmpty) {
         _state!.domains.add(Domain(name: 'Général'));
       }
       selectedDomainId ??= _state!.domains.first.id;
     });
 
-// --- TEST FORCÉ (à retirer après) ---
-/*     _state!.lastGoalsReview = null; // reset du garde-fou "une fois par jour"
-    final changes = await logic.reviewGoals(
-      lookbackDays: 1,
-      neededHits: 1,
-      lower: -1.0, // empêche la baisse
-      upper: 0.0, // toute perf compte "au-dessus"
-      high: 0.0, // active le boost
-      pctStep: 0.1, // +10% du goal (gros pas pour bien voir)
-      minStepMin: 5,
-      maxWeeklyPct: 10.0, // enlève le cap hebdo pour ce test
-    );
-    debugPrint("reviewGoals FORCÉ -> ${changes.length} changements"); */
-// ------------------------------------
+    // ✅ ICI (point unique au démarrage)
+    logic.rolloverUndoneOncePerDay();
+    logic.ensureDailyHabitsPlanned();
 
-    // Appel APRÈS setState
+    // ... le reste inchangé
     final changes = await logic.reviewGoals();
 
     if (mounted) {
       setState(() {
         _recentGoalChanges = changes;
-
-        // agrège les deltas des activités vers leur domaine si le domaine est autoGoal
         _domainAutoDeltas = {};
         for (final ch in changes.where((c) => c.kind == 'activity')) {
           final act = _state!.activities.firstWhere((a) => a.id == ch.id,
@@ -685,11 +675,9 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                 (_domainAutoDeltas[dom.id] ?? 0) + ch.deltaMin;
           }
         }
-
         _lastReviewDisplayedAt = DateTime.now();
       });
 
-      // purge auto des badges au bout de 10 minutes (optionnel)
       Future.delayed(const Duration(minutes: 10), () {
         if (!mounted) return;
         setState(() {
@@ -1989,7 +1977,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                 outerColor: Colors.cyanAccent, // ou blanc discret
                 centerText: "",
                 label: mainText, // ou maxHours selon ton choix
-                onTap: () => _showDomainDetail(null, startCal, endCal, days, focus: 'time'),
+                onTap: () => _showDomainDetail(null, startCal, endCal, days,
+                    focus: 'time'),
               ),
 
 /*               GaugeRing(
@@ -2101,7 +2090,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                 if (tgtTodayD == 0) {
                   routinesLabelD = "0 / 0";
                 } else if (isBelowWeekD && needD > 0) {
-                  routinesLabelD = "$doneTodayD / ${doneTodayD+needD}";
+                  routinesLabelD = "$doneTodayD / ${doneTodayD + needD}";
                 } else {
                   routinesLabelD = "$doneTodayD / $tgtTodayD";
                 }

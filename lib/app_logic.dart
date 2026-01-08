@@ -32,6 +32,17 @@ class AppLogic {
   final void Function() onChange;
   AppLogic(this.state, this.onChange);
 
+  String? _lastRolloverDay;
+
+  void rolloverUndoneOncePerDay({DateTime? now}) {
+    final t = now ?? DateTime.now();
+    final todayKey = yyyymmdd(DateTime(t.year, t.month, t.day));
+    if (_lastRolloverDay == todayKey) return;
+
+    rolloverUndone(now: t);
+    _lastRolloverDay = todayKey;
+  }
+
   // Retourne la liste d'activités du focus (en respectant les IDs)
   List<Activity> get focusToday {
     final ids = state.focusTodayIds.toSet();
@@ -1521,6 +1532,11 @@ extension TodayLogic on AppLogic {
     onChange();
   }
 
+  bool _existsToday(String todayKey, DayPlanItem e) {
+    return state.dayPlan.any((x) =>
+        x.yyyymmdd == todayKey && x.kind == e.kind && x.refId == e.refId);
+  }
+
   void rolloverUndone({DateTime? now}) {
     final t = now ?? DateTime.now();
     final today = yyyymmdd(DateTime(t.year, t.month, t.day));
@@ -1531,9 +1547,14 @@ extension TodayLogic on AppLogic {
         state.dayPlan.where((e) => e.yyyymmdd == yesterday && !e.done).toList();
     if (carry.isEmpty) return;
 
-    final baseOrder = planFor(today).length;
-    for (int i = 0; i < carry.length; i++) {
-      final e = carry[i];
+    var order = planFor(today).length;
+
+    for (final e in carry) {
+      // ✅ si déjà présent aujourd'hui, ne pas dupliquer
+      final alreadyThere = state.dayPlan.any(
+          (x) => x.yyyymmdd == today && x.kind == e.kind && x.refId == e.refId);
+      if (alreadyThere) continue;
+
       state.dayPlan.add(DayPlanItem(
         id: const Uuid().v4(),
         kind: e.kind,
@@ -1542,7 +1563,7 @@ extension TodayLogic on AppLogic {
         yyyymmdd: today,
         done: false,
         allDay: e.allDay,
-        order: baseOrder + i,
+        order: order++, // 👈 compteur propre
       ));
     }
 
