@@ -47,7 +47,7 @@ class _TodayViewState extends State<TodayView> {
     });
 
     _base = DateTime.now();
-    if (_base.hour >= 18) _planTomorrow = true;
+    if (_base.hour >= 22) _planTomorrow = true;
   }
 
   Widget _focusSection(AppLogic logic) {
