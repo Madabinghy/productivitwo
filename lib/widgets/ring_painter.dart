@@ -235,3 +235,4 @@ class GaugeRingPainter extends CustomPainter {
         old.cap != cap;
   }
 }
+

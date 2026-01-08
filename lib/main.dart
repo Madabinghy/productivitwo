@@ -12,6 +12,78 @@ import 'package:productivitwo_v1/utils/pacing.dart';
 
 enum _Tab { dashboard, stats, today }
 
+class MiniRingThick extends StatelessWidget {
+  const MiniRingThick({
+    super.key,
+    required this.progress,
+    required this.center,
+    this.strokeWidth = 7,
+  });
+
+  final double progress; // 0..1
+  final Widget center;
+  final double strokeWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _RingPainter(
+        progress: progress.clamp(0.0, 1.0),
+        strokeWidth: strokeWidth,
+        bg: Theme.of(context).colorScheme.onSurface.withOpacity(0.10),
+        fg: Theme.of(context).colorScheme.primary.withOpacity(0.95),
+      ),
+      child: Center(child: center),
+    );
+  }
+}
+
+class _RingPainter extends CustomPainter {
+  _RingPainter({
+    required this.progress,
+    required this.strokeWidth,
+    required this.bg,
+    required this.fg,
+  });
+
+  final double progress;
+  final double strokeWidth;
+  final Color bg;
+  final Color fg;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = Offset(size.width / 2, size.height / 2);
+    final r = (size.shortestSide / 2) - strokeWidth / 2;
+
+    final pBg = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round
+      ..color = bg;
+
+    final pFg = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round
+      ..color = fg;
+
+    canvas.drawCircle(c, r, pBg);
+
+    final start = -3.1415926535 / 2; // 12h
+    final sweep = 2 * 3.1415926535 * progress;
+    canvas.drawArc(
+        Rect.fromCircle(center: c, radius: r), start, sweep, false, pFg);
+  }
+
+  @override
+  bool shouldRepaint(covariant _RingPainter old) =>
+      old.progress != progress ||
+      old.strokeWidth != strokeWidth ||
+      old.bg != bg ||
+      old.fg != fg;
+}
+
 class MiniRing extends StatelessWidget {
   final double progress; // 0..1
   final double size;
@@ -3396,29 +3468,46 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             );
           }
 
+          String _habitSubText({
+            required HabitFreq freq,
+            required int dayDone,
+            required int dayQuota,
+            required int weekDone,
+            required int weekTarget,
+            required int monthDone,
+            required int monthTarget,
+          }) {
+            switch (freq) {
+              case HabitFreq.daily:
+                return "Aujourd’hui : $dayDone / $dayQuota";
+              case HabitFreq.weekly:
+                return "7 j : $weekDone / $weekTarget";
+              case HabitFreq.monthly:
+                return "30 j : $monthDone / $monthTarget";
+            }
+          }
+
           Widget _buildHabitTile(Activity a) {
             final now = DateTime.now();
             final today = DateTime(now.year, now.month, now.day);
 
-            // Totaux glissants
             final dH = logic.habitSliding(a.id, 1);
-            final wH = logic.habitSliding(a.id, 7);
-            final mH = logic.habitSliding(a.id, 30);
-            final h90 = logic.habitSliding(a.id, 90); // 👈 NOUVEAU
+            final h90 = logic.habitSliding(a.id, 90);
 
             final quotaD = logic.dayQuotaFor(a);
-            final tgtW = logic.weekTargetFrom(a);
-            final tgtM = logic.monthTargetFrom(a);
+            final isDaily =
+                (a.habitFreq ?? HabitFreq.monthly) == HabitFreq.daily;
 
-            final f = a.habitFreq ?? HabitFreq.monthly;
+            final series30 = List<double>.generate(30, (i) {
+              final day = DateTime(now.year, now.month, now.day)
+                  .subtract(Duration(days: 29 - i));
+              return logic.habitValueOn(a.id, day).toDouble();
+            });
 
-            final isDayPrimary = f == HabitFreq.daily;
-            final isWeekPrimary = f == HabitFreq.weekly;
-            final isMonthPrimary = f == HabitFreq.monthly;
+            final double histMax =
+                isDaily ? quotaD.toDouble().clamp(1.0, 9999.0).toDouble() : 1.0;
 
-            final unit = (a.unit ?? '').isNotEmpty ? ' ${a.unit}' : '';
-
-            return ListTile(
+            return InkWell(
               onLongPress: () => openHabitEditSheet(
                 context: context,
                 logic: logic,
@@ -3426,72 +3515,118 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                 onSaved: () => setSB(() {}),
               ),
               onTap: () => _openHabitManualEditor(a, setSB),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              leading: MiniRing(
-                progress: h90.ratio, // 👈 ratio sur 90 jours glissants
-                center: Text(
-                  "${(h90.ratio * 100).round()}%",
-                  style: const TextStyle(
-                      fontSize: 11, fontWeight: FontWeight.w700),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // Gauche : ring 90j + tap dédié
+                    SizedBox(
+                      width: 56,
+                      height: 56,
+                      child: GestureDetector(
+                        onTap: () => _openHabitManualEditor(a, setSB),
+                        child: MiniRingThick(
+                          progress: h90.ratio,
+                          strokeWidth: 7,
+                          center: Text(
+                            "${(h90.ratio * 100).round()}%",
+                            style: const TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(width: 12),
+
+                    // Milieu : titre + histogramme (tap possible sur l'histogramme)
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            a.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+
+                          // Histogramme 30j
+                          SizedBox(
+                            height: 26,
+                            child: GestureDetector(
+                              onTap: () => _openHabitManualEditor(a, setSB),
+                              child: MiniHistogram30d(
+                                values: series30,
+                                maxValue: histMax,
+                                highlightLast: true,
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 4),
+
+                          // ✅ Petit texte explicatif
+                          Opacity(
+                            opacity: 0.65,
+                            child: Text(
+                              _habitSubText(
+                                freq: a.habitFreq ?? HabitFreq.monthly,
+                                dayDone: dH.done,
+                                dayQuota: quotaD,
+                                weekDone: logic.habitSliding(a.id, 7).done,
+                                weekTarget: logic.weekTargetFrom(a),
+                                monthDone: logic.habitSliding(a.id, 30).done,
+                                monthTarget: logic.monthTargetFrom(a),
+                              ),
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                height: 1.1,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+
+                    // Droite : + / - vertical
+                    SizedBox(
+                      width: 44,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          StepButton(
+                            icon: Icons.add,
+                            onTap: () {
+                              setSB(_lockNow);
+                              logic.incHabit(a.id, 1, today);
+                              setSB(() {});
+                              _unlockSoon(setSB);
+                            },
+                          ),
+                          const SizedBox(height: 10),
+                          StepButton(
+                            icon: Icons.remove,
+                            onTap: () {
+                              setSB(_lockNow);
+                              logic.incHabit(a.id, -1, today);
+                              setSB(() {});
+                              _unlockSoon(setSB);
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              title: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(a.name,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 16)),
-                  Opacity(
-                    opacity: isMonthPrimary ? 1.0 : .45,
-                    child: TinyBar(
-                      ratio: tgtM > 0 ? (mH.done / tgtM).clamp(0, 1) : 0,
-                      labelLeft: "30 j ${mH.done} / $tgtM$unit",
-                    ),
-                  ),
-                  Opacity(
-                    opacity: isWeekPrimary ? 1.0 : .45,
-                    child: TinyBar(
-                      ratio: tgtW > 0 ? (wH.done / tgtW).clamp(0, 1) : 0,
-                      labelLeft: "7 j ${wH.done} / $tgtW$unit",
-                      padding: const EdgeInsets.only(top: 2),
-                    ),
-                  ),
-                  if (isDayPrimary)
-                    TinyBar(
-                      ratio: quotaD > 0 ? (dH.done / quotaD).clamp(0, 1) : 0,
-                      labelLeft: "1 j ${dH.done} / $quotaD$unit",
-                      padding: const EdgeInsets.only(top: 2),
-                    ),
-                ],
-              ),
-              // trailing: tes boutons +/- etc (tu peux laisser tel quel)
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    onPressed: () {
-                      setSB(() {
-                        _lockNow();
-                      });
-                      logic.incHabit(a.id, -1, today);
-                      setSB(() {});
-                      _unlockSoon(setSB);
-                    },
-                    icon: const Icon(Icons.remove),
-                  ),
-                  IconButton(
-                    onPressed: () {
-                      setSB(() {
-                        _lockNow();
-                      });
-                      logic.incHabit(a.id, 1, today);
-                      setSB(() {});
-                      _unlockSoon(setSB);
-                    },
-                    icon: const Icon(Icons.add),
-                  ),
-                ],
               ),
             );
           }

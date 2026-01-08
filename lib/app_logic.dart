@@ -1623,6 +1623,7 @@ extension TodayLogic on AppLogic {
 // =================  OUTILS ANNEXES  ==================
 // =====================================================
 
+
 class FocusItem {
   final String kind; // 'time' | 'habit' | 'goal'
   final double score;
@@ -1800,4 +1801,130 @@ class GoalChange {
       required this.id,
       required this.deltaMin,
       required this.newGoalMin});
+}
+
+
+class StepButton extends StatelessWidget {
+  const StepButton({required this.icon, required this.onTap});
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Icon(icon, size: 22),
+        ),
+      ),
+    );
+  }
+}
+
+
+class MiniHistogram30d extends StatelessWidget {
+  const MiniHistogram30d({
+    super.key,
+    required this.values,
+    this.maxValue,
+    this.highlightLast = true,
+  });
+
+  final List<double> values;
+  final double? maxValue;
+  final bool highlightLast;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return CustomPaint(
+      painter: _MiniHistogramPainter(
+        values: values,
+        maxValue: maxValue,
+        color: cs.primary.withOpacity(0.9),
+        baseColor: cs.onSurface.withOpacity(0.12),
+        highlightColor: cs.secondary.withOpacity(0.95),
+        highlightLast: highlightLast,
+      ),
+      size: Size.infinite,
+    );
+  }
+}
+
+class _MiniHistogramPainter extends CustomPainter {
+  _MiniHistogramPainter({
+    required this.values,
+    required this.color,
+    required this.baseColor,
+    required this.highlightColor,
+    required this.highlightLast,
+    this.maxValue,
+  });
+
+  final List<double> values;
+  final Color color;
+  final Color baseColor;
+  final Color highlightColor;
+  final bool highlightLast;
+  final double? maxValue;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (values.isEmpty) return;
+
+    final basePaint = Paint()
+      ..color = baseColor
+      ..strokeWidth = 1;
+
+    final baselineY = size.height - 1;
+    canvas.drawLine(Offset(0, baselineY), Offset(size.width, baselineY), basePaint);
+
+    double vmax = maxValue ??
+        values.fold<double>(0, (m, v) => v > m ? v : m);
+    if (vmax <= 0) vmax = 1.0;
+
+    final n = values.length;
+    final gap = 2.0;
+    final barW = ((size.width - gap * (n - 1)) / n).clamp(1.0, 999.0);
+
+    for (int i = 0; i < n; i++) {
+      final v = values[i];
+      final t = (v / vmax).clamp(0.0, 1.0);
+
+      double h = t * (size.height - 2);
+      if (v > 0 && h < 2) h = 2;
+
+      final x = i * (barW + gap);
+      final y = size.height - h;
+
+      final isLast = highlightLast && i == n - 1;
+
+      final paint = Paint()
+        ..color = (v <= 0)
+            ? baseColor.withOpacity(0.45)
+            : (isLast ? highlightColor : color);
+
+      final r = RRect.fromRectAndRadius(
+        Rect.fromLTWH(x, y, barW, h),
+        const Radius.circular(2),
+      );
+
+      canvas.drawRRect(r, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _MiniHistogramPainter old) {
+    if (old.values.length != values.length) return true;
+    if (old.maxValue != maxValue) return true;
+    if (old.highlightLast != highlightLast) return true;
+    for (int i = 0; i < values.length; i++) {
+      if (old.values[i] != values[i]) return true;
+    }
+    return false;
+  }
 }
