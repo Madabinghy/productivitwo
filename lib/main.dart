@@ -2461,8 +2461,24 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     List<String> _lockUnderIds = <String>[];
     List<String> _lockOverIds = <String>[];
     void _lockNow() => _lockActive = true;
+    int _ringAnimToken = 0;
+
+    final Map<String, int> _ringAnimTokenByHabit = {};
+
+    void _triggerRingAnimFor(String habitId, StateSetter setSB) {
+      setSB(() {
+        _lockNow();
+        _ringAnimTokenByHabit[habitId] =
+            (_ringAnimTokenByHabit[habitId] ?? 0) + 1; // ✅ tick d’anim
+      });
+    }
+
+    Timer? _unlockTimer;
+
     void _unlockSoon(StateSetter setSB) {
-      Future.delayed(const Duration(milliseconds: 1400), () {
+      _unlockTimer?.cancel();
+      _unlockTimer = Timer(const Duration(seconds: 5), () {
+        if (!mounted) return;
         setSB(() => _lockActive = false);
       });
     }
@@ -3507,6 +3523,9 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             final double histMax =
                 isDaily ? quotaD.toDouble().clamp(1.0, 9999.0).toDouble() : 1.0;
 
+            final target = h90.ratio.clamp(0.0, 1.0);
+            final token = _ringAnimTokenByHabit[a.id] ?? 0;
+
             return InkWell(
               onLongPress: () => openHabitEditSheet(
                 context: context,
@@ -3522,20 +3541,26 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     // Gauche : ring 90j + tap dédié
+
                     SizedBox(
                       width: 56,
                       height: 56,
-                      child: GestureDetector(
-                        onTap: () => _openHabitManualEditor(a, setSB),
-                        child: MiniRingThick(
-                          progress: h90.ratio,
-                          strokeWidth: 7,
-                          center: Text(
-                            "${(h90.ratio * 100).round()}%",
-                            style: const TextStyle(
-                                fontSize: 12, fontWeight: FontWeight.w800),
-                          ),
-                        ),
+                      child: TweenAnimationBuilder<double>(
+                        key: ValueKey("${a.id}|$token"), // ✅ reset l’animation
+                        tween: Tween<double>(begin: 1.0, end: target),
+                        duration: const Duration(seconds: 5),
+                        curve: Curves.easeOutCubic,
+                        builder: (context, p, _) {
+                          return MiniRingThick(
+                            progress: p,
+                            strokeWidth: 7,
+                            center: Text(
+                              "${(target * 100).round()}%",
+                              style: const TextStyle(
+                                  fontSize: 12, fontWeight: FontWeight.w800),
+                            ),
+                          );
+                        },
                       ),
                     ),
 
@@ -3606,20 +3631,22 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                           StepButton(
                             icon: Icons.add,
                             onTap: () {
-                              setSB(_lockNow);
-                              logic.incHabit(a.id, 1, today);
-                              setSB(() {});
-                              _unlockSoon(setSB);
+                              _triggerRingAnimFor(
+                                  a.id, setSB); // 1️⃣ lock + animation
+                              logic.incHabit(
+                                  a.id, 1, today); // 2️⃣ mise à jour métier
+                              _unlockSoon(setSB); // 3️⃣ relâche dans 5s
                             },
                           ),
                           const SizedBox(height: 10),
                           StepButton(
                             icon: Icons.remove,
                             onTap: () {
-                              setSB(_lockNow);
-                              logic.incHabit(a.id, -1, today);
-                              setSB(() {});
-                              _unlockSoon(setSB);
+                              _triggerRingAnimFor(
+                                  a.id, setSB); // 1️⃣ lock + animation
+                              logic.incHabit(
+                                  a.id, -1, today); // 2️⃣ mise à jour métier
+                              _unlockSoon(setSB); // 3️⃣ relâche dans 5s
                             },
                           ),
                         ],
