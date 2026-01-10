@@ -2007,18 +2007,112 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       tgt7: tgt7,
     );
 
-// Label épuré :
-// - si on est en dessous de la semaine -> "done / +X" (objectif pour basculer)
-// - sinon -> "done / tgtToday" (objectif du jour normal)
-// + garde-fous 0/0
-    final String habitsLabel;
-    if (tgtToday == 0) {
-      habitsLabel = "0 / 0";
-    } else if (isBelowWeek && need > 0) {
-      habitsLabel = "$doneToday / ${doneToday + need}";
-    } else {
-      habitsLabel = "$doneToday / $tgtToday";
+
+int _doneForActivityPrimary(Activity a, DateTime today) {
+  final f = a.habitFreq ?? HabitFreq.monthly;
+  switch (f) {
+    case HabitFreq.daily:
+      return logic.habitSliding(a.id, 1).done;
+    case HabitFreq.weekly:
+      return logic.habitSliding(a.id, 7).done;
+    case HabitFreq.monthly:
+      return logic.habitSliding(a.id, 30).done;
+  }
+}
+
+int _targetForActivityPrimary(Activity a) {
+  final f = a.habitFreq ?? HabitFreq.monthly;
+  switch (f) {
+    case HabitFreq.daily:
+      return logic.dayQuotaFor(a);
+    case HabitFreq.weekly:
+      return logic.weekTargetFrom(a);
+    case HabitFreq.monthly:
+      return logic.monthTargetFrom(a);
+  }
+}
+
+double _primaryProgressForDomain(String domainId, DateTime today) {
+  int done = 0;
+  int tgt = 0;
+  for (final a in _state!.activities.where((x) => x.isHabit && x.domainId == domainId)) {
+    done += _doneForActivityPrimary(a, today);
+    tgt += _targetForActivityPrimary(a);
+  }
+  return tgt == 0 ? 0.0 : (done / tgt).clamp(0.0, 1.0);
+}
+
+double _primaryProgressAll(DateTime today) {
+  int done = 0;
+  int tgt = 0;
+  for (final a in _state!.activities.where((x) => x.isHabit)) {
+    done += _doneForActivityPrimary(a, today);
+    tgt += _targetForActivityPrimary(a);
+  }
+  return tgt == 0 ? 0.0 : (done / tgt).clamp(0.0, 1.0);
+}
+
+
+
+({int done, int target}) _primaryAggForDomain(String domainId, DateTime today) {
+  int done = 0;
+  int target = 0;
+
+  for (final a in _state!.activities.where((x) => x.isHabit && x.domainId == domainId)) {
+    final f = a.habitFreq ?? HabitFreq.monthly;
+
+    switch (f) {
+      case HabitFreq.daily:
+        done += logic.habitSliding(a.id, 1).done;
+        target += logic.dayQuotaFor(a);
+        break;
+      case HabitFreq.weekly:
+        done += logic.habitSliding(a.id, 7).done;
+        target += logic.weekTargetFrom(a);
+        break;
+      case HabitFreq.monthly:
+        done += logic.habitSliding(a.id, 30).done;
+        target += logic.monthTargetFrom(a);
+        break;
     }
+  }
+
+  return (done: done, target: target);
+}
+
+({int done, int target}) _primaryAggAll(DateTime today) {
+  int done = 0;
+  int target = 0;
+
+  for (final a in _state!.activities.where((x) => x.isHabit)) {
+    final f = a.habitFreq ?? HabitFreq.monthly;
+
+    switch (f) {
+      case HabitFreq.daily:
+        done += logic.habitSliding(a.id, 1).done;
+        target += logic.dayQuotaFor(a);
+        break;
+      case HabitFreq.weekly:
+        done += logic.habitSliding(a.id, 7).done;
+        target += logic.weekTargetFrom(a);
+        break;
+      case HabitFreq.monthly:
+        done += logic.habitSliding(a.id, 30).done;
+        target += logic.monthTargetFrom(a);
+        break;
+    }
+  }
+
+  return (done: done, target: target);
+}
+
+// Label épuré :
+final aggP = _primaryAggAll(today);
+final habitsLabel = "${aggP.done} / ${aggP.target}";
+final outerHabitsPrimary = aggP.target == 0
+    ? 0.0
+    : (aggP.done / aggP.target).clamp(0.0, 1.0);
+
 
     return Column(
       children: [
@@ -2038,6 +2132,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   color: _colorForProgress(progTimeAll90, context), // couleur basée sur 90j ✅
   onTap: () => _showDomainDetail(null, startCal, endCal, days, focus: 'time'),
 ), */
+
 
               NestedGauge(
                 bigProgress:
@@ -2068,7 +2163,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                 bigProgress: rateWeek, // ✅ norme semaine
                 smallProgress:
                     rate90, // option : tu peux mettre autre chose (voir note)
-                outerProgress: rateToday, // ✅ halo = aujourd’hui
+                outerProgress: outerHabitsPrimary, // ✅ halo = aujourd’hui
 
                 bigColor: _colorForProgress(rateWeek, context),
                 smallColor: _colorForProgress(rate90, context), // ou neutre
@@ -2146,8 +2241,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 // Ici routines = taux, donc on garde direct 0..1
                 final bigProgressD = rateWeekD.clamp(0.0, 1.0);
 
-// ✅ Halo = aujourd’hui
-                final outerProgressD = rateTodayD.clamp(0.0, 1.0);
 
 // ✅ Label dynamique (done / +X tant qu’on est sous la semaine)
                 final isBelowWeekD = rateTodayD < rateWeekD;
@@ -2157,15 +2250,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                   done7: done7D,
                   tgt7: tgt7D,
                 );
-
-                final String routinesLabelD;
-                if (tgtTodayD == 0) {
-                  routinesLabelD = "0 / 0";
-                } else if (isBelowWeekD && needD > 0) {
-                  routinesLabelD = "$doneTodayD / ${doneTodayD + needD}";
-                } else {
-                  routinesLabelD = "$doneTodayD / $tgtTodayD";
-                }
 
                 final done90D =
                     _doneHabitsForDomainCalendar(d.id, start90, end90);
@@ -2177,6 +2261,13 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                 rate90D.clamp(0.0, 1.0);
                 smallColor:
                 _colorForProgress(rate90D, context);
+
+
+                final aggPD = _primaryAggForDomain(d.id, today);
+final routinesLabelD = "${aggPD.done} / ${aggPD.target}";
+final outerProgressD = aggPD.target == 0
+    ? 0.0
+    : (aggPD.done / aggPD.target).clamp(0.0, 1.0);
 
                 return SectionCard(
                   // si tu n’utilises pas SectionCard, remplace par ton Container/Card
