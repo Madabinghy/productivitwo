@@ -2113,6 +2113,13 @@ final outerHabitsPrimary = aggP.target == 0
     ? 0.0
     : (aggP.done / aggP.target).clamp(0.0, 1.0);
 
+double snapToFull(
+  double value, {
+  double threshold = 0.95,
+}) {
+  if (value >= threshold) return 1.0;
+  return value.clamp(0.0, 1.0);
+}
 
     return Column(
       children: [
@@ -2136,9 +2143,9 @@ final outerHabitsPrimary = aggP.target == 0
 
               NestedGauge(
                 bigProgress:
-                    mainProgress, // ton ring principal (objectif période)
-                smallProgress: progTimeAll90, // ton ring 90j
-                outerProgress: outerProgressAll24, // ✅ halo “brut 24h”
+                    snapToFull(mainProgress), // ton ring principal (objectif période)
+                smallProgress: snapToFull(progTimeAll90), // ton ring 90j
+                outerProgress: snapToFull(outerProgressAll24), // ✅ halo “brut 24h”
                 bigColor: _colorForProgress(mainProgress, context),
                 smallColor: _colorForProgress(progTimeAll90, context),
                 outerColor: Colors.cyanAccent, // ou blanc discret
@@ -2160,10 +2167,10 @@ final outerHabitsPrimary = aggP.target == 0
               ), */
 
               NestedGauge(
-                bigProgress: rateWeek, // ✅ norme semaine
+                bigProgress: snapToFull(rateWeek), // ✅ norme semaine
                 smallProgress:
-                    rate90, // option : tu peux mettre autre chose (voir note)
-                outerProgress: outerHabitsPrimary, // ✅ halo = aujourd’hui
+                    snapToFull(rate90), // option : tu peux mettre autre chose (voir note)
+                outerProgress: snapToFull(outerHabitsPrimary), // ✅ halo = aujourd’hui
 
                 bigColor: _colorForProgress(rateWeek, context),
                 smallColor: _colorForProgress(rate90, context), // ou neutre
@@ -2350,10 +2357,10 @@ final outerProgressD = aggPD.target == 0
                                 focus: 'habit'),
                           ), */
                           NestedGauge(
-                            bigProgress: bigProgressD, // ✅ norme 7j
-                            smallProgress: rate90D.clamp(0.0,
-                                1.0), // option : tu peux mettre 90j routines domaine si tu veux
-                            outerProgress: outerProgressD, // ✅ halo jour
+                            bigProgress: snapToFull(bigProgressD), // ✅ norme 7j
+                            smallProgress: snapToFull(rate90D.clamp(0.0,
+                                1.0)), // option : tu peux mettre 90j routines domaine si tu veux
+                            outerProgress: snapToFull(outerProgressD), // ✅ halo jour
 
                             bigColor: _colorForProgress(bigProgressD, context),
                             smallColor: _colorForProgress(rate90D, context),
