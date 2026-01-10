@@ -333,7 +333,7 @@ class StatsView extends StatefulWidget {
 }
 
 class _StatsViewState extends State<StatsView> {
-  int days = 7; // 7 ou 30
+  int days = 30; // 7 ou 30
   bool onlyDomain = true; // Domaine sélectionné vs Tous
   String? statsDomainId; // null = Tous
 

@@ -40,14 +40,14 @@ class _TodayViewState extends State<TodayView> {
   @override
   void initState() {
     super.initState();
-
+    //_planTomorrow = false; //Forcer le tab à aujourd'hui
     // Décaler la maintenance après le 1er frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _startupHousekeeping(); // -> maybeCarryFromYesterday + ensureDailyHabitsPlanned
     });
 
     _base = DateTime.now();
-    if (_base.hour >= 22) _planTomorrow = true;
+    //if (_base.hour >= 22) _planTomorrow = true;
   }
 
   Widget _focusSection(AppLogic logic) {
