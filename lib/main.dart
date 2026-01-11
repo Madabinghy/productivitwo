@@ -2543,6 +2543,40 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     return dailyStrict ? dayOK : (dayOK || (weekOK && monthOK));
   }
 
+  bool isTimeReachedByAvg7(
+    AppLogic l,
+    Activity a, {
+    required List<Session> sessions,
+    double snap = 0.95,
+    DateTime? now,
+  }) {
+    final t = now ?? DateTime.now();
+
+    // objectif/jour (cohérent avec ton digital : target 7 / 7)
+    final d7 = l.timeSliding(a.id, 7);
+    final goalHoursPerDay = (d7.targetMin / 7.0) / 60.0;
+
+    if (goalHoursPerDay <= 0) return true;
+
+    // moyenne réelle 7j (cohérente avec ta courbe)
+    final start =
+        DateTime(t.year, t.month, t.day).subtract(const Duration(days: 59));
+    final end = DateTime(t.year, t.month, t.day).add(const Duration(days: 1));
+
+    final minutesByDay = timeByDayForActivity(
+      sessions: sessions,
+      activityId: a.id,
+      start: start,
+      end: end,
+      now: t,
+    );
+
+    final avg7h =
+        avgHoursNow(minutesByDay: minutesByDay, today: t, windowDays: 7);
+
+    return avg7h >= goalHoursPerDay * snap;
+  }
+
   void _showDomainDetail(
     Domain? domain,
     DateTime start,
@@ -3392,23 +3426,25 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             final bool isGlobal = (domain == null);
             if (isGlobal) over = [];
           } else {
-            // ---- TEMPS : garde ta logique existante ----
-            final bool isGlobal = (domain == null);
-            if (isGlobal) {
-              under = base
-                  .where((a) => !isTimeOverCap(logic, a, dailyStrict: true))
-                  .toList();
-              over = base
-                  .where((a) => isTimeOverCap(logic, a, dailyStrict: true))
-                  .toList();
-            } else {
-              under = base
-                  .where((a) => !isTimeOverCap(logic, a, dailyStrict: false))
-                  .toList();
-              over = base
-                  .where((a) => isTimeOverCap(logic, a, dailyStrict: false))
-                  .toList();
-            }
+            const snap = 0.95;
+
+            under = base
+                .where((a) => !isTimeReachedByAvg7(
+                      logic,
+                      a,
+                      sessions: _state!.sessions,
+                      snap: snap,
+                    ))
+                .toList();
+
+            over = base
+                .where((a) => isTimeReachedByAvg7(
+                      logic,
+                      a,
+                      sessions: _state!.sessions,
+                      snap: snap,
+                    ))
+                .toList();
           }
 
           // ---------- Lock d'ordre visuel pendant +/− ----------
@@ -3481,21 +3517,25 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               points: 30,
             );
 
-            final avg7 = avgHoursNow(
-                minutesByDay: minutesByDay, today: now, windowDays: 7);
-            final goalHoursPerDay = (s7.targetMin / 7.0) / 60.0;
+            final goalHoursPerDay = (s7.targetMin / 7.0) / 60.0; // target 7 / 7
+            final goalTxt = fmtHhMmFromHours(goalHoursPerDay);
 
             return ListTile(
               onTap: () => showTimeExplainer(context, a: a, logic: logic),
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              leading: MiniRing(
+              leading:
+                  /* MiniRing(
                 progress: s90.ratio,
                 center: Text(
                   "${(s90.ratio * 100).round()}%",
                   style: const TextStyle(
                       fontSize: 10, fontWeight: FontWeight.w700),
                 ),
+              ), */
+                  DigitalAvgText(
+                text: goalTxt,
+                suffix: "", // ✅ sans /j
               ),
               title: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -3514,14 +3554,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                       goalHoursPerDay: goalHoursPerDay,
                     ),
                   ),
-
-                  const SizedBox(height: 8),
-
-                  // Digital avg (7j)
-                  DigitalAvgText(
-                    text: fmtHhMmFromHours(avg7),
-                    suffix: "/j",
-                  ),
                 ],
               ),
               trailing: FilledButton.icon(
@@ -3530,7 +3562,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                   Navigator.pop(ctx);
                 },
                 icon: const Icon(Icons.play_arrow),
-                label: const Text("Start"),
+                label: const Text("Go"),
               ),
             );
           }

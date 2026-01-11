@@ -97,8 +97,15 @@ String fmtHhMm(double hours) {
   return "${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}";
 }
 
+String fmtHhMmFromHours(double hours) {
+  final totalMin = (hours * 60).round();
+  final h = totalMin ~/ 60;
+  final m = totalMin % 60;
+  return "${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}";
+}
+
 class DigitalAvgText extends StatelessWidget {
-  const DigitalAvgText({super.key, required this.text, this.suffix = "/j"});
+  const DigitalAvgText({super.key, required this.text, this.suffix = ""});
 
   final String text;
   final String suffix;
@@ -128,7 +135,8 @@ class DigitalAvgText extends StatelessWidget {
           ),
           const SizedBox(width: 6),
           Text(
-            suffix,
+            //suffix,
+            "",
             style: TextStyle(
               fontFamily: 'monospace',
               fontSize: 12,
@@ -271,10 +279,11 @@ class _MiniAvgLinePainter extends CustomPainter {
 
       // petit point à droite (repère)
       canvas.drawCircle(Offset(size.width, yGoal), 2.2, goalPaint);
+      
     }
 
     // 30j (fond) — lissé
-    if (series30.length >= 2) {
+/*     if (series30.length >= 2) {
       final pts30 = toPoints(series30);
       final p30 = Paint()
         ..color = line30
@@ -283,7 +292,7 @@ class _MiniAvgLinePainter extends CustomPainter {
         ..strokeCap = StrokeCap.round;
 
       canvas.drawPath(smoothPath(pts30), p30);
-    }
+    } */
 
     // 7j (devant) — lissé
     final pts7 = toPoints(series7);
@@ -386,11 +395,4 @@ double avgHoursNow({
     windowDays: windowDays,
   );
   return avgMin / 60.0;
-}
-
-String fmtHhMmFromHours(double hours) {
-  final totalMin = (hours * 60).round();
-  final h = totalMin ~/ 60;
-  final m = totalMin % 60;
-  return "${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}";
 }
