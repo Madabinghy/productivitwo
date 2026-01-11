@@ -2115,7 +2115,7 @@ final outerHabitsPrimary = aggP.target == 0
 
 double snapToFull(
   double value, {
-  double threshold = 0.95,
+  double threshold = 0.90,
 }) {
   if (value >= threshold) return 1.0;
   return value.clamp(0.0, 1.0);
