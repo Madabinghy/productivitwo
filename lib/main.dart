@@ -3427,24 +3427,20 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             if (isGlobal) over = [];
           } else {
             const snap = 0.95;
+            final cache = <String, bool>{};
 
-            under = base
-                .where((a) => !isTimeReachedByAvg7(
-                      logic,
-                      a,
-                      sessions: _state!.sessions,
-                      snap: snap,
-                    ))
-                .toList();
+            bool reached(Activity a) => cache.putIfAbsent(
+                  a.id,
+                  () => isTimeReachedByAvg7(
+                    logic,
+                    a,
+                    sessions: _state!.sessions,
+                    snap: snap,
+                  ),
+                );
 
-            over = base
-                .where((a) => isTimeReachedByAvg7(
-                      logic,
-                      a,
-                      sessions: _state!.sessions,
-                      snap: snap,
-                    ))
-                .toList();
+            under = base.where((a) => !reached(a)).toList();
+            over = base.where((a) => reached(a)).toList();
           }
 
           // ---------- Lock d'ordre visuel pendant +/− ----------
@@ -3520,32 +3516,49 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             final goalHoursPerDay = (s7.targetMin / 7.0) / 60.0; // target 7 / 7
             final goalTxt = fmtHhMmFromHours(goalHoursPerDay);
 
+            final avg7 = avgHoursNow(
+                minutesByDay: minutesByDay, today: now, windowDays: 7);
+            final cs = Theme.of(context).colorScheme;
+
             return ListTile(
-              onTap: () => showTimeExplainer(context, a: a, logic: logic),
               contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              leading:
-                  /* MiniRing(
-                progress: s90.ratio,
-                center: Text(
-                  "${(s90.ratio * 100).round()}%",
-                  style: const TextStyle(
-                      fontSize: 10, fontWeight: FontWeight.w700),
-                ),
-              ), */
-                  DigitalAvgText(
-                text: goalTxt,
-                suffix: "", // ✅ sans /j
-              ),
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+leading: SizedBox(
+  width: 82,
+  height: 64, // ✅ un peu plus haut
+  child: Column(
+    mainAxisAlignment: MainAxisAlignment.center,
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      DigitalAvgText(
+        text: fmtHhMmFromHours(goalHoursPerDay),
+        fontSize: 14,
+        suffix: "",
+        textColor: cs.onSurface.withOpacity(0.92),
+        bgOpacity: 0.08,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), // ✅
+      ),
+      const SizedBox(height: 4),
+      DigitalAvgText(
+        text: fmtHhMmFromHours(avg7),
+        fontSize: 11,
+        suffix: "",
+        textColor: cs.primary.withOpacity(0.95),
+        bgOpacity: 0.05,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3), // ✅
+      ),
+    ],
+  ),
+),
               title: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(a.name,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 16)),
-                  const SizedBox(height: 8),
-
-                  // Graphe (remplace les 2 TinyBar)
+                  Text(
+                    a.name,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 16),
+                  ),
+                  const SizedBox(height: 6),
                   SizedBox(
                     height: 34,
                     child: MiniAvgLineChart(

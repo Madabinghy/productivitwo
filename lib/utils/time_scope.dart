@@ -105,18 +105,32 @@ String fmtHhMmFromHours(double hours) {
 }
 
 class DigitalAvgText extends StatelessWidget {
-  const DigitalAvgText({super.key, required this.text, this.suffix = ""});
+  const DigitalAvgText({
+    super.key,
+    required this.text,
+    this.suffix = "",
+    this.fontSize = 16,
+    this.textColor,
+    this.bgOpacity = 0.08,
+    this.padding = const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+  });
 
   final String text;
   final String suffix;
+  final double fontSize;
+  final Color? textColor;
+  final double bgOpacity;
+  final EdgeInsets padding;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final c = textColor ?? cs.onSurface.withOpacity(0.92);
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: padding,
       decoration: BoxDecoration(
-        color: cs.surface.withOpacity(0.08),
+        color: cs.surface.withOpacity(bgOpacity),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: cs.onSurface.withOpacity(0.12)),
       ),
@@ -127,30 +141,30 @@ class DigitalAvgText extends StatelessWidget {
             text,
             style: TextStyle(
               fontFamily: 'monospace',
-              fontSize: 16,
+              fontSize: fontSize,
               letterSpacing: 1.5,
               fontWeight: FontWeight.w800,
-              color: cs.onSurface.withOpacity(0.92),
+              color: c,
             ),
           ),
-          const SizedBox(width: 6),
-          Text(
-            //suffix,
-            "",
-            style: TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 12,
-              letterSpacing: 1.0,
-              fontWeight: FontWeight.w700,
-              color: cs.onSurface.withOpacity(0.55),
+          if (suffix.isNotEmpty) ...[
+            const SizedBox(width: 6),
+            Text(
+              suffix,
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: (fontSize * 0.75),
+                letterSpacing: 1.0,
+                fontWeight: FontWeight.w700,
+                color: c.withOpacity(0.65),
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );
   }
 }
-
 class MiniAvgLineChart extends StatelessWidget {
   const MiniAvgLineChart({
     super.key,
@@ -180,6 +194,7 @@ class MiniAvgLineChart extends StatelessWidget {
     );
   }
 }
+
 class _MiniAvgLinePainter extends CustomPainter {
   _MiniAvgLinePainter({
     required this.series7,
@@ -208,7 +223,8 @@ class _MiniAvgLinePainter extends CustomPainter {
     double maxV = 0;
     for (final v in series7) if (v > maxV) maxV = v;
     for (final v in series30) if (v > maxV) maxV = v;
-    if (goalHoursPerDay != null && goalHoursPerDay! > maxV) maxV = goalHoursPerDay!;
+    if (goalHoursPerDay != null && goalHoursPerDay! > maxV)
+      maxV = goalHoursPerDay!;
     if (maxV <= 0) maxV = 1.0;
 
     // petite marge
@@ -279,7 +295,6 @@ class _MiniAvgLinePainter extends CustomPainter {
 
       // petit point à droite (repère)
       canvas.drawCircle(Offset(size.width, yGoal), 2.2, goalPaint);
-      
     }
 
     // 30j (fond) — lissé
@@ -316,6 +331,7 @@ class _MiniAvgLinePainter extends CustomPainter {
         old.goalLine != goalLine;
   }
 }
+
 DateTime nextDay(DateTime d) => d.add(const Duration(days: 1));
 
 Map<DateTime, int> timeByDayForActivity({
