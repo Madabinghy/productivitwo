@@ -2007,119 +2007,118 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       tgt7: tgt7,
     );
 
-
-int _doneForActivityPrimary(Activity a, DateTime today) {
-  final f = a.habitFreq ?? HabitFreq.monthly;
-  switch (f) {
-    case HabitFreq.daily:
-      return logic.habitSliding(a.id, 1).done;
-    case HabitFreq.weekly:
-      return logic.habitSliding(a.id, 7).done;
-    case HabitFreq.monthly:
-      return logic.habitSliding(a.id, 30).done;
-  }
-}
-
-int _targetForActivityPrimary(Activity a) {
-  final f = a.habitFreq ?? HabitFreq.monthly;
-  switch (f) {
-    case HabitFreq.daily:
-      return logic.dayQuotaFor(a);
-    case HabitFreq.weekly:
-      return logic.weekTargetFrom(a);
-    case HabitFreq.monthly:
-      return logic.monthTargetFrom(a);
-  }
-}
-
-double _primaryProgressForDomain(String domainId, DateTime today) {
-  int done = 0;
-  int tgt = 0;
-  for (final a in _state!.activities.where((x) => x.isHabit && x.domainId == domainId)) {
-    done += _doneForActivityPrimary(a, today);
-    tgt += _targetForActivityPrimary(a);
-  }
-  return tgt == 0 ? 0.0 : (done / tgt).clamp(0.0, 1.0);
-}
-
-double _primaryProgressAll(DateTime today) {
-  int done = 0;
-  int tgt = 0;
-  for (final a in _state!.activities.where((x) => x.isHabit)) {
-    done += _doneForActivityPrimary(a, today);
-    tgt += _targetForActivityPrimary(a);
-  }
-  return tgt == 0 ? 0.0 : (done / tgt).clamp(0.0, 1.0);
-}
-
-
-
-({int done, int target}) _primaryAggForDomain(String domainId, DateTime today) {
-  int done = 0;
-  int target = 0;
-
-  for (final a in _state!.activities.where((x) => x.isHabit && x.domainId == domainId)) {
-    final f = a.habitFreq ?? HabitFreq.monthly;
-
-    switch (f) {
-      case HabitFreq.daily:
-        done += logic.habitSliding(a.id, 1).done;
-        target += logic.dayQuotaFor(a);
-        break;
-      case HabitFreq.weekly:
-        done += logic.habitSliding(a.id, 7).done;
-        target += logic.weekTargetFrom(a);
-        break;
-      case HabitFreq.monthly:
-        done += logic.habitSliding(a.id, 30).done;
-        target += logic.monthTargetFrom(a);
-        break;
+    int _doneForActivityPrimary(Activity a, DateTime today) {
+      final f = a.habitFreq ?? HabitFreq.monthly;
+      switch (f) {
+        case HabitFreq.daily:
+          return logic.habitSliding(a.id, 1).done;
+        case HabitFreq.weekly:
+          return logic.habitSliding(a.id, 7).done;
+        case HabitFreq.monthly:
+          return logic.habitSliding(a.id, 30).done;
+      }
     }
-  }
 
-  return (done: done, target: target);
-}
-
-({int done, int target}) _primaryAggAll(DateTime today) {
-  int done = 0;
-  int target = 0;
-
-  for (final a in _state!.activities.where((x) => x.isHabit)) {
-    final f = a.habitFreq ?? HabitFreq.monthly;
-
-    switch (f) {
-      case HabitFreq.daily:
-        done += logic.habitSliding(a.id, 1).done;
-        target += logic.dayQuotaFor(a);
-        break;
-      case HabitFreq.weekly:
-        done += logic.habitSliding(a.id, 7).done;
-        target += logic.weekTargetFrom(a);
-        break;
-      case HabitFreq.monthly:
-        done += logic.habitSliding(a.id, 30).done;
-        target += logic.monthTargetFrom(a);
-        break;
+    int _targetForActivityPrimary(Activity a) {
+      final f = a.habitFreq ?? HabitFreq.monthly;
+      switch (f) {
+        case HabitFreq.daily:
+          return logic.dayQuotaFor(a);
+        case HabitFreq.weekly:
+          return logic.weekTargetFrom(a);
+        case HabitFreq.monthly:
+          return logic.monthTargetFrom(a);
+      }
     }
-  }
 
-  return (done: done, target: target);
-}
+    double _primaryProgressForDomain(String domainId, DateTime today) {
+      int done = 0;
+      int tgt = 0;
+      for (final a in _state!.activities
+          .where((x) => x.isHabit && x.domainId == domainId)) {
+        done += _doneForActivityPrimary(a, today);
+        tgt += _targetForActivityPrimary(a);
+      }
+      return tgt == 0 ? 0.0 : (done / tgt).clamp(0.0, 1.0);
+    }
+
+    double _primaryProgressAll(DateTime today) {
+      int done = 0;
+      int tgt = 0;
+      for (final a in _state!.activities.where((x) => x.isHabit)) {
+        done += _doneForActivityPrimary(a, today);
+        tgt += _targetForActivityPrimary(a);
+      }
+      return tgt == 0 ? 0.0 : (done / tgt).clamp(0.0, 1.0);
+    }
+
+    ({int done, int target}) _primaryAggForDomain(
+        String domainId, DateTime today) {
+      int done = 0;
+      int target = 0;
+
+      for (final a in _state!.activities
+          .where((x) => x.isHabit && x.domainId == domainId)) {
+        final f = a.habitFreq ?? HabitFreq.monthly;
+
+        switch (f) {
+          case HabitFreq.daily:
+            done += logic.habitSliding(a.id, 1).done;
+            target += logic.dayQuotaFor(a);
+            break;
+          case HabitFreq.weekly:
+            done += logic.habitSliding(a.id, 7).done;
+            target += logic.weekTargetFrom(a);
+            break;
+          case HabitFreq.monthly:
+            done += logic.habitSliding(a.id, 30).done;
+            target += logic.monthTargetFrom(a);
+            break;
+        }
+      }
+
+      return (done: done, target: target);
+    }
+
+    ({int done, int target}) _primaryAggAll(DateTime today) {
+      int done = 0;
+      int target = 0;
+
+      for (final a in _state!.activities.where((x) => x.isHabit)) {
+        final f = a.habitFreq ?? HabitFreq.monthly;
+
+        switch (f) {
+          case HabitFreq.daily:
+            done += logic.habitSliding(a.id, 1).done;
+            target += logic.dayQuotaFor(a);
+            break;
+          case HabitFreq.weekly:
+            done += logic.habitSliding(a.id, 7).done;
+            target += logic.weekTargetFrom(a);
+            break;
+          case HabitFreq.monthly:
+            done += logic.habitSliding(a.id, 30).done;
+            target += logic.monthTargetFrom(a);
+            break;
+        }
+      }
+
+      return (done: done, target: target);
+    }
 
 // Label épuré :
-final aggP = _primaryAggAll(today);
-final habitsLabel = "${aggP.done} / ${aggP.target}";
-final outerHabitsPrimary = aggP.target == 0
-    ? 0.0
-    : (aggP.done / aggP.target).clamp(0.0, 1.0);
+    final aggP = _primaryAggAll(today);
+    final habitsLabel = "${aggP.done} / ${aggP.target}";
+    final outerHabitsPrimary =
+        aggP.target == 0 ? 0.0 : (aggP.done / aggP.target).clamp(0.0, 1.0);
 
-double snapToFull(
-  double value, {
-  double threshold = 0.90,
-}) {
-  if (value >= threshold) return 1.0;
-  return value.clamp(0.0, 1.0);
-}
+    double snapToFull(
+      double value, {
+      double threshold = 0.90,
+    }) {
+      if (value >= threshold) return 1.0;
+      return value.clamp(0.0, 1.0);
+    }
 
     return Column(
       children: [
@@ -2140,12 +2139,12 @@ double snapToFull(
   onTap: () => _showDomainDetail(null, startCal, endCal, days, focus: 'time'),
 ), */
 
-
               NestedGauge(
-                bigProgress:
-                    snapToFull(mainProgress), // ton ring principal (objectif période)
+                bigProgress: snapToFull(
+                    mainProgress), // ton ring principal (objectif période)
                 smallProgress: snapToFull(progTimeAll90), // ton ring 90j
-                outerProgress: snapToFull(outerProgressAll24), // ✅ halo “brut 24h”
+                outerProgress:
+                    snapToFull(outerProgressAll24), // ✅ halo “brut 24h”
                 bigColor: _colorForProgress(mainProgress, context),
                 smallColor: _colorForProgress(progTimeAll90, context),
                 outerColor: Colors.cyanAccent, // ou blanc discret
@@ -2168,9 +2167,10 @@ double snapToFull(
 
               NestedGauge(
                 bigProgress: snapToFull(rateWeek), // ✅ norme semaine
-                smallProgress:
-                    snapToFull(rate90), // option : tu peux mettre autre chose (voir note)
-                outerProgress: snapToFull(outerHabitsPrimary), // ✅ halo = aujourd’hui
+                smallProgress: snapToFull(
+                    rate90), // option : tu peux mettre autre chose (voir note)
+                outerProgress:
+                    snapToFull(outerHabitsPrimary), // ✅ halo = aujourd’hui
 
                 bigColor: _colorForProgress(rateWeek, context),
                 smallColor: _colorForProgress(rate90, context), // ou neutre
@@ -2248,7 +2248,6 @@ double snapToFull(
 // Ici routines = taux, donc on garde direct 0..1
                 final bigProgressD = rateWeekD.clamp(0.0, 1.0);
 
-
 // ✅ Label dynamique (done / +X tant qu’on est sous la semaine)
                 final isBelowWeekD = rateTodayD < rateWeekD;
                 final needD = _neededToBeatWeek(
@@ -2269,12 +2268,11 @@ double snapToFull(
                 smallColor:
                 _colorForProgress(rate90D, context);
 
-
                 final aggPD = _primaryAggForDomain(d.id, today);
-final routinesLabelD = "${aggPD.done} / ${aggPD.target}";
-final outerProgressD = aggPD.target == 0
-    ? 0.0
-    : (aggPD.done / aggPD.target).clamp(0.0, 1.0);
+                final routinesLabelD = "${aggPD.done} / ${aggPD.target}";
+                final outerProgressD = aggPD.target == 0
+                    ? 0.0
+                    : (aggPD.done / aggPD.target).clamp(0.0, 1.0);
 
                 return SectionCard(
                   // si tu n’utilises pas SectionCard, remplace par ton Container/Card
@@ -2360,7 +2358,8 @@ final outerProgressD = aggPD.target == 0
                             bigProgress: snapToFull(bigProgressD), // ✅ norme 7j
                             smallProgress: snapToFull(rate90D.clamp(0.0,
                                 1.0)), // option : tu peux mettre 90j routines domaine si tu veux
-                            outerProgress: snapToFull(outerProgressD), // ✅ halo jour
+                            outerProgress:
+                                snapToFull(outerProgressD), // ✅ halo jour
 
                             bigColor: _colorForProgress(bigProgressD, context),
                             smallColor: _colorForProgress(rate90D, context),
@@ -3452,17 +3451,46 @@ final outerProgressD = aggPD.target == 0
           Widget _buildTimeTile(Activity a) {
             final now = DateTime.now();
 
-            // Fenêtres glissantes
+            // ratios existants (garde ton ring 90j)
+            final s90 = logic.timeSliding(a.id, 90);
             final s7 = logic.timeSliding(a.id, 7);
-            final s30 = logic.timeSliding(a.id, 30);
-            final s90 = logic.timeSliding(a.id, 90); // 👈 NOUVEAU
+
+            // Données journalières sur ~60 jours (pour tracer 30 points + fenêtre 30j)
+            final start = dayKey(now).subtract(const Duration(days: 59));
+            final end = dayKey(now).add(const Duration(days: 1));
+
+            final minutesByDay = timeByDayForActivity(
+              sessions: _state!.sessions,
+              activityId: a.id,
+              start: start,
+              end: end,
+              now: now,
+            );
+
+            final series7 = movingAvgHoursSeries(
+              minutesByDay: minutesByDay,
+              today: now,
+              windowDays: 7,
+              points: 30,
+            );
+
+            final series30 = movingAvgHoursSeries(
+              minutesByDay: minutesByDay,
+              today: now,
+              windowDays: 30,
+              points: 30,
+            );
+
+            final avg7 = avgHoursNow(
+                minutesByDay: minutesByDay, today: now, windowDays: 7);
+            final goalHoursPerDay = (s7.targetMin / 7.0) / 60.0;
 
             return ListTile(
               onTap: () => showTimeExplainer(context, a: a, logic: logic),
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               leading: MiniRing(
-                progress: s90.ratio, // 👈 90 jours glissants
+                progress: s90.ratio,
                 center: Text(
                   "${(s90.ratio * 100).round()}%",
                   style: const TextStyle(
@@ -3475,16 +3503,24 @@ final outerProgressD = aggPD.target == 0
                   Text(a.name,
                       style: const TextStyle(
                           fontWeight: FontWeight.w700, fontSize: 16)),
-                  TinyBar(
-                    ratio: s30.ratio,
-                    labelLeft:
-                        "30 j ${fmtCompactFromMin(s30.doneMin)} / ${fmtCompactFromMin(s30.targetMin)}",
+                  const SizedBox(height: 8),
+
+                  // Graphe (remplace les 2 TinyBar)
+                  SizedBox(
+                    height: 34,
+                    child: MiniAvgLineChart(
+                      series7: series7,
+                      series30: series30,
+                      goalHoursPerDay: goalHoursPerDay,
+                    ),
                   ),
-                  TinyBar(
-                    ratio: s7.ratio,
-                    labelLeft:
-                        "7 j ${fmtCompactFromMin(s7.doneMin)} / ${fmtCompactFromMin(s7.targetMin)}",
-                    padding: const EdgeInsets.only(top: 2),
+
+                  const SizedBox(height: 8),
+
+                  // Digital avg (7j)
+                  DigitalAvgText(
+                    text: fmtHhMmFromHours(avg7),
+                    suffix: "/j",
                   ),
                 ],
               ),
