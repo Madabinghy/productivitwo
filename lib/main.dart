@@ -3534,8 +3534,8 @@ leading: SizedBox(
         text: fmtHhMmFromHours(goalHoursPerDay),
         fontSize: 14,
         suffix: "",
-        textColor: cs.onSurface.withOpacity(0.92),
-        bgOpacity: 0.08,
+        textColor: cs.onSurface.withOpacity(0.75),
+        bgOpacity: 0.03,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), // ✅
       ),
       const SizedBox(height: 4),
