@@ -2192,7 +2192,55 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               // Jauges par domaine (inchangé, tu peux garder tes SectionCard si tu les utilises)
 // --- Jauges par domaine (REMPLACER ton map existant) ---
               ..._state!.domains.map((d) {
-                // TEMPS (sur la fenêtre choisie : 24h glissantes si Jour, sinon calendaire)
+
+final now = DateTime.now();
+final today = DateTime(now.year, now.month, now.day);
+
+// --------- Aujourd’hui (calendaire) ---------
+final totalsToday = logic.timeTotalsByDomain(today, now);
+final durToday = totalsToday[d.id] ?? Duration.zero;
+final hoursToday = durToday.inMinutes / 60.0;
+
+// --------- 24h glissantes ---------
+final start24 = now.subtract(const Duration(hours: 24));
+final totals24 = logic.timeTotalsByDomain(start24, now);
+final dur24 = totals24[d.id] ?? Duration.zero;
+final hours24 = dur24.inMinutes / 60.0;
+
+// --------- Moyenne semaine (7j précédents) ---------
+final start7 = today.subtract(const Duration(days: 7));
+final end7 = today; // exclut aujourd’hui
+final totals7 = logic.timeTotalsByDomain(start7, end7);
+final dur7 = totals7[d.id] ?? Duration.zero;
+final avgWeekHoursPerDay = (dur7.inMinutes / 60.0) / 7.0;
+
+// --------- Moyenne 90j ---------
+final start90 = today.subtract(const Duration(days: 90));
+final end90 = today;
+final totals90 = logic.timeTotalsByDomain(start90, end90);
+final dur90 = totals90[d.id] ?? Duration.zero;
+final avg90HoursPerDay = (dur90.inMinutes / 60.0) / 90.0;
+
+// --------- Progress (référence = moyenne semaine) ---------
+final denom = avgWeekHoursPerDay;
+
+final outerProgress = denom > 0
+    ? (hoursToday / denom).clamp(0.0, 1.0)
+    : 0.0;
+
+final bigProgress = denom > 0
+    ? (hours24 / denom).clamp(0.0, 1.0)
+    : 0.0;
+
+final smallProgress = denom > 0
+    ? (avg90HoursPerDay / denom).clamp(0.0, 1.0)
+    : 0.0;
+
+// --------- Texte ---------
+final label = _fmtHoursHM(hoursToday);
+
+
+                 // TEMPS (sur la fenêtre choisie : 24h glissantes si Jour, sinon calendaire)
                 final dur = timeByDomain[d.id] ?? Duration.zero;
                 final h = dur.inMinutes / 60.0;
 
@@ -2208,6 +2256,11 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                 // --- TEMPS : moyenne / score sur 90 jours (pour la couleur & le sous-texte)
                 final progTime90 =
                     _timeProgressDomainOverRange(d.id, start90, end90, 90);
+
+
+
+
+
 
                 // HABITUDES (sur la fenêtre habitude : 7j si scope == day, sinon scope calendaire)
                 final doneH =
@@ -2274,6 +2327,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                     ? 0.0
                     : (aggPD.done / aggPD.target).clamp(0.0, 1.0);
 
+
                 return SectionCard(
                   // si tu n’utilises pas SectionCard, remplace par ton Container/Card
                   child: Column(
@@ -2326,7 +2380,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
                           // Jauge TEMPS : / objectif domaine
-                          GaugeRing(
+/*                           GaugeRing(
                             label: "Temps",
                             centerText: _fmtHoursHM(maxHoursD), // ex: 0h13m
                             subText: "Moy 90j : ${(progTime90 * 100).round()}%",
@@ -2340,7 +2394,24 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                             outerProgress: prog24,
                             outerColor: Colors
                                 .white, // ou fg, ou _colorForProgress(prog24, context)
-                          ),
+                          ), */
+
+NestedGauge(
+  bigProgress: bigProgress,          // 24h vs moy. semaine
+  outerProgress: outerProgress,      // aujourd’hui vs moy. semaine
+  smallProgress: smallProgress,      // 90j vs moy. semaine
+
+  bigColor: _colorForProgress(bigProgress, context),
+  outerColor: Colors.cyanAccent,
+  smallColor: _colorForProgress(smallProgress, context),
+
+  centerText: "",                    // ou _fmtHoursHM(hours24) si tu veux
+  label: label,                      // moyenne semaine
+  size: 140,
+                              onTap: () => _showDomainDetail(
+                                d, startCal, endCal, days,
+                                focus: 'time'),
+),
 
                           // Jauge HABITUDES : / cible cumulée sur la période
 
@@ -3902,7 +3973,7 @@ leading: SizedBox(
   }
 
   Color _colorForProgress(double p, BuildContext ctx) {
-    if (p >= 0.99) return Colors.transparent;
+    //if (p >= 0.99) return Colors.transparent;
     if (p >= 0.50) return Colors.green;
     if (p >= 0.25) return Colors.orange;
     return Colors.redAccent;
