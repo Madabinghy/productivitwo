@@ -2274,7 +2274,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                         ? (avg90HoursPerDay / denom).clamp(0.0, 1.0)
                         : 0.0;
 
-                    final timeLabel = _fmtHoursHM(hours24);
+                    final timeLabel = _fmtHoursHM(hoursToday);
 
                     // ===== ROUTINES (domain) =====
                     // Aujourd'hui
