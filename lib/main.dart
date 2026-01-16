@@ -1980,6 +1980,11 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     final rateToday = tgtToday == 0 ? 0.0 : doneToday / tgtToday;
     final rateWeek = tgt7 == 0 ? 0.0 : done7 / tgt7;
 
+    final totalsToday = logic.timeTotalsByDomain(today, now);
+    final totalTodayDur =
+        totalsToday.values.fold<Duration>(Duration.zero, (a, b) => a + b);
+    final totalTodayHours = totalTodayDur.inMinutes / 60.0;
+
     int _neededToBeatWeek({
       required int doneToday,
       required int tgtToday,
@@ -2006,6 +2011,19 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       done7: done7,
       tgt7: tgt7,
     );
+
+    final denomAll = avg7HoursPerDay; // référence semaine (h/jour)
+
+// Big = 24h glissantes vs moyenne semaine
+    final bigAll =
+        denomAll > 0 ? (total24Hours / denomAll).clamp(0.0, 1.0) : 0.0;
+
+// Halo = depuis minuit vs moyenne semaine
+    final haloAll =
+        denomAll > 0 ? (totalTodayHours / denomAll).clamp(0.0, 1.0) : 0.0;
+
+// Label = depuis minuit (ce que tu veux afficher)
+    final labelAll = _fmtHoursHM(totalTodayHours);
 
     int _doneForActivityPrimary(Activity a, DateTime today) {
       final f = a.habitFreq ?? HabitFreq.monthly;
@@ -2140,16 +2158,15 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 ), */
 
               NestedGauge(
-                bigProgress: snapToFull(
-                    mainProgress), // ton ring principal (objectif période)
-                smallProgress: snapToFull(progTimeAll90), // ton ring 90j
-                outerProgress:
-                    snapToFull(outerProgressAll24), // ✅ halo “brut 24h”
-                bigColor: _colorForProgress(mainProgress, context),
+                bigProgress: snapToFull(bigAll),
+                outerProgress: snapToFull(haloAll),
+                smallProgress:
+                    snapToFull(progTimeAll90), // tu gardes ton 90j actuel
+                bigColor: _colorForProgress(bigAll, context),
+                outerColor: Colors.cyanAccent,
                 smallColor: _colorForProgress(progTimeAll90, context),
-                outerColor: Colors.cyanAccent, // ou blanc discret
                 centerText: "",
-                label: mainText, // ou maxHours selon ton choix
+                label: labelAll,
                 onTap: () => _showDomainDetail(null, startCal, endCal, days,
                     focus: 'time'),
               ),
