@@ -15,7 +15,7 @@ class RingPainter extends CustomPainter {
     required this.stroke,
     required this.trackColor,
     this.startAngle = -math.pi / 2, // en haut
-    this.cap = StrokeCap.round, // NEW
+    this.cap = StrokeCap.butt, // NEW
   });
 
   @override

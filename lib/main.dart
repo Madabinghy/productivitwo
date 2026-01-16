@@ -2187,271 +2187,197 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
         // Liste scrollable : Jauges par domaine + Sélecteur + Activités du domaine
         Expanded(
-          child: ListView(
-            children: [
-              // Jauges par domaine (inchangé, tu peux garder tes SectionCard si tu les utilises)
-// --- Jauges par domaine (REMPLACER ton map existant) ---
-              ..._state!.domains.map((d) {
+          child: Builder(
+            builder: (context) {
+              final now = DateTime.now();
+              final today = DateTime(now.year, now.month, now.day);
+              final tomorrow = today.add(const Duration(days: 1));
 
-final now = DateTime.now();
-final today = DateTime(now.year, now.month, now.day);
+              // ---------- TEMPS : maps (1 seule fois) ----------
+              final totalsTodayAll = logic.timeTotalsByDomain(today, now);
+              final totals24All = logic.timeTotalsByDomain(
+                  now.subtract(const Duration(hours: 24)), now);
 
-// --------- Aujourd’hui (calendaire) ---------
-final totalsToday = logic.timeTotalsByDomain(today, now);
-final durToday = totalsToday[d.id] ?? Duration.zero;
-final hoursToday = durToday.inMinutes / 60.0;
+              final start7 = today.subtract(const Duration(days: 7));
+              final end7 = today; // exclut aujourd'hui
+              final totals7All = logic.timeTotalsByDomain(start7, end7);
 
-// --------- 24h glissantes ---------
-final start24 = now.subtract(const Duration(hours: 24));
-final totals24 = logic.timeTotalsByDomain(start24, now);
-final dur24 = totals24[d.id] ?? Duration.zero;
-final hours24 = dur24.inMinutes / 60.0;
+              final start90 = today.subtract(const Duration(days: 90));
+              final end90 = today;
+              final totals90All = logic.timeTotalsByDomain(start90, end90);
 
-// --------- Moyenne semaine (7j précédents) ---------
-final start7 = today.subtract(const Duration(days: 7));
-final end7 = today; // exclut aujourd’hui
-final totals7 = logic.timeTotalsByDomain(start7, end7);
-final dur7 = totals7[d.id] ?? Duration.zero;
-final avgWeekHoursPerDay = (dur7.inMinutes / 60.0) / 7.0;
+              // ---------- TRI : delta temps (24h vs today, en %) ----------
+// ---------- TRI : delta visuel (valeurs clampées affichées) ----------
+              const haloReachedThreshold = 0.99; // ou 0.95 si tu veux plus doux
 
-// --------- Moyenne 90j ---------
-final start90 = today.subtract(const Duration(days: 90));
-final end90 = today;
-final totals90 = logic.timeTotalsByDomain(start90, end90);
-final dur90 = totals90[d.id] ?? Duration.zero;
-final avg90HoursPerDay = (dur90.inMinutes / 60.0) / 90.0;
+              final scoreByDomain = <String, double>{};
+              final haloReachedByDomain = <String, bool>{};
 
-// --------- Progress (référence = moyenne semaine) ---------
-final denom = avgWeekHoursPerDay;
+              for (final d in _state!.domains) {
+                final hoursToday =
+                    (totalsTodayAll[d.id]?.inMinutes ?? 0) / 60.0;
+                final hours24 = (totals24All[d.id]?.inMinutes ?? 0) / 60.0;
 
-final outerProgress = denom > 0
-    ? (hoursToday / denom).clamp(0.0, 1.0)
-    : 0.0;
+                final avgWeekHoursPerDay =
+                    ((totals7All[d.id]?.inMinutes ?? 0) / 60.0) / 7.0;
+                final denom = avgWeekHoursPerDay;
 
-final bigProgress = denom > 0
-    ? (hours24 / denom).clamp(0.0, 1.0)
-    : 0.0;
+                final big = denom > 0 ? (hours24 / denom).clamp(0.0, 1.0) : 0.0;
+                final outer =
+                    denom > 0 ? (hoursToday / denom).clamp(0.0, 1.0) : 0.0;
 
-final smallProgress = denom > 0
-    ? (avg90HoursPerDay / denom).clamp(0.0, 1.0)
-    : 0.0;
+                // score dynamique (écart visuel)
+                scoreByDomain[d.id] = (big - outer).abs();
 
-// --------- Texte ---------
-final label = _fmtHoursHM(hoursToday);
+                // contrainte : halo atteint ?
+                haloReachedByDomain[d.id] = outer >= haloReachedThreshold;
+              }
 
+// TRI : 1) ceux dont halo PAS atteint d'abord, 2) score desc
+              final sortedDomains = [..._state!.domains]..sort((a, b) {
+                  final aReached = haloReachedByDomain[a.id] ?? false;
+                  final bReached = haloReachedByDomain[b.id] ?? false;
 
-                 // TEMPS (sur la fenêtre choisie : 24h glissantes si Jour, sinon calendaire)
-                final dur = timeByDomain[d.id] ?? Duration.zero;
-                final h = dur.inMinutes / 60.0;
+                  // non atteint -> en haut
+                  if (aReached != bReached) {
+                    return aReached ? 1 : -1;
+                  }
 
-                // Objectif du domaine (minutes/jour) -> converti en heures selon la période
-                final goalMinD = logic.domainGoalMinDay(d.id); // min / jour
-                final maxHoursD = (scope == TimeScope.day)
-                    ? goalMinD / 60.0
-                    : (goalMinD * days) / 60.0;
+                  // sinon tri normal par score
+                  final sa = scoreByDomain[a.id] ?? 0.0;
+                  final sb = scoreByDomain[b.id] ?? 0.0;
+                  return sb.compareTo(sa);
+                });
 
-                final progTime =
-                    maxHoursD > 0 ? (h / maxHoursD).clamp(0.0, 1.0) : 0.0;
+              // ---------- UI ----------
+              return ListView(
+                children: [
+                  ...sortedDomains.map((d) {
+                    // ===== TEMPS (domain) =====
+                    final hoursToday =
+                        (totalsTodayAll[d.id]?.inMinutes ?? 0) / 60.0;
+                    final hours24 = (totals24All[d.id]?.inMinutes ?? 0) / 60.0;
 
-                // --- TEMPS : moyenne / score sur 90 jours (pour la couleur & le sous-texte)
-                final progTime90 =
-                    _timeProgressDomainOverRange(d.id, start90, end90, 90);
+                    final avgWeekHoursPerDay =
+                        ((totals7All[d.id]?.inMinutes ?? 0) / 60.0) / 7.0;
 
+                    final avg90HoursPerDay =
+                        ((totals90All[d.id]?.inMinutes ?? 0) / 60.0) / 90.0;
 
+                    final denom = avgWeekHoursPerDay;
 
+                    final outerProgressTime =
+                        denom > 0 ? (hoursToday / denom).clamp(0.0, 1.0) : 0.0;
+                    final bigProgressTime =
+                        denom > 0 ? (hours24 / denom).clamp(0.0, 1.0) : 0.0;
+                    final smallProgressTime = denom > 0
+                        ? (avg90HoursPerDay / denom).clamp(0.0, 1.0)
+                        : 0.0;
 
+                    final timeLabel = _fmtHoursHM(hours24);
 
+                    // ===== ROUTINES (domain) =====
+                    // Aujourd'hui
+                    final doneTodayD =
+                        _doneHabitsForDomainCalendar(d.id, today, tomorrow);
+                    final tgtTodayD =
+                        _targetHabitsForDomainCalendar(d.id, today, tomorrow);
+                    final rateTodayD =
+                        tgtTodayD == 0 ? 0.0 : (doneTodayD / tgtTodayD);
 
-                // HABITUDES (sur la fenêtre habitude : 7j si scope == day, sinon scope calendaire)
-                final doneH =
-                    _doneHabitsForDomainCalendar(d.id, startHabits, endHabits);
-                final tgtH = _targetHabitsForDomainCalendar(
-                    d.id, startHabits, endHabits);
+                    // Semaine (7j précédents)
+                    final done7D =
+                        _doneHabitsForDomainCalendar(d.id, start7, end7);
+                    final tgt7D =
+                        _targetHabitsForDomainCalendar(d.id, start7, end7);
+                    final rateWeekD = tgt7D == 0 ? 0.0 : (done7D / tgt7D);
 
-                final progHabit =
-                    tgtH > 0 ? (doneH / tgtH).clamp(0.0, 1.0) : 0.0;
+                    // 90j
+                    final done90D =
+                        _doneHabitsForDomainCalendar(d.id, start90, end90);
+                    final tgt90D =
+                        _targetHabitsForDomainCalendar(d.id, start90, end90);
+                    final rate90D = tgt90D == 0 ? 0.0 : (done90D / tgt90D);
 
-                final agg = computeDailyPacingAggregate(logic, domainId: d.id);
-                final progHab =
-                    agg.target > 0 ? (agg.done / agg.target).clamp(0, 1) : 0.0;
+                    // label dynamique routines : done / +X si sous la semaine, sinon done/target
+                    final needD = _neededToBeatWeek(
+                      doneToday: doneTodayD,
+                      tgtToday: tgtTodayD,
+                      done7: done7D,
+                      tgt7: tgt7D,
+                    );
 
-                final avg90TxtD = "Moy 90j : ${(progTime90 * 100).round()}%";
+                    final routinesLabelD = (tgtTodayD == 0)
+                        ? "0 / 0"
+                        : ((rateTodayD < rateWeekD && needD > 0)
+                            ? "$doneTodayD / ${doneTodayD + needD}"
+                            : "$doneTodayD / $tgtTodayD");
 
-                final h24 = dur.inMinutes / 60.0;
-
-                final goalH24 = goalMinD / 60.0; // standard fixe / jour
-                final prog24 =
-                    goalH24 > 0 ? (h24 / goalH24).clamp(0.0, 1.0) : 0.0;
-
-                // ✅ Routines aujourd’hui (domaine)
-                final doneTodayD =
-                    _doneHabitsForDomainCalendar(d.id, today, tomorrow);
-                final tgtTodayD =
-                    _targetHabitsForDomainCalendar(d.id, today, tomorrow);
-                final rateTodayD =
-                    tgtTodayD == 0 ? 0.0 : (doneTodayD / tgtTodayD);
-
-// ✅ Moyenne 7j (domaine)
-                final done7D = _doneHabitsForDomainCalendar(d.id, start7, end7);
-                final tgt7D =
-                    _targetHabitsForDomainCalendar(d.id, start7, end7);
-                final rateWeekD = tgt7D == 0 ? 0.0 : (done7D / tgt7D);
-
-// ✅ Anneau principal = norme 7j (ramenée sur 24h ?)
-// Ici routines = taux, donc on garde direct 0..1
-                final bigProgressD = rateWeekD.clamp(0.0, 1.0);
-
-// ✅ Label dynamique (done / +X tant qu’on est sous la semaine)
-                final isBelowWeekD = rateTodayD < rateWeekD;
-                final needD = _neededToBeatWeek(
-                  doneToday: doneTodayD,
-                  tgtToday: tgtTodayD,
-                  done7: done7D,
-                  tgt7: tgt7D,
-                );
-
-                final done90D =
-                    _doneHabitsForDomainCalendar(d.id, start90, end90);
-                final tgt90D =
-                    _targetHabitsForDomainCalendar(d.id, start90, end90);
-                final rate90D = tgt90D == 0 ? 0.0 : (done90D / tgt90D);
-
-                smallProgress:
-                rate90D.clamp(0.0, 1.0);
-                smallColor:
-                _colorForProgress(rate90D, context);
-
-                final aggPD = _primaryAggForDomain(d.id, today);
-                final routinesLabelD = "${aggPD.done} / ${aggPD.target}";
-                final outerProgressD = aggPD.target == 0
-                    ? 0.0
-                    : (aggPD.done / aggPD.target).clamp(0.0, 1.0);
-
-
-                return SectionCard(
-                  // si tu n’utilises pas SectionCard, remplace par ton Container/Card
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
+                    return SectionCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(d.name,
                               style:
                                   const TextStyle(fontWeight: FontWeight.bold)),
-                          const SizedBox(width: 8),
-                          Builder(builder: (_) {
-                            final txt = _domainBadgeText(d);
-                            if (txt == null) return const SizedBox.shrink();
-                            final isUp = txt.startsWith('↑');
-                            return Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: (isUp ? Colors.green : Colors.orange)
-                                    .withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(999),
-                                border: Border.all(
-                                    color: (isUp ? Colors.green : Colors.orange)
-                                        .withValues(alpha: 0.6)),
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              // ✅ Temps
+                              NestedGauge(
+                                bigProgress: snapToFull(bigProgressTime),
+                                outerProgress: snapToFull(outerProgressTime),
+                                smallProgress: snapToFull(smallProgressTime),
+                                bigColor:
+                                    _colorForProgress(bigProgressTime, context),
+                                outerColor: Colors.cyanAccent,
+                                smallColor: _colorForProgress(
+                                    smallProgressTime, context),
+                                centerText: "",
+                                label: timeLabel,
+                                size: 140,
+                                onTap: () => _showDomainDetail(
+                                  d,
+                                  startCal,
+                                  endCal,
+                                  days,
+                                  focus: 'time',
+                                ),
                               ),
-                              child: Text(txt,
-                                  style: TextStyle(
-                                      fontSize: 12,
-                                      color:
-                                          isUp ? Colors.green : Colors.orange)),
-                            );
-                          }),
-                        ],
-                      ),
-/*                       const SizedBox(height: 6),
-                      // NEW: pacing centré sur les 2 jauges
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Builder(builder: (_) {
-                            final agg = computeDailyPacingAggregate(logic,
-                                domainId: d.id); // NEW
-                            return Center(child: buildPacingChip(agg)); // NEW
-                          }),
-                        ],
-                      ), */
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          // Jauge TEMPS : / objectif domaine
-/*                           GaugeRing(
-                            label: "Temps",
-                            centerText: _fmtHoursHM(maxHoursD), // ex: 0h13m
-                            subText: "Moy 90j : ${(progTime90 * 100).round()}%",
-                            progress: progTime90,
-                            size: 140,
-                            color: _colorForProgress(progTime90, context),
-                            onTap: () => _showDomainDetail(
-                                d, startCal, endCal, days,
-                                focus: 'time'),
-                            // ✅ halo externe 24h
-                            outerProgress: prog24,
-                            outerColor: Colors
-                                .white, // ou fg, ou _colorForProgress(prog24, context)
-                          ), */
 
-NestedGauge(
-  bigProgress: bigProgress,          // 24h vs moy. semaine
-  outerProgress: outerProgress,      // aujourd’hui vs moy. semaine
-  smallProgress: smallProgress,      // 90j vs moy. semaine
-
-  bigColor: _colorForProgress(bigProgress, context),
-  outerColor: Colors.cyanAccent,
-  smallColor: _colorForProgress(smallProgress, context),
-
-  centerText: "",                    // ou _fmtHoursHM(hours24) si tu veux
-  label: label,                      // moyenne semaine
-  size: 140,
-                              onTap: () => _showDomainDetail(
-                                d, startCal, endCal, days,
-                                focus: 'time'),
-),
-
-                          // Jauge HABITUDES : / cible cumulée sur la période
-
-/*                           GaugeRing(
-                            label: "Habitudes",
-                            valueText: "$doneH / $tgtH",
-                            progress: progHabit,
-                            size: 110,
-                            color: _colorForProgress(progHabit, context),
-                            onTap: () => _showDomainDetail(
-                                d, startCal, endCal, days,
-                                focus: 'habit'),
-                          ), */
-                          NestedGauge(
-                            bigProgress: snapToFull(bigProgressD), // ✅ norme 7j
-                            smallProgress: snapToFull(rate90D.clamp(0.0,
-                                1.0)), // option : tu peux mettre 90j routines domaine si tu veux
-                            outerProgress:
-                                snapToFull(outerProgressD), // ✅ halo jour
-
-                            bigColor: _colorForProgress(bigProgressD, context),
-                            smallColor: _colorForProgress(rate90D, context),
-                            outerColor: Colors.cyanAccent,
-
-                            centerText: "", // tu as choisi épuré
-                            label: routinesLabelD,
-                            size: 140, // ajuste selon ton UI
-                            onTap: () => _showDomainDetail(
-                                d, startCal, endCal, days,
-                                focus: 'habit'),
+                              // ✅ Routines
+                              NestedGauge(
+                                bigProgress:
+                                    snapToFull(rateWeekD.clamp(0.0, 1.0)),
+                                outerProgress:
+                                    snapToFull(rateTodayD.clamp(0.0, 1.0)),
+                                smallProgress:
+                                    snapToFull(rate90D.clamp(0.0, 1.0)),
+                                bigColor: _colorForProgress(rateWeekD, context),
+                                outerColor: Colors.cyanAccent,
+                                smallColor: _colorForProgress(rate90D, context),
+                                centerText: "",
+                                label: routinesLabelD,
+                                size: 140,
+                                onTap: () => _showDomainDetail(
+                                  d,
+                                  startCal,
+                                  endCal,
+                                  days,
+                                  focus: 'habit',
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    ],
-                  ),
-                );
-              }),
-
-              const SizedBox(height: 80), // marge pour le FAB si tu le gardes
-            ],
+                    );
+                  }),
+                  const SizedBox(height: 80),
+                ],
+              );
+            },
           ),
         ),
       ],
@@ -3594,33 +3520,35 @@ NestedGauge(
             return ListTile(
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-leading: SizedBox(
-  width: 82,
-  height: 64, // ✅ un peu plus haut
-  child: Column(
-    mainAxisAlignment: MainAxisAlignment.center,
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      DigitalAvgText(
-        text: fmtHhMmFromHours(goalHoursPerDay),
-        fontSize: 14,
-        suffix: "",
-        textColor: cs.onSurface.withOpacity(0.75),
-        bgOpacity: 0.03,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), // ✅
-      ),
-      const SizedBox(height: 4),
-      DigitalAvgText(
-        text: fmtHhMmFromHours(avg7),
-        fontSize: 11,
-        suffix: "",
-        textColor: cs.primary.withOpacity(0.95),
-        bgOpacity: 0.05,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3), // ✅
-      ),
-    ],
-  ),
-),
+              leading: SizedBox(
+                width: 82,
+                height: 64, // ✅ un peu plus haut
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    DigitalAvgText(
+                      text: fmtHhMmFromHours(goalHoursPerDay),
+                      fontSize: 14,
+                      suffix: "",
+                      textColor: cs.onSurface.withOpacity(0.75),
+                      bgOpacity: 0.03,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4), // ✅
+                    ),
+                    const SizedBox(height: 4),
+                    DigitalAvgText(
+                      text: fmtHhMmFromHours(avg7),
+                      fontSize: 11,
+                      suffix: "",
+                      textColor: cs.primary.withOpacity(0.95),
+                      bgOpacity: 0.05,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 3), // ✅
+                    ),
+                  ],
+                ),
+              ),
               title: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
