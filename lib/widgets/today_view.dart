@@ -255,8 +255,8 @@ class _TodayViewState extends State<TodayView> {
                 : DateTime.now()))
             .indexWhere((e) => e.id == it.id),
         child: const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12),
-          child: Icon(Icons.drag_handle),
+          padding: EdgeInsets.symmetric(horizontal: 8), // au lieu de 12
+          child: Icon(Icons.drag_handle, size: 20),
         ),
       );
     }
@@ -264,7 +264,7 @@ class _TodayViewState extends State<TodayView> {
     // helpers d’affichage
     Widget buildTitle(String title) => Text(
           title,
-          maxLines: 1,
+          maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
         );
@@ -276,6 +276,26 @@ class _TodayViewState extends State<TodayView> {
             style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
           ),
         );
+
+    Widget moveDownIfAny() {
+      // Perso: je l’afficherais seulement sur l’onglet Aujourd’hui
+      if (!isTodayTab) return const SizedBox.shrink();
+
+      return IconButton(
+        tooltip: 'Mettre plus tard (fin de liste)',
+        icon: const Icon(Icons.arrow_downward, size: 18),
+        constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+        padding: EdgeInsets.zero,
+        onPressed: () {
+          final ymd = yyyymmdd(DateTime.now()); // ou basé sur viewed si tu veux
+          widget.logic.movePlanItemToEnd(ymd, it.id);
+          setState(() {});
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Mis en fin de liste')),
+          );
+        },
+      );
+    }
 
     switch (it.kind) {
       // ---------------- ACTION ----------------
@@ -305,6 +325,9 @@ class _TodayViewState extends State<TodayView> {
                           ),
                         ),
                         Checkbox(
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
                           value: it.done,
                           onChanged: (v) => setState(
                               () => widget.logic.toggleDone(it.id, v ?? false)),
@@ -413,13 +436,21 @@ class _TodayViewState extends State<TodayView> {
                 widget.logic.incHabit(it.refId!, delta, day); // basé sur "day"
               });
 
-          // ---- Bouton flèche "→ Demain" (routines / onglet Aujourd'hui) ----
+          Widget moreCompact() => SizedBox(
+                width: 32,
+                height: 32,
+                child: Center(child: more),
+              );
+
           Widget moveArrowIfAny() {
             if (!isTodayTab) return const SizedBox.shrink();
             if (it.refId == null) return const SizedBox.shrink();
             return IconButton(
               tooltip: 'Déplacer cette routine vers demain',
-              icon: const Icon(Icons.arrow_forward),
+              icon: const Icon(Icons.arrow_forward, size: 20),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+              visualDensity: VisualDensity.compact,
               onPressed: () {
                 widget.logic.movePlannedToTomorrowIfPresent(
                   PlanKind.habit,
@@ -434,25 +465,38 @@ class _TodayViewState extends State<TodayView> {
             );
           }
 
-          // Trailing haut (checkbox si cible 1), + flèche → Demain + menu …
-          Widget trailingTop;
+          Widget checkboxCompact() => Checkbox(
+                value: done >= 1,
+                onChanged: (v) => inc((v == true ? 1 : 0) - done),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+              );
+
+// Actions sur la ligne du titre
+          Widget titleActions;
           if (target <= 1) {
-            trailingTop = Row(
+            titleActions = Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Checkbox(
-                  value: done >= 1, // basé sur "day"
+                  value: done >= 1,
                   onChanged: (v) => inc((v == true ? 1 : 0) - done),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
                 ),
-                more,
+                SizedBox(
+                  width: 32,
+                  height: 32,
+                  child: Center(child: more),
+                ),
                 moveArrowIfAny(),
               ],
             );
           } else {
-            trailingTop = Row(
+            titleActions = Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                more,
+                SizedBox(width: 32, height: 32, child: Center(child: more)),
                 moveArrowIfAny(),
               ],
             );
@@ -466,27 +510,58 @@ class _TodayViewState extends State<TodayView> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  dragHandleFor(it),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      dragHandleFor(it),
+                      IconButton(
+                        icon: const Icon(Icons.arrow_downward),
+                        tooltip: 'Mettre plus tard (fin de liste)',
+                        onPressed: () {
+                          final ymd = yyyymmdd(
+                              DateTime(viewed.year, viewed.month, viewed.day));
+                          widget.logic.movePlanItemToEnd(ymd, it.id);
+                          setState(() {});
+                        },
+                      ),
+                    ],
+                  ),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Ligne 1 — Titre + trailing
+// Ligne 1 — Titre + checkbox (uniquement si target <= 1)
                         Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Expanded(child: buildTitle(it.title)),
-                            const SizedBox(width: 8),
-                            trailingTop,
+                            if (target <= 1) ...[
+                              const SizedBox(width: 8),
+                              checkboxCompact(),
+                            ],
                           ],
                         ),
                         const SizedBox(height: 4),
 
-                        // Ligne 2 — "Aujourd’hui/Demain : X / Y"
-                        Text(
-                          "$todayLabel $done / $target$unit",
-                          style: const TextStyle(
-                              fontSize: 14, fontWeight: FontWeight.w600),
+// Ligne 2 — "Aujourd’hui/Demain : X / Y" + (… + →) à droite
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                "$todayLabel $done / $target$unit",
+                                style: const TextStyle(
+                                    fontSize: 14, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                moreCompact(),
+                                moveArrowIfAny(),
+                              ],
+                            ),
+                          ],
                         ),
 
                         // Ligne 3 — Pastilles si cible > 1

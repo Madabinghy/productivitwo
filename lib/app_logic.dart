@@ -1521,6 +1521,17 @@ extension TodayLogic on AppLogic {
     }
   }
 
+void movePlanItemToEnd(String ymd, String itemId) {
+  final plan = planFor(ymd);
+  final oldIndex = plan.indexWhere((e) => e.id == itemId);
+  if (oldIndex == -1) return;
+
+  final lastIndex = plan.length; // IMPORTANT: même convention que onReorder (newIndex "après")
+  if (oldIndex == plan.length - 1) return; // déjà en bas
+
+  reorderPlan(ymd, oldIndex, lastIndex);
+}
+
   void reorderPlan(String ymd, int oldIndex, int newIndex) {
     final list = planFor(ymd);
     if (newIndex > oldIndex) newIndex -= 1;
