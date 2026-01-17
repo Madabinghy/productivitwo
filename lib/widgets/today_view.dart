@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/main.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:collection/collection.dart';
 
 class TodayView extends StatefulWidget {
   final AppLogic logic;
@@ -383,7 +384,28 @@ class _TodayViewState extends State<TodayView> {
         {
           final done = widget.logic.habitValueOn(it.refId!, day);
           final act =
-              widget.state.activities.firstWhere((a) => a.id == it.refId!);
+              widget.state.activities.firstWhereOrNull((a) => a.id == it.refId);
+
+          if (act == null) {
+            return Card(
+              key: key,
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                title: Text(it.title),
+                subtitle: const Text("Activité introuvable (supprimée ?)"),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete),
+                  onPressed: () {
+                    setState(() {
+                      widget.state.dayPlan.removeWhere((e) => e.id == it.id);
+                      widget.logic.onChange();
+                    });
+                  },
+                ),
+              ),
+            );
+          }
+
           final target = widget.logic.dayQuotaFor(act);
           final unit = (act.unit ?? '').isNotEmpty ? ' ${act.unit}' : '';
 

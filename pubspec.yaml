@@ -13,6 +13,7 @@ dependencies:
   share_plus: ^10.0.2
   uuid: ^4.4.2
   fl_chart: ^1.1.1
+  collection: ^1.18.0
 
 dev_dependencies:
   flutter_test:
