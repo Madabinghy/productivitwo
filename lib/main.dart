@@ -1222,6 +1222,12 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         );
     }
   }
+
+  bool get _hasRunningSession {
+  final st = _state;
+  if (st == null) return false;
+  return st.sessions.any((x) => x.endAt == null);
+}
   // ---------- UI ----------
 
   @override
@@ -1283,7 +1289,21 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
 // --- Dans build(...) ---
 
-      body: _buildBody(context),
+body: Stack(
+  children: [
+    Padding(
+      padding: EdgeInsets.only(top: _hasRunningSession ? 92.0 : 0.0),
+      child: _buildBody(context),
+    ),
+    Align(
+      alignment: Alignment.topCenter,
+      child: SafeArea(
+        bottom: false,
+        child: _runningBannerGlobal(),
+      ),
+    ),
+  ],
+),
 
 // FAB uniquement sur Dashboard (ou adapte si tu veux aussi sur Today)
       floatingActionButton: _tab == _Tab.dashboard ? _buildFocusFab() : null,
@@ -1738,98 +1758,89 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     );
   }
 
-  Widget _runningBanner() {
-    final s = _state!.sessions.where((x) => x.endAt == null).last;
-    final a = _state!.activities.firstWhere((x) => x.id == s.activityId);
-    final dur = DateTime.now().difference(s.startAt);
+Widget _runningBannerGlobal() {
+  final st = _state;
+  if (st == null) return const SizedBox.shrink();
 
-    String _fmt(Duration d) {
-      final h = d.inHours;
-      final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-      final sec = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-      return h > 0 ? "${h}h ${m}m ${sec}s" : "${m}m ${sec}s";
-    }
+  final activeSessions = st.sessions.where((x) => x.endAt == null).toList();
+  if (activeSessions.isEmpty) return const SizedBox.shrink();
 
-    return ConstrainedBox(
-      // ← hauteur fixe = pas de “saut” de layout
-      constraints: const BoxConstraints(minHeight: 84),
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            const Icon(Icons.play_arrow_rounded, color: Colors.green, size: 24),
-            const SizedBox(width: 10),
+  final s = activeSessions.last;
 
-            // ---- Texte à gauche
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Nom d’activité
-                  Text(
-                    a.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 16),
-                  ),
-                  const SizedBox(height: 2),
+  final a = st.activities.firstWhere(
+    (x) => x.id == s.activityId,
+    orElse: () => Activity(domainId: '', name: 'Activité', habitTarget: 1),
+  );
 
-                  // Ligne 1
-                  Text(
-                    "En cours depuis",
-                    style: TextStyle(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withOpacity(0.75),
-                      fontSize: 13,
-                    ),
-                  ),
+  final dur = DateTime.now().difference(s.startAt);
 
-                  // Ligne 2 : temps seul (monospace pour éviter les micro-décalages)
-                  Text(
-                    _fmt(dur),
-                    style: const TextStyle(
-                      fontFeatures: [
-                        FontFeature.tabularFigures()
-                      ], // monospace numérique
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(width: 12),
-
-            // ---- Bouton Stop à droite (taille fixe)
-            SizedBox(
-              width: 104,
-              height: 40,
-              child: FilledButton.icon(
-                onPressed: () => setState(() {
-                  logic.stopActive();
-                }),
-                icon: const Icon(Icons.stop, size: 18),
-                label: const Text("Stop"),
-                style: FilledButton.styleFrom(shape: const StadiumBorder()),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+  String fmt(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final sec = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return h > 0 ? "${h}h ${m}m ${sec}s" : "${m}m ${sec}s";
   }
 
+  return ConstrainedBox(
+    constraints: const BoxConstraints(minHeight: 84),
+    child: Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const Icon(Icons.play_arrow_rounded, color: Colors.green, size: 24),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  a.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  "En cours depuis",
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.75),
+                    fontSize: 13,
+                  ),
+                ),
+                Text(
+                  fmt(dur),
+                  style: const TextStyle(
+                    fontFeatures: [FontFeature.tabularFigures()],
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 104,
+            height: 40,
+            child: FilledButton.icon(
+              onPressed: () => setState(() => logic.stopActive()),
+              icon: const Icon(Icons.stop, size: 18),
+              label: const Text("Stop"),
+              style: FilledButton.styleFrom(shape: const StadiumBorder()),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
   Widget _buildDashboardBody(BuildContext context) {
 // 1) Portée (calendaire)
     final now = DateTime.now();
@@ -2140,8 +2151,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
     return Column(
       children: [
-        if (running) _runningBanner(),
-
         // Anneaux globaux (Temps & Habitudes)
         SectionCard(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),

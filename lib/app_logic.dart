@@ -1543,9 +1543,16 @@ extension TodayLogic on AppLogic {
     bool allDay = false,
   }) async {
     final act = state.activities.firstWhere((a) => a.id == activityId);
+    final key = ymd; // <- respecte l'onglet (aujourd'hui/demain/...)
+
+    final plan = planFor(key); // trié par order
     final todayKey = _todayKeyLocal();
-    final ord =
-        planFor(todayKey).isEmpty ? 0 : planFor(todayKey).last.order + 1;
+    final isToday = (key == todayKey);
+    final ord = plan.isEmpty
+        ? 0
+        : (isToday
+            ? (plan.first.order - 1) // Aujourd'hui -> en tête
+            : (plan.last.order + 1)); // Demain/autre -> en fin
 
     state.dayPlan.add(DayPlanItem(
       id: const Uuid().v4(),
