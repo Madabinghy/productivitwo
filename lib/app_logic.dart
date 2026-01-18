@@ -1471,22 +1471,57 @@ extension TodayLogic on AppLogic {
     );
   }
 
+  void restorePlanItem(DayPlanItem item) {
+    state.dayPlan.add(item);
+    onChange();
+  }
+
+  DayPlanItem? toggleDonePlanItem(String ymd, String itemId, bool value) {
+    final idx = state.dayPlan.indexWhere((e) => e.id == itemId);
+    if (idx == -1) return null;
+
+    final it = state.dayPlan[idx];
+
+    // ACTION → cochée = supprimée
+    if (it.kind == PlanKind.action) {
+      if (value) {
+        final removed = state.dayPlan.removeAt(idx);
+        onChange();
+        return removed; // <-- pour annuler
+      }
+      return null;
+    }
+
+    // ROUTINE → on marque done
+    it.done = value;
+    onChange();
+    return null;
+  }
+
   Future<void> addPlanAction({
-    required String ymd, // <- tu peux garder le param pour compat,
+    required String ymd,
     required String title,
   }) async {
-    final todayKey = _todayKeyLocal(); // toujours le jour local
-    final ord = planFor(todayKey).isEmpty // ← corriger ici
+    final key = ymd; // <- respecte l'onglet (aujourd'hui/demain/...)
+
+    final plan = planFor(key); // trié par order
+    final todayKey = _todayKeyLocal();
+    final isToday = (key == todayKey);
+
+    final ord = plan.isEmpty
         ? 0
-        : planFor(todayKey).last.order + 1;
+        : (isToday
+            ? (plan.first.order - 1) // Aujourd'hui -> en tête
+            : (plan.last.order + 1)); // Demain/autre -> en fin
 
     state.dayPlan.add(DayPlanItem(
       id: _uuid.v4(),
       kind: PlanKind.action,
       title: title,
-      yyyymmdd: todayKey, // on force la clé locale
+      yyyymmdd: key,
       order: ord,
     ));
+
     onChange();
   }
 
@@ -1521,16 +1556,17 @@ extension TodayLogic on AppLogic {
     }
   }
 
-void movePlanItemToEnd(String ymd, String itemId) {
-  final plan = planFor(ymd);
-  final oldIndex = plan.indexWhere((e) => e.id == itemId);
-  if (oldIndex == -1) return;
+  void movePlanItemToEnd(String ymd, String itemId) {
+    final plan = planFor(ymd);
+    final oldIndex = plan.indexWhere((e) => e.id == itemId);
+    if (oldIndex == -1) return;
 
-  final lastIndex = plan.length; // IMPORTANT: même convention que onReorder (newIndex "après")
-  if (oldIndex == plan.length - 1) return; // déjà en bas
+    final lastIndex = plan
+        .length; // IMPORTANT: même convention que onReorder (newIndex "après")
+    if (oldIndex == plan.length - 1) return; // déjà en bas
 
-  reorderPlan(ymd, oldIndex, lastIndex);
-}
+    reorderPlan(ymd, oldIndex, lastIndex);
+  }
 
   void reorderPlan(String ymd, int oldIndex, int newIndex) {
     final list = planFor(ymd);
@@ -1633,7 +1669,6 @@ void movePlanItemToEnd(String ymd, String itemId) {
 // =====================================================
 // =================  OUTILS ANNEXES  ==================
 // =====================================================
-
 
 class FocusItem {
   final String kind; // 'time' | 'habit' | 'goal'
@@ -1814,7 +1849,6 @@ class GoalChange {
       required this.newGoalMin});
 }
 
-
 class StepButton extends StatelessWidget {
   const StepButton({required this.icon, required this.onTap});
   final IconData icon;
@@ -1835,7 +1869,6 @@ class StepButton extends StatelessWidget {
     );
   }
 }
-
 
 class MiniHistogram30d extends StatelessWidget {
   const MiniHistogram30d({
@@ -1892,10 +1925,10 @@ class _MiniHistogramPainter extends CustomPainter {
       ..strokeWidth = 1;
 
     final baselineY = size.height - 1;
-    canvas.drawLine(Offset(0, baselineY), Offset(size.width, baselineY), basePaint);
+    canvas.drawLine(
+        Offset(0, baselineY), Offset(size.width, baselineY), basePaint);
 
-    double vmax = maxValue ??
-        values.fold<double>(0, (m, v) => v > m ? v : m);
+    double vmax = maxValue ?? values.fold<double>(0, (m, v) => v > m ? v : m);
     if (vmax <= 0) vmax = 1.0;
 
     final n = values.length;

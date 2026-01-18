@@ -329,8 +329,39 @@ class _TodayViewState extends State<TodayView> {
                               MaterialTapTargetSize.shrinkWrap,
                           visualDensity: VisualDensity.compact,
                           value: it.done,
-                          onChanged: (v) => setState(
-                              () => widget.logic.toggleDone(it.id, v ?? false)),
+                          onChanged: (v) {
+                            if (v == null) return;
+
+                            final removed = widget.logic
+                                .toggleDonePlanItem(it.yyyymmdd, it.id, v);
+
+                            setState(() {});
+
+                            ScaffoldMessenger.of(context).clearSnackBars();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  it.kind == PlanKind.action
+                                      ? 'Action supprimée'
+                                      : 'Routine Ok',
+                                ),
+                                duration: const Duration(seconds: 3),
+                                action: SnackBarAction(
+                                  label: 'Annuler',
+                                  onPressed: () {
+                                    if (it.kind == PlanKind.action &&
+                                        removed != null) {
+                                      widget.logic.restorePlanItem(removed);
+                                    } else {
+                                      widget.logic.toggleDonePlanItem(
+                                          it.yyyymmdd, it.id, false);
+                                    }
+                                    setState(() {});
+                                  },
+                                ),
+                              ),
+                            );
+                          },
                         ),
                         more,
                       ],
