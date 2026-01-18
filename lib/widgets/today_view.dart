@@ -318,7 +318,7 @@ class _TodayViewState extends State<TodayView> {
               padding: const EdgeInsets.symmetric(vertical: 10),
               child: Row(
                 children: [
-                                    Column(
+                  Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       dragHandleFor(it),
@@ -409,7 +409,19 @@ class _TodayViewState extends State<TodayView> {
               widget.logic.totalForRangeByActivity(it.refId!, dayStart, now);
 
           final startBtn = FilledButton.icon(
-            onPressed: () => widget.logic.start(it.refId!),
+            onPressed: () {
+              widget.logic.start(it.refId!);
+
+              // Déplace l'activité planifiée d'aujourd'hui vers demain (comme les routines)
+              widget.logic.movePlannedToTomorrowIfPresent(
+                PlanKind.activityTime,
+                it.refId!,
+                addIfMissing:
+                    false, // true si tu veux forcer l'ajout demain même si pas planifiée
+              );
+
+              setState(() {});
+            },
             icon: const Icon(Icons.play_arrow),
             label: const Text('Lancer'),
           );
