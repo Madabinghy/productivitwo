@@ -242,19 +242,20 @@ class _TodayViewState extends State<TodayView> {
     final todayLabel = _planTomorrow ? 'Demain :' : 'Aujourd’hui :';
 
     // menu "…"
-    final more = PopupMenuButton<String>(
-      onSelected: (v) {
-        if (v == 'delete') {
-          setState(() {
-            widget.state.dayPlan.removeWhere((e) => e.id == it.id);
-            widget.logic.onChange(); // persiste
-          });
-        }
-      },
-      itemBuilder: (ctx) => const [
-        PopupMenuItem(value: 'delete', child: Text('Supprimer de la journée')),
-      ],
-    );
+final removeBtn = IconButton(
+  icon: const Icon(Icons.close, size: 18),
+  tooltip: 'Retirer de la liste du jour',
+  visualDensity: VisualDensity.compact,
+  padding: EdgeInsets.zero,
+  constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+  onPressed: () {
+    setState(() {
+      widget.state.dayPlan.removeWhere((e) => e.id == it.id);
+      widget.logic.onChange(); // persiste
+    });
+  },
+);
+    
 
     // poignée de drag
     ReorderableDragStartListener dragHandleFor(DayPlanItem it) {
@@ -390,7 +391,7 @@ class _TodayViewState extends State<TodayView> {
                             );
                           },
                         ),
-                        more,
+                        removeBtn,
                       ],
                     ),
                   ),
@@ -460,7 +461,7 @@ class _TodayViewState extends State<TodayView> {
                             ),
                             const SizedBox(width: 8),
                             startBtn,
-                            more,
+                            removeBtn,
                           ],
                         ),
                       ],
@@ -526,7 +527,7 @@ class _TodayViewState extends State<TodayView> {
           Widget moreCompact() => SizedBox(
                 width: 32,
                 height: 32,
-                child: Center(child: more),
+                child: Center(child: removeBtn),
               );
 
           Widget moveArrowIfAny() {
