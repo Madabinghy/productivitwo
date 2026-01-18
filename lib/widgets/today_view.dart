@@ -143,8 +143,18 @@ class _TodayViewState extends State<TodayView> {
 
   @override
   Widget build(BuildContext context) {
-    final ymd = _ymd; // aujourd’hui ou demain selon ton toggle
-    final items = widget.logic.planFor(ymd); // triés par 'order'
+    final ymd = _ymd;
+    final isTodayTab = ymd == yyyymmdd(DateTime.now());
+
+    final items = widget.logic.planFor(ymd).where((it) {
+      if (!isTodayTab) return true; // Demain : on montre tout
+
+      // Aujourd’hui : on cache uniquement les routines clôturées via OK
+      final isRoutine = it.kind != PlanKind.action;
+      if (isRoutine && it.done) return false;
+
+      return true;
+    }).toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -434,9 +444,13 @@ class _TodayViewState extends State<TodayView> {
         }
 
       // ---------------- HABITUDE ----------------
+// ---------------- HABITUDE ----------------
       case PlanKind.habit:
         {
+          // IMPORTANT: `day` doit déjà être le jour affiché (aujourd’hui/demain),
+          // comme dans ton code actuel.
           final done = widget.logic.habitValueOn(it.refId!, day);
+
           final act =
               widget.state.activities.firstWhereOrNull((a) => a.id == it.refId);
 
@@ -461,11 +475,24 @@ class _TodayViewState extends State<TodayView> {
           }
 
           final target = widget.logic.dayQuotaFor(act);
-          final unit = (act.unit ?? '').isNotEmpty ? ' ${act.unit}' : '';
+
+          // UI rules:
+          // - target <= 1  -> checkbox
+          // - 2..10        -> ticks (cercles), auto ou manuel
+          // - >= 11        -> counter (+/- + saisir)
+          final isCheckbox = target <= 1;
+          final showTicks = !isCheckbox && target <= 10; // donc 2..10
+          final isCounterMode = target >= 11;
 
           void inc(int delta) => setState(() {
-                widget.logic.incHabit(it.refId!, delta, day); // basé sur "day"
+                widget.logic.incHabit(it.refId!, delta, day);
               });
+
+          Future<int?> _askInt(BuildContext context, String title) async {
+            final s = await _askText(context, title);
+            if (s == null) return null;
+            return int.tryParse(s.trim());
+          }
 
           Widget moreCompact() => SizedBox(
                 width: 32,
@@ -503,36 +530,6 @@ class _TodayViewState extends State<TodayView> {
                 visualDensity: VisualDensity.compact,
               );
 
-// Actions sur la ligne du titre
-          Widget titleActions;
-          if (target <= 1) {
-            titleActions = Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Checkbox(
-                  value: done >= 1,
-                  onChanged: (v) => inc((v == true ? 1 : 0) - done),
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: VisualDensity.compact,
-                ),
-                SizedBox(
-                  width: 32,
-                  height: 32,
-                  child: Center(child: more),
-                ),
-                moveArrowIfAny(),
-              ],
-            );
-          } else {
-            titleActions = Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(width: 32, height: 32, child: Center(child: more)),
-                moveArrowIfAny(),
-              ],
-            );
-          }
-
           return Card(
             key: key,
             margin: const EdgeInsets.only(bottom: 8),
@@ -545,6 +542,8 @@ class _TodayViewState extends State<TodayView> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       dragHandleFor(it),
+
+                      // Mettre plus tard (fin de liste) — si tu veux le garder pour les routines
                       IconButton(
                         icon: const Icon(Icons.arrow_downward),
                         tooltip: 'Mettre plus tard (fin de liste)',
@@ -561,43 +560,48 @@ class _TodayViewState extends State<TodayView> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-// Ligne 1 — Titre + checkbox (uniquement si target <= 1)
+                        // Ligne 1 — Titre + checkbox (uniquement si target <= 1)
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Expanded(child: buildTitle(it.title)),
-                            if (target <= 1) ...[
+                            if (isCheckbox) ...[
                               const SizedBox(width: 8),
                               checkboxCompact(),
                             ],
                           ],
                         ),
-                        const SizedBox(height: 4),
 
-// Ligne 2 — "Aujourd’hui/Demain : X / Y" + (… + →) à droite
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                "$todayLabel $done / $target$unit",
-                                style: const TextStyle(
-                                    fontSize: 14, fontWeight: FontWeight.w600),
+                        // Ligne 2 — "Aujourd’hui/Demain : X / Y" + (… + →)
+                        // On la garde pour checkbox et ticks (pas pour compteur).
+                        if (!isCounterMode) ...[
+                          const SizedBox(height: 6),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  "$todayLabel $done / $target",
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
                               ),
-                            ),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                moreCompact(),
-                                moveArrowIfAny(),
-                              ],
-                            ),
-                          ],
-                        ),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  moreCompact(),
+                                  moveArrowIfAny(),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ],
 
-                        // Ligne 3 — Pastilles si cible > 1
-                        if (target > 1) ...[
-                          const SizedBox(height: 4),
+                        // Ligne 3 — cercles (2..10) OU compteur (>= 11)
+                        if (showTicks) ...[
+                          const SizedBox(height: 6),
                           HabitTicksRow(
                             done: done,
                             target: target,
@@ -617,7 +621,47 @@ class _TodayViewState extends State<TodayView> {
                               },
                             ),
                           ),
-                        ]
+                        ] else if (isCounterMode) ...[
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.remove_circle_outline),
+                                onPressed: () => inc(-1),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              Text(
+                                "$done / $target",
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.add_circle_outline),
+                                onPressed: () => inc(1),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              const Spacer(),
+                              TextButton(
+                                onPressed: () async {
+                                  final v = await _askInt(
+                                      context, "Valeur pour aujourd'hui");
+                                  if (v == null) return;
+                                  final delta = v - done;
+                                  if (delta != 0) {
+                                    widget.logic
+                                        .incHabit(it.refId!, delta, day);
+                                    setState(() {});
+                                  }
+                                },
+                                child: const Text("Saisir"),
+                              ),
+                              moreCompact(),
+                              moveArrowIfAny(),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),

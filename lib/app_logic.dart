@@ -383,33 +383,30 @@ class AppLogic {
       state.habitProgress[prevIdx].value = v < 0 ? 0 : v;
     }
 
-    // après maj du compteur :
+// après maj du compteur :
     final act = state.activities.firstWhere((a) => a.id == activityId);
     final isDaily = (effectiveHabitFreq(act) == HabitFreq.daily);
     final dayQuota = dayQuotaFor(act);
 
     if (isDaily && dayQuota > 0) {
-      final today = DateTime(day.year, day.month, day.day);
-      final doneToday = habitValueOn(activityId, today);
+      final currentDay = DateTime(day.year, day.month, day.day);
+      final doneOnDay = habitValueOn(activityId, currentDay);
 
       // 1) Dès le 1er +1 du jour → préparer Demain (sans retirer Aujourd'hui)
-      if (doneToday >= 1) {
-        ensurePlannedTomorrow(
-            PlanKind.habit, activityId); // no-op si déjà présent
+      if (doneOnDay >= 1) {
+        ensurePlannedTomorrow(PlanKind.habit, activityId);
       }
 
-      // 2) Quand la cible du jour est atteinte → retirer d'Aujourd'hui
-      if (doneToday >= dayQuota) {
-        final removed =
-            removeFromDay(yyyymmdd(today), PlanKind.habit, activityId);
-        if (removed) onChange();
+      // 2) ✅ Retirer d'Aujourd'hui UNIQUEMENT si standard MANUEL (fixe)
+      if (act.manualTarget && doneOnDay >= dayQuota) {
+        removeFromDay(yyyymmdd(currentDay), PlanKind.habit, activityId);
       }
     }
 
-    // auto-tune (safe)
+// auto-tune (safe) — no-op si manualTarget (déjà géré dans autoTuneHabit)
     _autoTuneHabitSafe(act);
 
-    // Un seul onChange() à la fin
+// Un seul onChange() à la fin
     onChange();
   }
 
@@ -1496,6 +1493,20 @@ extension TodayLogic on AppLogic {
     it.done = value;
     onChange();
     return null;
+  }
+
+  void markRoutineOkForToday(String ymd, String itemId, bool value) {
+    final idx =
+        state.dayPlan.indexWhere((e) => e.id == itemId && e.yyyymmdd == ymd);
+    if (idx == -1) return;
+
+    final it = state.dayPlan[idx];
+
+    // On ne valide que routines (pas actions)
+    if (it.kind == PlanKind.action) return;
+
+    it.done = value;
+    onChange();
   }
 
   Future<void> addPlanAction({
