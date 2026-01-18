@@ -318,7 +318,24 @@ class _TodayViewState extends State<TodayView> {
               padding: const EdgeInsets.symmetric(vertical: 10),
               child: Row(
                 children: [
-                  dragHandleFor(it),
+                                    Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      dragHandleFor(it),
+
+                      // Mettre plus tard (fin de liste) — si tu veux le garder pour les routines
+                      IconButton(
+                        icon: const Icon(Icons.arrow_downward),
+                        tooltip: 'Mettre plus tard (fin de liste)',
+                        onPressed: () {
+                          final ymd = yyyymmdd(
+                              DateTime(viewed.year, viewed.month, viewed.day));
+                          widget.logic.movePlanItemToEnd(ymd, it.id);
+                          setState(() {});
+                        },
+                      ),
+                    ],
+                  ),
                   Expanded(
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
