@@ -242,20 +242,19 @@ class _TodayViewState extends State<TodayView> {
     final todayLabel = _planTomorrow ? 'Demain :' : 'Aujourd’hui :';
 
     // menu "…"
-final removeBtn = IconButton(
-  icon: const Icon(Icons.close, size: 18),
-  tooltip: 'Retirer de la liste du jour',
-  visualDensity: VisualDensity.compact,
-  padding: EdgeInsets.zero,
-  constraints: const BoxConstraints.tightFor(width: 32, height: 32),
-  onPressed: () {
-    setState(() {
-      widget.state.dayPlan.removeWhere((e) => e.id == it.id);
-      widget.logic.onChange(); // persiste
-    });
-  },
-);
-    
+    final removeBtn = IconButton(
+      icon: const Icon(Icons.close, size: 18),
+      tooltip: 'Retirer de la liste du jour',
+      visualDensity: VisualDensity.compact,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+      onPressed: () {
+        setState(() {
+          widget.state.dayPlan.removeWhere((e) => e.id == it.id);
+          widget.logic.onChange(); // persiste
+        });
+      },
+    );
 
     // poignée de drag
     ReorderableDragStartListener dragHandleFor(DayPlanItem it) {
@@ -480,7 +479,6 @@ final removeBtn = IconButton(
           // IMPORTANT: `day` doit déjà être le jour affiché (aujourd’hui/demain),
           // comme dans ton code actuel.
           final done = widget.logic.habitValueOn(it.refId!, day);
-
           final act =
               widget.state.activities.firstWhereOrNull((a) => a.id == it.refId);
 
@@ -510,9 +508,10 @@ final removeBtn = IconButton(
           // - target <= 1  -> checkbox
           // - 2..10        -> ticks (cercles), auto ou manuel
           // - >= 11        -> counter (+/- + saisir)
-          final isCheckbox = target <= 1;
-          final showTicks = !isCheckbox && target <= 10; // donc 2..10
-          final isCounterMode = target >= 11;
+          final isAuto = act.autoTune; // ✅ pas it.autoTune
+          final isCheckbox = !isAuto && target <= 1;
+          final showTicks = isAuto || (!isCheckbox && target <= 10);
+          final isCounterMode = isAuto ? done >= 10 : target >= 11;
 
           void inc(int delta) => setState(() {
                 widget.logic.incHabit(it.refId!, delta, day);
@@ -630,28 +629,7 @@ final removeBtn = IconButton(
                         ],
 
                         // Ligne 3 — cercles (2..10) OU compteur (>= 11)
-                        if (showTicks) ...[
-                          const SizedBox(height: 6),
-                          HabitTicksRow(
-                            done: done,
-                            target: target,
-                            onIncOne: () => inc(1),
-                            onDecOne: () => inc(-1),
-                            onOpenFull: () => showHabitChecklist(
-                              context,
-                              title: it.title,
-                              done: done,
-                              target: target,
-                              onSet: (newDone) {
-                                final delta = newDone - done;
-                                if (delta != 0) {
-                                  widget.logic.incHabit(it.refId!, delta, day);
-                                  setState(() {});
-                                }
-                              },
-                            ),
-                          ),
-                        ] else if (isCounterMode) ...[
+                        if (isCounterMode) ...[
                           const SizedBox(height: 6),
                           Row(
                             children: [
@@ -691,6 +669,36 @@ final removeBtn = IconButton(
                               moveArrowIfAny(),
                             ],
                           ),
+                        ] else if (showTicks) ...[
+                          const SizedBox(height: 6),
+                          if (isAuto)
+                            HabitAutoTicksRow(
+                              done: done,
+                              target: target,
+                              onIncOne: () => inc(1),
+                              onDecOne: () => inc(-1),
+                            )
+                          else
+                            HabitTicksRow(
+                              done: done,
+                              target: target,
+                              onIncOne: () => inc(1),
+                              onDecOne: () => inc(-1),
+                              onOpenFull: () => showHabitChecklist(
+                                context,
+                                title: it.title,
+                                done: done,
+                                target: target,
+                                onSet: (newDone) {
+                                  final delta = newDone - done;
+                                  if (delta != 0) {
+                                    widget.logic
+                                        .incHabit(it.refId!, delta, day);
+                                    setState(() {});
+                                  }
+                                },
+                              ),
+                            ),
                         ],
                       ],
                     ),
@@ -892,6 +900,77 @@ final removeBtn = IconButton(
           );
         });
       },
+    );
+  }
+}
+
+class HabitAutoTicksRow extends StatelessWidget {
+  final int done; // ex: 3
+  final int target; // ex: 1 (info, pas limitant)
+  final VoidCallback onIncOne;
+  final VoidCallback onDecOne;
+
+  const HabitAutoTicksRow({
+    super.key,
+    required this.done,
+    required this.target,
+    required this.onIncOne,
+    required this.onDecOne,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // On aligne sur HabitTicksRow : 10 ronds max en ligne
+    const int show = 10;
+
+    Widget dot(bool filled, {bool isBonus = false}) => GestureDetector(
+          onTap: () => filled ? onDecOne() : onIncOne(),
+          onLongPress: () {
+            // boost ±5 simple (même logique que HabitTicksRow)
+            for (int k = 0; k < 5; k++) {
+              if (!filled) {
+                onIncOne();
+              } else {
+                onDecOne();
+              }
+            }
+          },
+          child: Container(
+            width: 18,
+            height: 18,
+            margin: const EdgeInsets.symmetric(horizontal: 3),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              // plein -> primary ; vide -> transparent
+              color: filled ? Theme.of(context).colorScheme.primary : null,
+              border: Border.all(
+                color: isBonus
+                    // bonus un poil plus visible (optionnel)
+                    ? Theme.of(context).colorScheme.primary.withOpacity(0.65)
+                    : Theme.of(context).colorScheme.onSurface.withOpacity(0.35),
+              ),
+            ),
+          ),
+        );
+
+    final cappedDone = done.clamp(0, show);
+    final canShowBonus = cappedDone < show; // tant qu'on n'a pas 10 pleins
+
+    return Row(
+      children: [
+        // ronds validés
+        for (int i = 0; i < cappedDone; i++) dot(true),
+
+        // 1 rond "bonus" vide cliquable (+1)
+        if (canShowBonus) dot(false, isBonus: true),
+
+        // (optionnel) petit texte
+        const SizedBox(width: 8),
+        Text(
+          "$done / $target",
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        ),
+      ],
     );
   }
 }

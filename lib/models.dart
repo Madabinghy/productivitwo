@@ -12,12 +12,13 @@ enum HabitFreq { daily, weekly, monthly }
 class DayPlanItem {
   String id;
   PlanKind kind;
-  String? refId; // activityId si activity/habit, sinon null pour action volante
-  String title; // libellé si action volante
-  String yyyymmdd; // jour planifié
-  bool done; // pour actions & activités
-  bool allDay; // pour les habitudes "à suivre toute la journée"
-  int order; // tri visuel
+  String? refId;
+  String title;
+  String yyyymmdd;
+  bool done;
+  int doneCount;
+  bool allDay;
+  int order;
 
   DayPlanItem({
     required this.id,
@@ -26,6 +27,7 @@ class DayPlanItem {
     required this.title,
     required this.yyyymmdd,
     this.done = false,
+    this.doneCount = 0,
     this.allDay = false,
     this.order = 0,
   });
@@ -37,20 +39,27 @@ class DayPlanItem {
         'title': title,
         'yyyymmdd': yyyymmdd,
         'done': done,
+        'doneCount': doneCount,
         'allDay': allDay,
         'order': order,
       };
 
-  static DayPlanItem from(Map j) => DayPlanItem(
-        id: j['id'],
-        kind: PlanKind.values.firstWhere((k) => k.name == j['kind']),
-        refId: j['refId'],
-        title: j['title'] ?? '',
-        yyyymmdd: j['yyyymmdd'],
-        done: j['done'] ?? false,
-        allDay: j['allDay'] ?? false,
-        order: j['order'] ?? 0,
-      );
+  static DayPlanItem from(Map j) {
+    final done = j['done'] ?? false;
+    final doneCount = j['doneCount'] ?? (done ? 1 : 0);
+
+    return DayPlanItem(
+      id: j['id'],
+      kind: PlanKind.values.firstWhere((k) => k.name == j['kind']),
+      refId: j['refId'],
+      title: j['title'] ?? '',
+      yyyymmdd: j['yyyymmdd'],
+      done: done,
+      doneCount: doneCount,
+      allDay: j['allDay'] ?? false,
+      order: j['order'] ?? 0,
+    );
+  }
 }
 
 class InboxItem {
@@ -474,7 +483,7 @@ class AppState {
         dayPlan: (j['dayPlan'] == null)
             ? <DayPlanItem>[]
             : (j['dayPlan'] as List).map((e) => DayPlanItem.from(e)).toList(),
-            focusTodayIds: (j['focusTodayIds'] as List?)?.cast<String>() ?? [],
+        focusTodayIds: (j['focusTodayIds'] as List?)?.cast<String>() ?? [],
       );
 
   String encode() => jsonEncode(toJson());
