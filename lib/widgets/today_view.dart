@@ -550,8 +550,8 @@ class _TodayViewState extends State<TodayView> {
           // - >= 11        -> counter (+/- + saisir)
           final isAuto = act.autoTune && !act.manualTarget;
           final isCheckbox = !isAuto && target <= 1;
-          final showTicks = !isAuto && !isCheckbox && target <= 10;
-          final isCounterMode = isAuto || target >= 11;
+          final showTicks = !isAuto && !isCheckbox && target <= 8;
+          final isCounterMode = isAuto || target >= 9;
           final isManual = act.manualTarget;
 
           void inc(int delta) => setState(() {
