@@ -804,10 +804,8 @@ class _TodayViewState extends State<TodayView> {
 
                               // ✅ bouton retour auto si on est en manuel
                               autoBackBtnIfManual(),
-
-                              // Optionnel : garder aussi tes actions compactes ici si tu veux
-                              // moreCompact(),
-                              // moveArrowIfAny(),
+                              moreCompact(),
+                              moveArrowIfAny(),
                             ],
                           ),
                         ] else if (!isCounterMode) ...[
