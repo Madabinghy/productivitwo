@@ -551,6 +551,7 @@ class _TodayViewState extends State<TodayView> {
           final isCheckbox = !isAuto && target <= 1;
           final showTicks = !isAuto && !isCheckbox && target <= 10;
           final isCounterMode = isAuto || target >= 11;
+          final isManual = act.manualTarget;
 
           void inc(int delta) => setState(() {
                 widget.logic.incHabit(it.refId!, delta, day);
@@ -586,6 +587,30 @@ class _TodayViewState extends State<TodayView> {
                 setState(() {});
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Routine déplacée vers demain')),
+                );
+              },
+            );
+          }
+
+          Widget autoBackBtnIfManual() {
+            if (!isManual) return const SizedBox.shrink();
+            return IconButton(
+              tooltip: 'Repasser en mode auto',
+              icon: const Icon(Icons.auto_awesome, size: 18),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+              visualDensity: VisualDensity.compact,
+              onPressed: () {
+                setState(() {
+                  act.manualTarget = false;
+                  act.autoTune = true; // sécurité
+                });
+                widget.logic.onChange();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Mode auto activé'),
+                    duration: Duration(milliseconds: 900),
+                  ),
                 );
               },
             );
@@ -653,6 +678,7 @@ class _TodayViewState extends State<TodayView> {
                                 onPressed: () => inc(-1),
                                 visualDensity: VisualDensity.compact,
                               ),
+
                               Text(
                                 "$done / $target",
                                 style: const TextStyle(
@@ -660,12 +686,13 @@ class _TodayViewState extends State<TodayView> {
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
+
                               IconButton(
                                 icon: const Icon(Icons.add_circle_outline),
                                 onPressed: () => inc(1),
                                 visualDensity: VisualDensity.compact,
                               ),
-                              const Spacer(),
+
                               TextButton(
                                 onPressed: () async {
                                   final v = await _askInt(
@@ -680,40 +707,99 @@ class _TodayViewState extends State<TodayView> {
                                 },
                                 child: const Text("Saisir"),
                               ),
+                              const Spacer(),
+
+                              // ✅ Toggle Auto/Manuel ultra compact
+                              Builder(builder: (context) {
+                                final isAutoMode =
+                                    act.autoTune && !act.manualTarget;
+
+                                return InkWell(
+                                  borderRadius: BorderRadius.circular(10),
+                                  onTap: () {
+                                    setState(() {
+                                      if (isAutoMode) {
+                                        act.manualTarget =
+                                            true; // passe en manuel
+                                      } else {
+                                        act.manualTarget =
+                                            false; // repasse en auto
+                                        act.autoTune =
+                                            true; // garantit auto actif
+                                      }
+                                    });
+                                    widget.logic.onChange();
+
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(isAutoMode
+                                            ? "Mode manuel"
+                                            : "Mode auto"),
+                                        duration:
+                                            const Duration(milliseconds: 900),
+                                      ),
+                                    );
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 4),
+                                    child: Icon(
+                                      isAutoMode
+                                          ? Icons.auto_awesome
+                                          : Icons.pan_tool_alt,
+                                      size: 16,
+                                    ),
+                                  ),
+                                );
+                              }),
+
                               moreCompact(),
                               moveArrowIfAny(),
                             ],
                           ),
                         ] else if (showTicks) ...[
                           const SizedBox(height: 6),
-                          if (isAuto)
-                            HabitAutoTicksRow(
-                              done: doneShown,
-                              target: targetShown,
-                              onIncOne: () => inc(1),
-                              onDecOne: () => inc(-1),
-                            )
-                          else
-                            HabitTicksRow(
-                              done: doneShown,
-                              target: targetShown,
-                              onIncOne: () => inc(1),
-                              onDecOne: () => inc(-1),
-                              onOpenFull: () => showHabitChecklist(
-                                context,
-                                title: it.title,
-                                done: doneShown,
-                                target: target,
-                                onSet: (newDone) {
-                                  final delta = newDone - doneShown;
-                                  if (delta != 0) {
-                                    widget.logic
-                                        .incHabit(it.refId!, delta, day);
-                                    setState(() {});
-                                  }
-                                },
+                          Row(
+                            children: [
+                              Expanded(
+                                child: isAuto
+                                    ? HabitAutoTicksRow(
+                                        done: doneShown,
+                                        target: targetShown,
+                                        onIncOne: () => inc(1),
+                                        onDecOne: () => inc(-1),
+                                      )
+                                    : HabitTicksRow(
+                                        done: doneShown,
+                                        target: targetShown,
+                                        onIncOne: () => inc(1),
+                                        onDecOne: () => inc(-1),
+                                        onOpenFull: () => showHabitChecklist(
+                                          context,
+                                          title: it.title,
+                                          done: doneShown,
+                                          target:
+                                              targetShown, // ✅ ici aussi (tu avais target)
+                                          onSet: (newDone) {
+                                            final delta = newDone - doneShown;
+                                            if (delta != 0) {
+                                              widget.logic.incHabit(
+                                                  it.refId!, delta, day);
+                                              setState(() {});
+                                            }
+                                          },
+                                        ),
+                                      ),
                               ),
-                            ),
+
+                              // ✅ bouton retour auto si on est en manuel
+                              autoBackBtnIfManual(),
+
+                              // Optionnel : garder aussi tes actions compactes ici si tu veux
+                              // moreCompact(),
+                              // moveArrowIfAny(),
+                            ],
+                          ),
                         ] else if (!isCounterMode) ...[
                           const SizedBox(height: 6),
                           Row(
@@ -731,6 +817,7 @@ class _TodayViewState extends State<TodayView> {
                               Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
+                                  autoBackBtnIfManual(), // ✅ nouveau
                                   moreCompact(),
                                   moveArrowIfAny(),
                                 ],
