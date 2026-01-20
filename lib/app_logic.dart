@@ -341,6 +341,25 @@ class AppLogic {
     return map;
   }
 
+  String habitSubText({
+    required HabitFreq freq,
+    required int dayDone,
+    required int dayQuota,
+    required int weekDone,
+    required int weekTarget,
+    required int monthDone,
+    required int monthTarget,
+  }) {
+    switch (freq) {
+      case HabitFreq.daily:
+        return "Aujourd’hui : $dayDone / $dayQuota";
+      case HabitFreq.weekly:
+        return "7 j : $weekDone / $weekTarget";
+      case HabitFreq.monthly:
+        return "30 j : $monthDone / $monthTarget";
+    }
+  }
+
   // ---------- HABITUDES (type=habit) ----------
   int habitValueOn(String activityId, DateTime day) {
     final key = yyyymmdd(day);

@@ -478,7 +478,7 @@ class _TodayViewState extends State<TodayView> {
         {
           // IMPORTANT: `day` doit déjà être le jour affiché (aujourd’hui/demain),
           // comme dans ton code actuel.
-          final done = widget.logic.habitValueOn(it.refId!, day);
+
           final act =
               widget.state.activities.firstWhereOrNull((a) => a.id == it.refId);
 
@@ -502,16 +502,55 @@ class _TodayViewState extends State<TodayView> {
             );
           }
 
-          final target = widget.logic.dayQuotaFor(act);
+          final freq = act.habitFreq ?? HabitFreq.monthly;
+
+          final dayDone = widget.logic.habitValueOn(it.refId!, day);
+          final dayQuota = widget.logic.dayQuotaFor(act);
+
+          final weekDone = widget.logic.habitSliding(it.refId!, 7).done;
+          final weekTarget = widget.logic.weekTargetFrom(act);
+
+          final monthDone = widget.logic.habitSliding(it.refId!, 30).done;
+          final monthTarget = widget.logic.monthTargetFrom(act);
+
+          int doneShown;
+          int targetShown;
+
+          switch (freq) {
+            case HabitFreq.daily:
+              doneShown = dayDone;
+              targetShown = dayQuota;
+              break;
+            case HabitFreq.weekly:
+              doneShown = weekDone;
+              targetShown = weekTarget;
+              break;
+            case HabitFreq.monthly:
+              doneShown = monthDone;
+              targetShown = monthTarget;
+              break;
+          }
+          final done = doneShown;
+          final target = targetShown;
+
+          String subText() => widget.logic.habitSubText(
+                freq: freq,
+                dayDone: dayDone,
+                dayQuota: dayQuota,
+                weekDone: weekDone,
+                weekTarget: weekTarget,
+                monthDone: monthDone,
+                monthTarget: monthTarget,
+              );
 
           // UI rules:
           // - target <= 1  -> checkbox
           // - 2..10        -> ticks (cercles), auto ou manuel
           // - >= 11        -> counter (+/- + saisir)
-          final isAuto = act.autoTune; // ✅ pas it.autoTune
+          final isAuto = act.autoTune && !act.manualTarget;
           final isCheckbox = !isAuto && target <= 1;
-          final showTicks = isAuto || (!isCheckbox && target <= 10);
-          final isCounterMode = isAuto ? done >= 10 : target >= 11;
+          final showTicks = !isAuto && !isCheckbox && target <= 10;
+          final isCounterMode = isAuto || target >= 11;
 
           void inc(int delta) => setState(() {
                 widget.logic.incHabit(it.refId!, delta, day);
@@ -603,30 +642,6 @@ class _TodayViewState extends State<TodayView> {
 
                         // Ligne 2 — "Aujourd’hui/Demain : X / Y" + (… + →)
                         // On la garde pour checkbox et ticks (pas pour compteur).
-                        if (!isCounterMode) ...[
-                          const SizedBox(height: 6),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  "$todayLabel $done / $target",
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  moreCompact(),
-                                  moveArrowIfAny(),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ],
 
                         // Ligne 3 — cercles (2..10) OU compteur (>= 11)
                         if (isCounterMode) ...[
@@ -673,24 +688,24 @@ class _TodayViewState extends State<TodayView> {
                           const SizedBox(height: 6),
                           if (isAuto)
                             HabitAutoTicksRow(
-                              done: done,
-                              target: target,
+                              done: doneShown,
+                              target: targetShown,
                               onIncOne: () => inc(1),
                               onDecOne: () => inc(-1),
                             )
                           else
                             HabitTicksRow(
-                              done: done,
-                              target: target,
+                              done: doneShown,
+                              target: targetShown,
                               onIncOne: () => inc(1),
                               onDecOne: () => inc(-1),
                               onOpenFull: () => showHabitChecklist(
                                 context,
                                 title: it.title,
-                                done: done,
+                                done: doneShown,
                                 target: target,
                                 onSet: (newDone) {
-                                  final delta = newDone - done;
+                                  final delta = newDone - doneShown;
                                   if (delta != 0) {
                                     widget.logic
                                         .incHabit(it.refId!, delta, day);
@@ -699,6 +714,29 @@ class _TodayViewState extends State<TodayView> {
                                 },
                               ),
                             ),
+                        ] else if (!isCounterMode) ...[
+                          const SizedBox(height: 6),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  subText(),
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  moreCompact(),
+                                  moveArrowIfAny(),
+                                ],
+                              ),
+                            ],
+                          ),
                         ],
                       ],
                     ),
