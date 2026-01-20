@@ -541,6 +541,7 @@ class _TodayViewState extends State<TodayView> {
                 weekTarget: weekTarget,
                 monthDone: monthDone,
                 monthTarget: monthTarget,
+                swowTodayText: true,
               );
 
           // UI rules:
@@ -680,10 +681,19 @@ class _TodayViewState extends State<TodayView> {
                               ),
 
                               Text(
-                                "$done / $target",
+                                widget.logic.habitSubText(
+                                  freq: freq,
+                                  dayDone: dayDone,
+                                  dayQuota: dayQuota,
+                                  weekDone: weekDone,
+                                  weekTarget: weekTarget,
+                                  monthDone: monthDone,
+                                  monthTarget: monthTarget,
+                                  swowTodayText: false,
+                                ),
                                 style: const TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
 

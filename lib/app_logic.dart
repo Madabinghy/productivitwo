@@ -349,10 +349,11 @@ class AppLogic {
     required int weekTarget,
     required int monthDone,
     required int monthTarget,
+    required bool  swowTodayText,
   }) {
     switch (freq) {
       case HabitFreq.daily:
-        return "Aujourd’hui : $dayDone / $dayQuota";
+        return swowTodayText?"Aujourd'hui : $dayDone / $dayQuota": "$dayDone / $dayQuota";
       case HabitFreq.weekly:
         return "7 j : $weekDone / $weekTarget";
       case HabitFreq.monthly:
