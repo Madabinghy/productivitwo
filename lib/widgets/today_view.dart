@@ -690,7 +690,7 @@ class _TodayViewState extends State<TodayView> {
             if (!isManual) return const SizedBox.shrink();
             return IconButton(
               tooltip: 'Repasser en mode auto',
-              icon: const Icon(Icons.trending_up, size: 18),
+              icon: const Icon(Icons.horizontal_rule, size: 18,),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints.tightFor(width: 32, height: 32),
               visualDensity: VisualDensity.compact,
@@ -824,6 +824,8 @@ class _TodayViewState extends State<TodayView> {
                                       if (isAutoMode) {
                                         act.manualTarget =
                                             true; // passe en manuel
+                                            act.autoTune =
+                                            false; // garantit auto inactif
                                       } else {
                                         act.manualTarget =
                                             false; // repasse en auto
