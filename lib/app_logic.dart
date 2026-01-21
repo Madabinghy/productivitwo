@@ -62,10 +62,13 @@ class AppLogic {
   }
 
   void appendToTomorrowIfLastIsDifferent(
-      PlanKind kind, String refId, String title) {
+    PlanKind kind,
+    String refId,
+    String title, {
+    String? domainId, // ✅ NEW
+  }) {
     final tomoKey = _tomorrowKey();
 
-    // dernier item (par order) pour demain
     DayPlanItem? last;
     for (final e in state.dayPlan) {
       if (e.yyyymmdd != tomoKey) continue;
@@ -81,6 +84,7 @@ class AppLogic {
         id: _uuid.v4(),
         kind: kind,
         refId: refId,
+        domainId: domainId, // ✅
         title: title,
         yyyymmdd: tomoKey,
         done: false,
@@ -730,16 +734,40 @@ class AppLogic {
       if (_existsInDay(tomorrowKey, PlanKind.habit, a.id)) continue;
 
       // Sinon on l’ajoute à AUJOURD’HUI (à la fin, comme d’hab)
-      state.dayPlan.add(DayPlanItem(
-        id: const Uuid().v4(),
-        kind: PlanKind.habit,
-        refId: a.id,
-        title: a.name,
-        yyyymmdd: todayKey,
-        done: false,
-        allDay: false,
-        order: _nextOrderForDay(todayKey),
-      ));
+      void appendToTomorrowIfLastIsDifferent(
+        PlanKind kind,
+        String refId,
+        String title, {
+        String? domainId, // ✅ NEW
+      }) {
+        final tomoKey = _tomorrowKey();
+
+        DayPlanItem? last;
+        for (final e in state.dayPlan) {
+          if (e.yyyymmdd != tomoKey) continue;
+          if (last == null || e.order > last!.order) last = e;
+        }
+
+        final sameAsLast =
+            last != null && last!.kind == kind && last!.refId == refId;
+        if (sameAsLast) return;
+
+        state.dayPlan.add(
+          DayPlanItem(
+            id: _uuid.v4(),
+            kind: kind,
+            refId: refId,
+            domainId: domainId, // ✅
+            title: title,
+            yyyymmdd: tomoKey,
+            done: false,
+            allDay: false,
+            order: _nextOrderForDay(tomoKey),
+          ),
+        );
+
+        onChange();
+      }
     }
 
     onChange();
@@ -1134,29 +1162,36 @@ class AppLogic {
   void ensurePlannedTomorrow(PlanKind kind, String refId) {
     final tomoKey = _tomorrowKey();
     final exists = state.dayPlan.any(
-        (e) => e.yyyymmdd == tomoKey && e.kind == kind && e.refId == refId);
+      (e) => e.yyyymmdd == tomoKey && e.kind == kind && e.refId == refId,
+    );
     if (exists) return;
 
+    Activity? act;
     String title;
+
     switch (kind) {
       case PlanKind.activityTime:
-        title = state.activities
-            .firstWhere(
-              (a) => a.id == refId,
-              orElse: () =>
-                  Activity(domainId: '', name: 'Activité', habitTarget: 1),
-            )
-            .name;
+        act = state.activities.firstWhere(
+          (a) => a.id == refId,
+          orElse: () =>
+              Activity(domainId: '', name: 'Activité', habitTarget: 1),
+        );
+        title = act.name;
         break;
+
       case PlanKind.habit:
-        title = state.activities
-            .firstWhere(
-              (a) => a.id == refId,
-              orElse: () => Activity(
-                  domainId: '', name: 'Routine', type: 'habit', habitTarget: 1),
-            )
-            .name;
+        act = state.activities.firstWhere(
+          (a) => a.id == refId,
+          orElse: () => Activity(
+            domainId: '',
+            name: 'Routine',
+            type: 'habit',
+            habitTarget: 1,
+          ),
+        );
+        title = act.name;
         break;
+
       case PlanKind.action:
         title = 'Action';
         break;
@@ -1166,12 +1201,16 @@ class AppLogic {
       id: _uuid.v4(),
       kind: kind,
       refId: refId,
+      domainId:
+          act?.domainId.isNotEmpty == true ? act!.domainId : null, // ✅ NEW
       title: title,
       yyyymmdd: tomoKey,
       done: false,
       allDay: false,
       order: _nextOrderForDay(tomoKey),
     ));
+
+    onChange();
   }
 
   bool removeFromDay(String ymd, PlanKind kind, String refId) {
@@ -1181,7 +1220,35 @@ class AppLogic {
     return state.dayPlan.length != before;
   }
 
-  void logTomorrowIfLastDifferent(PlanKind kind, String refId, String title) {
+  bool backfillDomainIdsForPlan() {
+    bool changed = false;
+
+    for (final it in state.dayPlan) {
+      if (it.domainId != null) continue;
+      if (it.refId == null) continue;
+
+      if (it.kind == PlanKind.habit || it.kind == PlanKind.activityTime) {
+        final a = state.activities.firstWhere(
+          (x) => x.id == it.refId,
+          orElse: () => Activity(domainId: '', name: '', habitTarget: 1),
+        );
+        if (a.domainId.isNotEmpty) {
+          it.domainId = a.domainId;
+          changed = true;
+        }
+      }
+    }
+
+    if (changed) onChange();
+    return changed;
+  }
+
+  void logTomorrowIfLastDifferent(
+    PlanKind kind,
+    String refId,
+    String title, {
+    String? domainId, // ✅ NEW
+  }) {
     final tomoKey = _tomorrowKey();
 
     DayPlanItem? last;
@@ -1199,6 +1266,8 @@ class AppLogic {
         id: _uuid.v4(),
         kind: kind,
         refId: refId,
+        domainId:
+            (domainId != null && domainId.isNotEmpty) ? domainId : null, // ✅
         title: title,
         yyyymmdd: tomoKey,
         done: false,
@@ -1206,6 +1275,24 @@ class AppLogic {
         order: _nextOrderForDay(tomoKey),
       ),
     );
+
+    onChange();
+  }
+
+  String? _domainIdForJournal(PlanKind kind, String? refId) {
+    if (refId == null) return null;
+
+    // Cas couverts tout de suite chez toi : refId = Activity.id
+    if (kind == PlanKind.habit || kind == PlanKind.activityTime) {
+      final a = state.activities.firstWhere(
+        (x) => x.id == refId,
+        orElse: () => Activity(domainId: '', name: '', habitTarget: 1),
+      );
+      return a.domainId.isEmpty ? null : a.domainId;
+    }
+
+    // Actions / autres : pas de domaine (ou à compléter plus tard)
+    return null;
   }
 
   void journalLog({
@@ -1213,7 +1300,7 @@ class AppLogic {
     required String? refId,
     required String title,
   }) {
-    final dayKey = _tomorrowKey(); // ou _todayKey() si tu changes plus tard
+    final dayKey = _tomorrowKey(); // ou _todayKey()
 
     DayPlanItem? last;
     for (final e in state.dayPlan) {
@@ -1222,6 +1309,7 @@ class AppLogic {
     }
 
     final sameAsLast = last != null && last.kind == kind && last.refId == refId;
+
     if (sameAsLast) return;
 
     state.dayPlan.add(
@@ -1229,6 +1317,7 @@ class AppLogic {
         id: _uuid.v4(),
         kind: kind,
         refId: refId,
+        domainId: _domainIdForJournal(kind, refId), // ✅ NEW
         title: title,
         yyyymmdd: dayKey,
         done: false,
@@ -1252,10 +1341,10 @@ class AppLogic {
 
     state.dayPlan.add(
       DayPlanItem(
-        id: _uuid
-            .v4(), // ✅ nouvelle occurrence (ou garde removed.id si tu préfères)
-        kind: removed.kind, // action
-        refId: null,
+        id: _uuid.v4(), // ok si tu veux une nouvelle occurrence
+        kind: removed.kind,
+        refId: removed.refId, // ✅ garde
+        domainId: removed.domainId, // ✅ garde (si ajouté au modèle)
         title: removed.title,
         yyyymmdd: tomoKey,
         done: false,
@@ -1318,25 +1407,41 @@ class AppLogic {
       }
     }
 
+    String? _resolveDomainId() {
+      switch (kind) {
+        case PlanKind.activityTime:
+        case PlanKind.habit:
+          final a = state.activities.firstWhere(
+            (x) => x.id == refId,
+            orElse: () => Activity(domainId: '', name: '', habitTarget: 1),
+          );
+          return a.domainId.isEmpty ? null : a.domainId;
+        case PlanKind.action:
+          return null;
+      }
+    }
+
     DayPlanItem? toAdd;
 
-    // ✅ si on a retiré un item aujourd’hui, on log une occurrence demain
+// ✅ si on a retiré un item aujourd’hui, on log une occurrence demain
     if (removed != null) {
       toAdd = DayPlanItem(
-        id: _uuid.v4(), // ✅ NEW ID = occurrences multiples
+        id: _uuid.v4(),
         kind: removed.kind,
         refId: removed.refId,
+        domainId: removed.domainId, // ✅ NEW (si champ ajouté)
         title: removed.title,
         yyyymmdd: tomoKey,
         done: false,
         allDay: removed.allDay,
-        order: _nextOrderForDay(tomoKey), // ordre chronologique
+        order: _nextOrderForDay(tomoKey),
       );
     } else if (addIfMissing) {
       toAdd = DayPlanItem(
-        id: _uuid.v4(), // déjà ok
+        id: _uuid.v4(),
         kind: kind,
         refId: refId,
+        domainId: _resolveDomainId(), // ✅ NEW
         title: _resolveTitle(),
         yyyymmdd: tomoKey,
         done: false,
@@ -1611,11 +1716,187 @@ class AppLogic {
   }
 }
 
+class DashboardDomainOrder {
+  final Map<String, double> scoreByDomain;
+  final Map<String, bool> haloReachedByDomain;
+  final List<Domain> sortedDomains;
+  final Map<String, int> rankByDomain;
+
+  DashboardDomainOrder({
+    required this.scoreByDomain,
+    required this.haloReachedByDomain,
+    required this.sortedDomains,
+    required this.rankByDomain,
+  });
+}
+
 // =====================================================
 // ===================  EXTENSIONS  ====================
 // =====================================================
 
 extension TodayLogic on AppLogic {
+  void setSortTodayByDashboard(bool v) {
+    state.sortTodayByDashboard = v;
+    onChange();
+  }
+
+  String? _domainIdOfSession(Session s) {
+    final a = state.activities.firstWhere(
+      (x) => x.id == s.activityId,
+      orElse: () => Activity(domainId: '', name: '', habitTarget: 1),
+    );
+    return a.domainId.isEmpty ? null : a.domainId;
+  }
+
+  Map<String, Duration> timeTotalsByDomain(DateTime start, DateTime end) {
+    final totals = <String, Duration>{};
+
+    for (final s in state.sessions) {
+      final domainId = _domainIdOfSession(s);
+      if (domainId == null) continue;
+
+      final st = s.startAt;
+      final en = s.endAt ?? DateTime.now();
+
+      // pas d'intersection
+      if (en.isBefore(start) || st.isAfter(end)) continue;
+
+      final a = st.isBefore(start) ? start : st;
+      final b = en.isAfter(end) ? end : en;
+
+      if (!b.isAfter(a)) continue;
+
+      totals[domainId] = (totals[domainId] ?? Duration.zero) + b.difference(a);
+    }
+
+    return totals;
+  }
+
+  DashboardDomainOrder computeDashboardDomainOrder({
+    DateTime? now,
+    double haloReachedThreshold = 0.85, // mets ta valeur réelle si besoin
+  }) {
+    final t = now ?? DateTime.now();
+
+    final todayStart = DateTime(t.year, t.month, t.day);
+    final todayEnd = t;
+
+    final start24 = t.subtract(const Duration(hours: 24));
+    final end24 = t;
+
+    final start7 = todayStart.subtract(const Duration(days: 7));
+    final end7 = todayStart; // exclut aujourd’hui (comme ton dashboard)
+
+    final totalsTodayAll = timeTotalsByDomain(todayStart, todayEnd);
+    final totals24All = timeTotalsByDomain(start24, end24);
+    final totals7All = timeTotalsByDomain(start7, end7);
+
+    final scoreByDomain = <String, double>{};
+    final haloReachedByDomain = <String, bool>{};
+
+    for (final d in state.domains) {
+      final hoursToday = (totalsTodayAll[d.id]?.inMinutes ?? 0) / 60.0;
+      final hours24 = (totals24All[d.id]?.inMinutes ?? 0) / 60.0;
+
+      final avgWeekHoursPerDay =
+          ((totals7All[d.id]?.inMinutes ?? 0) / 60.0) / 7.0;
+
+      final denom = avgWeekHoursPerDay;
+
+      final big = denom > 0 ? (hours24 / denom).clamp(0.0, 1.0) : 0.0;
+      final outer = denom > 0 ? (hoursToday / denom).clamp(0.0, 1.0) : 0.0;
+
+      scoreByDomain[d.id] = (big - outer).abs();
+      haloReachedByDomain[d.id] = outer >= haloReachedThreshold;
+    }
+
+    final sortedDomains = [...state.domains]..sort((a, b) {
+        final aReached = haloReachedByDomain[a.id] ?? false;
+        final bReached = haloReachedByDomain[b.id] ?? false;
+
+        if (aReached != bReached) return aReached ? 1 : -1;
+
+        final sa = scoreByDomain[a.id] ?? 0.0;
+        final sb = scoreByDomain[b.id] ?? 0.0;
+        return sb.compareTo(sa);
+      });
+
+    final rankByDomain = {
+      for (var i = 0; i < sortedDomains.length; i++) sortedDomains[i].id: i,
+    };
+
+    return DashboardDomainOrder(
+      scoreByDomain: scoreByDomain,
+      haloReachedByDomain: haloReachedByDomain,
+      sortedDomains: sortedDomains,
+      rankByDomain: rankByDomain,
+    );
+  }
+
+  List<DayPlanItem> viewItemsSortedByDashboard(
+    List<DayPlanItem> input,
+    Map<String, int> domainRank,
+  ) {
+    // stabilité: garde l'ordre manuel actuel à l’intérieur d’un même domaine
+    final realIndex = <String, int>{};
+    for (var i = 0; i < input.length; i++) {
+      realIndex[input[i].id] = i;
+    }
+
+    final sorted = [...input];
+    sorted.sort((a, b) {
+      final ra =
+          a.domainId == null ? 1 << 30 : (domainRank[a.domainId!] ?? 1 << 20);
+      final rb =
+          b.domainId == null ? 1 << 30 : (domainRank[b.domainId!] ?? 1 << 20);
+
+      final c = ra.compareTo(rb);
+      if (c != 0) return c;
+
+      // même domaine => on garde l'ordre manuel actuel
+      return (realIndex[a.id] ?? 0).compareTo(realIndex[b.id] ?? 0);
+    });
+
+    return sorted;
+  }
+
+  List<Domain> sortDomainsLikeDashboard({
+    required Map<String, double> scoreByDomain,
+    required Map<String, bool> haloReachedByDomain,
+  }) {
+    final sorted = [...state.domains]..sort((a, b) {
+        final aReached = haloReachedByDomain[a.id] ?? false;
+        final bReached = haloReachedByDomain[b.id] ?? false;
+
+        // 1) non atteint -> en haut
+        if (aReached != bReached) {
+          return aReached ? 1 : -1;
+        }
+
+        // 2) score desc
+        final sa = scoreByDomain[a.id] ?? 0.0;
+        final sb = scoreByDomain[b.id] ?? 0.0;
+        return sb.compareTo(sa);
+      });
+
+    return sorted;
+  }
+
+  Map<String, int> domainRankFromSorted(List<Domain> sorted) {
+    return {for (var i = 0; i < sorted.length; i++) sorted[i].id: i};
+  }
+
+  Map<String, int> dashboardDomainRank({
+    required Map<String, double> scoreByDomain,
+    required Map<String, bool> haloReachedByDomain,
+  }) {
+    final sorted = sortDomainsLikeDashboard(
+      scoreByDomain: scoreByDomain,
+      haloReachedByDomain: haloReachedByDomain,
+    );
+    return domainRankFromSorted(sorted);
+  }
+
   int _indexInDay(String ymd, PlanKind kind, String refId) {
     return state.dayPlan.indexWhere(
         (e) => e.yyyymmdd == ymd && e.kind == kind && e.refId == refId);
@@ -1713,11 +1994,12 @@ extension TodayLogic on AppLogic {
     bool allDay = false,
   }) async {
     final act = state.activities.firstWhere((a) => a.id == activityId);
-    final key = ymd; // <- respecte l'onglet (aujourd'hui/demain/...)
+    final key = ymd; // respecte l'onglet (aujourd'hui/demain/...)
 
     final plan = planFor(key); // trié par order
     final todayKey = _todayKeyLocal();
     final isToday = (key == todayKey);
+
     final ord = plan.isEmpty
         ? 0
         : (isToday
@@ -1728,11 +2010,13 @@ extension TodayLogic on AppLogic {
       id: const Uuid().v4(),
       kind: isHabit ? PlanKind.habit : PlanKind.activityTime,
       refId: activityId,
+      domainId: act.domainId.isEmpty ? null : act.domainId, // ✅ NEW
       title: act.name,
-      yyyymmdd: todayKey, // 👈 toujours le jour local
+      yyyymmdd: key, // ✅ FIX: pas todayKey
       allDay: isHabit ? allDay : false,
       order: ord,
     ));
+
     onChange();
   }
 
@@ -1776,7 +2060,8 @@ extension TodayLogic on AppLogic {
     final t = now ?? DateTime.now();
     final today = yyyymmdd(DateTime(t.year, t.month, t.day));
     final yesterday = yyyymmdd(
-        DateTime(t.year, t.month, t.day).subtract(const Duration(days: 1)));
+      DateTime(t.year, t.month, t.day).subtract(const Duration(days: 1)),
+    );
 
     final carry =
         state.dayPlan.where((e) => e.yyyymmdd == yesterday && !e.done).toList();
@@ -1786,23 +2071,28 @@ extension TodayLogic on AppLogic {
 
     for (final e in carry) {
       // ✅ si déjà présent aujourd'hui, ne pas dupliquer
-      final alreadyThere = state.dayPlan.any(
-          (x) => x.yyyymmdd == today && x.kind == e.kind && x.refId == e.refId);
+      final alreadyThere = state.dayPlan.any((x) {
+        if (x.yyyymmdd != today) return false;
+        if (x.kind != e.kind) return false;
+        if (e.kind == PlanKind.action) return x.title == e.title;
+        return x.refId == e.refId;
+      });
       if (alreadyThere) continue;
 
       state.dayPlan.add(DayPlanItem(
         id: const Uuid().v4(),
         kind: e.kind,
         refId: e.refId,
+        domainId: e.domainId, // ✅ NEW (si champ ajouté)
         title: e.title,
         yyyymmdd: today,
         done: false,
+        doneCount: 0, // ✅ (ou e.doneCount si tu préfères)
         allDay: e.allDay,
-        order: order++, // 👈 compteur propre
+        order: order++, // compteur propre
       ));
     }
 
-    // Optionnel : supprimer les doublons anciens
     state.dayPlan.removeWhere((e) => e.yyyymmdd == yesterday);
     onChange();
   }
@@ -1810,12 +2100,12 @@ extension TodayLogic on AppLogic {
   void ensureTodayDailyHabits({DateTime? now}) {
     final t = now ?? DateTime.now();
     final todayKey = yyyymmdd(t);
+    final tomorrowKey = yyyymmdd(t.add(const Duration(days: 1)));
     final todayDate = DateTime(t.year, t.month, t.day);
 
     bool changed = false;
 
     for (final a in state.activities.where((x) => x.isHabit)) {
-      // On ne gère que les routines "quotidiennes" actives
       if (effectiveHabitFreq(a) != HabitFreq.daily) continue;
 
       final quota = dayQuotaFor(a);
@@ -1824,33 +2114,40 @@ extension TodayLogic on AppLogic {
       final done = habitValueOn(a.id, todayDate);
 
       if (done >= quota) {
-        // Déjà atteinte aujourd’hui → s’assurer qu’elle N’EST PAS dans "Aujourd’hui"
         final removed = removeFromDay(todayKey, PlanKind.habit, a.id);
         if (removed) changed = true;
         continue;
       }
 
-      // Pas encore atteinte → s’assurer qu’elle EST dans "Aujourd’hui"
+      // ✅ si l'utilisateur l'a poussée à demain, ne pas la remettre aujourd'hui
+      final plannedTomorrow = state.dayPlan.any((e) =>
+          e.yyyymmdd == tomorrowKey &&
+          e.kind == PlanKind.habit &&
+          e.refId == a.id);
+      if (plannedTomorrow) continue;
+
       final exists = state.dayPlan.any((e) =>
           e.yyyymmdd == todayKey &&
           e.kind == PlanKind.habit &&
           e.refId == a.id);
+
       if (!exists) {
         state.dayPlan.add(DayPlanItem(
           id: const Uuid().v4(),
           kind: PlanKind.habit,
           refId: a.id,
+          domainId: a.domainId.isEmpty ? null : a.domainId, // ✅
           title: a.name,
           yyyymmdd: todayKey,
           done: false,
-          allDay: true, // utile pour visuel "sur la journée"
+          allDay: true,
           order: _nextOrderForDay(todayKey),
         ));
         changed = true;
       }
     }
 
-    if (changed) onChange(); // persiste + notifie l’UI
+    if (changed) onChange();
   }
 }
 

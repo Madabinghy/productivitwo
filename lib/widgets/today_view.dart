@@ -17,8 +17,9 @@ class _TodayViewState extends State<TodayView> {
   // Choix JOUR: aujourd’hui / demain
   late DateTime _base;
   bool _planTomorrow = false;
+
   // --- Pulse de validation (coche verte animée) ---
-  final Set<String> _habitPulse = {};
+/*   final Set<String> _habitPulse = {};
 
   void _firePulse(String planItemId) {
     setState(() => _habitPulse.add(planItemId));
@@ -26,7 +27,7 @@ class _TodayViewState extends State<TodayView> {
       if (!mounted) return;
       setState(() => _habitPulse.remove(planItemId));
     });
-  }
+  } */
 
   String get _ymd {
     final d = _planTomorrow ? _base.add(const Duration(days: 1)) : _base;
@@ -41,14 +42,12 @@ class _TodayViewState extends State<TodayView> {
   @override
   void initState() {
     super.initState();
-    //_planTomorrow = false; //Forcer le tab à aujourd'hui
-    // Décaler la maintenance après le 1er frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _startupHousekeeping(); // -> maybeCarryFromYesterday + ensureDailyHabitsPlanned
+      _startupHousekeeping();
+      widget.logic.backfillDomainIdsForPlan();
+      setState(() {});
     });
-
     _base = DateTime.now();
-    //if (_base.hour >= 22) _planTomorrow = true;
   }
 
   Widget _focusSection(AppLogic logic) {
@@ -143,18 +142,55 @@ class _TodayViewState extends State<TodayView> {
 
   @override
   Widget build(BuildContext context) {
+    final sortByDashboard = widget.logic.state.sortTodayByDashboard;
     final ymd = _ymd;
     final isTodayTab = ymd == yyyymmdd(DateTime.now());
 
-    final items = widget.logic.planFor(ymd).where((it) {
-      if (!isTodayTab) return true; // Demain : on montre tout
+    final itemsRaw = widget.logic.planFor(ymd).where((it) {
+      if (!isTodayTab) return true;
 
-      // Aujourd’hui : on cache uniquement les routines clôturées via OK
       final isRoutine = it.kind != PlanKind.action;
       if (isRoutine && it.done) return false;
 
       return true;
     }).toList();
+
+    for (final it in itemsRaw) {
+      if (it.domainId == null) {
+        debugPrint('NO DOMAIN: ${it.kind} ${it.title} ref=${it.refId}');
+      }
+    }
+
+    const haloReachedThreshold = 0.99; // ou 0.95 si tu veux plus doux
+final domainRank = widget.logic
+    .computeDashboardDomainOrder(haloReachedThreshold: haloReachedThreshold)
+    .rankByDomain;
+
+final items = sortByDashboard
+    ? widget.logic.viewItemsSortedByDashboard(itemsRaw, domainRank)
+    : itemsRaw;
+/* 
+    debugPrint('--- DOMAIN RANKS ---');
+    final sorted = widget.logic.computeDashboardDomainOrder().sortedDomains;
+    for (final d in sorted) {
+      debugPrint('DOMAIN ${d.name} id=${d.id} rank=${domainRank[d.id]}');
+    }
+
+    final order = widget.logic.computeDashboardDomainOrder();
+    debugPrint(
+        'Pomodoro domain reached=${order.haloReachedByDomain["b706..."]} score=${order.scoreByDomain["b706..."]}');
+ */
+/*     void dbg(DayPlanItem it) {
+      final d = it.domainId;
+      final r = d == null ? null : domainRank[d];
+      debugPrint(
+          'ITEM "${it.title}" kind=${it.kind} domain=$d rank=$r order=${it.order}');
+    } */
+
+// Exemple: log tous les items
+/*     for (final it in itemsRaw) {
+      dbg(it);
+    } */
 
     return Scaffold(
       appBar: AppBar(
@@ -162,7 +198,7 @@ class _TodayViewState extends State<TodayView> {
           title: Center(
             child: SegmentedButton<bool>(
               segments: const [
-                ButtonSegment(value: false, label: Text('Aujourd’hui')),
+                ButtonSegment(value: false, label: Text('Action!')),
                 ButtonSegment(value: true, label: Text('Demain')),
               ],
               selected: {_planTomorrow},
@@ -172,6 +208,14 @@ class _TodayViewState extends State<TodayView> {
           ),
           actions: [
             // … tes autres actions …
+IconButton(
+  icon: Icon(sortByDashboard ? Icons.auto_awesome : Icons.drag_handle),
+  onPressed: () {
+    setState(() {
+      widget.logic.setSortTodayByDashboard(!sortByDashboard);
+    });
+  },
+),
             IconButton(
               tooltip: 'Reporter le non-fait → Demain',
               icon: const Icon(Icons.redo),
@@ -194,13 +238,20 @@ class _TodayViewState extends State<TodayView> {
             child: ReorderableListView.builder(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
               itemCount: items.length,
-              onReorder: (oldIndex, newIndex) {
-                setState(
-                    () => widget.logic.reorderPlan(ymd, oldIndex, newIndex));
-              },
+
+              // ✅ drag OFF quand tri Dashboard ON
+              buildDefaultDragHandles: !sortByDashboard,
+              onReorder: sortByDashboard
+                  ? (_, __) {} // no-op
+                  : (oldIndex, newIndex) {
+                      setState(() =>
+                          widget.logic.reorderPlan(ymd, oldIndex, newIndex));
+                    },
+
               itemBuilder: (ctx, i) {
                 final it = items[i];
-                return _todayTile(ctx, it, key: ValueKey(it.id));
+                return _todayTile(ctx, it,
+                    key: ValueKey(it.id), showDrag: !sortByDashboard);
               },
             ),
           ),
@@ -229,7 +280,8 @@ class _TodayViewState extends State<TodayView> {
   DateTime _dayEnd({bool tomorrow = false}) =>
       _dayStart(tomorrow: tomorrow).add(const Duration(days: 1));
 
-  Widget _todayTile(BuildContext context, DayPlanItem it, {required Key key}) {
+  Widget _todayTile(BuildContext context, DayPlanItem it,
+      {required Key key, bool showDrag = true}) {
     // Jour affiché selon l’onglet
     final now = DateTime.now();
     final viewed = _planTomorrow ? now.add(const Duration(days: 1)) : now;
@@ -355,7 +407,7 @@ class _TodayViewState extends State<TodayView> {
                   Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      dragHandleFor(it),
+                      if (showDrag) dragHandleFor(it),
 
                       // Mettre plus tard (fin de liste) — si tu veux le garder pour les routines
                       IconButton(
@@ -385,7 +437,7 @@ class _TodayViewState extends State<TodayView> {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
- /*                        Checkbox(
+                        /*                        Checkbox(
                           materialTapTargetSize:
                               MaterialTapTargetSize.shrinkWrap,
                           visualDensity: VisualDensity.compact,
@@ -459,7 +511,7 @@ class _TodayViewState extends State<TodayView> {
               padding: const EdgeInsets.symmetric(vertical: 10),
               child: Row(
                 children: [
-                  dragHandleFor(it),
+                  if (showDrag) dragHandleFor(it),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -675,7 +727,7 @@ class _TodayViewState extends State<TodayView> {
                   Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      dragHandleFor(it),
+                      if (showDrag) dragHandleFor(it),
 
                       // Mettre plus tard (fin de liste) — si tu veux le garder pour les routines
                       IconButton(

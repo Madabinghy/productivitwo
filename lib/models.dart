@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:math' as math;
 import 'package:uuid/uuid.dart';
 
 const _uuid = Uuid();
@@ -13,6 +12,7 @@ class DayPlanItem {
   String id;
   PlanKind kind;
   String? refId;
+  String? domainId; // ✅ NEW
   String title;
   String yyyymmdd;
   bool done;
@@ -24,6 +24,7 @@ class DayPlanItem {
     required this.id,
     required this.kind,
     this.refId,
+    this.domainId, // ✅
     required this.title,
     required this.yyyymmdd,
     this.done = false,
@@ -36,6 +37,7 @@ class DayPlanItem {
         'id': id,
         'kind': kind.name,
         'refId': refId,
+        'domainId': domainId, // ✅
         'title': title,
         'yyyymmdd': yyyymmdd,
         'done': done,
@@ -52,6 +54,7 @@ class DayPlanItem {
       id: j['id'],
       kind: PlanKind.values.firstWhere((k) => k.name == j['kind']),
       refId: j['refId'],
+      domainId: j['domainId'], // ✅
       title: j['title'] ?? '',
       yyyymmdd: j['yyyymmdd'],
       done: done,
@@ -428,6 +431,7 @@ class AppState {
   String? lastCarryYmd; // on a déjà fait "Hier → Aujourd'hui" pour ce jour ?
   String? lastPrepYmd; // on a déjà fait "Aujourd'hui → Demain" pour ce jour ?
   List<String> focusTodayIds;
+  bool sortTodayByDashboard;
 
   AppState({
     required this.domains,
@@ -440,6 +444,7 @@ class AppState {
     List<InboxItem>? inbox,
     List<String>? focusTodayIds,
     this.dayPlan = const [],
+      this.sortTodayByDashboard = false,
   })  : snoozedUntil = snoozedUntil ?? {},
         goals = goals ?? [],
         inbox = inbox ?? [],
@@ -456,6 +461,7 @@ class AppState {
         'inbox': inbox.map((e) => e.toJson()).toList(),
         'dayPlan': dayPlan.map((e) => e.toJson()).toList(),
         'focusTodayIds': focusTodayIds,
+        'sortTodayByDashboard': sortTodayByDashboard,
       };
 
   static AppState from(Map j) => AppState(
@@ -484,6 +490,7 @@ class AppState {
             ? <DayPlanItem>[]
             : (j['dayPlan'] as List).map((e) => DayPlanItem.from(e)).toList(),
         focusTodayIds: (j['focusTodayIds'] as List?)?.cast<String>() ?? [],
+        sortTodayByDashboard: j['sortTodayByDashboard'] ?? false,
       );
 
   String encode() => jsonEncode(toJson());

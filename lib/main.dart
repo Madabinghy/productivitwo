@@ -1224,10 +1224,10 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   }
 
   bool get _hasRunningSession {
-  final st = _state;
-  if (st == null) return false;
-  return st.sessions.any((x) => x.endAt == null);
-}
+    final st = _state;
+    if (st == null) return false;
+    return st.sessions.any((x) => x.endAt == null);
+  }
   // ---------- UI ----------
 
   @override
@@ -1289,21 +1289,21 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
 // --- Dans build(...) ---
 
-body: Stack(
-  children: [
-    Padding(
-      padding: EdgeInsets.only(top: _hasRunningSession ? 92.0 : 0.0),
-      child: _buildBody(context),
-    ),
-    Align(
-      alignment: Alignment.topCenter,
-      child: SafeArea(
-        bottom: false,
-        child: _runningBannerGlobal(),
+      body: Stack(
+        children: [
+          Padding(
+            padding: EdgeInsets.only(top: _hasRunningSession ? 92.0 : 0.0),
+            child: _buildBody(context),
+          ),
+          Align(
+            alignment: Alignment.topCenter,
+            child: SafeArea(
+              bottom: false,
+              child: _runningBannerGlobal(),
+            ),
+          ),
+        ],
       ),
-    ),
-  ],
-),
 
 // FAB uniquement sur Dashboard (ou adapte si tu veux aussi sur Today)
       floatingActionButton: _tab == _Tab.dashboard ? _buildFocusFab() : null,
@@ -1758,89 +1758,94 @@ body: Stack(
     );
   }
 
-Widget _runningBannerGlobal() {
-  final st = _state;
-  if (st == null) return const SizedBox.shrink();
+  Widget _runningBannerGlobal() {
+    final st = _state;
+    if (st == null) return const SizedBox.shrink();
 
-  final activeSessions = st.sessions.where((x) => x.endAt == null).toList();
-  if (activeSessions.isEmpty) return const SizedBox.shrink();
+    final activeSessions = st.sessions.where((x) => x.endAt == null).toList();
+    if (activeSessions.isEmpty) return const SizedBox.shrink();
 
-  final s = activeSessions.last;
+    final s = activeSessions.last;
 
-  final a = st.activities.firstWhere(
-    (x) => x.id == s.activityId,
-    orElse: () => Activity(domainId: '', name: 'Activité', habitTarget: 1),
-  );
+    final a = st.activities.firstWhere(
+      (x) => x.id == s.activityId,
+      orElse: () => Activity(domainId: '', name: 'Activité', habitTarget: 1),
+    );
 
-  final dur = DateTime.now().difference(s.startAt);
+    final dur = DateTime.now().difference(s.startAt);
 
-  String fmt(Duration d) {
-    final h = d.inHours;
-    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final sec = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return h > 0 ? "${h}h ${m}m ${sec}s" : "${m}m ${sec}s";
+    String fmt(Duration d) {
+      final h = d.inHours;
+      final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+      final sec = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+      return h > 0 ? "${h}h ${m}m ${sec}s" : "${m}m ${sec}s";
+    }
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 84),
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const Icon(Icons.play_arrow_rounded, color: Colors.green, size: 24),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    a.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 16),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    "En cours depuis",
+                    style: TextStyle(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(0.75),
+                      fontSize: 13,
+                    ),
+                  ),
+                  Text(
+                    fmt(dur),
+                    style: const TextStyle(
+                      fontFeatures: [FontFeature.tabularFigures()],
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            SizedBox(
+              width: 104,
+              height: 40,
+              child: FilledButton.icon(
+                onPressed: () => setState(() => logic.stopActive()),
+                icon: const Icon(Icons.stop, size: 18),
+                label: const Text("Stop"),
+                style: FilledButton.styleFrom(shape: const StadiumBorder()),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
-  return ConstrainedBox(
-    constraints: const BoxConstraints(minHeight: 84),
-    child: Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          const Icon(Icons.play_arrow_rounded, color: Colors.green, size: 24),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  a.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  "En cours depuis",
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.75),
-                    fontSize: 13,
-                  ),
-                ),
-                Text(
-                  fmt(dur),
-                  style: const TextStyle(
-                    fontFeatures: [FontFeature.tabularFigures()],
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          SizedBox(
-            width: 104,
-            height: 40,
-            child: FilledButton.icon(
-              onPressed: () => setState(() => logic.stopActive()),
-              icon: const Icon(Icons.stop, size: 18),
-              label: const Text("Stop"),
-              style: FilledButton.styleFrom(shape: const StadiumBorder()),
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-}
   Widget _buildDashboardBody(BuildContext context) {
 // 1) Portée (calendaire)
     final now = DateTime.now();
@@ -2235,45 +2240,12 @@ Widget _runningBannerGlobal() {
               // ---------- TRI : delta temps (24h vs today, en %) ----------
 // ---------- TRI : delta visuel (valeurs clampées affichées) ----------
               const haloReachedThreshold = 0.99; // ou 0.95 si tu veux plus doux
-
-              final scoreByDomain = <String, double>{};
-              final haloReachedByDomain = <String, bool>{};
-
-              for (final d in _state!.domains) {
-                final hoursToday =
-                    (totalsTodayAll[d.id]?.inMinutes ?? 0) / 60.0;
-                final hours24 = (totals24All[d.id]?.inMinutes ?? 0) / 60.0;
-
-                final avgWeekHoursPerDay =
-                    ((totals7All[d.id]?.inMinutes ?? 0) / 60.0) / 7.0;
-                final denom = avgWeekHoursPerDay;
-
-                final big = denom > 0 ? (hours24 / denom).clamp(0.0, 1.0) : 0.0;
-                final outer =
-                    denom > 0 ? (hoursToday / denom).clamp(0.0, 1.0) : 0.0;
-
-                // score dynamique (écart visuel)
-                scoreByDomain[d.id] = (big - outer).abs();
-
-                // contrainte : halo atteint ?
-                haloReachedByDomain[d.id] = outer >= haloReachedThreshold;
-              }
-
 // TRI : 1) ceux dont halo PAS atteint d'abord, 2) score desc
-              final sortedDomains = [..._state!.domains]..sort((a, b) {
-                  final aReached = haloReachedByDomain[a.id] ?? false;
-                  final bReached = haloReachedByDomain[b.id] ?? false;
-
-                  // non atteint -> en haut
-                  if (aReached != bReached) {
-                    return aReached ? 1 : -1;
-                  }
-
-                  // sinon tri normal par score
-                  final sa = scoreByDomain[a.id] ?? 0.0;
-                  final sb = scoreByDomain[b.id] ?? 0.0;
-                  return sb.compareTo(sa);
-                });
+              final order = logic.computeDashboardDomainOrder(
+                haloReachedThreshold:
+                    haloReachedThreshold, // la même valeur qu’avant
+              );
+              final sortedDomains = order.sortedDomains;
 
               // ---------- UI ----------
               return ListView(
