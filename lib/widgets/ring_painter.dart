@@ -1,6 +1,60 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
+double expectedSinceMidnight(DateTime now) {
+  final midnight = DateTime(now.year, now.month, now.day);
+  final minutes = now.difference(midnight).inMinutes.clamp(0, 24 * 60);
+  return minutes / 1440.0;
+}
+
+/// Dessine UNIQUEMENT le segment [actual -> expected] si expected > actual
+class GapRingPainter extends CustomPainter {
+  final double actual; // 0..1
+  final double expected; // 0..1
+  final double stroke;
+  final Color color;
+  final double startAngle; // -pi/2 => start en haut
+
+  GapRingPainter({
+    required this.actual,
+    required this.expected,
+    required this.stroke,
+    required this.color,
+    this.startAngle = -math.pi / 2,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final a = actual.clamp(0.0, 1.0);
+    final e = expected.clamp(0.0, 1.0);
+    if (e <= a) return;
+
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (math.min(size.width, size.height) / 2) - stroke / 2;
+    final rect = Rect.fromCircle(center: center, radius: radius);
+
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.butt
+      ..strokeWidth = stroke
+      ..color = color;
+
+    final from = 2 * math.pi * a;
+    final sweep = 2 * math.pi * (e - a);
+
+    canvas.drawArc(rect, startAngle + from, sweep, false, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant GapRingPainter old) {
+    return old.actual != actual ||
+        old.expected != expected ||
+        old.stroke != stroke ||
+        old.color != color ||
+        old.startAngle != startAngle;
+  }
+}
+
 class RingPainter extends CustomPainter {
   final double progress; // 0..1
   final Color color;
@@ -100,14 +154,17 @@ class NestedGauge extends StatelessWidget {
   Widget build(BuildContext context) {
     final track = Colors.white.withValues(alpha: 0.08);
 
+    final expected = expectedSinceMidnight(DateTime.now());
+
     final content = SizedBox(
       width: size,
       height: size,
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // ✅ HALO EXTERIEUR (24h brut)
-          if (outerProgress != null)
+          // ✅ HALO EXTERIEUR (temps loggé aujourd’hui / objectif du jour)
+          if (outerProgress != null) ...[
+            // anneau normal (cyan)
             CustomPaint(
               size: Size.square(size * outerSizeFactor),
               painter: RingPainter(
@@ -118,6 +175,18 @@ class NestedGauge extends StatelessWidget {
                 trackColor: Colors.transparent,
               ),
             ),
+
+            // ✅ RETARD (écart) en jaune SUR LE MÊME ANNEAU
+            CustomPaint(
+              size: Size.square(size * outerSizeFactor),
+              painter: GapRingPainter(
+                actual: outerProgress!.clamp(0.0, 1.0),
+                expected: expected, // 0..1
+                stroke: outerStroke,
+                color: Colors.yellow.withValues(alpha: 0.85),
+              ),
+            ),
+          ],
 
           // Grand anneau
           CustomPaint(
@@ -141,22 +210,18 @@ class NestedGauge extends StatelessWidget {
             ),
           ),
 
-          // Texte
+          // Texte...
           Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                centerText,
-                style:
-                    const TextStyle(fontSize: 25, fontWeight: FontWeight.w800),
-              ),
+              Text(centerText,
+                  style: const TextStyle(
+                      fontSize: 25, fontWeight: FontWeight.w800)),
               const SizedBox(height: 15),
               Text(
                 "${(smallProgress * 100).round()}%",
                 style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.white.withValues(alpha: 0.75),
-                ),
+                    fontSize: 14, color: Colors.white.withValues(alpha: 0.75)),
               ),
               const SizedBox(height: 25),
               Text(
@@ -235,4 +300,3 @@ class GaugeRingPainter extends CustomPainter {
         old.cap != cap;
   }
 }
-
