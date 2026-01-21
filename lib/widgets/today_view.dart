@@ -194,6 +194,15 @@ class _TodayViewState extends State<TodayView> {
 
     return Scaffold(
       appBar: AppBar(
+          leading: IconButton(
+            icon:
+                Icon(sortByDashboard ? Icons.auto_awesome : Icons.drag_handle),
+            onPressed: () {
+              setState(() {
+                widget.logic.setSortTodayByDashboard(!sortByDashboard);
+              });
+            },
+          ),
           automaticallyImplyLeading: false, // pas de flèche retour
           title: Center(
             child: SegmentedButton<bool>(
@@ -208,15 +217,7 @@ class _TodayViewState extends State<TodayView> {
           ),
           actions: [
             // … tes autres actions …
-            IconButton(
-              icon: Icon(
-                  sortByDashboard ? Icons.auto_awesome : Icons.drag_handle),
-              onPressed: () {
-                setState(() {
-                  widget.logic.setSortTodayByDashboard(!sortByDashboard);
-                });
-              },
-            ),
+
             IconButton(
               tooltip: 'Reporter le non-fait → Demain',
               icon: const Icon(Icons.redo),
@@ -690,7 +691,10 @@ class _TodayViewState extends State<TodayView> {
             if (!isManual) return const SizedBox.shrink();
             return IconButton(
               tooltip: 'Repasser en mode auto',
-              icon: const Icon(Icons.horizontal_rule, size: 18,),
+              icon: const Icon(
+                Icons.horizontal_rule,
+                size: 18,
+              ),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints.tightFor(width: 32, height: 32),
               visualDensity: VisualDensity.compact,
@@ -824,7 +828,7 @@ class _TodayViewState extends State<TodayView> {
                                       if (isAutoMode) {
                                         act.manualTarget =
                                             true; // passe en manuel
-                                            act.autoTune =
+                                        act.autoTune =
                                             false; // garantit auto inactif
                                       } else {
                                         act.manualTarget =
