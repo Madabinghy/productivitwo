@@ -162,13 +162,13 @@ class _TodayViewState extends State<TodayView> {
     }
 
     const haloReachedThreshold = 0.99; // ou 0.95 si tu veux plus doux
-final domainRank = widget.logic
-    .computeDashboardDomainOrder(haloReachedThreshold: haloReachedThreshold)
-    .rankByDomain;
+    final domainRank = widget.logic
+        .computeDashboardDomainOrder(haloReachedThreshold: haloReachedThreshold)
+        .rankByDomain;
 
-final items = sortByDashboard
-    ? widget.logic.viewItemsSortedByDashboard(itemsRaw, domainRank)
-    : itemsRaw;
+    final items = sortByDashboard
+        ? widget.logic.viewItemsSortedByDashboard(itemsRaw, domainRank)
+        : itemsRaw;
 /* 
     debugPrint('--- DOMAIN RANKS ---');
     final sorted = widget.logic.computeDashboardDomainOrder().sortedDomains;
@@ -208,14 +208,15 @@ final items = sortByDashboard
           ),
           actions: [
             // … tes autres actions …
-IconButton(
-  icon: Icon(sortByDashboard ? Icons.auto_awesome : Icons.drag_handle),
-  onPressed: () {
-    setState(() {
-      widget.logic.setSortTodayByDashboard(!sortByDashboard);
-    });
-  },
-),
+            IconButton(
+              icon: Icon(
+                  sortByDashboard ? Icons.auto_awesome : Icons.drag_handle),
+              onPressed: () {
+                setState(() {
+                  widget.logic.setSortTodayByDashboard(!sortByDashboard);
+                });
+              },
+            ),
             IconButton(
               tooltip: 'Reporter le non-fait → Demain',
               icon: const Icon(Icons.redo),
@@ -689,7 +690,7 @@ IconButton(
             if (!isManual) return const SizedBox.shrink();
             return IconButton(
               tooltip: 'Repasser en mode auto',
-              icon: const Icon(Icons.auto_awesome, size: 18),
+              icon: const Icon(Icons.trending_up, size: 18),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints.tightFor(width: 32, height: 32),
               visualDensity: VisualDensity.compact,
@@ -847,9 +848,14 @@ IconButton(
                                         horizontal: 6, vertical: 4),
                                     child: Icon(
                                       isAutoMode
-                                          ? Icons.auto_awesome
-                                          : Icons.pan_tool_alt,
+                                          ? Icons.trending_up
+                                          : Icons.horizontal_rule,
                                       size: 16,
+                                      color: isAutoMode
+                                          ? Colors.cyanAccent
+                                              .withValues(alpha: 0.9)
+                                          : Colors.white
+                                              .withValues(alpha: 0.85),
                                     ),
                                   ),
                                 );
