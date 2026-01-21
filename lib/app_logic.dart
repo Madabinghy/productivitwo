@@ -136,31 +136,33 @@ class AppLogic {
   bool isFocused(String activityId) => state.focusTodayIds.contains(activityId);
 
   // ---------- TEMPS (type=time) ----------
-void start(String activityId) {
-  // 1) stop sessions en cours
-  for (final s in state.sessions.where((s) => s.endAt == null)) {
-    s.endAt = DateTime.now();
+  void start(String activityId) {
+    // 1) stop sessions en cours
+    for (final s in state.sessions.where((s) => s.endAt == null)) {
+      s.endAt = DateTime.now();
+    }
+
+    // 2) nouvelle session
+    state.sessions
+        .add(Session(activityId: activityId, startAt: DateTime.now()));
+
+    // 3) journal (burst) -> demain
+    final title = state.activities
+        .firstWhere(
+          (a) => a.id == activityId,
+          orElse: () =>
+              Activity(domainId: '', name: 'Activité', habitTarget: 1),
+        )
+        .name;
+
+    logTomorrowIfLastDifferent(PlanKind.activityTime, activityId, title);
+
+    // 4) optionnel : préparer demain (si tu veux "planifier", pas "journaliser")
+    // ensurePlannedTomorrow(PlanKind.activityTime, activityId);
+
+    // 5) persiste une seule fois
+    onChange();
   }
-
-  // 2) nouvelle session
-  state.sessions.add(Session(activityId: activityId, startAt: DateTime.now()));
-
-  // 3) journal (burst) -> demain
-  final title = state.activities
-      .firstWhere(
-        (a) => a.id == activityId,
-        orElse: () => Activity(domainId: '', name: 'Activité', habitTarget: 1),
-      )
-      .name;
-
-  logTomorrowIfLastDifferent(PlanKind.activityTime, activityId, title);
-
-  // 4) optionnel : préparer demain (si tu veux "planifier", pas "journaliser")
-  // ensurePlannedTomorrow(PlanKind.activityTime, activityId);
-
-  // 5) persiste une seule fois
-  onChange();
-}
 
   // AppLogic
   Future<int> scanAllActivities({DateTime? now}) async {
@@ -430,52 +432,56 @@ void start(String activityId) {
   void incHabit(String activityId, int delta, DateTime day) {
     final key = yyyymmdd(day);
 
-    // valeur AVANT modif (pour détecter le franchissement)
+    // --- valeur AVANT modif (pour détecter création / seuils)
     final prevIdx = state.habitProgress.indexWhere(
       (h) => h.activityId == activityId && h.yyyymmdd == key,
     );
 
     // --- MAJ compteur ---
     if (prevIdx < 0) {
-      state.habitProgress.add(HabitProgress(
-        activityId: activityId,
-        yyyymmdd: key,
-        value: math.max(0, delta), // pas de négatif à la création
-      ));
+      state.habitProgress.add(
+        HabitProgress(
+          activityId: activityId,
+          yyyymmdd: key,
+          value: math.max(0, delta), // pas de négatif à la création
+        ),
+      );
     } else {
       final v = state.habitProgress[prevIdx].value + delta;
       state.habitProgress[prevIdx].value = v < 0 ? 0 : v;
     }
 
-// après maj du compteur :
+    // --- après MAJ compteur ---
     final act = state.activities.firstWhere((a) => a.id == activityId);
-    final isDaily = (effectiveHabitFreq(act) == HabitFreq.daily);
-    final dayQuota = dayQuotaFor(act);
+    final currentDay = DateTime(day.year, day.month, day.day);
+    final doneOnDay = habitValueOn(activityId, currentDay);
 
-    if (isDaily && dayQuota > 0) {
-      final currentDay = DateTime(day.year, day.month, day.day);
-      final doneOnDay = habitValueOn(activityId, currentDay);
+    // ✅ JOURNAL (burst) — toutes fréquences, sans spam
+    // - seulement sur incrément
+    // - seulement s'il y a quelque chose à logguer
+    if (delta > 0 && doneOnDay > 0) {
+      logTomorrowIfLastDifferent(
+        PlanKind.habit,
+        activityId,
+        act.name,
+      );
+    }
 
-      // 1) Dès le 1er +1 du jour → préparer Demain (sans retirer Aujourd'hui)
-      if (doneOnDay == 1) {
-        //ensurePlannedTomorrow(PlanKind.habit, activityId);
-        journalLog(
-          kind: PlanKind.habit,
-          refId: activityId,
-          title: act.name,
-        );
-      }
-
-      // 2) ✅ Retirer d'Aujourd'hui UNIQUEMENT si standard MANUEL (fixe)
-      if (act.manualTarget && doneOnDay >= dayQuota) {
+    // ✅ Retirer d’Aujourd’hui uniquement si :
+    // - cible MANUELLE
+    // - logique quotidienne
+    final freq = effectiveHabitFreq(act);
+    if (freq == HabitFreq.daily) {
+      final dayQuota = dayQuotaFor(act);
+      if (act.manualTarget && dayQuota > 0 && doneOnDay >= dayQuota) {
         removeFromDay(yyyymmdd(currentDay), PlanKind.habit, activityId);
       }
     }
 
-// auto-tune (safe) — no-op si manualTarget (déjà géré dans autoTuneHabit)
+    // auto-tune (safe)
     _autoTuneHabitSafe(act);
 
-// Un seul onChange() à la fin
+    // Un seul persist à la fin
     onChange();
   }
 
@@ -1176,30 +1182,31 @@ void start(String activityId) {
   }
 
   void logTomorrowIfLastDifferent(PlanKind kind, String refId, String title) {
-  final tomoKey = _tomorrowKey();
+    final tomoKey = _tomorrowKey();
 
-  DayPlanItem? last;
-  for (final e in state.dayPlan) {
-    if (e.yyyymmdd != tomoKey) continue;
-    if (last == null || e.order > last!.order) last = e;
+    DayPlanItem? last;
+    for (final e in state.dayPlan) {
+      if (e.yyyymmdd != tomoKey) continue;
+      if (last == null || e.order > last!.order) last = e;
+    }
+
+    final sameAsLast =
+        last != null && last!.kind == kind && last!.refId == refId;
+    if (sameAsLast) return;
+
+    state.dayPlan.add(
+      DayPlanItem(
+        id: _uuid.v4(),
+        kind: kind,
+        refId: refId,
+        title: title,
+        yyyymmdd: tomoKey,
+        done: false,
+        allDay: false,
+        order: _nextOrderForDay(tomoKey),
+      ),
+    );
   }
-
-  final sameAsLast = last != null && last!.kind == kind && last!.refId == refId;
-  if (sameAsLast) return;
-
-  state.dayPlan.add(
-    DayPlanItem(
-      id: _uuid.v4(),
-      kind: kind,
-      refId: refId,
-      title: title,
-      yyyymmdd: tomoKey,
-      done: false,
-      allDay: false,
-      order: _nextOrderForDay(tomoKey),
-    ),
-  );
-}
 
   void journalLog({
     required PlanKind kind,
