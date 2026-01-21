@@ -61,6 +61,37 @@ class AppLogic {
     onChange();
   }
 
+  void appendToTomorrowIfLastIsDifferent(
+      PlanKind kind, String refId, String title) {
+    final tomoKey = _tomorrowKey();
+
+    // dernier item (par order) pour demain
+    DayPlanItem? last;
+    for (final e in state.dayPlan) {
+      if (e.yyyymmdd != tomoKey) continue;
+      if (last == null || e.order > last!.order) last = e;
+    }
+
+    final sameAsLast =
+        last != null && last!.kind == kind && last!.refId == refId;
+    if (sameAsLast) return;
+
+    state.dayPlan.add(
+      DayPlanItem(
+        id: _uuid.v4(),
+        kind: kind,
+        refId: refId,
+        title: title,
+        yyyymmdd: tomoKey,
+        done: false,
+        allDay: false,
+        order: _nextOrderForDay(tomoKey),
+      ),
+    );
+
+    onChange();
+  }
+
   /// Optionnel : proposer automatiquement les habitudes quotidiennes non atteintes
   void suggestAutoFocusForToday({int maxCount = 4}) {
     final candidates = <Activity>[];
@@ -105,20 +136,31 @@ class AppLogic {
   bool isFocused(String activityId) => state.focusTodayIds.contains(activityId);
 
   // ---------- TEMPS (type=time) ----------
-  void start(String activityId) {
-    for (final s in state.sessions.where((s) => s.endAt == null)) {
-      s.endAt = DateTime.now();
-    }
-    state.sessions
-        .add(Session(activityId: activityId, startAt: DateTime.now()));
-    onChange();
-
-    // Préparer demain (optionnel)
-    //ensurePlannedTomorrow(PlanKind.activityTime, activityId);
-    // Si tu veux retirer de "Aujourd’hui", décommente :
-    // final removed = removeFromDay(_todayKey(), PlanKind.activityTime, activityId);
-    // if (removed) onChange();
+void start(String activityId) {
+  // 1) stop sessions en cours
+  for (final s in state.sessions.where((s) => s.endAt == null)) {
+    s.endAt = DateTime.now();
   }
+
+  // 2) nouvelle session
+  state.sessions.add(Session(activityId: activityId, startAt: DateTime.now()));
+
+  // 3) journal (burst) -> demain
+  final title = state.activities
+      .firstWhere(
+        (a) => a.id == activityId,
+        orElse: () => Activity(domainId: '', name: 'Activité', habitTarget: 1),
+      )
+      .name;
+
+  logTomorrowIfLastDifferent(PlanKind.activityTime, activityId, title);
+
+  // 4) optionnel : préparer demain (si tu veux "planifier", pas "journaliser")
+  // ensurePlannedTomorrow(PlanKind.activityTime, activityId);
+
+  // 5) persiste une seule fois
+  onChange();
+}
 
   // AppLogic
   Future<int> scanAllActivities({DateTime? now}) async {
@@ -416,7 +458,12 @@ class AppLogic {
 
       // 1) Dès le 1er +1 du jour → préparer Demain (sans retirer Aujourd'hui)
       if (doneOnDay == 1) {
-        ensurePlannedTomorrow(PlanKind.habit, activityId);
+        //ensurePlannedTomorrow(PlanKind.habit, activityId);
+        journalLog(
+          kind: PlanKind.habit,
+          refId: activityId,
+          title: act.name,
+        );
       }
 
       // 2) ✅ Retirer d'Aujourd'hui UNIQUEMENT si standard MANUEL (fixe)
@@ -1128,30 +1175,90 @@ class AppLogic {
     return state.dayPlan.length != before;
   }
 
-  void moveItemToTomorrowById(String itemId) {
-  final todayKey = _todayKey();
+  void logTomorrowIfLastDifferent(PlanKind kind, String refId, String title) {
   final tomoKey = _tomorrowKey();
 
-  final idx = state.dayPlan.indexWhere((e) => e.id == itemId && e.yyyymmdd == todayKey);
-  if (idx < 0) return;
+  DayPlanItem? last;
+  for (final e in state.dayPlan) {
+    if (e.yyyymmdd != tomoKey) continue;
+    if (last == null || e.order > last!.order) last = e;
+  }
 
-  final removed = state.dayPlan.removeAt(idx);
+  final sameAsLast = last != null && last!.kind == kind && last!.refId == refId;
+  if (sameAsLast) return;
 
   state.dayPlan.add(
     DayPlanItem(
-      id: _uuid.v4(),            // ✅ nouvelle occurrence (ou garde removed.id si tu préfères)
-      kind: removed.kind,        // action
-      refId: null,
-      title: removed.title,
+      id: _uuid.v4(),
+      kind: kind,
+      refId: refId,
+      title: title,
       yyyymmdd: tomoKey,
       done: false,
-      allDay: removed.allDay,
+      allDay: false,
       order: _nextOrderForDay(tomoKey),
     ),
   );
-
-  onChange();
 }
+
+  void journalLog({
+    required PlanKind kind,
+    required String? refId,
+    required String title,
+  }) {
+    final dayKey = _tomorrowKey(); // ou _todayKey() si tu changes plus tard
+
+    DayPlanItem? last;
+    for (final e in state.dayPlan) {
+      if (e.yyyymmdd != dayKey) continue;
+      if (last == null || e.order > last!.order) last = e;
+    }
+
+    final sameAsLast = last != null && last.kind == kind && last.refId == refId;
+    if (sameAsLast) return;
+
+    state.dayPlan.add(
+      DayPlanItem(
+        id: _uuid.v4(),
+        kind: kind,
+        refId: refId,
+        title: title,
+        yyyymmdd: dayKey,
+        done: false,
+        allDay: false,
+        order: _nextOrderForDay(dayKey),
+      ),
+    );
+
+    onChange();
+  }
+
+  void moveItemToTomorrowById(String itemId) {
+    final todayKey = _todayKey();
+    final tomoKey = _tomorrowKey();
+
+    final idx = state.dayPlan
+        .indexWhere((e) => e.id == itemId && e.yyyymmdd == todayKey);
+    if (idx < 0) return;
+
+    final removed = state.dayPlan.removeAt(idx);
+
+    state.dayPlan.add(
+      DayPlanItem(
+        id: _uuid
+            .v4(), // ✅ nouvelle occurrence (ou garde removed.id si tu préfères)
+        kind: removed.kind, // action
+        refId: null,
+        title: removed.title,
+        yyyymmdd: tomoKey,
+        done: false,
+        allDay: removed.allDay,
+        order: _nextOrderForDay(tomoKey),
+      ),
+    );
+
+    onChange();
+  }
 
   void movePlannedToTomorrowIfPresent(
     PlanKind kind,

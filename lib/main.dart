@@ -3597,11 +3597,6 @@ Widget _runningBannerGlobal() {
               trailing: FilledButton.icon(
                 onPressed: () {
                   logic.start(a.id);
-
-                  // Déplace l'item d'aujourd'hui -> demain (si présent dans le plan du jour)
-                  logic.movePlannedToTomorrowIfPresent(
-                      PlanKind.activityTime, a.id);
-
                   Navigator.pop(ctx);
                 },
                 icon: const Icon(Icons.play_arrow),

@@ -446,15 +446,6 @@ class _TodayViewState extends State<TodayView> {
           final startBtn = FilledButton.icon(
             onPressed: () {
               widget.logic.start(it.refId!);
-
-              // Déplace l'activité planifiée d'aujourd'hui vers demain (comme les routines)
-              widget.logic.movePlannedToTomorrowIfPresent(
-                PlanKind.activityTime,
-                it.refId!,
-                addIfMissing: false,
-                logEveryOccurrence: true, // ✅ journal
-              );
-
               setState(() {});
             },
             icon: const Icon(Icons.play_arrow),
