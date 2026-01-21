@@ -159,6 +159,7 @@ class AppLogic {
         )
         .name;
 
+    removeFromDay(_todayKeyLocal(), PlanKind.activityTime, activityId);
     logTomorrowIfLastDifferent(PlanKind.activityTime, activityId, title);
 
     // 4) optionnel : préparer demain (si tu veux "planifier", pas "journaliser")
