@@ -349,11 +349,13 @@ class AppLogic {
     required int weekTarget,
     required int monthDone,
     required int monthTarget,
-    required bool  swowTodayText,
+    required bool swowTodayText,
   }) {
     switch (freq) {
       case HabitFreq.daily:
-        return swowTodayText?"Aujourd'hui : $dayDone / $dayQuota": "$dayDone / $dayQuota";
+        return swowTodayText
+            ? "Aujourd'hui : $dayDone / $dayQuota"
+            : "$dayDone / $dayQuota";
       case HabitFreq.weekly:
         return "7 j : $weekDone / $weekTarget";
       case HabitFreq.monthly:
@@ -413,7 +415,7 @@ class AppLogic {
       final doneOnDay = habitValueOn(activityId, currentDay);
 
       // 1) Dès le 1er +1 du jour → préparer Demain (sans retirer Aujourd'hui)
-      if (doneOnDay >= 1) {
+      if (doneOnDay == 1) {
         ensurePlannedTomorrow(PlanKind.habit, activityId);
       }
 
@@ -1126,8 +1128,37 @@ class AppLogic {
     return state.dayPlan.length != before;
   }
 
-  void movePlannedToTomorrowIfPresent(PlanKind kind, String refId,
-      {bool addIfMissing = false}) {
+  void moveItemToTomorrowById(String itemId) {
+  final todayKey = _todayKey();
+  final tomoKey = _tomorrowKey();
+
+  final idx = state.dayPlan.indexWhere((e) => e.id == itemId && e.yyyymmdd == todayKey);
+  if (idx < 0) return;
+
+  final removed = state.dayPlan.removeAt(idx);
+
+  state.dayPlan.add(
+    DayPlanItem(
+      id: _uuid.v4(),            // ✅ nouvelle occurrence (ou garde removed.id si tu préfères)
+      kind: removed.kind,        // action
+      refId: null,
+      title: removed.title,
+      yyyymmdd: tomoKey,
+      done: false,
+      allDay: removed.allDay,
+      order: _nextOrderForDay(tomoKey),
+    ),
+  );
+
+  onChange();
+}
+
+  void movePlannedToTomorrowIfPresent(
+    PlanKind kind,
+    String refId, {
+    bool addIfMissing = false,
+    bool logEveryOccurrence = false, // ✅ NEW
+  }) {
     final todayKey = _todayKey();
     final tomoKey = _tomorrowKey();
 
@@ -1137,38 +1168,28 @@ class AppLogic {
       removed = state.dayPlan.removeAt(idx);
     }
 
-    final existsTomorrow = _indexInDay(tomoKey, kind, refId) >= 0;
-    if (existsTomorrow) {
-      onChange();
-      return;
+    // ✅ ancien comportement : dédup demain
+    if (!logEveryOccurrence) {
+      final existsTomorrow = _indexInDay(tomoKey, kind, refId) >= 0;
+      if (existsTomorrow) {
+        onChange();
+        return;
+      }
     }
 
-    DayPlanItem? toAdd;
-    if (removed != null) {
-      toAdd = DayPlanItem(
-        id: removed.id,
-        kind: removed.kind,
-        refId: removed.refId,
-        title: removed.title,
-        yyyymmdd: tomoKey,
-        done: false,
-        allDay: removed.allDay,
-        order: _nextOrderForDay(tomoKey),
-      );
-    } else if (addIfMissing) {
-      String title;
+    // Helper pour title si besoin
+    String _resolveTitle() {
       switch (kind) {
         case PlanKind.activityTime:
-          title = state.activities
+          return state.activities
               .firstWhere(
                 (a) => a.id == refId,
                 orElse: () =>
                     Activity(domainId: '', name: 'Activité', habitTarget: 1),
               )
               .name;
-          break;
         case PlanKind.habit:
-          title = state.activities
+          return state.activities
               .firstWhere(
                 (a) => a.id == refId,
                 orElse: () => Activity(
@@ -1178,16 +1199,31 @@ class AppLogic {
                     habitTarget: 1),
               )
               .name;
-          break;
         case PlanKind.action:
-          title = 'Action';
-          break;
+          return removed?.title ?? 'Action';
       }
+    }
+
+    DayPlanItem? toAdd;
+
+    // ✅ si on a retiré un item aujourd’hui, on log une occurrence demain
+    if (removed != null) {
       toAdd = DayPlanItem(
-        id: _uuid.v4(),
+        id: _uuid.v4(), // ✅ NEW ID = occurrences multiples
+        kind: removed.kind,
+        refId: removed.refId,
+        title: removed.title,
+        yyyymmdd: tomoKey,
+        done: false,
+        allDay: removed.allDay,
+        order: _nextOrderForDay(tomoKey), // ordre chronologique
+      );
+    } else if (addIfMissing) {
+      toAdd = DayPlanItem(
+        id: _uuid.v4(), // déjà ok
         kind: kind,
         refId: refId,
-        title: title,
+        title: _resolveTitle(),
         yyyymmdd: tomoKey,
         done: false,
         allDay: false,

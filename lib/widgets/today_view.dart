@@ -256,6 +256,40 @@ class _TodayViewState extends State<TodayView> {
       },
     );
 
+    Widget moveArrowIfAny() {
+      if (!isTodayTab) return const SizedBox.shrink();
+
+      // ✅ Actions jetables: refId null mais on veut quand même pouvoir déplacer
+      final canMove = (it.kind == PlanKind.action) || (it.refId != null);
+      if (!canMove) return const SizedBox.shrink();
+
+      return IconButton(
+        tooltip: 'Déplacer vers demain',
+        icon: const Icon(Icons.arrow_forward, size: 20),
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+        visualDensity: VisualDensity.compact,
+        onPressed: () {
+          if (it.kind == PlanKind.action) {
+            widget.logic.moveItemToTomorrowById(it.id); // ✅ nouvelle méthode
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Action déplacée vers demain')),
+            );
+          } else {
+            widget.logic.movePlannedToTomorrowIfPresent(
+              it.kind,
+              it.refId!,
+              addIfMissing: true,
+            );
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Déplacé vers demain')),
+            );
+          }
+          setState(() {});
+        },
+      );
+    }
+
     // poignée de drag
     ReorderableDragStartListener dragHandleFor(DayPlanItem it) {
       return ReorderableDragStartListener(
@@ -351,7 +385,7 @@ class _TodayViewState extends State<TodayView> {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        Checkbox(
+ /*                        Checkbox(
                           materialTapTargetSize:
                               MaterialTapTargetSize.shrinkWrap,
                           visualDensity: VisualDensity.compact,
@@ -389,8 +423,9 @@ class _TodayViewState extends State<TodayView> {
                               ),
                             );
                           },
-                        ),
+                        ), */
                         removeBtn,
+                        moveArrowIfAny(),
                       ],
                     ),
                   ),
@@ -416,8 +451,8 @@ class _TodayViewState extends State<TodayView> {
               widget.logic.movePlannedToTomorrowIfPresent(
                 PlanKind.activityTime,
                 it.refId!,
-                addIfMissing:
-                    false, // true si tu veux forcer l'ajout demain même si pas planifiée
+                addIfMissing: false,
+                logEveryOccurrence: true, // ✅ journal
               );
 
               setState(() {});
@@ -461,6 +496,7 @@ class _TodayViewState extends State<TodayView> {
                             const SizedBox(width: 8),
                             startBtn,
                             removeBtn,
+                            moveArrowIfAny(),
                           ],
                         ),
                       ],
@@ -572,23 +608,36 @@ class _TodayViewState extends State<TodayView> {
 
           Widget moveArrowIfAny() {
             if (!isTodayTab) return const SizedBox.shrink();
-            if (it.refId == null) return const SizedBox.shrink();
+
+            // ✅ Actions jetables: refId null mais on veut quand même pouvoir déplacer
+            final canMove = (it.kind == PlanKind.action) || (it.refId != null);
+            if (!canMove) return const SizedBox.shrink();
+
             return IconButton(
-              tooltip: 'Déplacer cette routine vers demain',
+              tooltip: 'Déplacer vers demain',
               icon: const Icon(Icons.arrow_forward, size: 20),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints.tightFor(width: 32, height: 32),
               visualDensity: VisualDensity.compact,
               onPressed: () {
-                widget.logic.movePlannedToTomorrowIfPresent(
-                  PlanKind.habit,
-                  it.refId!,
-                  addIfMissing: true,
-                );
+                if (it.kind == PlanKind.action) {
+                  widget.logic
+                      .moveItemToTomorrowById(it.id); // ✅ nouvelle méthode
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text('Action déplacée vers demain')),
+                  );
+                } else {
+                  widget.logic.movePlannedToTomorrowIfPresent(
+                    it.kind,
+                    it.refId!,
+                    addIfMissing: true,
+                  );
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Déplacé vers demain')),
+                  );
+                }
                 setState(() {});
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Routine déplacée vers demain')),
-                );
               },
             );
           }
