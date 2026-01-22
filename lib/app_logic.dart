@@ -34,6 +34,41 @@ class AppLogic {
 
   String? _lastRolloverDay;
 
+  Activity? runningActivity() {
+  Session? last;
+  for (final s in state.sessions) {
+    if (s.endAt != null) continue;
+    if (last == null || s.startAt.isAfter(last!.startAt)) last = s;
+  }
+  if (last == null) return null;
+
+  return state.activities.firstWhere(
+    (a) => a.id == last!.activityId,
+    orElse: () => Activity(domainId: '', name: '', habitTarget: 1),
+  );
+}
+
+  String? runningActivityId() {
+    // dernière session non terminée (si plusieurs, prends la plus récente)
+    Session? last;
+    for (final s in state.sessions) {
+      if (s.endAt != null) continue;
+      if (last == null || s.startAt.isAfter(last!.startAt)) last = s;
+    }
+    return last?.activityId;
+  }
+
+  String? runningDomainId() {
+    final actId = runningActivityId();
+    if (actId == null) return null;
+
+    final a = state.activities.firstWhere(
+      (x) => x.id == actId,
+      orElse: () => Activity(domainId: '', name: '', habitTarget: 1),
+    );
+    return a.domainId.isEmpty ? null : a.domainId;
+  }
+
   void rolloverUndoneOncePerDay({DateTime? now}) {
     final t = now ?? DateTime.now();
     final todayKey = yyyymmdd(DateTime(t.year, t.month, t.day));

@@ -143,23 +143,88 @@ class _TodayViewState extends State<TodayView> {
   @override
   Widget build(BuildContext context) {
     final sortByDashboard = widget.logic.state.sortTodayByDashboard;
-    final ymd = _ymd;
-    final isTodayTab = ymd == yyyymmdd(DateTime.now());
 
-    final itemsRaw = widget.logic.planFor(ymd).where((it) {
+    final now = DateTime.now();
+    final todayDate = DateTime(now.year, now.month, now.day);
+
+    final ymd = _ymd;
+final isTodayTab = ymd == yyyymmdd(now);
+    final runningAct = widget.logic.runningActivity();
+    final currentDomainId =
+        (runningAct != null && runningAct.domainId.isNotEmpty)
+            ? runningAct.domainId
+            : null;
+    final hasRunning = isTodayTab && currentDomainId != null;
+    final canReorder = !sortByDashboard && !hasRunning;
+
+    final planItems = widget.logic.planFor(ymd).where((it) {
       if (!isTodayTab) return true;
 
-      final isRoutine = it.kind != PlanKind.action;
-      if (isRoutine && it.done) return false;
+      final isRoutineItem = it.kind != PlanKind.action;
 
+      if (isRoutineItem && it.done) {
+        if (!hasRunning) return false;
+        // focus: on garde les done seulement si domaine courant
+        return it.domainId == currentDomainId;
+      }
       return true;
     }).toList();
 
-    for (final it in itemsRaw) {
-      if (it.domainId == null) {
-        debugPrint('NO DOMAIN: ${it.kind} ${it.title} ref=${it.refId}');
-      }
-    }
+final extraHabits = <DayPlanItem>[];
+
+if (hasRunning) {
+  final already = <String>{
+    for (final it in planItems)
+      if (it.kind == PlanKind.habit && it.refId != null) it.refId!,
+  };
+
+  final habitsOfDomain = widget.logic.state.activities
+      .where((a) => a.isHabit && a.domainId == currentDomainId);
+
+  for (final a in habitsOfDomain) {
+    if (already.contains(a.id)) continue;
+
+    final quota = widget.logic.dayQuotaFor(a);
+    final doneVal = widget.logic.habitValueOn(a.id, todayDate);
+    final reached = quota > 0 && doneVal >= quota;
+
+    extraHabits.add(
+      DayPlanItem(
+        id: 'virt:${a.id}', // virtuel
+        kind: PlanKind.habit,
+        refId: a.id,
+        domainId: a.domainId,
+        title: a.name,
+        yyyymmdd: ymd,
+        done: reached,
+        doneCount: doneVal.round(),
+        allDay: true,
+        order: 1 << 30,
+      ),
+    );
+  }
+}
+
+    final itemsMerged = [...planItems, ...extraHabits];
+
+final itemsFocus = hasRunning
+    ? itemsMerged.where((it) {
+        if (it.kind != PlanKind.habit) return true; // garde actions/activities si tu veux
+        return it.domainId == currentDomainId;
+      }).toList()
+    : itemsMerged;
+
+// puis tri habits non atteints d’abord (si tu veux)
+final itemsFocusSorted = hasRunning
+    ? ([
+        ...itemsFocus.where((x) => x.kind != PlanKind.habit),
+        ...itemsFocus.where((x) => x.kind == PlanKind.habit).toList()
+          ..sort((a, b) {
+            if (a.done != b.done) return a.done ? 1 : -1;
+            return a.title.compareTo(b.title);
+          }),
+      ])
+    : itemsFocus;
 
     const haloReachedThreshold = 0.99; // ou 0.95 si tu veux plus doux
     final domainRank = widget.logic
@@ -167,8 +232,8 @@ class _TodayViewState extends State<TodayView> {
         .rankByDomain;
 
     final items = sortByDashboard
-        ? widget.logic.viewItemsSortedByDashboard(itemsRaw, domainRank)
-        : itemsRaw;
+        ? widget.logic.viewItemsSortedByDashboard(itemsFocusSorted, domainRank)
+        : itemsFocusSorted;
 /* 
     debugPrint('--- DOMAIN RANKS ---');
     final sorted = widget.logic.computeDashboardDomainOrder().sortedDomains;
@@ -243,7 +308,7 @@ class _TodayViewState extends State<TodayView> {
 
               // ✅ drag OFF quand tri Dashboard ON
               buildDefaultDragHandles: !sortByDashboard,
-              onReorder: sortByDashboard
+              onReorder: canReorder
                   ? (_, __) {} // no-op
                   : (oldIndex, newIndex) {
                       setState(() =>
@@ -721,6 +786,9 @@ class _TodayViewState extends State<TodayView> {
                 visualDensity: VisualDensity.compact,
               );
 
+          final isVirtual = it.id.startsWith('virt:');
+          final isReachedToday = it.done; // pour les virtuels: c'est "atteint"
+
           return Card(
             key: key,
             margin: const EdgeInsets.only(bottom: 8),
@@ -737,13 +805,17 @@ class _TodayViewState extends State<TodayView> {
                       // Mettre plus tard (fin de liste) — si tu veux le garder pour les routines
                       IconButton(
                         icon: const Icon(Icons.arrow_downward),
-                        tooltip: 'Mettre plus tard (fin de liste)',
-                        onPressed: () {
-                          final ymd = yyyymmdd(
-                              DateTime(viewed.year, viewed.month, viewed.day));
-                          widget.logic.movePlanItemToEnd(ymd, it.id);
-                          setState(() {});
-                        },
+                        tooltip: isVirtual
+                            ? 'Raccourci (non planifié)'
+                            : 'Mettre plus tard (fin de liste)',
+                        onPressed: isVirtual
+                            ? null
+                            : () {
+                                final ymd = yyyymmdd(DateTime(
+                                    viewed.year, viewed.month, viewed.day));
+                                widget.logic.movePlanItemToEnd(ymd, it.id);
+                                setState(() {});
+                              },
                       ),
                     ],
                   ),
@@ -755,7 +827,32 @@ class _TodayViewState extends State<TodayView> {
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(child: buildTitle(it.title)),
+                            Expanded(
+                              child: DefaultTextStyle.merge(
+                                style: TextStyle(
+                                  color: isReachedToday
+                                      ? Colors.white.withValues(alpha: 0.55)
+                                      : Colors.white.withValues(alpha: 0.90),
+                                  decoration: isReachedToday
+                                      ? TextDecoration.lineThrough
+                                      : null,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(child: buildTitle(it.title)),
+                                    if (isReachedToday) ...[
+                                      const SizedBox(width: 6),
+                                      Icon(
+                                        Icons.check_circle,
+                                        size: 16,
+                                        color: Colors.greenAccent
+                                            .withValues(alpha: 0.85),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
                             if (isCheckbox) ...[
                               const SizedBox(width: 8),
                               checkboxCompact(),
@@ -867,8 +964,8 @@ class _TodayViewState extends State<TodayView> {
                                 );
                               }),
 
-                              moreCompact(),
-                              moveArrowIfAny(),
+                              if (!isVirtual) moreCompact(),
+                              if (!isVirtual) moveArrowIfAny(),
                             ],
                           ),
                         ] else if (showTicks) ...[
@@ -908,8 +1005,8 @@ class _TodayViewState extends State<TodayView> {
 
                               // ✅ bouton retour auto si on est en manuel
                               autoBackBtnIfManual(),
-                              moreCompact(),
-                              moveArrowIfAny(),
+                              if (!isVirtual) moreCompact(),
+                              if (!isVirtual) moveArrowIfAny(),
                             ],
                           ),
                         ] else if (!isCounterMode) ...[
@@ -930,8 +1027,8 @@ class _TodayViewState extends State<TodayView> {
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   autoBackBtnIfManual(), // ✅ nouveau
-                                  moreCompact(),
-                                  moveArrowIfAny(),
+                                  if (!isVirtual) moreCompact(),
+                                  if (!isVirtual) moveArrowIfAny(),
                                 ],
                               ),
                             ],
