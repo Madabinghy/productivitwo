@@ -35,18 +35,18 @@ class AppLogic {
   String? _lastRolloverDay;
 
   Activity? runningActivity() {
-  Session? last;
-  for (final s in state.sessions) {
-    if (s.endAt != null) continue;
-    if (last == null || s.startAt.isAfter(last!.startAt)) last = s;
-  }
-  if (last == null) return null;
+    Session? last;
+    for (final s in state.sessions) {
+      if (s.endAt != null) continue;
+      if (last == null || s.startAt.isAfter(last!.startAt)) last = s;
+    }
+    if (last == null) return null;
 
-  return state.activities.firstWhere(
-    (a) => a.id == last!.activityId,
-    orElse: () => Activity(domainId: '', name: '', habitTarget: 1),
-  );
-}
+    return state.activities.firstWhere(
+      (a) => a.id == last!.activityId,
+      orElse: () => Activity(domainId: '', name: '', habitTarget: 1),
+    );
+  }
 
   String? runningActivityId() {
     // dernière session non terminée (si plusieurs, prends la plus récente)
@@ -519,7 +519,10 @@ class AppLogic {
     }
 
     // auto-tune (safe)
-    _autoTuneHabitSafe(act);
+    //_autoTuneHabitSafe(act);
+
+    // auto-tune basé 30 jours (sans cooldown)
+    autoTuneHabitFrom30d(this, act);
 
     // Un seul persist à la fin
     onChange();
@@ -1063,12 +1066,16 @@ class AppLogic {
     }
 
     // HABITS : ajustements
-    for (final a in state.activities.where((x) => x.isHabit)) {
+/*     for (final a in state.activities.where((x) => x.isHabit)) {
       autoTuneHabitImmediate(this, a); // hausse immédiate si >120%
       _autoTuneHabitSafe(a, now: t); // finetune avec cooldown
+    } */
+
+    for (final a in state.activities.where((x) => x.isHabit)) {
+      autoTuneHabitFrom30d(this, a);
     }
 
-    state.lastGoalsReview = t;
+    //state.lastGoalsReview = t;
     onChange();
     return changes;
   }
@@ -2274,6 +2281,34 @@ List<TuneChange> autoTuneHabit(AppLogic l, Activity a, {DateTime? now}) {
     res.add(TuneChange(a.id, 'auto-tune → ${a.habitFreq} x${a.habitTarget}'));
   }
   return res;
+}
+
+void autoTuneHabitFrom30d(AppLogic l, Activity act) {
+  if (!act.isHabit || act.manualTarget == true) return;
+
+  final done30 = l.habitSliding(act.id, 30).done;
+
+  // Calculs sur 30 jours
+  final dailyTarget = (done30 / 30.0).floor(); // 30 -> 1/j ; 60 -> 2/j
+  final weeklyTarget = (done30 / 4.0).floor(); // ≈ 4 semaines sur 30j
+
+  // 1) Daily si possible
+  if (dailyTarget >= 1) {
+    act.habitFreq = HabitFreq.daily;
+    act.habitTarget = dailyTarget; // >= 1
+    return;
+  }
+
+  // 2) Weekly seulement si >= 1
+  if (weeklyTarget >= 1) {
+    act.habitFreq = HabitFreq.weekly;
+    act.habitTarget = weeklyTarget; // >= 1
+    return;
+  }
+
+  // 3) Sinon Monthly (minimum 1)
+  act.habitFreq = HabitFreq.monthly;
+  act.habitTarget = math.max(1, done30);
 }
 
 // Hausse immédiate si >120% de la période active (respecte manualTarget)
