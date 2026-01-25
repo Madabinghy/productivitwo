@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/main.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -148,92 +149,153 @@ class _TodayViewState extends State<TodayView> {
     final todayDate = DateTime(now.year, now.month, now.day);
 
     final ymd = _ymd;
-final isTodayTab = ymd == yyyymmdd(now);
+    final isTodayTab = ymd == yyyymmdd(now);
+
     final runningAct = widget.logic.runningActivity();
     final currentDomainId =
-        (runningAct != null && runningAct.domainId.isNotEmpty)
+        (runningAct != null && (runningAct.domainId).isNotEmpty)
             ? runningAct.domainId
             : null;
+
     final hasRunning = isTodayTab && currentDomainId != null;
+
+    // Mode test : hors activité, on force uniquement les non-atteints
+    const forceOnlyUnderWhenNoRunning = true;
+
+    // Reorder: on interdit en focus et quand tri dashboard activé
     final canReorder = !sortByDashboard && !hasRunning;
 
-    final planItems = widget.logic.planFor(ymd).where((it) {
-      if (!isTodayTab) return true;
+    // 1) Base: plan du jour affiché
+    final basePlan = widget.logic.planFor(ymd).toList();
 
-      final isRoutineItem = it.kind != PlanKind.action;
+    // 2) Focus : ne garder QUE les habits (pas d'actions, pas d'autres activités)
+    // Hors focus : on garde tout
+    final focusFiltered = hasRunning
+        ? basePlan.where((it) {
+            if (it.kind != PlanKind.habit) return false;
+            // garde seulement les habits du domaine courant
+            return it.domainId == currentDomainId;
+          }).toList()
+        : basePlan;
 
-      if (isRoutineItem && it.done) {
-        if (!hasRunning) return false;
-        // focus: on garde les done seulement si domaine courant
-        return it.domainId == currentDomainId;
+    // 3) Virtuels (focus seulement) : ajouter les habits du domaine courant absents du plan
+/*     final extraHabits = <DayPlanItem>[];
+    if (hasRunning) {
+      final alreadyHabitIds = <String>{
+        for (final it in focusFiltered)
+          if (it.kind == PlanKind.habit && it.refId != null) it.refId!,
+      };
+
+      final habitsOfDomain = widget.logic.state.activities.where(
+        (a) => a.isHabit && a.domainId == currentDomainId,
+      );
+
+      for (final a in habitsOfDomain) {
+        if (alreadyHabitIds.contains(a.id)) continue;
+
+        // Reached selon la période effective (daily/weekly/monthly)
+        final freq = widget.logic.effectiveHabitFreq(a);
+        final target = widget.logic.effectiveHabitTarget(a);
+
+        int done;
+        switch (freq) {
+          case HabitFreq.daily:
+            done = widget.logic.habitValueOn(a.id, todayDate);
+            break;
+          case HabitFreq.weekly:
+            done = widget.logic.habitSliding(a.id, 7).done;
+            break;
+          case HabitFreq.monthly:
+            done = widget.logic.habitSliding(a.id, 30).done;
+            break;
+        }
+
+        final reached = target > 0 && done >= target;
+
+        extraHabits.add(
+          DayPlanItem(
+            id: 'virt:${a.id}',
+            kind: PlanKind.habit,
+            refId: a.id,
+            domainId: a.domainId,
+            title: a.name,
+            yyyymmdd: ymd,
+            done: reached, // ✅ pilotera barré + coche dans ta card
+            doneCount: done,
+            allDay: true,
+            order: 1 << 30,
+          ),
+        );
       }
-      return true;
-    }).toList();
+    } */
 
-final extraHabits = <DayPlanItem>[];
+    // 4) Merge
+    //final merged = [...focusFiltered, ...extraHabits];
+    final merged = focusFiltered;
 
-if (hasRunning) {
-  final already = <String>{
-    for (final it in planItems)
-      if (it.kind == PlanKind.habit && it.refId != null) it.refId!,
-  };
+    // 5) Filtre "test" hors focus : Today + pas d'activité => uniquement non atteints
+    List<DayPlanItem> visible;
+    if (isTodayTab && !hasRunning && forceOnlyUnderWhenNoRunning) {
+      visible = merged.where((it) {
+        if (it.kind != PlanKind.habit || it.refId == null) return true;
 
-  final habitsOfDomain = widget.logic.state.activities
-      .where((a) => a.isHabit && a.domainId == currentDomainId);
+        final act =
+            widget.state.activities.firstWhereOrNull((a) => a.id == it.refId);
+        if (act == null) return true;
 
-  for (final a in habitsOfDomain) {
-    if (already.contains(a.id)) continue;
+        final freq = widget.logic.effectiveHabitFreq(act);
+        final target = widget.logic.effectiveHabitTarget(act);
 
-    final quota = widget.logic.dayQuotaFor(a);
-    final doneVal = widget.logic.habitValueOn(a.id, todayDate);
-    final reached = quota > 0 && doneVal >= quota;
+        int done;
+        switch (freq) {
+          case HabitFreq.daily:
+            done = widget.logic.habitValueOn(act.id, todayDate);
+            break;
+          case HabitFreq.weekly:
+            done = widget.logic.habitSliding(act.id, 7).done;
+            break;
+          case HabitFreq.monthly:
+            done = widget.logic.habitSliding(act.id, 30).done;
+            break;
+        }
+        final reached = target > 0 && done >= target;
+        return !reached;
+      }).toList();
+    } else {
+      visible = merged;
+    }
 
-    extraHabits.add(
-      DayPlanItem(
-        id: 'virt:${a.id}', // virtuel
-        kind: PlanKind.habit,
-        refId: a.id,
-        domainId: a.domainId,
-        title: a.name,
-        yyyymmdd: ymd,
-        done: reached,
-        doneCount: doneVal.round(),
-        allDay: true,
-        order: 1 << 30,
-      ),
-    );
-  }
-}
+    // 6) Tri habits : sous seuil d'abord, atteints en bas (focus seulement)
+    // Hors focus : tu peux laisser ton ordre existant
+    List<DayPlanItem> finalItems;
+    if (hasRunning) {
+      final under = <DayPlanItem>[];
+      final reached = <DayPlanItem>[];
 
-    final itemsMerged = [...planItems, ...extraHabits];
+      for (final it in visible) {
+        // En focus visible ne contient que des habits, mais on garde robuste
+        if (it.kind == PlanKind.habit) {
+          (it.done ? reached : under).add(
+              it); // ✅ it.done fiable pour virtuels + on l'utilisera pour réels
+        } else {
+          under.add(it);
+        }
+      }
+      finalItems = [...under, ...reached];
+    } else {
+      finalItems = visible;
+    }
 
-final itemsFocus = hasRunning
-    ? itemsMerged.where((it) {
-        if (it.kind != PlanKind.habit) return true; // garde actions/activities si tu veux
-        return it.domainId == currentDomainId;
-      }).toList()
-    : itemsMerged;
-
-// puis tri habits non atteints d’abord (si tu veux)
-final itemsFocusSorted = hasRunning
-    ? ([
-        ...itemsFocus.where((x) => x.kind != PlanKind.habit),
-        ...itemsFocus.where((x) => x.kind == PlanKind.habit).toList()
-          ..sort((a, b) {
-            if (a.done != b.done) return a.done ? 1 : -1;
-            return a.title.compareTo(b.title);
-          }),
-      ])
-    : itemsFocus;
-
-    const haloReachedThreshold = 0.99; // ou 0.95 si tu veux plus doux
+    // 7) Tri dashboard : on ne le fait pas en focus (sinon ça mélange ton ordre under/reached)
+    const haloReachedThreshold = 0.99;
     final domainRank = widget.logic
         .computeDashboardDomainOrder(haloReachedThreshold: haloReachedThreshold)
         .rankByDomain;
 
-    final items = sortByDashboard
-        ? widget.logic.viewItemsSortedByDashboard(itemsFocusSorted, domainRank)
-        : itemsFocusSorted;
+    final items = (!hasRunning && sortByDashboard)
+        ? widget.logic.viewItemsSortedByDashboard(finalItems, domainRank)
+        : finalItems;
+
 /* 
     debugPrint('--- DOMAIN RANKS ---');
     final sorted = widget.logic.computeDashboardDomainOrder().sortedDomains;
@@ -306,19 +368,28 @@ final itemsFocusSorted = hasRunning
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
               itemCount: items.length,
 
-              // ✅ drag OFF quand tri Dashboard ON
-              buildDefaultDragHandles: !sortByDashboard,
-              onReorder: canReorder
-                  ? (_, __) {} // no-op
-                  : (oldIndex, newIndex) {
-                      setState(() =>
-                          widget.logic.reorderPlan(ymd, oldIndex, newIndex));
-                    },
+              // ✅ On gère les handles nous-mêmes (sinon Flutter rend toute la tile draggable)
+              buildDefaultDragHandles: false,
+
+              // ✅ Reorder seulement si autorisé
+              onReorder: (oldIndex, newIndex) {
+                if (!canReorder) return;
+                setState(
+                    () => widget.logic.reorderPlan(ymd, oldIndex, newIndex));
+              },
 
               itemBuilder: (ctx, i) {
                 final it = items[i];
-                return _todayTile(ctx, it,
-                    key: ValueKey(it.id), showDrag: !sortByDashboard);
+                final isVirtual = it.id.startsWith('virt:');
+
+                return _todayTile(
+                  ctx,
+                  it,
+                  key: ValueKey(it.id),
+                  showDrag: canReorder &&
+                      !isVirtual, // ✅ poignée seulement si autorisé
+                  indexForDrag: i, // ✅ nouveau param
+                );
               },
             ),
           ),
@@ -348,7 +419,7 @@ final itemsFocusSorted = hasRunning
       _dayStart(tomorrow: tomorrow).add(const Duration(days: 1));
 
   Widget _todayTile(BuildContext context, DayPlanItem it,
-      {required Key key, bool showDrag = true}) {
+      {required Key key, bool showDrag = true, int? indexForDrag}) {
     // Jour affiché selon l’onglet
     final now = DateTime.now();
     final viewed = _planTomorrow ? now.add(const Duration(days: 1)) : now;
@@ -410,6 +481,25 @@ final itemsFocusSorted = hasRunning
     }
 
     // poignée de drag
+    Widget dragHandle() {
+      final enabled = showDrag && indexForDrag != null;
+      final icon = Icon(
+        Icons.drag_handle,
+        size: 20,
+        color: enabled
+            ? Colors.white.withValues(alpha: 0.85)
+            : Colors.white.withValues(alpha: 0.25),
+      );
+
+      if (!enabled)
+        return SizedBox(width: 32, height: 32, child: Center(child: icon));
+
+      return ReorderableDragStartListener(
+        index: indexForDrag!,
+        child: SizedBox(width: 32, height: 32, child: Center(child: icon)),
+      );
+    }
+
     ReorderableDragStartListener dragHandleFor(DayPlanItem it) {
       return ReorderableDragStartListener(
         index: widget.logic
@@ -705,7 +795,7 @@ final itemsFocusSorted = hasRunning
               });
 
           Future<int?> _askInt(BuildContext context, String title) async {
-            final s = await _askText(context, title);
+            final s = await _askNumbersOnly(context, title);
             if (s == null) return null;
             return int.tryParse(s.trim());
           }
@@ -787,7 +877,12 @@ final itemsFocusSorted = hasRunning
               );
 
           final isVirtual = it.id.startsWith('virt:');
-          final isReachedToday = it.done; // pour les virtuels: c'est "atteint"
+
+// ✅ vrai "atteint" pour les habits réels
+          final reached = target > 0 && done >= target;
+
+// ✅ pour virtuels, on garde it.done
+          final isReachedToday = isVirtual ? it.done : reached;
 
           return Card(
             key: key,
@@ -800,7 +895,7 @@ final itemsFocusSorted = hasRunning
                   Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (showDrag) dragHandleFor(it),
+                      if (showDrag) dragHandle(),
 
                       // Mettre plus tard (fin de liste) — si tu veux le garder pour les routines
                       IconButton(
@@ -897,7 +992,14 @@ final itemsFocusSorted = hasRunning
                                 visualDensity: VisualDensity.compact,
                               ),
 
-                              TextButton(
+                              IconButton(
+                                tooltip: "Saisir",
+                                icon: const Icon(Icons.keyboard_alt_outlined,
+                                    size: 20),
+                                visualDensity: VisualDensity.compact,
+                                constraints: const BoxConstraints.tightFor(
+                                    width: 34, height: 34),
+                                padding: EdgeInsets.zero,
                                 onPressed: () async {
                                   final v = await _askInt(
                                       context, "Valeur pour aujourd'hui");
@@ -909,7 +1011,6 @@ final itemsFocusSorted = hasRunning
                                     setState(() {});
                                   }
                                 },
-                                child: const Text("Saisir"),
                               ),
                               const Spacer(),
 
@@ -1133,6 +1234,44 @@ final itemsFocusSorted = hasRunning
     );
   }
 
+  Future<String?> _askNumbersOnly(
+  BuildContext context,
+  String title,
+) async {
+  return showDialog<String>(
+    context: context,
+    builder: (context) {
+      final controller = TextEditingController();
+
+      return AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.number, // ✅ clavier chiffres
+          textInputAction: TextInputAction.done,
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly, // ✅ uniquement chiffres
+          ],
+          onSubmitted: (_) =>
+              Navigator.of(context).pop(controller.text),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.of(context).pop(controller.text),
+            child: const Text('OK'),
+          ),
+        ],
+      );
+    },
+  );
+}
+
   Future<Activity?> _pickActivity({required bool isHabit}) async {
     final acts = widget.state.activities
         .where((a) => a.isHabit == isHabit)
@@ -1173,6 +1312,43 @@ final itemsFocusSorted = hasRunning
         ],
       ),
     );
+  }
+
+  bool _habitReached(DayPlanItem it, DateTime day) {
+    if (it.refId == null) return false;
+    final act =
+        widget.state.activities.firstWhereOrNull((a) => a.id == it.refId);
+    if (act == null) return false;
+
+    final freq = act.habitFreq ?? HabitFreq.monthly;
+
+    final dayDone = widget.logic.habitValueOn(it.refId!, day);
+    final dayQuota = widget.logic.dayQuotaFor(act);
+
+    final weekDone = widget.logic.habitSliding(it.refId!, 7).done;
+    final weekTarget = widget.logic.weekTargetFrom(act);
+
+    final monthDone = widget.logic.habitSliding(it.refId!, 30).done;
+    final monthTarget = widget.logic.monthTargetFrom(act);
+
+    int doneShown, targetShown;
+    switch (freq) {
+      case HabitFreq.daily:
+        doneShown = dayDone;
+        targetShown = dayQuota;
+        break;
+      case HabitFreq.weekly:
+        doneShown = weekDone;
+        targetShown = weekTarget;
+        break;
+      case HabitFreq.monthly:
+        doneShown = monthDone;
+        targetShown = monthTarget;
+        break;
+    }
+
+    final target = targetShown;
+    return target > 0 && doneShown >= target;
   }
 
   Future<void> showHabitChecklist(

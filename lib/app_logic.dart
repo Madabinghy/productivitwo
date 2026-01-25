@@ -499,11 +499,22 @@ class AppLogic {
     // ✅ JOURNAL (burst) — toutes fréquences, sans spam
     // - seulement sur incrément
     // - seulement s'il y a quelque chose à logguer
-    if (delta > 0 && doneOnDay > 0) {
+/*     if (delta > 0 && doneOnDay > 0) {
       logTomorrowIfLastDifferent(
         PlanKind.habit,
         activityId,
         act.name,
+      );
+    } */
+
+    if (delta > 0 && doneOnDay > 0) {
+      final ymdToday = yyyymmdd(currentDay);
+      ensurePlannedOnce(
+        ymdToday,
+        PlanKind.habit,
+        activityId,
+        act.name,
+        domainId: act.domainId,
       );
     }
 
@@ -1284,6 +1295,25 @@ class AppLogic {
 
     if (changed) onChange();
     return changed;
+  }
+
+  void ensurePlannedOnce(String ymd, PlanKind kind, String refId, String title,
+      {String? domainId}) {
+    final exists = state.dayPlan
+        .any((e) => e.yyyymmdd == ymd && e.kind == kind && e.refId == refId);
+    if (exists) return;
+
+    state.dayPlan.add(DayPlanItem(
+      id: _uuid.v4(),
+      kind: kind,
+      refId: refId,
+      title: title,
+      domainId: domainId ?? '',
+      yyyymmdd: ymd,
+      done: false,
+      order: 1 << 30,
+      allDay: true,
+    ));
   }
 
   void logTomorrowIfLastDifferent(
