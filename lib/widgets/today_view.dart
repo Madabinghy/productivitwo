@@ -292,9 +292,16 @@ class _TodayViewState extends State<TodayView> {
         .computeDashboardDomainOrder(haloReachedThreshold: haloReachedThreshold)
         .rankByDomain;
 
-    final items = (!hasRunning && sortByDashboard)
+    final sorted = (!hasRunning && sortByDashboard)
         ? widget.logic.viewItemsSortedByDashboard(finalItems, domainRank)
         : finalItems;
+
+
+    final items = widget.logic.injectSuggestedActivities(
+      items: sorted,
+      ymd: ymd,
+      now: now,
+    );
 
 /* 
     debugPrint('--- DOMAIN RANKS ---');
@@ -1235,42 +1242,40 @@ class _TodayViewState extends State<TodayView> {
   }
 
   Future<String?> _askNumbersOnly(
-  BuildContext context,
-  String title,
-) async {
-  return showDialog<String>(
-    context: context,
-    builder: (context) {
-      final controller = TextEditingController();
+    BuildContext context,
+    String title,
+  ) async {
+    return showDialog<String>(
+      context: context,
+      builder: (context) {
+        final controller = TextEditingController();
 
-      return AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          keyboardType: TextInputType.number, // ✅ clavier chiffres
-          textInputAction: TextInputAction.done,
-          inputFormatters: [
-            FilteringTextInputFormatter.digitsOnly, // ✅ uniquement chiffres
+        return AlertDialog(
+          title: Text(title),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            keyboardType: TextInputType.number, // ✅ clavier chiffres
+            textInputAction: TextInputAction.done,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly, // ✅ uniquement chiffres
+            ],
+            onSubmitted: (_) => Navigator.of(context).pop(controller.text),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Annuler'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(controller.text),
+              child: const Text('OK'),
+            ),
           ],
-          onSubmitted: (_) =>
-              Navigator.of(context).pop(controller.text),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Annuler'),
-          ),
-          TextButton(
-            onPressed: () =>
-                Navigator.of(context).pop(controller.text),
-            child: const Text('OK'),
-          ),
-        ],
-      );
-    },
-  );
-}
+        );
+      },
+    );
+  }
 
   Future<Activity?> _pickActivity({required bool isHabit}) async {
     final acts = widget.state.activities

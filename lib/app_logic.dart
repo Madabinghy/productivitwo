@@ -1,6 +1,7 @@
 // applogic.dart — version sans dailyTarget, cibles dérivées partout ✨
 
 import 'dart:math' as math;
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -507,6 +508,14 @@ class AppLogic {
       );
     } */
 
+    if (delta > 0) {
+      final running = runningActivity(); // ou widget.logic.runningActivity()
+      state.habitHits.add(HabitHit(
+        habitId: activityId,
+        ts: DateTime.now(),
+        contextActivityId: running?.id,
+      ));
+    }
     if (delta > 0 && doneOnDay > 0) {
       final ymdToday = yyyymmdd(currentDay);
       ensurePlannedOnce(
@@ -537,6 +546,111 @@ class AppLogic {
 
     // Un seul persist à la fin
     onChange();
+  }
+
+  Map<String, int> habitActivityCounts30d(String habitId, DateTime now) {
+    final start = now.subtract(const Duration(days: 30));
+    final counts = <String, int>{};
+
+    for (final h in state.habitHits) {
+      if (h.habitId != habitId) continue;
+      if (h.ts.isBefore(start)) continue;
+      final actId = h.contextActivityId;
+      if (actId == null) continue;
+      counts[actId] = (counts[actId] ?? 0) + 1;
+    }
+    return counts;
+  }
+
+  List<DayPlanItem> injectSuggestedActivities({
+    required List<DayPlanItem> items,
+    required String ymd,
+    required DateTime now,
+  }) {
+    final out = <DayPlanItem>[];
+
+    // activités déjà présentes (évite doublons)
+    final seenActivityIds = <String>{
+      for (final it in items)
+        if (it.kind == PlanKind.activityTime && it.refId != null) it.refId!,
+    };
+
+    for (final it in items) {
+      // 👉 si c’est une routine/habit, on regarde si une activité est suggérée
+      if (it.kind == PlanKind.habit && it.refId != null) {
+        final habitId = it.refId!;
+        final domainId = it.domainId;
+
+        final suggestedActId = suggestedActivityForHabit(
+          habitId: habitId,
+          domainId: domainId,
+          now: now,
+          logic: this,
+        );
+
+        if (suggestedActId != null &&
+            !seenActivityIds.contains(suggestedActId)) {
+          final act =
+              state.activities.firstWhereOrNull((a) => a.id == suggestedActId);
+
+          if (act != null) {
+            out.add(
+              DayPlanItem(
+                id: 'virtAct:${act.id}', // ⚠️ virtuel
+                kind: PlanKind.activityTime,
+                refId: act.id,
+                domainId: act.domainId,
+                title: act.name,
+                yyyymmdd: ymd,
+                done: false,
+                doneCount: 0,
+                allDay: true,
+                order: 1 << 30,
+              ),
+            );
+
+            seenActivityIds.add(act.id);
+          }
+        }
+      }
+
+      // 👉 on ajoute toujours l’item courant
+      out.add(it);
+    }
+
+    return out;
+  }
+
+  String? suggestedActivityForHabit({
+    required String habitId,
+    required String? domainId,
+    required AppLogic logic,
+    required DateTime now,
+  }) {
+    final counts = logic.habitActivityCounts30d(habitId, now);
+
+    if (counts.isNotEmpty) {
+      String? bestId;
+      var best = 0;
+
+      counts.forEach((actId, c) {
+        if (c > best) {
+          best = c;
+          bestId = actId;
+        }
+      });
+
+      if (bestId != null) return bestId;
+    }
+
+// fallback : première activité du domaine
+    if (domainId != null) {
+      final fallback = state.activities.firstWhereOrNull(
+        (a) => !a.isHabit && a.domainId == domainId,
+      );
+      if (fallback != null) return fallback.id;
+    }
+    return null;
   }
 
   // ---------- Cibles dérivées (habits) ----------

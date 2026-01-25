@@ -387,6 +387,36 @@ class Session {
       endAt: j['endAt'] != null ? DateTime.parse(j['endAt']) : null);
 }
 
+
+class HabitHit {
+  String id;
+  String habitId; // (= activityId de l'habit)
+  DateTime ts;
+  String? contextActivityId; // activité en cours au moment de l'incrément
+
+  HabitHit({
+    String? id,
+    required this.habitId,
+    required this.ts,
+    this.contextActivityId,
+  }) : id = id ?? _uuid.v4();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'habitId': habitId,
+        'ts': ts.toIso8601String(),
+        'contextActivityId': contextActivityId,
+      };
+
+  static HabitHit from(Map j) => HabitHit(
+        id: j['id'],
+        habitId: j['habitId'],
+        ts: DateTime.parse(j['ts']),
+        contextActivityId: j['contextActivityId'],
+      );
+}
+
+
 /// --- PROGRESSION HABITUDES ---
 /// Stocke la valeur d’une habitude pour un jour donné (clé date "YYYYMMDD")
 class HabitProgress {
@@ -432,6 +462,7 @@ class AppState {
   String? lastPrepYmd; // on a déjà fait "Aujourd'hui → Demain" pour ce jour ?
   List<String> focusTodayIds;
   bool sortTodayByDashboard;
+  List<HabitHit> habitHits = [];
 
   AppState({
     required this.domains,
