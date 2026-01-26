@@ -4,6 +4,8 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/main.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:collection/collection.dart';
+import 'package:productivitwo_v1/widgets/habit_tile_30d.dart'
+    show NowHabit30dBar;
 
 class TodayView extends StatefulWidget {
   final AppLogic logic;
@@ -1738,8 +1740,25 @@ class _NowTabState extends State<NowTab> {
   bool _skipDone = true; // option: sauter les items déjà “faits”
   final Set<String> _skippedIds = {};
 
+  String? _skippedYmd;
+
+  void _ensureDay(String ymd) {
+    if (_skippedYmd == null) {
+      _skippedYmd = ymd;
+      return;
+    }
+    if (_skippedYmd != ymd) {
+      _skippedYmd = ymd;
+      _skippedIds.clear();
+      _lockedPlanId = null;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final ymd =
+        yyyymmdd(DateTime(widget.day.year, widget.day.month, widget.day.day));
+    _ensureDay(ymd);
     final assoc =
         widget.logic.routineToActivityId(widget.logic.habitAssocEvents);
 
@@ -1774,7 +1793,92 @@ class _NowTabState extends State<NowTab> {
     // ✅ sinon on affiche la carte "Maintenant"
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-      child: _nowCard(context, next),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _nowCard(context, next),
+                    if (next.it.kind == PlanKind.habit && next.it.refId != null) ...[
+            const SizedBox(height: 10),
+            NowHabit30dBar(
+              logic: widget.logic,
+              st: widget.st,
+              habitId: next.it.refId!,
+              day: widget.day,
+            ),
+          ],
+          const SizedBox(height: 12),
+          _activitiesSuggestionForCurrent(next.it),
+
+        ],
+      ),
+    );
+  }
+
+  Widget _activitiesSuggestionForCurrent(DayPlanItem it) {
+    // On ne propose que si l’item actuel est une routine
+    if (it.kind != PlanKind.habit) return const SizedBox.shrink();
+
+    // Domain du plan item (déjà stocké chez toi dans DayPlanItem)
+    final domId = it.domainId;
+    if (domId == null) return const SizedBox.shrink();
+
+    // Activités time du domaine
+    final acts = widget.st.activities
+        .where((a) => !a.isHabit && a.domainId == domId)
+        .toList();
+
+    if (acts.isEmpty) return const SizedBox.shrink();
+
+    // (option) éviter de proposer l’activité déjà en cours
+    final running = widget.logic.runningActivity();
+    final filtered =
+        running == null ? acts : acts.where((a) => a.id != running.id).toList();
+
+    if (filtered.isEmpty) return const SizedBox.shrink();
+
+    // Nom du domaine
+    final domName = widget.st.domains
+        .firstWhere((d) => d.id == domId,
+            orElse: () => Domain(id: domId, name: "Domaine"))
+        .name;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "Activités • $domName",
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color:
+                    Theme.of(context).colorScheme.onSurface.withOpacity(0.75),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final a in filtered)
+                  FilledButton.tonalIcon(
+                    onPressed: () {
+                      widget.logic
+                          .start(a.id); // ✅ adapte le nom exact si besoin
+                      setState(() {
+                        // Optionnel: on peut locker l’item actuel pour rester dessus
+                        // (et l’utilisateur clique ensuite "Fait" => assoc)
+                      });
+                    },
+                    icon: const Icon(Icons.play_arrow, size: 18),
+                    label: Text(a.name),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1873,42 +1977,67 @@ class _NowTabState extends State<NowTab> {
 
   Widget _nowCard(BuildContext context, RowPlan rp) {
     final it = rp.it;
-
-    final title = it.title;
     final subtitle = _subtitleFor(it);
 
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("MAINTENANT",
-                style: TextStyle(
-                  letterSpacing: 1.2,
-                  fontWeight: FontWeight.w800,
-                  color:
-                      Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                )),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    "MAINTENANT",
+                    style: TextStyle(
+                      letterSpacing: 1.2,
+                      fontWeight: FontWeight.w800,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(0.6),
+                    ),
+                  ),
+                ),
+                if (_skippedIds.isNotEmpty)
+                  TextButton(
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 0),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      minimumSize: Size.zero,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _skippedIds.clear();
+                        _lockedPlanId = null;
+                      });
+                    },
+                    child: Text(
+                      "Réinitialiser (${_skippedIds.length})",
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+              ],
+            ),
             const SizedBox(height: 10),
-            Text(title,
-                style:
-                    const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+            Text(
+              it.title,
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+            ),
             if (subtitle != null) ...[
               const SizedBox(height: 6),
-              Text(subtitle,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withOpacity(0.7),
-                  )),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 13,
+                  color:
+                      Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                ),
+              ),
             ],
             const SizedBox(height: 14),
-
-            // Actions principales
             Row(
               children: [
                 Expanded(
