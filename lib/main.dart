@@ -1380,56 +1380,61 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   }
 
 // 1) Helpers d’index <-> enum
-int _tabIndex(_Tab t) {
-  switch (t) {
-    case _Tab.dashboard: return 0;
-    case _Tab.now:       return 1;
-    case _Tab.today:     return 2;
-    case _Tab.stats:     return 3;
+  int _tabIndex(_Tab t) {
+    switch (t) {
+      case _Tab.dashboard:
+        return 0;
+      case _Tab.now:
+        return 1;
+      case _Tab.today:
+        return 2;
+      case _Tab.stats:
+        return 3;
+    }
   }
-}
 
-_Tab _tabFromIndex(int i) {
-  switch (i) {
-    case 0: return _Tab.dashboard;
-    case 1: return _Tab.now;
-    case 2: return _Tab.today;
-    default: return _Tab.stats;
+  _Tab _tabFromIndex(int i) {
+    switch (i) {
+      case 0:
+        return _Tab.dashboard;
+      case 1:
+        return _Tab.now;
+      case 2:
+        return _Tab.today;
+      default:
+        return _Tab.stats;
+    }
   }
-}
 
-List<DayPlanItem> _todayItems() {
-  final now = DateTime.now();
-  final today = DateTime(now.year, now.month, now.day);
-  final ymd = yyyymmdd(today);
-  return logic.planItemsFor(ymd);
-}
+  List<DayPlanItem> _todayItems() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final ymd = yyyymmdd(today);
+    return logic.planItemsFor(ymd);
+  }
 
 // 2) Body : route correctement vers TodayView
-Widget _buildBody(BuildContext context) {
-  final st = _state!;
-  final todayItems = _todayItems(); // ta méthode
+  Widget _buildBody(BuildContext context) {
+    final st = _state!;
+    final todayItems = _todayItems(); // ta méthode
 
-  return IndexedStack(
-    index: _tabIndex(_tab),
-    children: [
-      _buildDashboardBody(context),
-
-      NowTab(
-        logic: logic,
-        st: st,
-        items: todayItems,
-        day: DateTime.now(),
-        buildRowsGrouped: logic.buildRowsGrouped, // si tu l'as déplacée
-        onGoTodo: () => setState(() => _tab = _Tab.today),
-      ),
-
-      TodayView(logic: logic, state: st),
-
-      StatsView(logic: logic, state: st, selectedDomainId: null),
-    ],
-  );
-}
+    return IndexedStack(
+      index: _tabIndex(_tab),
+      children: [
+        _buildDashboardBody(context),
+        NowTab(
+          logic: logic,
+          st: st,
+          items: todayItems,
+          day: DateTime.now(),
+          buildRowsGrouped: logic.buildRowsGrouped, // si tu l'as déplacée
+          onGoTodo: () => setState(() => _tab = _Tab.today),
+        ),
+        TodayView(logic: logic, state: st),
+        StatsView(logic: logic, state: st, selectedDomainId: null),
+      ],
+    );
+  }
 
   bool get _hasRunningSession {
     final st = _state;
@@ -1525,17 +1530,20 @@ Widget _buildBody(BuildContext context) {
       floatingActionButton: _tab == _Tab.dashboard ? _buildFocusFab() : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
 
-bottomNavigationBar: BottomNavigationBar(
-  currentIndex: _tabIndex(_tab),
-  onTap: (i) => setState(() => _tab = _tabFromIndex(i)),
-  type: BottomNavigationBarType.fixed, // important à 4 tabs
-  items: const [
-    BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Dashboard'),
-    BottomNavigationBarItem(icon: Icon(Icons.play_arrow), label: 'Maintenant'),
-    BottomNavigationBarItem(icon: Icon(Icons.checklist), label: 'À faire'),
-    BottomNavigationBarItem(icon: Icon(Icons.show_chart), label: 'Stats'),
-  ],
-),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _tabIndex(_tab),
+        onTap: (i) => setState(() => _tab = _tabFromIndex(i)),
+        type: BottomNavigationBarType.fixed, // important à 4 tabs
+        items: const [
+          BottomNavigationBarItem(
+              icon: Icon(Icons.dashboard), label: 'Dashboard'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.play_arrow), label: 'Maintenant'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.checklist), label: 'À faire'),
+          BottomNavigationBarItem(icon: Icon(Icons.show_chart), label: 'Stats'),
+        ],
+      ),
     );
   }
 
@@ -1982,7 +1990,6 @@ bottomNavigationBar: BottomNavigationBar(
         totals24.values.fold<Duration>(Duration.zero, (a, b) => a + b);
 
     final total24Hours = total24Dur.inMinutes / 60.0;
-    final outerProgressAll24 = (total24Hours / 24.0).clamp(0.0, 1.0);
 
     final start7 = today.subtract(const Duration(days: 7));
     final end7 = today; // exclut aujourd’hui
@@ -1995,9 +2002,6 @@ bottomNavigationBar: BottomNavigationBar(
 
     final avg7HoursPerDay =
         activeDays == 0 ? 0.0 : (total7Dur.inMinutes / 60.0) / activeDays;
-
-    final mainProgress = (avg7HoursPerDay / 24.0).clamp(0.0, 1.0);
-    final mainText = _fmtHoursHM(avg7HoursPerDay); // ex: 15h10
 
     int _doneHabitsForDomainCalendar(
         String domainId, DateTime start, DateTime end) {
@@ -2117,8 +2121,11 @@ bottomNavigationBar: BottomNavigationBar(
     final tgt90 = _targetHabitsAllCalendar(start90, end90);
     final rate90 = tgt90 == 0 ? 0.0 : (done90 / tgt90).clamp(0.0, 1.0);
 
-    final rateToday = tgtToday == 0 ? 0.0 : doneToday / tgtToday;
-    final rateWeek = tgt7 == 0 ? 0.0 : done7 / tgt7;
+    final rateToday = tgtToday == 0 ? 0.0 : (doneToday / tgtToday);
+    final rateWeek = tgt7 == 0 ? 0.0 : (done7 / tgt7);
+
+// ✅ Big = semaine si on a déjà fait quelque chose sur la semaine, sinon today
+    final bigForGauge = (done7 == 0 && doneToday > 0) ? rateToday : rateWeek;
 
     final totalsToday = logic.timeTotalsByDomain(today, now);
     final totalTodayDur =
@@ -2288,6 +2295,9 @@ bottomNavigationBar: BottomNavigationBar(
       return value.clamp(0.0, 1.0);
     }
 
+    debugPrint("ROUTINES bigForGauge=${snapToFull(bigForGauge)} "
+        "outer=${snapToFull(outerHabitsPrimary)} "
+        "small=${snapToFull(rate90)}");
     return Column(
       children: [
         // Anneaux globaux (Temps & Habitudes)
@@ -2333,13 +2343,12 @@ bottomNavigationBar: BottomNavigationBar(
 
               RepaintBoundary(
                 child: NestedGauge(
-                  bigProgress: snapToFull(rateWeek), // ✅ norme semaine
+                  bigProgress: snapToFull(bigForGauge),
+                  bigColor: _colorForProgress(bigForGauge, context),
                   smallProgress: snapToFull(
                       rate90), // option : tu peux mettre autre chose (voir note)
                   outerProgress:
                       snapToFull(outerHabitsPrimary), // ✅ halo = aujourd’hui
-
-                  bigColor: _colorForProgress(rateWeek, context),
                   smallColor: _colorForProgress(rate90, context), // ou neutre
                   outerColor: Colors.cyanAccent,
                   centerText: "",
@@ -2424,22 +2433,29 @@ bottomNavigationBar: BottomNavigationBar(
                         _doneHabitsForDomainCalendar(d.id, today, tomorrow);
                     final tgtTodayD =
                         _targetHabitsForDomainCalendar(d.id, today, tomorrow);
-                    final rateTodayD =
-                        tgtTodayD == 0 ? 0.0 : (doneTodayD / tgtTodayD);
 
                     // Semaine (7j précédents)
                     final done7D =
                         _doneHabitsForDomainCalendar(d.id, start7, end7);
                     final tgt7D =
                         _targetHabitsForDomainCalendar(d.id, start7, end7);
-                    final rateWeekD = tgt7D == 0 ? 0.0 : (done7D / tgt7D);
 
                     // 90j
                     final done90D =
                         _doneHabitsForDomainCalendar(d.id, start90, end90);
                     final tgt90D =
                         _targetHabitsForDomainCalendar(d.id, start90, end90);
+
+                    final rateWeekD = tgt7D == 0 ? 0.0 : (done7D / tgt7D);
+
+                    final rateTodayD =
+                        tgtTodayD == 0 ? 0.0 : (doneTodayD / tgtTodayD);
                     final rate90D = tgt90D == 0 ? 0.0 : (done90D / tgt90D);
+
+// ✅ bootstrap : si semaine vide mais aujourd’hui a bougé, big = today
+                    final bigForGaugeD = (done7D == 0 && doneTodayD > 0)
+                        ? rateTodayD
+                        : rateWeekD;
 
                     // label dynamique routines : done / +X si sous la semaine, sinon done/target
                     final needD = _neededToBeatWeek(
@@ -2490,17 +2506,16 @@ bottomNavigationBar: BottomNavigationBar(
                                 ),
                               ),
 
-                              // ✅ Routines
                               RepaintBoundary(
                                 child: NestedGauge(
                                   bigProgress:
-                                      snapToFull(rateWeekD.clamp(0.0, 1.0)),
+                                      snapToFull(bigForGaugeD.clamp(0.0, 1.0)),
                                   outerProgress:
                                       snapToFull(rateTodayD.clamp(0.0, 1.0)),
                                   smallProgress:
                                       snapToFull(rate90D.clamp(0.0, 1.0)),
                                   bigColor:
-                                      _colorForProgress(rateWeekD, context),
+                                      _colorForProgress(bigForGaugeD, context),
                                   outerColor: Colors.cyanAccent,
                                   smallColor:
                                       _colorForProgress(rate90D, context),
