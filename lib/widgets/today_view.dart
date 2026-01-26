@@ -1952,17 +1952,19 @@ class _NowTabState extends State<NowTab> {
     return null;
   }
 
-  bool _isActionableIgnoringSkips(DayPlanItem it) {
-    if (_skipDone && it.done) return false;
-    switch (it.kind) {
-      case PlanKind.habit:
-      case PlanKind.activityTime:
-      case PlanKind.action:
-        return true;
-      default:
-        return false;
-    }
+bool _isActionableIgnoringSkips(DayPlanItem it) {
+  if (_doneTodayIds.contains(it.id)) return false;
+  if (_skipDone && it.done) return false;
+
+  switch (it.kind) {
+    case PlanKind.habit:
+    case PlanKind.activityTime:
+    case PlanKind.action:
+      return true;
+    default:
+      return false;
   }
+}
 
   Widget _allSkippedView() {
     return Center(
@@ -1996,7 +1998,9 @@ class _NowTabState extends State<NowTab> {
   Widget _nowCard(BuildContext context, RowPlan rp) {
     final it = rp.it;
     final subtitle = _subtitleFor(it);
-    final doneToday = widget.logic.habitValueOn(it.refId!, widget.day);
+    final doneToday = (it.kind == PlanKind.habit && it.refId != null)
+    ? widget.logic.habitValueOn(it.refId!, widget.day)
+    : 0;
 
     return Card(
       child: Padding(
@@ -2082,24 +2086,17 @@ class _NowTabState extends State<NowTab> {
     );
   }
 
-  void _onPrimary(DayPlanItem it) {
-    if (it.kind == PlanKind.habit && it.refId != null) {
-      final doneToday = widget.logic.habitValueOn(it.refId!, widget.day);
-
-      setState(() {
-        // 🔒 verrouille cette routine pour aujourd’hui
-        _lockedPlanId = it.id;
-
-        // ➕ on l’ajoute aux "skipped" du jour
-        // (même logique que Passer, mais intention différente)
-        _skippedIds.add(it.id);
-      });
-
-      return;
-    }
-
-    // fallback pour actions / activités
+void _onPrimary(DayPlanItem it) {
+  if (it.kind == PlanKind.habit && it.refId != null) {
+    setState(() {
+      _doneTodayIds.add(it.id); // ✅ terminé pour aujourd’hui
+      _lockedPlanId = null;     // ✅ avance le tunnel
+    });
+    return;
   }
+
+  // si tu veux gérer activityTime/action plus tard, tu peux
+}
 
   String _primaryLabel(DayPlanItem it) {
     if (it.kind != PlanKind.habit || it.refId == null) {
