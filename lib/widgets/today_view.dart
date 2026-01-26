@@ -629,6 +629,12 @@ class _TodayViewState extends State<TodayView> {
     final domainsById = {for (final d in st.domains) d.id: d};
     final activitiesById = {for (final a in st.activities) a.id: a};
 
+    final habitActs = st.activities.where((a) => a.isHabit).toList();
+    final habitActsByDomain = <String, List<Activity>>{};
+    for (final h in habitActs) {
+      (habitActsByDomain[h.domainId] ??= []).add(h);
+    }
+
     // Sépare items par kind
     final planRoutines = items.where((x) => x.kind == PlanKind.habit).toList();
     final planActs =
@@ -684,8 +690,34 @@ class _TodayViewState extends State<TodayView> {
       final domName = domainsById[domId]?.name ?? "Domaine";
       rows.add(RowHeader("virt:dom:$domId", domName));
 
-      final domRoutines = routinesByDomain[domId] ?? const <DayPlanItem>[];
+      //final domRoutines = routinesByDomain[domId] ?? const <DayPlanItem>[];
       final domActs = actsByDomain[domId] ?? const <DayPlanItem>[];
+
+      final planned = routinesByDomain[domId] ?? const <DayPlanItem>[];
+      final plannedRefIds =
+          planned.map((e) => e.refId).whereType<String>().toSet();
+
+// Catalogue routines (Activity.isHabit)
+      final catalogHabits =
+          st.activities.where((a) => a.isHabit && a.domainId == domId).toList();
+
+// Convertit les routines catalogue absentes du plan en DayPlanItem virtuels
+      final virt = catalogHabits
+          .where((h) => !plannedRefIds.contains(h.id))
+          .map((h) => DayPlanItem(
+                id: 'virt:habit:${h.id}',
+                kind: PlanKind.habit,
+                refId: h.id,
+                domainId: h.domainId,
+                title: h.name,
+                yyyymmdd: planned.isNotEmpty
+                    ? planned.first.yyyymmdd
+                    : yyyymmdd(DateTime.now()),
+              ))
+          .toList();
+
+// ✅ Dom routines = planifiées + virtuelles
+      final domRoutines = [...planned, ...virt];
 
       // routines groupées par activité associée (via events)
       final byAct = <String?, List<DayPlanItem>>{};

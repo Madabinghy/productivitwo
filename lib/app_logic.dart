@@ -79,6 +79,12 @@ class AppLogic {
   String? _lastRolloverDay;
   final List<HabitAssocEvent> habitAssocEvents = [];
 
+  void pinHabitToActivity(String habitId, String activityId) {
+  habitAssocEvents.removeWhere((e) =>
+      e.type == HabitAssocEventType.pinned && e.habitId == habitId);
+  habitAssocEvents.add(HabitAssocEvent.pinned(habitId, activityId));
+}
+
   String? pinnedActivityForRoutine(String routineId) {
   for (var i = habitAssocEvents.length - 1; i >= 0; i--) {
     final e = habitAssocEvents[i];
@@ -655,14 +661,21 @@ void pinRoutineToActivity(String routineId, String activityId) {
       );
     } */
 
-    if (delta > 0) {
-      final running = runningActivity(); // ou widget.logic.runningActivity()
-      state.habitHits.add(HabitHit(
-        habitId: activityId,
-        ts: DateTime.now(),
-        contextActivityId: running?.id,
-      ));
-    }
+if (delta > 0) {
+  final running = runningActivity();
+
+  // log contexte (tu l'as déjà)
+  state.habitHits.add(HabitHit(
+    habitId: activityId,
+    ts: DateTime.now(),
+    contextActivityId: running?.id,
+  ));
+
+  // ✅ PIN automatique si une activité tourne
+  if (running != null) {
+    pinHabitToActivity(activityId, running.id);
+  }
+}
     if (delta > 0 && doneOnDay > 0) {
       final ymdToday = yyyymmdd(currentDay);
       ensurePlannedOnce(
