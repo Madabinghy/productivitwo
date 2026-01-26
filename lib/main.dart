@@ -1407,29 +1407,28 @@ List<DayPlanItem> _todayItems() {
 
 // 2) Body : route correctement vers TodayView
 Widget _buildBody(BuildContext context) {
-  switch (_tab) {
-    case _Tab.dashboard:
-      return _buildDashboardBody(context);
+  final st = _state!;
+  final todayItems = _todayItems(); // ta méthode
 
-    case _Tab.now:
-      return NowTab(
+  return IndexedStack(
+    index: _tabIndex(_tab),
+    children: [
+      _buildDashboardBody(context),
+
+      NowTab(
         logic: logic,
-        st: _state!,                  // ton AppState
-        items: _todayItems(),         // 👇 voir point 4
+        st: st,
+        items: todayItems,
         day: DateTime.now(),
-        buildRowsGrouped: logic.buildRowsGrouped,
-      );
+        buildRowsGrouped: logic.buildRowsGrouped, // si tu l'as déplacée
+        onGoTodo: () => setState(() => _tab = _Tab.today),
+      ),
 
-    case _Tab.today:
-      return TodayView(logic: logic, state: _state!);
+      TodayView(logic: logic, state: st),
 
-    case _Tab.stats:
-      return StatsView(
-        logic: logic,
-        state: _state!,
-        selectedDomainId: null,
-      );
-  }
+      StatsView(logic: logic, state: st, selectedDomainId: null),
+    ],
+  );
 }
 
   bool get _hasRunningSession {

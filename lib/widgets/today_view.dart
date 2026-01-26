@@ -430,7 +430,8 @@ class _TodayViewState extends State<TodayView> {
     final st = widget.logic.state;
 
     // 1️⃣ associations routines -> activités
-    final assoc = widget.logic.routineToActivityId(widget.logic.habitAssocEvents);
+    final assoc =
+        widget.logic.routineToActivityId(widget.logic.habitAssocEvents);
 
     final rows = widget.logic.buildRowsGrouped(
       items: items, // List<DayPlanItem>
@@ -579,8 +580,6 @@ class _TodayViewState extends State<TodayView> {
     }
     return out;
   }
-
-
 
   Widget _domainHeader(String t) => Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
@@ -1708,8 +1707,8 @@ class HabitTicksRow extends StatelessWidget {
 class NowTab extends StatefulWidget {
   final AppLogic logic;
   final AppState st;
-  final List<DayPlanItem> items; // items du jour (plan)
-  final DateTime day;            // aujourd’hui (DateTime)
+  final List<DayPlanItem> items;
+  final DateTime day;
 
   final List<RowItem> Function({
     required List<DayPlanItem> items,
@@ -1718,6 +1717,8 @@ class NowTab extends StatefulWidget {
     required Map<String, String?> assoc,
   }) buildRowsGrouped;
 
+  final VoidCallback? onGoTodo; // ✅ AJOUT
+
   const NowTab({
     super.key,
     required this.logic,
@@ -1725,6 +1726,7 @@ class NowTab extends StatefulWidget {
     required this.items,
     required this.day,
     required this.buildRowsGrouped,
+    this.onGoTodo, // ✅ AJOUT
   });
 
   @override
@@ -1734,13 +1736,13 @@ class NowTab extends StatefulWidget {
 class _NowTabState extends State<NowTab> {
   String? _lockedPlanId; // 👉 gèle “ce qu’on fait maintenant”
   bool _skipDone = true; // option: sauter les items déjà “faits”
+  final Set<String> _skippedIds = {};
 
   @override
   Widget build(BuildContext context) {
-    // 1) Construire assoc (Option 2)
-    final assoc = widget.logic.routineToActivityId(widget.logic.habitAssocEvents);
+    final assoc =
+        widget.logic.routineToActivityId(widget.logic.habitAssocEvents);
 
-    // 2) Construire rows (même ordre que “À faire”)
     final rows = widget.buildRowsGrouped(
       items: widget.items,
       st: widget.st,
@@ -1748,58 +1750,88 @@ class _NowTabState extends State<NowTab> {
       assoc: assoc,
     );
 
-    // 3) Trouver l’item “maintenant” (gelé)
-    final next = _pickNow(rows);
+    final plans = rows.whereType<RowPlan>().toList();
+    final actionable = plans.where((rp) => _isActionable(rp.it)).toList();
+    debugPrint("NOW actionable=${actionable.length}");
+    if (actionable.isNotEmpty) {
+      debugPrint(
+          "NOW first actionable kind=${actionable.first.it.kind} id=${actionable.first.it.id} done=${actionable.first.it.done}");
+    }
 
+    final next = _pickNow(rows); // <-- doit renvoyer RowPlan?
+
+    // ✅ IMPORTANT : on ne montre “tout est fait” que si next == null
     if (next == null) {
+      // si tu as des actionnables mais tous skippés -> vue "tout skippé"
+      final hasActionableIgnoringSkips =
+          plans.any((rp) => _isActionableIgnoringSkips(rp.it));
+      if (hasActionableIgnoringSkips) {
+        return _allSkippedView();
+      }
       return _allDoneView(context);
     }
 
-    // UI : une carte unique
+    // ✅ sinon on affiche la carte "Maintenant"
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       child: _nowCard(context, next),
     );
   }
 
-  RowPlan? _pickNow(List<RowItem> rows) {
-    // 1) si on a un lock, on retrouve le même item
-    if (_lockedPlanId != null) {
-      final locked = rows.whereType<RowPlan>().cast<RowPlan?>().firstWhere(
-            (rp) => rp!.it.id == _lockedPlanId,
-            orElse: () => null,
-          );
-      if (locked != null && _isActionable(locked.it)) return locked;
+  bool _isActionable(DayPlanItem it) {
+    if (_skippedIds.contains(it.id)) return false;
 
-      // si disparu/non-actionnable, on libère le lock
+    switch (it.kind) {
+      case PlanKind.habit:
+        {
+          final habitId = it.refId;
+          if (habitId == null) return false;
+
+          final act = widget.st.activities.firstWhere((a) => a.id == habitId);
+
+          // uniquement pour daily : on saute si quota atteint
+          final freq = widget.logic.effectiveHabitFreq(act);
+          if (freq == HabitFreq.daily) {
+            final quota = widget.logic.dayQuotaFor(act);
+            if (quota > 0) {
+              final done = widget.logic.habitValueOn(habitId, widget.day);
+              if (done >= quota) return false;
+            }
+          }
+
+          // sinon actionnable
+          return true;
+        }
+
+      case PlanKind.activityTime:
+        return true;
+
+      case PlanKind.action:
+        return !it.done; // ✅ ici, done a du sens
+    }
+  }
+
+  RowPlan? _pickNow(List<RowItem> rows) {
+    // lock
+    if (_lockedPlanId != null) {
+      for (final rp in rows.whereType<RowPlan>()) {
+        if (rp.it.id == _lockedPlanId && _isActionable(rp.it)) return rp;
+      }
       _lockedPlanId = null;
     }
 
-    // 2) sinon on prend le premier actionnable
+    // first actionable
     for (final rp in rows.whereType<RowPlan>()) {
       if (_isActionable(rp.it)) {
-        _lockedPlanId = rp.it.id; // gèle
+        _lockedPlanId = rp.it.id;
         return rp;
       }
     }
     return null;
   }
 
-  bool _isActionable(DayPlanItem it) {
-    // ignore les virtuels si tu ne veux pas
-    // (mais tu peux aussi les autoriser)
-    final isVirtual = it.id.startsWith('virt:');
-
-    // 👉 Choix produit :
-    // - Si tu veux “Maintenant” = uniquement plan réel : return !isVirtual && ...
-    // - Si tu veux “Maintenant” = aussi catalogue : autorise virtuels
-    // Je te conseille d’AUTORISER virtuels pour l’effet tunnel complet.
-    // Donc on ne filtre pas sur isVirtual.
-
-    // Sauter “déjà fait” si besoin
+  bool _isActionableIgnoringSkips(DayPlanItem it) {
     if (_skipDone && it.done) return false;
-
-    // Actionnable selon kind
     switch (it.kind) {
       case PlanKind.habit:
       case PlanKind.activityTime:
@@ -1808,6 +1840,35 @@ class _NowTabState extends State<NowTab> {
       default:
         return false;
     }
+  }
+
+  Widget _allSkippedView() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("😌 Tu as tout passé",
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 10),
+            const Text(
+                "Il reste des choses à faire, mais tu les as mises de côté.",
+                textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () => setState(() => _skippedIds.clear()),
+              child: const Text("Réinitialiser les passes"),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton(
+              onPressed: widget.onGoTodo,
+              child: const Text("Voir la liste"),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _nowCard(BuildContext context, RowPlan rp) {
@@ -1827,17 +1888,22 @@ class _NowTabState extends State<NowTab> {
                 style: TextStyle(
                   letterSpacing: 1.2,
                   fontWeight: FontWeight.w800,
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                  color:
+                      Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                 )),
             const SizedBox(height: 10),
             Text(title,
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+                style:
+                    const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
             if (subtitle != null) ...[
               const SizedBox(height: 6),
               Text(subtitle,
                   style: TextStyle(
                     fontSize: 13,
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withOpacity(0.7),
                   )),
             ],
             const SizedBox(height: 14),
@@ -1895,38 +1961,40 @@ class _NowTabState extends State<NowTab> {
     setState(() {
       switch (it.kind) {
         case PlanKind.habit:
-          // refId = Activity(habit) id
           if (it.refId != null) {
             widget.logic.incHabit(it.refId!, 1, day);
           }
           break;
 
         case PlanKind.activityTime:
-          // refId = Activity(time) id
           if (it.refId != null) {
-            widget.logic.start(it.refId!); // adapte au nom chez toi
+            widget.logic.start(it.refId!); // adapte ton nom
           }
           break;
 
         case PlanKind.action:
-          // Si tu as un markDone action :
-          widget.logic.toggleDone(it.id, true); // adapte ou supprime
+          // si tu gères done
+          // it.done = true; (ou logic)
           break;
 
         default:
           break;
       }
 
-      // ✅ avance le tunnel : on libère le lock pour recalculer le “next”
+      // ✅ IMPORTANT : ne pas reproposer tout de suite
+      _skippedIds.add(it.id);
+
+      // et on libère le lock
       _lockedPlanId = null;
     });
   }
 
   void _onSkip() {
     setState(() {
-      // on ignore l’item actuel et on passe au suivant :
-      // stratégie simple: enlever le lock et marquer “done” si tu veux
-      _lockedPlanId = null;
+      if (_lockedPlanId != null) {
+        _skippedIds.add(_lockedPlanId!);
+      }
+      _lockedPlanId = null; // force pickNext
     });
   }
 
@@ -1944,7 +2012,8 @@ class _NowTabState extends State<NowTab> {
               "Tu peux lancer une activité ou ajouter une routine dans l’onglet À faire.",
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.75),
+                color:
+                    Theme.of(context).colorScheme.onSurface.withOpacity(0.75),
               ),
             ),
           ],
