@@ -54,141 +54,155 @@ class FileStore {
     return st;
   }
 
-  AppState _seedMinimal() {
-    // ========== Domaines (tous autoGoal) ==========
-    final sante = Domain(name: 'Santé', autoGoal: true);
-    final organisation = Domain(name: 'Organisation', autoGoal: true);
-    final business = Domain(name: 'Business', autoGoal: true);
-    final skills = Domain(name: 'Skills', autoGoal: true);
-    final spiritualite = Domain(name: 'Spiritualité', autoGoal: true);
-    final environnement = Domain(name: 'Environnement', autoGoal: true);
-    final sport = Domain(name: 'Sport', autoGoal: true);
+AppState _seedMinimal() {
+  // ========== Domaines (tous autoGoal) ==========
+  final sante = Domain(name: 'Santé', autoGoal: true);
+  final organisation = Domain(name: 'Organisation', autoGoal: true);
+  final business = Domain(name: 'Business', autoGoal: true);
+  final skills = Domain(name: 'Skills', autoGoal: true);
+  final spiritualite = Domain(name: 'Spiritualité', autoGoal: true);
+  final environnement = Domain(name: 'Environnement', autoGoal: true);
+  final sport = Domain(name: 'Sport', autoGoal: true);
 
-    // Helpers
-    Activity timeAct(String domainId, String name) => Activity(
-          domainId: domainId,
-          name: name,
-          type: 'time',
-          goalMin: 1,
-        );
+  // Helpers
+  Activity timeAct(String domainId, String name) => Activity(
+        domainId: domainId,
+        name: name,
+        type: 'time',
+        goalMin: 1,
+      );
 
-    Activity habit(String domainId, String name) => Activity(
-          domainId: domainId,
-          name: name,
-          type: 'habit',
-          habitFreq: HabitFreq.monthly,
-          habitTarget: 1,
-          manualTarget: false,
-          autoTune: true,
-        );
+  Activity habit(String domainId, String name) => Activity(
+        domainId: domainId,
+        name: name,
+        type: 'habit',
+        habitFreq: HabitFreq.monthly, // ✅ 30j par défaut (ton choix)
+        habitTarget: 1,
+        manualTarget: false,
+        autoTune: true,
+      );
 
-    // ========== Activités (time) ==========
-    final activities = <Activity>[
-      // Santé
-      timeAct(sante.id, 'Soin'),
-      timeAct(sante.id, 'Cuisiner'),
-      timeAct(sante.id, 'Sommeil'),
-      timeAct(sante.id, 'Sieste'),
-      timeAct(sante.id, 'Manger'),
+  // ========== Activités (time) ==========
+  final activities = <Activity>[
+    // Spiritualité — Activités
+    timeAct(spiritualite.id, 'GDS'),
+    timeAct(spiritualite.id, 'Kingdom'),
+    timeAct(spiritualite.id, 'Prier'),
+    timeAct(spiritualite.id, 'Lire la Bible'),
 
-      // Organisation
-      timeAct(organisation.id, 'Intendance'),
-      timeAct(organisation.id, 'Planification'),
-      timeAct(organisation.id, 'Préparation'),
-      timeAct(organisation.id, 'Courses'),
-      timeAct(organisation.id, 'Rendre service'),
+    // Environnement — Activités
+    timeAct(environnement.id, 'Nettoyer'),
+    timeAct(environnement.id, 'Ranger'),
+    timeAct(environnement.id, 'Extérieur'),
+    timeAct(environnement.id, 'Rénovation'),
+    timeAct(environnement.id, 'Lessive'),
 
-      // Business
-      timeAct(business.id, 'Facturation'),
-      timeAct(business.id, 'Suivi'),
-      timeAct(business.id, 'Interventions'),
-      timeAct(business.id, 'Contenu'),
-      timeAct(business.id, 'Productivitwo'),
+    // Sport — Activités
+    timeAct(sport.id, 'Courir'),
+    timeAct(sport.id, 'Musculation'),
+    timeAct(sport.id, 'Étirements'),
 
-      // Skills
-      timeAct(skills.id, 'Lecture'),
-      timeAct(skills.id, 'PLF Coaching'),
+    // Santé — Activités
+    timeAct(sante.id, 'Soins'),
+    timeAct(sante.id, 'Cuisiner'),
+    timeAct(sante.id, 'Sommeil'),
+    timeAct(sante.id, 'Sieste'),
+    timeAct(sante.id, 'Manger'),
 
-      // Spiritualité
-      timeAct(spiritualite.id, 'GDS'),
-      timeAct(spiritualite.id, 'Kingdom'),
-      timeAct(spiritualite.id, 'Prier'),
-      timeAct(spiritualite.id, 'Lire la Bible'),
+    // Organisation — Activités
+    timeAct(organisation.id, 'Intendance'),
+    timeAct(organisation.id, 'Planification'),
+    timeAct(organisation.id, 'Préparation'),
+    timeAct(organisation.id, 'Courses'),
+    timeAct(organisation.id, 'Rendre service'),
 
-      // Environnement
-      timeAct(environnement.id, 'Nettoyer'),
-      timeAct(environnement.id, 'Ranger'),
-      timeAct(environnement.id, 'Extérieur'),
-      timeAct(environnement.id, 'Rénovation'),
+    // Business — Activités
+    timeAct(business.id, 'Facturation'),
+    timeAct(business.id, 'Suivi'),
+    timeAct(business.id, 'Interventions'),
+    timeAct(business.id, 'Contenu'),
+    timeAct(business.id, 'Productivitwo'),
 
-      // Sport
-      timeAct(sport.id, 'Courir'),
-      timeAct(sport.id, 'Musculation'),
-      timeAct(sport.id, 'Étirements'),
-    ];
+    // Skills — Activités
+    timeAct(skills.id, 'Lecture'),
+    timeAct(skills.id, 'PLF Coaching'),
+  ];
 
-    // ========== Routines (habits) ==========
-    final habits = <Activity>[
-      // Santé — Routines
-      habit(sante.id, 'Prendre un bain de mer'),
-      habit(sante.id, 'Prendre un petit-déj'),
+  // ========== Routines (habits) ==========
+  final habits = <Activity>[
+    // Spiritualité — Routines
+    habit(spiritualite.id, 'Aller à GDS'),
+    habit(spiritualite.id, 'Lire un chapitre'),
 
-      // Organisation — Routines
-      habit(organisation.id, 'Saisir mes dépenses'),
-      habit(organisation.id, 'Suivre mon budget'),
-      habit(organisation.id, 'Faire les courses'),
+    // Environnement — Routines
+    habit(environnement.id, 'Faire la vaisselle'),
+    habit(environnement.id, "Passer la serpillière"),
+    habit(environnement.id, "Passer l'aspirateur"),
+    habit(environnement.id, 'Couper les herbes'),
+    habit(environnement.id, 'Passer le kasher'),
+    habit(environnement.id, 'Tailler les haies'),
+    habit(environnement.id, 'Faire le lit'),
+    habit(environnement.id, 'Faire le tri'),
+    habit(environnement.id, 'Ranger la maison'),
+    habit(environnement.id, 'Nettoyer les murs'),
+    habit(environnement.id, 'Nettoyer le frigo'),
+    habit(environnement.id, 'Nettoyer par derrière'),
 
-      // Business — Routines
-      habit(business.id, 'Faire une facture'),
-      habit(business.id, 'Préparer une intervention'),
+    // Sport — Routines (hors souplesse)
+    habit(sport.id, 'Faire des pompes'),
+    habit(sport.id, 'Faire des tractions'),
 
-      // Skills — (tu n’avais pas listé de routines, on en met une “soft”)
-      habit(skills.id, 'Exercice / entraînement'),
+    // Santé — Routines
+    habit(sante.id, 'Prendre un bain de mer'),
+    habit(sante.id, 'Prendre un petit-déj'),
+    habit(sante.id, 'Mode batch cooking'),
+    habit(sante.id, 'Me coucher à 22h'),
 
-      // Spiritualité — Routines
-      habit(spiritualite.id, 'Aller à GDS'),
-      habit(spiritualite.id, 'Lire un chapitre'),
+    // Organisation — Routines
+    habit(organisation.id, 'Saisir mes dépenses'),
+    habit(organisation.id, 'Suivre mon budget'),
+    habit(organisation.id, 'Faire les courses'),
+    habit(organisation.id, 'Préparer mon matos'),
+    habit(organisation.id, 'Aller à la répète'),
+    habit(organisation.id, 'Réveil à 4h'),
 
-      // Environnement — Routines
-      habit(environnement.id, 'Faire la vaisselle'),
-      habit(environnement.id, 'Passer la serpillière'),
-      habit(environnement.id, 'Passer l’aspirateur'),
-      habit(environnement.id, 'Couper les herbes'),
+    // Business — Routines
+    habit(business.id, 'Faire une facture'),
+    habit(business.id, 'Préparer une intervention'),
 
-      // Sport — Routines
-      habit(sport.id, 'Faire des pompes'),
-      habit(sport.id, 'Faire des tractions'),
-    ];
+    // Skills — Routines : non listées sur ta carte mentale (laisse vide pour l’instant)
+    // (si tu veux, ajoute-les ici)
+  ];
 
-    // Souplesse 1..35 (Sport — Routines)
-    for (int i = 1; i <= 35; i++) {
-      habits.add(habit(sport.id, 'Souplesse $i'));
-    }
-
-    return AppState(
-      domains: [
-        sante,
-        organisation,
-        business,
-        skills,
-        spiritualite,
-        environnement,
-        sport
-      ],
-      activities: [...activities, ...habits],
-      sessions: [],
-      habitProgress: [],
-      lastGoalsReview: null,
-      snoozedUntil: {},
-      goals: [],
-      inbox: [],
-      dayPlan: [],
-      focusTodayIds: [],
-      sortTodayByDashboard: false,
-      habitHits: [],
-      habitPinnedActivity: {},
-    );
+  // Sport — Souplesse 1..35 (Routines)
+  for (int i = 1; i <= 35; i++) {
+    habits.add(habit(sport.id, 'Souplesse $i'));
   }
+
+  return AppState(
+    domains: [
+      sante,
+      organisation,
+      business,
+      skills,
+      spiritualite,
+      environnement,
+      sport,
+    ],
+    activities: [...activities, ...habits],
+    sessions: [],
+    habitProgress: [],
+    lastGoalsReview: null,
+    snoozedUntil: {},
+    goals: [],
+    inbox: [],
+    dayPlan: [],
+    focusTodayIds: [],
+    sortTodayByDashboard: false,
+    habitHits: [],
+    habitPinnedActivity: {},
+  );
+}
 
   Future<void> save(AppState st) async {
     final f = await _file();
