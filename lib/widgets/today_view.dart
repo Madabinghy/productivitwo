@@ -1996,6 +1996,7 @@ class _NowTabState extends State<NowTab> {
   Widget _nowCard(BuildContext context, RowPlan rp) {
     final it = rp.it;
     final subtitle = _subtitleFor(it);
+    final doneToday = widget.logic.habitValueOn(it.refId!, widget.day);
 
     return Card(
       child: Padding(
@@ -2059,11 +2060,15 @@ class _NowTabState extends State<NowTab> {
             Row(
               children: [
                 Expanded(
-                  child: FilledButton(
-                    onPressed: () => _onOkToday(it),
-                    child: const Text("OK pour aujourd’hui"),
+                    child: FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: doneToday > 0
+                        ? Colors.green
+                        : Theme.of(context).colorScheme.secondary,
                   ),
-                ),
+                  onPressed: () => _onPrimary(it),
+                  child: Text(_primaryLabel(it)),
+                )),
                 const SizedBox(width: 10),
                 OutlinedButton(
                   onPressed: _onSkip,
@@ -2077,11 +2082,33 @@ class _NowTabState extends State<NowTab> {
     );
   }
 
-  void _onOkToday(DayPlanItem it) {
-    setState(() {
-      _doneTodayIds.add(it.id); // ✅ clos sans incrémenter
-      _lockedPlanId = null; // passe au suivant
-    });
+  void _onPrimary(DayPlanItem it) {
+    if (it.kind == PlanKind.habit && it.refId != null) {
+      final doneToday = widget.logic.habitValueOn(it.refId!, widget.day);
+
+      setState(() {
+        // 🔒 verrouille cette routine pour aujourd’hui
+        _lockedPlanId = it.id;
+
+        // ➕ on l’ajoute aux "skipped" du jour
+        // (même logique que Passer, mais intention différente)
+        _skippedIds.add(it.id);
+      });
+
+      return;
+    }
+
+    // fallback pour actions / activités
+  }
+
+  String _primaryLabel(DayPlanItem it) {
+    if (it.kind != PlanKind.habit || it.refId == null) {
+      return "Fait";
+    }
+
+    final doneToday = widget.logic.habitValueOn(it.refId!, widget.day);
+
+    return doneToday > 0 ? "Ok pour aujourd’hui" : "Pas aujourd’hui";
   }
 
   bool _canAdjust(DayPlanItem it) {
