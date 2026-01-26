@@ -1739,6 +1739,7 @@ class _NowTabState extends State<NowTab> {
   String? _lockedPlanId; // 👉 gèle “ce qu’on fait maintenant”
   bool _skipDone = true; // option: sauter les items déjà “faits”
   final Set<String> _skippedIds = {};
+  final Set<String> _doneTodayIds = {};
 
   String? _skippedYmd;
 
@@ -1750,6 +1751,7 @@ class _NowTabState extends State<NowTab> {
     if (_skippedYmd != ymd) {
       _skippedYmd = ymd;
       _skippedIds.clear();
+      _doneTodayIds.clear();
       _lockedPlanId = null;
     }
   }
@@ -1797,18 +1799,33 @@ class _NowTabState extends State<NowTab> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _nowCard(context, next),
-                    if (next.it.kind == PlanKind.habit && next.it.refId != null) ...[
+          if (next.it.kind == PlanKind.habit && next.it.refId != null) ...[
             const SizedBox(height: 10),
-            NowHabit30dBar(
-              logic: widget.logic,
-              st: widget.st,
-              habitId: next.it.refId!,
-              day: widget.day,
+            Row(
+              children: [
+                IconButton(
+                  onPressed:
+                      _canAdjust(next.it) ? () => _onDelta(next.it, -1) : null,
+                  icon: const Icon(Icons.remove_circle_outline),
+                ),
+                Expanded(
+                  child: NowHabit30dBar(
+                    logic: widget.logic,
+                    st: widget.st,
+                    habitId: next.it.refId!,
+                    day: widget.day,
+                  ),
+                ),
+                IconButton(
+                  onPressed:
+                      _canAdjust(next.it) ? () => _onDelta(next.it, 1) : null,
+                  icon: const Icon(Icons.add_circle_outline),
+                ),
+              ],
             ),
           ],
           const SizedBox(height: 12),
           _activitiesSuggestionForCurrent(next.it),
-
         ],
       ),
     );
@@ -1884,6 +1901,7 @@ class _NowTabState extends State<NowTab> {
 
   bool _isActionable(DayPlanItem it) {
     if (_skippedIds.contains(it.id)) return false;
+    if (_doneTodayIds.contains(it.id)) return false;
 
     switch (it.kind) {
       case PlanKind.habit:
@@ -2042,8 +2060,8 @@ class _NowTabState extends State<NowTab> {
               children: [
                 Expanded(
                   child: FilledButton(
-                    onPressed: () => _onPrimary(it),
-                    child: Text(_primaryLabel(it)),
+                    onPressed: () => _onOkToday(it),
+                    child: const Text("OK pour aujourd’hui"),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -2059,17 +2077,23 @@ class _NowTabState extends State<NowTab> {
     );
   }
 
-  String _primaryLabel(DayPlanItem it) {
-    switch (it.kind) {
-      case PlanKind.habit:
-        return "Fait";
-      case PlanKind.activityTime:
-        return "Lancer";
-      case PlanKind.action:
-        return "OK";
-      default:
-        return "OK";
-    }
+  void _onOkToday(DayPlanItem it) {
+    setState(() {
+      _doneTodayIds.add(it.id); // ✅ clos sans incrémenter
+      _lockedPlanId = null; // passe au suivant
+    });
+  }
+
+  bool _canAdjust(DayPlanItem it) {
+    return !_skippedIds.contains(it.id) && !_doneTodayIds.contains(it.id);
+  }
+
+  void _onDelta(DayPlanItem it, int delta) {
+    if (!_canAdjust(it)) return;
+    if (it.kind != PlanKind.habit || it.refId == null) return;
+
+    widget.logic.incHabit(it.refId!, delta, widget.day);
+    setState(() {}); // refresh jauge
   }
 
   String? _subtitleFor(DayPlanItem it) {
@@ -2082,40 +2106,6 @@ class _NowTabState extends State<NowTab> {
       orElse: () => Domain(id: dom, name: "Domaine"),
     );
     return "Domaine : ${d.name}";
-  }
-
-  void _onPrimary(DayPlanItem it) {
-    final day = widget.day;
-
-    setState(() {
-      switch (it.kind) {
-        case PlanKind.habit:
-          if (it.refId != null) {
-            widget.logic.incHabit(it.refId!, 1, day);
-          }
-          break;
-
-        case PlanKind.activityTime:
-          if (it.refId != null) {
-            widget.logic.start(it.refId!); // adapte ton nom
-          }
-          break;
-
-        case PlanKind.action:
-          // si tu gères done
-          // it.done = true; (ou logic)
-          break;
-
-        default:
-          break;
-      }
-
-      // ✅ IMPORTANT : ne pas reproposer tout de suite
-      _skippedIds.add(it.id);
-
-      // et on libère le lock
-      _lockedPlanId = null;
-    });
   }
 
   void _onSkip() {

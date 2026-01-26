@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart' show AppLogic;
-import 'package:productivitwo_v1/models.dart' show HabitFreq, AppState;
+import 'package:productivitwo_v1/models.dart'
+    show HabitFreq, AppState, Activity;
 import 'tiny_bar.dart'; // adapte le chemin
 // import tes modèles
 // import '.../app_logic.dart';
@@ -9,7 +10,7 @@ import 'tiny_bar.dart'; // adapte le chemin
 class NowHabit30dBar extends StatelessWidget {
   final AppLogic logic;
   final AppState st;
-  final String habitId;   // id de l'Activity (habit)
+  final String habitId; // id de l'Activity (habit)
   final DateTime day;
 
   const NowHabit30dBar({
@@ -20,37 +21,69 @@ class NowHabit30dBar extends StatelessWidget {
     required this.day,
   });
 
+  int _sumOverDays(String habitId, DateTime endInclusive, int days) {
+    int total = 0;
+    final end =
+        DateTime(endInclusive.year, endInclusive.month, endInclusive.day);
+    for (int i = 0; i < days; i++) {
+      final d = end.subtract(Duration(days: i));
+      total += this.logic.habitValueOn(habitId, d);
+    }
+    return total;
+  }
+
+  (int days, int target, String label) _windowAndTarget(Activity act) {
+    final freq = this.logic.effectiveHabitFreq(act);
+    final quota = this.logic.dayQuotaFor(act); // quota “par jour”
+
+    switch (freq) {
+      case HabitFreq.daily:
+        return (1, quota, "Aujourd’hui");
+      case HabitFreq.weekly:
+        // si ta cible “hebdo” est act.habitTarget, utilise-la.
+        // sinon fallback quota*7
+        final tgt = (act.habitTarget != null && act.habitTarget! > 0)
+            ? act.habitTarget!
+            : quota * 7;
+        return (7, tgt, "7 j");
+      case HabitFreq.monthly:
+        final tgt = (act.habitTarget != null && act.habitTarget! > 0)
+            ? act.habitTarget!
+            : quota * 30;
+        return (30, tgt, "30 j");
+      default:
+        // fallback safe
+        return (30, (act.habitTarget ?? 30), "30 j");
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final act = st.activities.firstWhere((a) => a.id == habitId);
+    // ✅ IMPORTANT : utiliser le state le plus frais si possible
+    // (si ton AppState est immutable et remplacé, st peut être stale)
+    final freshSt = logic.state; // si dispo chez toi
+    final usedSt = freshSt is AppState ? freshSt : st;
 
-    // ✅ done aujourd’hui
-    final d0 = DateTime(day.year, day.month, day.day);
-    final doneToday = logic.habitValueOn(habitId, d0);
+    final act = usedSt.activities.firstWhere((a) => a.id == habitId);
 
-    // ✅ target “aujourd’hui” (quota)
-    final quota = logic.dayQuotaFor(act); // int
-    final todayRatio = quota > 0 ? (doneToday / quota) : 0.0;
+    final (days, target, label) = _windowAndTarget(act);
 
-    // ✅ 30 jours: je te mets une version "simple" basée sur tes hits
-    // Si tu as déjà une fonction 30j plus précise, remplace ces 10 lignes.
-    final now = DateTime.now();
-    final cutoff = now.subtract(const Duration(days: 30));
-    final hits30 = st.habitHits.where((h) =>
-        h.habitId == habitId && h.ts.isAfter(cutoff)).length;
+    // somme sur fenêtre dynamique (descend avec -)
+    final done = _sumOverDays(habitId, day, days);
 
-    // cible 30j : quota * 30 (si daily)
-    // sinon fallback sur habitTarget si présent
-    final freq = logic.effectiveHabitFreq(act);
-    final target30 = (freq == HabitFreq.daily && quota > 0)
-        ? quota * 30
-        : (act.habitTarget ?? 30);
+    final ratio = target > 0 ? (done / target) : 0.0;
 
-    final ratio30 = target30 > 0 ? (hits30 / target30) : 0.0;
+    // (optionnel) afficher aussi today/quota si tu veux garder l’info
+    final quota = logic.dayQuotaFor(act);
+    final doneToday = logic.habitValueOn(
+      habitId,
+      DateTime(day.year, day.month, day.day),
+    );
 
     return TinyBar(
-      ratio: ratio30,
-      labelLeft: "30 j : $hits30 / $target30   •   Aujourd’hui : $doneToday / $quota",
+      ratio: ratio,
+      labelLeft:
+          "$label : $done / $target   •   Aujourd’hui : $doneToday / $quota",
       padding: const EdgeInsets.only(top: 6),
     );
   }
