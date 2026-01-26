@@ -30,17 +30,18 @@ sealed class RowItem {
 }
 
 class RowHeader extends RowItem {
-  @override final String id;
+  @override
+  final String id;
   final String title;
   const RowHeader(this.id, this.title);
 }
 
 class RowPlan extends RowItem {
-  @override final String id;
+  @override
+  final String id;
   final DayPlanItem it;
-   RowPlan(this.it) : id = it.id;
+  RowPlan(this.it) : id = it.id;
 }
-
 
 enum HabitAssocEventType { pinned, changeSuggested }
 
@@ -80,29 +81,29 @@ class AppLogic {
   final List<HabitAssocEvent> habitAssocEvents = [];
 
   void pinHabitToActivity(String habitId, String activityId) {
-  habitAssocEvents.removeWhere((e) =>
-      e.type == HabitAssocEventType.pinned && e.habitId == habitId);
-  habitAssocEvents.add(HabitAssocEvent.pinned(habitId, activityId));
-}
+    habitAssocEvents.removeWhere(
+        (e) => e.type == HabitAssocEventType.pinned && e.habitId == habitId);
+    habitAssocEvents.add(HabitAssocEvent.pinned(habitId, activityId));
+  }
 
   String? pinnedActivityForRoutine(String routineId) {
-  for (var i = habitAssocEvents.length - 1; i >= 0; i--) {
-    final e = habitAssocEvents[i];
-    if (e.habitId == routineId && e.type == HabitAssocEventType.pinned) {
-      return e.toActivityId;
+    for (var i = habitAssocEvents.length - 1; i >= 0; i--) {
+      final e = habitAssocEvents[i];
+      if (e.habitId == routineId && e.type == HabitAssocEventType.pinned) {
+        return e.toActivityId;
+      }
     }
+    return null;
   }
-  return null;
-}
 
-void pinRoutineToActivity(String routineId, String activityId) {
-  // retire les anciens pinned de cette routine
-  habitAssocEvents.removeWhere(
-    (e) => e.habitId == routineId && e.type == HabitAssocEventType.pinned,
-  );
-  habitAssocEvents.add(HabitAssocEvent.pinned(routineId, activityId));
-  onChange(); // si tu as déjà une persistance centrale; sinon setState côté UI
-}
+  void pinRoutineToActivity(String routineId, String activityId) {
+    // retire les anciens pinned de cette routine
+    habitAssocEvents.removeWhere(
+      (e) => e.habitId == routineId && e.type == HabitAssocEventType.pinned,
+    );
+    habitAssocEvents.add(HabitAssocEvent.pinned(routineId, activityId));
+    onChange(); // si tu as déjà une persistance centrale; sinon setState côté UI
+  }
 
   Activity? runningActivity() {
     Session? last;
@@ -661,21 +662,21 @@ void pinRoutineToActivity(String routineId, String activityId) {
       );
     } */
 
-if (delta > 0) {
-  final running = runningActivity();
+    if (delta > 0) {
+      final running = runningActivity();
 
-  // log contexte (tu l'as déjà)
-  state.habitHits.add(HabitHit(
-    habitId: activityId,
-    ts: DateTime.now(),
-    contextActivityId: running?.id,
-  ));
+      // log contexte (tu l'as déjà)
+      state.habitHits.add(HabitHit(
+        habitId: activityId,
+        ts: DateTime.now(),
+        contextActivityId: running?.id,
+      ));
 
-  // ✅ PIN automatique si une activité tourne
-  if (running != null) {
-    pinHabitToActivity(activityId, running.id);
-  }
-}
+      // ✅ PIN automatique si une activité tourne
+      if (running != null) {
+        pinHabitToActivity(activityId, running.id);
+      }
+    }
     if (delta > 0 && doneOnDay > 0) {
       final ymdToday = yyyymmdd(currentDay);
       ensurePlannedOnce(
@@ -1561,11 +1562,11 @@ if (delta > 0) {
     onChange();
   }
 
-List<DayPlanItem> planItemsFor(String ymd) {
-  final out = state.dayPlan.where((e) => e.yyyymmdd == ymd).toList()
-    ..sort((a, b) => a.order.compareTo(b.order));
-  return out;
-}
+  List<DayPlanItem> planItemsFor(String ymd) {
+    final out = state.dayPlan.where((e) => e.yyyymmdd == ymd).toList()
+      ..sort((a, b) => a.order.compareTo(b.order));
+    return out;
+  }
 
   List<RowItem> buildRowsGrouped({
     required List<DayPlanItem> items,
@@ -1998,7 +1999,7 @@ List<DayPlanItem> planItemsFor(String ymd) {
     onChange();
   }
 
-   Map<String, String?> routineToActivityId(List<HabitAssocEvent> events) {
+  Map<String, String?> routineToActivityId(List<HabitAssocEvent> events) {
     final pinned = <String, String>{};
     final suggested = <String, String>{};
 
@@ -2299,6 +2300,22 @@ class DashboardDomainOrder {
 // =====================================================
 
 extension TodayLogic on AppLogic {
+  Set<String> nowSkippedSet(String ymd) =>
+      (state.nowSkippedByYmd[ymd] ?? const <String>[]).toSet();
+
+  Set<String> nowDoneSet(String ymd) =>
+      (state.nowDoneByYmd[ymd] ?? const <String>[]).toSet();
+
+  void setNowSkipped(String ymd, Set<String> ids) {
+    state.nowSkippedByYmd[ymd] = ids.toList();
+    onChange();
+  }
+
+  void setNowDone(String ymd, Set<String> ids) {
+    state.nowDoneByYmd[ymd] = ids.toList();
+    onChange();
+  }
+
   void setSortTodayByDashboard(bool v) {
     state.sortTodayByDashboard = v;
     onChange();

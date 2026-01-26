@@ -468,6 +468,8 @@ class AppState {
   // ✅ Habits context (associations)
   List<HabitHit> habitHits;
   Map<String, String> habitPinnedActivity;
+  Map<String, List<String>> nowSkippedByYmd; // ids de DayPlanItem (ou virt ids)
+  Map<String, List<String>> nowDoneByYmd; // ids "pas aujourd'hui / ok"
 
   AppState({
     required this.domains,
@@ -486,13 +488,21 @@ class AppState {
     this.lastPrepYmd,
     List<HabitHit>? habitHits,
     Map<String, String>? habitPinnedActivity,
+
+    // ✅ NOUVEAU
+    Map<String, List<String>>? nowSkippedByYmd,
+    Map<String, List<String>>? nowDoneByYmd,
   })  : snoozedUntil = snoozedUntil ?? <String, String>{},
         goals = goals ?? <Goal>[],
         inbox = inbox ?? <InboxItem>[],
         dayPlan = dayPlan ?? <DayPlanItem>[],
         focusTodayIds = focusTodayIds ?? <String>[],
         habitHits = habitHits ?? <HabitHit>[],
-        habitPinnedActivity = habitPinnedActivity ?? <String, String>{};
+        habitPinnedActivity = habitPinnedActivity ?? <String, String>{},
+
+        // ✅ NOUVEAU
+        nowSkippedByYmd = nowSkippedByYmd ?? <String, List<String>>{},
+        nowDoneByYmd = nowDoneByYmd ?? <String, List<String>>{};
 
   Map<String, dynamic> toJson() => {
         'domains': domains.map((e) => e.toJson()).toList(),
@@ -515,9 +525,27 @@ class AppState {
         // ✅ persist
         'habitHits': habitHits.map((e) => e.toJson()).toList(),
         'habitPinnedActivity': habitPinnedActivity,
+
+        // ✅ persist
+        'habitHits': habitHits.map((e) => e.toJson()).toList(),
+        'habitPinnedActivity': habitPinnedActivity,
+
+        // ✅ NOW TAB
+        'nowSkippedByYmd': nowSkippedByYmd,
+        'nowDoneByYmd': nowDoneByYmd,
       };
 
   static AppState from(Map j) {
+    Map<String, List<String>> _mapSL(dynamic v) {
+      if (v == null) return <String, List<String>>{};
+      return (v as Map).map(
+        (k, val) => MapEntry(
+          k as String,
+          (val as List).cast<String>(),
+        ),
+      );
+    }
+
     // Helpers safe
     List<T> _list<T>(dynamic v, T Function(dynamic) mapFn) {
       if (v == null) return <T>[];
@@ -549,6 +577,8 @@ class AppState {
       sortTodayByDashboard: (j['sortTodayByDashboard'] as bool?) ?? false,
       habitHits: _list(j['habitHits'], (e) => HabitHit.from(e)),
       habitPinnedActivity: _mapSS(j['habitPinnedActivity']),
+      nowSkippedByYmd: _mapSL(j['nowSkippedByYmd']),
+      nowDoneByYmd: _mapSL(j['nowDoneByYmd']),
     );
   }
 

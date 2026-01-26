@@ -1743,15 +1743,33 @@ class _NowTabState extends State<NowTab> {
 
   String? _skippedYmd;
 
+  void _persistNowSets() {
+    final ymd = _skippedYmd;
+    if (ymd == null) return;
+
+    widget.logic.setNowSkipped(ymd, _skippedIds);
+    widget.logic.setNowDone(ymd, _doneTodayIds);
+  }
+
+  void _loadPersistedForDay(String ymd) {
+    _skippedIds
+      ..clear()
+      ..addAll(widget.logic.nowSkippedSet(ymd));
+
+    _doneTodayIds
+      ..clear()
+      ..addAll(widget.logic.nowDoneSet(ymd));
+  }
+
   void _ensureDay(String ymd) {
     if (_skippedYmd == null) {
       _skippedYmd = ymd;
+      _loadPersistedForDay(ymd);
       return;
     }
     if (_skippedYmd != ymd) {
       _skippedYmd = ymd;
-      _skippedIds.clear();
-      _doneTodayIds.clear();
+      _loadPersistedForDay(ymd);
       _lockedPlanId = null;
     }
   }
@@ -1952,19 +1970,19 @@ class _NowTabState extends State<NowTab> {
     return null;
   }
 
-bool _isActionableIgnoringSkips(DayPlanItem it) {
-  if (_doneTodayIds.contains(it.id)) return false;
-  if (_skipDone && it.done) return false;
+  bool _isActionableIgnoringSkips(DayPlanItem it) {
+    if (_doneTodayIds.contains(it.id)) return false;
+    if (_skipDone && it.done) return false;
 
-  switch (it.kind) {
-    case PlanKind.habit:
-    case PlanKind.activityTime:
-    case PlanKind.action:
-      return true;
-    default:
-      return false;
+    switch (it.kind) {
+      case PlanKind.habit:
+      case PlanKind.activityTime:
+      case PlanKind.action:
+        return true;
+      default:
+        return false;
+    }
   }
-}
 
   Widget _allSkippedView() {
     return Center(
@@ -1999,8 +2017,8 @@ bool _isActionableIgnoringSkips(DayPlanItem it) {
     final it = rp.it;
     final subtitle = _subtitleFor(it);
     final doneToday = (it.kind == PlanKind.habit && it.refId != null)
-    ? widget.logic.habitValueOn(it.refId!, widget.day)
-    : 0;
+        ? widget.logic.habitValueOn(it.refId!, widget.day)
+        : 0;
 
     return Card(
       child: Padding(
@@ -2036,6 +2054,7 @@ bool _isActionableIgnoringSkips(DayPlanItem it) {
                         _skippedIds.clear();
                         _lockedPlanId = null;
                       });
+                      _persistNowSets();
                     },
                     child: Text(
                       "Réinitialiser (${_skippedIds.length})",
@@ -2086,17 +2105,15 @@ bool _isActionableIgnoringSkips(DayPlanItem it) {
     );
   }
 
-void _onPrimary(DayPlanItem it) {
-  if (it.kind == PlanKind.habit && it.refId != null) {
-    setState(() {
-      _doneTodayIds.add(it.id); // ✅ terminé pour aujourd’hui
-      _lockedPlanId = null;     // ✅ avance le tunnel
-    });
-    return;
+  void _onPrimary(DayPlanItem it) {
+    if (it.kind == PlanKind.habit) {
+      setState(() {
+        _doneTodayIds.add(it.id);
+        _lockedPlanId = null;
+      });
+      _persistNowSets();
+    }
   }
-
-  // si tu veux gérer activityTime/action plus tard, tu peux
-}
 
   String _primaryLabel(DayPlanItem it) {
     if (it.kind != PlanKind.habit || it.refId == null) {
@@ -2134,11 +2151,10 @@ void _onPrimary(DayPlanItem it) {
 
   void _onSkip() {
     setState(() {
-      if (_lockedPlanId != null) {
-        _skippedIds.add(_lockedPlanId!);
-      }
-      _lockedPlanId = null; // force pickNext
+      if (_lockedPlanId != null) _skippedIds.add(_lockedPlanId!);
+      _lockedPlanId = null;
     });
+    _persistNowSets();
   }
 
   Widget _allDoneView(BuildContext context) {
