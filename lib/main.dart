@@ -10,7 +10,7 @@ import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:productivitwo_v1/utils/pacing.dart';
 
-enum _Tab { dashboard, stats, today }
+enum _Tab { dashboard, now, today, stats }
 
 class MiniRingThick extends StatelessWidget {
   const MiniRingThick({
@@ -1380,25 +1380,57 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   }
 
 // 1) Helpers d’index <-> enum
-  int _tabIndex(_Tab t) => t == _Tab.dashboard ? 0 : (t == _Tab.today ? 1 : 2);
-  _Tab _tabFromIndex(int i) =>
-      i == 0 ? _Tab.dashboard : (i == 1 ? _Tab.today : _Tab.stats);
+int _tabIndex(_Tab t) {
+  switch (t) {
+    case _Tab.dashboard: return 0;
+    case _Tab.now:       return 1;
+    case _Tab.today:     return 2;
+    case _Tab.stats:     return 3;
+  }
+}
+
+_Tab _tabFromIndex(int i) {
+  switch (i) {
+    case 0: return _Tab.dashboard;
+    case 1: return _Tab.now;
+    case 2: return _Tab.today;
+    default: return _Tab.stats;
+  }
+}
+
+List<DayPlanItem> _todayItems() {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final ymd = yyyymmdd(today);
+  return logic.planItemsFor(ymd);
+}
 
 // 2) Body : route correctement vers TodayView
-  Widget _buildBody(BuildContext context) {
-    switch (_tab) {
-      case _Tab.dashboard:
-        return _buildDashboardBody(context);
-      case _Tab.today:
-        return TodayView(logic: logic, state: _state!);
-      case _Tab.stats:
-        return StatsView(
-          logic: logic,
-          state: _state!,
-          selectedDomainId: null,
-        );
-    }
+Widget _buildBody(BuildContext context) {
+  switch (_tab) {
+    case _Tab.dashboard:
+      return _buildDashboardBody(context);
+
+    case _Tab.now:
+      return NowTab(
+        logic: logic,
+        st: _state!,                  // ton AppState
+        items: _todayItems(),         // 👇 voir point 4
+        day: DateTime.now(),
+        buildRowsGrouped: logic.buildRowsGrouped,
+      );
+
+    case _Tab.today:
+      return TodayView(logic: logic, state: _state!);
+
+    case _Tab.stats:
+      return StatsView(
+        logic: logic,
+        state: _state!,
+        selectedDomainId: null,
+      );
   }
+}
 
   bool get _hasRunningSession {
     final st = _state;
@@ -1494,24 +1526,17 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       floatingActionButton: _tab == _Tab.dashboard ? _buildFocusFab() : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
 
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _tabIndex(_tab),
-        onTap: (i) => setState(() => _tab = _tabFromIndex(i)),
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard_outlined),
-            label: 'Dashboard',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.checklist),
-            label: 'Focus',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.show_chart),
-            label: 'Stats',
-          ),
-        ],
-      ),
+bottomNavigationBar: BottomNavigationBar(
+  currentIndex: _tabIndex(_tab),
+  onTap: (i) => setState(() => _tab = _tabFromIndex(i)),
+  type: BottomNavigationBarType.fixed, // important à 4 tabs
+  items: const [
+    BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Dashboard'),
+    BottomNavigationBarItem(icon: Icon(Icons.play_arrow), label: 'Maintenant'),
+    BottomNavigationBarItem(icon: Icon(Icons.checklist), label: 'À faire'),
+    BottomNavigationBarItem(icon: Icon(Icons.show_chart), label: 'Stats'),
+  ],
+),
     );
   }
 

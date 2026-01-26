@@ -430,9 +430,9 @@ class _TodayViewState extends State<TodayView> {
     final st = widget.logic.state;
 
     // 1️⃣ associations routines -> activités
-    final assoc = routineToActivityId(widget.logic.habitAssocEvents);
+    final assoc = widget.logic.routineToActivityId(widget.logic.habitAssocEvents);
 
-    final rows = buildRowsGrouped(
+    final rows = widget.logic.buildRowsGrouped(
       items: items, // List<DayPlanItem>
       st: st, // AppState
       logic: widget.logic, // ta logique
@@ -580,25 +580,7 @@ class _TodayViewState extends State<TodayView> {
     return out;
   }
 
-  Map<String, String?> routineToActivityId(List<HabitAssocEvent> events) {
-    final pinned = <String, String>{};
-    final suggested = <String, String>{};
 
-    for (final e in events) {
-      if (e.type == HabitAssocEventType.pinned && e.toActivityId != null) {
-        pinned[e.habitId] = e.toActivityId!;
-      } else if (e.type == HabitAssocEventType.changeSuggested &&
-          e.toActivityId != null) {
-        suggested[e.habitId] = e.toActivityId!;
-      }
-    }
-
-    final out = <String, String?>{};
-    for (final id in {...pinned.keys, ...suggested.keys}) {
-      out[id] = pinned[id] ?? suggested[id];
-    }
-    return out;
-  }
 
   Widget _domainHeader(String t) => Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
@@ -615,177 +597,6 @@ class _TodayViewState extends State<TodayView> {
               color: Theme.of(context).colorScheme.onSurface.withOpacity(0.65),
             )),
       );
-
-  List<RowItem> buildRowsGrouped({
-    required List<DayPlanItem> items,
-    required AppState st,
-    required AppLogic logic,
-    required Map<String, String?> assoc,
-  }) {
-    final running = logic.runningActivity(); // Activity?
-    final focusDomainId = running?.domainId;
-    final focusActivityId = running?.id;
-
-    final domainsById = {for (final d in st.domains) d.id: d};
-    final activitiesById = {for (final a in st.activities) a.id: a};
-
-    final habitActs = st.activities.where((a) => a.isHabit).toList();
-    final habitActsByDomain = <String, List<Activity>>{};
-    for (final h in habitActs) {
-      (habitActsByDomain[h.domainId] ??= []).add(h);
-    }
-
-    // Sépare items par kind
-    final planRoutines = items.where((x) => x.kind == PlanKind.habit).toList();
-    final planActs =
-        items.where((x) => x.kind == PlanKind.activityTime).toList();
-    final planActions = items.where((x) => x.kind == PlanKind.action).toList();
-
-    // helper: domain d'un PlanItem routine/activity via Activity
-    String? domainOfPlan(
-      DayPlanItem it,
-      Map<String, Activity> activitiesById,
-    ) {
-      // 1️⃣ si le plan item a déjà un domainId, on l’utilise
-      if (it.domainId != null) return it.domainId;
-
-      // 2️⃣ sinon on remonte via l’Activity référencée
-      final actId = it.refId;
-      if (actId == null) return null;
-
-      final act = activitiesById[actId];
-      return act?.domainId;
-    }
-
-    // Regroupe routines par domaine
-    final routinesByDomain = <String, List<DayPlanItem>>{};
-    for (final it in planRoutines) {
-      final dom = domainOfPlan(it, activitiesById);
-      if (dom == null) continue;
-      (routinesByDomain[dom] ??= []).add(it);
-    }
-
-    // Regroupe activités par domaine
-    final actsByDomain = <String, List<DayPlanItem>>{};
-    for (final it in planActs) {
-      final dom = domainOfPlan(it, activitiesById);
-      if (dom == null) continue;
-      (actsByDomain[dom] ??= []).add(it);
-    }
-
-    // Domaines visibles selon focus
-    final domainIds = (running == null)
-        ? st.domains.map((d) => d.id).toList()
-        : [focusDomainId!];
-
-    final rows = <RowItem>[];
-
-    // Option: actions au tout début
-    if (planActions.isNotEmpty && running == null) {
-      rows.add(const RowHeader("virt:actions", "Actions"));
-      rows.addAll(planActions.map((it) => RowPlan(it)));
-    }
-
-    for (final domId in domainIds) {
-      final domName = domainsById[domId]?.name ?? "Domaine";
-      rows.add(RowHeader("virt:dom:$domId", domName));
-
-      //final domRoutines = routinesByDomain[domId] ?? const <DayPlanItem>[];
-      final domActs = actsByDomain[domId] ?? const <DayPlanItem>[];
-
-      final planned = routinesByDomain[domId] ?? const <DayPlanItem>[];
-      final plannedRefIds =
-          planned.map((e) => e.refId).whereType<String>().toSet();
-
-// Catalogue routines (Activity.isHabit)
-      final catalogHabits =
-          st.activities.where((a) => a.isHabit && a.domainId == domId).toList();
-
-// Convertit les routines catalogue absentes du plan en DayPlanItem virtuels
-      final virt = catalogHabits
-          .where((h) => !plannedRefIds.contains(h.id))
-          .map((h) => DayPlanItem(
-                id: 'virt:habit:${h.id}',
-                kind: PlanKind.habit,
-                refId: h.id,
-                domainId: h.domainId,
-                title: h.name,
-                yyyymmdd: planned.isNotEmpty
-                    ? planned.first.yyyymmdd
-                    : yyyymmdd(DateTime.now()),
-              ))
-          .toList();
-
-// ✅ Dom routines = planifiées + virtuelles
-      final domRoutines = [...planned, ...virt];
-
-      // routines groupées par activité associée (via events)
-      final byAct = <String?, List<DayPlanItem>>{};
-      for (final it in domRoutines) {
-        final routineId = it.refId; // id de l'Activity (habit) référencée
-        if (routineId == null) continue; // sécurité
-
-        final actId = assoc[routineId]; // id de l'Activity (time) associée
-        (byAct[actId] ??= []).add(it);
-      }
-      final isFocus = (focusActivityId != null && domId == focusDomainId);
-
-      if (isFocus) {
-        // 1) routines liées à l’activité en cours
-        final focusList = byAct[focusActivityId] ?? const <DayPlanItem>[];
-        if (focusList.isNotEmpty) {
-          final actName = activitiesById[focusActivityId!]?.name ?? "Activité";
-          rows.add(RowHeader("virt:sec:$domId:focus", "Routines • $actName"));
-          rows.addAll(focusList.map(RowPlan.new));
-        }
-
-        // 2) routines sans activité
-        final noAct = byAct[null] ?? const <DayPlanItem>[];
-        if (noAct.isNotEmpty) {
-          rows.add(
-              RowHeader("virt:sec:$domId:none", "Routines • Sans activité"));
-          rows.addAll(noAct.map(RowPlan.new));
-        }
-
-        // 3) autres activités groupées
-        final otherActIds =
-            byAct.keys.where((id) => id != null && id != focusActivityId);
-        for (final actId in otherActIds) {
-          final list = byAct[actId]!;
-          final actName = activitiesById[actId!]?.name ?? "Activité";
-          rows.add(
-              RowHeader("virt:sec:$domId:act:$actId", "Routines • $actName"));
-          rows.addAll(list.map(RowPlan.new));
-        }
-      } else {
-        // normal: routines par activité
-        final actIds = byAct.keys.where((id) => id != null).cast<String>();
-        for (final actId in actIds) {
-          final list = byAct[actId]!;
-          final actName = activitiesById[actId]?.name ?? "Activité";
-          rows.add(
-              RowHeader("virt:sec:$domId:act:$actId", "Routines • $actName"));
-          rows.addAll(list.map(RowPlan.new));
-        }
-
-        // routines sans activité
-        final noAct = byAct[null] ?? const <DayPlanItem>[];
-        if (noAct.isNotEmpty) {
-          rows.add(
-              RowHeader("virt:sec:$domId:none", "Routines • Sans activité"));
-          rows.addAll(noAct.map(RowPlan.new));
-        }
-      }
-
-      // activités seules
-      if (domActs.isNotEmpty) {
-        rows.add(RowHeader("virt:sec:$domId:acts", "Activités"));
-        rows.addAll(domActs.map(RowPlan.new));
-      }
-    }
-
-    return rows;
-  }
 
   Widget _buildFab() {
     return FloatingActionButton.extended(
@@ -1890,6 +1701,255 @@ class HabitTicksRow extends StatelessWidget {
             child: Text("+$extra"),
           ),
       ],
+    );
+  }
+}
+
+class NowTab extends StatefulWidget {
+  final AppLogic logic;
+  final AppState st;
+  final List<DayPlanItem> items; // items du jour (plan)
+  final DateTime day;            // aujourd’hui (DateTime)
+
+  final List<RowItem> Function({
+    required List<DayPlanItem> items,
+    required AppState st,
+    required AppLogic logic,
+    required Map<String, String?> assoc,
+  }) buildRowsGrouped;
+
+  const NowTab({
+    super.key,
+    required this.logic,
+    required this.st,
+    required this.items,
+    required this.day,
+    required this.buildRowsGrouped,
+  });
+
+  @override
+  State<NowTab> createState() => _NowTabState();
+}
+
+class _NowTabState extends State<NowTab> {
+  String? _lockedPlanId; // 👉 gèle “ce qu’on fait maintenant”
+  bool _skipDone = true; // option: sauter les items déjà “faits”
+
+  @override
+  Widget build(BuildContext context) {
+    // 1) Construire assoc (Option 2)
+    final assoc = widget.logic.routineToActivityId(widget.logic.habitAssocEvents);
+
+    // 2) Construire rows (même ordre que “À faire”)
+    final rows = widget.buildRowsGrouped(
+      items: widget.items,
+      st: widget.st,
+      logic: widget.logic,
+      assoc: assoc,
+    );
+
+    // 3) Trouver l’item “maintenant” (gelé)
+    final next = _pickNow(rows);
+
+    if (next == null) {
+      return _allDoneView(context);
+    }
+
+    // UI : une carte unique
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      child: _nowCard(context, next),
+    );
+  }
+
+  RowPlan? _pickNow(List<RowItem> rows) {
+    // 1) si on a un lock, on retrouve le même item
+    if (_lockedPlanId != null) {
+      final locked = rows.whereType<RowPlan>().cast<RowPlan?>().firstWhere(
+            (rp) => rp!.it.id == _lockedPlanId,
+            orElse: () => null,
+          );
+      if (locked != null && _isActionable(locked.it)) return locked;
+
+      // si disparu/non-actionnable, on libère le lock
+      _lockedPlanId = null;
+    }
+
+    // 2) sinon on prend le premier actionnable
+    for (final rp in rows.whereType<RowPlan>()) {
+      if (_isActionable(rp.it)) {
+        _lockedPlanId = rp.it.id; // gèle
+        return rp;
+      }
+    }
+    return null;
+  }
+
+  bool _isActionable(DayPlanItem it) {
+    // ignore les virtuels si tu ne veux pas
+    // (mais tu peux aussi les autoriser)
+    final isVirtual = it.id.startsWith('virt:');
+
+    // 👉 Choix produit :
+    // - Si tu veux “Maintenant” = uniquement plan réel : return !isVirtual && ...
+    // - Si tu veux “Maintenant” = aussi catalogue : autorise virtuels
+    // Je te conseille d’AUTORISER virtuels pour l’effet tunnel complet.
+    // Donc on ne filtre pas sur isVirtual.
+
+    // Sauter “déjà fait” si besoin
+    if (_skipDone && it.done) return false;
+
+    // Actionnable selon kind
+    switch (it.kind) {
+      case PlanKind.habit:
+      case PlanKind.activityTime:
+      case PlanKind.action:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  Widget _nowCard(BuildContext context, RowPlan rp) {
+    final it = rp.it;
+
+    final title = it.title;
+    final subtitle = _subtitleFor(it);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("MAINTENANT",
+                style: TextStyle(
+                  letterSpacing: 1.2,
+                  fontWeight: FontWeight.w800,
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                )),
+            const SizedBox(height: 10),
+            Text(title,
+                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+            if (subtitle != null) ...[
+              const SizedBox(height: 6),
+              Text(subtitle,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                  )),
+            ],
+            const SizedBox(height: 14),
+
+            // Actions principales
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () => _onPrimary(it),
+                    child: Text(_primaryLabel(it)),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                OutlinedButton(
+                  onPressed: _onSkip,
+                  child: const Text("Passer"),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _primaryLabel(DayPlanItem it) {
+    switch (it.kind) {
+      case PlanKind.habit:
+        return "Fait";
+      case PlanKind.activityTime:
+        return "Lancer";
+      case PlanKind.action:
+        return "OK";
+      default:
+        return "OK";
+    }
+  }
+
+  String? _subtitleFor(DayPlanItem it) {
+    // Si tu veux afficher domaine / association, tu peux.
+    // On a domainId sur DayPlanItem, sinon via refId->Activity.
+    final dom = it.domainId;
+    if (dom == null) return null;
+    final d = widget.st.domains.firstWhere(
+      (x) => x.id == dom,
+      orElse: () => Domain(id: dom, name: "Domaine"),
+    );
+    return "Domaine : ${d.name}";
+  }
+
+  void _onPrimary(DayPlanItem it) {
+    final day = widget.day;
+
+    setState(() {
+      switch (it.kind) {
+        case PlanKind.habit:
+          // refId = Activity(habit) id
+          if (it.refId != null) {
+            widget.logic.incHabit(it.refId!, 1, day);
+          }
+          break;
+
+        case PlanKind.activityTime:
+          // refId = Activity(time) id
+          if (it.refId != null) {
+            widget.logic.start(it.refId!); // adapte au nom chez toi
+          }
+          break;
+
+        case PlanKind.action:
+          // Si tu as un markDone action :
+          widget.logic.toggleDone(it.id, true); // adapte ou supprime
+          break;
+
+        default:
+          break;
+      }
+
+      // ✅ avance le tunnel : on libère le lock pour recalculer le “next”
+      _lockedPlanId = null;
+    });
+  }
+
+  void _onSkip() {
+    setState(() {
+      // on ignore l’item actuel et on passe au suivant :
+      // stratégie simple: enlever le lock et marquer “done” si tu veux
+      _lockedPlanId = null;
+    });
+  }
+
+  Widget _allDoneView(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("✨ Tout est fait",
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 10),
+            Text(
+              "Tu peux lancer une activité ou ajouter une routine dans l’onglet À faire.",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.75),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -1561,6 +1561,183 @@ if (delta > 0) {
     onChange();
   }
 
+List<DayPlanItem> planItemsFor(String ymd) {
+  final out = state.dayPlan.where((e) => e.yyyymmdd == ymd).toList()
+    ..sort((a, b) => a.order.compareTo(b.order));
+  return out;
+}
+
+  List<RowItem> buildRowsGrouped({
+    required List<DayPlanItem> items,
+    required AppState st,
+    required AppLogic logic,
+    required Map<String, String?> assoc,
+  }) {
+    final running = logic.runningActivity(); // Activity?
+    final focusDomainId = running?.domainId;
+    final focusActivityId = running?.id;
+
+    final domainsById = {for (final d in st.domains) d.id: d};
+    final activitiesById = {for (final a in st.activities) a.id: a};
+
+    final habitActs = st.activities.where((a) => a.isHabit).toList();
+    final habitActsByDomain = <String, List<Activity>>{};
+    for (final h in habitActs) {
+      (habitActsByDomain[h.domainId] ??= []).add(h);
+    }
+
+    // Sépare items par kind
+    final planRoutines = items.where((x) => x.kind == PlanKind.habit).toList();
+    final planActs =
+        items.where((x) => x.kind == PlanKind.activityTime).toList();
+    final planActions = items.where((x) => x.kind == PlanKind.action).toList();
+
+    // helper: domain d'un PlanItem routine/activity via Activity
+    String? domainOfPlan(
+      DayPlanItem it,
+      Map<String, Activity> activitiesById,
+    ) {
+      // 1️⃣ si le plan item a déjà un domainId, on l’utilise
+      if (it.domainId != null) return it.domainId;
+
+      // 2️⃣ sinon on remonte via l’Activity référencée
+      final actId = it.refId;
+      if (actId == null) return null;
+
+      final act = activitiesById[actId];
+      return act?.domainId;
+    }
+
+    // Regroupe routines par domaine
+    final routinesByDomain = <String, List<DayPlanItem>>{};
+    for (final it in planRoutines) {
+      final dom = domainOfPlan(it, activitiesById);
+      if (dom == null) continue;
+      (routinesByDomain[dom] ??= []).add(it);
+    }
+
+    // Regroupe activités par domaine
+    final actsByDomain = <String, List<DayPlanItem>>{};
+    for (final it in planActs) {
+      final dom = domainOfPlan(it, activitiesById);
+      if (dom == null) continue;
+      (actsByDomain[dom] ??= []).add(it);
+    }
+
+    // Domaines visibles selon focus
+    final domainIds = (running == null)
+        ? st.domains.map((d) => d.id).toList()
+        : [focusDomainId!];
+
+    final rows = <RowItem>[];
+
+    // Option: actions au tout début
+    if (planActions.isNotEmpty && running == null) {
+      rows.add(const RowHeader("virt:actions", "Actions"));
+      rows.addAll(planActions.map((it) => RowPlan(it)));
+    }
+
+    for (final domId in domainIds) {
+      final domName = domainsById[domId]?.name ?? "Domaine";
+      rows.add(RowHeader("virt:dom:$domId", domName));
+
+      //final domRoutines = routinesByDomain[domId] ?? const <DayPlanItem>[];
+      final domActs = actsByDomain[domId] ?? const <DayPlanItem>[];
+
+      final planned = routinesByDomain[domId] ?? const <DayPlanItem>[];
+      final plannedRefIds =
+          planned.map((e) => e.refId).whereType<String>().toSet();
+
+// Catalogue routines (Activity.isHabit)
+      final catalogHabits =
+          st.activities.where((a) => a.isHabit && a.domainId == domId).toList();
+
+// Convertit les routines catalogue absentes du plan en DayPlanItem virtuels
+      final virt = catalogHabits
+          .where((h) => !plannedRefIds.contains(h.id))
+          .map((h) => DayPlanItem(
+                id: 'virt:habit:${h.id}',
+                kind: PlanKind.habit,
+                refId: h.id,
+                domainId: h.domainId,
+                title: h.name,
+                yyyymmdd: planned.isNotEmpty
+                    ? planned.first.yyyymmdd
+                    : yyyymmdd(DateTime.now()),
+              ))
+          .toList();
+
+// ✅ Dom routines = planifiées + virtuelles
+      final domRoutines = [...planned, ...virt];
+
+      // routines groupées par activité associée (via events)
+      final byAct = <String?, List<DayPlanItem>>{};
+      for (final it in domRoutines) {
+        final routineId = it.refId; // id de l'Activity (habit) référencée
+        if (routineId == null) continue; // sécurité
+
+        final actId = assoc[routineId]; // id de l'Activity (time) associée
+        (byAct[actId] ??= []).add(it);
+      }
+      final isFocus = (focusActivityId != null && domId == focusDomainId);
+
+      if (isFocus) {
+        // 1) routines liées à l’activité en cours
+        final focusList = byAct[focusActivityId] ?? const <DayPlanItem>[];
+        if (focusList.isNotEmpty) {
+          final actName = activitiesById[focusActivityId!]?.name ?? "Activité";
+          rows.add(RowHeader("virt:sec:$domId:focus", "Routines • $actName"));
+          rows.addAll(focusList.map(RowPlan.new));
+        }
+
+        // 2) routines sans activité
+        final noAct = byAct[null] ?? const <DayPlanItem>[];
+        if (noAct.isNotEmpty) {
+          rows.add(
+              RowHeader("virt:sec:$domId:none", "Routines • Sans activité"));
+          rows.addAll(noAct.map(RowPlan.new));
+        }
+
+        // 3) autres activités groupées
+        final otherActIds =
+            byAct.keys.where((id) => id != null && id != focusActivityId);
+        for (final actId in otherActIds) {
+          final list = byAct[actId]!;
+          final actName = activitiesById[actId!]?.name ?? "Activité";
+          rows.add(
+              RowHeader("virt:sec:$domId:act:$actId", "Routines • $actName"));
+          rows.addAll(list.map(RowPlan.new));
+        }
+      } else {
+        // normal: routines par activité
+        final actIds = byAct.keys.where((id) => id != null).cast<String>();
+        for (final actId in actIds) {
+          final list = byAct[actId]!;
+          final actName = activitiesById[actId]?.name ?? "Activité";
+          rows.add(
+              RowHeader("virt:sec:$domId:act:$actId", "Routines • $actName"));
+          rows.addAll(list.map(RowPlan.new));
+        }
+
+        // routines sans activité
+        final noAct = byAct[null] ?? const <DayPlanItem>[];
+        if (noAct.isNotEmpty) {
+          rows.add(
+              RowHeader("virt:sec:$domId:none", "Routines • Sans activité"));
+          rows.addAll(noAct.map(RowPlan.new));
+        }
+      }
+
+      // activités seules
+      if (domActs.isNotEmpty) {
+        rows.add(RowHeader("virt:sec:$domId:acts", "Activités"));
+        rows.addAll(domActs.map(RowPlan.new));
+      }
+    }
+
+    return rows;
+  }
+
   bool removeFromDay(String ymd, PlanKind kind, String refId) {
     final before = state.dayPlan.length;
     state.dayPlan.removeWhere(
@@ -1819,6 +1996,26 @@ if (delta > 0) {
 
     if (toAdd != null) state.dayPlan.add(toAdd);
     onChange();
+  }
+
+   Map<String, String?> routineToActivityId(List<HabitAssocEvent> events) {
+    final pinned = <String, String>{};
+    final suggested = <String, String>{};
+
+    for (final e in events) {
+      if (e.type == HabitAssocEventType.pinned && e.toActivityId != null) {
+        pinned[e.habitId] = e.toActivityId!;
+      } else if (e.type == HabitAssocEventType.changeSuggested &&
+          e.toActivityId != null) {
+        suggested[e.habitId] = e.toActivityId!;
+      }
+    }
+
+    final out = <String, String?>{};
+    for (final id in {...pinned.keys, ...suggested.keys}) {
+      out[id] = pinned[id] ?? suggested[id];
+    }
+    return out;
   }
 
 // Hier → Aujourd'hui (copie les non-faits d'hier). À appeler 1x/jour au lancement.
