@@ -24,6 +24,24 @@ class TuneChange {
   TuneChange(this.activityId, this.note);
 }
 
+sealed class RowItem {
+  String get id;
+  const RowItem();
+}
+
+class RowHeader extends RowItem {
+  @override final String id;
+  final String title;
+  const RowHeader(this.id, this.title);
+}
+
+class RowPlan extends RowItem {
+  @override final String id;
+  final DayPlanItem it;
+   RowPlan(this.it) : id = it.id;
+}
+
+
 enum HabitAssocEventType { pinned, changeSuggested }
 
 class HabitAssocEvent {
@@ -59,6 +77,26 @@ class AppLogic {
   AppLogic(this.state, this.onChange);
 
   String? _lastRolloverDay;
+  final List<HabitAssocEvent> habitAssocEvents = [];
+
+  String? pinnedActivityForRoutine(String routineId) {
+  for (var i = habitAssocEvents.length - 1; i >= 0; i--) {
+    final e = habitAssocEvents[i];
+    if (e.habitId == routineId && e.type == HabitAssocEventType.pinned) {
+      return e.toActivityId;
+    }
+  }
+  return null;
+}
+
+void pinRoutineToActivity(String routineId, String activityId) {
+  // retire les anciens pinned de cette routine
+  habitAssocEvents.removeWhere(
+    (e) => e.habitId == routineId && e.type == HabitAssocEventType.pinned,
+  );
+  habitAssocEvents.add(HabitAssocEvent.pinned(routineId, activityId));
+  onChange(); // si tu as déjà une persistance centrale; sinon setState côté UI
+}
 
   Activity? runningActivity() {
     Session? last;
