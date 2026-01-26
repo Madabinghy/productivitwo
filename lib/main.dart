@@ -638,6 +638,147 @@ class ProductivitwoApp extends StatelessWidget {
 
 enum TimeScope { day, week, month }
 
+class RunningBannerGlobal extends StatefulWidget {
+  final AppState? state; // mets ton vrai type
+  final AppLogic logic; // mets ton vrai type
+
+  const RunningBannerGlobal({
+    super.key,
+    required this.state,
+    required this.logic,
+  });
+
+  @override
+  State<RunningBannerGlobal> createState() => _RunningBannerGlobalState();
+}
+
+class _RunningBannerGlobalState extends State<RunningBannerGlobal> {
+  Timer? _t;
+
+  @override
+  void initState() {
+    super.initState();
+    _ensureTicking();
+  }
+
+  @override
+  void didUpdateWidget(covariant RunningBannerGlobal oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _ensureTicking(); // démarre/stoppe selon présence d’une session
+  }
+
+  void _ensureTicking() {
+    final st = widget.state;
+    final hasRunning = st != null && st.sessions.any((x) => x.endAt == null);
+
+    if (hasRunning) {
+      _t ??= Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted) return;
+        setState(() {}); // rebuild seulement CE widget
+      });
+    } else {
+      _t?.cancel();
+      _t = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _t?.cancel();
+    super.dispose();
+  }
+
+  String _fmt(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final sec = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return h > 0 ? "${h}h ${m}m ${sec}s" : "${m}m ${sec}s";
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final st = widget.state;
+    if (st == null) return const SizedBox.shrink();
+
+    final activeSessions = st.sessions.where((x) => x.endAt == null).toList();
+    if (activeSessions.isEmpty) return const SizedBox.shrink();
+
+    final s = activeSessions.last;
+
+    final a = st.activities.firstWhere(
+      (x) => x.id == s.activityId,
+      orElse: () => Activity(domainId: '', name: 'Activité', habitTarget: 1),
+    );
+
+    final dur = DateTime.now().difference(s.startAt);
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 84),
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const Icon(Icons.play_arrow_rounded, color: Colors.green, size: 24),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    a.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 16),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    "En cours depuis",
+                    style: TextStyle(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(0.75),
+                      fontSize: 13,
+                    ),
+                  ),
+                  Text(
+                    _fmt(dur),
+                    style: const TextStyle(
+                      fontFeatures: [FontFeature.tabularFigures()],
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            SizedBox(
+              width: 104,
+              height: 40,
+              child: FilledButton.icon(
+                onPressed: () =>
+                    widget.logic.stopActive(), // pas besoin de setState ici
+                icon: const Icon(Icons.stop, size: 18),
+                label: const Text("Stop"),
+                style: FilledButton.styleFrom(shape: const StadiumBorder()),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class AppRoot extends StatefulWidget {
   const AppRoot({super.key});
   @override
@@ -662,15 +803,28 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       {}; // agrégat des deltas d’activités par domaine
   DateTime? _lastReviewDisplayedAt;
 
+  Timer? _saveDebounce;
+  Future<void> _saveInFlight = Future.value();
+  bool _saveQueued = false;
+  bool _saving = false;
+
+  late final ValueNotifier<int> _tick; // seconds
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _init(); // lance l'async proprement
+    _tick = ValueNotifier<int>(0);
 
-    _heartbeat = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {}); // rafraîchit l’UI pour la durée écoulée
-    });
+    _init();
+  }
+
+  @override
+  void dispose() {
+    _heartbeat?.cancel();
+    _tick.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   @override
@@ -691,13 +845,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         }
       }
     }
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _heartbeat?.cancel();
-    super.dispose();
   }
 
   Future<void> _init() async {
@@ -818,17 +965,47 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
   bool _pendingRefresh = false;
 
-  Future<void> _saveAndRefresh() async {
-    await store.save(_state!);
+  Future<void> _doSave() async {
+    if (_state == null) return;
 
+    if (_saving) {
+      _saveQueued = true;
+      return;
+    }
+
+    _saving = true;
+    try {
+      await store.save(_state!);
+    } catch (e) {
+      // debugPrint('save failed: $e');
+    } finally {
+      _saving = false;
+    }
+
+    if (_saveQueued) {
+      _saveQueued = false;
+      await _doSave();
+    }
+  }
+
+  Future<void> _saveAndRefresh() async {
+    if (_state == null) return;
+
+    // ✅ Debounce sauvegarde (regroupe les onChange rapides)
+    _saveDebounce?.cancel();
+    _saveDebounce = Timer(const Duration(milliseconds: 500), () {
+      _doSave();
+    });
+
+    // ✅ Refresh UI (ton code, inchangé)
     if (!mounted) return;
-    if (_pendingRefresh) return; // évite plusieurs rebuilds en rafale
+    if (_pendingRefresh) return;
     _pendingRefresh = true;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _pendingRefresh = false;
-      setState(() {}); // ← maintenant hors phase de build
+      setState(() {});
     });
   }
 
@@ -1228,6 +1405,14 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     if (st == null) return false;
     return st.sessions.any((x) => x.endAt == null);
   }
+
+  Widget _runningBannerGlobal() {
+    final st = _state;
+    return RunningBannerGlobal(
+      state: st,
+      logic: logic,
+    );
+  }
   // ---------- UI ----------
 
   @override
@@ -1319,7 +1504,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.checklist),
-            label: 'Aujourd’hui',
+            label: 'Focus',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.show_chart),
@@ -1758,94 +1943,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     );
   }
 
-  Widget _runningBannerGlobal() {
-    final st = _state;
-    if (st == null) return const SizedBox.shrink();
-
-    final activeSessions = st.sessions.where((x) => x.endAt == null).toList();
-    if (activeSessions.isEmpty) return const SizedBox.shrink();
-
-    final s = activeSessions.last;
-
-    final a = st.activities.firstWhere(
-      (x) => x.id == s.activityId,
-      orElse: () => Activity(domainId: '', name: 'Activité', habitTarget: 1),
-    );
-
-    final dur = DateTime.now().difference(s.startAt);
-
-    String fmt(Duration d) {
-      final h = d.inHours;
-      final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-      final sec = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-      return h > 0 ? "${h}h ${m}m ${sec}s" : "${m}m ${sec}s";
-    }
-
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 84),
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            const Icon(Icons.play_arrow_rounded, color: Colors.green, size: 24),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    a.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 16),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    "En cours depuis",
-                    style: TextStyle(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withOpacity(0.75),
-                      fontSize: 13,
-                    ),
-                  ),
-                  Text(
-                    fmt(dur),
-                    style: const TextStyle(
-                      fontFeatures: [FontFeature.tabularFigures()],
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            SizedBox(
-              width: 104,
-              height: 40,
-              child: FilledButton.icon(
-                onPressed: () => setState(() => logic.stopActive()),
-                icon: const Icon(Icons.stop, size: 18),
-                label: const Text("Stop"),
-                style: FilledButton.styleFrom(shape: const StadiumBorder()),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildDashboardBody(BuildContext context) {
 // 1) Portée (calendaire)
     final now = DateTime.now();
@@ -1870,7 +1967,10 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     final total7Dur =
         totals7.values.fold<Duration>(Duration.zero, (a, b) => a + b);
 
-    final avg7HoursPerDay = (total7Dur.inMinutes / 60.0) / 7.0;
+    final activeDays = totals7.values.where((d) => d > Duration.zero).length;
+
+    final avg7HoursPerDay =
+        activeDays == 0 ? 0.0 : (total7Dur.inMinutes / 60.0) / activeDays;
 
     final mainProgress = (avg7HoursPerDay / 24.0).clamp(0.0, 1.0);
     final mainText = _fmtHoursHM(avg7HoursPerDay); // ex: 15h10
@@ -2019,6 +2119,16 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       return need.ceil(); // arrondi au-dessus : il faut AU MOINS ce nombre
     }
 
+    double _avgHoursPerActiveDayFromDailyTotals(
+        Map<String, Duration> dailyTotals) {
+      final nonZero =
+          dailyTotals.values.where((d) => d > Duration.zero).toList();
+      if (nonZero.isEmpty) return 0.0;
+
+      final totalMin = nonZero.fold<int>(0, (a, d) => a + d.inMinutes);
+      return (totalMin / 60.0) / nonZero.length;
+    }
+
     final isBelowWeek = rateToday < rateWeek;
 
     final need = _neededToBeatWeek(
@@ -2028,18 +2138,18 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       tgt7: tgt7,
     );
 
-    final denomAll = avg7HoursPerDay; // référence semaine (h/jour)
+    final denomAll = avg7HoursPerDay;
+    final fallback = 1.0; // 1h/j par défaut (ou un param objectif)
 
-// Big = 24h glissantes vs moyenne semaine
-    final bigAll =
-        denomAll > 0 ? (total24Hours / denomAll).clamp(0.0, 1.0) : 0.0;
+    final ref = denomAll > 0 ? denomAll : fallback;
 
-// Halo = depuis minuit vs moyenne semaine
-    final haloAll =
-        denomAll > 0 ? (totalTodayHours / denomAll).clamp(0.0, 1.0) : 0.0;
+    final bigAll = (total24Hours / ref).clamp(0.0, 1.0);
+    final haloAll = (totalTodayHours / ref).clamp(0.0, 1.0);
 
 // Label = depuis minuit (ce que tu veux afficher)
     final labelAll = _fmtHoursHM(totalTodayHours);
+    debugPrint(
+        "avg7HoursPerDay=$avg7HoursPerDay totalTodayHours=$totalTodayHours total24Hours=$total24Hours");
 
     int _doneForActivityPrimary(Activity a, DateTime today) {
       final f = a.habitFreq ?? HabitFreq.monthly;
@@ -2171,18 +2281,19 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   onTap: () => _showDomainDetail(null, startCal, endCal, days, focus: 'time'),
 ), */
 
-              NestedGauge(
-                bigProgress: snapToFull(bigAll),
-                outerProgress: snapToFull(haloAll),
-                smallProgress:
-                    snapToFull(progTimeAll90), // tu gardes ton 90j actuel
-                bigColor: _colorForProgress(bigAll, context),
-                outerColor: Colors.cyanAccent,
-                smallColor: _colorForProgress(progTimeAll90, context),
-                centerText: "",
-                label: labelAll,
-                onTap: () => _showDomainDetail(null, startCal, endCal, days,
-                    focus: 'time'),
+              RepaintBoundary(
+                child: NestedGauge(
+                  bigProgress: snapToFull(bigAll),
+                  outerProgress: snapToFull(haloAll),
+                  smallProgress: snapToFull(progTimeAll90),
+                  bigColor: _colorForProgress(bigAll, context),
+                  outerColor: Colors.cyanAccent,
+                  smallColor: _colorForProgress(progTimeAll90, context),
+                  centerText: "",
+                  label: labelAll,
+                  onTap: () => _showDomainDetail(null, startCal, endCal, days,
+                      focus: 'time'),
+                ),
               ),
 
 /*               GaugeRing(
@@ -2196,21 +2307,23 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                     focus: 'habit'),
               ), */
 
-              NestedGauge(
-                bigProgress: snapToFull(rateWeek), // ✅ norme semaine
-                smallProgress: snapToFull(
-                    rate90), // option : tu peux mettre autre chose (voir note)
-                outerProgress:
-                    snapToFull(outerHabitsPrimary), // ✅ halo = aujourd’hui
+              RepaintBoundary(
+                child: NestedGauge(
+                  bigProgress: snapToFull(rateWeek), // ✅ norme semaine
+                  smallProgress: snapToFull(
+                      rate90), // option : tu peux mettre autre chose (voir note)
+                  outerProgress:
+                      snapToFull(outerHabitsPrimary), // ✅ halo = aujourd’hui
 
-                bigColor: _colorForProgress(rateWeek, context),
-                smallColor: _colorForProgress(rate90, context), // ou neutre
-                outerColor: Colors.cyanAccent,
-                centerText: "",
-                label: habitsLabel,
-                size: 160,
-                onTap: () => _showDomainDetail(null, startCal, endCal, days,
-                    focus: 'habit'),
+                  bigColor: _colorForProgress(rateWeek, context),
+                  smallColor: _colorForProgress(rate90, context), // ou neutre
+                  outerColor: Colors.cyanAccent,
+                  centerText: "",
+                  label: habitsLabel,
+                  size: 160,
+                  onTap: () => _showDomainDetail(null, startCal, endCal, days,
+                      focus: 'habit'),
+                ),
               ),
             ],
           ),
@@ -2251,26 +2364,33 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               return ListView(
                 children: [
                   ...sortedDomains.map((d) {
-                    // ===== TEMPS (domain) =====
+// ===== TEMPS (domain) =====
                     final hoursToday =
                         (totalsTodayAll[d.id]?.inMinutes ?? 0) / 60.0;
                     final hours24 = (totals24All[d.id]?.inMinutes ?? 0) / 60.0;
 
-                    final avgWeekHoursPerDay =
-                        ((totals7All[d.id]?.inMinutes ?? 0) / 60.0) / 7.0;
+// Moyenne semaine (calendaire) = total 7j / 7
+                    final weekTotalHours =
+                        (totals7All[d.id]?.inMinutes ?? 0) / 60.0;
+                    final avgWeekHoursPerDay = weekTotalHours / 7.0;
 
-                    final avg90HoursPerDay =
-                        ((totals90All[d.id]?.inMinutes ?? 0) / 60.0) / 90.0;
+// Moyenne 90j (calendaire) = total 90j / 90
+                    final total90Hours =
+                        (totals90All[d.id]?.inMinutes ?? 0) / 60.0;
+                    final avg90HoursPerDay = total90Hours / 90.0;
 
-                    final denom = avgWeekHoursPerDay;
+// ✅ Référence (denom) : semaine si dispo, sinon fallback
+// Fallback = today si tu as quelque chose aujourd’hui, sinon 1h (valeur neutre)
+                    final denom = (avgWeekHoursPerDay > 0)
+                        ? avgWeekHoursPerDay
+                        : (hoursToday > 0 ? hoursToday : 1.0);
 
+// Progress
                     final outerProgressTime =
-                        denom > 0 ? (hoursToday / denom).clamp(0.0, 1.0) : 0.0;
-                    final bigProgressTime =
-                        denom > 0 ? (hours24 / denom).clamp(0.0, 1.0) : 0.0;
-                    final smallProgressTime = denom > 0
-                        ? (avg90HoursPerDay / denom).clamp(0.0, 1.0)
-                        : 0.0;
+                        (hoursToday / denom).clamp(0.0, 1.0);
+                    final bigProgressTime = (hours24 / denom).clamp(0.0, 1.0);
+                    final smallProgressTime =
+                        (avg90HoursPerDay / denom).clamp(0.0, 1.0);
 
                     final timeLabel = _fmtHoursHM(hoursToday);
 
@@ -2323,47 +2443,53 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             children: [
                               // ✅ Temps
-                              NestedGauge(
-                                bigProgress: snapToFull(bigProgressTime),
-                                outerProgress: snapToFull(outerProgressTime),
-                                smallProgress: snapToFull(smallProgressTime),
-                                bigColor:
-                                    _colorForProgress(bigProgressTime, context),
-                                outerColor: Colors.cyanAccent,
-                                smallColor: _colorForProgress(
-                                    smallProgressTime, context),
-                                centerText: "",
-                                label: timeLabel,
-                                size: 140,
-                                onTap: () => _showDomainDetail(
-                                  d,
-                                  startCal,
-                                  endCal,
-                                  days,
-                                  focus: 'time',
+                              RepaintBoundary(
+                                child: NestedGauge(
+                                  bigProgress: snapToFull(bigProgressTime),
+                                  outerProgress: snapToFull(outerProgressTime),
+                                  smallProgress: snapToFull(smallProgressTime),
+                                  bigColor: _colorForProgress(
+                                      bigProgressTime, context),
+                                  outerColor: Colors.cyanAccent,
+                                  smallColor: _colorForProgress(
+                                      smallProgressTime, context),
+                                  centerText: "",
+                                  label: timeLabel,
+                                  size: 140,
+                                  onTap: () => _showDomainDetail(
+                                    d,
+                                    startCal,
+                                    endCal,
+                                    days,
+                                    focus: 'time',
+                                  ),
                                 ),
                               ),
 
                               // ✅ Routines
-                              NestedGauge(
-                                bigProgress:
-                                    snapToFull(rateWeekD.clamp(0.0, 1.0)),
-                                outerProgress:
-                                    snapToFull(rateTodayD.clamp(0.0, 1.0)),
-                                smallProgress:
-                                    snapToFull(rate90D.clamp(0.0, 1.0)),
-                                bigColor: _colorForProgress(rateWeekD, context),
-                                outerColor: Colors.cyanAccent,
-                                smallColor: _colorForProgress(rate90D, context),
-                                centerText: "",
-                                label: routinesLabelD,
-                                size: 140,
-                                onTap: () => _showDomainDetail(
-                                  d,
-                                  startCal,
-                                  endCal,
-                                  days,
-                                  focus: 'habit',
+                              RepaintBoundary(
+                                child: NestedGauge(
+                                  bigProgress:
+                                      snapToFull(rateWeekD.clamp(0.0, 1.0)),
+                                  outerProgress:
+                                      snapToFull(rateTodayD.clamp(0.0, 1.0)),
+                                  smallProgress:
+                                      snapToFull(rate90D.clamp(0.0, 1.0)),
+                                  bigColor:
+                                      _colorForProgress(rateWeekD, context),
+                                  outerColor: Colors.cyanAccent,
+                                  smallColor:
+                                      _colorForProgress(rate90D, context),
+                                  centerText: "",
+                                  label: routinesLabelD,
+                                  size: 140,
+                                  onTap: () => _showDomainDetail(
+                                    d,
+                                    startCal,
+                                    endCal,
+                                    days,
+                                    focus: 'habit',
+                                  ),
                                 ),
                               ),
                             ],

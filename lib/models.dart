@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:uuid/uuid.dart';
 
@@ -387,7 +388,6 @@ class Session {
       endAt: j['endAt'] != null ? DateTime.parse(j['endAt']) : null);
 }
 
-
 class HabitHit {
   String id;
   String habitId; // (= activityId de l'habit)
@@ -416,7 +416,6 @@ class HabitHit {
       );
 }
 
-
 /// --- PROGRESSION HABITUDES ---
 /// Stocke la valeur d’une habitude pour un jour donné (clé date "YYYYMMDD")
 class HabitProgress {
@@ -444,25 +443,31 @@ class HabitProgress {
       );
 }
 
-/// --- APP STATE ---
 class AppState {
   List<Domain> domains;
   List<Activity> activities;
   List<Session> sessions;
   List<HabitProgress> habitProgress;
+
   DateTime? lastGoalsReview;
+
   // NEW: activité → ISO8601 jusqu’à quand elle est “snoozed”
   Map<String, String> snoozedUntil;
+
   List<Goal> goals;
   List<InboxItem> inbox;
   List<DayPlanItem> dayPlan;
-  String? lastRolloverYmd;
 
+  String? lastRolloverYmd;
   String? lastCarryYmd; // on a déjà fait "Hier → Aujourd'hui" pour ce jour ?
   String? lastPrepYmd; // on a déjà fait "Aujourd'hui → Demain" pour ce jour ?
+
   List<String> focusTodayIds;
   bool sortTodayByDashboard;
-  List<HabitHit> habitHits = [];
+
+  // ✅ Habits context (associations)
+  List<HabitHit> habitHits;
+  Map<String, String> habitPinnedActivity;
 
   AppState({
     required this.domains,
@@ -473,13 +478,21 @@ class AppState {
     Map<String, String>? snoozedUntil,
     List<Goal>? goals,
     List<InboxItem>? inbox,
+    List<DayPlanItem>? dayPlan,
     List<String>? focusTodayIds,
-    this.dayPlan = const [],
-      this.sortTodayByDashboard = false,
-  })  : snoozedUntil = snoozedUntil ?? {},
-        goals = goals ?? [],
-        inbox = inbox ?? [],
-        focusTodayIds = focusTodayIds ?? [];
+    this.sortTodayByDashboard = false,
+    this.lastRolloverYmd,
+    this.lastCarryYmd,
+    this.lastPrepYmd,
+    List<HabitHit>? habitHits,
+    Map<String, String>? habitPinnedActivity,
+  })  : snoozedUntil = snoozedUntil ?? <String, String>{},
+        goals = goals ?? <Goal>[],
+        inbox = inbox ?? <InboxItem>[],
+        dayPlan = dayPlan ?? <DayPlanItem>[],
+        focusTodayIds = focusTodayIds ?? <String>[],
+        habitHits = habitHits ?? <HabitHit>[],
+        habitPinnedActivity = habitPinnedActivity ?? <String, String>{};
 
   Map<String, dynamic> toJson() => {
         'domains': domains.map((e) => e.toJson()).toList(),
@@ -491,41 +504,79 @@ class AppState {
         'goals': goals.map((e) => e.toJson()).toList(),
         'inbox': inbox.map((e) => e.toJson()).toList(),
         'dayPlan': dayPlan.map((e) => e.toJson()).toList(),
+
+        'lastRolloverYmd': lastRolloverYmd,
+        'lastCarryYmd': lastCarryYmd,
+        'lastPrepYmd': lastPrepYmd,
+
         'focusTodayIds': focusTodayIds,
         'sortTodayByDashboard': sortTodayByDashboard,
+
+        // ✅ persist
+        'habitHits': habitHits.map((e) => e.toJson()).toList(),
+        'habitPinnedActivity': habitPinnedActivity,
       };
 
-  static AppState from(Map j) => AppState(
-        domains: (j['domains'] as List).map((e) => Domain.from(e)).toList(),
-        activities:
-            (j['activities'] as List).map((e) => Activity.from(e)).toList(),
-        sessions: (j['sessions'] as List).map((e) => Session.from(e)).toList(),
-        habitProgress: (j['habitProgress'] == null)
-            ? <HabitProgress>[]
-            : (j['habitProgress'] as List)
-                .map((e) => HabitProgress.from(e))
-                .toList(),
-        lastGoalsReview: j['lastGoalsReview'] == null
-            ? null
-            : DateTime.parse(j['lastGoalsReview']),
-        snoozedUntil: (j['snoozedUntil'] as Map?)
-                ?.map((k, v) => MapEntry(k as String, v as String)) ??
-            {},
-        goals: (j['goals'] == null)
-            ? <Goal>[]
-            : (j['goals'] as List).map((e) => Goal.from(e)).toList(),
-        inbox: (j['inbox'] == null)
-            ? <InboxItem>[]
-            : (j['inbox'] as List).map((e) => InboxItem.from(e)).toList(),
-        dayPlan: (j['dayPlan'] == null)
-            ? <DayPlanItem>[]
-            : (j['dayPlan'] as List).map((e) => DayPlanItem.from(e)).toList(),
-        focusTodayIds: (j['focusTodayIds'] as List?)?.cast<String>() ?? [],
-        sortTodayByDashboard: j['sortTodayByDashboard'] ?? false,
-      );
+  static AppState from(Map j) {
+    // Helpers safe
+    List<T> _list<T>(dynamic v, T Function(dynamic) mapFn) {
+      if (v == null) return <T>[];
+      return (v as List).map(mapFn).toList();
+    }
+
+    Map<String, String> _mapSS(dynamic v) {
+      if (v == null) return <String, String>{};
+      return (v as Map).map((k, val) => MapEntry(k as String, val as String));
+    }
+
+    return AppState(
+      domains: _list(j['domains'], (e) => Domain.from(e)),
+      activities: _list(j['activities'], (e) => Activity.from(e)),
+      sessions: _list(j['sessions'], (e) => Session.from(e)),
+      habitProgress: _list(j['habitProgress'], (e) => HabitProgress.from(e)),
+      lastGoalsReview: j['lastGoalsReview'] == null
+          ? null
+          : DateTime.parse(j['lastGoalsReview']),
+      snoozedUntil: _mapSS(j['snoozedUntil']),
+      goals: _list(j['goals'], (e) => Goal.from(e)),
+      inbox: _list(j['inbox'], (e) => InboxItem.from(e)),
+      dayPlan: _list(j['dayPlan'], (e) => DayPlanItem.from(e)),
+      lastRolloverYmd: j['lastRolloverYmd'] as String?,
+      lastCarryYmd: j['lastCarryYmd'] as String?,
+      lastPrepYmd: j['lastPrepYmd'] as String?,
+      focusTodayIds:
+          (j['focusTodayIds'] as List?)?.cast<String>() ?? <String>[],
+      sortTodayByDashboard: (j['sortTodayByDashboard'] as bool?) ?? false,
+      habitHits: _list(j['habitHits'], (e) => HabitHit.from(e)),
+      habitPinnedActivity: _mapSS(j['habitPinnedActivity']),
+    );
+  }
 
   String encode() => jsonEncode(toJson());
-  static AppState decode(String s) => from(jsonDecode(s));
+
+  static AppState decode(String s) {
+    final t = s.trim();
+    if (t.isEmpty) {
+      // retourne un état vide (ou tu peux appeler ton _seedMinimal ailleurs)
+      return AppState(
+        domains: <Domain>[],
+        activities: <Activity>[],
+        sessions: <Session>[],
+        habitProgress: <HabitProgress>[],
+      );
+    }
+
+    try {
+      return from(jsonDecode(t));
+    } catch (_) {
+      return AppState(
+        domains: <Domain>[],
+        activities: <Activity>[],
+        sessions: <Session>[],
+        habitProgress: <HabitProgress>[],
+      );
+    }
+  }
 }
 
 /// Utilitaires de date

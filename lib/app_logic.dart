@@ -24,6 +24,31 @@ class TuneChange {
   TuneChange(this.activityId, this.note);
 }
 
+enum HabitAssocEventType { pinned, changeSuggested }
+
+class HabitAssocEvent {
+  final HabitAssocEventType type;
+  final String habitId;
+  final String? fromActivityId;
+  final String? toActivityId;
+
+  const HabitAssocEvent._(
+    this.type, {
+    required this.habitId,
+    this.fromActivityId,
+    this.toActivityId,
+  });
+
+  factory HabitAssocEvent.pinned(String habitId, String toActId) =>
+      HabitAssocEvent._(HabitAssocEventType.pinned,
+          habitId: habitId, toActivityId: toActId);
+
+  factory HabitAssocEvent.changeSuggested(
+          String habitId, String fromActId, String toActId) =>
+      HabitAssocEvent._(HabitAssocEventType.changeSuggested,
+          habitId: habitId, fromActivityId: fromActId, toActivityId: toActId);
+}
+
 // =====================================================
 // ===============  LOGIQUE PRINCIPALE  ================
 // =====================================================
@@ -439,7 +464,7 @@ class AppLogic {
     switch (freq) {
       case HabitFreq.daily:
         return swowTodayText
-            ? "Aujourd'hui : $dayDone / $dayQuota"
+            ? "Focus : $dayDone / $dayQuota"
             : "$dayDone / $dayQuota";
       case HabitFreq.weekly:
         return "7 j : $weekDone / $weekTarget";
@@ -468,6 +493,90 @@ class AppLogic {
       d = d.add(const Duration(days: 1));
     }
     return sum;
+  }
+
+  HabitAssocEvent? incHabitWithAssocEvent(
+      String activityId, int delta, DateTime day) {
+    final key = yyyymmdd(day);
+
+    // --- MAJ compteur (par jour) ---
+    final prevIdx = state.habitProgress.indexWhere(
+      (h) => h.activityId == activityId && h.yyyymmdd == key,
+    );
+
+    if (prevIdx < 0) {
+      state.habitProgress.add(
+        HabitProgress(
+          activityId: activityId,
+          yyyymmdd: key,
+          value: math.max(0, delta),
+        ),
+      );
+    } else {
+      final v = state.habitProgress[prevIdx].value + delta;
+      state.habitProgress[prevIdx].value = v < 0 ? 0 : v;
+    }
+
+    final act = state.activities.firstWhere((a) => a.id == activityId);
+    final currentDay = DateTime(day.year, day.month, day.day);
+    final doneOnDay = habitValueOn(activityId, currentDay);
+
+    HabitAssocEvent? assocEvent;
+
+    // --- LOG hit + PIN (uniquement sur incrément) ---
+    if (delta > 0) {
+      final running = runningActivity(); // activité en cours (peut être null)
+
+      // log du contexte (30j)
+      state.habitHits.add(HabitHit(
+        habitId: activityId,
+        ts: DateTime.now(),
+        contextActivityId: running?.id,
+      ));
+
+      // pin au 1er clic si activité en cours
+      if (running != null) {
+        final pinned = state.habitPinnedActivity[activityId];
+
+        if (pinned == null) {
+          state.habitPinnedActivity[activityId] = running.id;
+          assocEvent = HabitAssocEvent.pinned(activityId, running.id);
+        } else if (pinned != running.id) {
+          // on ne change pas automatiquement : on demande confirmation via UI
+          assocEvent =
+              HabitAssocEvent.changeSuggested(activityId, pinned, running.id);
+        }
+      }
+    }
+
+    // --- planifier un lanceur "habit" aujourd’hui (anti-doublon) ---
+    if (delta > 0 && doneOnDay > 0) {
+      final ymdToday = yyyymmdd(currentDay);
+      ensurePlannedOnce(
+        ymdToday,
+        PlanKind.habit,
+        activityId,
+        act.name,
+        domainId: act.domainId,
+      );
+    }
+
+    // --- Retirer d’aujourd’hui uniquement si manuel + daily + atteint ---
+    final freq = effectiveHabitFreq(act);
+    if (freq == HabitFreq.daily) {
+      final dayQuota = dayQuotaFor(act);
+      if (act.manualTarget && dayQuota > 0 && doneOnDay >= dayQuota) {
+        removeFromDay(yyyymmdd(currentDay), PlanKind.habit, activityId);
+      }
+    }
+
+    // --- auto-tune 30j seulement si AUTO et pas manuel ---
+    if (!act.manualTarget && act.autoTune) {
+      autoTuneHabitFrom30d(this, act);
+    }
+
+    onChange();
+    return assocEvent;
   }
 
   void incHabit(String activityId, int delta, DateTime day) {
@@ -569,34 +678,30 @@ class AppLogic {
   }) {
     final out = <DayPlanItem>[];
 
-    // activités déjà présentes (évite doublons)
+    // activités déjà présentes (planifiées OU injectées)
     final seenActivityIds = <String>{
       for (final it in items)
         if (it.kind == PlanKind.activityTime && it.refId != null) it.refId!,
     };
 
+    // --- A) injection activité associée au-dessus de la routine ---
     for (final it in items) {
-      // 👉 si c’est une routine/habit, on regarde si une activité est suggérée
       if (it.kind == PlanKind.habit && it.refId != null) {
         final habitId = it.refId!;
-        final domainId = it.domainId;
 
         final suggestedActId = suggestedActivityForHabit(
           habitId: habitId,
-          domainId: domainId,
           now: now,
-          logic: this,
-        );
+        ); // ✅ pas de fallback domaine
 
         if (suggestedActId != null &&
             !seenActivityIds.contains(suggestedActId)) {
           final act =
               state.activities.firstWhereOrNull((a) => a.id == suggestedActId);
-
           if (act != null) {
             out.add(
               DayPlanItem(
-                id: 'virtAct:${act.id}', // ⚠️ virtuel
+                id: 'virtAct:${act.id}',
                 kind: PlanKind.activityTime,
                 refId: act.id,
                 domainId: act.domainId,
@@ -608,58 +713,101 @@ class AppLogic {
                 order: 1 << 30,
               ),
             );
-
             seenActivityIds.add(act.id);
           }
         }
       }
 
-      // 👉 on ajoute toujours l’item courant
       out.add(it);
+    }
+
+    // --- C) ensuite, ajouter les activités "sous seuil" (à rattraper) EN BAS ---
+    // ⚠️ seulement après les routines, donc ici à la fin.
+    final underGoalActs = state.activities
+        .where((a) => !a.isHabit) // activités temps
+        .where((a) => activityUnderGoal(a, now)) // à toi: today ou 7j
+        .where((a) => !seenActivityIds.contains(a.id))
+        .toList();
+
+    for (final a in underGoalActs) {
+      out.add(
+        DayPlanItem(
+          id: 'virtActGoal:${a.id}', // virtuel "à rattraper"
+          kind: PlanKind.activityTime,
+          refId: a.id,
+          domainId: a.domainId,
+          title: a.name,
+          yyyymmdd: ymd,
+          done: false,
+          doneCount: 0,
+          allDay: true,
+          order: 1 << 30,
+        ),
+      );
+      seenActivityIds.add(a.id);
     }
 
     return out;
   }
 
+  bool activityUnderGoal(Activity a, DateTime day) {
+    final base = a.goalMin;
+    if (base <= 0) return false;
+    final start = DateTime(day.year, day.month, day.day);
+    final end = start.add(const Duration(days: 1));
+    final doneMin = totalForRangeByActivity(a.id, start, end).inMinutes;
+    return doneMin < base;
+  }
+
   String? suggestedActivityForHabit({
     required String habitId,
-    required String? domainId,
-    required AppLogic logic,
     required DateTime now,
   }) {
-    final counts = logic.habitActivityCounts30d(habitId, now);
+    final counts = habitActivityCounts30d(habitId, now);
+    if (counts.isEmpty) return null;
 
-    if (counts.isNotEmpty) {
-      String? bestId;
-      var best = 0;
+    String? bestId;
+    var best = 0;
+    var total = 0;
 
-      counts.forEach((actId, c) {
-        if (c > best) {
-          best = c;
-          bestId = actId;
-        }
-      });
+    counts.forEach((id, c) {
+      total += c;
+      if (c > best) {
+        best = c;
+        bestId = id;
+      }
+    });
 
-      if (bestId != null) return bestId;
-    }
+    // ✅ seuil de confiance (évite 1 seul test qui “colle” une activité)
+    final strongEnough = best >= 2 || (total > 0 && (best / total) >= 0.5);
+    if (!strongEnough) return null;
 
-// fallback : première activité du domaine
-    if (domainId != null) {
-      final fallback = state.activities.firstWhereOrNull(
-        (a) => !a.isHabit && a.domainId == domainId,
-      );
-      if (fallback != null) return fallback.id;
-    }
-    return null;
+    return bestId;
   }
 
   // ---------- Cibles dérivées (habits) ----------
   HabitFreq effectiveHabitFreq(Activity a) {
-    return a.habitFreq ?? HabitFreq.monthly; // défaut raisonnable
+    if (!a.isHabit) return HabitFreq.monthly;
+
+    // ✅ manuel = vérité
+    if (a.manualTarget == true) {
+      return a.habitFreq ?? HabitFreq.monthly;
+    }
+
+    // auto = ce que tu as calculé
+    return a.habitFreq ?? HabitFreq.monthly;
   }
 
   int effectiveHabitTarget(Activity a) {
-    return (a.habitTarget ?? 1); // défaut : 1
+    if (!a.isHabit) return 0;
+
+    // ✅ manuel = vérité
+    if (a.manualTarget == true) {
+      return (a.habitTarget ?? 1).clamp(1, 999999);
+    }
+
+    // auto = ce que tu as calculé
+    return (a.habitTarget ?? 1).clamp(1, 999999);
   }
 
   // Période active -> "fait" & "cible" (utile à l'UI)
@@ -877,61 +1025,41 @@ class AppLogic {
     final t = now ?? DateTime.now();
     final todayKey = yyyymmdd(t);
     final tomorrowKey = yyyymmdd(t.add(const Duration(days: 1)));
+    final today = DateTime(t.year, t.month, t.day);
+
+    bool exists(String ymd, PlanKind kind, String refId) =>
+        _existsInDay(ymd, kind, refId);
 
     for (final a in state.activities.where((x) => x.isHabit)) {
-      // On ne pousse que les routines QUOTIDIENNES ici
       if (effectiveHabitFreq(a) != HabitFreq.daily) continue;
 
       final quota = dayQuotaFor(a);
       if (quota <= 0) continue;
 
-      // Déjà présent aujourd’hui ? → OK
-      if (_existsInDay(todayKey, PlanKind.habit, a.id)) continue;
+      // déjà présent aujourd'hui
+      if (exists(todayKey, PlanKind.habit, a.id)) continue;
 
-      // Déjà atteint aujourd’hui ? → ne pas re-ajouter
-      final today = DateTime(t.year, t.month, t.day);
+      // déjà atteint aujourd'hui
       final doneToday = habitValueOn(a.id, today);
       if (doneToday >= quota) continue;
 
-      // *** CLÉ DU FIX ***
-      // Si l’utilisateur l’a déplacée vers DEMAIN, ne PAS la ré-ajouter dans AUJOURD’HUI.
-      if (_existsInDay(tomorrowKey, PlanKind.habit, a.id)) continue;
+      // déplacé vers demain => ne pas ré-ajouter aujourd'hui
+      if (exists(tomorrowKey, PlanKind.habit, a.id)) continue;
 
-      // Sinon on l’ajoute à AUJOURD’HUI (à la fin, comme d’hab)
-      void appendToTomorrowIfLastIsDifferent(
-        PlanKind kind,
-        String refId,
-        String title, {
-        String? domainId, // ✅ NEW
-      }) {
-        final tomoKey = _tomorrowKey();
-
-        DayPlanItem? last;
-        for (final e in state.dayPlan) {
-          if (e.yyyymmdd != tomoKey) continue;
-          if (last == null || e.order > last!.order) last = e;
-        }
-
-        final sameAsLast =
-            last != null && last!.kind == kind && last!.refId == refId;
-        if (sameAsLast) return;
-
-        state.dayPlan.add(
-          DayPlanItem(
-            id: _uuid.v4(),
-            kind: kind,
-            refId: refId,
-            domainId: domainId, // ✅
-            title: title,
-            yyyymmdd: tomoKey,
-            done: false,
-            allDay: false,
-            order: _nextOrderForDay(tomoKey),
-          ),
-        );
-
-        onChange();
-      }
+      // ✅ ajouter à AUJOURD'HUI
+      state.dayPlan.add(
+        DayPlanItem(
+          id: _uuid.v4(),
+          kind: PlanKind.habit,
+          refId: a.id,
+          domainId: a.domainId,
+          title: a.name,
+          yyyymmdd: todayKey,
+          done: false,
+          allDay: true,
+          order: _nextOrderForDay(todayKey),
+        ),
+      );
     }
 
     onChange();
@@ -1197,6 +1325,7 @@ class AppLogic {
     } */
 
     for (final a in state.activities.where((x) => x.isHabit)) {
+      if (a.manualTarget == true) continue;
       autoTuneHabitFrom30d(this, a);
     }
 
@@ -1871,7 +2000,7 @@ class AppLogic {
     return state.activities
         .where((a) => a.isHabit && (domainId == null || a.domainId == domainId))
         .fold<int>(0, (sum, a) {
-      final freq = a.habitFreq ?? HabitFreq.monthly;
+      final freq = effectiveHabitFreq(a);
       int perDay;
       switch (freq) {
         case HabitFreq.daily:

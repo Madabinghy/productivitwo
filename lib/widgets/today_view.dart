@@ -51,6 +51,30 @@ class _TodayViewState extends State<TodayView> {
     _base = DateTime.now();
   }
 
+  bool isHabitReached(DayPlanItem it) {
+    if (it.kind != PlanKind.habit || it.refId == null) return false;
+    final act =
+        widget.state.activities.firstWhereOrNull((a) => a.id == it.refId);
+    if (act == null) return false;
+
+    final freq = widget.logic.effectiveHabitFreq(act);
+    final target = widget.logic.effectiveHabitTarget(act);
+
+    int done;
+    switch (freq) {
+      case HabitFreq.daily:
+        done = widget.logic.habitValueOn(act.id, DateTime.now());
+        break;
+      case HabitFreq.weekly:
+        done = widget.logic.habitSliding(act.id, 7).done;
+        break;
+      case HabitFreq.monthly:
+        done = widget.logic.habitSliding(act.id, 30).done;
+        break;
+    }
+    return target > 0 && done >= target;
+  }
+
   Widget _focusSection(AppLogic logic) {
     final acts = logic.focusToday;
     if (acts.isEmpty) return const SizedBox.shrink();
@@ -168,15 +192,77 @@ class _TodayViewState extends State<TodayView> {
     // 1) Base: plan du jour affiché
     final basePlan = widget.logic.planFor(ymd).toList();
 
+    final isEmptyHabitsToday =
+        isTodayTab && basePlan.where((it) => it.kind == PlanKind.habit).isEmpty;
+
+    List<DayPlanItem> planOrAuto() {
+      if (!isEmptyHabitsToday) return basePlan;
+
+      // construit une liste UI-only de "habits à faire"
+      final habits =
+          widget.logic.state.activities.where((a) => a.isHabit).toList();
+
+      // garde seulement ceux sous seuil (selon freq)
+      final under = habits.where((a) {
+        final freq = widget.logic.effectiveHabitFreq(a);
+        final target = widget.logic.effectiveHabitTarget(a);
+        int done;
+        switch (freq) {
+          case HabitFreq.daily:
+            done = widget.logic.habitValueOn(a.id, todayDate);
+            break;
+          case HabitFreq.weekly:
+            done = widget.logic.habitSliding(a.id, 7).done;
+            break;
+          case HabitFreq.monthly:
+            done = widget.logic.habitSliding(a.id, 30).done;
+            break;
+        }
+        return target > 0 && done < target;
+      });
+
+      // transforme en DayPlanItem virtuel habit (UI-only)
+      return under
+          .map((a) => DayPlanItem(
+                id: 'virt:${a.id}',
+                kind: PlanKind.habit,
+                refId: a.id,
+                domainId: a.domainId,
+                title: a.name,
+                yyyymmdd: ymd,
+                done: false,
+                doneCount: 0,
+                allDay: true,
+                order: 1 << 30,
+              ))
+          .toList();
+    }
+
+    final baseOrAuto = planOrAuto();
+
     // 2) Focus : ne garder QUE les habits (pas d'actions, pas d'autres activités)
     // Hors focus : on garde tout
     final focusFiltered = hasRunning
-        ? basePlan.where((it) {
+        ? baseOrAuto.where((it) {
             if (it.kind != PlanKind.habit) return false;
-            // garde seulement les habits du domaine courant
-            return it.domainId == currentDomainId;
+
+            // ✅ domaine résolu (fallback sur l’activité si domainId vide)
+            final act = (it.refId != null)
+                ? widget.state.activities
+                    .firstWhereOrNull((a) => a.id == it.refId)
+                : null;
+
+            final dom = (it.domainId != null && it.domainId!.isNotEmpty)
+                ? it.domainId!
+                : (act?.domainId ?? '');
+
+            return dom == currentDomainId;
           }).toList()
-        : basePlan;
+        : baseOrAuto;
+
+    debugPrint(
+        'baseOrAuto=${baseOrAuto.length} focusFiltered=${focusFiltered.length} '
+        'currentDomainId=$currentDomainId hasRunning=$hasRunning');
 
     // 3) Virtuels (focus seulement) : ajouter les habits du domaine courant absents du plan
 /*     final extraHabits = <DayPlanItem>[];
@@ -237,6 +323,10 @@ class _TodayViewState extends State<TodayView> {
     List<DayPlanItem> visible;
     if (isTodayTab && !hasRunning && forceOnlyUnderWhenNoRunning) {
       visible = merged.where((it) {
+        // ✅ on garde toujours les virtuels auto-seed
+        if (it.id.startsWith('virt:') || it.id.startsWith('virtAct:'))
+          return true;
+
         if (it.kind != PlanKind.habit || it.refId == null) return true;
 
         final act =
@@ -258,6 +348,7 @@ class _TodayViewState extends State<TodayView> {
             done = widget.logic.habitSliding(act.id, 30).done;
             break;
         }
+
         final reached = target > 0 && done >= target;
         return !reached;
       }).toList();
@@ -275,8 +366,7 @@ class _TodayViewState extends State<TodayView> {
       for (final it in visible) {
         // En focus visible ne contient que des habits, mais on garde robuste
         if (it.kind == PlanKind.habit) {
-          (it.done ? reached : under).add(
-              it); // ✅ it.done fiable pour virtuels + on l'utilisera pour réels
+          (isHabitReached(it) ? reached : under).add(it);
         } else {
           under.add(it);
         }
@@ -285,6 +375,7 @@ class _TodayViewState extends State<TodayView> {
     } else {
       finalItems = visible;
     }
+    
 
     // 7) Tri dashboard : on ne le fait pas en focus (sinon ça mélange ton ordre under/reached)
     const haloReachedThreshold = 0.99;
@@ -296,13 +387,23 @@ class _TodayViewState extends State<TodayView> {
         ? widget.logic.viewItemsSortedByDashboard(finalItems, domainRank)
         : finalItems;
 
-
     final items = widget.logic.injectSuggestedActivities(
       items: sorted,
       ymd: ymd,
       now: now,
     );
 
+    debugPrint('baseOrAuto=${baseOrAuto.length}');
+    debugPrint('focusFiltered=${focusFiltered.length}');
+    debugPrint('merged=${merged.length}');
+    debugPrint('visible=${visible.length}');
+    debugPrint('finalItems=${finalItems.length}');
+    debugPrint('sorted=${sorted.length}');
+    debugPrint('items(after inject)=${items.length}');
+    if (items.isNotEmpty) {
+      debugPrint(
+          'first=${items.first.kind} id=${items.first.id} ref=${items.first.refId}');
+    }
 /* 
     debugPrint('--- DOMAIN RANKS ---');
     final sorted = widget.logic.computeDashboardDomainOrder().sortedDomains;
@@ -745,7 +846,7 @@ class _TodayViewState extends State<TodayView> {
             );
           }
 
-          final freq = act.habitFreq ?? HabitFreq.monthly;
+          final freq = widget.logic.effectiveHabitFreq(act);
 
           final dayDone = widget.logic.habitValueOn(it.refId!, day);
           final dayQuota = widget.logic.dayQuotaFor(act);
@@ -1317,43 +1418,6 @@ class _TodayViewState extends State<TodayView> {
         ],
       ),
     );
-  }
-
-  bool _habitReached(DayPlanItem it, DateTime day) {
-    if (it.refId == null) return false;
-    final act =
-        widget.state.activities.firstWhereOrNull((a) => a.id == it.refId);
-    if (act == null) return false;
-
-    final freq = act.habitFreq ?? HabitFreq.monthly;
-
-    final dayDone = widget.logic.habitValueOn(it.refId!, day);
-    final dayQuota = widget.logic.dayQuotaFor(act);
-
-    final weekDone = widget.logic.habitSliding(it.refId!, 7).done;
-    final weekTarget = widget.logic.weekTargetFrom(act);
-
-    final monthDone = widget.logic.habitSliding(it.refId!, 30).done;
-    final monthTarget = widget.logic.monthTargetFrom(act);
-
-    int doneShown, targetShown;
-    switch (freq) {
-      case HabitFreq.daily:
-        doneShown = dayDone;
-        targetShown = dayQuota;
-        break;
-      case HabitFreq.weekly:
-        doneShown = weekDone;
-        targetShown = weekTarget;
-        break;
-      case HabitFreq.monthly:
-        doneShown = monthDone;
-        targetShown = monthTarget;
-        break;
-    }
-
-    final target = targetShown;
-    return target > 0 && doneShown >= target;
   }
 
   Future<void> showHabitChecklist(
