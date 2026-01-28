@@ -1982,7 +1982,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
     final start90 = today.subtract(const Duration(days: 89));
     final end90 = today.add(const Duration(days: 1)); // end exclusif
-    final progTimeAll90 = _timeProgressAllOverRange(start90, end90, 90);
 
     final start24 = now.subtract(const Duration(hours: 24));
     final totals24 = logic.timeTotalsByDomain(start24, now);
@@ -2048,65 +2047,18 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
     final (startCal, endCal, days) = _rangeForScope(now);
 
+    // ✅ Fenêtres glissantes incluant aujourd’hui
+    final start7Inc =
+        today.subtract(const Duration(days: 6)); // 7 jours incluant aujourd’hui
+    final end7Inc = today.add(const Duration(days: 1)); // exclu demain
+    final start90Inc = today
+        .subtract(const Duration(days: 89)); // 90 jours incluant aujourd’hui
+    final end90Inc = today.add(const Duration(days: 1)); // exclu demain
+
     // --- Fenêtre pour les HABITUDES ---
     // Si scope == day : on prend les 7 derniers jours calendaires (aujourd'hui inclus)
-    final bool rollingHabits7d = (scope == TimeScope.day);
-
-    // today = date tronquée à minuit (tu l'as déjà défini plus haut)
-    final DateTime startHabits =
-        rollingHabits7d ? today.subtract(const Duration(days: 6)) : startCal;
-    final DateTime endHabits =
-        rollingHabits7d ? today.add(const Duration(days: 1)) : endCal;
-    // Nombre de jours pour la cible (= 7 si on est en fenêtre 7j, sinon nb jours du scope)
-    final int habitDays = rollingHabits7d ? 7 : days;
-
-// 2) Fenêtre de TEMPS (glissante si scope == day)
-    final bool rolling24h = (scope == TimeScope.day);
-    final DateTime startTime =
-        rolling24h ? now.subtract(const Duration(hours: 24)) : startCal;
-    final DateTime endTime = rolling24h ? now : endCal;
-
-// 3) Totaux TEMPS (global + par domaine) — sur [startTime, endTime]
-    final timeByDomain = logic.timeTotalsByDomain(startTime, endTime);
-    final totalTimeAll =
-        timeByDomain.values.fold<Duration>(Duration.zero, (a, b) => a + b);
-    final totalHours = totalTimeAll.inMinutes / 60.0;
-    // Objectif global (minutes / jour) = somme des objectifs des domaines
-    final goalMinDayAll = _state!.domains
-        .map((d) => logic.domainGoalMinDay(d.id))
-        .fold<int>(0, (a, b) => a + b);
-
-// Max heures selon la période (Jour = objectif/jour, Semaine/Mois = × nb jours)
-    final maxHours = (scope == TimeScope.day)
-        ? goalMinDayAll / 60.0
-        : (goalMinDayAll * days) / 60.0;
-    final totalTimeProgress = (totalHours / maxHours).clamp(0.0, 1.0);
-
-    final goalHours24All = goalMinDayAll / 60.0;
-    final prog24All = goalHours24All > 0
-        ? (total24Hours / goalHours24All).clamp(0.0, 1.0)
-        : 0.0;
-
     // 4) Totaux HABITUDES (global + par domaine)
     // -> utilisent désormais startHabits / endHabits et habitDays
-    final habitByDomain = logic.habitTotalsByDomain(startHabits, endHabits);
-
-    final targetHabitsByDomain = {
-      for (final d in _state!.domains)
-        d.id: _state!.activities
-            .where((a) => a.domainId == d.id && a.isHabit)
-            .fold<int>(0, (sum, a) => sum + logic.dayQuotaFor(a) * habitDays),
-    };
-
-    final totalHabitsDone = _doneHabitsAllCalendar(startHabits, endHabits);
-    final totalHabitsTarget = _targetHabitsAllCalendar(startHabits, endHabits);
-
-    final totalHabitProgress = totalHabitsTarget == 0
-        ? 0.0
-        : (totalHabitsDone / totalHabitsTarget).clamp(0.0, 1.0);
-
-    final running = _state!.sessions.any((x) => x.endAt == null);
-    final avg90Txt = "Moy 90j : ${(progTimeAll90 * 100).round()}%";
 
     final tomorrow = today.add(const Duration(days: 1));
 // ✅ Routines aujourd’hui
@@ -2114,8 +2066,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     final tgtToday = _targetHabitsAllCalendar(today, tomorrow);
 
 // ✅ Moyenne “semaine” (ratio global sur 7 jours)
-    final done7 = _doneHabitsAllCalendar(start7, end7);
-    final tgt7 = _targetHabitsAllCalendar(start7, end7);
+    final done7 = _doneHabitsAllCalendar(start7Inc, end7Inc);
+    final tgt7 = _targetHabitsAllCalendar(start7Inc, end7Inc);
 
     final done90 = _doneHabitsAllCalendar(start90, end90);
     final tgt90 = _targetHabitsAllCalendar(start90, end90);
@@ -2132,128 +2084,41 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         totalsToday.values.fold<Duration>(Duration.zero, (a, b) => a + b);
     final totalTodayHours = totalTodayDur.inMinutes / 60.0;
 
-    int _neededToBeatWeek({
-      required int doneToday,
-      required int tgtToday,
-      required int done7,
-      required int tgt7,
-    }) {
-      // Pas de cible => pas de seuil utile
-      if (tgtToday <= 0 || tgt7 <= 0) return 0;
+    final dailyTargetMinAll = _state!.activities
+        .where((a) => a.type == 'time' && a.goalMin > 0)
+        .fold<int>(0, (sum, a) => sum + a.goalMin);
 
-      final rateWeek = done7 / tgt7; // double
-      final threshold = tgtToday *
-          rateWeek; // double (cible "équivalente" pour être >= semaine)
-      final need = threshold - doneToday; // double
+// en heures
+    final dailyTargetHoursAll = dailyTargetMinAll / 60.0;
 
-      if (need <= 0) return 0;
-      return need.ceil(); // arrondi au-dessus : il faut AU MOINS ce nombre
+    double totalHoursOverRange(DateTime start, DateTime endExcl) {
+      final totals = logic.timeTotalsByDomain(start, endExcl);
+      final dur = totals.values.fold<Duration>(Duration.zero, (a, b) => a + b);
+      return dur.inMinutes / 60.0;
     }
 
-    double _avgHoursPerActiveDayFromDailyTotals(
-        Map<String, Duration> dailyTotals) {
-      final nonZero =
-          dailyTotals.values.where((d) => d > Duration.zero).toList();
-      if (nonZero.isEmpty) return 0.0;
+    final done7HoursAll = totalHoursOverRange(start7Inc, end7Inc);
+    final done90HoursAll = totalHoursOverRange(start90Inc, end90Inc);
 
-      final totalMin = nonZero.fold<int>(0, (a, d) => a + d.inMinutes);
-      return (totalMin / 60.0) / nonZero.length;
-    }
+    final target7HoursAll = dailyTargetHoursAll * 7.0;
+    final target90HoursAll = dailyTargetHoursAll * 90.0;
 
-    final isBelowWeek = rateToday < rateWeek;
+    final haloAll = (dailyTargetHoursAll > 0)
+        ? (totalTodayHours / dailyTargetHoursAll).clamp(0.0, 1.0)
+        : 0.0;
 
-    final need = _neededToBeatWeek(
-      doneToday: doneToday,
-      tgtToday: tgtToday,
-      done7: done7,
-      tgt7: tgt7,
-    );
+    final bigAll = (target7HoursAll > 0)
+        ? (done7HoursAll / target7HoursAll).clamp(0.0, 1.0)
+        : 0.0;
 
-    final denomAll = avg7HoursPerDay;
-    final fallback = 1.0; // 1h/j par défaut (ou un param objectif)
-
-    final ref = denomAll > 0 ? denomAll : fallback;
-
-    final bigAll = (total24Hours / ref).clamp(0.0, 1.0);
-    final haloAll = (totalTodayHours / ref).clamp(0.0, 1.0);
+    final progTimeAll90 = (target90HoursAll > 0)
+        ? (done90HoursAll / target90HoursAll).clamp(0.0, 1.0)
+        : 0.0;
 
 // Label = depuis minuit (ce que tu veux afficher)
     final labelAll = _fmtHoursHM(totalTodayHours);
     debugPrint(
         "avg7HoursPerDay=$avg7HoursPerDay totalTodayHours=$totalTodayHours total24Hours=$total24Hours");
-
-    int _doneForActivityPrimary(Activity a, DateTime today) {
-      final f = a.habitFreq ?? HabitFreq.monthly;
-      switch (f) {
-        case HabitFreq.daily:
-          return logic.habitSliding(a.id, 1).done;
-        case HabitFreq.weekly:
-          return logic.habitSliding(a.id, 7).done;
-        case HabitFreq.monthly:
-          return logic.habitSliding(a.id, 30).done;
-      }
-    }
-
-    int _targetForActivityPrimary(Activity a) {
-      final f = a.habitFreq ?? HabitFreq.monthly;
-      switch (f) {
-        case HabitFreq.daily:
-          return logic.dayQuotaFor(a);
-        case HabitFreq.weekly:
-          return logic.weekTargetFrom(a);
-        case HabitFreq.monthly:
-          return logic.monthTargetFrom(a);
-      }
-    }
-
-    double _primaryProgressForDomain(String domainId, DateTime today) {
-      int done = 0;
-      int tgt = 0;
-      for (final a in _state!.activities
-          .where((x) => x.isHabit && x.domainId == domainId)) {
-        done += _doneForActivityPrimary(a, today);
-        tgt += _targetForActivityPrimary(a);
-      }
-      return tgt == 0 ? 0.0 : (done / tgt).clamp(0.0, 1.0);
-    }
-
-    double _primaryProgressAll(DateTime today) {
-      int done = 0;
-      int tgt = 0;
-      for (final a in _state!.activities.where((x) => x.isHabit)) {
-        done += _doneForActivityPrimary(a, today);
-        tgt += _targetForActivityPrimary(a);
-      }
-      return tgt == 0 ? 0.0 : (done / tgt).clamp(0.0, 1.0);
-    }
-
-    ({int done, int target}) _primaryAggForDomain(
-        String domainId, DateTime today) {
-      int done = 0;
-      int target = 0;
-
-      for (final a in _state!.activities
-          .where((x) => x.isHabit && x.domainId == domainId)) {
-        final f = a.habitFreq ?? HabitFreq.monthly;
-
-        switch (f) {
-          case HabitFreq.daily:
-            done += logic.habitSliding(a.id, 1).done;
-            target += logic.dayQuotaFor(a);
-            break;
-          case HabitFreq.weekly:
-            done += logic.habitSliding(a.id, 7).done;
-            target += logic.weekTargetFrom(a);
-            break;
-          case HabitFreq.monthly:
-            done += logic.habitSliding(a.id, 30).done;
-            target += logic.monthTargetFrom(a);
-            break;
-        }
-      }
-
-      return (done: done, target: target);
-    }
 
     ({int done, int target}) _primaryAggAll(DateTime today) {
       int done = 0;
@@ -2368,7 +2233,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             builder: (context) {
               final now = DateTime.now();
               final today = DateTime(now.year, now.month, now.day);
-              final tomorrow = today.add(const Duration(days: 1));
 
               // ---------- TEMPS : maps (1 seule fois) ----------
               final totalsTodayAll = logic.timeTotalsByDomain(today, now);
@@ -2393,83 +2257,124 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               );
               final sortedDomains = order.sortedDomains;
 
+              final actsById = {for (final a in _state!.activities) a.id: a};
+
+// Fenêtres
+              final today0 = DateTime(now.year, now.month, now.day);
+              final ymdToday = yyyymmdd(today0);
+
+              String ymd(DateTime d) =>
+                  yyyymmdd(DateTime(d.year, d.month, d.day));
+              final ymdStart7 = ymd(start7);
+              final ymdStart90 = ymd(start90);
+
+// Aggregats: domainId -> doneX
+              final doneTodayByDomain = <String, int>{};
+              final done7ByDomain = <String, int>{};
+              final done90ByDomain = <String, int>{};
+
+              for (final hp in _state!.habitProgress) {
+                final act = actsById[hp.activityId];
+                if (act == null) continue;
+                if (act.type != 'habit') continue;
+
+                final domId = act.domainId;
+                final v = hp.value;
+
+                final dayKey = hp.yyyymmdd;
+
+                // Today
+                if (dayKey == ymdToday) {
+                  doneTodayByDomain[domId] =
+                      (doneTodayByDomain[domId] ?? 0) + v;
+                }
+                // 7j (comparaison lexicographique OK si format yyyymmdd)
+                if (dayKey.compareTo(ymdStart7) >= 0 &&
+                    dayKey.compareTo(ymdToday) <= 0) {
+                  done7ByDomain[domId] = (done7ByDomain[domId] ?? 0) + v;
+                }
+                // 90j
+                if (dayKey.compareTo(ymdStart90) >= 0 &&
+                    dayKey.compareTo(ymdToday) <= 0) {
+                  done90ByDomain[domId] = (done90ByDomain[domId] ?? 0) + v;
+                }
+              }
+
+              final dailyTargetByDomain = <String, int>{};
+
+              for (final a in _state!.activities) {
+                if (a.type != 'habit') continue;
+                final q = logic.dayQuotaFor(a);
+                if (q <= 0) continue;
+                dailyTargetByDomain[a.domainId] =
+                    (dailyTargetByDomain[a.domainId] ?? 0) + q;
+              }
+
               // ---------- UI ----------
               return ListView(
                 children: [
                   ...sortedDomains.map((d) {
-// ===== TEMPS (domain) =====
-                    final hoursToday =
+// ===== ROUTINES (domain) — NOUVELLE LOGIQUE =====
+                    final dailyTarget = dailyTargetByDomain[d.id] ?? 0;
+
+                    final doneToday = doneTodayByDomain[d.id] ?? 0;
+                    final done7 = done7ByDomain[d.id] ?? 0;
+                    final done90 = done90ByDomain[d.id] ?? 0;
+
+                    final target7 = dailyTarget * 7;
+                    final target90 = dailyTarget * 90;
+
+                    final rateTodayD = dailyTarget == 0
+                        ? 0.0
+                        : (doneToday / dailyTarget).clamp(0.0, 1.0);
+                    final rateWeekD =
+                        target7 == 0 ? 0.0 : (done7 / target7).clamp(0.0, 1.0);
+                    final rate90D = target90 == 0
+                        ? 0.0
+                        : (done90 / target90).clamp(0.0, 1.0);
+
+                    final routinesLabelD = "$doneToday / $dailyTarget";
+
+// ===== TEMPS (domain) — NOUVELLE LOGIQUE =====
+                    final dailyTargetMinD = _state!.activities
+                        .where((a) =>
+                            a.domainId == d.id &&
+                            a.type == 'time' &&
+                            a.goalMin > 0)
+                        .fold<int>(0, (sum, a) => sum + a.goalMin);
+
+                    final dailyTargetHoursD = dailyTargetMinD / 60.0;
+
+                    final doneTodayHoursD =
                         (totalsTodayAll[d.id]?.inMinutes ?? 0) / 60.0;
-                    final hours24 = (totals24All[d.id]?.inMinutes ?? 0) / 60.0;
 
-// Moyenne semaine (calendaire) = total 7j / 7
-                    final weekTotalHours =
-                        (totals7All[d.id]?.inMinutes ?? 0) / 60.0;
-                    final avgWeekHoursPerDay = weekTotalHours / 7.0;
+// 7 jours incluant aujourd’hui
+                    final totals7D =
+                        logic.timeTotalsByDomain(start7Inc, end7Inc);
+                    final done7HoursD = (totals7D[d.id]?.inMinutes ?? 0) / 60.0;
 
-// Moyenne 90j (calendaire) = total 90j / 90
-                    final total90Hours =
-                        (totals90All[d.id]?.inMinutes ?? 0) / 60.0;
-                    final avg90HoursPerDay = total90Hours / 90.0;
+// 90 jours incluant aujourd’hui
+                    final totals90D =
+                        logic.timeTotalsByDomain(start90Inc, end90Inc);
+                    final done90HoursD =
+                        (totals90D[d.id]?.inMinutes ?? 0) / 60.0;
 
-// ✅ Référence (denom) : semaine si dispo, sinon fallback
-// Fallback = today si tu as quelque chose aujourd’hui, sinon 1h (valeur neutre)
-                    final denom = (avgWeekHoursPerDay > 0)
-                        ? avgWeekHoursPerDay
-                        : (hoursToday > 0 ? hoursToday : 1.0);
+                    final target7HoursD = dailyTargetHoursD * 7.0;
+                    final target90HoursD = dailyTargetHoursD * 90.0;
 
-// Progress
-                    final outerProgressTime =
-                        (hoursToday / denom).clamp(0.0, 1.0);
-                    final bigProgressTime = (hours24 / denom).clamp(0.0, 1.0);
-                    final smallProgressTime =
-                        (avg90HoursPerDay / denom).clamp(0.0, 1.0);
+                    final outerProgressTime = dailyTargetHoursD > 0
+                        ? (doneTodayHoursD / dailyTargetHoursD).clamp(0.0, 1.0)
+                        : 0.0;
 
-                    final timeLabel = _fmtHoursHM(hoursToday);
+                    final bigProgressTime = target7HoursD > 0
+                        ? (done7HoursD / target7HoursD).clamp(0.0, 1.0)
+                        : 0.0;
 
-                    // ===== ROUTINES (domain) =====
-                    // Aujourd'hui
-                    final doneTodayD =
-                        _doneHabitsForDomainCalendar(d.id, today, tomorrow);
-                    final tgtTodayD =
-                        _targetHabitsForDomainCalendar(d.id, today, tomorrow);
+                    final smallProgressTime = target90HoursD > 0
+                        ? (done90HoursD / target90HoursD).clamp(0.0, 1.0)
+                        : 0.0;
 
-                    // Semaine (7j précédents)
-                    final done7D =
-                        _doneHabitsForDomainCalendar(d.id, start7, end7);
-                    final tgt7D =
-                        _targetHabitsForDomainCalendar(d.id, start7, end7);
-
-                    // 90j
-                    final done90D =
-                        _doneHabitsForDomainCalendar(d.id, start90, end90);
-                    final tgt90D =
-                        _targetHabitsForDomainCalendar(d.id, start90, end90);
-
-                    final rateWeekD = tgt7D == 0 ? 0.0 : (done7D / tgt7D);
-
-                    final rateTodayD =
-                        tgtTodayD == 0 ? 0.0 : (doneTodayD / tgtTodayD);
-                    final rate90D = tgt90D == 0 ? 0.0 : (done90D / tgt90D);
-
-// ✅ bootstrap : si semaine vide mais aujourd’hui a bougé, big = today
-                    final bigForGaugeD = (done7D == 0 && doneTodayD > 0)
-                        ? rateTodayD
-                        : rateWeekD;
-
-                    // label dynamique routines : done / +X si sous la semaine, sinon done/target
-                    final needD = _neededToBeatWeek(
-                      doneToday: doneTodayD,
-                      tgtToday: tgtTodayD,
-                      done7: done7D,
-                      tgt7: tgt7D,
-                    );
-
-                    final routinesLabelD = (tgtTodayD == 0)
-                        ? "0 / 0"
-                        : ((rateTodayD < rateWeekD && needD > 0)
-                            ? "$doneTodayD / ${doneTodayD + needD}"
-                            : "$doneTodayD / $tgtTodayD");
+                    final timeLabel = _fmtHoursHM(doneTodayHoursD);
 
                     return SectionCard(
                       child: Column(
@@ -2508,27 +2413,20 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
                               RepaintBoundary(
                                 child: NestedGauge(
-                                  bigProgress:
-                                      snapToFull(bigForGaugeD.clamp(0.0, 1.0)),
-                                  outerProgress:
-                                      snapToFull(rateTodayD.clamp(0.0, 1.0)),
-                                  smallProgress:
-                                      snapToFull(rate90D.clamp(0.0, 1.0)),
+                                  bigProgress: snapToFull(rateWeekD),
+                                  outerProgress: snapToFull(rateTodayD),
+                                  smallProgress: snapToFull(rate90D),
+                                  centerText: "",
                                   bigColor:
-                                      _colorForProgress(bigForGaugeD, context),
+                                      _colorForProgress(rateWeekD, context),
                                   outerColor: Colors.cyanAccent,
                                   smallColor:
                                       _colorForProgress(rate90D, context),
-                                  centerText: "",
                                   label: routinesLabelD,
                                   size: 140,
                                   onTap: () => _showDomainDetail(
-                                    d,
-                                    startCal,
-                                    endCal,
-                                    days,
-                                    focus: 'habit',
-                                  ),
+                                      d, startCal, endCal, days,
+                                      focus: 'habit'),
                                 ),
                               ),
                             ],
