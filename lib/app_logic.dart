@@ -266,12 +266,43 @@ class AppLogic {
         .name;
 
     removeFromDay(_todayKeyLocal(), PlanKind.activityTime, activityId);
-    logTomorrowIfLastDifferent(PlanKind.activityTime, activityId, title);
+    //logTomorrowIfLastDifferent(PlanKind.activityTime, activityId, title);
 
     // 4) optionnel : préparer demain (si tu veux "planifier", pas "journaliser")
     // ensurePlannedTomorrow(PlanKind.activityTime, activityId);
 
     // 5) persiste une seule fois
+    onChange();
+  }
+
+  List<String> checklistForHabit(String habitId) {
+    return List<String>.from(
+        state.habitChecklistByHabitId[habitId] ?? const <String>[]);
+  }
+
+  void addChecklistItem(String habitId, String label) {
+    final list = List<String>.from(
+        state.habitChecklistByHabitId[habitId] ?? const <String>[]);
+    list.add(label);
+    state.habitChecklistByHabitId[habitId] = list;
+    onChange();
+  }
+
+  void renameChecklistItem(String habitId, int index, String newLabel) {
+    final list = List<String>.from(
+        state.habitChecklistByHabitId[habitId] ?? const <String>[]);
+    if (index < 0 || index >= list.length) return;
+    list[index] = newLabel;
+    state.habitChecklistByHabitId[habitId] = list;
+    onChange();
+  }
+
+  void removeChecklistItem(String habitId, int index) {
+    final list = List<String>.from(
+        state.habitChecklistByHabitId[habitId] ?? const <String>[]);
+    if (index < 0 || index >= list.length) return;
+    list.removeAt(index);
+    state.habitChecklistByHabitId[habitId] = list;
     onChange();
   }
 

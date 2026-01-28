@@ -6,6 +6,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:collection/collection.dart';
 import 'package:productivitwo_v1/widgets/habit_tile_30d.dart'
     show NowHabit30dBar;
+import 'package:productivitwo_v1/widgets/tiny_bar.dart';
 
 class TodayView extends StatefulWidget {
   final AppLogic logic;
@@ -1740,8 +1741,169 @@ class _NowTabState extends State<NowTab> {
   bool _skipDone = true; // option: sauter les items déjà “faits”
   final Set<String> _skippedIds = {};
   final Set<String> _doneTodayIds = {};
+  final Map<String, Set<String>> _checkedChecklistByPlan = {};
 
   String? _skippedYmd;
+
+  List<String> checklistForHabit(String habitName) {
+    switch (habitName.toLowerCase()) {
+      case 'Prendre un bain de mer':
+        return ['Lait', 'Fruits', 'Légumes'];
+      case 'soin':
+        return ['Douche', 'Dents', 'Peau'];
+      default:
+        return ['Courses', 'Dents', 'Peau'];
+    }
+  }
+
+  Future<String?> _promptText({
+    required String title,
+    String initial = "",
+  }) async {
+    final c = TextEditingController(text: initial);
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: c,
+          autofocus: true,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => Navigator.of(ctx).pop(c.text.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(null),
+            child: const Text("Annuler"),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(c.text.trim()),
+            child: const Text("OK"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _routineChecklist(DayPlanItem it) {
+    if (it.kind != PlanKind.habit || it.refId == null) {
+      return const SizedBox.shrink();
+    }
+
+    final habitId = it.refId!;
+    final items = widget.logic.checklistForHabit(habitId);
+
+    final checked =
+        _checkedChecklistByPlan.putIfAbsent(it.id, () => <String>{});
+
+    final total = items.length;
+    final checkedCount = checked.length.clamp(0, total);
+    final ratio = total == 0 ? 0.0 : checkedCount / total;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (items.isNotEmpty) ...[
+              TinyBar(
+                ratio: ratio,
+                labelLeft: "Checklist : $checkedCount / $total",
+                padding: const EdgeInsets.only(top: 6, bottom: 6),
+              ),
+            ],
+            if (items.isEmpty)
+              Text(
+                "Aucun item. Appuie sur + pour en ajouter.",
+                style: TextStyle(
+                  color:
+                      Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                ),
+              )
+            else
+              for (int i = 0; i < items.length; i++)
+                _checklistRow(
+                  planId: it.id,
+                  habitId: habitId,
+                  index: i,
+                  label: items[i],
+                  checked: checked,
+                ),
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerRight,
+              child: IconButton(
+                tooltip: "Ajouter un item",
+                onPressed: () async {
+                  final txt = await _promptText(title: "Ajouter un item");
+                  if (txt == null || txt.isEmpty) return;
+                  widget.logic.addChecklistItem(habitId, txt);
+                  setState(() {});
+                },
+                icon: const Icon(Icons.add),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _checklistRow({
+    required String planId,
+    required String habitId,
+    required int index,
+    required String label,
+    required Set<String> checked,
+  }) {
+    return Row(
+      children: [
+        Checkbox(
+          value: checked.contains(label),
+          onChanged: (v) {
+            setState(() {
+              if (v == true) {
+                checked.add(label);
+              } else {
+                checked.remove(label);
+              }
+            });
+          },
+        ),
+        Expanded(
+          child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis),
+        ),
+        IconButton(
+          tooltip: "Renommer",
+          onPressed: () async {
+            final txt = await _promptText(title: "Renommer", initial: label);
+            if (txt == null || txt.isEmpty) return;
+
+            // si l'item était coché, on transfère la coche
+            setState(() {
+              if (checked.remove(label)) checked.add(txt);
+            });
+
+            widget.logic.renameChecklistItem(habitId, index, txt);
+            setState(() {}); // refresh
+          },
+          icon: const Icon(Icons.edit),
+        ),
+        IconButton(
+          tooltip: "Supprimer",
+          onPressed: () {
+            setState(() {
+              checked.remove(label);
+            });
+            widget.logic.removeChecklistItem(habitId, index);
+            setState(() {}); // refresh
+          },
+          icon: const Icon(Icons.delete_outline),
+        ),
+      ],
+    );
+  }
 
   void _persistNowSets() {
     final ymd = _skippedYmd;
@@ -1811,8 +1973,9 @@ class _NowTabState extends State<NowTab> {
     }
 
     // ✅ sinon on affiche la carte "Maintenant"
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(
+          16, 16, 16, 120), // 👈 120 pour éviter l’overflow avec la bottom bar
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1841,6 +2004,10 @@ class _NowTabState extends State<NowTab> {
                 ),
               ],
             ),
+          ],
+          if (next.it.kind == PlanKind.habit) ...[
+            const SizedBox(height: 10),
+            _routineChecklist(next.it),
           ],
           const SizedBox(height: 12),
           _activitiesSuggestionForCurrent(next.it),
@@ -1918,37 +2085,14 @@ class _NowTabState extends State<NowTab> {
   }
 
   bool _isActionable(DayPlanItem it) {
+    if (it.kind != PlanKind.habit) return false;
     if (_skippedIds.contains(it.id)) return false;
     if (_doneTodayIds.contains(it.id)) return false;
 
-    switch (it.kind) {
-      case PlanKind.habit:
-        {
-          final habitId = it.refId;
-          if (habitId == null) return false;
+    // refId obligatoire
+    if (it.refId == null) return false;
 
-          final act = widget.st.activities.firstWhere((a) => a.id == habitId);
-
-          // uniquement pour daily : on saute si quota atteint
-          final freq = widget.logic.effectiveHabitFreq(act);
-          if (freq == HabitFreq.daily) {
-            final quota = widget.logic.dayQuotaFor(act);
-            if (quota > 0) {
-              final done = widget.logic.habitValueOn(habitId, widget.day);
-              if (done >= quota) return false;
-            }
-          }
-
-          // sinon actionnable
-          return true;
-        }
-
-      case PlanKind.activityTime:
-        return true;
-
-      case PlanKind.action:
-        return !it.done; // ✅ ici, done a du sens
-    }
+    return true;
   }
 
   RowPlan? _pickNow(List<RowItem> rows) {

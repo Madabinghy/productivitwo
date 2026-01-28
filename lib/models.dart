@@ -470,6 +470,8 @@ class AppState {
   Map<String, String> habitPinnedActivity;
   Map<String, List<String>> nowSkippedByYmd; // ids de DayPlanItem (ou virt ids)
   Map<String, List<String>> nowDoneByYmd; // ids "pas aujourd'hui / ok"
+  Map<String, List<String>>
+      habitChecklistByHabitId; // habitId -> ["item1","item2"]
 
   AppState({
     required this.domains,
@@ -488,7 +490,7 @@ class AppState {
     this.lastPrepYmd,
     List<HabitHit>? habitHits,
     Map<String, String>? habitPinnedActivity,
-
+    Map<String, List<String>>? habitChecklistByHabitId,
     // ✅ NOUVEAU
     Map<String, List<String>>? nowSkippedByYmd,
     Map<String, List<String>>? nowDoneByYmd,
@@ -499,7 +501,8 @@ class AppState {
         focusTodayIds = focusTodayIds ?? <String>[],
         habitHits = habitHits ?? <HabitHit>[],
         habitPinnedActivity = habitPinnedActivity ?? <String, String>{},
-
+        habitChecklistByHabitId =
+            habitChecklistByHabitId ?? <String, List<String>>{},
         // ✅ NOUVEAU
         nowSkippedByYmd = nowSkippedByYmd ?? <String, List<String>>{},
         nowDoneByYmd = nowDoneByYmd ?? <String, List<String>>{};
@@ -526,13 +529,10 @@ class AppState {
         'habitHits': habitHits.map((e) => e.toJson()).toList(),
         'habitPinnedActivity': habitPinnedActivity,
 
-        // ✅ persist
-        'habitHits': habitHits.map((e) => e.toJson()).toList(),
-        'habitPinnedActivity': habitPinnedActivity,
-
         // ✅ NOW TAB
         'nowSkippedByYmd': nowSkippedByYmd,
         'nowDoneByYmd': nowDoneByYmd,
+        'habitChecklistByHabitId': habitChecklistByHabitId,
       };
 
   static AppState from(Map j) {
@@ -579,6 +579,7 @@ class AppState {
       habitPinnedActivity: _mapSS(j['habitPinnedActivity']),
       nowSkippedByYmd: _mapSL(j['nowSkippedByYmd']),
       nowDoneByYmd: _mapSL(j['nowDoneByYmd']),
+      habitChecklistByHabitId: _mapSL(j['habitChecklistByHabitId']),
     );
   }
 
