@@ -1433,7 +1433,14 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         TodayView(
           logic: logic,
           state: _state!,
-          onGoNow: () => setState(() => _tab = _Tab.now), // adapte ton enum
+          onGoNow: (habitId) {
+            setState(() {
+              _tab = _Tab.now;
+            });
+
+            // 👉 optionnel MAIS recommandé
+            //logic.focusOnHabit(habitId);
+          },
         ),
         StatsView(logic: logic, state: st, selectedDomainId: null),
       ],

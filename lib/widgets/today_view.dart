@@ -11,7 +11,7 @@ import 'package:productivitwo_v1/widgets/tiny_bar.dart';
 class TodayView extends StatefulWidget {
   final AppLogic logic;
   final AppState state;
-  final VoidCallback onGoNow;
+  final void Function(String habitId)? onGoNow;
   const TodayView({
     super.key,
     required this.logic,
@@ -79,7 +79,9 @@ class _TodayViewState extends State<TodayView> {
               ),
             ),
             TextButton.icon(
-              onPressed: widget.onGoNow, // 👈 on ajoute ça (voir étape 2)
+              onPressed: () {
+                widget.onGoNow?.call(habitId);
+              },
               icon: const Icon(Icons.play_arrow, size: 18),
               label: const Text("Aller à Maintenant"),
             ),
@@ -322,8 +324,6 @@ class _TodayViewState extends State<TodayView> {
     final actionItems = widget.logic.state.dayPlan
         .where((it) => it.kind == PlanKind.action)
         .toList();
-
-    final domainsById = {for (final d in widget.logic.state.domains) d.id: d};
 
     final actionsByDomain = <String?, List<DayPlanItem>>{};
     for (final a in actionItems) {
@@ -892,9 +892,32 @@ class _TodayViewState extends State<TodayView> {
     }
 
     switch (it.kind) {
-      // ---------------- ACTION ----------------
+// ---------------- ACTION ----------------
       case PlanKind.action:
         {
+          final habitName = (it.habitId == null)
+              ? null
+              : widget.state.activities
+                  .firstWhere(
+                    (a) => a.id == it.habitId,
+                    orElse: () => Activity(
+                      id: it.habitId!,
+                      name: "Routine",
+                      domainId: it.domainId ?? "",
+                      type: 'habit',
+                    ),
+                  )
+                  .name;
+
+          final domainName = (it.domainId == null)
+              ? null
+              : widget.state.domains
+                  .firstWhere(
+                    (d) => d.id == it.domainId,
+                    orElse: () => Domain(id: it.domainId!, name: "Domaine"),
+                  )
+                  .name;
+
           return Card(
             key: key,
             margin: const EdgeInsets.only(bottom: 8),
@@ -902,12 +925,11 @@ class _TodayViewState extends State<TodayView> {
               padding: const EdgeInsets.symmetric(vertical: 10),
               child: Row(
                 children: [
+                  // ⬅️ Colonne gauche (drag / move)
                   Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (showDrag) dragHandleFor(it),
-
-                      // Mettre plus tard (fin de liste) — si tu veux le garder pour les routines
                       IconButton(
                         icon: const Icon(Icons.arrow_downward),
                         tooltip: 'Mettre plus tard (fin de liste)',
@@ -920,60 +942,60 @@ class _TodayViewState extends State<TodayView> {
                       ),
                     ],
                   ),
+
+                  // ➡️ Contenu principal
                   Expanded(
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
+                        // Texte
                         Expanded(
-                          child: Text(
-                            it.title,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 16,
-                            ),
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                it.title,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 16,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              if (habitName != null || domainName != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    [
+                                      if (habitName != null)
+                                        "Routine • $habitName",
+                                      if (habitName == null &&
+                                          domainName != null)
+                                        "Domaine • $domainName",
+                                    ].join(""),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurface
+                                          .withOpacity(0.6),
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
-                        /*                        Checkbox(
-                          materialTapTargetSize:
-                              MaterialTapTargetSize.shrinkWrap,
-                          visualDensity: VisualDensity.compact,
-                          value: it.done,
-                          onChanged: (v) {
-                            if (v == null) return;
 
-                            final removed = widget.logic
-                                .toggleDonePlanItem(it.yyyymmdd, it.id, v);
+                        // ▶️ ALLER À MAINTENANT
+                        if (it.habitId != null)
+                          IconButton(
+                            tooltip: "Aller à Maintenant",
+                            icon: const Icon(Icons.play_arrow),
+                            onPressed: () {
+                              widget.onGoNow?.call(it.habitId!);
+                            },
+                          ),
 
-                            setState(() {});
-
-                            ScaffoldMessenger.of(context).clearSnackBars();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  it.kind == PlanKind.action
-                                      ? 'Action supprimée'
-                                      : 'Routine Ok',
-                                ),
-                                duration: const Duration(seconds: 3),
-                                action: SnackBarAction(
-                                  label: 'Annuler',
-                                  onPressed: () {
-                                    if (it.kind == PlanKind.action &&
-                                        removed != null) {
-                                      widget.logic.restorePlanItem(removed);
-                                    } else {
-                                      widget.logic.toggleDonePlanItem(
-                                          it.yyyymmdd, it.id, false);
-                                    }
-                                    setState(() {});
-                                  },
-                                ),
-                              ),
-                            );
-                          },
-                        ), */
                         removeBtn,
                         moveArrowIfAny(),
                       ],
