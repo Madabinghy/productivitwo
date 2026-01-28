@@ -159,7 +159,9 @@ class FileStore {
       habit(sante.id, 'Me coucher à 22h'),
       habit(sante.id, 'Boire de l\'eau'),
       habit(sante.id, 'Manger équilibré'),
-
+      habit(sante.id, 'Prendre ma douche'),
+      habit(sante.id, 'Brosser mes dents'),
+      
       // Organisation — Routines
       habit(organisation.id, 'Saisir mes dépenses'),
       habit(organisation.id, 'Suivre mon budget'),
