@@ -1430,7 +1430,11 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
           buildRowsGrouped: logic.buildRowsGrouped, // si tu l'as déplacée
           onGoTodo: () => setState(() => _tab = _Tab.today),
         ),
-        TodayView(logic: logic, state: st),
+        TodayView(
+          logic: logic,
+          state: _state!,
+          onGoNow: () => setState(() => _tab = _Tab.now), // adapte ton enum
+        ),
         StatsView(logic: logic, state: st, selectedDomainId: null),
       ],
     );

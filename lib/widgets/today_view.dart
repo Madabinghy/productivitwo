@@ -11,7 +11,13 @@ import 'package:productivitwo_v1/widgets/tiny_bar.dart';
 class TodayView extends StatefulWidget {
   final AppLogic logic;
   final AppState state;
-  const TodayView({super.key, required this.logic, required this.state});
+  final VoidCallback onGoNow;
+const TodayView({
+  super.key,
+  required this.logic,
+  required this.state,
+  required this.onGoNow,
+});
 
   @override
   State<TodayView> createState() => _TodayViewState();
@@ -21,6 +27,7 @@ class _TodayViewState extends State<TodayView> {
   // Choix JOUR: aujourd’hui / demain
   late DateTime _base;
   bool _planTomorrow = false;
+  
 
   // --- Pulse de validation (coche verte animée) ---
 /*   final Set<String> _habitPulse = {};
@@ -32,7 +39,7 @@ class _TodayViewState extends State<TodayView> {
       setState(() => _habitPulse.remove(planItemId));
     });
   } */
- Widget _nowChecklistActions() {
+Widget _nowChecklistActions() {
   final habitId = widget.logic.nowHabitId;
   if (habitId == null) return const SizedBox.shrink();
 
@@ -46,33 +53,46 @@ class _TodayViewState extends State<TodayView> {
 
   if (remaining.isEmpty) return const SizedBox.shrink();
 
-  return Card(
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      // Titre comme "Actions"
+      Row(
         children: [
-          const Text("Pour maintenant",
-              style: TextStyle(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 8),
-          for (final label in remaining)
-            CheckboxListTile(
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              title: Text(label),
-              value: false,
-              onChanged: (v) {
-                setState(() {
-                  widget.logic.setCheckedToday(habitId, label, v == true);
-                });
-              },
+          const Expanded(
+            child: Text(
+              "Pour maintenant",
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
             ),
+          ),
+          TextButton.icon(
+            onPressed: widget.onGoNow, // 👈 on ajoute ça (voir étape 2)
+            icon: const Icon(Icons.play_arrow, size: 18),
+            label: const Text("Aller à Maintenant"),
+          ),
         ],
       ),
-    ),
+      const SizedBox(height: 8),
+
+      // Liste "simple" (pas de Card)
+      ...remaining.map((label) {
+        return CheckboxListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          title: Text(label),
+          value: false,
+          onChanged: (v) {
+            setState(() {
+              widget.logic.setCheckedToday(habitId, label, v == true);
+            });
+          },
+        );
+      }),
+
+      const SizedBox(height: 12),
+    ],
   );
 }
-
   String get _ymd {
     final d = _planTomorrow ? _base.add(const Duration(days: 1)) : _base;
     return yyyymmdd(d);
@@ -238,50 +258,56 @@ class _TodayViewState extends State<TodayView> {
     final isEmptyHabitsToday =
         isTodayTab && basePlan.where((it) => it.kind == PlanKind.habit).isEmpty;
 
-    List<DayPlanItem> planOrAuto() {
-      if (!isEmptyHabitsToday) return basePlan;
+List<DayPlanItem> planOrAuto() {
+  if (!isEmptyHabitsToday) return basePlan;
 
-      // construit une liste UI-only de "habits à faire"
-      final habits =
-          widget.logic.state.activities.where((a) => a.isHabit).toList();
+  // construit une liste UI-only de "habits à faire"
+  final habits = widget.logic.state.activities.where((a) => a.isHabit).toList();
 
-      // garde seulement ceux sous seuil (selon freq)
-      final under = habits.where((a) {
-        final freq = widget.logic.effectiveHabitFreq(a);
-        final target = widget.logic.effectiveHabitTarget(a);
-        int done;
-        switch (freq) {
-          case HabitFreq.daily:
-            done = widget.logic.habitValueOn(a.id, todayDate);
-            break;
-          case HabitFreq.weekly:
-            done = widget.logic.habitSliding(a.id, 7).done;
-            break;
-          case HabitFreq.monthly:
-            done = widget.logic.habitSliding(a.id, 30).done;
-            break;
-        }
-        return target > 0 && done < target;
-      });
-
-      // transforme en DayPlanItem virtuel habit (UI-only)
-      return under
-          .map((a) => DayPlanItem(
-                id: 'virt:${a.id}',
-                kind: PlanKind.habit,
-                refId: a.id,
-                domainId: a.domainId,
-                title: a.name,
-                yyyymmdd: ymd,
-                done: false,
-                doneCount: 0,
-                allDay: true,
-                order: 1 << 30,
-              ))
-          .toList();
+  // garde seulement ceux sous seuil (selon freq)
+  final under = habits.where((a) {
+    final freq = widget.logic.effectiveHabitFreq(a);
+    final target = widget.logic.effectiveHabitTarget(a);
+    int done;
+    switch (freq) {
+      case HabitFreq.daily:
+        done = widget.logic.habitValueOn(a.id, todayDate);
+        break;
+      case HabitFreq.weekly:
+        done = widget.logic.habitSliding(a.id, 7).done;
+        break;
+      case HabitFreq.monthly:
+        done = widget.logic.habitSliding(a.id, 30).done;
+        break;
     }
+    return target > 0 && done < target;
+  });
+
+  final virtHabits = under
+      .map((a) => DayPlanItem(
+            id: 'virt:${a.id}',
+            kind: PlanKind.habit,
+            refId: a.id,
+            domainId: a.domainId,
+            title: a.name,
+            yyyymmdd: ymd,
+            done: false,
+            doneCount: 0,
+            allDay: true,
+            order: 1 << 30,
+          ))
+      .toList();
+
+  // ✅ IMPORTANT : on garde les actions/activities déjà dans le plan
+  return [...basePlan, ...virtHabits];
+}
 
     final baseOrAuto = planOrAuto();
+
+
+final actionItems = widget.logic.state.dayPlan
+    .where((it) => it.kind == PlanKind.action)
+    .toList();
 
     // 2) Focus : ne garder QUE les habits (pas d'actions, pas d'autres activités)
     // Hors focus : on garde tout
@@ -519,10 +545,37 @@ class _TodayViewState extends State<TodayView> {
               },
             ),
           ]),
-          body:_nowChecklistActions(),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
+        children: [
+          _nowChecklistActions(),
+          if (actionItems.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text("Actions",
+                style: const TextStyle(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 8),
+            ...actionItems.map((it) => _todayTile(
+                  context,
+                  it,
+                  key: ValueKey(it.id),
+                  showDrag: false,
+                  indexForDrag: 0,
+                )),
+          ] else ...[
+            const SizedBox(height: 12),
+            Text(
+              "Aucune action pour l’instant.",
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(.7),
+              ),
+            ),
+          ],
+        ],
+      ),
       // 🔁 Réorganisation par drag & drop
 /*       body: Column(
         children: [
+          _nowChecklistActions(),
           // Section Focus en haut (ne prend de la place que s’il y a des items)
           _focusSection(widget.logic),
 
