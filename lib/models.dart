@@ -13,7 +13,9 @@ class DayPlanItem {
   String id;
   PlanKind kind;
   String? refId;
-  String? domainId; // ✅ NEW
+  String? domainId;
+  String? activityId;
+  String? habitId;
   String title;
   String yyyymmdd;
   bool done;
@@ -25,7 +27,9 @@ class DayPlanItem {
     required this.id,
     required this.kind,
     this.refId,
-    this.domainId, // ✅
+    this.domainId,
+    this.activityId,
+    this.habitId,
     required this.title,
     required this.yyyymmdd,
     this.done = false,
@@ -38,7 +42,9 @@ class DayPlanItem {
         'id': id,
         'kind': kind.name,
         'refId': refId,
-        'domainId': domainId, // ✅
+        'domainId': domainId,
+        'activityId': activityId,
+        'habitId': habitId,
         'title': title,
         'yyyymmdd': yyyymmdd,
         'done': done,
@@ -55,7 +61,9 @@ class DayPlanItem {
       id: j['id'],
       kind: PlanKind.values.firstWhere((k) => k.name == j['kind']),
       refId: j['refId'],
-      domainId: j['domainId'], // ✅
+      domainId: j['domainId'],
+      activityId: j['activityId'],
+      habitId: j['habitId'],
       title: j['title'] ?? '',
       yyyymmdd: j['yyyymmdd'],
       done: done,

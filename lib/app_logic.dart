@@ -72,17 +72,15 @@ class HabitAssocEvent {
 // ===============  LOGIQUE PRINCIPALE  ================
 // =====================================================
 
-
-
-
 class AppLogic {
   AppState state;
   final void Function() onChange;
   AppLogic(this.state, this.onChange);
 
   String? nowHabitId; // habitId actuellement affichée dans Maintenant (routine)
-  String? _checkYmd;  // pour reset journalier
-  final Map<String, Set<String>> _checkedTodayByHabit = {}; // habitId -> labels cochés
+  String? _checkYmd; // pour reset journalier
+  final Map<String, Set<String>> _checkedTodayByHabit =
+      {}; // habitId -> labels cochés
 
   void ensureChecklistDay(String ymd) {
     if (_checkYmd == ymd) return;
@@ -2600,8 +2598,13 @@ extension TodayLogic on AppLogic {
   Future<void> addPlanAction({
     required String ymd,
     required String title,
+
+    // ✅ nouveaux champs (optionnels)
+    String? domainId,
+    String? activityId,
+    String? habitId,
   }) async {
-    final key = ymd; // <- respecte l'onglet (aujourd'hui/demain/...)
+    final key = ymd; // respecte l'onglet (aujourd'hui/demain/...)
 
     final plan = planFor(key); // trié par order
     final todayKey = _todayKeyLocal();
@@ -2619,6 +2622,11 @@ extension TodayLogic on AppLogic {
       title: title,
       yyyymmdd: key,
       order: ord,
+
+      // ✅ liaison GTD
+      domainId: domainId,
+      activityId: activityId,
+      habitId: habitId,
     ));
 
     onChange();

@@ -12,12 +12,12 @@ class TodayView extends StatefulWidget {
   final AppLogic logic;
   final AppState state;
   final VoidCallback onGoNow;
-const TodayView({
-  super.key,
-  required this.logic,
-  required this.state,
-  required this.onGoNow,
-});
+  const TodayView({
+    super.key,
+    required this.logic,
+    required this.state,
+    required this.onGoNow,
+  });
 
   @override
   State<TodayView> createState() => _TodayViewState();
@@ -27,7 +27,6 @@ class _TodayViewState extends State<TodayView> {
   // Choix JOUR: aujourd’hui / demain
   late DateTime _base;
   bool _planTomorrow = false;
-  
 
   // --- Pulse de validation (coche verte animée) ---
 /*   final Set<String> _habitPulse = {};
@@ -39,60 +38,75 @@ class _TodayViewState extends State<TodayView> {
       setState(() => _habitPulse.remove(planItemId));
     });
   } */
-Widget _nowChecklistActions() {
-  final habitId = widget.logic.nowHabitId;
-  if (habitId == null) return const SizedBox.shrink();
 
-  final now = DateTime.now();
-  final ymd = yyyymmdd(DateTime(now.year, now.month, now.day));
-  widget.logic.ensureChecklistDay(ymd);
-
-  final items = widget.logic.checklistForHabit(habitId);
-  final checked = widget.logic.checkedTodayForHabit(habitId);
-  final remaining = items.where((x) => !checked.contains(x)).toList();
-
-  if (remaining.isEmpty) return const SizedBox.shrink();
-
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      // Titre comme "Actions"
-      Row(
-        children: [
-          const Expanded(
-            child: Text(
-              "Pour maintenant",
-              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-            ),
-          ),
-          TextButton.icon(
-            onPressed: widget.onGoNow, // 👈 on ajoute ça (voir étape 2)
-            icon: const Icon(Icons.play_arrow, size: 18),
-            label: const Text("Aller à Maintenant"),
-          ),
-        ],
+  Widget _domainHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 8),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontWeight: FontWeight.w800,
+          color: Theme.of(context).colorScheme.onSurface.withOpacity(.75),
+        ),
       ),
-      const SizedBox(height: 8),
+    );
+  }
 
-      // Liste "simple" (pas de Card)
-      ...remaining.map((label) {
-        return CheckboxListTile(
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          title: Text(label),
-          value: false,
-          onChanged: (v) {
-            setState(() {
-              widget.logic.setCheckedToday(habitId, label, v == true);
-            });
-          },
-        );
-      }),
+  Widget _nowChecklistActions() {
+    final habitId = widget.logic.nowHabitId;
+    if (habitId == null) return const SizedBox.shrink();
 
-      const SizedBox(height: 12),
-    ],
-  );
-}
+    final now = DateTime.now();
+    final ymd = yyyymmdd(DateTime(now.year, now.month, now.day));
+    widget.logic.ensureChecklistDay(ymd);
+
+    final items = widget.logic.checklistForHabit(habitId);
+    final checked = widget.logic.checkedTodayForHabit(habitId);
+    final remaining = items.where((x) => !checked.contains(x)).toList();
+
+    if (remaining.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Titre comme "Actions"
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                "Pour maintenant",
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+              ),
+            ),
+            TextButton.icon(
+              onPressed: widget.onGoNow, // 👈 on ajoute ça (voir étape 2)
+              icon: const Icon(Icons.play_arrow, size: 18),
+              label: const Text("Aller à Maintenant"),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+
+        // Liste "simple" (pas de Card)
+        ...remaining.map((label) {
+          return CheckboxListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            title: Text(label),
+            value: false,
+            onChanged: (v) {
+              setState(() {
+                widget.logic.setCheckedToday(habitId, label, v == true);
+              });
+            },
+          );
+        }),
+
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+
   String get _ymd {
     final d = _planTomorrow ? _base.add(const Duration(days: 1)) : _base;
     return yyyymmdd(d);
@@ -258,56 +272,71 @@ Widget _nowChecklistActions() {
     final isEmptyHabitsToday =
         isTodayTab && basePlan.where((it) => it.kind == PlanKind.habit).isEmpty;
 
-List<DayPlanItem> planOrAuto() {
-  if (!isEmptyHabitsToday) return basePlan;
+    List<DayPlanItem> planOrAuto() {
+      if (!isEmptyHabitsToday) return basePlan;
 
-  // construit une liste UI-only de "habits à faire"
-  final habits = widget.logic.state.activities.where((a) => a.isHabit).toList();
+      // construit une liste UI-only de "habits à faire"
+      final habits =
+          widget.logic.state.activities.where((a) => a.isHabit).toList();
 
-  // garde seulement ceux sous seuil (selon freq)
-  final under = habits.where((a) {
-    final freq = widget.logic.effectiveHabitFreq(a);
-    final target = widget.logic.effectiveHabitTarget(a);
-    int done;
-    switch (freq) {
-      case HabitFreq.daily:
-        done = widget.logic.habitValueOn(a.id, todayDate);
-        break;
-      case HabitFreq.weekly:
-        done = widget.logic.habitSliding(a.id, 7).done;
-        break;
-      case HabitFreq.monthly:
-        done = widget.logic.habitSliding(a.id, 30).done;
-        break;
+      // garde seulement ceux sous seuil (selon freq)
+      final under = habits.where((a) {
+        final freq = widget.logic.effectiveHabitFreq(a);
+        final target = widget.logic.effectiveHabitTarget(a);
+        int done;
+        switch (freq) {
+          case HabitFreq.daily:
+            done = widget.logic.habitValueOn(a.id, todayDate);
+            break;
+          case HabitFreq.weekly:
+            done = widget.logic.habitSliding(a.id, 7).done;
+            break;
+          case HabitFreq.monthly:
+            done = widget.logic.habitSliding(a.id, 30).done;
+            break;
+        }
+        return target > 0 && done < target;
+      });
+
+      final virtHabits = under
+          .map((a) => DayPlanItem(
+                id: 'virt:${a.id}',
+                kind: PlanKind.habit,
+                refId: a.id,
+                domainId: a.domainId,
+                title: a.name,
+                yyyymmdd: ymd,
+                done: false,
+                doneCount: 0,
+                allDay: true,
+                order: 1 << 30,
+              ))
+          .toList();
+
+      // ✅ IMPORTANT : on garde les actions/activities déjà dans le plan
+      return [...basePlan, ...virtHabits];
     }
-    return target > 0 && done < target;
-  });
-
-  final virtHabits = under
-      .map((a) => DayPlanItem(
-            id: 'virt:${a.id}',
-            kind: PlanKind.habit,
-            refId: a.id,
-            domainId: a.domainId,
-            title: a.name,
-            yyyymmdd: ymd,
-            done: false,
-            doneCount: 0,
-            allDay: true,
-            order: 1 << 30,
-          ))
-      .toList();
-
-  // ✅ IMPORTANT : on garde les actions/activities déjà dans le plan
-  return [...basePlan, ...virtHabits];
-}
 
     final baseOrAuto = planOrAuto();
 
+    final actionItems = widget.logic.state.dayPlan
+        .where((it) => it.kind == PlanKind.action)
+        .toList();
 
-final actionItems = widget.logic.state.dayPlan
-    .where((it) => it.kind == PlanKind.action)
-    .toList();
+    final domainsById = {for (final d in widget.logic.state.domains) d.id: d};
+
+    final actionsByDomain = <String?, List<DayPlanItem>>{};
+    for (final a in actionItems) {
+      (actionsByDomain[a.domainId] ??= []).add(a);
+    }
+
+// Option: tri dans chaque domaine (non fait d’abord)
+    for (final list in actionsByDomain.values) {
+      list.sort((x, y) {
+        if (x.done != y.done) return x.done ? 1 : -1;
+        return x.order.compareTo(y.order);
+      });
+    }
 
     // 2) Focus : ne garder QUE les habits (pas d'actions, pas d'autres activités)
     // Hors focus : on garde tout
@@ -548,26 +577,52 @@ final actionItems = widget.logic.state.dayPlan
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
         children: [
-          _nowChecklistActions(),
-          if (actionItems.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text("Actions",
-                style: const TextStyle(fontWeight: FontWeight.w800)),
-            const SizedBox(height: 8),
-            ...actionItems.map((it) => _todayTile(
+          _nowChecklistActions(), // ton bloc "Pour maintenant" (déjà OK)
+
+          const SizedBox(height: 12),
+          const Text("Actions",
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          const SizedBox(height: 8),
+
+          // Domaine “Sans domaine” d’abord si présent
+          if ((actionsByDomain[null] ?? const []).isNotEmpty ||
+              (actionsByDomain[''] ?? const []).isNotEmpty) ...[
+            _domainHeader("Sans domaine"),
+            ...[
+              ...(actionsByDomain[null] ?? const []),
+              ...(actionsByDomain[''] ?? const []),
+            ].map((it) => _todayTile(
                   context,
                   it,
                   key: ValueKey(it.id),
                   showDrag: false,
                   indexForDrag: 0,
                 )),
-          ] else ...[
             const SizedBox(height: 12),
+          ],
+
+          // Puis chaque domaine connu
+          for (final d in widget.logic.state.domains) ...[
+            if ((actionsByDomain[d.id] ?? const []).isNotEmpty) ...[
+              _domainHeader(d.name),
+              ...(actionsByDomain[d.id]!).map((it) => _todayTile(
+                    context,
+                    it,
+                    key: ValueKey(it.id),
+                    showDrag: false,
+                    indexForDrag: 0,
+                  )),
+              const SizedBox(height: 12),
+            ],
+          ],
+
+          // Si vraiment aucune action
+          if (actionItems.isEmpty) ...[
             Text(
               "Aucune action pour l’instant.",
               style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(.7),
-              ),
+                  color:
+                      Theme.of(context).colorScheme.onSurface.withOpacity(.7)),
             ),
           ],
         ],
@@ -676,12 +731,6 @@ final actionItems = widget.logic.state.dayPlan
     }
     return out;
   }
-
-  Widget _domainHeader(String t) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-        child: Text(t,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-      );
 
   Widget _sectionHeader(String t) => Padding(
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
@@ -1438,6 +1487,35 @@ final actionItems = widget.logic.state.dayPlan
     }
   }
 
+  Future<String?> _pickDomainId(BuildContext context) async {
+    final domains = widget.logic.state.domains;
+
+    return showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              const ListTile(
+                title: Text(
+                  "Choisir un domaine",
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+              for (final d in domains)
+                ListTile(
+                  title: Text(d.name),
+                  onTap: () => Navigator.pop(ctx, d.id),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   void _openAddSheet() {
     showModalBottomSheet(
       context: context,
@@ -1450,19 +1528,70 @@ final actionItems = widget.logic.state.dayPlan
             children: [
               // 1) Ajouter une action volante
               ListTile(
-                leading: const Icon(Icons.check_box_outlined),
-                title: const Text('Ajouter une action'),
+                leading: const Icon(Icons.add_task),
+                title: const Text('Ajouter une action (GTD)'),
                 onTap: () async {
                   Navigator.pop(ctx);
                   final title = await _askText(context, "Nouvelle action");
-                  if ((title ?? '').trim().isNotEmpty) {
-                    await widget.logic
-                        .addPlanAction(ymd: _ymd, title: title!.trim());
-                    if (!mounted) return;
-                    setState(() {});
+                  final t = (title ?? '').trim();
+                  if (t.isEmpty) return;
+
+                  // ✅ contexte = activité en cours sinon picker domaine
+                  final running = widget.logic.runningActivity();
+                  String? domainId;
+                  String? activityId;
+
+                  if (running != null && running.domainId.isNotEmpty) {
+                    domainId = running.domainId;
+                    activityId = running.id;
+                  } else {
+                    domainId = await _pickDomainId(context);
+                    if (domainId == null) return;
                   }
+
+                  await widget.logic.addPlanAction(
+                    ymd: _ymd,
+                    title: t,
+                    domainId: domainId,
+                    activityId: activityId,
+                    habitId: null, // ✅ important
+                  );
+
+                  if (!mounted) return;
+                  setState(() {});
                 },
               ),
+
+              if (widget.logic.nowHabitId != null)
+                ListTile(
+                  leading: const Icon(Icons.checklist),
+                  title: const Text('Ajouter à la routine actuelle'),
+                  subtitle: Text(widget.logic.state.activities
+                      .firstWhere((a) => a.id == widget.logic.nowHabitId!)
+                      .name),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    final title =
+                        await _askText(context, "Action pour la routine");
+                    final t = (title ?? '').trim();
+                    if (t.isEmpty) return;
+
+                    final habitId = widget.logic.nowHabitId!;
+                    final habitAct = widget.logic.state.activities
+                        .firstWhere((a) => a.id == habitId);
+
+                    await widget.logic.addPlanAction(
+                      ymd: _ymd,
+                      title: t,
+                      domainId: habitAct.domainId,
+                      activityId: null,
+                      habitId: habitId, // ✅ explicite
+                    );
+
+                    if (!mounted) return;
+                    setState(() {});
+                  },
+                ),
               const Divider(),
               // 2) Ajouter une activité
               ListTile(
