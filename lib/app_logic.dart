@@ -72,10 +72,35 @@ class HabitAssocEvent {
 // ===============  LOGIQUE PRINCIPALE  ================
 // =====================================================
 
+
+
+
 class AppLogic {
   AppState state;
   final void Function() onChange;
   AppLogic(this.state, this.onChange);
+
+  String? nowHabitId; // habitId actuellement affichée dans Maintenant (routine)
+  String? _checkYmd;  // pour reset journalier
+  final Map<String, Set<String>> _checkedTodayByHabit = {}; // habitId -> labels cochés
+
+  void ensureChecklistDay(String ymd) {
+    if (_checkYmd == ymd) return;
+    _checkYmd = ymd;
+    _checkedTodayByHabit.clear();
+  }
+
+  Set<String> checkedTodayForHabit(String habitId) =>
+      _checkedTodayByHabit[habitId] ?? <String>{};
+
+  void setCheckedToday(String habitId, String label, bool checked) {
+    final s = _checkedTodayByHabit.putIfAbsent(habitId, () => <String>{});
+    if (checked) {
+      s.add(label);
+    } else {
+      s.remove(label);
+    }
+  }
 
   String? _lastRolloverDay;
   final List<HabitAssocEvent> habitAssocEvents = [];

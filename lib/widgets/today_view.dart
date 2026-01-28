@@ -32,6 +32,46 @@ class _TodayViewState extends State<TodayView> {
       setState(() => _habitPulse.remove(planItemId));
     });
   } */
+ Widget _nowChecklistActions() {
+  final habitId = widget.logic.nowHabitId;
+  if (habitId == null) return const SizedBox.shrink();
+
+  final now = DateTime.now();
+  final ymd = yyyymmdd(DateTime(now.year, now.month, now.day));
+  widget.logic.ensureChecklistDay(ymd);
+
+  final items = widget.logic.checklistForHabit(habitId);
+  final checked = widget.logic.checkedTodayForHabit(habitId);
+  final remaining = items.where((x) => !checked.contains(x)).toList();
+
+  if (remaining.isEmpty) return const SizedBox.shrink();
+
+  return Card(
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("Pour maintenant",
+              style: TextStyle(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          for (final label in remaining)
+            CheckboxListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: Text(label),
+              value: false,
+              onChanged: (v) {
+                setState(() {
+                  widget.logic.setCheckedToday(habitId, label, v == true);
+                });
+              },
+            ),
+        ],
+      ),
+    ),
+  );
+}
 
   String get _ymd {
     final d = _planTomorrow ? _base.add(const Duration(days: 1)) : _base;
@@ -479,9 +519,9 @@ class _TodayViewState extends State<TodayView> {
               },
             ),
           ]),
-
+          body:_nowChecklistActions(),
       // 🔁 Réorganisation par drag & drop
-      body: Column(
+/*       body: Column(
         children: [
           // Section Focus en haut (ne prend de la place que s’il y a des items)
           _focusSection(widget.logic),
@@ -555,7 +595,7 @@ class _TodayViewState extends State<TodayView> {
           ), */
         ],
       ),
-
+ */
       floatingActionButton: _buildFab(), // ton FAB existant pour ajouter
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
@@ -1789,12 +1829,14 @@ class _NowTabState extends State<NowTab> {
     if (it.kind != PlanKind.habit || it.refId == null) {
       return const SizedBox.shrink();
     }
-
     final habitId = it.refId!;
-    final items = widget.logic.checklistForHabit(habitId);
+    final ymd =
+        yyyymmdd(DateTime(widget.day.year, widget.day.month, widget.day.day));
+    widget.logic.ensureChecklistDay(ymd);
 
-    final checked =
-        _checkedChecklistByPlan.putIfAbsent(it.id, () => <String>{});
+    final checked = widget.logic.checkedTodayForHabit(habitId);
+
+    final items = widget.logic.checklistForHabit(habitId);
 
     final total = items.length;
     final checkedCount = checked.length.clamp(0, total);
@@ -1863,11 +1905,7 @@ class _NowTabState extends State<NowTab> {
           value: checked.contains(label),
           onChanged: (v) {
             setState(() {
-              if (v == true) {
-                checked.add(label);
-              } else {
-                checked.remove(label);
-              }
+              widget.logic.setCheckedToday(habitId, label, v == true);
             });
           },
         ),
@@ -1960,6 +1998,15 @@ class _NowTabState extends State<NowTab> {
     }
 
     final next = _pickNow(rows); // <-- doit renvoyer RowPlan?
+
+    if (next != null &&
+        next.it.kind == PlanKind.habit &&
+        next.it.refId != null) {
+      final ymd =
+          yyyymmdd(DateTime(widget.day.year, widget.day.month, widget.day.day));
+      widget.logic.ensureChecklistDay(ymd);
+      widget.logic.nowHabitId = next.it.refId!;
+    }
 
     // ✅ IMPORTANT : on ne montre “tout est fait” que si next == null
     if (next == null) {
