@@ -113,7 +113,13 @@ class FileStore {
       timeAct(organisation.id, 'Intendance'),
       timeAct(organisation.id, 'Planification'),
       timeAct(organisation.id, 'Préparation'),
-      timeAct(organisation.id, 'Courses'),
+      Activity(
+        domainId: organisation.id,
+        name: 'Courses',
+        type: 'time',
+        goalMin: 1,
+        role: ActivityRole.shopping,
+      ),
       timeAct(organisation.id, 'Rendre service'),
 
       // Business — Activités
@@ -161,7 +167,7 @@ class FileStore {
       habit(sante.id, 'Manger équilibré'),
       habit(sante.id, 'Prendre ma douche'),
       habit(sante.id, 'Brosser mes dents'),
-      
+
       // Organisation — Routines
       habit(organisation.id, 'Saisir mes dépenses'),
       habit(organisation.id, 'Suivre mon budget'),

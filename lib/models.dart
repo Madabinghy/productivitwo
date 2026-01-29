@@ -9,6 +9,12 @@ enum PlanKind { action, activityTime, habit }
 
 enum HabitFreq { daily, weekly, monthly }
 
+enum ActionStatus {
+  active,
+  done,
+  archived,
+}
+
 class DayPlanItem {
   String id;
   PlanKind kind;
@@ -23,6 +29,11 @@ class DayPlanItem {
   bool allDay;
   int order;
   bool isNowFocus;
+  bool toPlan; // ✅ item "Courses / à prévoir"
+  bool archived; // ✅ archivé (global si habitId == null)
+  ActionStatus status;
+  DateTime createdAt;
+  
 
   DayPlanItem({
     required this.id,
@@ -38,7 +49,12 @@ class DayPlanItem {
     this.allDay = false,
     this.isNowFocus = false,
     this.order = 0,
-  });
+    this.toPlan = false,
+    this.archived = false,
+    DateTime? createdAt,
+    ActionStatus? status,
+  })  : createdAt = createdAt ?? DateTime.now(),
+        status = status ?? ActionStatus.active;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -54,6 +70,8 @@ class DayPlanItem {
         'allDay': allDay,
         'isNowFocus': isNowFocus,
         'order': order,
+        'toPlan': toPlan,
+        'archived': archived,
       };
 
   static DayPlanItem from(Map j) {
@@ -74,6 +92,8 @@ class DayPlanItem {
       allDay: j['allDay'] ?? false,
       isNowFocus: j['isNowFocus'] ?? false,
       order: j['order'] ?? 0,
+      toPlan: (j['toPlan'] as bool?) ?? false,
+      archived: (j['archived'] as bool?) ?? false,
     );
   }
 }
@@ -192,6 +212,12 @@ class Domain {
       );
 }
 
+enum ActivityRole {
+  generic,
+  shopping, // 👈 Courses
+  focus,
+}
+
 /// --- ACTIVITÉS ---
 /// type = "time" (timer) ou "habit" (compteur)
 
@@ -200,6 +226,7 @@ class Activity {
   final String id;
   final String domainId;
   String name;
+  final ActivityRole role;
 
   /// "time" | "habit"
   final String type;
@@ -232,6 +259,7 @@ class Activity {
     required this.domainId,
     required this.name,
     this.type = 'time',
+    this.role = ActivityRole.generic,
     this.goalMin = 1,
     this.unit,
     this.habitFreq,
@@ -258,6 +286,7 @@ class Activity {
         'domainId': domainId,
         'name': name,
         'type': type,
+        'role': role.name,
         'goalMin': goalMin,
         'unit': unit,
         // plus de dailyTarget ici
@@ -294,6 +323,10 @@ class Activity {
       domainId: j['domainId'],
       name: j['name'],
       type: (j['type'] ?? 'time'),
+      role: ActivityRole.values.firstWhere(
+        (r) => r.name == j['role'],
+        orElse: () => ActivityRole.generic,
+      ),
       goalMin: (j['goalMin'] ?? 1) is int ? (j['goalMin'] ?? 1) : 1,
       unit: j['unit'],
       habitFreq: parsedFreq,

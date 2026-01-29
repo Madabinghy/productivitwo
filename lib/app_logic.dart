@@ -2610,6 +2610,44 @@ extension TodayLogic on AppLogic {
     onChange();
   }
 
+  Activity? shoppingActivity() {
+    for (final a in state.activities) {
+      if (!a.isHabit && a.role == ActivityRole.shopping) {
+        return a;
+      }
+    }
+    return null;
+  }
+
+  Future<void> addToPlanAction({
+    required String ymd,
+    required String title,
+    String? habitId,
+    String? domainId,
+  }) async {
+    await addPlanAction(ymd: ymd, title: title);
+
+    // récupère l’item qu’on vient d’ajouter (le dernier)
+    final it = state.dayPlan.last;
+
+    // trouve courses (temporaire par nom)
+    final courses = state.activities.firstWhere(
+      (a) => !a.isHabit && a.name == "Courses",
+      orElse: () =>
+          Activity(domainId: domainId ?? '', name: "Courses", type: 'time'),
+    );
+
+    it.toPlan = true;
+    it.archived = false;
+    it.done = false;
+
+    it.habitId = habitId;
+    it.activityId = courses.id;
+    it.domainId = domainId ?? courses.domainId;
+
+    onChange();
+  }
+
   Future<void> addPlanAction({
     required String ymd,
     required String title,
