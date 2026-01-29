@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
@@ -28,6 +30,39 @@ class _TodayViewState extends State<TodayView> {
   late DateTime _base;
   bool _planTomorrow = false;
 
+  Timer? _runWatch;
+  String? _lastRunningId;
+  bool _showAll = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _base = DateTime.now();
+
+    // 1) housekeeping après build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _startupHousekeeping();
+      widget.logic.backfillDomainIdsForPlan();
+      if (mounted) setState(() {});
+    });
+
+    // 2) watcher start/stop activité => refresh "À faire"
+    _lastRunningId = widget.logic.runningActivity()?.id;
+    _runWatch = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      final cur = widget.logic.runningActivity()?.id;
+      if (cur != _lastRunningId) {
+        _lastRunningId = cur;
+        if (mounted) setState(() {});
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _runWatch?.cancel();
+    super.dispose();
+  }
   // --- Pulse de validation (coche verte animée) ---
 /*   final Set<String> _habitPulse = {};
 
@@ -117,17 +152,6 @@ class _TodayViewState extends State<TodayView> {
   void _startupHousekeeping() {
     widget.logic.maybeCarryFromYesterday();
     widget.logic.ensureDailyHabitsPlanned();
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _startupHousekeeping();
-      widget.logic.backfillDomainIdsForPlan();
-      setState(() {});
-    });
-    _base = DateTime.now();
   }
 
   bool isHabitReached(DayPlanItem it) {
@@ -260,13 +284,8 @@ class _TodayViewState extends State<TodayView> {
             ? runningAct.domainId
             : null;
 
-    final hasRunning = isTodayTab && currentDomainId != null;
-
     // Mode test : hors activité, on force uniquement les non-atteints
     const forceOnlyUnderWhenNoRunning = true;
-
-    // Reorder: on interdit en focus et quand tri dashboard activé
-    final canReorder = !sortByDashboard && !hasRunning;
 
     // 1) Base: plan du jour affiché
     final basePlan = widget.logic.planFor(ymd).toList();
@@ -325,17 +344,62 @@ class _TodayViewState extends State<TodayView> {
         .where((it) => it.kind == PlanKind.action)
         .toList();
 
-    final actionsByDomain = <String?, List<DayPlanItem>>{};
-    for (final a in actionItems) {
-      (actionsByDomain[a.domainId] ??= []).add(a);
+    final running = widget.logic.runningActivity();
+    final hasRunning = isTodayTab && running != null;
+    final runningDomainId = hasRunning ? running!.domainId : null;
+    final runningActivityId = hasRunning ? running!.id : null;
+
+// 1) Actions “contexte”
+    final ctxActions = <DayPlanItem>[];
+    if (hasRunning && runningDomainId != null && runningDomainId.isNotEmpty) {
+      final byActivity = actionItems
+          .where(
+              (a) => a.activityId != null && a.activityId == runningActivityId)
+          .toList();
+
+      final byDomain = actionItems
+          .where((a) => a.activityId == null && a.domainId == runningDomainId)
+          .toList();
+
+      ctxActions
+        ..addAll(byActivity)
+        ..addAll(byDomain);
     }
 
-// Option: tri dans chaque domaine (non fait d’abord)
+    int cmp(DayPlanItem a, DayPlanItem b) {
+      if (a.done != b.done) return a.done ? 1 : -1;
+      final c = a.order.compareTo(b.order);
+      if (c != 0) return c;
+      return a.title.compareTo(b.title);
+    }
+
+    ctxActions.sort(cmp);
+
+    final domId = hasRunning ? running!.domainId : null;
+    final actId = hasRunning ? running!.id : null;
+
+    final byActivity = <DayPlanItem>[];
+    final byDomainOnly = <DayPlanItem>[];
+
+    if (hasRunning && domId != null && domId.isNotEmpty) {
+      byActivity.addAll(actionItems.where((a) => a.activityId == actId));
+      byDomainOnly.addAll(actionItems
+          .where((a) => a.activityId == null && a.domainId == domId));
+    }
+
+    final usedIds = {
+      ...byActivity.map((e) => e.id),
+      ...byDomainOnly.map((e) => e.id)
+    };
+    final otherActions =
+        actionItems.where((a) => !usedIds.contains(a.id)).toList();
+
+    final actionsByDomain = <String?, List<DayPlanItem>>{};
+    for (final a in otherActions) {
+      (actionsByDomain[a.domainId] ??= []).add(a);
+    }
     for (final list in actionsByDomain.values) {
-      list.sort((x, y) {
-        if (x.done != y.done) return x.done ? 1 : -1;
-        return x.order.compareTo(y.order);
-      });
+      list.sort(cmp);
     }
 
     // 2) Focus : ne garder QUE les habits (pas d'actions, pas d'autres activités)
@@ -539,7 +603,7 @@ class _TodayViewState extends State<TodayView> {
     );
 
     return Scaffold(
-      appBar: AppBar(
+/*       appBar: AppBar(
           leading: IconButton(
             icon:
                 Icon(sortByDashboard ? Icons.auto_awesome : Icons.drag_handle),
@@ -573,39 +637,75 @@ class _TodayViewState extends State<TodayView> {
                 });
               },
             ),
-          ]),
+          ]), */
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
         children: [
           _nowChecklistActions(), // ton bloc "Pour maintenant" (déjà OK)
-
-          const SizedBox(height: 12),
-          const Text("Actions",
-              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-          const SizedBox(height: 8),
-
-          // Domaine “Sans domaine” d’abord si présent
-          if ((actionsByDomain[null] ?? const []).isNotEmpty ||
-              (actionsByDomain[''] ?? const []).isNotEmpty) ...[
-            _domainHeader("Sans domaine"),
-            ...[
-              ...(actionsByDomain[null] ?? const []),
-              ...(actionsByDomain[''] ?? const []),
-            ].map((it) => _todayTile(
-                  context,
-                  it,
-                  key: ValueKey(it.id),
-                  showDrag: false,
-                  indexForDrag: 0,
-                )),
-            const SizedBox(height: 12),
+          if (hasRunning &&
+              (byActivity.isNotEmpty || byDomainOnly.isNotEmpty)) ...[
+            Text(
+              "Contexte • ${running!.name}",
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+            ),
+            const SizedBox(height: 8),
+            if (byActivity.isNotEmpty) ...[
+              Text(
+                "Liées à l’activité",
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color:
+                      Theme.of(context).colorScheme.onSurface.withOpacity(.7),
+                ),
+              ),
+              const SizedBox(height: 6),
+              ...byActivity.map((it) => _todayTile(context, it,
+                  key: ValueKey(it.id), showDrag: false, indexForDrag: 0)),
+              const SizedBox(height: 12),
+            ],
+            if (byDomainOnly.isNotEmpty) ...[
+              Text(
+                "Dans le domaine",
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color:
+                      Theme.of(context).colorScheme.onSurface.withOpacity(.7),
+                ),
+              ),
+              const SizedBox(height: 6),
+              ...byDomainOnly.map((it) => _todayTile(context, it,
+                  key: ValueKey(it.id), showDrag: false, indexForDrag: 0)),
+              const SizedBox(height: 12),
+            ],
           ],
+          const SizedBox(height: 12),
 
-          // Puis chaque domaine connu
-          for (final d in widget.logic.state.domains) ...[
-            if ((actionsByDomain[d.id] ?? const []).isNotEmpty) ...[
-              _domainHeader(d.name),
-              ...(actionsByDomain[d.id]!).map((it) => _todayTile(
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  "Actions",
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                ),
+              ),
+              TextButton(
+                onPressed: () => setState(() => _showAll = !_showAll),
+                child: Text(_showAll ? "Masquer" : "Voir tout"),
+              ),
+            ],
+          ),
+
+          if (_showAll) ...[
+            const SizedBox(height: 8),
+
+            // Domaine “Sans domaine” d’abord si présent
+            if ((actionsByDomain[null] ?? const []).isNotEmpty ||
+                (actionsByDomain[''] ?? const []).isNotEmpty) ...[
+              _domainHeader("Sans domaine"),
+              ...[
+                ...(actionsByDomain[null] ?? const []),
+                ...(actionsByDomain[''] ?? const []),
+              ].map((it) => _todayTile(
                     context,
                     it,
                     key: ValueKey(it.id),
@@ -614,16 +714,32 @@ class _TodayViewState extends State<TodayView> {
                   )),
               const SizedBox(height: 12),
             ],
-          ],
 
-          // Si vraiment aucune action
-          if (actionItems.isEmpty) ...[
-            Text(
-              "Aucune action pour l’instant.",
-              style: TextStyle(
+            // Puis chaque domaine connu
+            for (final d in widget.logic.state.domains) ...[
+              if ((actionsByDomain[d.id] ?? const []).isNotEmpty) ...[
+                _domainHeader(d.name),
+                ...(actionsByDomain[d.id]!).map((it) => _todayTile(
+                      context,
+                      it,
+                      key: ValueKey(it.id),
+                      showDrag: false,
+                      indexForDrag: 0,
+                    )),
+                const SizedBox(height: 12),
+              ],
+            ],
+
+            // Si vraiment aucune action (dans otherActions)
+            if (otherActions.isEmpty) ...[
+              Text(
+                "Aucune action pour l’instant.",
+                style: TextStyle(
                   color:
-                      Theme.of(context).colorScheme.onSurface.withOpacity(.7)),
-            ),
+                      Theme.of(context).colorScheme.onSurface.withOpacity(.7),
+                ),
+              ),
+            ],
           ],
         ],
       ),
@@ -2052,6 +2168,11 @@ class _NowTabState extends State<NowTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const Text(
+              "Checklist",
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+            ),
+            const SizedBox(height: 6),
             if (items.isNotEmpty) ...[
               TinyBar(
                 ratio: ratio,
@@ -2178,6 +2299,115 @@ class _NowTabState extends State<NowTab> {
     }
   }
 
+  List<DayPlanItem> _actionsToPlanForHabit(DayPlanItem it) {
+    final habitId = it.refId;
+    if (habitId == null) return const [];
+
+    final list = widget.st.dayPlan.where((a) {
+      if (a.kind != PlanKind.action) return false;
+      if (a.done) return false;
+      return a.habitId == habitId; // ✅ liées à la routine, toutes dates
+    }).toList();
+
+    // tri : les plus anciennes d'abord, puis ordre
+    list.sort((a, b) {
+      final c = a.yyyymmdd.compareTo(b.yyyymmdd);
+      if (c != 0) return c;
+      return a.order.compareTo(b.order);
+    });
+
+    return list;
+  }
+
+  Widget _toPlanSection(DayPlanItem it) {
+    final habitId = it.refId;
+    if (habitId == null) return const SizedBox.shrink();
+
+    final actions = _actionsToPlanForHabit(it);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "À prévoir",
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+            ),
+            const SizedBox(height: 6),
+            if (actions.isEmpty)
+              Text(
+                "Rien à prévoir pour l’instant.",
+                style: TextStyle(
+                  color:
+                      Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                ),
+              )
+            else
+              for (final a in actions)
+                Row(
+                  children: [
+                    const Icon(Icons.push_pin_outlined, size: 18),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        a.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: "Marquer fait",
+                      icon: const Icon(Icons.check, size: 18),
+                      onPressed: () {
+                        setState(() {
+                          a.done = true;
+                        });
+                        widget.logic.onChange();
+                      },
+                    ),
+                  ],
+                ),
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerRight,
+              child: IconButton(
+                tooltip: "Ajouter à prévoir",
+                icon: const Icon(Icons.add),
+                onPressed: () async {
+                  final txt = await _promptText(title: "Ajouter à prévoir");
+                  if (txt == null || txt.trim().isEmpty) return;
+
+                  final habitAct = widget.st.activities.firstWhere(
+                    (a) => a.id == habitId,
+                    orElse: () => Activity(
+                        domainId: it.domainId ?? "",
+                        name: "Routine",
+                        type: 'habit'),
+                  );
+
+                  await widget.logic.addPlanAction(
+                    ymd: yyyymmdd(DateTime(
+                        widget.day.year, widget.day.month, widget.day.day)),
+                    title: txt.trim(),
+                    domainId: habitAct.domainId,
+                    habitId: habitId, // ✅ liée à la routine
+                    activityId: null,
+                  );
+
+                  if (!mounted) return;
+                  setState(() {});
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final ymd =
@@ -2262,6 +2492,10 @@ class _NowTabState extends State<NowTab> {
           ],
           const SizedBox(height: 12),
           _activitiesSuggestionForCurrent(next.it),
+          if (next.it.kind == PlanKind.habit) ...[
+            const SizedBox(height: 10),
+            _toPlanSection(next.it),
+          ],
         ],
       ),
     );
