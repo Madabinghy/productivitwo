@@ -156,9 +156,9 @@ class FileStore {
       // 🔥 UNE SEULE ROUTINE SOUPLESSE
       Activity(
         domainId: sport.id,
-        name: 'Étirements – mobilité',
+        name: 'Étirements',
         type: 'habit',
-        habitFreq: HabitFreq.weekly,
+        habitFreq: HabitFreq.daily,
         habitTarget: 35, // 🔑 remplace tes 35 routines
         manualTarget: true, // permet checklist / incrément manuel
         autoTune: false,
