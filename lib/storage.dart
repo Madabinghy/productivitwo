@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'models.dart';
 
@@ -206,8 +207,8 @@ AppState _seedMinimal() {
 
   final dayPlan = <DayPlanItem>[
     // --- Hygiène du matin ---
-    action(title: 'Brosser les dents', habit: habitByName('Hygiène du matin')),
     action(title: 'Douche', habit: habitByName('Hygiène du matin')),
+    action(title: 'Brosser les dents', habit: habitByName('Hygiène du matin')),
     action(title: 'Déodorant', habit: habitByName('Hygiène du matin')),
     action(
       title: 'Dentifrice',
@@ -216,6 +217,7 @@ AppState _seedMinimal() {
     ),
 
     // --- Hygiène du soir ---
+    action(title: 'Douche', habit: habitByName('Hygiène du soir')),
     action(title: 'Brosser les dents', habit: habitByName('Hygiène du soir')),
     action(title: 'Skincare', habit: habitByName('Hygiène du soir')),
 
