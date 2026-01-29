@@ -14,11 +14,13 @@ class TodayView extends StatefulWidget {
   final AppLogic logic;
   final AppState state;
   final void Function(String habitId)? onGoNow;
+  final VoidCallback? onGoNowTab; // ✅ juste switch d’onglet
   const TodayView({
     super.key,
     required this.logic,
     required this.state,
-    required this.onGoNow,
+    this.onGoNow,
+    this.onGoNowTab,
   });
 
   @override
@@ -34,11 +36,93 @@ class _TodayViewState extends State<TodayView> {
   String? _lastRunningId;
   bool _showAll = false;
 
+  Future<void> _startOrPickActivityForAction(DayPlanItem it) async {
+    // 1) si déjà associée → start direct
+    Activity? act;
+    if (it.activityId != null && it.activityId!.isNotEmpty) {
+      act = widget.state.activities.firstWhere(
+        (a) => a.id == it.activityId,
+        orElse: () => Activity(
+            domainId: it.domainId ?? '', name: "Activité", type: 'time'),
+      );
+    } else {
+      // 2) sinon → choisir
+      act = await _pickActivity(isHabit: false);
+      if (act == null) return;
+
+      // 3) associer automatiquement
+      setState(() {
+        it.activityId = act!.id;
+        it.domainId = act.domainId;
+      });
+      widget.logic.onChange();
+    }
+
+    // 4) lancer l’activité
+    // ⚠️ si une activité tourne déjà, décide ce que tu veux faire.
+    // Version simple : on stop puis start
+    final running = widget.logic.runningActivity();
+    if (running != null && running.id != act.id) {
+      widget.logic.stopActive();
+    }
+
+    widget.logic.start(act.id);
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  Activity? _actById(String? id) {
+    if (id == null) return null;
+    for (final a in widget.state.activities) {
+      if (a.id == id) return a;
+    }
+    return null;
+  }
+
+  String? _domainName(String? id) {
+    if (id == null || id.isEmpty) return null;
+    for (final d in widget.state.domains) {
+      if (d.id == id) return d.name;
+    }
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
 
     _base = DateTime.now();
+
+    Future<Activity?> _pickActivity(BuildContext context,
+        {String? domainId}) async {
+      final acts = widget.logic.state.activities
+          .where(
+              (a) => !a.isHabit && (domainId == null || a.domainId == domainId))
+          .toList();
+
+      if (acts.isEmpty) return null;
+
+      return showModalBottomSheet<Activity>(
+        context: context,
+        showDragHandle: true,
+        builder: (ctx) => SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              const ListTile(
+                title: Text("Associer à une activité",
+                    style: TextStyle(fontWeight: FontWeight.w800)),
+              ),
+              for (final a in acts)
+                ListTile(
+                  title: Text(a.name),
+                  onTap: () => Navigator.pop(ctx, a),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
 
     // 1) housekeeping après build
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -117,7 +201,7 @@ class _TodayViewState extends State<TodayView> {
               onPressed: () {
                 widget.onGoNow?.call(habitId);
               },
-              icon: const Icon(Icons.play_arrow, size: 18),
+              icon: const Icon(Icons.push_pin_outlined, size: 18),
               label: const Text("Aller à Maintenant"),
             ),
           ],
@@ -1034,6 +1118,17 @@ class _TodayViewState extends State<TodayView> {
                   )
                   .name;
 
+          final activityName = (it.activityId == null)
+              ? null
+              : widget.state.activities
+                  .firstWhere((a) => a.id == it.activityId,
+                      orElse: () => Activity(domainId: '', name: 'Activité'))
+                  .name;
+
+          final habit = _actById(it.habitId);
+          final activity = _actById(it.activityId);
+          final domName = _domainName(it.domainId);
+
           return Card(
             key: key,
             margin: const EdgeInsets.only(bottom: 8),
@@ -1060,11 +1155,11 @@ class _TodayViewState extends State<TodayView> {
                   ),
 
                   // ➡️ Contenu principal
+
                   Expanded(
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        // Texte
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1078,42 +1173,169 @@ class _TodayViewState extends State<TodayView> {
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                              if (habitName != null || domainName != null)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 4),
-                                  child: Text(
-                                    [
-                                      if (habitName != null)
-                                        "Routine • $habitName",
-                                      if (habitName == null &&
-                                          domainName != null)
-                                        "Domaine • $domainName",
-                                    ].join(""),
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurface
-                                          .withOpacity(0.6),
+
+                              // Sous-ligne : Routine + play (inline)
+                              if (habit != null) ...[
+                                const SizedBox(height: 4),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        "Routine • ${habit.name}",
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurface
+                                              .withOpacity(0.6),
+                                        ),
+                                      ),
                                     ),
+                                    const SizedBox(width: 4),
+                                    InkWell(
+                                      borderRadius: BorderRadius.circular(20),
+                                      onTap: () =>
+                                          widget.onGoNow?.call(it.habitId!),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(2),
+                                        child: Icon(
+                                          Icons.push_pin_outlined,
+                                          size: 16,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+
+                              // Sous-ligne : Activité + X (inline)
+                              if (activity != null) ...[
+                                const SizedBox(height: 2),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        "Activité • ${activity.name}",
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurface
+                                              .withOpacity(0.6),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    InkWell(
+                                      borderRadius: BorderRadius.circular(20),
+                                      onTap: () {
+                                        setState(() {
+                                          it.activityId = null;
+                                        });
+                                        widget.logic.onChange();
+                                      },
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(2),
+                                        child: Icon(
+                                          Icons.close,
+                                          size: 16,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurface
+                                              .withOpacity(0.6),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+
+                              // (optionnel) Domaine si aucun lien
+                              if (habit == null &&
+                                  activity == null &&
+                                  domName != null) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  "Domaine • $domName",
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurface
+                                        .withOpacity(0.6),
                                   ),
                                 ),
+                              ],
                             ],
                           ),
                         ),
-
-                        // ▶️ ALLER À MAINTENANT
-                        if (it.habitId != null)
-                          IconButton(
-                            tooltip: "Aller à Maintenant",
-                            icon: const Icon(Icons.play_arrow),
-                            onPressed: () {
-                              widget.onGoNow?.call(it.habitId!);
-                            },
-                          ),
-
-                        removeBtn,
-                        moveArrowIfAny(),
+                        IconButton(
+                          tooltip: "Démarrer l’activité",
+                          icon: const Icon(Icons.play_arrow),
+                          onPressed: () {
+                            _startOrPickActivityForAction(it);
+                            widget.logic
+                                .setNowFocus(it.id); // plan item id (action)
+                            widget.onGoNowTab?.call(); // switch onglet Now
+                          },
+                        ),
+                        // Tes boutons existants
+                        Checkbox(
+                          value: it.done,
+                          onChanged: (v) {
+                            setState(() {
+                              it.done = v ?? false;
+                            });
+                            widget.logic.onChange();
+                          },
+                        ),
+                        PopupMenuButton<String>(
+                          itemBuilder: (ctx) => const [
+                            PopupMenuItem(
+                                value: 'link',
+                                child: Text("Associer à une activité")),
+                            PopupMenuItem(
+                                value: 'unlink',
+                                child: Text("Retirer l’activité")),
+                            PopupMenuDivider(),
+                            PopupMenuItem(
+                                value: 'delete', child: Text("Supprimer")),
+                          ],
+                          onSelected: (v) async {
+                            if (v == 'link') {
+                              final act = await _pickActivity(isHabit: false);
+                              if (act == null) return;
+                              setState(() {
+                                it.activityId = act.id;
+                                it.domainId = act.domainId;
+                              });
+                              widget.logic.onChange();
+                            } else if (v == 'unlink') {
+                              setState(() {
+                                it.activityId = null;
+                              });
+                              widget.logic.onChange();
+                            } else if (v == 'delete') {
+                              setState(() {
+                                // ⚠️ adapte selon ta logique
+                                widget.logic.state.dayPlan
+                                    .removeWhere((e) => e.id == it.id);
+                                widget.logic.onChange();
+                              });
+                            }
+                          },
+                        ),
                       ],
                     ),
                   ),
@@ -2116,6 +2338,121 @@ class _NowTabState extends State<NowTab> {
     }
   }
 
+  Widget _nowActionCard(BuildContext context, DayPlanItem it) {
+    // Subtitle sympa (domaine / activité)
+    String? subtitle;
+
+    final domId = it.domainId;
+    if (domId != null && domId.isNotEmpty) {
+      final dom = widget.st.domains.firstWhere(
+        (d) => d.id == domId,
+        orElse: () => Domain(id: domId, name: "Domaine"),
+      );
+      subtitle = "Domaine • ${dom.name}";
+    }
+
+    if (it.activityId != null) {
+      final act = widget.st.activities.firstWhere(
+        (a) => a.id == it.activityId,
+        orElse: () =>
+            Activity(domainId: domId ?? '', name: "Activité", type: 'time'),
+      );
+      subtitle = (subtitle == null)
+          ? "Activité • ${act.name}"
+          : "$subtitle  ·  Activité • ${act.name}";
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    "MAINTENANT",
+                    style: TextStyle(
+                      letterSpacing: 1.2,
+                      fontWeight: FontWeight.w800,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(0.6),
+                    ),
+                  ),
+                ),
+                // Petit bouton pour quitter le focus
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      it.isNowFocus = false;
+                    });
+                    widget.logic.onChange();
+                  },
+                  child: const Text("Retour"),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 10),
+
+            // Titre action
+            Text(
+              it.title,
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+            ),
+
+            if (subtitle != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 13,
+                  color:
+                      Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 14),
+
+            // Boutons
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () {
+                      setState(() {
+                        it.done = true; // ✅ terminé
+                        it.isNowFocus = false; // ✅ libère le focus
+                      });
+                      widget.logic.onChange();
+                    },
+                    child: const Text("Fait"),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                OutlinedButton(
+                  onPressed: () {
+                    setState(() {
+                      it.isNowFocus =
+                          false; // ✅ on sort du focus sans marquer fait
+                    });
+                    widget.logic.onChange();
+                  },
+                  child: const Text("Passer"),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<String?> _promptText({
     required String title,
     String initial = "",
@@ -2143,6 +2480,30 @@ class _NowTabState extends State<NowTab> {
         ],
       ),
     );
+  }
+
+  void _applyForcedHabitIfAny(List<RowItem> rows) {
+    final forced = widget.logic.forcedNowHabitId;
+    if (forced == null) return;
+
+    RowPlan? match;
+    for (final r in rows.whereType<RowPlan>()) {
+      if (r.it.kind == PlanKind.habit && r.it.refId == forced) {
+        match = r;
+        break;
+      }
+    }
+
+    if (match == null) {
+      widget.logic.forcedNowHabitId = null;
+      return;
+    }
+
+    _skippedIds.remove(match.it.id);
+    _doneTodayIds.remove(match.it.id);
+    _lockedPlanId = match.it.id;
+
+    widget.logic.forcedNowHabitId = null;
   }
 
   Widget _routineChecklist(DayPlanItem it) {
@@ -2423,12 +2784,30 @@ class _NowTabState extends State<NowTab> {
       assoc: assoc,
     );
 
+    _applyForcedHabitIfAny(rows);
+
     final plans = rows.whereType<RowPlan>().toList();
     final actionable = plans.where((rp) => _isActionable(rp.it)).toList();
     debugPrint("NOW actionable=${actionable.length}");
     if (actionable.isNotEmpty) {
       debugPrint(
           "NOW first actionable kind=${actionable.first.it.kind} id=${actionable.first.it.id} done=${actionable.first.it.done}");
+    }
+
+// ✅ 1) Si une action a été "envoyée vers Maintenant", elle est prioritaire
+    DayPlanItem? focusedAction;
+    for (final x in widget.items) {
+      if (x.kind == PlanKind.action && x.isNowFocus == true && !x.done) {
+        focusedAction = x;
+        break;
+      }
+    }
+
+    if (focusedAction != null) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+        child: _nowActionCard(context, focusedAction),
+      );
     }
 
     final next = _pickNow(rows); // <-- doit renvoyer RowPlan?

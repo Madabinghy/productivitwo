@@ -22,6 +22,7 @@ class DayPlanItem {
   int doneCount;
   bool allDay;
   int order;
+  bool isNowFocus;
 
   DayPlanItem({
     required this.id,
@@ -35,6 +36,7 @@ class DayPlanItem {
     this.done = false,
     this.doneCount = 0,
     this.allDay = false,
+    this.isNowFocus = false,
     this.order = 0,
   });
 
@@ -50,6 +52,7 @@ class DayPlanItem {
         'done': done,
         'doneCount': doneCount,
         'allDay': allDay,
+        'isNowFocus': isNowFocus,
         'order': order,
       };
 
@@ -69,6 +72,7 @@ class DayPlanItem {
       done: done,
       doneCount: doneCount,
       allDay: j['allDay'] ?? false,
+      isNowFocus: j['isNowFocus'] ?? false,
       order: j['order'] ?? 0,
     );
   }

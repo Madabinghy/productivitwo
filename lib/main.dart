@@ -1434,13 +1434,10 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
           logic: logic,
           state: _state!,
           onGoNow: (habitId) {
-            setState(() {
-              _tab = _Tab.now;
-            });
-
-            // 👉 optionnel MAIS recommandé
-            //logic.focusOnHabit(habitId);
+            logic.forceNowHabit(habitId); // ce que tu as déjà
+            setState(() => _tab = _Tab.now);
           },
+          onGoNowTab: () => setState(() => _tab = _Tab.now),
         ),
         StatsView(logic: logic, state: st, selectedDomainId: null),
       ],

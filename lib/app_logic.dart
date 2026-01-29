@@ -82,6 +82,15 @@ class AppLogic {
   final Map<String, Set<String>> _checkedTodayByHabit =
       {}; // habitId -> labels cochés
 
+  void setNowFocus(String planItemId) {
+    for (final p in state.dayPlan) {
+      p.isNowFocus = false;
+    }
+    final idx = state.dayPlan.indexWhere((p) => p.id == planItemId);
+    if (idx >= 0) state.dayPlan[idx].isNowFocus = true;
+    onChange();
+  }
+
   void ensureChecklistDay(String ymd) {
     if (_checkYmd == ymd) return;
     _checkYmd = ymd;
@@ -102,6 +111,12 @@ class AppLogic {
 
   String? _lastRolloverDay;
   final List<HabitAssocEvent> habitAssocEvents = [];
+
+  String? forcedNowHabitId;
+
+  void forceNowHabit(String habitId) {
+    forcedNowHabitId = habitId;
+  }
 
   void pinHabitToActivity(String habitId, String activityId) {
     habitAssocEvents.removeWhere(
