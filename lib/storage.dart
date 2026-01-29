@@ -166,8 +166,9 @@ AppState _seedMinimal() {
     habit(sante.id, 'Me coucher à 22h'),
     habit(sante.id, "Boire de l'eau"),
     habit(sante.id, 'Manger équilibré'),
-    // ❌ SUPPRIMÉ : Prendre ma douche
-    // ❌ SUPPRIMÉ : Brosser mes dents
+    // ✅ NOUVEAU : Hygiène
+    habit(sante.id, 'Hygiène du matin'),
+    habit(sante.id, 'Hygiène du soir'),
 
     // Organisation — Routines
     habit(organisation.id, 'Saisir mes dépenses'),
@@ -177,9 +178,7 @@ AppState _seedMinimal() {
     habit(organisation.id, 'Aller à la répète'),
     habit(organisation.id, 'Réveil à 4h'),
 
-    // ✅ NOUVEAU : Hygiène
-    habit(organisation.id, 'Hygiène du matin'),
-    habit(organisation.id, 'Hygiène du soir'),
+
 
     // Business — Routines
     habit(business.id, 'Faire une facture'),
@@ -259,6 +258,7 @@ AppState _seedMinimal() {
   final dayPlan = <DayPlanItem>[
     // Hygiène — à prévoir
     toPlan(title: 'Dentifrice', habit: hygieneMatin),
+    toPlan(title: 'Déodorant', habit: hygieneMatin),
     toPlan(title: 'Brosse à dents', habit: hygieneMatin),
     toPlan(title: 'Savon', habit: hygieneMatin),
     toPlan(title: 'Crème', habit: hygieneSoir),
