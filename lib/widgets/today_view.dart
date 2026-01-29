@@ -39,71 +39,111 @@ class _TodayViewState extends State<TodayView> {
   bool _showShopping = true;
   bool _showCourses = false; // repli/dépli manuel
 
-  Widget _coursesSection({
-    required List<DayPlanItem> courses,
-    required bool autoExpanded,
-    required Activity? shoppingAct,
-  }) {
-    if (courses.isEmpty) return const SizedBox.shrink();
+Widget _coursesSection({
+  required List<DayPlanItem> courses,
+  required bool autoExpanded,
+  required Activity? shoppingAct,
+}) {
+  if (courses.isEmpty) return const SizedBox.shrink();
 
-    final expanded = autoExpanded || _showCourses;
+  final expanded = autoExpanded || _showCourses;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => setState(() => _showCourses = !_showCourses),
-              onLongPress: shoppingAct == null
-                  ? null
-                  : () {
-                      // Optionnel : lance l’activité Courses
-                      final running = widget.logic.runningActivity();
-                      if (running == null || running.id != shoppingAct.id) {
-                        widget.logic.start(shoppingAct.id);
-                        setState(() {});
-                      }
-                    },
-              child: Row(
-                children: [
-                  const Icon(Icons.shopping_cart_outlined, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      "Courses (${courses.length})",
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 16,
-                      ),
+  // Map habitId -> nom de routine
+  final habitsById = {
+    for (final a in widget.logic.state.activities.where((x) => x.isHabit))
+      a.id: a
+  };
+
+  String habitName(String? habitId) {
+    if (habitId == null || habitId.isEmpty) return "Sans routine";
+    return habitsById[habitId]?.name ?? "Routine";
+  }
+
+  // Group: habitId -> items
+  final byHabit = <String?, List<DayPlanItem>>{};
+  for (final it in courses) {
+    (byHabit[it.habitId] ??= []).add(it);
+  }
+
+  // Tri interne + tri des groupes
+  for (final list in byHabit.values) {
+    list.sort((a, b) => a.title.compareTo(b.title));
+  }
+  final habitIds = byHabit.keys.toList()
+    ..sort((a, b) => habitName(a).compareTo(habitName(b)));
+
+  return Card(
+    margin: const EdgeInsets.only(bottom: 8),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => _showCourses = !_showCourses),
+            onLongPress: shoppingAct == null
+                ? null
+                : () {
+                    final running = widget.logic.runningActivity();
+                    if (running == null || running.id != shoppingAct.id) {
+                      widget.logic.start(shoppingAct.id);
+                      setState(() {});
+                    }
+                  },
+            child: Row(
+              children: [
+                const Icon(Icons.shopping_cart_outlined, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    "Courses (${courses.length})",
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
                     ),
                   ),
-                  Icon(
-                    expanded ? Icons.expand_less : Icons.expand_more,
-                    size: 20,
-                  ),
-                ],
-              ),
+                ),
+                Icon(
+                  expanded ? Icons.expand_less : Icons.expand_more,
+                  size: 20,
+                ),
+              ],
             ),
-            if (expanded) ...[
-              const SizedBox(height: 8),
-              for (final it in courses)
+          ),
+
+          if (expanded) ...[
+            const SizedBox(height: 8),
+
+            // Groupes par routine
+            for (final hid in habitIds) ...[
+              Padding(
+                padding: const EdgeInsets.only(top: 6, bottom: 6),
+                child: Text(
+                  "${habitName(hid)} (${byHabit[hid]!.length})",
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                    color:
+                        Theme.of(context).colorScheme.onSurface.withOpacity(.75),
+                  ),
+                ),
+              ),
+              for (final it in byHabit[hid]!)
                 _todayTile(
                   context,
                   it,
-                  key: ValueKey("courses:${it.id}"), // ✅ évite crash keys
+                  key: ValueKey("courses:${hid ?? "none"}:${it.id}"),
                   showDrag: false,
                   indexForDrag: 0,
                 ),
             ],
           ],
-        ),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Activity? _activityById(String? id) {
     if (id == null || id.isEmpty) return null;
@@ -803,6 +843,18 @@ class _TodayViewState extends State<TodayView> {
         ? <DayPlanItem>[]
         : openPool.where((a) => a.activityId == shoppingId).toList();
 
+final habitsById = {for (final a in widget.logic.state.activities.where((x) => x.isHabit)) a.id: a};
+
+final coursesByHabitId = <String?, List<DayPlanItem>>{};
+for (final a in shoppingActions) {
+  (coursesByHabitId[a.habitId] ??= []).add(a);
+}
+
+// tri interne
+for (final list in coursesByHabitId.values) {
+  list.sort((a, b) => a.title.compareTo(b.title));
+}
+
 // 4) CONTEXTE = subset de OPEN POOL, en excluant Courses
     final byActivity = <DayPlanItem>[];
     final byDomainOnly = <DayPlanItem>[];
@@ -856,7 +908,7 @@ class _TodayViewState extends State<TodayView> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
         children: [
-          _nowChecklistActions(), // ton bloc "Pour maintenant" (déjà OK)
+          //_nowChecklistActions(), // ton bloc "Pour maintenant" (déjà OK)
           if (hasRunning &&
               (byActivity.isNotEmpty || byDomainOnly.isNotEmpty)) ...[
             Text(
