@@ -36,6 +36,74 @@ class _TodayViewState extends State<TodayView> {
   Timer? _runWatch;
   String? _lastRunningId;
   bool _showAll = true;
+  bool _showShopping = true;
+  bool _showCourses = false; // repli/dépli manuel
+
+  Widget _coursesSection({
+    required List<DayPlanItem> courses,
+    required bool autoExpanded,
+    required Activity? shoppingAct,
+  }) {
+    if (courses.isEmpty) return const SizedBox.shrink();
+
+    final expanded = autoExpanded || _showCourses;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => setState(() => _showCourses = !_showCourses),
+              onLongPress: shoppingAct == null
+                  ? null
+                  : () {
+                      // Optionnel : lance l’activité Courses
+                      final running = widget.logic.runningActivity();
+                      if (running == null || running.id != shoppingAct.id) {
+                        widget.logic.start(shoppingAct.id);
+                        setState(() {});
+                      }
+                    },
+              child: Row(
+                children: [
+                  const Icon(Icons.shopping_cart_outlined, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      "Courses (${courses.length})",
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    expanded ? Icons.expand_less : Icons.expand_more,
+                    size: 20,
+                  ),
+                ],
+              ),
+            ),
+            if (expanded) ...[
+              const SizedBox(height: 8),
+              for (final it in courses)
+                _todayTile(
+                  context,
+                  it,
+                  key: ValueKey("courses:${it.id}"), // ✅ évite crash keys
+                  showDrag: false,
+                  indexForDrag: 0,
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 
   Activity? _activityById(String? id) {
     if (id == null || id.isEmpty) return null;
@@ -641,22 +709,11 @@ class _TodayViewState extends State<TodayView> {
 
   @override
   Widget build(BuildContext context) {
-    final sortByDashboard = widget.logic.state.sortTodayByDashboard;
-
     final now = DateTime.now();
     final todayDate = DateTime(now.year, now.month, now.day);
 
     final ymd = _ymd;
     final isTodayTab = ymd == yyyymmdd(now);
-
-    final runningAct = widget.logic.runningActivity();
-    final currentDomainId =
-        (runningAct != null && (runningAct.domainId).isNotEmpty)
-            ? runningAct.domainId
-            : null;
-
-    // Mode test : hors activité, on force uniquement les non-atteints
-    const forceOnlyUnderWhenNoRunning = true;
 
     // 1) Base: plan du jour affiché
     final basePlan = widget.logic.planFor(ymd).toList();
@@ -711,314 +768,91 @@ class _TodayViewState extends State<TodayView> {
 
     final baseOrAuto = planOrAuto();
 
-    final actionItems = widget.logic.state.dayPlan
-        .where((it) => it.kind == PlanKind.action)
-        .toList();
+    final shoppingAct = widget.logic.shoppingActivity();
+    final shoppingId = shoppingAct?.id;
 
-    final courses = actionItems
-        .where(
-            (a) => a.toPlan == true && a.archived == false && a.done == false)
-        .toList();
+// ✅ Source unique pour tout l’écran
+    final allActions =
+        baseOrAuto.where((x) => x.kind == PlanKind.action).toList();
+
+// ✅ Dédup au cas où (safe)
+    final seen = <String>{};
+    allActions.removeWhere((a) => !seen.add(a.id));
+
+// ✅ Tout le reste se base sur allActions
 
     final running = widget.logic.runningActivity();
     final hasRunning = isTodayTab && running != null;
-    final runningDomainId = hasRunning ? running!.domainId : null;
-    final runningActivityId = hasRunning ? running!.id : null;
 
-// 1) Actions “contexte”
-    final ctxActions = <DayPlanItem>[];
-    if (hasRunning && runningDomainId != null && runningDomainId.isNotEmpty) {
-      final byActivity = actionItems
-          .where(
-              (a) => a.activityId != null && a.activityId == runningActivityId)
-          .toList();
-
-      final byDomain = actionItems
-          .where((a) => a.activityId == null && a.domainId == runningDomainId)
-          .toList();
-
-      ctxActions
-        ..addAll(byActivity)
-        ..addAll(byDomain);
-    }
-
-    int cmp(DayPlanItem a, DayPlanItem b) {
-      if (a.done != b.done) return a.done ? 1 : -1;
-      final c = a.order.compareTo(b.order);
-      if (c != 0) return c;
-      return a.title.compareTo(b.title);
-    }
-
-    ctxActions.sort(cmp);
+    final autoExpanded =
+        running != null && shoppingId != null && running.id == shoppingId;
 
     final domId = hasRunning ? running!.domainId : null;
     final actId = hasRunning ? running!.id : null;
 
+// 1) DONE (non archivé) — jamais ailleurs
+    final doneActions =
+        allActions.where((a) => a.done && a.archived != true).toList();
+
+// 2) OPEN POOL = actions actives (non done, non archivé)
+    final openPool =
+        allActions.where((a) => !a.done && a.archived != true).toList();
+
+// 3) COURSES = subset de OPEN POOL
+    final shoppingActions = (shoppingId == null)
+        ? <DayPlanItem>[]
+        : openPool.where((a) => a.activityId == shoppingId).toList();
+
+// 4) CONTEXTE = subset de OPEN POOL, en excluant Courses
     final byActivity = <DayPlanItem>[];
     final byDomainOnly = <DayPlanItem>[];
 
     if (hasRunning && domId != null && domId.isNotEmpty) {
-      byActivity.addAll(actionItems.where((a) => a.activityId == actId));
-      byDomainOnly.addAll(actionItems
-          .where((a) => a.activityId == null && a.domainId == domId));
+      byActivity.addAll(openPool.where((a) =>
+          a.activityId == actId &&
+          (shoppingId == null || a.activityId != shoppingId)));
+
+      byDomainOnly.addAll(
+          openPool.where((a) => a.activityId == null && a.domainId == domId));
     }
 
-    final usedIds = {
+// 5) ACTIONS = le reste (OPEN POOL - Courses - Contexte)
+    final usedIds = <String>{
+      ...shoppingActions.map((e) => e.id),
       ...byActivity.map((e) => e.id),
-      ...byDomainOnly.map((e) => e.id)
+      ...byDomainOnly.map((e) => e.id),
     };
-    final otherActions =
-        actionItems.where((a) => !usedIds.contains(a.id)).toList();
 
-    final openActions =
-        otherActions.where((a) => !a.done && a.archived != true).toList();
-    final doneActions =
-        otherActions.where((a) => a.done && a.archived != true).toList();
+    final actions = openPool.where((a) => !usedIds.contains(a.id)).toList();
 
+// 6) Groupement par domaine UNIQUEMENT sur actions
     final actionsByDomain = <String?, List<DayPlanItem>>{};
-    for (final a in openActions) {
+    for (final a in actions) {
       (actionsByDomain[a.domainId] ??= []).add(a);
     }
-    for (final list in actionsByDomain.values) {
-      list.sort(cmp);
-    }
+    assert(() {
+      final seen = <String>{};
+      bool ok = true;
 
-    // 2) Focus : ne garder QUE les habits (pas d'actions, pas d'autres activités)
-    // Hors focus : on garde tout
-    final focusFiltered = hasRunning
-        ? baseOrAuto.where((it) {
-            if (it.kind != PlanKind.habit) return false;
-
-            // ✅ domaine résolu (fallback sur l’activité si domainId vide)
-            final act = (it.refId != null)
-                ? widget.state.activities
-                    .firstWhereOrNull((a) => a.id == it.refId)
-                : null;
-
-            final dom = (it.domainId != null && it.domainId!.isNotEmpty)
-                ? it.domainId!
-                : (act?.domainId ?? '');
-
-            return dom == currentDomainId;
-          }).toList()
-        : baseOrAuto;
-
-    debugPrint(
-        'baseOrAuto=${baseOrAuto.length} focusFiltered=${focusFiltered.length} '
-        'currentDomainId=$currentDomainId hasRunning=$hasRunning');
-
-    // 3) Virtuels (focus seulement) : ajouter les habits du domaine courant absents du plan
-/*     final extraHabits = <DayPlanItem>[];
-    if (hasRunning) {
-      final alreadyHabitIds = <String>{
-        for (final it in focusFiltered)
-          if (it.kind == PlanKind.habit && it.refId != null) it.refId!,
-      };
-
-      final habitsOfDomain = widget.logic.state.activities.where(
-        (a) => a.isHabit && a.domainId == currentDomainId,
-      );
-
-      for (final a in habitsOfDomain) {
-        if (alreadyHabitIds.contains(a.id)) continue;
-
-        // Reached selon la période effective (daily/weekly/monthly)
-        final freq = widget.logic.effectiveHabitFreq(a);
-        final target = widget.logic.effectiveHabitTarget(a);
-
-        int done;
-        switch (freq) {
-          case HabitFreq.daily:
-            done = widget.logic.habitValueOn(a.id, todayDate);
-            break;
-          case HabitFreq.weekly:
-            done = widget.logic.habitSliding(a.id, 7).done;
-            break;
-          case HabitFreq.monthly:
-            done = widget.logic.habitSliding(a.id, 30).done;
-            break;
-        }
-
-        final reached = target > 0 && done >= target;
-
-        extraHabits.add(
-          DayPlanItem(
-            id: 'virt:${a.id}',
-            kind: PlanKind.habit,
-            refId: a.id,
-            domainId: a.domainId,
-            title: a.name,
-            yyyymmdd: ymd,
-            done: reached, // ✅ pilotera barré + coche dans ta card
-            doneCount: done,
-            allDay: true,
-            order: 1 << 30,
-          ),
-        );
-      }
-    } */
-
-    // 4) Merge
-    //final merged = [...focusFiltered, ...extraHabits];
-    final merged = focusFiltered;
-
-    // 5) Filtre "test" hors focus : Today + pas d'activité => uniquement non atteints
-    List<DayPlanItem> visible;
-    if (isTodayTab && !hasRunning && forceOnlyUnderWhenNoRunning) {
-      visible = merged.where((it) {
-        // ✅ on garde toujours les virtuels auto-seed
-        if (it.id.startsWith('virt:') || it.id.startsWith('virtAct:'))
-          return true;
-
-        if (it.kind != PlanKind.habit || it.refId == null) return true;
-
-        final act =
-            widget.state.activities.firstWhereOrNull((a) => a.id == it.refId);
-        if (act == null) return true;
-
-        final freq = widget.logic.effectiveHabitFreq(act);
-        final target = widget.logic.effectiveHabitTarget(act);
-
-        int done;
-        switch (freq) {
-          case HabitFreq.daily:
-            done = widget.logic.habitValueOn(act.id, todayDate);
-            break;
-          case HabitFreq.weekly:
-            done = widget.logic.habitSliding(act.id, 7).done;
-            break;
-          case HabitFreq.monthly:
-            done = widget.logic.habitSliding(act.id, 30).done;
-            break;
-        }
-
-        final reached = target > 0 && done >= target;
-        return !reached;
-      }).toList();
-    } else {
-      visible = merged;
-    }
-
-    // 6) Tri habits : sous seuil d'abord, atteints en bas (focus seulement)
-    // Hors focus : tu peux laisser ton ordre existant
-    List<DayPlanItem> finalItems;
-    if (hasRunning) {
-      final under = <DayPlanItem>[];
-      final reached = <DayPlanItem>[];
-
-      for (final it in visible) {
-        // En focus visible ne contient que des habits, mais on garde robuste
-        if (it.kind == PlanKind.habit) {
-          (isHabitReached(it) ? reached : under).add(it);
-        } else {
-          under.add(it);
+      void addAll(String label, Iterable<DayPlanItem> xs) {
+        for (final x in xs) {
+          if (!seen.add(x.id)) {
+            debugPrint("DUPLICATE RENDER ($label): ${x.id} ${x.title}");
+            ok = false;
+          }
         }
       }
-      finalItems = [...under, ...reached];
-    } else {
-      finalItems = visible;
-    }
 
-    // 7) Tri dashboard : on ne le fait pas en focus (sinon ça mélange ton ordre under/reached)
-    const haloReachedThreshold = 0.99;
-    final domainRank = widget.logic
-        .computeDashboardDomainOrder(haloReachedThreshold: haloReachedThreshold)
-        .rankByDomain;
+      addAll("shoppingActions", shoppingActions);
+      addAll("byActivity", byActivity);
+      addAll("byDomainOnly", byDomainOnly);
+      addAll("actions", actions);
+      addAll("doneActions", doneActions);
 
-    final sorted = (!hasRunning && sortByDashboard)
-        ? widget.logic.viewItemsSortedByDashboard(finalItems, domainRank)
-        : finalItems;
-
-    final items = widget.logic.injectSuggestedActivities(
-      items: sorted,
-      ymd: ymd,
-      now: now,
-    );
-
-    debugPrint('baseOrAuto=${baseOrAuto.length}');
-    debugPrint('focusFiltered=${focusFiltered.length}');
-    debugPrint('merged=${merged.length}');
-    debugPrint('visible=${visible.length}');
-    debugPrint('finalItems=${finalItems.length}');
-    debugPrint('sorted=${sorted.length}');
-    debugPrint('items(after inject)=${items.length}');
-    if (items.isNotEmpty) {
-      debugPrint(
-          'first=${items.first.kind} id=${items.first.id} ref=${items.first.refId}');
-    }
-
-/* 
-    debugPrint('--- DOMAIN RANKS ---');
-    final sorted = widget.logic.computeDashboardDomainOrder().sortedDomains;
-    for (final d in sorted) {
-      debugPrint('DOMAIN ${d.name} id=${d.id} rank=${domainRank[d.id]}');
-    }
-
-    final order = widget.logic.computeDashboardDomainOrder();
-    debugPrint(
-        'Pomodoro domain reached=${order.haloReachedByDomain["b706..."]} score=${order.scoreByDomain["b706..."]}');
- */
-/*     void dbg(DayPlanItem it) {
-      final d = it.domainId;
-      final r = d == null ? null : domainRank[d];
-      debugPrint(
-          'ITEM "${it.title}" kind=${it.kind} domain=$d rank=$r order=${it.order}');
-    } */
-
-// Exemple: log tous les items
-/*     for (final it in itemsRaw) {
-      dbg(it);
-    } */
-
-    final st = widget.logic.state;
-
-    // 1️⃣ associations routines -> activités
-    final assoc =
-        widget.logic.routineToActivityId(widget.logic.habitAssocEvents);
-
-    final rows = widget.logic.buildRowsGrouped(
-      items: items, // List<DayPlanItem>
-      st: st, // AppState
-      logic: widget.logic, // ta logique
-      assoc: assoc, // routine -> activité
-    );
+      return ok;
+    }());
 
     return Scaffold(
-/*       appBar: AppBar(
-          leading: IconButton(
-            icon:
-                Icon(sortByDashboard ? Icons.auto_awesome : Icons.drag_handle),
-            onPressed: () {
-              setState(() {
-                widget.logic.setSortTodayByDashboard(!sortByDashboard);
-              });
-            },
-          ),
-          automaticallyImplyLeading: false, // pas de flèche retour
-          title: Center(
-            child: SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment(value: false, label: Text('Action!')),
-                ButtonSegment(value: true, label: Text('Demain')),
-              ],
-              selected: {_planTomorrow},
-              onSelectionChanged: (s) =>
-                  setState(() => _planTomorrow = s.first),
-            ),
-          ),
-          actions: [
-            // … tes autres actions …
-
-            IconButton(
-              tooltip: 'Reporter le non-fait → Demain',
-              icon: const Icon(Icons.redo),
-              onPressed: () {
-                setState(() {
-                  widget.logic.rolloverUnfinishedToTomorrow();
-                });
-              },
-            ),
-          ]), */
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
         children: [
@@ -1041,7 +875,9 @@ class _TodayViewState extends State<TodayView> {
               ),
               const SizedBox(height: 6),
               ...byActivity.map((it) => _todayTile(context, it,
-                  key: ValueKey(it.id), showDrag: false, indexForDrag: 0)),
+                  key: ValueKey('context:${it.id}'),
+                  showDrag: false,
+                  indexForDrag: 0)),
               const SizedBox(height: 12),
             ],
             if (byDomainOnly.isNotEmpty) ...[
@@ -1055,12 +891,18 @@ class _TodayViewState extends State<TodayView> {
               ),
               const SizedBox(height: 6),
               ...byDomainOnly.map((it) => _todayTile(context, it,
-                  key: ValueKey(it.id), showDrag: false, indexForDrag: 0)),
+                  key: ValueKey('domaines:${it.id}'),
+                  showDrag: false,
+                  indexForDrag: 0)),
               const SizedBox(height: 12),
             ],
           ],
           const SizedBox(height: 12),
-
+          _coursesSection(
+            courses: shoppingActions,
+            autoExpanded: autoExpanded,
+            shoppingAct: shoppingAct,
+          ),
           Row(
             children: [
               const Expanded(
@@ -1089,7 +931,7 @@ class _TodayViewState extends State<TodayView> {
               ].map((it) => _todayTile(
                     context,
                     it,
-                    key: ValueKey(it.id),
+                    key: ValueKey('sans_domaines:${it.id}'),
                     showDrag: false,
                     indexForDrag: 0,
                   )),
@@ -1103,7 +945,7 @@ class _TodayViewState extends State<TodayView> {
                 ...(actionsByDomain[d.id]!).map((it) => _todayTile(
                       context,
                       it,
-                      key: ValueKey(it.id),
+                      key: ValueKey('domain${d.id}:${it.id}'),
                       showDrag: false,
                       indexForDrag: 0,
                     )),
@@ -1112,7 +954,7 @@ class _TodayViewState extends State<TodayView> {
             ],
 
             // Si vraiment aucune action (dans otherActions)
-            if (otherActions.isEmpty) ...[
+            if (actions.isEmpty) ...[
               Text(
                 "Aucune action pour l’instant.",
                 style: TextStyle(
@@ -1175,83 +1017,6 @@ class _TodayViewState extends State<TodayView> {
           ],
         ],
       ),
-      // 🔁 Réorganisation par drag & drop
-/*       body: Column(
-        children: [
-          _nowChecklistActions(),
-          // Section Focus en haut (ne prend de la place que s’il y a des items)
-          _focusSection(widget.logic),
-
-          // Ta liste réordonnable existante
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
-              itemCount: rows.length,
-              itemBuilder: (ctx, i) {
-                final row = rows[i];
-                if (row is RowHeader) {
-                  // header
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 10, bottom: 6),
-                    child: Text(
-                      row.title,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withOpacity(0.8),
-                      ),
-                    ),
-                  );
-                } else if (row is RowPlan) {
-                  // ton rendu existant
-                  return _todayTile(
-                    ctx,
-                    row.it,
-                    key: ValueKey(row.id),
-                    showDrag: false, // plus de reorder
-                    indexForDrag: i,
-                  );
-                }
-                return const SizedBox.shrink();
-              },
-            ),
-          )
-/*           Expanded(
-            child: ReorderableListView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
-              itemCount: items.length,
-
-              // ✅ On gère les handles nous-mêmes (sinon Flutter rend toute la tile draggable)
-              buildDefaultDragHandles: false,
-
-              // ✅ Reorder seulement si autorisé
-              onReorder: (oldIndex, newIndex) {
-                if (!canReorder) return;
-                setState(
-                    () => widget.logic.reorderPlan(ymd, oldIndex, newIndex));
-              },
-
-              itemBuilder: (ctx, i) {
-                final it = items[i];
-                final isVirtual = it.id.startsWith('virt:');
-
-                return _todayTile(
-                  ctx,
-                  it,
-                  key: ValueKey(it.id),
-                  showDrag: canReorder &&
-                      !isVirtual, // ✅ poignée seulement si autorisé
-                  indexForDrag: i, // ✅ nouveau param
-                );
-              },
-            ),
-          ), */
-        ],
-      ),
- */
       floatingActionButton: _buildFab(), // ton FAB existant pour ajouter
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
@@ -1313,6 +1078,7 @@ class _TodayViewState extends State<TodayView> {
     final now = DateTime.now();
     final viewed = _planTomorrow ? now.add(const Duration(days: 1)) : now;
     final day = DateTime(viewed.year, viewed.month, viewed.day);
+    final rootKey = key;
 
     // Sommes-nous sur l'onglet "Aujourd'hui" ?
     final bool isTodayTab = !_planTomorrow;
@@ -1487,7 +1253,7 @@ class _TodayViewState extends State<TodayView> {
           );
 
           return Dismissible(
-            key: ValueKey(it.id),
+            key: rootKey, // ✅ utilise la key "context:...", "courses:...", etc.
             direction: DismissDirection.endToStart,
             background: Container(
               alignment: Alignment.centerRight,
@@ -2479,6 +2245,8 @@ class _NowTabState extends State<NowTab> {
   final Set<String> _skippedIds = {};
   final Set<String> _doneTodayIds = {};
   final Map<String, Set<String>> _checkedChecklistByPlan = {};
+  bool _showArchives = false;
+  bool _showGlobalArchives = false;
 
   String? _skippedYmd;
 
@@ -2839,29 +2607,47 @@ class _NowTabState extends State<NowTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              "Archives (${items.length})",
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-            ),
-            const SizedBox(height: 8),
-            for (final a in items)
-              Row(
+            InkWell(
+              onTap: () => setState(() => _showArchives = !_showArchives),
+              child: Row(
                 children: [
-                  const Icon(Icons.archive_outlined, size: 18),
-                  const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      a.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      "Archives (${items.length})",
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                      ),
                     ),
                   ),
-                  TextButton(
-                    onPressed: () => _reactivateArchivedAction(a),
-                    child: const Text("Activer"),
+                  Icon(
+                    _showArchives ? Icons.expand_less : Icons.expand_more,
+                    size: 20,
                   ),
                 ],
               ),
+            ),
+            if (_showArchives) ...[
+              const SizedBox(height: 8),
+              for (final a in items)
+                Row(
+                  children: [
+                    const Icon(Icons.archive_outlined, size: 18),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        a.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => _reactivateArchivedAction(a),
+                      child: const Text("Activer"),
+                    ),
+                  ],
+                ),
+            ],
           ],
         ),
       ),
@@ -2872,19 +2658,79 @@ class _NowTabState extends State<NowTab> {
     setState(() {
       a.archived = false;
       a.done = false;
-
-      // ✅ Revenir dans "À prévoir" / Courses si tu utilises toPlan
-      // a.toPlan = true; // si tu as ce champ
-
-      // ✅ Re-link automatique à l'activité Courses (shopping) si dispo
-      final shop = widget.logic.shoppingActivity();
-      if (shop != null) {
-        a.activityId = shop.id;
-        a.domainId = shop.domainId;
-      }
+      _showGlobalArchives = false;
+      _showArchives = false;
     });
-
     widget.logic.onChange();
+  }
+
+  List<DayPlanItem> _archivedGlobal() {
+    final list = widget.st.dayPlan.where((a) {
+      if (a.kind != PlanKind.action) return false;
+      if (a.archived != true) return false;
+      return a.habitId == null; // ✅ global
+    }).toList();
+
+    list.sort((a, b) => a.title.compareTo(b.title));
+    return list;
+  }
+
+  Widget _archivesGlobalSection() {
+    final items = _archivedGlobal();
+    if (items.isEmpty) return const SizedBox.shrink();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            InkWell(
+              onTap: () =>
+                  setState(() => _showGlobalArchives = !_showGlobalArchives),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      "Archives globales (${items.length})",
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    _showGlobalArchives ? Icons.expand_less : Icons.expand_more,
+                    size: 20,
+                  ),
+                ],
+              ),
+            ),
+            if (_showGlobalArchives) ...[
+              const SizedBox(height: 8),
+              for (final a in items)
+                Row(
+                  children: [
+                    const Icon(Icons.history, size: 18),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        a.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => _reactivateArchivedAction(a),
+                      child: const Text("Activer"),
+                    ),
+                  ],
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   List<DayPlanItem> _actionsToPlanForHabit(DayPlanItem it) {
@@ -3109,6 +2955,8 @@ class _NowTabState extends State<NowTab> {
             _toPlanSection(next.it),
             const SizedBox(height: 10),
             _archivesSection(next.it),
+            const SizedBox(height: 10),
+            _archivesGlobalSection(),
           ],
         ],
       ),
