@@ -65,22 +65,19 @@ AppState _seedMinimal() {
   final environnement = Domain(name: 'Environnement', autoGoal: true);
   final sport = Domain(name: 'Sport', autoGoal: true);
 
-  // ========== Helpers ==========
-  Activity timeAct(String domainId, String name,
-          {ActivityRole role = ActivityRole.generic}) =>
-      Activity(
+  // Helpers
+  Activity timeAct(String domainId, String name) => Activity(
         domainId: domainId,
         name: name,
         type: 'time',
         goalMin: 1,
-        role: role,
       );
 
   Activity habit(String domainId, String name) => Activity(
         domainId: domainId,
         name: name,
         type: 'habit',
-        habitFreq: HabitFreq.monthly,
+        habitFreq: HabitFreq.monthly, // ✅ 30j par défaut
         habitTarget: 1,
         manualTarget: false,
         autoTune: true,
@@ -138,109 +135,140 @@ AppState _seedMinimal() {
     timeAct(skills.id, 'PLF Coaching'),
   ];
 
-  // ========== Routines ==========
+  // ========== Routines (habits) ==========
   final habits = <Activity>[
-    // Spiritualité
+    // Spiritualité — Routines
     habit(spiritualite.id, 'Aller à GDS'),
     habit(spiritualite.id, 'Lire un chapitre'),
 
-    // Environnement
+    // Environnement — Routines
     habit(environnement.id, 'Faire la vaisselle'),
     habit(environnement.id, "Passer la serpillière"),
     habit(environnement.id, "Passer l'aspirateur"),
+    habit(environnement.id, 'Couper les herbes'),
+    habit(environnement.id, 'Passer le kasher'),
+    habit(environnement.id, 'Tailler les haies'),
     habit(environnement.id, 'Faire le lit'),
+    habit(environnement.id, 'Faire le tri'),
     habit(environnement.id, 'Ranger la maison'),
+    habit(environnement.id, 'Nettoyer les murs'),
+    habit(environnement.id, 'Nettoyer le frigo'),
+    habit(environnement.id, 'Nettoyer par derrière'),
 
-    // Sport
+    // Sport — Routines
     habit(sport.id, 'Faire des pompes'),
     habit(sport.id, 'Faire des tractions'),
 
-    // Santé
+    // Santé — Routines
     habit(sante.id, 'Prendre un bain de mer'),
     habit(sante.id, 'Prendre un petit-déj'),
     habit(sante.id, 'Mode batch cooking'),
     habit(sante.id, 'Me coucher à 22h'),
-    habit(sante.id, 'Boire de l\'eau'),
+    habit(sante.id, "Boire de l'eau"),
     habit(sante.id, 'Manger équilibré'),
+    // ❌ SUPPRIMÉ : Prendre ma douche
+    // ❌ SUPPRIMÉ : Brosser mes dents
 
-    // Organisation — NOUVELLES ROUTINES
-    habit(organisation.id, 'Hygiène du matin'),
-    habit(organisation.id, 'Hygiène du soir'),
+    // Organisation — Routines
     habit(organisation.id, 'Saisir mes dépenses'),
     habit(organisation.id, 'Suivre mon budget'),
+    habit(organisation.id, 'Faire les courses'),
     habit(organisation.id, 'Préparer mon matos'),
+    habit(organisation.id, 'Aller à la répète'),
+    habit(organisation.id, 'Réveil à 4h'),
 
-    // Business
+    // ✅ NOUVEAU : Hygiène
+    habit(organisation.id, 'Hygiène du matin'),
+    habit(organisation.id, 'Hygiène du soir'),
+
+    // Business — Routines
     habit(business.id, 'Faire une facture'),
     habit(business.id, 'Préparer une intervention'),
   ];
 
-  // Sport — Souplesse
+  // Sport — Souplesse 1..35
   for (int i = 1; i <= 35; i++) {
     habits.add(habit(sport.id, 'Souplesse $i'));
   }
 
-  // ========== Pré-remplissage des actions (checklists + à prévoir) ==========
-  final courses = activities.firstWhere(
-      (a) => a.role == ActivityRole.shopping,
-      orElse: () => throw Exception('Courses introuvable'));
-
+  // ===== Helpers lookup =====
   Activity habitByName(String name) =>
       habits.firstWhere((h) => h.name == name);
 
-  DayPlanItem action({
+  final hygieneMatin = habitByName('Hygiène du matin');
+  final hygieneSoir = habitByName('Hygiène du soir');
+  final vaisselle = habitByName('Faire la vaisselle');
+  final aspirateur = habitByName("Passer l'aspirateur");
+
+  final coursesAct = activities.firstWhere(
+    (a) => !a.isHabit && a.role == ActivityRole.shopping,
+    orElse: () => Activity(domainId: organisation.id, name: 'Courses', type: 'time'),
+  );
+
+  // ========== ✅ Checklists seedées (pas dans dayPlan) ==========
+  final habitChecklistByHabitId = <String, List<String>>{
+    hygieneMatin.id: [
+      'Douche',
+      'Brosser les dents',
+      'Skincare',
+      'Déodorant',
+    ],
+    hygieneSoir.id: [
+      'Brosser les dents',
+      'Skincare',
+    ],
+    vaisselle.id: [
+      'Laver',
+      'Rincer',
+      'Essuyer',
+    ],
+    aspirateur.id: [
+      'Aspirer la chambre',
+      'Aspirer le salon',
+      'Aspirer le couloir',
+      'Aspirer la salle de bain',
+    ],
+  };
+
+  // ========== ✅ "À prévoir" seedé (dayPlan actions shopping seulement) ==========
+  int _seq = 0;
+  String _newId() => 'seed:${DateTime.now().millisecondsSinceEpoch}:${_seq++}';
+
+  DayPlanItem toPlan({
     required String title,
     required Activity habit,
-    Activity? activity,
-  }) =>
-      DayPlanItem(
-        id: UniqueKey().toString(),
-        kind: PlanKind.action,
-        title: title,
-        habitId: habit.id,
-        domainId: habit.domainId,
-        activityId: activity?.id,
-        yyyymmdd: yyyymmdd(DateTime.now()),
-        done: false,
-        archived: false,
-      );
+  }) {
+    return DayPlanItem(
+      id: _newId(),
+      kind: PlanKind.action,
+      title: title,
+      yyyymmdd: yyyymmdd(DateTime.now()),
+      done: false,
+      doneCount: 0,
+      allDay: true,
+      order: 0,
+
+      // liens
+      domainId: habit.domainId,
+      habitId: habit.id,         // ✅ attaché à la routine
+      activityId: coursesAct.id, // ✅ section Courses
+      archived: false,
+    );
+  }
 
   final dayPlan = <DayPlanItem>[
-    // --- Hygiène du matin ---
-    action(title: 'Douche', habit: habitByName('Hygiène du matin')),
-    action(title: 'Brosser les dents', habit: habitByName('Hygiène du matin')),
-    action(title: 'Déodorant', habit: habitByName('Hygiène du matin')),
-    action(
-      title: 'Dentifrice',
-      habit: habitByName('Hygiène du matin'),
-      activity: courses,
-    ),
+    // Hygiène — à prévoir
+    toPlan(title: 'Dentifrice', habit: hygieneMatin),
+    toPlan(title: 'Brosse à dents', habit: hygieneMatin),
+    toPlan(title: 'Savon', habit: hygieneMatin),
+    toPlan(title: 'Crème', habit: hygieneSoir),
 
-    // --- Hygiène du soir ---
-    action(title: 'Douche', habit: habitByName('Hygiène du soir')),
-    action(title: 'Brosser les dents', habit: habitByName('Hygiène du soir')),
-    action(title: 'Skincare', habit: habitByName('Hygiène du soir')),
+    // Vaisselle — à prévoir
+    toPlan(title: 'Éponges', habit: vaisselle),
+    toPlan(title: 'Liquide vaisselle', habit: vaisselle),
 
-    // --- Vaisselle ---
-    action(title: 'Laver', habit: habitByName('Faire la vaisselle')),
-    action(title: 'Rincer', habit: habitByName('Faire la vaisselle')),
-    action(title: 'Essuyer', habit: habitByName('Faire la vaisselle')),
-    action(
-      title: 'Liquide vaisselle',
-      habit: habitByName('Faire la vaisselle'),
-      activity: courses,
-    ),
-    action(
-      title: 'Éponge',
-      habit: habitByName('Faire la vaisselle'),
-      activity: courses,
-    ),
-
-    // --- Aspirateur ---
-    action(title: 'Chambre', habit: habitByName("Passer l'aspirateur")),
-    action(title: 'Salon', habit: habitByName("Passer l'aspirateur")),
-    action(title: 'Couloir', habit: habitByName("Passer l'aspirateur")),
-    action(title: 'Salle de bain', habit: habitByName("Passer l'aspirateur")),
+    // Aspirateur — à prévoir (optionnel)
+    toPlan(title: 'Sacs aspirateur', habit: aspirateur),
   ];
 
   return AppState(
@@ -265,6 +293,9 @@ AppState _seedMinimal() {
     sortTodayByDashboard: false,
     habitHits: [],
     habitPinnedActivity: {},
+
+    // ✅ IMPORTANT : checklist seedée
+    habitChecklistByHabitId: habitChecklistByHabitId,
   );
 }
 
