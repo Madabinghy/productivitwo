@@ -211,6 +211,7 @@ class FileStore {
         "Faire une lessive",
         target: 3,
       ),
+      habit(environnement.id, 'Gérer la voiture', freq: HabitFreq.weekly),
       habit(environnement.id, 'Changer draps/serviettes',
           freq: HabitFreq.weekly),
 
@@ -260,6 +261,7 @@ class FileStore {
     final hAspi = habitByName("Passer l'aspirateur");
     final hClean = habitByName('Nettoyage rapide');
     final hLessive = habitByName('Faire une lessive');
+    final hVoiture = habitByName('Gérer la voiture');
     final hDraps = habitByName('Changer draps/serviettes');
 
     final hPlanRepas = habitByName('Planifier les repas');
@@ -355,6 +357,15 @@ class FileStore {
         'Lancer machine',
         'Étendre / sécher',
         'Plier / ranger',
+      ],
+
+      hVoiture.id: [
+        'Vider la voiture',
+        'Aspirer la voiture',
+        'Nettoyer la voiture',
+        'Lave glasses',
+        'Liquide de refroidissement',
+        'Pneus',
       ],
 
       // Draps/serviettes
@@ -528,6 +539,15 @@ class FileStore {
       toPlan(title: 'Adoucissant (option)', habit: hLessive),
       toPlan(title: 'Détachant', habit: hLessive),
       toPlan(title: 'Pinces à linge', habit: hLessive),
+
+      // --- Voiture ---
+      toPlan(title: 'Parfum auto', habit: hVoiture),
+      toPlan(title: 'Produits d\'entretiens auto', habit: hVoiture),
+      toPlan(title: 'Liquide de refroidissement', habit: hVoiture),
+      toPlan(title: 'Chamoisine', habit: hVoiture),
+      toPlan(title: 'Faire le contrôle technique', habit: hVoiture),
+      toPlan(title: 'Changer les pneus', habit: hVoiture),
+      toPlan(title: 'Faire le plein', habit: hVoiture),
 
       // --- Cuisine / Repas ---
       toPlan(title: 'Huile', habit: hPlanRepas),
