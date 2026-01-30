@@ -363,9 +363,9 @@ class FileStore {
         'Vider la voiture',
         'Aspirer la voiture',
         'Nettoyer la voiture',
-        'Lave glasses',
+        'Niveau lave glaces',
         'Liquide de refroidissement',
-        'Pneus',
+        'Vérifier les pneus',
       ],
 
       // Draps/serviettes
@@ -548,6 +548,7 @@ class FileStore {
       toPlan(title: 'Faire le contrôle technique', habit: hVoiture),
       toPlan(title: 'Changer les pneus', habit: hVoiture),
       toPlan(title: 'Faire le plein', habit: hVoiture),
+      toPlan(title: 'Faire la pression des pneus', habit: hVoiture),
 
       // --- Cuisine / Repas ---
       toPlan(title: 'Huile', habit: hPlanRepas),
