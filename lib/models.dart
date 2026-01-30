@@ -215,6 +215,7 @@ enum ActivityRole {
   generic,
   shopping, // 👈 Courses
   focus,
+  planning
 }
 
 /// --- ACTIVITÉS ---

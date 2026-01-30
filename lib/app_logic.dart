@@ -1724,7 +1724,10 @@ class AppLogic {
     required AppLogic logic,
     required Map<String, String?> assoc,
   }) {
-    final running = logic.runningActivity(); // Activity?
+    final r0 = logic.runningActivity();
+    final running =
+        (r0 != null && r0.role == ActivityRole.planning) ? null : r0;
+
     final focusDomainId = running?.domainId;
     final focusActivityId = running?.id;
 

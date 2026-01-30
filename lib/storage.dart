@@ -156,12 +156,13 @@ class FileStore {
 
       // Organisation
       timeAct(organisation.id, 'Intendance'),
-      timeAct(organisation.id, 'Planification'),
+      timeAct(organisation.id, 'Planification', role: ActivityRole.planning),
       timeAct(organisation.id, 'Préparation'),
       timeAct(organisation.id, 'Courses', role: ActivityRole.shopping),
 
       // Business
-      timeAct(business.id, 'Productivitwo'),
+      timeAct(business.id, 'Interventions'),
+      timeAct(business.id, 'Suivi'),
       timeAct(business.id, 'Facturation'),
       timeAct(business.id, 'Contenu'),
 
@@ -200,8 +201,16 @@ class FileStore {
       // --- MAISON ---
       habit(environnement.id, 'Faire la vaisselle', freq: HabitFreq.daily),
       habit(environnement.id, "Passer l'aspirateur", freq: HabitFreq.weekly),
-      habit(environnement.id, 'Nettoyage rapide', freq: HabitFreq.weekly),
-      habit(environnement.id, 'Faire une lessive', freq: HabitFreq.weekly),
+      weeklyCountHabit(
+        environnement.id,
+        "Nettoyage rapide",
+        target: 3,
+      ),
+      weeklyCountHabit(
+        environnement.id,
+        "Faire une lessive",
+        target: 3,
+      ),
       habit(environnement.id, 'Changer draps/serviettes',
           freq: HabitFreq.weekly),
 
@@ -216,7 +225,11 @@ class FileStore {
         "Lire un chapitre",
         target: 3,
       ),
-      habit(spiritualite.id, 'Aller à la Prière', freq: HabitFreq.weekly),
+      weeklyCountHabit(
+        spiritualite.id,
+        "Aller à la Prière",
+        target: 2,
+      ),
 
       // --- SPORT ---
       weeklyCountHabit(
@@ -267,6 +280,7 @@ class FileStore {
       // Hygiène matin
       hMatin.id: [
         'Boire un verre d’eau',
+        'Prendre mon café',
         'Douche',
         'Brosser les dents',
         'Skincare (visage)',
@@ -274,6 +288,12 @@ class FileStore {
         'Coiffure',
         'Parfum (option)',
         'Ranger salle de bain (rapide)',
+      ],
+
+      //Eau
+      hEau.id: [
+        'Saisir mon verre d\'eau du réveil',
+        'Préparer ma boutille d\'eau'
       ],
 
       // Hygiène soir

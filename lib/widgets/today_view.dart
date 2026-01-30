@@ -762,14 +762,25 @@ class _TodayViewState extends State<TodayView> {
     final isEmptyHabitsToday =
         isTodayTab && basePlan.where((it) => it.kind == PlanKind.habit).isEmpty;
 
-    List<DayPlanItem> planOrAuto() {
-      if (!isEmptyHabitsToday) return basePlan;
+    // ✅ running / planning AVANT planOrAuto
+    final running = widget.logic.runningActivity();
+    final hasRunning = isTodayTab && running != null;
 
-      // construit une liste UI-only de "habits à faire"
+    final isPlanning = hasRunning && (running!.role == ActivityRole.planning);
+
+    debugPrint(
+        "RUNNING=${running?.name} role=${running?.role} isPlanning=$isPlanning hasRunning=$hasRunning dom=${running?.domainId}");
+
+    final forceAutoHabits = isTodayTab && isPlanning;
+
+    // --- planOrAuto utilise forceAutoHabits ---
+    List<DayPlanItem> planOrAuto() {
+      // ✅ En planification, on force l'ajout des "virtHabits" même si le plan n’est pas vide
+      if (!isEmptyHabitsToday && !forceAutoHabits) return basePlan;
+
       final habits =
           widget.logic.state.activities.where((a) => a.isHabit).toList();
 
-      // garde seulement ceux sous seuil (selon freq)
       final under = habits.where((a) {
         final freq = widget.logic.effectiveHabitFreq(a);
         final target = widget.logic.effectiveHabitTarget(a);
@@ -788,7 +799,13 @@ class _TodayViewState extends State<TodayView> {
         return target > 0 && done < target;
       });
 
+      final plannedHabitIds = basePlan
+          .where((x) => x.kind == PlanKind.habit && x.refId != null)
+          .map((x) => x.refId!)
+          .toSet();
+
       final virtHabits = under
+          .where((a) => !plannedHabitIds.contains(a.id))
           .map((a) => DayPlanItem(
                 id: 'virt:${a.id}',
                 kind: PlanKind.habit,
@@ -803,7 +820,6 @@ class _TodayViewState extends State<TodayView> {
               ))
           .toList();
 
-      // ✅ IMPORTANT : on garde les actions/activities déjà dans le plan
       return [...basePlan, ...virtHabits];
     }
 
@@ -820,16 +836,11 @@ class _TodayViewState extends State<TodayView> {
     final seen = <String>{};
     allActions.removeWhere((a) => !seen.add(a.id));
 
-// ✅ Tout le reste se base sur allActions
-
-    final running = widget.logic.runningActivity();
-    final hasRunning = isTodayTab && running != null;
-
     final autoExpanded =
         running != null && shoppingId != null && running.id == shoppingId;
 
-    final domId = hasRunning ? running!.domainId : null;
-    final actId = hasRunning ? running!.id : null;
+    final domId = (hasRunning && !isPlanning) ? running.domainId : null;
+    final actId = (hasRunning && !isPlanning) ? running.id : null;
 
 // 1) DONE (non archivé) — jamais ailleurs
     final doneActions =
@@ -843,11 +854,6 @@ class _TodayViewState extends State<TodayView> {
     final shoppingActions = (shoppingId == null)
         ? <DayPlanItem>[]
         : openPool.where((a) => a.activityId == shoppingId).toList();
-
-    final habitsById = {
-      for (final a in widget.logic.state.activities.where((x) => x.isHabit))
-        a.id: a
-    };
 
     final coursesByHabitId = <String?, List<DayPlanItem>>{};
     for (final a in shoppingActions) {
@@ -863,7 +869,7 @@ class _TodayViewState extends State<TodayView> {
     final byActivity = <DayPlanItem>[];
     final byDomainOnly = <DayPlanItem>[];
 
-    if (hasRunning && domId != null && domId.isNotEmpty) {
+    if (hasRunning && !isPlanning && domId != null && domId.isNotEmpty) {
       byActivity.addAll(openPool.where((a) =>
           a.activityId == actId &&
           (shoppingId == null || a.activityId != shoppingId)));
@@ -2976,6 +2982,35 @@ class _NowTabState extends State<NowTab> {
     }
   }
 
+  Future<void> _renameRoutine(Activity act) async {
+    // ✅ simple guard
+    final current = act.name.trim();
+    final txt = await _promptText(
+      title: "Renommer la routine",
+      initial: current,
+    );
+
+    final next = (txt ?? "").trim();
+    if (next.isEmpty || next == current) return;
+
+    setState(() {
+      act.name = next;
+    });
+
+    widget.logic.onChange();
+
+    // optionnel: petit feedback
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Routine renommée"),
+          duration: Duration(milliseconds: 900),
+        ),
+      );
+    });
+  }
+
   Future<void> _openHabitSettings(Activity act) async {
     final res = await showModalBottomSheet<_HabitSettingsResult>(
       context: context,
@@ -2994,10 +3029,19 @@ class _NowTabState extends State<NowTab> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  act.name,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w800, fontSize: 16),
+                InkWell(
+                  onTap: () => _renameRoutine(act),
+                  child: Text(
+                    act.name,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      decoration: TextDecoration.underline,
+                      decorationColor: Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withOpacity(0.6),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 14),
 
