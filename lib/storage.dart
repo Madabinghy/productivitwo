@@ -279,7 +279,6 @@ class FileStore {
     final habitChecklistByHabitId = <String, List<String>>{
       // Hygiène matin
       hMatin.id: [
-        'Boire un verre d’eau',
         'Prendre mon café',
         'Douche',
         'Brosser les dents',
@@ -292,8 +291,8 @@ class FileStore {
 
       //Eau
       hEau.id: [
-        'Saisir mon verre d\'eau du réveil',
-        'Préparer ma boutille d\'eau'
+        'Préparer ma boutille d\'eau',
+        '1 verre d\'eau au réveil',
       ],
 
       // Hygiène soir
