@@ -282,11 +282,12 @@ class FileStore {
         'Prendre mon café',
         'Douche',
         'Brosser les dents',
+        'Maquillage (si nécessaire)',
         'Skincare (visage)',
+        'Ranger salle de bain (rapide)',
         'Déodorant',
         'Coiffure',
         'Parfum (option)',
-        'Ranger salle de bain (rapide)',
       ],
 
       //Eau
