@@ -494,6 +494,7 @@ class FileStore {
       toPlan(title: 'Shampoing', habit: hMatin),
       toPlan(title: 'Après-shampoing', habit: hMatin),
       toPlan(title: 'Déodorant', habit: hMatin),
+      toPlan(title: 'Parfum', habit: hMatin),
       toPlan(title: 'Crème visage', habit: hSoir),
       toPlan(title: 'Crème corps', habit: hHebdo),
       toPlan(title: 'Coton', habit: hSoir),
