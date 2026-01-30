@@ -33,7 +33,6 @@ class DayPlanItem {
   bool archived; // ✅ archivé (global si habitId == null)
   ActionStatus status;
   DateTime createdAt;
-  
 
   DayPlanItem({
     required this.id,
@@ -518,6 +517,10 @@ class AppState {
   Map<String, List<String>>
       habitChecklistByHabitId; // habitId -> ["item1","item2"]
 
+  // ✅ NEW : progress checklist persisté
+// habitId -> periodKey -> [indexes cochés]
+  Map<String, Map<String, List<int>>> habitChecklistDone;
+
   AppState({
     required this.domains,
     required this.activities,
@@ -539,6 +542,7 @@ class AppState {
     // ✅ NOUVEAU
     Map<String, List<String>>? nowSkippedByYmd,
     Map<String, List<String>>? nowDoneByYmd,
+    Map<String, Map<String, List<int>>>? habitChecklistDone,
   })  : snoozedUntil = snoozedUntil ?? <String, String>{},
         goals = goals ?? <Goal>[],
         inbox = inbox ?? <InboxItem>[],
@@ -550,7 +554,9 @@ class AppState {
             habitChecklistByHabitId ?? <String, List<String>>{},
         // ✅ NOUVEAU
         nowSkippedByYmd = nowSkippedByYmd ?? <String, List<String>>{},
-        nowDoneByYmd = nowDoneByYmd ?? <String, List<String>>{};
+        nowDoneByYmd = nowDoneByYmd ?? <String, List<String>>{},
+        habitChecklistDone =
+            habitChecklistDone ?? <String, Map<String, List<int>>>{};
 
   Map<String, dynamic> toJson() => {
         'domains': domains.map((e) => e.toJson()).toList(),
@@ -578,6 +584,7 @@ class AppState {
         'nowSkippedByYmd': nowSkippedByYmd,
         'nowDoneByYmd': nowDoneByYmd,
         'habitChecklistByHabitId': habitChecklistByHabitId,
+        'habitChecklistDone': habitChecklistDone,
       };
 
   static AppState from(Map j) {
@@ -590,6 +597,21 @@ class AppState {
         ),
       );
     }
+
+    Map<String, Map<String, List<int>>> _mapSMapListInt(dynamic v) {
+  if (v == null) return <String, Map<String, List<int>>>{};
+
+  final out = <String, Map<String, List<int>>>{};
+  (v as Map).forEach((k, vv) {
+    final inner = <String, List<int>>{};
+    (vv as Map).forEach((kk, list) {
+      inner[kk as String] =
+          (list as List).map((e) => (e as num).toInt()).toList();
+    });
+    out[k as String] = inner;
+  });
+  return out;
+}
 
     // Helpers safe
     List<T> _list<T>(dynamic v, T Function(dynamic) mapFn) {
@@ -625,6 +647,7 @@ class AppState {
       nowSkippedByYmd: _mapSL(j['nowSkippedByYmd']),
       nowDoneByYmd: _mapSL(j['nowDoneByYmd']),
       habitChecklistByHabitId: _mapSL(j['habitChecklistByHabitId']),
+      habitChecklistDone: _mapSMapListInt(j['habitChecklistDone']),
     );
   }
 

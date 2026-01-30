@@ -59,31 +59,27 @@ class NowHabit30dBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ IMPORTANT : utiliser le state le plus frais si possible
-    // (si ton AppState est immutable et remplacé, st peut être stale)
-    final freshSt = logic.state; // si dispo chez toi
-    final usedSt = freshSt is AppState ? freshSt : st;
+    final act = st.activities.firstWhere((a) => a.id == habitId);
 
-    final act = usedSt.activities.firstWhere((a) => a.id == habitId);
-
-    final (days, target, label) = _windowAndTarget(act);
-
-    // somme sur fenêtre dynamique (descend avec -)
-    final done = _sumOverDays(habitId, day, days);
-
-    final ratio = target > 0 ? (done / target) : 0.0;
-
-    // (optionnel) afficher aussi today/quota si tu veux garder l’info
+    final d0 = DateTime(day.year, day.month, day.day);
+    final doneToday = logic.habitValueOn(habitId, d0);
     final quota = logic.dayQuotaFor(act);
-    final doneToday = logic.habitValueOn(
-      habitId,
-      DateTime(day.year, day.month, day.day),
-    );
+
+// fenêtre principale (selon freq)
+    final (daysWin, targetWin, labelWin) = _windowAndTarget(act);
+
+// done fenêtre (calendaire)
+    final doneWin = _sumOverDays(habitId, d0, daysWin);
+    final ratioWin = targetWin > 0 ? (doneWin / targetWin) : 0.0;
+
+// label sans doublon
+    final label = (daysWin == 1)
+        ? "Aujourd’hui : $doneToday / $quota"
+        : "$labelWin : $doneWin / $targetWin   •   Aujourd’hui : $doneToday / $quota";
 
     return TinyBar(
-      ratio: ratio,
-      labelLeft:
-          "$label : $done / $target   •   Aujourd’hui : $doneToday / $quota",
+      ratio: ratioWin,
+      labelLeft: label,
       padding: const EdgeInsets.only(top: 6),
     );
   }

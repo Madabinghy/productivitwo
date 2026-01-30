@@ -693,6 +693,79 @@ class AppLogic {
     return assocEvent;
   }
 
+  String checklistPeriodKey(String habitId, DateTime day) {
+    final act = state.activities.firstWhere((a) => a.id == habitId);
+    final d = DateTime(day.year, day.month, day.day);
+
+    final freq = effectiveHabitFreq(act);
+    switch (freq) {
+      case HabitFreq.daily:
+        return yyyymmdd(d);
+
+      case HabitFreq.weekly:
+        final monday =
+            d.subtract(Duration(days: (d.weekday - DateTime.monday)));
+        return 'W:${yyyymmdd(monday)}';
+
+      case HabitFreq.monthly:
+        final mm = d.month.toString().padLeft(2, '0');
+        return 'M:${d.year}-$mm';
+    }
+  }
+
+  Set<int> checklistDoneSet(String habitId, DateTime day) {
+    final key = checklistPeriodKey(habitId, day);
+    final list = state.habitChecklistDone[habitId]?[key] ?? const <int>[];
+    return list.toSet();
+  }
+
+  void toggleChecklistItem(String habitId, DateTime day, int index) {
+    final key = checklistPeriodKey(habitId, day);
+
+    final byPeriod = state.habitChecklistDone.putIfAbsent(
+      habitId,
+      () => <String, List<int>>{},
+    );
+
+    final cur = (byPeriod[key] ?? <int>[]).toSet();
+    if (cur.contains(index)) {
+      cur.remove(index);
+    } else {
+      cur.add(index);
+    }
+
+    byPeriod[key] = cur.toList()..sort();
+    onChange();
+  }
+
+  void removeChecklistItemAndFixDone(
+      String habitId, DateTime day, int removeIndex) {
+    // 1) supprime le texte (template)
+    removeChecklistItem(habitId, removeIndex);
+
+    // 2) fixe les coches (progress)
+    final key = checklistPeriodKey(habitId, day);
+    final byPeriod = state.habitChecklistDone[habitId];
+    if (byPeriod == null) {
+      onChange();
+      return;
+    }
+
+    final cur = (byPeriod[key] ?? <int>[]).toSet();
+
+    final next = <int>{};
+    for (final i in cur) {
+      if (i == removeIndex) continue; // coche supprimée
+      if (i > removeIndex)
+        next.add(i - 1); // shift
+      else
+        next.add(i);
+    }
+
+    byPeriod[key] = next.toList()..sort();
+    onChange();
+  }
+
   void incHabit(String activityId, int delta, DateTime day) {
     final key = yyyymmdd(day);
 
@@ -760,13 +833,13 @@ class AppLogic {
     // ✅ Retirer d’Aujourd’hui uniquement si :
     // - cible MANUELLE
     // - logique quotidienne
-    final freq = effectiveHabitFreq(act);
+/*     final freq = effectiveHabitFreq(act);
     if (freq == HabitFreq.daily) {
       final dayQuota = dayQuotaFor(act);
       if (act.manualTarget && dayQuota > 0 && doneOnDay >= dayQuota) {
         removeFromDay(yyyymmdd(currentDay), PlanKind.habit, activityId);
       }
-    }
+    } */
 
     // auto-tune (safe)
     //_autoTuneHabitSafe(act);

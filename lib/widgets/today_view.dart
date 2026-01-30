@@ -2481,128 +2481,122 @@ class _NowTabState extends State<NowTab> {
     widget.logic.forcedNowHabitId = null;
   }
 
-  Widget _routineChecklist(DayPlanItem it) {
-    if (it.kind != PlanKind.habit || it.refId == null) {
-      return const SizedBox.shrink();
-    }
-    final habitId = it.refId!;
-    final ymd =
-        yyyymmdd(DateTime(widget.day.year, widget.day.month, widget.day.day));
-    widget.logic.ensureChecklistDay(ymd);
+Widget _routineChecklist(DayPlanItem it) {
+  if (it.kind != PlanKind.habit || it.refId == null) {
+    return const SizedBox.shrink();
+  }
 
-    final checked = widget.logic.checkedTodayForHabit(habitId);
+  final habitId = it.refId!;
+  final items = widget.logic.checklistForHabit(habitId);
 
-    final items = widget.logic.checklistForHabit(habitId);
+  // ✅ coches persistées par période (daily/weekly/monthly)
+  final doneSet = widget.logic.checklistDoneSet(habitId, widget.day);
 
-    final total = items.length;
-    final checkedCount = checked.length.clamp(0, total);
-    final ratio = total == 0 ? 0.0 : checkedCount / total;
+  final total = items.length;
+  final checkedCount = doneSet.length.clamp(0, total);
+  final ratio = total == 0 ? 0.0 : checkedCount / total;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              "Checklist",
-              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-            ),
-            const SizedBox(height: 6),
-            if (items.isNotEmpty) ...[
-              TinyBar(
-                ratio: ratio,
-                labelLeft: "Checklist : $checkedCount / $total",
-                padding: const EdgeInsets.only(top: 6, bottom: 6),
-              ),
-            ],
-            if (items.isEmpty)
-              Text(
-                "Aucun item. Appuie sur + pour en ajouter.",
-                style: TextStyle(
-                  color:
-                      Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-                ),
-              )
-            else
-              for (int i = 0; i < items.length; i++)
-                _checklistRow(
-                  planId: it.id,
-                  habitId: habitId,
-                  index: i,
-                  label: items[i],
-                  checked: checked,
-                ),
-            const SizedBox(height: 6),
-            Align(
-              alignment: Alignment.centerRight,
-              child: IconButton(
-                tooltip: "Ajouter un item",
-                onPressed: () async {
-                  final txt = await _promptText(title: "Ajouter un item");
-                  if (txt == null || txt.isEmpty) return;
-                  widget.logic.addChecklistItem(habitId, txt);
-                  setState(() {});
-                },
-                icon: const Icon(Icons.add),
-              ),
+  return Card(
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "Checklist",
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+          ),
+          const SizedBox(height: 6),
+
+          if (items.isNotEmpty) ...[
+            TinyBar(
+              ratio: ratio,
+              labelLeft: "Checklist : $checkedCount / $total",
+              padding: const EdgeInsets.only(top: 6, bottom: 6),
             ),
           ],
-        ),
+
+          if (items.isEmpty)
+            Text(
+              "Aucun item. Appuie sur + pour en ajouter.",
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+              ),
+            )
+          else
+            for (int i = 0; i < items.length; i++)
+              _checklistRow(
+                habitId: habitId,
+                index: i,
+                label: items[i],
+                doneSet: doneSet,
+              ),
+
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerRight,
+            child: IconButton(
+              tooltip: "Ajouter un item",
+              onPressed: () async {
+                final txt = await _promptText(title: "Ajouter un item");
+                if (txt == null || txt.isEmpty) return;
+                widget.logic.addChecklistItem(habitId, txt);
+                setState(() {}); // refresh
+              },
+              icon: const Icon(Icons.add),
+            ),
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
 
-  Widget _checklistRow({
-    required String planId,
-    required String habitId,
-    required int index,
-    required String label,
-    required Set<String> checked,
-  }) {
-    return Row(
-      children: [
-        Checkbox(
-          value: checked.contains(label),
-          onChanged: (v) {
-            setState(() {
-              widget.logic.setCheckedToday(habitId, label, v == true);
-            });
-          },
-        ),
-        Expanded(
-          child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis),
-        ),
-        IconButton(
-          tooltip: "Renommer",
-          onPressed: () async {
-            final txt = await _promptText(title: "Renommer", initial: label);
-            if (txt == null || txt.isEmpty) return;
 
-            // si l'item était coché, on transfère la coche
-            setState(() {
-              if (checked.remove(label)) checked.add(txt);
-            });
+Widget _checklistRow({
+  required String habitId,
+  required int index,
+  required String label,
+  required Set<int> doneSet,
+}) {
+  final isChecked = doneSet.contains(index);
 
-            widget.logic.renameChecklistItem(habitId, index, txt);
-            setState(() {}); // refresh
-          },
-          icon: const Icon(Icons.edit),
-        ),
-        IconButton(
-          tooltip: "Supprimer",
-          onPressed: () {
-            setState(() {
-              checked.remove(label);
-            });
-            widget.logic.removeChecklistItem(habitId, index);
-            setState(() {}); // refresh
-          },
-          icon: const Icon(Icons.delete_outline),
-        ),
-      ],
-    );
-  }
+  return Row(
+    children: [
+      Checkbox(
+        value: isChecked,
+        onChanged: (_) {
+          widget.logic.toggleChecklistItem(habitId, widget.day, index);
+          setState(() {});
+        },
+      ),
+      Expanded(
+        child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis),
+      ),
+      IconButton(
+        tooltip: "Renommer",
+        onPressed: () async {
+          final txt = await _promptText(title: "Renommer", initial: label);
+          if (txt == null || txt.isEmpty) return;
+
+          // Renommer ne change PAS l'index -> les coches restent OK
+          widget.logic.renameChecklistItem(habitId, index, txt);
+          setState(() {});
+        },
+        icon: const Icon(Icons.edit),
+      ),
+      IconButton(
+        tooltip: "Supprimer",
+        onPressed: () {
+          // ⚠️ suppression d'item = décalage d'index -> il faut réaligner les coches
+          widget.logic.removeChecklistItemAndFixDone(habitId, widget.day, index);
+          setState(() {});
+        },
+        icon: const Icon(Icons.delete_outline),
+      ),
+    ],
+  );
+}
 
   void _persistNowSets() {
     final ymd = _skippedYmd;

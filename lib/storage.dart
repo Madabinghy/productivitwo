@@ -66,23 +66,29 @@ class FileStore {
     final sport = Domain(name: 'Sport', autoGoal: true);
 
     // ========== Helpers ==========
-    Activity timeAct(String domainId, String name,
-            {ActivityRole role = ActivityRole.generic}) =>
+    Activity timeAct(
+      String domainId,
+      String name, {
+      ActivityRole role = ActivityRole.generic,
+      int goalMin = 1,
+    }) =>
         Activity(
           domainId: domainId,
           name: name,
           type: 'time',
-          goalMin: 1,
+          goalMin: goalMin,
           role: role,
         );
 
+    /// ✅ “bonne” fonction habit : pas de 30j par défaut global.
+    /// Tu choisis la fréquence au cas par cas dans le seed.
     Activity habit(
       String domainId,
       String name, {
-      HabitFreq freq = HabitFreq.monthly, // ton default = 30j
+      required HabitFreq freq,
       int target = 1,
-      bool manualTarget = false,
-      bool autoTune = true,
+      bool manualTarget = true,
+      bool autoTune = false,
     }) =>
         Activity(
           domainId: domainId,
@@ -94,13 +100,43 @@ class FileStore {
           autoTune: autoTune,
         );
 
+    Activity weeklyCountHabit(
+      String domainId,
+      String name, {
+      required int target,
+    }) =>
+        Activity(
+          domainId: domainId,
+          name: name,
+          type: 'habit',
+          habitFreq: HabitFreq.weekly,
+          habitTarget: target,
+          manualTarget: true, // 👈 clé
+          autoTune: false, // 👈 clé
+        );
+
+    Activity dailyCountHabit(
+      String domainId,
+      String name, {
+      required int target,
+    }) =>
+        Activity(
+          domainId: domainId,
+          name: name,
+          type: 'habit',
+          habitFreq: HabitFreq.daily,
+          habitTarget: target,
+          manualTarget: true, // 👈 clé
+          autoTune: false, // 👈 clé
+        );
+
     // ========== Activités (time) ==========
     final activities = <Activity>[
       // Spiritualité
       timeAct(spiritualite.id, 'Prier'),
       timeAct(spiritualite.id, 'Lire la Bible'),
 
-      // Environnement
+      // Environnement / Maison
       timeAct(environnement.id, 'Nettoyer'),
       timeAct(environnement.id, 'Ranger'),
       timeAct(environnement.id, 'Lessive'),
@@ -135,19 +171,33 @@ class FileStore {
 
     // ========== Routines (habits) ==========
     final habits = <Activity>[
-      // --- HYGIÈNE ---
+      // --- HYGIÈNE / SANTÉ ---
       habit(sante.id, 'Hygiène du matin', freq: HabitFreq.daily),
       habit(sante.id, 'Hygiène du soir', freq: HabitFreq.daily),
       habit(sante.id, 'Hygiène hebdomadaire', freq: HabitFreq.weekly),
-
-      // --- SANTÉ ---
-      habit(sante.id, 'Boire de l’eau', freq: HabitFreq.daily),
-      habit(sante.id, 'Manger équilibré', freq: HabitFreq.daily),
-      habit(sante.id, 'Préparer les repas', freq: HabitFreq.weekly),
-      habit(sante.id, 'Batch cooking', freq: HabitFreq.weekly),
+      dailyCountHabit(
+        sante.id,
+        "Boire de l’eau",
+        target: 10,
+      ),
+            dailyCountHabit(
+        sante.id,
+        "Manger équilibré",
+        target: 3,
+      ),
+      weeklyCountHabit(
+        sante.id,
+        "Planifier les repas",
+        target: 2,
+      ),
+      weeklyCountHabit(
+        sante.id,
+        "Batch cooking",
+        target: 2,
+      ),
 
       // --- MAISON ---
-      habit(environnement.id, 'Faire la vaisselle', freq: HabitFreq.weekly),
+      habit(environnement.id, 'Faire la vaisselle', freq: HabitFreq.daily),
       habit(environnement.id, "Passer l'aspirateur", freq: HabitFreq.weekly),
       habit(environnement.id, 'Nettoyage rapide', freq: HabitFreq.weekly),
       habit(environnement.id, 'Faire une lessive', freq: HabitFreq.weekly),
@@ -165,15 +215,8 @@ class FileStore {
       // --- SPORT ---
       habit(sport.id, 'Séance sport', freq: HabitFreq.weekly),
 
-      // ✅ Souplesse regroupée en 1 routine (35 étapes via checklist)
-      habit(
-        sport.id,
-        'Étirements – mobilité (35)',
-        freq: HabitFreq.weekly,
-        target: 1, // la routine = 1, la checklist = 35 étapes
-        manualTarget: false,
-        autoTune: true,
-      ),
+      // ✅ Souplesse regroupée : 1 routine + checklist 35 items
+      habit(sport.id, 'Étirements – mobilité (35)', freq: HabitFreq.weekly),
 
       // --- BUSINESS ---
       habit(business.id, 'Préparer une intervention', freq: HabitFreq.weekly),
@@ -185,23 +228,31 @@ class FileStore {
     final hMatin = habitByName('Hygiène du matin');
     final hSoir = habitByName('Hygiène du soir');
     final hHebdo = habitByName('Hygiène hebdomadaire');
+
+    final hEau = habitByName('Boire de l’eau');
+
+    final hMangerEq = habitByName('Manger équilibré');
+
     final hVaiss = habitByName('Faire la vaisselle');
     final hAspi = habitByName("Passer l'aspirateur");
     final hClean = habitByName('Nettoyage rapide');
     final hLessive = habitByName('Faire une lessive');
     final hDraps = habitByName('Changer draps/serviettes');
-    final hPrep = habitByName('Préparer les repas');
+
+    final hPlanRepas = habitByName('Planifier les repas');
     final hBatch = habitByName('Batch cooking');
+
     final hRevue = habitByName('Revue hebdomadaire');
     final hDep = habitByName('Saisir mes dépenses');
     final hBudget = habitByName('Suivre mon budget');
+
     final hSport = habitByName('Séance sport');
     final hStretch = habitByName('Étirements – mobilité (35)');
 
     final coursesAct =
         activities.firstWhere((a) => a.role == ActivityRole.shopping);
 
-    // ========== CHECKLISTS (seed) ==========
+    // ========== CHECKLISTS seed ==========
     final habitChecklistByHabitId = <String, List<String>>{
       // Hygiène matin
       hMatin.id: [
@@ -217,32 +268,41 @@ class FileStore {
 
       // Hygiène soir
       hSoir.id: [
+        'Mettre téléphone en charge',
         'Démaquillage (si besoin)',
+        'Douche',
         'Brosser les dents',
         'Skincare (visage)',
         'Préparer vêtements (option)',
-        'Mettre téléphone en charge',
       ],
 
       // Hygiène hebdo
       hHebdo.id: [
         'Couper les ongles',
-        'Nettoyer/affûter rasoir ou tondeuse',
-        'Changer brosse à dents si usée',
-        'Nettoyer trousse de toilette',
-        'Ranger/vider trousse à pharmacie',
+        'Couper mes cheveux',
+        'Me raser',
+        'Ranger trousse de toilette',
+        'Vérifier trousse à pharmacie',
+        'Skincare hebdo',
+      ],
+
+      //Manger équilibré
+
+      hMangerEq.id: [
+        'Protéines',
+        'Fibres',
+        'Féculents',
       ],
 
       // Vaisselle
       hVaiss.id: [
-        'Laver',
-        'Rincer',
+        'Laver & Rincer',
         'Essuyer',
         'Ranger',
         'Nettoyer évier',
       ],
 
-      // Aspirateur (checklist pièces)
+      // Aspirateur
       hAspi.id: [
         'Aspirer la chambre',
         'Aspirer le salon',
@@ -276,7 +336,7 @@ class FileStore {
       ],
 
       // Préparer repas
-      hPrep.id: [
+      hPlanRepas.id: [
         'Vérifier frigo',
         'Planifier 3 repas',
         'Préparer liste courses',
@@ -298,7 +358,7 @@ class FileStore {
       hRevue.id: [
         'Vider inbox / notes',
         'Revoir “À faire”',
-        'Nettoyer actions (supprimer / archiver)',
+        'Supprimer / archiver actions',
         'Planifier la semaine',
         'Vérifier rendez-vous',
       ],
@@ -365,7 +425,7 @@ class FileStore {
       ],
     };
 
-    // ========== À PRÉVOIR (Courses) seedé, lié aux routines ==========
+    // ========== À PRÉVOIR (Courses) ==========
     int _seq = 0;
     String _newId() =>
         'seed:${DateTime.now().millisecondsSinceEpoch}:${_seq++}';
@@ -390,12 +450,15 @@ class FileStore {
       );
     }
 
-    // Liste courses exhaustive (personne seule) — l’utilisateur supprime ce qu’il veut
     final dayPlan = <DayPlanItem>[
+      //Boire de l'eau
+      toPlan(title: 'Eau', habit: hEau),
+
       // --- Hygiène (matin/soir/hebdo) ---
       toPlan(title: 'Dentifrice', habit: hMatin),
       toPlan(title: 'Brosse à dents', habit: hMatin),
       toPlan(title: 'Fil dentaire', habit: hMatin),
+      toPlan(title: 'Cotons-tiges', habit: hMatin),
       toPlan(title: 'Bain de bouche', habit: hSoir),
       toPlan(title: 'Savon / gel douche', habit: hMatin),
       toPlan(title: 'Shampoing', habit: hMatin),
@@ -405,21 +468,20 @@ class FileStore {
       toPlan(title: 'Crème corps', habit: hHebdo),
       toPlan(title: 'Coton', habit: hSoir),
       toPlan(title: 'Cotons-tiges', habit: hHebdo),
-      toPlan(title: 'Rasoir (jetable) / lames', habit: hHebdo), // homme/femme
+      toPlan(title: 'Rasoir (jetable) / lames', habit: hHebdo),
       toPlan(title: 'Mousse/gel à raser', habit: hHebdo),
-      toPlan(title: 'After shave / baume', habit: hHebdo),
-      toPlan(title: 'Serviettes hygiéniques', habit: hHebdo), // femme
-      toPlan(title: 'Tampons', habit: hHebdo), // femme
-      toPlan(title: 'Protège-slips', habit: hHebdo), // femme
-      toPlan(title: 'Démaquillant', habit: hSoir), // femme (option)
-      toPlan(title: 'Lait corporel', habit: hHebdo),
+      toPlan(title: 'Baume/after-shave', habit: hHebdo),
+      toPlan(title: 'Serviettes hygiéniques', habit: hHebdo),
+      toPlan(title: 'Tampons', habit: hHebdo),
+      toPlan(title: 'Protège-slips', habit: hHebdo),
+      toPlan(title: 'Démaquillant', habit: hSoir),
 
       // --- Vaisselle ---
       toPlan(title: 'Liquide vaisselle', habit: hVaiss),
       toPlan(title: 'Éponges', habit: hVaiss),
       toPlan(title: 'Gants vaisselle', habit: hVaiss),
       toPlan(title: 'Produit multi-usage cuisine', habit: hVaiss),
-      toPlan(title: 'Essuie-tout (Sopalin)', habit: hVaiss),
+      toPlan(title: 'Essuie-tout', habit: hVaiss),
 
       // --- Aspirateur / Nettoyage ---
       toPlan(title: 'Sacs aspirateur', habit: hAspi),
@@ -427,9 +489,8 @@ class FileStore {
       toPlan(title: 'Sacs poubelle (petits)', habit: hClean),
       toPlan(title: 'Sacs poubelle (grands)', habit: hClean),
       toPlan(title: 'Produit multi-surfaces', habit: hClean),
-      toPlan(title: 'Lingettes (option)', habit: hClean),
       toPlan(title: 'Javel (option)', habit: hClean),
-      toPlan(title: 'Serpillière / microfibres', habit: hClean),
+      toPlan(title: 'Microfibres', habit: hClean),
 
       // --- Lessive / Draps ---
       toPlan(title: 'Lessive', habit: hLessive),
@@ -438,26 +499,26 @@ class FileStore {
       toPlan(title: 'Pinces à linge', habit: hLessive),
 
       // --- Cuisine / Repas / Batch ---
-      toPlan(title: 'Huile', habit: hPrep),
-      toPlan(title: 'Sel', habit: hPrep),
-      toPlan(title: 'Poivre', habit: hPrep),
-      toPlan(title: 'Riz', habit: hPrep),
-      toPlan(title: 'Pâtes', habit: hPrep),
+      toPlan(title: 'Huile', habit: hPlanRepas),
+      toPlan(title: 'Sel', habit: hPlanRepas),
+      toPlan(title: 'Poivre', habit: hPlanRepas),
+      toPlan(title: 'Riz', habit: hPlanRepas),
+      toPlan(title: 'Pâtes', habit: hPlanRepas),
       toPlan(title: 'Farine', habit: hBatch),
       toPlan(title: 'Sucre', habit: hBatch),
-      toPlan(title: 'Œufs', habit: hPrep),
-      toPlan(title: 'Lait', habit: hPrep),
-      toPlan(title: 'Beurre', habit: hPrep),
-      toPlan(title: 'Yaourts', habit: hPrep),
+      toPlan(title: 'Œufs', habit: hPlanRepas),
+      toPlan(title: 'Lait', habit: hPlanRepas),
+      toPlan(title: 'Beurre', habit: hPlanRepas),
+      toPlan(title: 'Yaourts', habit: hPlanRepas),
       toPlan(title: 'Poulet / protéines', habit: hBatch),
       toPlan(title: 'Légumes', habit: hBatch),
-      toPlan(title: 'Fruits', habit: hPrep),
+      toPlan(title: 'Fruits', habit: hPlanRepas),
       toPlan(title: 'Conserves (thon/haricots)', habit: hBatch),
       toPlan(title: 'Épices (curry/paprika)', habit: hBatch),
-      toPlan(title: 'Oignons / ail', habit: hPrep),
-      toPlan(title: 'Sauce tomate', habit: hPrep),
+      toPlan(title: 'Oignons / ail', habit: hPlanRepas),
+      toPlan(title: 'Sauce tomate', habit: hPlanRepas),
 
-      // --- Organisation (papier, maison) ---
+      // --- Organisation / divers ---
       toPlan(title: 'Papier toilette', habit: hClean),
       toPlan(title: 'Mouchoirs', habit: hHebdo),
       toPlan(title: 'Piles', habit: hRevue),
@@ -487,7 +548,7 @@ class FileStore {
       habitHits: [],
       habitPinnedActivity: {},
 
-      // ✅ seed checklist
+      // ✅ checklists seedées
       habitChecklistByHabitId: habitChecklistByHabitId,
     );
   }
