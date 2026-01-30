@@ -150,7 +150,7 @@ class FileStore {
       timeAct(sport.id, 'Étirements'),
 
       // Santé
-      timeAct(sante.id, 'Soins'),
+      timeAct(sante.id, 'Hygiène'),
       timeAct(sante.id, 'Cuisine'),
       timeAct(sante.id, 'Sommeil'),
 
