@@ -766,6 +766,14 @@ class AppLogic {
     onChange();
   }
 
+  void clearChecklistForPeriod(String habitId, DateTime day) {
+    final key = checklistPeriodKey(habitId, day);
+    final byPeriod = state.habitChecklistDone[habitId];
+    if (byPeriod == null) return;
+    byPeriod.remove(key);
+    onChange();
+  }
+
   void incHabit(String activityId, int delta, DateTime day) {
     final key = yyyymmdd(day);
 

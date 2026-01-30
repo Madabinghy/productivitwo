@@ -134,6 +134,7 @@ class FileStore {
     final activities = <Activity>[
       // Spiritualité
       timeAct(spiritualite.id, 'Prier'),
+      timeAct(spiritualite.id, 'Méditation'),
       timeAct(spiritualite.id, 'Lire la Bible'),
 
       // Environnement / Maison
@@ -180,7 +181,7 @@ class FileStore {
         "Boire de l’eau",
         target: 10,
       ),
-            dailyCountHabit(
+      dailyCountHabit(
         sante.id,
         "Manger équilibré",
         target: 3,
@@ -206,20 +207,29 @@ class FileStore {
 
       // --- ORGANISATION / GTD ---
       habit(organisation.id, 'Revue hebdomadaire', freq: HabitFreq.weekly),
-      habit(organisation.id, 'Saisir mes dépenses', freq: HabitFreq.weekly),
+      habit(organisation.id, 'Saisir mes dépenses', freq: HabitFreq.daily),
       habit(organisation.id, 'Suivre mon budget', freq: HabitFreq.weekly),
 
       // --- SPIRITUEL ---
-      habit(spiritualite.id, 'Temps calme', freq: HabitFreq.daily),
+      dailyCountHabit(
+        spiritualite.id,
+        "Lire un chapitre",
+        target: 3,
+      ),
+      habit(spiritualite.id, 'Aller à la Prière', freq: HabitFreq.weekly),
 
       // --- SPORT ---
-      habit(sport.id, 'Séance sport', freq: HabitFreq.weekly),
+      weeklyCountHabit(
+        sport.id,
+        "Séance sport",
+        target: 3,
+      ),
 
       // ✅ Souplesse regroupée : 1 routine + checklist 35 items
-      habit(sport.id, 'Étirements – mobilité (35)', freq: HabitFreq.weekly),
+      habit(sport.id, 'Étirements', freq: HabitFreq.weekly),
 
       // --- BUSINESS ---
-      habit(business.id, 'Préparer une intervention', freq: HabitFreq.weekly),
+      habit(business.id, 'Préparer une intervention', freq: HabitFreq.daily),
     ];
 
     Activity habitByName(String name) =>
@@ -247,7 +257,7 @@ class FileStore {
     final hBudget = habitByName('Suivre mon budget');
 
     final hSport = habitByName('Séance sport');
-    final hStretch = habitByName('Étirements – mobilité (35)');
+    final hStretch = habitByName('Étirements');
 
     final coursesAct =
         activities.firstWhere((a) => a.role == ActivityRole.shopping);
@@ -498,25 +508,29 @@ class FileStore {
       toPlan(title: 'Détachant', habit: hLessive),
       toPlan(title: 'Pinces à linge', habit: hLessive),
 
-      // --- Cuisine / Repas / Batch ---
+      // --- Cuisine / Repas ---
       toPlan(title: 'Huile', habit: hPlanRepas),
       toPlan(title: 'Sel', habit: hPlanRepas),
       toPlan(title: 'Poivre', habit: hPlanRepas),
       toPlan(title: 'Riz', habit: hPlanRepas),
       toPlan(title: 'Pâtes', habit: hPlanRepas),
-      toPlan(title: 'Farine', habit: hBatch),
-      toPlan(title: 'Sucre', habit: hBatch),
+      toPlan(title: 'Farine', habit: hPlanRepas),
+      toPlan(title: 'Sucre', habit: hPlanRepas),
       toPlan(title: 'Œufs', habit: hPlanRepas),
       toPlan(title: 'Lait', habit: hPlanRepas),
       toPlan(title: 'Beurre', habit: hPlanRepas),
       toPlan(title: 'Yaourts', habit: hPlanRepas),
-      toPlan(title: 'Poulet / protéines', habit: hBatch),
-      toPlan(title: 'Légumes', habit: hBatch),
+      toPlan(title: 'Poulet / protéines', habit: hPlanRepas),
+      toPlan(title: 'Légumes', habit: hPlanRepas),
       toPlan(title: 'Fruits', habit: hPlanRepas),
-      toPlan(title: 'Conserves (thon/haricots)', habit: hBatch),
-      toPlan(title: 'Épices (curry/paprika)', habit: hBatch),
+      toPlan(title: 'Conserves (thon/haricots)', habit: hPlanRepas),
+      toPlan(title: 'Épices (curry/paprika)', habit: hPlanRepas),
       toPlan(title: 'Oignons / ail', habit: hPlanRepas),
       toPlan(title: 'Sauce tomate', habit: hPlanRepas),
+
+      // --- Cuisine / Repas / Batch ---
+      toPlan(title: 'Cuit-Vapeur', habit: hBatch),
+      toPlan(title: 'Plats à emporter', habit: hBatch),
 
       // --- Organisation / divers ---
       toPlan(title: 'Papier toilette', habit: hClean),

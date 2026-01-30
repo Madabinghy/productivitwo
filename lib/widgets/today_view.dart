@@ -39,111 +39,112 @@ class _TodayViewState extends State<TodayView> {
   bool _showShopping = true;
   bool _showCourses = false; // repli/dépli manuel
 
-Widget _coursesSection({
-  required List<DayPlanItem> courses,
-  required bool autoExpanded,
-  required Activity? shoppingAct,
-}) {
-  if (courses.isEmpty) return const SizedBox.shrink();
+  Widget _coursesSection({
+    required List<DayPlanItem> courses,
+    required bool autoExpanded,
+    required Activity? shoppingAct,
+  }) {
+    if (courses.isEmpty) return const SizedBox.shrink();
 
-  final expanded = autoExpanded || _showCourses;
+    final expanded = autoExpanded || _showCourses;
 
-  // Map habitId -> nom de routine
-  final habitsById = {
-    for (final a in widget.logic.state.activities.where((x) => x.isHabit))
-      a.id: a
-  };
+    // Map habitId -> nom de routine
+    final habitsById = {
+      for (final a in widget.logic.state.activities.where((x) => x.isHabit))
+        a.id: a
+    };
 
-  String habitName(String? habitId) {
-    if (habitId == null || habitId.isEmpty) return "Sans routine";
-    return habitsById[habitId]?.name ?? "Routine";
-  }
+    String habitName(String? habitId) {
+      if (habitId == null || habitId.isEmpty) return "Sans routine";
+      return habitsById[habitId]?.name ?? "Routine";
+    }
 
-  // Group: habitId -> items
-  final byHabit = <String?, List<DayPlanItem>>{};
-  for (final it in courses) {
-    (byHabit[it.habitId] ??= []).add(it);
-  }
+    // Group: habitId -> items
+    final byHabit = <String?, List<DayPlanItem>>{};
+    for (final it in courses) {
+      (byHabit[it.habitId] ??= []).add(it);
+    }
 
-  // Tri interne + tri des groupes
-  for (final list in byHabit.values) {
-    list.sort((a, b) => a.title.compareTo(b.title));
-  }
-  final habitIds = byHabit.keys.toList()
-    ..sort((a, b) => habitName(a).compareTo(habitName(b)));
+    // Tri interne + tri des groupes
+    for (final list in byHabit.values) {
+      list.sort((a, b) => a.title.compareTo(b.title));
+    }
+    final habitIds = byHabit.keys.toList()
+      ..sort((a, b) => habitName(a).compareTo(habitName(b)));
 
-  return Card(
-    margin: const EdgeInsets.only(bottom: 8),
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => setState(() => _showCourses = !_showCourses),
-            onLongPress: shoppingAct == null
-                ? null
-                : () {
-                    final running = widget.logic.runningActivity();
-                    if (running == null || running.id != shoppingAct.id) {
-                      widget.logic.start(shoppingAct.id);
-                      setState(() {});
-                    }
-                  },
-            child: Row(
-              children: [
-                const Icon(Icons.shopping_cart_outlined, size: 18),
-                const SizedBox(width: 8),
-                Expanded(
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => setState(() => _showCourses = !_showCourses),
+              onLongPress: shoppingAct == null
+                  ? null
+                  : () {
+                      final running = widget.logic.runningActivity();
+                      if (running == null || running.id != shoppingAct.id) {
+                        widget.logic.start(shoppingAct.id);
+                        setState(() {});
+                      }
+                    },
+              child: Row(
+                children: [
+                  const Icon(Icons.shopping_cart_outlined, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      "Courses (${courses.length})",
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    expanded ? Icons.expand_less : Icons.expand_more,
+                    size: 20,
+                  ),
+                ],
+              ),
+            ),
+            if (expanded) ...[
+              const SizedBox(height: 8),
+
+              // Groupes par routine
+              for (final hid in habitIds) ...[
+                Padding(
+                  padding: const EdgeInsets.only(top: 6, bottom: 6),
                   child: Text(
-                    "Courses (${courses.length})",
-                    style: const TextStyle(
+                    "${habitName(hid)} (${byHabit[hid]!.length})",
+                    style: TextStyle(
                       fontWeight: FontWeight.w800,
-                      fontSize: 16,
+                      fontSize: 13,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(.75),
                     ),
                   ),
                 ),
-                Icon(
-                  expanded ? Icons.expand_less : Icons.expand_more,
-                  size: 20,
-                ),
-              ],
-            ),
-          ),
-
-          if (expanded) ...[
-            const SizedBox(height: 8),
-
-            // Groupes par routine
-            for (final hid in habitIds) ...[
-              Padding(
-                padding: const EdgeInsets.only(top: 6, bottom: 6),
-                child: Text(
-                  "${habitName(hid)} (${byHabit[hid]!.length})",
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 13,
-                    color:
-                        Theme.of(context).colorScheme.onSurface.withOpacity(.75),
+                for (final it in byHabit[hid]!)
+                  _todayTile(
+                    context,
+                    it,
+                    key: ValueKey("courses:${hid ?? "none"}:${it.id}"),
+                    showDrag: false,
+                    indexForDrag: 0,
                   ),
-                ),
-              ),
-              for (final it in byHabit[hid]!)
-                _todayTile(
-                  context,
-                  it,
-                  key: ValueKey("courses:${hid ?? "none"}:${it.id}"),
-                  showDrag: false,
-                  indexForDrag: 0,
-                ),
+              ],
             ],
           ],
-        ],
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   Activity? _activityById(String? id) {
     if (id == null || id.isEmpty) return null;
@@ -843,17 +844,20 @@ Widget _coursesSection({
         ? <DayPlanItem>[]
         : openPool.where((a) => a.activityId == shoppingId).toList();
 
-final habitsById = {for (final a in widget.logic.state.activities.where((x) => x.isHabit)) a.id: a};
+    final habitsById = {
+      for (final a in widget.logic.state.activities.where((x) => x.isHabit))
+        a.id: a
+    };
 
-final coursesByHabitId = <String?, List<DayPlanItem>>{};
-for (final a in shoppingActions) {
-  (coursesByHabitId[a.habitId] ??= []).add(a);
-}
+    final coursesByHabitId = <String?, List<DayPlanItem>>{};
+    for (final a in shoppingActions) {
+      (coursesByHabitId[a.habitId] ??= []).add(a);
+    }
 
 // tri interne
-for (final list in coursesByHabitId.values) {
-  list.sort((a, b) => a.title.compareTo(b.title));
-}
+    for (final list in coursesByHabitId.values) {
+      list.sort((a, b) => a.title.compareTo(b.title));
+    }
 
 // 4) CONTEXTE = subset de OPEN POOL, en excluant Courses
     final byActivity = <DayPlanItem>[];
@@ -2481,122 +2485,176 @@ class _NowTabState extends State<NowTab> {
     widget.logic.forcedNowHabitId = null;
   }
 
-Widget _routineChecklist(DayPlanItem it) {
-  if (it.kind != PlanKind.habit || it.refId == null) {
-    return const SizedBox.shrink();
-  }
+  Widget _routineChecklist(DayPlanItem it) {
+    if (it.kind != PlanKind.habit || it.refId == null) {
+      return const SizedBox.shrink();
+    }
 
-  final habitId = it.refId!;
-  final items = widget.logic.checklistForHabit(habitId);
+    final habitId = it.refId!;
 
-  // ✅ coches persistées par période (daily/weekly/monthly)
-  final doneSet = widget.logic.checklistDoneSet(habitId, widget.day);
+    // Activity (habit) + freq
+    final act = widget.st.activities.firstWhere((a) => a.id == habitId);
+    final freq = widget.logic.effectiveHabitFreq(act);
 
-  final total = items.length;
-  final checkedCount = doneSet.length.clamp(0, total);
-  final ratio = total == 0 ? 0.0 : checkedCount / total;
+    String scopeLabel() {
+      switch (freq) {
+        case HabitFreq.daily:
+          return "Aujourd’hui";
+        case HabitFreq.weekly:
+          return "Cette semaine";
+        case HabitFreq.monthly:
+          return "Ce mois-ci";
+      }
+    }
 
-  return Card(
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            "Checklist",
-            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+    final items = widget.logic.checklistForHabit(habitId);
+
+    // ✅ coches persistées par période (daily/weekly/monthly)
+    final doneSet = widget.logic.checklistDoneSet(habitId, widget.day);
+
+    final total = items.length;
+    final checkedCount = doneSet.length.clamp(0, total);
+    final ratio = total == 0 ? 0.0 : checkedCount / total;
+
+    Future<bool> _confirmReset() async {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text("Réinitialiser la checklist ?"),
+          content: Text(
+            "Cela efface les coches pour : ${scopeLabel().toLowerCase()}.",
           ),
-          const SizedBox(height: 6),
-
-          if (items.isNotEmpty) ...[
-            TinyBar(
-              ratio: ratio,
-              labelLeft: "Checklist : $checkedCount / $total",
-              padding: const EdgeInsets.only(top: 6, bottom: 6),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text("Annuler"),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text("Réinitialiser"),
             ),
           ],
+        ),
+      );
+      return ok == true;
+    }
 
-          if (items.isEmpty)
-            Text(
-              "Aucun item. Appuie sur + pour en ajouter.",
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-              ),
-            )
-          else
-            for (int i = 0; i < items.length; i++)
-              _checklistRow(
-                habitId: habitId,
-                index: i,
-                label: items[i],
-                doneSet: doneSet,
-              ),
-
-          const SizedBox(height: 6),
-          Align(
-            alignment: Alignment.centerRight,
-            child: IconButton(
-              tooltip: "Ajouter un item",
-              onPressed: () async {
-                final txt = await _promptText(title: "Ajouter un item");
-                if (txt == null || txt.isEmpty) return;
-                widget.logic.addChecklistItem(habitId, txt);
-                setState(() {}); // refresh
-              },
-              icon: const Icon(Icons.add),
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    "Checklist • ${scopeLabel()}",
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800, fontSize: 14),
+                  ),
+                ),
+                if (doneSet.isNotEmpty)
+                  TextButton(
+                    onPressed: () async {
+                      final ok = await _confirmReset();
+                      if (!ok) return;
+                      widget.logic.clearChecklistForPeriod(habitId, widget.day);
+                      setState(() {});
+                    },
+                    child: const Text("Réinitialiser"),
+                  ),
+              ],
             ),
-          ),
-        ],
+            const SizedBox(height: 6),
+            if (items.isNotEmpty) ...[
+              TinyBar(
+                ratio: ratio,
+                labelLeft: "${scopeLabel()} : $checkedCount / $total",
+                padding: const EdgeInsets.only(top: 6, bottom: 6),
+              ),
+            ],
+            if (items.isEmpty)
+              Text(
+                "Aucun item. Appuie sur + pour en ajouter.",
+                style: TextStyle(
+                  color:
+                      Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                ),
+              )
+            else
+              for (int i = 0; i < items.length; i++)
+                _checklistRow(
+                  habitId: habitId,
+                  index: i,
+                  label: items[i],
+                  doneSet: doneSet,
+                ),
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerRight,
+              child: IconButton(
+                tooltip: "Ajouter un item",
+                onPressed: () async {
+                  final txt = await _promptText(title: "Ajouter un item");
+                  if (txt == null || txt.trim().isEmpty) return;
+                  widget.logic.addChecklistItem(habitId, txt.trim());
+                  setState(() {});
+                },
+                icon: const Icon(Icons.add),
+              ),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 
+  Widget _checklistRow({
+    required String habitId,
+    required int index,
+    required String label,
+    required Set<int> doneSet,
+  }) {
+    final isChecked = doneSet.contains(index);
 
-Widget _checklistRow({
-  required String habitId,
-  required int index,
-  required String label,
-  required Set<int> doneSet,
-}) {
-  final isChecked = doneSet.contains(index);
+    return Row(
+      children: [
+        Checkbox(
+          value: isChecked,
+          onChanged: (_) {
+            widget.logic.toggleChecklistItem(habitId, widget.day, index);
+            setState(() {});
+          },
+        ),
+        Expanded(
+          child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis),
+        ),
+        IconButton(
+          tooltip: "Renommer",
+          onPressed: () async {
+            final txt = await _promptText(title: "Renommer", initial: label);
+            if (txt == null || txt.isEmpty) return;
 
-  return Row(
-    children: [
-      Checkbox(
-        value: isChecked,
-        onChanged: (_) {
-          widget.logic.toggleChecklistItem(habitId, widget.day, index);
-          setState(() {});
-        },
-      ),
-      Expanded(
-        child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis),
-      ),
-      IconButton(
-        tooltip: "Renommer",
-        onPressed: () async {
-          final txt = await _promptText(title: "Renommer", initial: label);
-          if (txt == null || txt.isEmpty) return;
-
-          // Renommer ne change PAS l'index -> les coches restent OK
-          widget.logic.renameChecklistItem(habitId, index, txt);
-          setState(() {});
-        },
-        icon: const Icon(Icons.edit),
-      ),
-      IconButton(
-        tooltip: "Supprimer",
-        onPressed: () {
-          // ⚠️ suppression d'item = décalage d'index -> il faut réaligner les coches
-          widget.logic.removeChecklistItemAndFixDone(habitId, widget.day, index);
-          setState(() {});
-        },
-        icon: const Icon(Icons.delete_outline),
-      ),
-    ],
-  );
-}
+            // Renommer ne change PAS l'index -> les coches restent OK
+            widget.logic.renameChecklistItem(habitId, index, txt);
+            setState(() {});
+          },
+          icon: const Icon(Icons.edit),
+        ),
+        IconButton(
+          tooltip: "Supprimer",
+          onPressed: () {
+            // ⚠️ suppression d'item = décalage d'index -> il faut réaligner les coches
+            widget.logic
+                .removeChecklistItemAndFixDone(habitId, widget.day, index);
+            setState(() {});
+          },
+          icon: const Icon(Icons.delete_outline),
+        ),
+      ],
+    );
+  }
 
   void _persistNowSets() {
     final ymd = _skippedYmd;
@@ -2894,6 +2952,230 @@ Widget _checklistRow({
     );
   }
 
+  Future<int?> _askInt(BuildContext context, String title,
+      {String? initial}) async {
+    final s =
+        await _promptText(title: title, initial: initial ?? ""); // tu l'as déjà
+    if (s == null) return null;
+    return int.tryParse(s.trim());
+  }
+
+  String freqLabelForActivity(Activity act) {
+    final f = widget.logic.effectiveHabitFreq(act);
+    return freqLabel(f);
+  }
+
+  String freqLabel(HabitFreq f) {
+    switch (f) {
+      case HabitFreq.daily:
+        return "jour";
+      case HabitFreq.weekly:
+        return "semaine";
+      case HabitFreq.monthly:
+        return "mois";
+    }
+  }
+
+  Future<void> _openHabitSettings(Activity act) async {
+    final res = await showModalBottomSheet<_HabitSettingsResult>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        HabitFreq freq = act.habitFreq ?? HabitFreq.daily;
+        int target = (act.habitTarget ?? 1);
+        bool isAuto = act.autoTune && !act.manualTarget;
+
+        // garde-fous
+        if (target <= 0) target = 1;
+
+        return StatefulBuilder(
+          builder: (ctx, setSB) => Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  act.name,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w800, fontSize: 16),
+                ),
+                const SizedBox(height: 14),
+
+                // ---- Auto / Manuel
+                Row(
+                  children: [
+                    const Text("Mode",
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                    const Spacer(),
+                    ChoiceChip(
+                      label: const Text("Auto"),
+                      selected: isAuto,
+                      onSelected: (_) => setSB(() => isAuto = true),
+                    ),
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: const Text("Manuel"),
+                      selected: !isAuto,
+                      onSelected: (_) => setSB(() => isAuto = false),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // ---- Fréquence
+                Row(
+                  children: [
+                    const Text("Fréquence",
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                    const Spacer(),
+                    DropdownButton<HabitFreq>(
+                      value: freq,
+                      items: HabitFreq.values
+                          .map((f) => DropdownMenuItem(
+                                value: f,
+                                child: Text(freqLabel(f)),
+                              ))
+                          .toList(),
+                      onChanged: (v) => setSB(() {
+                        if (v == null) return;
+                        freq = v;
+                      }),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // ---- Cible
+                Row(
+                  children: [
+                    const Text("Cible",
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: () =>
+                          setSB(() => target = (target - 1).clamp(1, 999)),
+                      icon: const Icon(Icons.remove_circle_outline),
+                    ),
+                    Text("$target",
+                        style: const TextStyle(fontWeight: FontWeight.w800)),
+                    IconButton(
+                      onPressed: () =>
+                          setSB(() => target = (target + 1).clamp(1, 999)),
+                      icon: const Icon(Icons.add_circle_outline),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text("Annuler"),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () => Navigator.pop(
+                          ctx,
+                          _HabitSettingsResult(
+                              freq: freq, target: target, isAuto: isAuto),
+                        ),
+                        child: const Text("Enregistrer"),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (res == null) return;
+
+    setState(() {
+      // fréquence + cible
+      act.habitFreq = res.freq;
+      act.habitTarget = res.target;
+
+      // mode auto/manuel
+      if (res.isAuto) {
+        act.manualTarget = false;
+        act.autoTune = true;
+      } else {
+        act.autoTune = false;
+        act.manualTarget = true;
+        if (act.habitTarget == null || act.habitTarget! <= 0)
+          act.habitTarget = 1;
+      }
+    });
+
+    widget.logic.onChange();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              "Réglages enregistrés : ${freqLabel(res.freq)} • cible ${res.target}"),
+          duration: const Duration(milliseconds: 2000),
+        ),
+      );
+    });
+  }
+
+  Widget autoManualBadge(
+      {required Activity act,
+      required VoidCallback onToggle,
+      required VoidCallback onLongPress}) {
+    final isAuto = act.autoTune && !act.manualTarget;
+
+    final color = isAuto
+        ? Colors.cyanAccent.withOpacity(0.85)
+        : Colors.white.withOpacity(0.75);
+
+    final bg = isAuto
+        ? Colors.cyanAccent.withOpacity(0.15)
+        : Colors.white.withOpacity(0.08);
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: onToggle,
+      onLongPress: onLongPress,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withOpacity(0.4)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isAuto ? Icons.trending_up : Icons.horizontal_rule,
+              size: 14,
+              color: color,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              isAuto ? "A" : "M",
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final ymd =
@@ -2957,6 +3239,14 @@ Widget _checklistRow({
       return _allDoneView(context);
     }
 
+    final habitId = next.it.refId;
+    if (habitId == null) return _allDoneView(context);
+    ; // sécurité
+
+    final act = widget.st.activities.firstWhere(
+      (a) => a.id == habitId,
+    );
+
     // ✅ sinon on affiche la carte "Maintenant"
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(
@@ -2986,6 +3276,50 @@ Widget _checklistRow({
                   onPressed:
                       _canAdjust(next.it) ? () => _onDelta(next.it, 1) : null,
                   icon: const Icon(Icons.add_circle_outline),
+                ),
+                autoManualBadge(
+                  act: act,
+                  onLongPress: () async {
+                    await _openHabitSettings(act);
+                  },
+                  onToggle: () {
+                    setState(() {
+                      final isAuto = act.autoTune && !act.manualTarget;
+
+                      if (isAuto) {
+                        // ➜ passage en MANUEL
+                        act.autoTune = false;
+                        act.manualTarget = true;
+
+                        // ✅ garde-fou: en manuel, target >= 1
+                        if (act.habitTarget == null || act.habitTarget! <= 0) {
+                          act.habitTarget = 1;
+                        }
+                      } else {
+                        // ➜ retour en AUTO
+                        act.manualTarget = false;
+                        act.autoTune = true;
+                      }
+                    });
+
+                    widget.logic.onChange();
+
+                    final isAutoNow = act.autoTune && !act.manualTarget;
+                    final msg = isAutoNow
+                        ? "Mode auto : la cible s’ajuste selon vos saisies"
+                        : "Mode manuel : cible fixe — appui long pour modifier";
+
+                    // ✅ safe: pas pendant build
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(msg),
+                          duration: const Duration(milliseconds: 2500),
+                        ),
+                      );
+                    });
+                  },
                 ),
               ],
             ),
@@ -3317,4 +3651,15 @@ Widget _checklistRow({
       ),
     );
   }
+}
+
+class _HabitSettingsResult {
+  final HabitFreq freq;
+  final int target;
+  final bool isAuto;
+  const _HabitSettingsResult({
+    required this.freq,
+    required this.target,
+    required this.isAuto,
+  });
 }
