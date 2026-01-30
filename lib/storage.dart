@@ -290,6 +290,7 @@ class FileStore {
         'Déodorant',
         'Coiffure',
         'Parfum (option)',
+        'Faire le lit',
       ],
 
       //Eau
