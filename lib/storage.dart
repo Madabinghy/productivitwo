@@ -497,6 +497,7 @@ class FileStore {
       toPlan(title: 'Eau', habit: hEau),
 
       // --- Hygiène (matin/soir/hebdo) ---
+      toPlan(title: 'Café', habit: hMatin),
       toPlan(title: 'Dentifrice', habit: hMatin),
       toPlan(title: 'Brosse à dents', habit: hMatin),
       toPlan(title: 'Fil dentaire', habit: hMatin),
@@ -507,6 +508,7 @@ class FileStore {
       toPlan(title: 'Après-shampoing', habit: hMatin),
       toPlan(title: 'Déodorant', habit: hMatin),
       toPlan(title: 'Parfum', habit: hMatin),
+      toPlan(title: 'Passer au coiffeur', habit: hMatin),
       toPlan(title: 'Crème visage', habit: hSoir),
       toPlan(title: 'Crème corps', habit: hHebdo),
       toPlan(title: 'Coton', habit: hSoir),

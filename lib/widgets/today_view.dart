@@ -225,8 +225,9 @@ class _TodayViewState extends State<TodayView> {
                       fontWeight: FontWeight.w600,
                       fontSize: 15,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    maxLines: 4, // ou null pour illimité
+                    overflow: TextOverflow.visible, // ou TextOverflow.clip
+                    softWrap: true,
                   ),
 
                   // Routine + pin
@@ -358,7 +359,7 @@ class _TodayViewState extends State<TodayView> {
 
                     // ✅ ARCHIVAGE AUTO
                     if (newDone && it.habitId != null) {
-                      it.archived = true;
+                      widget.logic.archiveAction(it);
 
                       // optionnel mais logique : on enlève du "à prévoir"
                       // it.toPlan = false; // si tu l’utilises
@@ -1407,7 +1408,16 @@ class _TodayViewState extends State<TodayView> {
               key: key,
               margin: const EdgeInsets.only(bottom: 8),
               child: ListTile(
-                title: Text(it.title),
+                title: Text(
+                  it.title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                  ),
+                  maxLines: 4, // ou null pour illimité
+                  overflow: TextOverflow.visible, // ou TextOverflow.clip
+                  softWrap: true,
+                ),
                 subtitle: const Text("Activité introuvable (supprimée ?)"),
                 trailing: IconButton(
                   icon: const Icon(Icons.delete),

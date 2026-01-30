@@ -1718,6 +1718,12 @@ class AppLogic {
     return out;
   }
 
+  void archiveAction(DayPlanItem it) {
+    it.archived = true;
+    it.done = false; // ✅ clé : sort de “Faits”
+    onChange();
+  }
+
   List<RowItem> buildRowsGrouped({
     required List<DayPlanItem> items,
     required AppState st,
