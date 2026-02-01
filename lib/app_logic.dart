@@ -2863,7 +2863,9 @@ extension TodayLogic on AppLogic {
       final alreadyThere = state.dayPlan.any((x) {
         if (x.yyyymmdd != today) return false;
         if (x.kind != e.kind) return false;
-        if (e.kind == PlanKind.action) return x.title == e.title;
+        if (e.kind == PlanKind.action) {
+          return x.title == e.title && x.habitId == e.habitId;
+        }
         return x.refId == e.refId;
       });
       if (alreadyThere) continue;
