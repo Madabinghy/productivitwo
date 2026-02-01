@@ -852,9 +852,8 @@ class _TodayViewState extends State<TodayView> {
         allActions.where((a) => !a.done && a.archived != true).toList();
 
 // 3) COURSES = subset de OPEN POOL
-    final shoppingActions = (shoppingId == null)
-        ? <DayPlanItem>[]
-        : openPool.where((a) => a.activityId == shoppingId).toList();
+final shoppingActions =
+    openPool.where((a) => a.toPlan == true).toList();
 
     final coursesByHabitId = <String?, List<DayPlanItem>>{};
     for (final a in shoppingActions) {

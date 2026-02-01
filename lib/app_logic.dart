@@ -1259,6 +1259,7 @@ class AppLogic {
           yyyymmdd: todayKey,
           done: false,
           allDay: true,
+          toPlan: true,
           order: _nextOrderForDay(todayKey),
         ),
       );
@@ -2873,6 +2874,9 @@ extension TodayLogic on AppLogic {
         refId: e.refId,
         domainId: e.domainId, // ✅ NEW (si champ ajouté)
         title: e.title,
+        toPlan: e.toPlan,
+        activityId: e.activityId,
+        habitId: e.habitId,
         yyyymmdd: today,
         done: false,
         doneCount: 0, // ✅ (ou e.doneCount si tu préfères)

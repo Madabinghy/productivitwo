@@ -847,6 +847,24 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     }
   }
 
+
+  int normalizeToPlanActivityId() {
+  final shopId = logic.shoppingActivity()?.id;
+  if (shopId == null) return 0;
+
+  var fixed = 0;
+  for (final a in _state!.dayPlan) {
+    if (a.kind != PlanKind.action) continue;
+    if (a.toPlan != true) continue;
+    if (a.activityId == null) {
+      a.activityId = shopId;
+      fixed++;
+    }
+  }
+  if (fixed > 0) store.save(_state!); // ou onChange()
+  return fixed;
+}
+
   Future<void> _init() async {
     final s = await store.loadOrInit();
 
@@ -875,6 +893,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     // ✅ ICI (point unique au démarrage)
     logic.rolloverUndoneOncePerDay();
     logic.ensureDailyHabitsPlanned();
+    normalizeToPlanActivityId();
 
     // ... le reste inchangé
     final changes = await logic.reviewGoals();

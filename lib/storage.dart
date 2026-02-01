@@ -472,6 +472,9 @@ class FileStore {
     String _newId() =>
         'seed:${DateTime.now().millisecondsSinceEpoch}:${_seq++}';
 
+    final yesterday = DateTime.now().subtract(const Duration(days: 1));
+    final today = DateTime.now();
+
     DayPlanItem toPlan({
       required String title,
       required Activity habit,
@@ -480,9 +483,10 @@ class FileStore {
         id: _newId(),
         kind: PlanKind.action,
         title: title,
-        yyyymmdd: yyyymmdd(DateTime.now()),
+        yyyymmdd: yyyymmdd(today),
         done: false,
         archived: false,
+        toPlan: true,
         doneCount: 0,
         allDay: true,
         order: 0,
@@ -612,24 +616,32 @@ class FileStore {
     );
   }
 
-  Future<void> save(AppState st) async {
-    final f = await _file();
-    final tmp = File('${f.path}.tmp');
-    final bak = File('${f.path}.bak');
+Future<void> save(AppState st) async {
+  final f = await _file();
+  final tmp = File('${f.path}.tmp');
+  final bak = File('${f.path}.bak');
 
-    final content = st.encode();
+  final content = st.encode();
 
-    // 1) écrit dans tmp
-    await tmp.writeAsString(content, flush: true);
+  // 1) écrit dans tmp
+  await tmp.writeAsString(content, flush: true);
 
-    // 2) backup de l'ancien
-    if (await f.exists()) {
-      try {
-        await f.copy(bak.path);
-      } catch (_) {}
-    }
-
-    // 3) replace atomique
-    await tmp.rename(f.path);
+  // 2) backup de l'ancien
+  if (await f.exists()) {
+    try {
+      await f.copy(bak.path);
+    } catch (_) {}
   }
+
+  // 3) replace atomique
+  await tmp.rename(f.path);
+
+  // 🔍 DEBUG : vérifier si toPlan=true est bien écrit dans le fichier
+  final s = await f.readAsString();
+  debugPrint(
+    s.contains('"toPlan":true')
+        ? "SAVE FILE → has toPlan true"
+        : "SAVE FILE → no toPlan true",
+  );
+}
 }

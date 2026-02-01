@@ -74,7 +74,7 @@ class DayPlanItem {
       };
 
   static DayPlanItem from(Map j) {
-    final done = j['done'] ?? false;
+    final done = _asBool(j['done']);
     final doneCount = j['doneCount'] ?? (done ? 1 : 0);
 
     return DayPlanItem(
@@ -88,12 +88,24 @@ class DayPlanItem {
       yyyymmdd: j['yyyymmdd'],
       done: done,
       doneCount: doneCount,
-      allDay: j['allDay'] ?? false,
-      isNowFocus: j['isNowFocus'] ?? false,
+      allDay: _asBool(j['allDay']),
+      isNowFocus: _asBool(j['isNowFocus']),
       order: j['order'] ?? 0,
-      toPlan: (j['toPlan'] as bool?) ?? false,
-      archived: (j['archived'] as bool?) ?? false,
+      toPlan: _asBool(j['toPlan']), // ✅ ici
+      archived: _asBool(j['archived']), // ✅ ici
     );
+  }
+
+  static bool _asBool(dynamic v, {bool defaultValue = false}) {
+    if (v == null) return defaultValue;
+    if (v is bool) return v;
+    if (v is num) return v != 0;
+    if (v is String) {
+      final t = v.trim().toLowerCase();
+      if (t == 'true' || t == '1' || t == 'yes') return true;
+      if (t == 'false' || t == '0' || t == 'no') return false;
+    }
+    return defaultValue;
   }
 }
 
@@ -600,19 +612,19 @@ class AppState {
     }
 
     Map<String, Map<String, List<int>>> _mapSMapListInt(dynamic v) {
-  if (v == null) return <String, Map<String, List<int>>>{};
+      if (v == null) return <String, Map<String, List<int>>>{};
 
-  final out = <String, Map<String, List<int>>>{};
-  (v as Map).forEach((k, vv) {
-    final inner = <String, List<int>>{};
-    (vv as Map).forEach((kk, list) {
-      inner[kk as String] =
-          (list as List).map((e) => (e as num).toInt()).toList();
-    });
-    out[k as String] = inner;
-  });
-  return out;
-}
+      final out = <String, Map<String, List<int>>>{};
+      (v as Map).forEach((k, vv) {
+        final inner = <String, List<int>>{};
+        (vv as Map).forEach((kk, list) {
+          inner[kk as String] =
+              (list as List).map((e) => (e as num).toInt()).toList();
+        });
+        out[k as String] = inner;
+      });
+      return out;
+    }
 
     // Helpers safe
     List<T> _list<T>(dynamic v, T Function(dynamic) mapFn) {
