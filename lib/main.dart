@@ -638,6 +638,122 @@ class ProductivitwoApp extends StatelessWidget {
 
 enum TimeScope { day, week, month }
 
+class RunningChipAppBar extends StatefulWidget {
+  final AppState? state;
+  final AppLogic logic;
+  final VoidCallback? onTap; // ex: aller sur l’onglet Maintenant
+
+  const RunningChipAppBar({
+    super.key,
+    required this.state,
+    required this.logic,
+    this.onTap,
+  });
+
+  @override
+  State<RunningChipAppBar> createState() => _RunningChipAppBarState();
+}
+
+class _RunningChipAppBarState extends State<RunningChipAppBar> {
+  Timer? _t;
+
+  @override
+  void initState() {
+    super.initState();
+    _ensureTicking();
+  }
+
+  @override
+  void didUpdateWidget(covariant RunningChipAppBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _ensureTicking();
+  }
+
+  void _ensureTicking() {
+    final st = widget.state;
+    final hasRunning = st != null && st.sessions.any((x) => x.endAt == null);
+
+    if (hasRunning) {
+      _t ??= Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted) return;
+        setState(() {});
+      });
+    } else {
+      _t?.cancel();
+      _t = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _t?.cancel();
+    super.dispose();
+  }
+
+  String _fmtShort(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60);
+    if (h > 0) return "${h}h${m.toString().padLeft(2, '0')}";
+    return "${d.inMinutes}m";
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final st = widget.state;
+    if (st == null) return const SizedBox.shrink();
+
+    final s = st.sessions.lastWhere(
+      (x) => x.endAt == null,
+      orElse: () => Session(
+        id: '',
+        activityId: '',
+        startAt: DateTime.fromMillisecondsSinceEpoch(0),
+      ),
+    );
+    if (s.id.isEmpty) return const SizedBox.shrink();
+
+    final a = st.activities.firstWhere(
+      (x) => x.id == s.activityId,
+      orElse: () => Activity(domainId: '', name: 'Activité', habitTarget: 1),
+    );
+
+    final dur = DateTime.now().difference(s.startAt);
+    final label = "${a.name} · ${_fmtShort(dur)}";
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        color: Theme.of(context).colorScheme.surface.withOpacity(0.08),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.play_arrow_rounded, size: 16),
+          const SizedBox(width: 6),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 160),
+            child: GestureDetector(
+              onTap: widget.onTap,
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style:
+                    const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: () => widget.logic.stopActive(),
+            child: const Icon(Icons.stop, size: 16),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class RunningBannerGlobal extends StatefulWidget {
   final AppState? state; // mets ton vrai type
   final AppLogic logic; // mets ton vrai type
@@ -847,23 +963,22 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     }
   }
 
-
   int normalizeToPlanActivityId() {
-  final shopId = logic.shoppingActivity()?.id;
-  if (shopId == null) return 0;
+    final shopId = logic.shoppingActivity()?.id;
+    if (shopId == null) return 0;
 
-  var fixed = 0;
-  for (final a in _state!.dayPlan) {
-    if (a.kind != PlanKind.action) continue;
-    if (a.toPlan != true) continue;
-    if (a.activityId == null) {
-      a.activityId = shopId;
-      fixed++;
+    var fixed = 0;
+    for (final a in _state!.dayPlan) {
+      if (a.kind != PlanKind.action) continue;
+      if (a.toPlan != true) continue;
+      if (a.activityId == null) {
+        a.activityId = shopId;
+        fixed++;
+      }
     }
+    if (fixed > 0) store.save(_state!); // ou onChange()
+    return fixed;
   }
-  if (fixed > 0) store.save(_state!); // ou onChange()
-  return fixed;
-}
 
   Future<void> _init() async {
     final s = await store.loadOrInit();
@@ -1424,6 +1539,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         return _Tab.stats;
     }
   }
+  
 
   List<DayPlanItem> _todayItems() {
     final now = DateTime.now();
@@ -1476,6 +1592,54 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       logic: logic,
     );
   }
+
+String _fmtMinPerDay(int mins) {
+  final h = mins ~/ 60;
+  final m = mins % 60;
+  return "${h}h${m.toString().padLeft(2, '0')} / j";
+}
+
+Widget _miniGauge(BuildContext context, double progress) {
+  progress = progress.clamp(0.0, 1.0);
+
+  return ClipRRect(
+    borderRadius: BorderRadius.circular(999),
+    child: SizedBox(
+      width: 80,
+      height: 7,
+      child: LinearProgressIndicator(
+        value: progress,
+        backgroundColor: Theme.of(context).colorScheme.onSurface.withOpacity(0.10),
+        valueColor: AlwaysStoppedAnimation<Color>(
+          Theme.of(context).colorScheme.onSurface.withOpacity(0.70),
+        ),
+      ),
+    ),
+  );
+}
+
+Widget _avg7Chip(BuildContext context) {
+  final mins = logic.avg7MinutesPerDayInclToday();
+  final pct = ((mins / 1440.0) * 100).round();
+  final label = "7j - ${_fmtMinPerDay(mins)} ($pct%)";
+
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(16),
+      color: Theme.of(context).colorScheme.surface.withOpacity(0.08),
+    ),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 4),
+        _miniGauge(context, mins / 1440.0),
+      ],
+    ),
+  );
+}
   // ---------- UI ----------
 
   @override
@@ -1489,7 +1653,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
     // 2) App prête -> Scaffold complet
     return Scaffold(
-      appBar: AppBar(
+/*       appBar: AppBar(
         automaticallyImplyLeading: false, // pas de flèche retour
         title: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1533,11 +1697,21 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             ),
           ],
         ),
+      ), */
+      appBar: AppBar(
+title: Row(
+  children: [
+    const SizedBox(width: 8),
+    AppBarProductivityBars(logic: logic, state: _state),
+    const Spacer(),
+    RunningChipAppBar(state: _state, logic: logic, onTap: () => setState(() => _tab = _Tab.now)),
+  ],
+),
       ),
 
 // --- Dans build(...) ---
 
-      body: Stack(
+      body:  _buildBody(context),/* Stack(
         children: [
           Padding(
             padding: EdgeInsets.only(top: _hasRunningSession ? 92.0 : 0.0),
@@ -1551,7 +1725,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             ),
           ),
         ],
-      ),
+      ), */
 
 // FAB uniquement sur Dashboard (ou adapte si tu veux aussi sur Today)
       floatingActionButton: _tab == _Tab.dashboard ? _buildFocusFab() : null,
@@ -4877,6 +5051,131 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             child: const Text("Enregistrer"),
           ),
         ],
+      ),
+    );
+  }
+}
+
+
+class AppBarProductivityBars extends StatelessWidget {
+  final AppLogic logic;
+  final AppState? state;
+
+  const AppBarProductivityBars({
+    super.key,
+    required this.logic,
+    required this.state,
+  });
+
+  String _fmtHhMmPerDay(int mins) {
+    final h = mins ~/ 60;
+    final m = mins % 60;
+    return "${h}h${m.toString().padLeft(2, '0')}/j";
+  }
+
+  String _fmtPct(int mins) => "${((mins / 1440.0) * 100).round()}%";
+
+Widget _bar(BuildContext context, double p) {
+  final bg = Theme.of(context).colorScheme.onSurface.withOpacity(0.10);
+  final fg = Theme.of(context).colorScheme.onSurface.withOpacity(0.70);
+  final progress = p.clamp(0.0, 1.0);
+
+  return ClipRRect(
+    borderRadius: BorderRadius.circular(999),
+    child: SizedBox(
+      width: 54,
+      height: 4,
+      child: LayoutBuilder(
+        builder: (ctx, c) {
+          final w = c.maxWidth;
+
+          // ✅ minimum 1px si progress > 0
+          final fill = (progress <= 0)
+              ? 0.0
+              : (w * progress).clamp(1.0, w);
+
+          return Stack(
+            children: [
+              Positioned.fill(child: ColoredBox(color: bg)),
+              Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: fill,
+                child: ColoredBox(color: fg),
+              ),
+            ],
+          );
+        },
+      ),
+    ),
+  );
+}
+
+  void _openSheet(BuildContext context) {
+    final m7 = logic.avgMinutesPerDayInclToday(7);
+    final m30 = logic.avgMinutesPerDayInclToday(30);
+    final m90 = logic.avgMinutesPerDayInclToday(90);
+
+    final t7 = logic.totalMinutesInclToday(7);
+    final t30 = logic.totalMinutesInclToday(30);
+    final t90 = logic.totalMinutesInclToday(90);
+
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (_) {
+        Widget row(String label, int avgMin, int totalMin) {
+          final totalH = totalMin ~/ 60;
+          final totalM = totalMin % 60;
+          return ListTile(
+            title: Text(label),
+            subtitle: Text("${_fmtHhMmPerDay(avgMin)} · ${_fmtPct(avgMin)}"),
+            trailing: Text("${totalH}h${totalM.toString().padLeft(2, '0')}"),
+          );
+        }
+
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const ListTile(
+                title: Text("Productivité absolue"),
+                subtitle: Text("Moyenne par jour, base 24h · total sur la période"),
+              ),
+              row("7 jours", m7, t7),
+              row("30 jours", m30, t30),
+              row("90 jours", m90, t90),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // moyenne minutes/jour
+    final m7 = logic.avgMinutesPerDayInclToday(7);
+    final m30 = logic.avgMinutesPerDayInclToday(30);
+    final m90 = logic.avgMinutesPerDayInclToday(90);
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => _openSheet(context),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _bar(context, m90 / 1440.0),
+            const SizedBox(height: 4),
+            _bar(context, m30 / 1440.0),
+            const SizedBox(height: 4),
+            _bar(context, m7 / 1440.0),
+          ],
+        ),
       ),
     );
   }

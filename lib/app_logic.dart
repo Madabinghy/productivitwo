@@ -79,6 +79,10 @@ class AppLogic {
 
   String? nowHabitId; // habitId actuellement affichée dans Maintenant (routine)
   String? _checkYmd; // pour reset journalier
+
+  String? _avg7CacheDayKey;
+  double? _avg7CacheValue;
+
   final Map<String, Set<String>> _checkedTodayByHabit =
       {}; // habitId -> labels cochés
 
@@ -2889,6 +2893,86 @@ extension TodayLogic on AppLogic {
 
     state.dayPlan.removeWhere((e) => e.yyyymmdd == yesterday);
     onChange();
+  }
+
+  int avgMinutesPerDayInclToday(int days, {DateTime? now}) {
+    final t = now ?? DateTime.now();
+    final today = DateTime(t.year, t.month, t.day);
+
+    final start =
+        today.subtract(Duration(days: days - 1)); // inclut aujourd’hui
+    final end = today.add(const Duration(days: 1)); // demain exclu
+
+    final totals = timeTotalsByDomain(start, end);
+    final totalMin = totals.values.fold<int>(0, (a, d) => a + d.inMinutes);
+
+    return (totalMin / days.toDouble()).round();
+  }
+
+// (optionnel pour la sheet)
+  int totalMinutesInclToday(int days, {DateTime? now}) {
+    final t = now ?? DateTime.now();
+    final today = DateTime(t.year, t.month, t.day);
+
+    final start = today.subtract(Duration(days: days - 1));
+    final end = today.add(const Duration(days: 1));
+
+    final totals = timeTotalsByDomain(start, end);
+    return totals.values.fold<int>(0, (a, d) => a + d.inMinutes);
+  }
+
+  double avg7HoursPerDayCached() {
+    final t = DateTime.now();
+    final key = "${t.year}-${t.month}-${t.day}";
+    if (_avg7CacheDayKey == key && _avg7CacheValue != null)
+      return _avg7CacheValue!;
+    final v = avg7HoursPerDay(now: t);
+    _avg7CacheDayKey = key;
+    _avg7CacheValue = v;
+    return v;
+  }
+
+  String fmtMinutesPerDay(int mins) {
+    final h = mins ~/ 60;
+    final m = mins % 60;
+    return "${h}h${m.toString().padLeft(2, '0')}/j";
+  }
+
+  String fmtPct24(int mins) {
+    final pct = ((mins / 1440.0) * 100).round();
+    return "$pct%";
+  }
+
+  int avg7MinutesPerDayInclToday({DateTime? now}) {
+    final t = now ?? DateTime.now();
+    final today = DateTime(t.year, t.month, t.day);
+
+    final start = today
+        .subtract(const Duration(days: 6)); // inclut aujourd’hui => 7 jours
+    final end = DateTime(t.year, t.month, t.day)
+        .add(const Duration(days: 1)); // demain exclu
+
+    final totals = timeTotalsByDomain(start, end);
+    final totalMin = totals.values.fold<int>(0, (a, d) => a + d.inMinutes);
+
+    return (totalMin / 7.0).round(); // minute près
+  }
+
+  double avg7HoursPerDay({DateTime? now}) {
+    final t = now ?? DateTime.now();
+    final today = DateTime(t.year, t.month, t.day);
+
+    final start7 = today.subtract(const Duration(days: 7));
+    final end7 = today; // exclut aujourd’hui
+
+    final totals7 = timeTotalsByDomain(start7, end7);
+    final total7Dur =
+        totals7.values.fold<Duration>(Duration.zero, (a, b) => a + b);
+
+    final activeDays = totals7.values.where((d) => d > Duration.zero).length;
+    if (activeDays == 0) return 0.0;
+
+    return (total7Dur.inMinutes / 60.0) / activeDays;
   }
 
   void ensureTodayDailyHabits({DateTime? now}) {
