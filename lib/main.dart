@@ -727,7 +727,7 @@ class _RunningChipAppBarState extends State<RunningChipAppBar> {
     final dur = DateTime.now().difference(s.startAt);
     final label = "${a.name} · ${_fmt(dur)}";
     final cs = Theme.of(context).colorScheme;
-final runningColor = cs.primary; // ou cs.tertiary si tu veux plus vert
+    final runningColor = cs.primary; // ou cs.tertiary si tu veux plus vert
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -738,7 +738,7 @@ final runningColor = cs.primary; // ou cs.tertiary si tu veux plus vert
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-           Icon(Icons.play_arrow_rounded, size: 16, color: runningColor),
+          Icon(Icons.play_arrow_rounded, size: 16, color: runningColor),
           const SizedBox(width: 6),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 160),
@@ -747,7 +747,7 @@ final runningColor = cs.primary; // ou cs.tertiary si tu veux plus vert
               child: Text(
                 label,
                 overflow: TextOverflow.ellipsis,
-                style:  TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   fontFeatures: [FontFeature.tabularFigures()],
@@ -759,7 +759,7 @@ final runningColor = cs.primary; // ou cs.tertiary si tu veux plus vert
           const SizedBox(width: 8),
           GestureDetector(
             onTap: () => widget.logic.stopActive(),
-            child:  Icon(Icons.stop, size: 16, color: runningColor),
+            child: Icon(Icons.stop, size: 16, color: runningColor),
           ),
         ],
       ),
@@ -1666,6 +1666,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       );
     }
 
+    final bins24 = logic.minutesByHourLast24();
+
     // 2) App prête -> Scaffold complet
     return Scaffold(
 /*       appBar: AppBar(
@@ -1718,6 +1720,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
           children: [
             const SizedBox(width: 8),
             AppBarProductivityBars(logic: logic, state: _state),
+            const SizedBox(width: 8),
+            MiniHourBars24h(bins: bins24),
             const Spacer(),
             RunningChipAppBar(
                 state: _state,
@@ -5193,6 +5197,71 @@ class AppBarProductivityBars extends StatelessWidget {
             _bar(context, m7 / 1440.0),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class MiniHourBars24h extends StatelessWidget {
+  final List<int> bins; // 24 valeurs (0..60)
+  final double height;
+  final double width;
+  final double gap;
+
+  const MiniHourBars24h({
+    super.key,
+    required this.bins,
+    this.height = 18,
+    this.width = 64,
+    this.gap = 1.0,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    // couleurs: cyan (réalisé) + rouge (reste)
+    final doneColor = cs.primary; // cyan/teal
+    final restColor = Colors.orange.withOpacity(0.45);
+
+    return SizedBox(
+      width: width,
+      height: height,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: List.generate(24, (i) {
+          final isCurrentHour = i == bins.length - 1;
+          final mins = (i < bins.length) ? bins[i].clamp(0, 60) : 0;
+          final doneFrac = mins / 60.0;
+          final restFrac = 1.0 - doneFrac;
+
+          return Expanded(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: gap / 2),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(2),
+                child: Column(
+                  children: [
+                    // haut = reste (rouge)
+                    Expanded(
+                      flex: (restFrac * 1000).round().clamp(0, 1000),
+                      child: Container(color: restColor),
+                    ),
+                    // bas = réalisé (cyan)
+                    Expanded(
+                      flex: (doneFrac * 1000).round().clamp(0, 1000),
+                      child: Container(
+                        color: isCurrentHour
+                            ? doneColor.withOpacity(1)
+                            : doneColor.withOpacity(0.7),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }),
       ),
     );
   }

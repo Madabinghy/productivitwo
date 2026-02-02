@@ -2975,6 +2975,48 @@ extension TodayLogic on AppLogic {
     return (total7Dur.inMinutes / 60.0) / activeDays;
   }
 
+  List<int> minutesByHourLast24({DateTime? now}) {
+  final t = now ?? DateTime.now();
+  final windowEnd = t;
+  final windowStart = t.subtract(const Duration(hours: 24));
+
+  // base alignée sur l'heure (pour avoir 24 bins stables)
+  DateTime floorToHour(DateTime d) => DateTime(d.year, d.month, d.day, d.hour);
+
+  final base = floorToHour(windowStart); // début de la 1ère barre
+  final bins = List<int>.filled(24, 0);
+
+  // sessions à prendre (toutes)
+  for (final s in state.sessions) {
+    final start = s.startAt;
+    final end = s.endAt ?? t;
+
+    // clamp à la fenêtre
+    final s0 = start.isAfter(windowStart) ? start : windowStart;
+    final s1 = end.isBefore(windowEnd) ? end : windowEnd;
+    if (!s0.isBefore(s1)) continue;
+
+    var cur = s0;
+    while (cur.isBefore(s1)) {
+      final hStart = floorToHour(cur);
+      final hEnd = hStart.add(const Duration(hours: 1));
+      final chunkEnd = s1.isBefore(hEnd) ? s1 : hEnd;
+
+      final minutes = chunkEnd.difference(cur).inMinutes;
+      if (minutes > 0) {
+        final idx = hStart.difference(base).inHours;
+        if (idx >= 0 && idx < 24) {
+          bins[idx] += minutes;
+          if (bins[idx] > 60) bins[idx] = 60; // sécurité
+        }
+      }
+      cur = chunkEnd;
+    }
+  }
+
+  return bins;
+}
+
   void ensureTodayDailyHabits({DateTime? now}) {
     final t = now ?? DateTime.now();
     final todayKey = yyyymmdd(t);
