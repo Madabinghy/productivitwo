@@ -690,6 +690,13 @@ class _RunningChipAppBarState extends State<RunningChipAppBar> {
     super.dispose();
   }
 
+  String _fmt(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final sec = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return h > 0 ? "${h}h ${m}m ${sec}s" : "${m}m ${sec}s";
+  }
+
   String _fmtShort(Duration d) {
     final h = d.inHours;
     final m = d.inMinutes.remainder(60);
@@ -718,7 +725,9 @@ class _RunningChipAppBarState extends State<RunningChipAppBar> {
     );
 
     final dur = DateTime.now().difference(s.startAt);
-    final label = "${a.name} · ${_fmtShort(dur)}";
+    final label = "${a.name} · ${_fmt(dur)}";
+    final cs = Theme.of(context).colorScheme;
+final runningColor = cs.primary; // ou cs.tertiary si tu veux plus vert
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -729,7 +738,7 @@ class _RunningChipAppBarState extends State<RunningChipAppBar> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.play_arrow_rounded, size: 16),
+           Icon(Icons.play_arrow_rounded, size: 16, color: runningColor),
           const SizedBox(width: 6),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 160),
@@ -738,15 +747,19 @@ class _RunningChipAppBarState extends State<RunningChipAppBar> {
               child: Text(
                 label,
                 overflow: TextOverflow.ellipsis,
-                style:
-                    const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                style:  TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  fontFeatures: [FontFeature.tabularFigures()],
+                  color: runningColor,
+                ),
               ),
             ),
           ),
           const SizedBox(width: 8),
           GestureDetector(
             onTap: () => widget.logic.stopActive(),
-            child: const Icon(Icons.stop, size: 16),
+            child:  Icon(Icons.stop, size: 16, color: runningColor),
           ),
         ],
       ),
@@ -1539,7 +1552,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         return _Tab.stats;
     }
   }
-  
 
   List<DayPlanItem> _todayItems() {
     final now = DateTime.now();
@@ -1593,53 +1605,56 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     );
   }
 
-String _fmtMinPerDay(int mins) {
-  final h = mins ~/ 60;
-  final m = mins % 60;
-  return "${h}h${m.toString().padLeft(2, '0')} / j";
-}
+  String _fmtMinPerDay(int mins) {
+    final h = mins ~/ 60;
+    final m = mins % 60;
+    return "${h}h${m.toString().padLeft(2, '0')} / j";
+  }
 
-Widget _miniGauge(BuildContext context, double progress) {
-  progress = progress.clamp(0.0, 1.0);
+  Widget _miniGauge(BuildContext context, double progress) {
+    progress = progress.clamp(0.0, 1.0);
 
-  return ClipRRect(
-    borderRadius: BorderRadius.circular(999),
-    child: SizedBox(
-      width: 80,
-      height: 7,
-      child: LinearProgressIndicator(
-        value: progress,
-        backgroundColor: Theme.of(context).colorScheme.onSurface.withOpacity(0.10),
-        valueColor: AlwaysStoppedAnimation<Color>(
-          Theme.of(context).colorScheme.onSurface.withOpacity(0.70),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(999),
+      child: SizedBox(
+        width: 80,
+        height: 7,
+        child: LinearProgressIndicator(
+          value: progress,
+          backgroundColor:
+              Theme.of(context).colorScheme.onSurface.withOpacity(0.10),
+          valueColor: AlwaysStoppedAnimation<Color>(
+            Theme.of(context).colorScheme.onSurface.withOpacity(0.70),
+          ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 
-Widget _avg7Chip(BuildContext context) {
-  final mins = logic.avg7MinutesPerDayInclToday();
-  final pct = ((mins / 1440.0) * 100).round();
-  final label = "7j - ${_fmtMinPerDay(mins)} ($pct%)";
+  Widget _avg7Chip(BuildContext context) {
+    final mins = logic.avg7MinutesPerDayInclToday();
+    final pct = ((mins / 1440.0) * 100).round();
+    final label = "7j - ${_fmtMinPerDay(mins)} ($pct%)";
 
-  return Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(16),
-      color: Theme.of(context).colorScheme.surface.withOpacity(0.08),
-    ),
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 4),
-        _miniGauge(context, mins / 1440.0),
-      ],
-    ),
-  );
-}
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        color: Theme.of(context).colorScheme.surface.withOpacity(0.08),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style:
+                  const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          _miniGauge(context, mins / 1440.0),
+        ],
+      ),
+    );
+  }
   // ---------- UI ----------
 
   @override
@@ -1699,19 +1714,23 @@ Widget _avg7Chip(BuildContext context) {
         ),
       ), */
       appBar: AppBar(
-title: Row(
-  children: [
-    const SizedBox(width: 8),
-    AppBarProductivityBars(logic: logic, state: _state),
-    const Spacer(),
-    RunningChipAppBar(state: _state, logic: logic, onTap: () => setState(() => _tab = _Tab.now)),
-  ],
-),
+        title: Row(
+          children: [
+            const SizedBox(width: 8),
+            AppBarProductivityBars(logic: logic, state: _state),
+            const Spacer(),
+            RunningChipAppBar(
+                state: _state,
+                logic: logic,
+                onTap: () => setState(() => _tab = _Tab.now)),
+          ],
+        ),
       ),
 
 // --- Dans build(...) ---
 
-      body:  _buildBody(context),/* Stack(
+      body: _buildBody(context),
+      /* Stack(
         children: [
           Padding(
             padding: EdgeInsets.only(top: _hasRunningSession ? 92.0 : 0.0),
@@ -5056,7 +5075,6 @@ title: Row(
   }
 }
 
-
 class AppBarProductivityBars extends StatelessWidget {
   final AppLogic logic;
   final AppState? state;
@@ -5075,42 +5093,40 @@ class AppBarProductivityBars extends StatelessWidget {
 
   String _fmtPct(int mins) => "${((mins / 1440.0) * 100).round()}%";
 
-Widget _bar(BuildContext context, double p) {
-  final bg = Theme.of(context).colorScheme.onSurface.withOpacity(0.10);
-  final fg = Theme.of(context).colorScheme.onSurface.withOpacity(0.70);
-  final progress = p.clamp(0.0, 1.0);
+  Widget _bar(BuildContext context, double p) {
+    final bg = Theme.of(context).colorScheme.onSurface.withOpacity(0.10);
+    final fg = Theme.of(context).colorScheme.onSurface.withOpacity(0.70);
+    final progress = p.clamp(0.0, 1.0);
 
-  return ClipRRect(
-    borderRadius: BorderRadius.circular(999),
-    child: SizedBox(
-      width: 54,
-      height: 4,
-      child: LayoutBuilder(
-        builder: (ctx, c) {
-          final w = c.maxWidth;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(999),
+      child: SizedBox(
+        width: 54,
+        height: 4,
+        child: LayoutBuilder(
+          builder: (ctx, c) {
+            final w = c.maxWidth;
 
-          // ✅ minimum 1px si progress > 0
-          final fill = (progress <= 0)
-              ? 0.0
-              : (w * progress).clamp(1.0, w);
+            // ✅ minimum 1px si progress > 0
+            final fill = (progress <= 0) ? 0.0 : (w * progress).clamp(1.0, w);
 
-          return Stack(
-            children: [
-              Positioned.fill(child: ColoredBox(color: bg)),
-              Positioned(
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: fill,
-                child: ColoredBox(color: fg),
-              ),
-            ],
-          );
-        },
+            return Stack(
+              children: [
+                Positioned.fill(child: ColoredBox(color: bg)),
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: fill,
+                  child: ColoredBox(color: fg),
+                ),
+              ],
+            );
+          },
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   void _openSheet(BuildContext context) {
     final m7 = logic.avgMinutesPerDayInclToday(7);
@@ -5141,7 +5157,8 @@ Widget _bar(BuildContext context, double p) {
             children: [
               const ListTile(
                 title: Text("Productivité absolue"),
-                subtitle: Text("Moyenne par jour, base 24h · total sur la période"),
+                subtitle:
+                    Text("Moyenne par jour, base 24h · total sur la période"),
               ),
               row("7 jours", m7, t7),
               row("30 jours", m30, t30),
