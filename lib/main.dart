@@ -5113,7 +5113,10 @@ class AppBarProductivityBars extends StatelessWidget {
 
             // ✅ minimum 1px si progress > 0
             final fill = (progress <= 0) ? 0.0 : (w * progress).clamp(1.0, w);
+    final cs = Theme.of(context).colorScheme;
 
+    // couleurs: cyan (réalisé) + rouge (reste)
+    final doneColor = cs.primary; // cyan/teal
             return Stack(
               children: [
                 Positioned.fill(child: ColoredBox(color: bg)),
@@ -5122,7 +5125,7 @@ class AppBarProductivityBars extends StatelessWidget {
                   top: 0,
                   bottom: 0,
                   width: fill,
-                  child: ColoredBox(color: fg),
+                  child: ColoredBox(color: doneColor),
                 ),
               ],
             );
@@ -5222,7 +5225,7 @@ class MiniHourBars24h extends StatelessWidget {
 
     // couleurs: cyan (réalisé) + rouge (reste)
     final doneColor = cs.primary; // cyan/teal
-    final restColor = Colors.orange.withOpacity(0.45);
+    final restColor = Colors.black.withOpacity(0.45);
 
     return SizedBox(
       width: width,
