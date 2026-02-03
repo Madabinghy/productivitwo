@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
+import 'package:productivitwo_v1/widgets/filters_sheet.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/widgets/tiny_bar.dart';
 import 'package:productivitwo_v1/widgets/today_view.dart';
@@ -925,6 +927,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   _Tab _tab = _Tab.dashboard;
   bool _launcherHintSeen =
       false; // affiché une seule fois tant que l’app reste ouverte
+  bool _filtersEnabled = false;
 
   // Champs d’état pour les badges
   List<GoalChange> _recentGoalChanges = [];
@@ -1668,6 +1671,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
     final bins24 = logic.minutesByHourLast24();
 
+    final filtersOn = logic.state.filters.enabled;
+
     // 2) App prête -> Scaffold complet
     return Scaffold(
 /*       appBar: AppBar(
@@ -1718,9 +1723,9 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       appBar: AppBar(
         title: Row(
           children: [
-            const SizedBox(width: 8),
+            const SizedBox(width: 4),
             AppBarProductivityBars(logic: logic, state: _state),
-            const SizedBox(width: 8),
+            const SizedBox(width: 4),
             MiniHourBars24h(bins: bins24),
             const Spacer(),
             RunningChipAppBar(
@@ -1729,6 +1734,29 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                 onTap: () => setState(() => _tab = _Tab.now)),
           ],
         ),
+        actions: [
+          GestureDetector(
+            onTap: () => _openFiltersSheet(context),
+            onLongPress: () {
+              HapticFeedback.selectionClick();
+
+              setState(() {
+                logic.state.filters.enabled = !logic.state.filters.enabled;
+              });
+
+              logic.onChange();
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Icon(
+                Icons.tune,
+                color: filtersOn
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).iconTheme.color,
+              ),
+            ),
+          ),
+        ],
       ),
 
 // --- Dans build(...) ---
@@ -1767,6 +1795,21 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               icon: Icon(Icons.checklist), label: 'À faire'),
           BottomNavigationBarItem(icon: Icon(Icons.show_chart), label: 'Stats'),
         ],
+      ),
+    );
+  }
+
+  void _openFiltersSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => FiltersSheet(
+        st: _state!, // ou widget.logic.state si c’est ta source
+        logic: logic,
+        onChanged: () {
+          setState(() {}); // refresh écran après changement filtres
+        },
       ),
     );
   }
@@ -5105,7 +5148,7 @@ class AppBarProductivityBars extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(999),
       child: SizedBox(
-        width: 54,
+        width: 40,
         height: 4,
         child: LayoutBuilder(
           builder: (ctx, c) {
@@ -5113,10 +5156,10 @@ class AppBarProductivityBars extends StatelessWidget {
 
             // ✅ minimum 1px si progress > 0
             final fill = (progress <= 0) ? 0.0 : (w * progress).clamp(1.0, w);
-    final cs = Theme.of(context).colorScheme;
+            final cs = Theme.of(context).colorScheme;
 
-    // couleurs: cyan (réalisé) + rouge (reste)
-    final doneColor = cs.primary; // cyan/teal
+            // couleurs: cyan (réalisé) + rouge (reste)
+            final doneColor = cs.primary; // cyan/teal
             return Stack(
               children: [
                 Positioned.fill(child: ColoredBox(color: bg)),
@@ -5215,7 +5258,7 @@ class MiniHourBars24h extends StatelessWidget {
     super.key,
     required this.bins,
     this.height = 18,
-    this.width = 64,
+    this.width = 54,
     this.gap = 1.0,
   });
 

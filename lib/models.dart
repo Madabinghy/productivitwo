@@ -500,6 +500,57 @@ class HabitProgress {
       );
 }
 
+class FilterState {
+  bool enabled; // toggle global "Filtré"
+  bool focusOnly; // mode Focus ⭐ (optionnel ici)
+  Set<String> domainIds;
+  Set<String> activityIds;
+  Set<String> contextIds; // si tu as une notion de contexte
+  bool includeNoDomain;
+  bool includeNoActivity;
+
+  FilterState({
+    this.enabled = false,
+    this.focusOnly = false,
+    Set<String>? domainIds,
+    Set<String>? activityIds,
+    Set<String>? contextIds,
+    this.includeNoDomain = true,
+    this.includeNoActivity = true,
+  })  : domainIds = domainIds ?? <String>{},
+        activityIds = activityIds ?? <String>{},
+        contextIds = contextIds ?? <String>{};
+
+  Map<String, dynamic> toJson() => {
+        'enabled': enabled,
+        'focusOnly': focusOnly,
+        'domainIds': domainIds.toList(),
+        'activityIds': activityIds.toList(),
+        'contextIds': contextIds.toList(),
+        'includeNoDomain': includeNoDomain,
+        'includeNoActivity': includeNoActivity,
+      };
+
+  static FilterState from(dynamic j) {
+    if (j == null) return FilterState();
+    final m = j as Map;
+    return FilterState(
+      enabled: (m['enabled'] as bool?) ?? false,
+      focusOnly: (m['focusOnly'] as bool?) ?? false,
+      domainIds: ((m['domainIds'] as List?)?.cast<String>() ?? const <String>[])
+          .toSet(),
+      activityIds:
+          ((m['activityIds'] as List?)?.cast<String>() ?? const <String>[])
+              .toSet(),
+      contextIds:
+          ((m['contextIds'] as List?)?.cast<String>() ?? const <String>[])
+              .toSet(),
+      includeNoDomain: (m['includeNoDomain'] as bool?) ?? true,
+      includeNoActivity: (m['includeNoActivity'] as bool?) ?? true,
+    );
+  }
+}
+
 class AppState {
   List<Domain> domains;
   List<Activity> activities;
@@ -533,6 +584,7 @@ class AppState {
   // ✅ NEW : progress checklist persisté
 // habitId -> periodKey -> [indexes cochés]
   Map<String, Map<String, List<int>>> habitChecklistDone;
+  FilterState filters;
 
   AppState({
     required this.domains,
@@ -556,6 +608,7 @@ class AppState {
     Map<String, List<String>>? nowSkippedByYmd,
     Map<String, List<String>>? nowDoneByYmd,
     Map<String, Map<String, List<int>>>? habitChecklistDone,
+    FilterState? filters,
   })  : snoozedUntil = snoozedUntil ?? <String, String>{},
         goals = goals ?? <Goal>[],
         inbox = inbox ?? <InboxItem>[],
@@ -569,7 +622,8 @@ class AppState {
         nowSkippedByYmd = nowSkippedByYmd ?? <String, List<String>>{},
         nowDoneByYmd = nowDoneByYmd ?? <String, List<String>>{},
         habitChecklistDone =
-            habitChecklistDone ?? <String, Map<String, List<int>>>{};
+            habitChecklistDone ?? <String, Map<String, List<int>>>{},
+        filters = filters ?? FilterState();
 
   Map<String, dynamic> toJson() => {
         'domains': domains.map((e) => e.toJson()).toList(),
@@ -598,6 +652,7 @@ class AppState {
         'nowDoneByYmd': nowDoneByYmd,
         'habitChecklistByHabitId': habitChecklistByHabitId,
         'habitChecklistDone': habitChecklistDone,
+        'filters': filters.toJson(),
       };
 
   static AppState from(Map j) {
@@ -661,6 +716,7 @@ class AppState {
       nowDoneByYmd: _mapSL(j['nowDoneByYmd']),
       habitChecklistByHabitId: _mapSL(j['habitChecklistByHabitId']),
       habitChecklistDone: _mapSMapListInt(j['habitChecklistDone']),
+      filters: FilterState.from(j['filters']),
     );
   }
 

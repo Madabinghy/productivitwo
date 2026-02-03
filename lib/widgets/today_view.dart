@@ -850,10 +850,55 @@ class _TodayViewState extends State<TodayView> {
 // 2) OPEN POOL = actions actives (non done, non archivé)
     final openPool =
         allActions.where((a) => !a.done && a.archived != true).toList();
+    
+    final f = widget.logic.state.filters;
+
+final openPoolFiltered = (!f.enabled)
+    ? openPool
+    : openPool.where((a) {
+        // Domain
+        final domOk = (a.domainId == null)
+            ? f.includeNoDomain
+            : (f.domainIds.isEmpty || f.domainIds.contains(a.domainId));
+        if (!domOk) return false;
+
+        // Activity
+        final actOk = (a.activityId == null)
+            ? f.includeNoActivity
+            : (f.activityIds.isEmpty || f.activityIds.contains(a.activityId));
+        if (!actOk) return false;
+
+        return true;
+      }).toList();
+
+    bool matchesFilters(DayPlanItem a, AppState st) {
+      final f = st.filters; // FilterState persisté dans AppState
+      if (!f.enabled) return true;
+
+      // Domain filter
+      final domOk = (a.domainId == null)
+          ? f.includeNoDomain
+          : (f.domainIds.isEmpty || f.domainIds.contains(a.domainId));
+
+      if (!domOk) return false;
+
+      // Activity filter
+      final actOk = (a.activityId == null)
+          ? f.includeNoActivity
+          : (f.activityIds.isEmpty || f.activityIds.contains(a.activityId));
+
+      if (!actOk) return false;
+
+      return true;
+    }
 
 // 3) COURSES = subset de OPEN POOL
-final shoppingActions =
-    openPool.where((a) => a.toPlan == true).toList();
+final shoppingActions = (shoppingId == null)
+    ? <DayPlanItem>[]
+    : openPoolFiltered
+        .where((a) => a.activityId == shoppingId && a.toPlan == true)
+        .toList();
+        
 
     final coursesByHabitId = <String?, List<DayPlanItem>>{};
     for (final a in shoppingActions) {
@@ -870,12 +915,12 @@ final shoppingActions =
     final byDomainOnly = <DayPlanItem>[];
 
     if (hasRunning && !isPlanning && domId != null && domId.isNotEmpty) {
-      byActivity.addAll(openPool.where((a) =>
+      byActivity.addAll(openPoolFiltered.where((a) =>
           a.activityId == actId &&
           (shoppingId == null || a.activityId != shoppingId)));
 
-      byDomainOnly.addAll(
-          openPool.where((a) => a.activityId == null && a.domainId == domId));
+      byDomainOnly.addAll(openPoolFiltered
+          .where((a) => a.activityId == null && a.domainId == domId));
     }
 
 // 5) ACTIONS = le reste (OPEN POOL - Courses - Contexte)
@@ -885,13 +930,15 @@ final shoppingActions =
       ...byDomainOnly.map((e) => e.id),
     };
 
-    final actions = openPool.where((a) => !usedIds.contains(a.id)).toList();
+    final actions =
+        openPoolFiltered.where((a) => !usedIds.contains(a.id)).toList();
 
 // 6) Groupement par domaine UNIQUEMENT sur actions
     final actionsByDomain = <String?, List<DayPlanItem>>{};
     for (final a in actions) {
       (actionsByDomain[a.domainId] ??= []).add(a);
     }
+
     assert(() {
       final seen = <String>{};
       bool ok = true;
