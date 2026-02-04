@@ -749,6 +749,82 @@ class _TodayViewState extends State<TodayView> {
     );
   }
 
+  bool _showInbox = false; // plié par défaut
+
+  Widget _inboxSection({
+    required List<DayPlanItem> inbox,
+    required void Function(DayPlanItem it) onTapAssign,
+  }) {
+    if (inbox.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _showInbox = !_showInbox),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    "Inbox (${inbox.length})",
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800, fontSize: 16),
+                  ),
+                ),
+                Icon(
+                  _showInbox ? Icons.expand_less : Icons.expand_more,
+                  size: 20,
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_showInbox) ...[
+          const SizedBox(height: 8),
+          ...inbox.map((it) {
+            // ✅ tap sur la card => associer
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => onTapAssign(it),
+              child: _todayTile(
+                context,
+                it,
+                key: ValueKey('inbox:${it.id}'),
+                showDrag: false,
+                indexForDrag: 0,
+              ),
+            );
+          }),
+        ],
+      ],
+    );
+  }
+
+  void _openAssignActivitySheet(BuildContext context, DayPlanItem action) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => AssignActivitySheet(
+        st: widget.logic.state,
+        onPick: (act) {
+          setState(() {
+            action.activityId = act.id;
+            action.domainId = act.domainId;
+          });
+          widget.logic.onChange();
+          Navigator.pop(context);
+        },
+        onKeepInbox: () {
+          // optionnel: rien à faire, juste fermer
+          Navigator.pop(context);
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
@@ -850,26 +926,38 @@ class _TodayViewState extends State<TodayView> {
 // 2) OPEN POOL = actions actives (non done, non archivé)
     final openPool =
         allActions.where((a) => !a.done && a.archived != true).toList();
-    
+
+    // ✅ INBOX = actions neutres (non associées)
+    final inboxActions = openPool.where((a) {
+      final noDomain = (a.domainId == null || a.domainId!.isEmpty);
+      final noAct = (a.activityId == null || a.activityId!.isEmpty);
+      final notCourses = a.toPlan != true; // option : si toPlan sert à Courses
+      return noDomain && noAct && notCourses;
+    }).toList();
+
+// tri simple
+    inboxActions.sort((a, b) => a.title.compareTo(b.title));
+
     final f = widget.logic.state.filters;
 
-final openPoolFiltered = (!f.enabled)
-    ? openPool
-    : openPool.where((a) {
-        // Domain
-        final domOk = (a.domainId == null)
-            ? f.includeNoDomain
-            : (f.domainIds.isEmpty || f.domainIds.contains(a.domainId));
-        if (!domOk) return false;
+    final openPoolFiltered = (!f.enabled)
+        ? openPool
+        : openPool.where((a) {
+            // Domain
+            final domOk = (a.domainId == null)
+                ? f.includeNoDomain
+                : (f.domainIds.isEmpty || f.domainIds.contains(a.domainId));
+            if (!domOk) return false;
 
-        // Activity
-        final actOk = (a.activityId == null)
-            ? f.includeNoActivity
-            : (f.activityIds.isEmpty || f.activityIds.contains(a.activityId));
-        if (!actOk) return false;
+            // Activity
+            final actOk = (a.activityId == null)
+                ? f.includeNoActivity
+                : (f.activityIds.isEmpty ||
+                    f.activityIds.contains(a.activityId));
+            if (!actOk) return false;
 
-        return true;
-      }).toList();
+            return true;
+          }).toList();
 
     bool matchesFilters(DayPlanItem a, AppState st) {
       final f = st.filters; // FilterState persisté dans AppState
@@ -893,12 +981,11 @@ final openPoolFiltered = (!f.enabled)
     }
 
 // 3) COURSES = subset de OPEN POOL
-final shoppingActions = (shoppingId == null)
-    ? <DayPlanItem>[]
-    : openPoolFiltered
-        .where((a) => a.activityId == shoppingId && a.toPlan == true)
-        .toList();
-        
+    final shoppingActions = (shoppingId == null)
+        ? <DayPlanItem>[]
+        : openPoolFiltered
+            .where((a) => a.activityId == shoppingId && a.toPlan == true)
+            .toList();
 
     final coursesByHabitId = <String?, List<DayPlanItem>>{};
     for (final a in shoppingActions) {
@@ -965,6 +1052,11 @@ final shoppingActions = (shoppingId == null)
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
         children: [
+          _inboxSection(
+            inbox: inboxActions,
+            onTapAssign: (it) => _openAssignActivitySheet(context, it),
+          ),
+          const SizedBox(height: 12),
           //_nowChecklistActions(), // ton bloc "Pour maintenant" (déjà OK)
           if (hasRunning &&
               (byActivity.isNotEmpty || byDomainOnly.isNotEmpty)) ...[
@@ -1928,104 +2020,23 @@ final shoppingActions = (shoppingId == null)
               // 1) Ajouter une action volante
               ListTile(
                 leading: const Icon(Icons.add_task),
-                title: const Text('Ajouter une action (GTD)'),
+                title: const Text('Ajouter une action'),
                 onTap: () async {
                   Navigator.pop(ctx);
                   final title = await _askText(context, "Nouvelle action");
                   final t = (title ?? '').trim();
                   if (t.isEmpty) return;
 
-                  // ✅ contexte = activité en cours sinon picker domaine
-                  final running = widget.logic.runningActivity();
-                  String? domainId;
-                  String? activityId;
-
-                  if (running != null && running.domainId.isNotEmpty) {
-                    domainId = running.domainId;
-                    activityId = running.id;
-                  } else {
-                    domainId = await _pickDomainId(context);
-                    if (domainId == null) return;
-                  }
-
                   await widget.logic.addPlanAction(
                     ymd: _ymd,
                     title: t,
-                    domainId: domainId,
-                    activityId: activityId,
-                    habitId: null, // ✅ important
+                    domainId: null, // ✅ INBOX
+                    activityId: null, // ✅ INBOX
+                    habitId: null,
                   );
 
                   if (!mounted) return;
                   setState(() {});
-                },
-              ),
-
-              if (widget.logic.nowHabitId != null)
-                ListTile(
-                  leading: const Icon(Icons.checklist),
-                  title: const Text('Ajouter à la routine actuelle'),
-                  subtitle: Text(widget.logic.state.activities
-                      .firstWhere((a) => a.id == widget.logic.nowHabitId!)
-                      .name),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    final title =
-                        await _askText(context, "Action pour la routine");
-                    final t = (title ?? '').trim();
-                    if (t.isEmpty) return;
-
-                    final habitId = widget.logic.nowHabitId!;
-                    final habitAct = widget.logic.state.activities
-                        .firstWhere((a) => a.id == habitId);
-
-                    await widget.logic.addPlanAction(
-                      ymd: _ymd,
-                      title: t,
-                      domainId: habitAct.domainId,
-                      activityId: null,
-                      habitId: habitId, // ✅ explicite
-                    );
-
-                    if (!mounted) return;
-                    setState(() {});
-                  },
-                ),
-              const Divider(),
-              // 2) Ajouter une activité
-              ListTile(
-                leading: const Icon(Icons.timelapse),
-                title: const Text('Ajouter une activité (temps)'),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  final act = await _pickActivity(isHabit: false);
-                  if (act != null) {
-                    await widget.logic.addPlanActivity(
-                      ymd: _ymd,
-                      activityId: act.id,
-                      isHabit: false,
-                    );
-                    if (!mounted) return;
-                    setState(() {}); // synchrone, après l’await
-                  }
-                },
-              ),
-              // 2) Ajouter une routine (habitude)
-              ListTile(
-                leading: const Icon(Icons.task_alt),
-                title: const Text('Ajouter une routine'),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  final act = await _pickActivity(isHabit: true);
-                  if (act != null) {
-                    await widget.logic.addPlanActivity(
-                      ymd: _ymd,
-                      activityId: act.id,
-                      isHabit: true,
-                    );
-                    if (!mounted) return;
-                    setState(() {});
-                  }
                 },
               ),
             ],
@@ -3762,4 +3773,104 @@ class _HabitSettingsResult {
     required this.target,
     required this.isAuto,
   });
+}
+
+class AssignActivitySheet extends StatelessWidget {
+  final AppState st;
+  final void Function(Activity act) onPick;
+  final VoidCallback onKeepInbox;
+
+  // Optionnel : si tu veux filtrer les activités affichées selon les domaines sélectionnés
+  final Set<String>? allowedDomainIds;
+
+  const AssignActivitySheet({
+    super.key,
+    required this.st,
+    required this.onPick,
+    required this.onKeepInbox,
+    this.allowedDomainIds,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final domainsById = {for (final d in st.domains) d.id: d};
+
+    final acts = st.activities.where((a) => !a.isHabit).where((a) {
+      if (allowedDomainIds == null) return true;
+      return allowedDomainIds!.contains(a.domainId);
+    }).toList();
+
+    // group activities by domain
+    final byDomain = <String, List<Activity>>{};
+    for (final a in acts) {
+      (byDomain[a.domainId] ??= []).add(a);
+    }
+
+    // sort
+    for (final list in byDomain.values) {
+      list.sort((a, b) => a.name.compareTo(b.name));
+    }
+
+    // domain order = app domains order
+    final domainIdsOrdered = st.domains
+        .map((d) => d.id)
+        .where((id) => byDomain.containsKey(id))
+        .toList();
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    "Associer à une activité",
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+                  ),
+                ),
+                TextButton(
+                  onPressed: onKeepInbox,
+                  child: const Text("Garder Inbox"),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final domId in domainIdsOrdered) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(top: 14, bottom: 6),
+                      child: Text(
+                        domainsById[domId]?.name ?? "Domaine",
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withOpacity(.75),
+                        ),
+                      ),
+                    ),
+                    ...byDomain[domId]!.map((act) {
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(act.name),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => onPick(act),
+                      );
+                    }),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
