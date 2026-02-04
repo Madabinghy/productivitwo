@@ -766,6 +766,8 @@ class _TodayViewState extends State<TodayView> {
             padding: const EdgeInsets.symmetric(vertical: 10),
             child: Row(
               children: [
+                const Icon(Icons.inbox, size: 20),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     "Inbox (${inbox.length})",
@@ -1122,23 +1124,6 @@ class _TodayViewState extends State<TodayView> {
           if (_showAll) ...[
             const SizedBox(height: 8),
 
-            // Domaine “Sans domaine” d’abord si présent
-            if ((actionsByDomain[null] ?? const []).isNotEmpty ||
-                (actionsByDomain[''] ?? const []).isNotEmpty) ...[
-              _domainHeader("Sans domaine"),
-              ...[
-                ...(actionsByDomain[null] ?? const []),
-                ...(actionsByDomain[''] ?? const []),
-              ].map((it) => _todayTile(
-                    context,
-                    it,
-                    key: ValueKey('sans_domaines:${it.id}'),
-                    showDrag: false,
-                    indexForDrag: 0,
-                  )),
-              const SizedBox(height: 12),
-            ],
-
             // Puis chaque domaine connu
             for (final d in widget.logic.state.domains) ...[
               if ((actionsByDomain[d.id] ?? const []).isNotEmpty) ...[
@@ -1258,7 +1243,22 @@ class _TodayViewState extends State<TodayView> {
 
   Widget _buildFab() {
     return FloatingActionButton.extended(
-      onPressed: _openAddSheet,
+      onPressed: () async {
+        final title = await _askText(context, "Nouvelle action");
+        final t = (title ?? '').trim();
+        if (t.isEmpty) return;
+
+        await widget.logic.addPlanAction(
+          ymd: _ymd,
+          title: t,
+          domainId: null,
+          activityId: null,
+          habitId: null,
+        );
+
+        if (!mounted) return;
+        setState(() {});
+      },
       icon: const Icon(Icons.add),
       label: const Text('Ajouter'),
     );
