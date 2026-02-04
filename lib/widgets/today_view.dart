@@ -6,6 +6,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/main.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:collection/collection.dart';
+import 'package:productivitwo_v1/widgets/assign_activity_sheet.dart';
 import 'package:productivitwo_v1/widgets/habit_tile_30d.dart'
     show NowHabit30dBar;
 import 'package:productivitwo_v1/widgets/tiny_bar.dart';
@@ -786,17 +787,13 @@ class _TodayViewState extends State<TodayView> {
         if (_showInbox) ...[
           const SizedBox(height: 8),
           ...inbox.map((it) {
-            // ✅ tap sur la card => associer
-            return GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => onTapAssign(it),
-              child: _todayTile(
-                context,
-                it,
-                key: ValueKey('inbox:${it.id}'),
-                showDrag: false,
-                indexForDrag: 0,
-              ),
+            return _todayTile(
+              context,
+              it,
+              key: ValueKey('inbox:${it.id}'),
+              showDrag: false,
+              indexForDrag: 0,
+              onTapOverride: () => onTapAssign(it), // ✅ ICI
             );
           }),
         ],
@@ -1244,7 +1241,7 @@ class _TodayViewState extends State<TodayView> {
   Widget _buildFab() {
     return FloatingActionButton.extended(
       onPressed: () async {
-        final title = await _askText(context, "Nouvelle action");
+        final title = await _askText(context, "À faire !");
         final t = (title ?? '').trim();
         if (t.isEmpty) return;
 
@@ -1259,8 +1256,8 @@ class _TodayViewState extends State<TodayView> {
         if (!mounted) return;
         setState(() {});
       },
-      icon: const Icon(Icons.add),
-      label: const Text('Ajouter'),
+      icon: const Icon(Icons.inbox, size: 20),
+      label: const Text('Inbox'),
     );
   }
 
@@ -1273,8 +1270,14 @@ class _TodayViewState extends State<TodayView> {
   DateTime _dayEnd({bool tomorrow = false}) =>
       _dayStart(tomorrow: tomorrow).add(const Duration(days: 1));
 
-  Widget _todayTile(BuildContext context, DayPlanItem it,
-      {required Key key, bool showDrag = true, int? indexForDrag}) {
+  Widget _todayTile(
+    BuildContext context,
+    DayPlanItem it, {
+    required Key key,
+    required bool showDrag,
+    required int indexForDrag,
+    VoidCallback? onTapOverride, // ✅ NEW
+  }) {
     // Jour affiché selon l’onglet
     final now = DateTime.now();
     final viewed = _planTomorrow ? now.add(const Duration(days: 1)) : now;
@@ -1386,75 +1389,22 @@ class _TodayViewState extends State<TodayView> {
           ),
         );
 
-    Widget moveDownIfAny() {
-      // Perso: je l’afficherais seulement sur l’onglet Aujourd’hui
-      if (!isTodayTab) return const SizedBox.shrink();
-
-      return IconButton(
-        tooltip: 'Mettre plus tard (fin de liste)',
-        icon: const Icon(Icons.arrow_downward, size: 18),
-        constraints: const BoxConstraints.tightFor(width: 36, height: 36),
-        padding: EdgeInsets.zero,
-        onPressed: () {
-          final ymd = yyyymmdd(DateTime.now()); // ou basé sur viewed si tu veux
-          widget.logic.movePlanItemToEnd(ymd, it.id);
-          setState(() {});
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Mis en fin de liste')),
-          );
-        },
-      );
-    }
-
     switch (it.kind) {
 // ---------------- ACTION ----------------
       case PlanKind.action:
         {
-          final habitName = (it.habitId == null)
-              ? null
-              : widget.state.activities
-                  .firstWhere(
-                    (a) => a.id == it.habitId,
-                    orElse: () => Activity(
-                      id: it.habitId!,
-                      name: "Routine",
-                      domainId: it.domainId ?? "",
-                      type: 'habit',
-                    ),
-                  )
-                  .name;
-
-          final domainName = (it.domainId == null)
-              ? null
-              : widget.state.domains
-                  .firstWhere(
-                    (d) => d.id == it.domainId,
-                    orElse: () => Domain(id: it.domainId!, name: "Domaine"),
-                  )
-                  .name;
-
-          final activityName = (it.activityId == null)
-              ? null
-              : widget.state.activities
-                  .firstWhere((a) => a.id == it.activityId,
-                      orElse: () => Activity(domainId: '', name: 'Activité'))
-                  .name;
-
-          final habit = _actById(it.habitId);
-          final activity = _actById(it.activityId);
-          final domName = _domainName(it.domainId);
-
           final content = GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: () {
-              setState(() => it.done = !it.done);
-              widget.logic.onChange();
-            },
+            onTap: onTapOverride ??
+                () {
+                  setState(() => it.done = !it.done);
+                  widget.logic.onChange();
+                },
             child: _actionCardContent(it),
           );
 
           return Dismissible(
-            key: rootKey, // ✅ utilise la key "context:...", "courses:...", etc.
+            key: rootKey,
             direction: DismissDirection.endToStart,
             background: Container(
               alignment: Alignment.centerRight,
@@ -3773,104 +3723,4 @@ class _HabitSettingsResult {
     required this.target,
     required this.isAuto,
   });
-}
-
-class AssignActivitySheet extends StatelessWidget {
-  final AppState st;
-  final void Function(Activity act) onPick;
-  final VoidCallback onKeepInbox;
-
-  // Optionnel : si tu veux filtrer les activités affichées selon les domaines sélectionnés
-  final Set<String>? allowedDomainIds;
-
-  const AssignActivitySheet({
-    super.key,
-    required this.st,
-    required this.onPick,
-    required this.onKeepInbox,
-    this.allowedDomainIds,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final domainsById = {for (final d in st.domains) d.id: d};
-
-    final acts = st.activities.where((a) => !a.isHabit).where((a) {
-      if (allowedDomainIds == null) return true;
-      return allowedDomainIds!.contains(a.domainId);
-    }).toList();
-
-    // group activities by domain
-    final byDomain = <String, List<Activity>>{};
-    for (final a in acts) {
-      (byDomain[a.domainId] ??= []).add(a);
-    }
-
-    // sort
-    for (final list in byDomain.values) {
-      list.sort((a, b) => a.name.compareTo(b.name));
-    }
-
-    // domain order = app domains order
-    final domainIdsOrdered = st.domains
-        .map((d) => d.id)
-        .where((id) => byDomain.containsKey(id))
-        .toList();
-
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    "Associer à une activité",
-                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
-                  ),
-                ),
-                TextButton(
-                  onPressed: onKeepInbox,
-                  child: const Text("Garder Inbox"),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Flexible(
-              child: ListView(
-                shrinkWrap: true,
-                children: [
-                  for (final domId in domainIdsOrdered) ...[
-                    Padding(
-                      padding: const EdgeInsets.only(top: 14, bottom: 6),
-                      child: Text(
-                        domainsById[domId]?.name ?? "Domaine",
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withOpacity(.75),
-                        ),
-                      ),
-                    ),
-                    ...byDomain[domId]!.map((act) {
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(act.name),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () => onPick(act),
-                      );
-                    }),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
