@@ -1746,17 +1746,19 @@ class AppLogic {
     final domainsById = {for (final d in st.domains) d.id: d};
     final activitiesById = {for (final a in st.activities) a.id: a};
 
-    final habitActs = st.activities.where((a) => a.isHabit).toList();
+/*     final habitActs = st.activities.where((a) => a.isHabit).toList();
     final habitActsByDomain = <String, List<Activity>>{};
     for (final h in habitActs) {
       (habitActsByDomain[h.domainId] ??= []).add(h);
-    }
+    } */
 
     // Sépare items par kind
     final planRoutines = items.where((x) => x.kind == PlanKind.habit).toList();
     final planActs =
         items.where((x) => x.kind == PlanKind.activityTime).toList();
-    final planActions = items.where((x) => x.kind == PlanKind.action).toList();
+final planActions = items
+    .where((x) => x.kind == PlanKind.action && x.archived != true)
+    .toList();
 
     // helper: domain d'un PlanItem routine/activity via Activity
     String? domainOfPlan(
@@ -1798,7 +1800,7 @@ class AppLogic {
     final rows = <RowItem>[];
 
     // Option: actions au tout début
-    if (planActions.isNotEmpty && running == null) {
+    if (planActions.isNotEmpty) {
       rows.add(const RowHeader("virt:actions", "Actions"));
       rows.addAll(planActions.map((it) => RowPlan(it)));
     }

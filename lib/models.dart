@@ -284,7 +284,7 @@ class Activity {
         createdAt = createdAt ?? DateTime.now();
 
   // -------- Helpers --------
-  bool get isHabit => type == 'habit';
+  bool get isHabit => type == 'habit'||type == 'action';
 
   /// Fréquence « effective » (fallback mensuel si rien n’est défini).
   HabitFreq get effHabitFreq => habitFreq ?? HabitFreq.monthly;
