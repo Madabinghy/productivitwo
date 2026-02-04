@@ -2528,38 +2528,133 @@ class _NowTabState extends State<NowTab> {
     widget.logic.start(picked.id); // <-- adapte au nom chez toi
   }
 
+      Future<void> _passForToday(DayPlanItem it) async {
+      setState(() => it.isNowFocus = false);
+      final now = DateTime.now();
+      final ymd = yyyymmdd(DateTime(now.year, now.month, now.day));
+      _skipNowItem(
+          ymd, it); // <- persist dans nowSkippedByYmd + setState() déjà
+    }
+
+  Widget _snoozeBlock(BuildContext context, DayPlanItem it) {
+    final cs = Theme.of(context).colorScheme;
+    final now = DateTime.now();
+    DateTime day0 = DateTime(now.year, now.month, now.day);
+
+    DateTime d(int addDays) => day0.add(Duration(days: addDays));
+
+    String labelFor(int addDays) {
+      if (addDays == 1) return "Demain";
+      // J+2..J+6 affiché joli
+      const wd = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+      final dt = d(addDays);
+      final w = wd[dt.weekday - 1];
+      return "$w ${dt.day}";
+    }
+
+    Future<void> apply(DateTime when) async {
+      setState(() => it.isNowFocus = false);
+      it.snoozeUntil = when;
+      widget.logic.onChange();
+      setState(() {});
+    }
+
+    Future<void> pickDate() async {
+      setState(() => it.isNowFocus = false);
+      await widget.logic.snoozeToDate(context, it); // ton datepicker existant
+      widget.logic.onChange();
+      setState(() {});
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // ✅ Rangée 1 : Demain + Passer
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton.tonal(
+                onPressed: () async {
+                  await widget.logic.snoozeToTomorrow(it);
+                  widget.logic.onChange();
+                  setState(() {});
+                },
+                child: const Text("Demain"),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: GestureDetector(
+                onTap: ()  {
+                  _passForToday(it);
+                  widget.logic.onChange();
+                  setState(() {});
+                },
+                onLongPress: pickDate,
+                child: FilledButton.tonal(
+                  onPressed: null, // géré par GestureDetector
+                  child: const Text("Passer"),
+                ),
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 10),
+
+        // ✅ Rangée 2 : J+2..J+6
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final addDays in [2, 3, 4, 5, 6])
+              ActionChip(
+                label: Text(labelFor(addDays)),
+                onPressed: () => apply(d(addDays)),
+                backgroundColor: cs.surface.withOpacity(0.12),
+                labelStyle: TextStyle(
+                  color: cs.onSurface.withOpacity(0.85),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+
+            // ✅ “Choisir date”
+            ActionChip(
+              label: const Text("Choisir une date"),
+              onPressed: pickDate,
+              backgroundColor: cs.primary.withOpacity(0.12),
+              labelStyle: TextStyle(
+                color: cs.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 8),
+        Text(
+          "Astuce : appui long sur “Passer” pour choisir une date.",
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 12,
+            color: cs.onSurface.withOpacity(0.55),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _nowActionCard(BuildContext context, DayPlanItem it) {
-    String? subtitle;
-
-    final domId = it.domainId;
-    if (domId != null && domId.isNotEmpty) {
-      final dom = widget.st.domains.firstWhere(
-        (d) => d.id == domId,
-        orElse: () => Domain(id: domId, name: "Domaine"),
-      );
-      subtitle = "Domaine • ${dom.name}";
-    }
-
-    if ((it.activityId ?? '').isNotEmpty) {
-      final act = widget.st.activities.firstWhere(
-        (a) => a.id == it.activityId,
-        orElse: () =>
-            Activity(domainId: domId ?? '', name: "Activité", type: 'time'),
-      );
-      subtitle = (subtitle == null)
-          ? "Activité • ${act.name}"
-          : "$subtitle  ·  Activité • ${act.name}";
-    }
-
-    final ymd =
-        yyyymmdd(DateTime(widget.day.year, widget.day.month, widget.day.day));
+    final cs = Theme.of(context).colorScheme;
 
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min, // 🔑 évite l’overflow
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // ───── HEADER ─────
             Row(
               children: [
                 Expanded(
@@ -2568,10 +2663,7 @@ class _NowTabState extends State<NowTab> {
                     style: TextStyle(
                       letterSpacing: 1.2,
                       fontWeight: FontWeight.w800,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withOpacity(0.6),
+                      color: cs.onSurface.withOpacity(0.6),
                     ),
                   ),
                 ),
@@ -2584,49 +2676,95 @@ class _NowTabState extends State<NowTab> {
                 ),
               ],
             ),
+
             const SizedBox(height: 10),
 
+            // ───── TITRE ─────
             Text(
               it.title,
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+              ),
             ),
 
-            if (subtitle != null) ...[
-              const SizedBox(height: 6),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  fontSize: 13,
-                  color:
-                      Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-                ),
-              ),
-            ],
+            const SizedBox(height: 16),
 
-            const SizedBox(height: 14),
-
-            // ✅ Actions
+            // ───── ACTIONS PRINCIPALES ─────
             Row(
               children: [
-                // ✅ Lancer / Associer + Lancer
                 Expanded(
                   child: FilledButton.icon(
                     onPressed: () async {
+                      final running = widget.logic.runningActivity();
+
+                      // 1) si l’action a déjà une activité
+                      if ((it.activityId ?? '').isNotEmpty) {
+                        final actId = it.activityId!;
+
+                        // si c’est déjà l’activité en cours => STOP
+                        if (running != null && running.id == actId) {
+                          widget.logic.stopActive();
+                          if (!mounted) return;
+                          setState(() {});
+                          return;
+                        }
+
+                        // sinon => START cette activité
+                         widget.logic
+                            .start(actId); // adapte au nom chez toi
+                        if (!mounted) return;
+                        setState(() {});
+                        return;
+                      }
+
+                      // 2) sinon : associer puis lancer
                       await _startOrPickActivityForAction(context, it);
+
                       if (!mounted) return;
                       setState(() {}); // refresh subtitle si activité choisie
                     },
-                    icon: const Icon(Icons.play_arrow),
-                    label: Text((it.activityId ?? '').isNotEmpty
-                        ? "Lancer"
-                        : "Associer & lancer"),
+                    icon: Icon(
+                      () {
+                        final running = widget.logic.runningActivity();
+                        if ((it.activityId ?? '').isEmpty)
+                          return Icons.play_arrow;
+                        if (running != null && running.id == it.activityId)
+                          return Icons.stop;
+                        return Icons.play_arrow;
+                      }(),
+                    ),
+                    label: Text(
+                      () {
+                        final running = widget.logic.runningActivity();
+
+                        // pas d’activité => associer
+                        if ((it.activityId ?? '').isEmpty)
+                          return "Associer & lancer";
+
+                        // nom activité
+                        final act = widget.st.activities.firstWhere(
+                          (a) => a.id == it.activityId,
+                          orElse: () => Activity(
+                              domainId: it.domainId ?? '', name: "Activité"),
+                        );
+
+                        // si c’est running => Stop
+                        if (running != null && running.id == it.activityId) {
+                          return "Stop";
+                        }
+
+                        return act.name; // ✅ "Lafay", "Productivitwo", etc.
+                      }(),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 10),
-
-                // ✅ Fait
                 Expanded(
                   child: FilledButton(
+                    style: FilledButton.styleFrom(
+                    backgroundColor: Colors.green
+                  ),
                     onPressed: () {
                       setState(() {
                         it.done = true;
@@ -2640,47 +2778,12 @@ class _NowTabState extends State<NowTab> {
               ],
             ),
 
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
+            const Divider(height: 1),
+            const SizedBox(height: 8),
 
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // ✅ Passer (tap / long press)
-                GestureDetector(
-                  onTap: () async {
-                    setState(() => it.isNowFocus = false);
-                    await widget.logic.snoozeToTomorrow(it);
-                    widget.logic.onChange();
-                    setState(() {});
-                  },
-                  onLongPress: () async {
-                    setState(() => it.isNowFocus = false);
-                    await widget.logic.snoozeToDate(context, it);
-                    widget.logic.onChange();
-                    setState(() {});
-                  },
-                  child: FilledButton.tonal(
-                    onPressed: null, // géré par GestureDetector
-                    child: const Text("Passer"),
-                  ),
-                ),
-
-                // 👇 micro-hint discret
-                const SizedBox(height: 6),
-                Center(
-                  child: Text(
-                    "Maintenir pour choisir une date",
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withOpacity(0.45),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            // ───── SNOOZE BLOCK (SCROLLABLE) ─────
+            _snoozeBlock(context, it),
           ],
         ),
       ),
@@ -3746,6 +3849,9 @@ class _NowTabState extends State<NowTab> {
         // règles de base action
         if (it.done) return false;
         if (it.archived == true) return false;
+        final now = DateTime.now();
+        final snooze = it.snoozeUntil;
+        if (snooze != null && snooze.isAfter(now)) return false;
         return true;
 
       default:
