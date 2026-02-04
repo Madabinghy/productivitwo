@@ -39,6 +39,7 @@ class _TodayViewState extends State<TodayView> {
   bool _showAll = true;
   bool _showShopping = true;
   bool _showCourses = false; // repli/dépli manuel
+  bool _showSnoozed = false; // dans ton State
 
   Widget _coursesSection({
     required List<DayPlanItem> courses,
@@ -874,6 +875,11 @@ class _TodayViewState extends State<TodayView> {
     final now = DateTime.now();
     final todayDate = DateTime(now.year, now.month, now.day);
 
+    bool isSnoozed(DayPlanItem it) {
+      final u = it.snoozeUntil;
+      return u != null && u.isAfter(now);
+    }
+
     final ymd = _ymd;
     final isTodayTab = ymd == yyyymmdd(now);
 
@@ -952,6 +958,120 @@ class _TodayViewState extends State<TodayView> {
 // ✅ Source unique pour tout l’écran
     final allActions =
         baseOrAuto.where((x) => x.kind == PlanKind.action).toList();
+
+    final snoozedActions = allActions
+        .where((a) => a.kind == PlanKind.action)
+        .where((a) => !a.done && a.archived != true)
+        .where(isSnoozed)
+        .toList()
+      ..sort((a, b) {
+        final au = a.snoozeUntil ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bu = b.snoozeUntil ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final c = au.compareTo(bu);
+        if (c != 0) return c;
+        return a.title.compareTo(b.title);
+      });
+
+    Widget _snoozedSection({
+      required List<DayPlanItem> snoozed,
+      required void Function(DayPlanItem it) onUnsnooze,
+    }) {
+      if (snoozed.isEmpty) return const SizedBox.shrink();
+
+      String fmt(DateTime d) {
+        // simple (sans intl)
+        final dd = d.day.toString().padLeft(2, '0');
+        final mm = d.month.toString().padLeft(2, '0');
+        return "$dd/$mm";
+      }
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: () => setState(() => _showSnoozed = !_showSnoozed),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Row(
+                children: [
+                  const Icon(Icons.schedule, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      "Plus tard (${snoozed.length})",
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w800, fontSize: 16),
+                    ),
+                  ),
+                  Icon(_showSnoozed ? Icons.expand_less : Icons.expand_more,
+                      size: 20),
+                ],
+              ),
+            ),
+          ),
+          if (_showSnoozed) ...[
+            const SizedBox(height: 6),
+            ...snoozed.map((it) {
+              final until = it.snoozeUntil;
+              return Dismissible(
+                key: ValueKey("snoozed:${it.id}"),
+                direction: DismissDirection.startToEnd,
+                background: Container(
+                  alignment: Alignment.centerLeft,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  color: Colors.green.withOpacity(0.12),
+                  child: const Icon(Icons.undo, color: Colors.green),
+                ),
+                onDismissed: (_) => onUnsnooze(it),
+                child: Opacity(
+                  opacity: 0.75,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (until != null)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 12, bottom: 8),
+                          child: Text(
+                            "Reparaît le ${fmt(until)}",
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withOpacity(0.45),
+                            ),
+                          ),
+                        ),
+                      _todayTile(
+                        context,
+                        it,
+                        key: ValueKey("snoozed_tile:${it.id}"),
+                        showDrag: false,
+                        indexForDrag: 0,
+                      ),
+                      const SizedBox(height: 15),
+                    ],
+                  ),
+                ),
+              );
+            }),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  for (final it in snoozed) {
+                    it.snoozeUntil = null;
+                  }
+                });
+                widget.logic.onChange();
+              },
+              child: const Text("Tout réafficher"),
+            ),
+          ],
+          const SizedBox(height: 10),
+        ],
+      );
+    }
 
 // ✅ Dédup au cas où (safe)
     final seen = <String>{};
@@ -1173,6 +1293,7 @@ class _TodayViewState extends State<TodayView> {
               ),
             ],
           ],
+
           if (doneActions.isNotEmpty) ...[
             const SizedBox(height: 8),
             InkWell(
@@ -1224,6 +1345,13 @@ class _TodayViewState extends State<TodayView> {
               }),
             ],
           ],
+          _snoozedSection(
+            snoozed: snoozedActions,
+            onUnsnooze: (it) {
+              setState(() => it.snoozeUntil = null);
+              widget.logic.onChange();
+            },
+          ),
         ],
       ),
       floatingActionButton: _buildFab(), // ton FAB existant pour ajouter
@@ -2514,51 +2642,50 @@ class _NowTabState extends State<NowTab> {
 
             const SizedBox(height: 10),
 
-Column(
-  crossAxisAlignment: CrossAxisAlignment.stretch,
-  children: [
-    // ✅ Passer (tap / long press)
-    GestureDetector(
-      onTap: () async {
-        setState(() => it.isNowFocus = false);
-        await widget.logic.snoozeToTomorrow(it);
-        widget.logic.onChange();
-        setState(() {});
-      },
-      onLongPress: () async {
-        setState(() => it.isNowFocus = false);
-        await widget.logic.snoozeToDate(context, it);
-        widget.logic.onChange();
-        setState(() {});
-      },
-      child: FilledButton.tonal(
-        onPressed: null, // géré par GestureDetector
-        child: const Text("Passer"),
-      ),
-    ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // ✅ Passer (tap / long press)
+                GestureDetector(
+                  onTap: () async {
+                    setState(() => it.isNowFocus = false);
+                    await widget.logic.snoozeToTomorrow(it);
+                    widget.logic.onChange();
+                    setState(() {});
+                  },
+                  onLongPress: () async {
+                    setState(() => it.isNowFocus = false);
+                    await widget.logic.snoozeToDate(context, it);
+                    widget.logic.onChange();
+                    setState(() {});
+                  },
+                  child: FilledButton.tonal(
+                    onPressed: null, // géré par GestureDetector
+                    child: const Text("Passer"),
+                  ),
+                ),
 
-    // 👇 micro-hint discret
-    const SizedBox(height: 6),
-    Center(
-      child: Text(
-        "Maintenir pour choisir une date",
-        style: TextStyle(
-          fontSize: 11,
-          color: Theme.of(context)
-              .colorScheme
-              .onSurface
-              .withOpacity(0.45),
-        ),
-      ),
-    ),
-  ],
-),
+                // 👇 micro-hint discret
+                const SizedBox(height: 6),
+                Center(
+                  child: Text(
+                    "Maintenir pour choisir une date",
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(0.45),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),
     );
   }
-  
 
   Future<String?> _promptText({
     required String title,
