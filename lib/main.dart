@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
 import 'package:productivitwo_v1/widgets/filters_sheet.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
@@ -620,6 +621,17 @@ class ProductivitwoApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      locale: const Locale('fr', 'FR'),
+
+      supportedLocales: const [
+        Locale('fr', 'FR'),
+      ],
+
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       debugShowCheckedModeBanner: false,
       title: 'Productivitwo',
       theme: ThemeData(
@@ -1779,7 +1791,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       ), */
 
 // FAB uniquement sur Dashboard (ou adapte si tu veux aussi sur Today)
-      floatingActionButton: _tab == _Tab.dashboard ? _buildFocusFab() : null,
+      //floatingActionButton: _tab == _Tab.dashboard ? _buildFocusFab() : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
 
       bottomNavigationBar: BottomNavigationBar(
@@ -2712,7 +2724,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildFocusFab() {
+/*   Widget _buildFocusFab() {
     return GestureDetector(
       onLongPress: () {
         // Focus “domaine courant” si dispo, sinon global
@@ -2729,7 +2741,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         label: const Text('Focus'),
       ),
     );
-  }
+  } */
 
   Future<void> _createActivityDialog({
     String? domainId, // si null -> on affiche un dropdown
@@ -4440,7 +4452,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     );
   }
 
-  void _openFocusPanel({String? domainId}) {
+/*   void _openFocusPanel({String? domainId}) {
     final candidates = logic.buildFocusCandidates(domainId: domainId);
     showModalBottomSheet(
       context: context,
@@ -4922,7 +4934,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         );
       },
     );
-  }
+  } */
 
   Future<void> _openQuickAdjustHabitSheet({
     required BuildContext context,

@@ -1032,29 +1032,41 @@ class AppLogic {
   }
 
   // ---------- Snooze ----------
-  bool isSnoozed(String activityId, {DateTime? now}) {
-    final untilIso = state.snoozedUntil[activityId];
-    if (untilIso == null) return false;
-    final t = now ?? DateTime.now();
-    return DateTime.parse(untilIso).isAfter(t);
+  bool isSnoozed(DayPlanItem it, DateTime now) {
+    final u = it.snoozeUntil;
+    return u != null && u.isAfter(now);
   }
 
-  void snooze(String activityId, {int minutes = 30}) {
-    final until = DateTime.now().add(Duration(minutes: minutes));
-    state.snoozedUntil[activityId] = until.toIso8601String();
-    onChange();
+  DateTime _startOfDay(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  DateTime _tomorrowStart(DateTime now) {
+    final t = _startOfDay(now).add(const Duration(days: 1));
+    return t;
   }
 
-  void clearExpiredSnoozes({DateTime? now}) {
-    final t = now ?? DateTime.now();
-    final toRemove = <String>[];
-    state.snoozedUntil.forEach((id, iso) {
-      if (!DateTime.parse(iso).isAfter(t)) toRemove.add(id);
-    });
-    for (final id in toRemove) {
-      state.snoozedUntil.remove(id);
-    }
-    if (toRemove.isNotEmpty) onChange();
+  Future<DateTime?> _pickDate(BuildContext context, DateTime initial) {
+    return showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+  }
+
+  Future<void> snoozeToTomorrow(DayPlanItem it) async {
+    final now = DateTime.now();
+    it.snoozeUntil = _tomorrowStart(now);
+  }
+
+  Future<void> snoozeToDate(BuildContext context, DayPlanItem it) async {
+    final now = DateTime.now();
+    final picked = await _pickDate(context, _startOfDay(now));
+    if (picked == null) return;
+    it.snoozeUntil = _startOfDay(picked); // réapparait ce jour à 00:00
+  }
+
+  void unsnooze(DayPlanItem it) {
+    it.snoozeUntil = null;
   }
 
   // ---------- Domaines ----------
@@ -1076,90 +1088,6 @@ class AppLogic {
     final goalMin = domainGoalMinDay(domainId);
     if (goalMin <= 0) return 0.0;
     return dur.inMinutes / goalMin;
-  }
-
-  // ---------- Focus (MVP : items objectifs — partie time/habit possible si tu veux) ----------
-  List<FocusItem> buildFocusCandidates({DateTime? now, String? domainId}) {
-    final t = now ?? DateTime.now();
-    final start24 = t.subtract(const Duration(hours: 24));
-    final items = <FocusItem>[];
-
-    // GOALS — toujours affichés
-    for (final g in state.goals.where((x) => x.status == 'active')) {
-      if (domainId != null && g.domainId != domainId) continue;
-
-      final snoozeKey = 'goal:${g.id}';
-      if (isSnoozed(snoozeKey, now: t)) continue;
-
-      final hasNext = (g.nextAction?.trim().isNotEmpty ?? false);
-
-      Activity? act;
-      if (g.activityId != null) {
-        final idx = state.activities.indexWhere((a) => a.id == g.activityId);
-        if (idx != -1) act = state.activities[idx];
-      }
-
-      double score = hasNext ? 0.8 : 0.2;
-      String reason =
-          hasNext ? "Prochaine action à faire" : "Définir une prochaine action";
-      Duration? timeDef;
-      int? habitDef;
-
-      if (hasNext && act != null) {
-        if (!act!.isHabit) {
-          final m = totalForRangeByActivity(act!.id, start24, t).inMinutes;
-          final need = act!.goalMin;
-          final deficit = need - m;
-          if (need > 0) {
-            score =
-                (deficit > 0 ? deficit / need : 0).clamp(0.0, 1.0).toDouble();
-            reason = deficit > 0
-                ? "Manque ${deficit} min sur ${need} min"
-                : "Objectif du jour atteint";
-            timeDef = Duration(minutes: deficit.clamp(0, need));
-          }
-        } else {
-          // si la routine est quotidienne, calcule un "déficit" sur le quota jour
-          if (effectiveHabitFreq(act!) == HabitFreq.daily) {
-            final today = DateTime(t.year, t.month, t.day);
-            final done = habitValueOn(act!.id, today);
-            final target = dayQuotaFor(act!);
-            final deficit = target - done;
-            if (target > 0) {
-              score = (deficit > 0 ? deficit / target : 0)
-                  .clamp(0.0, 1.0)
-                  .toDouble();
-              reason = deficit > 0
-                  ? "Il reste $deficit ${act!.unit ?? ''}"
-                  : "Cible du jour atteinte";
-              habitDef = deficit.clamp(0, target);
-            }
-          } else {
-            // hebdo/mensuel — garder un score modeste
-            score = 0.3;
-            reason =
-                "Rattraper la routine ${effectiveHabitFreq(act!) == HabitFreq.weekly ? 'hebdo' : 'mensuelle'}";
-          }
-        }
-      }
-
-      items.add(FocusItem(
-        kind: 'goal',
-        score: score,
-        reason: reason,
-        goal: g,
-        activity: act,
-        timeDeficit: timeDef,
-        habitDeficit: habitDef,
-        titleOverride: g.title,
-        subtitleOverride: g.nextAction,
-      ));
-    }
-
-    items.sort((b, a) => a.score.compareTo(b.score));
-    final nonZero = items.where((it) => it.score > 0).toList();
-    if (nonZero.isNotEmpty) return nonZero;
-    return items.take(5).toList();
   }
 
   // ---------- Tri/filtre “sous cap” ----------
@@ -1756,9 +1684,9 @@ class AppLogic {
     final planRoutines = items.where((x) => x.kind == PlanKind.habit).toList();
     final planActs =
         items.where((x) => x.kind == PlanKind.activityTime).toList();
-final planActions = items
-    .where((x) => x.kind == PlanKind.action && x.archived != true)
-    .toList();
+    final planActions = items
+        .where((x) => x.kind == PlanKind.action && x.archived != true)
+        .toList();
 
     // helper: domain d'un PlanItem routine/activity via Activity
     String? domainOfPlan(

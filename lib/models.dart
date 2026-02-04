@@ -15,6 +15,8 @@ enum ActionStatus {
   archived,
 }
 
+
+
 class DayPlanItem {
   String id;
   PlanKind kind;
@@ -31,6 +33,7 @@ class DayPlanItem {
   bool isNowFocus;
   bool toPlan; // ✅ item "Courses / à prévoir"
   bool archived; // ✅ archivé (global si habitId == null)
+  DateTime? snoozeUntil;
   ActionStatus status;
   DateTime createdAt;
 
@@ -51,6 +54,7 @@ class DayPlanItem {
     this.toPlan = false,
     this.archived = false,
     DateTime? createdAt,
+    this.snoozeUntil,
     ActionStatus? status,
   })  : createdAt = createdAt ?? DateTime.now(),
         status = status ?? ActionStatus.active;
@@ -71,6 +75,7 @@ class DayPlanItem {
         'order': order,
         'toPlan': toPlan,
         'archived': archived,
+    'snoozeUntil': snoozeUntil?.toIso8601String(),
       };
 
   static DayPlanItem from(Map j) {
@@ -93,6 +98,9 @@ class DayPlanItem {
       order: j['order'] ?? 0,
       toPlan: _asBool(j['toPlan']), // ✅ ici
       archived: _asBool(j['archived']), // ✅ ici
+      snoozeUntil: j['snoozeUntil'] != null
+          ? DateTime.tryParse(j['snoozeUntil'] as String)
+          : null,
     );
   }
 

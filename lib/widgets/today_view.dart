@@ -155,238 +155,273 @@ class _TodayViewState extends State<TodayView> {
     return null;
   }
 
-Future<Activity?> _openAssignActivitySheetAndWait(
-  BuildContext context,
-  DayPlanItem action,
-) {
-  return showModalBottomSheet<Activity>(
-    context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
-    builder: (_) => AssignActivitySheet(
-      st: widget.logic.state,
+  Future<Activity?> _openAssignActivitySheetAndWait(
+    BuildContext context,
+    DayPlanItem action,
+  ) {
+    return showModalBottomSheet<Activity>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => AssignActivitySheet(
+        st: widget.logic.state,
 
-      // ✅ quand l’utilisateur choisit une activité
-      onPick: (act) {
-        Navigator.pop(context, act); // ← RENVOIE l’activité
-      },
+        // ✅ quand l’utilisateur choisit une activité
+        onPick: (act) {
+          Navigator.pop(context, act); // ← RENVOIE l’activité
+        },
 
-      // optionnel : rester en inbox
-      onKeepInbox: () {
-        Navigator.pop(context, null);
-      },
-    ),
-  );
-}
+        // optionnel : rester en inbox
+        onKeepInbox: () {
+          Navigator.pop(context, null);
+        },
+      ),
+    );
+  }
+
   Future<void> _startOrPickActivityForAction(DayPlanItem it) async {
-  final running = widget.logic.runningActivity();
+    final running = widget.logic.runningActivity();
 
-  // 1️⃣ Action déjà liée à une activité
-  if (it.activityId != null && it.activityId!.isNotEmpty) {
-    // même activité déjà en cours → rien à faire
-    if (running != null && running.id == it.activityId) {
+    // 1️⃣ Action déjà liée à une activité
+    if (it.activityId != null && it.activityId!.isNotEmpty) {
+      // même activité déjà en cours → rien à faire
+      if (running != null && running.id == it.activityId) {
+        return;
+      }
+
+      // sinon on stoppe ce qui tourne (si besoin)
+      if (running != null) {
+        widget.logic.stopActive();
+      }
+
+      final act = widget.state.activities.firstWhere(
+        (a) => a.id == it.activityId,
+        orElse: () => Activity(
+          domainId: it.domainId ?? '',
+          name: 'Activité',
+          habitTarget: 1,
+        ),
+      );
+
+      widget.logic.start(act.id);
       return;
     }
 
-    // sinon on stoppe ce qui tourne (si besoin)
-    if (running != null) {
-      widget.logic.stopActive();
+    // 2️⃣ Pas d’activité → ouvrir le picker
+    final picked = await _openAssignActivitySheetAndWait(context, it);
+    if (picked == null) return;
+
+    setState(() {
+      it.activityId = picked.id;
+      it.domainId = picked.domainId;
+    });
+    widget.logic.onChange();
+
+    // on lance directement
+    final running2 = widget.logic.runningActivity();
+    if (running2 != null) widget.logic.stopActive();
+    widget.logic.start(picked.id);
+  }
+
+  Widget _actionCardContent(DayPlanItem it) {
+    // Lookup routine (habit)
+    Activity? habit;
+    if ((it.habitId ?? '').isNotEmpty) {
+      habit = widget.state.activities
+          .cast<Activity?>()
+          .firstWhere((a) => a?.id == it.habitId, orElse: () => null);
     }
 
-    final act = widget.state.activities.firstWhere(
-      (a) => a.id == it.activityId,
-      orElse: () => Activity(
-        domainId: it.domainId ?? '',
-        name: 'Activité',
-        habitTarget: 1,
+    // Lookup activité (time)
+    Activity? activity;
+    if ((it.activityId ?? '').isNotEmpty) {
+      activity = widget.state.activities
+          .cast<Activity?>()
+          .firstWhere((a) => a?.id == it.activityId, orElse: () => null);
+    }
+
+    // Lookup domaine
+    String? domName;
+    if ((it.domainId ?? '').isNotEmpty) {
+      domName = widget.state.domains
+          .cast<Domain?>()
+          .firstWhere((d) => d?.id == it.domainId, orElse: () => null)
+          ?.name;
+    }
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ▶︎ PLAY / LINK
+            SizedBox(
+              width: 44,
+              child: IconButton(
+                icon: Icon(
+                  activity != null ? Icons.play_arrow : Icons.link,
+                  size: 20,
+                ),
+                tooltip: activity != null
+                    ? "Lancer l’activité"
+                    : "Associer puis lancer",
+                padding: EdgeInsets.zero,
+                onPressed: () async {
+                  await _startOrPickActivityForAction(it);
+                  widget.logic.setNowFocus(it.id);
+                  widget.onGoNowTab?.call();
+                },
+              ),
+            ),
+
+            // CONTENU
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Titre
+                  Text(
+                    it.title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                    ),
+                  ),
+
+                  // Routine
+                  if (habit != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      "Routine • ${habit.name}",
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withOpacity(0.55),
+                      ),
+                    ),
+                  ],
+
+                  // Activité
+                  if (activity != null) ...[
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            "Activité • ${activity.name}",
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withOpacity(0.55),
+                            ),
+                          ),
+                        ),
+                        InkWell(
+                          onTap: () {
+                            setState(() => it.activityId = null);
+                            widget.logic.onChange();
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.all(2),
+                            child: Icon(
+                              Icons.close,
+                              size: 14,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withOpacity(0.6),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+
+                  // Domaine fallback
+                  if (habit == null && activity == null && domName != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      "Domaine • $domName",
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withOpacity(0.5),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
+            // CHECKBOX DONE
+            SizedBox(
+              width: 32,
+              child: Checkbox(
+                value: it.done,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                onChanged: (v) {
+                  final done = v ?? false;
+                  setState(() => it.done = done);
+
+                  if (done && it.habitId != null) {
+                    widget.logic.archiveAction(it);
+                  }
+
+                  widget.logic.onChange();
+                },
+              ),
+            ),
+            PopupMenuButton<String>(
+              tooltip: 'Plus tard',
+              onSelected: (v) async {
+                setState(() {});
+                if (v == 'tomorrow') {
+                  await widget.logic.snoozeToTomorrow(it);
+                  widget.logic.onChange();
+                  setState(() {});
+                } else if (v == 'date') {
+                  await widget.logic.snoozeToDate(context, it);
+                  widget.logic.onChange();
+                  setState(() {});
+                } else if (v == 'unsnooze') {
+                  setState(() => widget.logic.unsnooze(it));
+                  widget.logic.onChange();
+                }
+              },
+              itemBuilder: (_) => [
+                const PopupMenuItem(
+                    value: 'tomorrow', child: Text("Pas aujourd’hui")),
+                const PopupMenuItem(
+                    value: 'date', child: Text("Choisir une date…")),
+                if (it.snoozeUntil != null)
+                  const PopupMenuItem(
+                      value: 'unsnooze', child: Text("Réafficher")),
+              ],
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Icon(
+                  Icons.snooze,
+                  size: 18,
+                  color:
+                      Theme.of(context).colorScheme.onSurface.withOpacity(.75),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
-
-    widget.logic.start(act.id);
-    return;
   }
-
-  // 2️⃣ Pas d’activité → ouvrir le picker
-  final picked = await _openAssignActivitySheetAndWait(context, it);
-  if (picked == null) return;
-
-  setState(() {
-    it.activityId = picked.id;
-    it.domainId = picked.domainId;
-  });
-  widget.logic.onChange();
-
-  // on lance directement
-  final running2 = widget.logic.runningActivity();
-  if (running2 != null) widget.logic.stopActive();
-  widget.logic.start(picked.id);
-}
-
-
-Widget _actionCardContent(DayPlanItem it) {
-  // Lookup routine (habit)
-  Activity? habit;
-  if ((it.habitId ?? '').isNotEmpty) {
-    habit = widget.state.activities
-        .cast<Activity?>()
-        .firstWhere((a) => a?.id == it.habitId, orElse: () => null);
-  }
-
-  // Lookup activité (time)
-  Activity? activity;
-  if ((it.activityId ?? '').isNotEmpty) {
-    activity = widget.state.activities
-        .cast<Activity?>()
-        .firstWhere((a) => a?.id == it.activityId, orElse: () => null);
-  }
-
-  // Lookup domaine
-  String? domName;
-  if ((it.domainId ?? '').isNotEmpty) {
-    domName = widget.state.domains
-        .cast<Domain?>()
-        .firstWhere((d) => d?.id == it.domainId, orElse: () => null)
-        ?.name;
-  }
-
-  return Card(
-    margin: const EdgeInsets.only(bottom: 8),
-    child: Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ▶︎ PLAY / LINK
-          SizedBox(
-            width: 44,
-            child: IconButton(
-              icon: Icon(
-                activity != null ? Icons.play_arrow : Icons.link,
-                size: 20,
-              ),
-              tooltip: activity != null
-                  ? "Lancer l’activité"
-                  : "Associer puis lancer",
-              padding: EdgeInsets.zero,
-              onPressed: () async {
-                await _startOrPickActivityForAction(it);
-                widget.logic.setNowFocus(it.id);
-                widget.onGoNowTab?.call();
-              },
-            ),
-          ),
-
-          // CONTENU
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Titre
-                Text(
-                  it.title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 15,
-                  ),
-                ),
-
-                // Routine
-                if (habit != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    "Routine • ${habit.name}",
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withOpacity(0.55),
-                    ),
-                  ),
-                ],
-
-                // Activité
-                if (activity != null) ...[
-                  const SizedBox(height: 2),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          "Activité • ${activity.name}",
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurface
-                                .withOpacity(0.55),
-                          ),
-                        ),
-                      ),
-                      InkWell(
-                        onTap: () {
-                          setState(() => it.activityId = null);
-                          widget.logic.onChange();
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.all(2),
-                          child: Icon(
-                            Icons.close,
-                            size: 14,
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurface
-                                .withOpacity(0.6),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-
-                // Domaine fallback
-                if (habit == null && activity == null && domName != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    "Domaine • $domName",
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withOpacity(0.5),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-
-          // CHECKBOX DONE
-          SizedBox(
-            width: 32,
-            child: Checkbox(
-              value: it.done,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              onChanged: (v) {
-                final done = v ?? false;
-                setState(() => it.done = done);
-
-                if (done && it.habitId != null) {
-                  widget.logic.archiveAction(it);
-                }
-
-                widget.logic.onChange();
-              },
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
 
   void _deleteActionWithUndo(DayPlanItem it) {
     final messenger = ScaffoldMessenger.maybeOf(context);
@@ -933,8 +968,10 @@ Widget _actionCardContent(DayPlanItem it) {
         allActions.where((a) => a.done && a.archived != true).toList();
 
 // 2) OPEN POOL = actions actives (non done, non archivé)
-    final openPool =
-        allActions.where((a) => !a.done && a.archived != true).toList();
+    final openPool = allActions
+        .where((a) => !a.done && a.archived != true)
+        .where((a) => !widget.logic.isSnoozed(a, now))
+        .toList();
 
     // ✅ INBOX = actions neutres (non associées)
     final inboxActions = openPool.where((a) {
@@ -967,27 +1004,6 @@ Widget _actionCardContent(DayPlanItem it) {
 
             return true;
           }).toList();
-
-    bool matchesFilters(DayPlanItem a, AppState st) {
-      final f = st.filters; // FilterState persisté dans AppState
-      if (!f.enabled) return true;
-
-      // Domain filter
-      final domOk = (a.domainId == null)
-          ? f.includeNoDomain
-          : (f.domainIds.isEmpty || f.domainIds.contains(a.domainId));
-
-      if (!domOk) return false;
-
-      // Activity filter
-      final actOk = (a.activityId == null)
-          ? f.includeNoActivity
-          : (f.activityIds.isEmpty || f.activityIds.contains(a.activityId));
-
-      if (!actOk) return false;
-
-      return true;
-    }
 
 // 3) COURSES = subset de OPEN POOL
     final shoppingActions = (shoppingId == null)
@@ -2351,162 +2367,198 @@ class _NowTabState extends State<NowTab> {
   }
 
   Future<Activity?> _pickActivityForAction(BuildContext context) async {
-  return await showModalBottomSheet<Activity>(
-    context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
-    builder: (_) => AssignActivitySheet(
-      st: widget.st,
-      onPick: (act) => Navigator.pop(context, act), // ✅ renvoie l’activité
-      onKeepInbox: () => Navigator.pop(context, null),
-    ),
-  );
-}
-
-Future<void> _startOrPickActivityForAction(BuildContext context, DayPlanItem it) async {
-  // 1) déjà associée → start direct
-  if ((it.activityId ?? '').isNotEmpty) {
-    widget.logic.start(it.activityId!); // <-- adapte au nom chez toi
-    return;
-  }
-
-  // 2) sinon → picker
-  final picked = await _pickActivityForAction(context);
-  if (picked == null) return;
-
-  setState(() {
-    it.activityId = picked.id;
-    it.domainId = picked.domainId;
-  });
-  widget.logic.onChange();
-
-  widget.logic.start(picked.id); // <-- adapte au nom chez toi
-}
-
-Widget _nowActionCard(BuildContext context, DayPlanItem it) {
-  String? subtitle;
-
-  final domId = it.domainId;
-  if (domId != null && domId.isNotEmpty) {
-    final dom = widget.st.domains.firstWhere(
-      (d) => d.id == domId,
-      orElse: () => Domain(id: domId, name: "Domaine"),
+    return await showModalBottomSheet<Activity>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => AssignActivitySheet(
+        st: widget.st,
+        onPick: (act) => Navigator.pop(context, act), // ✅ renvoie l’activité
+        onKeepInbox: () => Navigator.pop(context, null),
+      ),
     );
-    subtitle = "Domaine • ${dom.name}";
   }
 
-  if ((it.activityId ?? '').isNotEmpty) {
-    final act = widget.st.activities.firstWhere(
-      (a) => a.id == it.activityId,
-      orElse: () =>
-          Activity(domainId: domId ?? '', name: "Activité", type: 'time'),
-    );
-    subtitle = (subtitle == null)
-        ? "Activité • ${act.name}"
-        : "$subtitle  ·  Activité • ${act.name}";
+  Future<void> _startOrPickActivityForAction(
+      BuildContext context, DayPlanItem it) async {
+    // 1) déjà associée → start direct
+    if ((it.activityId ?? '').isNotEmpty) {
+      widget.logic.start(it.activityId!); // <-- adapte au nom chez toi
+      return;
+    }
+
+    // 2) sinon → picker
+    final picked = await _pickActivityForAction(context);
+    if (picked == null) return;
+
+    setState(() {
+      it.activityId = picked.id;
+      it.domainId = picked.domainId;
+    });
+    widget.logic.onChange();
+
+    widget.logic.start(picked.id); // <-- adapte au nom chez toi
   }
 
-  final ymd =
-      yyyymmdd(DateTime(widget.day.year, widget.day.month, widget.day.day));
+  Widget _nowActionCard(BuildContext context, DayPlanItem it) {
+    String? subtitle;
 
-  return Card(
-    child: Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  "MAINTENANT",
-                  style: TextStyle(
-                    letterSpacing: 1.2,
-                    fontWeight: FontWeight.w800,
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withOpacity(0.6),
+    final domId = it.domainId;
+    if (domId != null && domId.isNotEmpty) {
+      final dom = widget.st.domains.firstWhere(
+        (d) => d.id == domId,
+        orElse: () => Domain(id: domId, name: "Domaine"),
+      );
+      subtitle = "Domaine • ${dom.name}";
+    }
+
+    if ((it.activityId ?? '').isNotEmpty) {
+      final act = widget.st.activities.firstWhere(
+        (a) => a.id == it.activityId,
+        orElse: () =>
+            Activity(domainId: domId ?? '', name: "Activité", type: 'time'),
+      );
+      subtitle = (subtitle == null)
+          ? "Activité • ${act.name}"
+          : "$subtitle  ·  Activité • ${act.name}";
+    }
+
+    final ymd =
+        yyyymmdd(DateTime(widget.day.year, widget.day.month, widget.day.day));
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    "MAINTENANT",
+                    style: TextStyle(
+                      letterSpacing: 1.2,
+                      fontWeight: FontWeight.w800,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(0.6),
+                    ),
                   ),
                 ),
-              ),
-              TextButton(
-                onPressed: () {
-                  setState(() => it.isNowFocus = false);
-                  widget.logic.onChange();
-                },
-                child: const Text("Retour"),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-
-          Text(
-            it.title,
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-          ),
-
-          if (subtitle != null) ...[
-            const SizedBox(height: 6),
-            Text(
-              subtitle,
-              style: TextStyle(
-                fontSize: 13,
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-              ),
-            ),
-          ],
-
-          const SizedBox(height: 14),
-
-          // ✅ Actions
-          Row(
-            children: [
-              // ✅ Lancer / Associer + Lancer
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: () async {
-                    await _startOrPickActivityForAction(context, it);
-                    if (!mounted) return;
-                    setState(() {}); // refresh subtitle si activité choisie
-                  },
-                  icon: const Icon(Icons.play_arrow),
-                  label: Text((it.activityId ?? '').isNotEmpty ? "Lancer" : "Associer & lancer"),
-                ),
-              ),
-              const SizedBox(width: 10),
-
-              // ✅ Fait
-              Expanded(
-                child: FilledButton(
+                TextButton(
                   onPressed: () {
-                    setState(() {
-                      it.done = true;
-                      it.isNowFocus = false;
-                    });
+                    setState(() => it.isNowFocus = false);
                     widget.logic.onChange();
                   },
-                  child: const Text("Fait"),
+                  child: const Text("Retour"),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+
+            Text(
+              it.title,
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+            ),
+
+            if (subtitle != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 13,
+                  color:
+                      Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                 ),
               ),
             ],
-          ),
 
-          const SizedBox(height: 10),
+            const SizedBox(height: 14),
 
-          // ✅ Passer (tonal)
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.tonal(
-              onPressed: () => _skipNowItem(ymd, it),
-              child: const Text("Passer"),
+            // ✅ Actions
+            Row(
+              children: [
+                // ✅ Lancer / Associer + Lancer
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () async {
+                      await _startOrPickActivityForAction(context, it);
+                      if (!mounted) return;
+                      setState(() {}); // refresh subtitle si activité choisie
+                    },
+                    icon: const Icon(Icons.play_arrow),
+                    label: Text((it.activityId ?? '').isNotEmpty
+                        ? "Lancer"
+                        : "Associer & lancer"),
+                  ),
+                ),
+                const SizedBox(width: 10),
+
+                // ✅ Fait
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () {
+                      setState(() {
+                        it.done = true;
+                        it.isNowFocus = false;
+                      });
+                      widget.logic.onChange();
+                    },
+                    child: const Text("Fait"),
+                  ),
+                ),
+              ],
             ),
-          ),
-        ],
+
+            const SizedBox(height: 10),
+
+Column(
+  crossAxisAlignment: CrossAxisAlignment.stretch,
+  children: [
+    // ✅ Passer (tap / long press)
+    GestureDetector(
+      onTap: () async {
+        setState(() => it.isNowFocus = false);
+        await widget.logic.snoozeToTomorrow(it);
+        widget.logic.onChange();
+        setState(() {});
+      },
+      onLongPress: () async {
+        setState(() => it.isNowFocus = false);
+        await widget.logic.snoozeToDate(context, it);
+        widget.logic.onChange();
+        setState(() {});
+      },
+      child: FilledButton.tonal(
+        onPressed: null, // géré par GestureDetector
+        child: const Text("Passer"),
       ),
     ),
-  );
-}
+
+    // 👇 micro-hint discret
+    const SizedBox(height: 6),
+    Center(
+      child: Text(
+        "Maintenir pour choisir une date",
+        style: TextStyle(
+          fontSize: 11,
+          color: Theme.of(context)
+              .colorScheme
+              .onSurface
+              .withOpacity(0.45),
+        ),
+      ),
+    ),
+  ],
+),
+          ],
+        ),
+      ),
+    );
+  }
+  
 
   Future<String?> _promptText({
     required String title,
@@ -3290,17 +3342,17 @@ Widget _nowActionCard(BuildContext context, DayPlanItem it) {
     );
   }
 
-void _skipNowItem(String ymd, DayPlanItem it) {
-  final list = widget.logic.state.nowSkippedByYmd[ymd] ?? <String>[];
-  if (!list.contains(it.id)) list.add(it.id);
-  widget.logic.state.nowSkippedByYmd[ymd] = list;
+  void _skipNowItem(String ymd, DayPlanItem it) {
+    final list = widget.logic.state.nowSkippedByYmd[ymd] ?? <String>[];
+    if (!list.contains(it.id)) list.add(it.id);
+    widget.logic.state.nowSkippedByYmd[ymd] = list;
 
-  // ✅ sync cache local
-  _skippedIds.add(it.id);
+    // ✅ sync cache local
+    _skippedIds.add(it.id);
 
-  widget.logic.onChange();
-  setState(() {});
-}
+    widget.logic.onChange();
+    setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -3366,6 +3418,7 @@ void _skipNowItem(String ymd, DayPlanItem it) {
     if (next.it.kind == PlanKind.habit && next.it.refId != null) {
       final ymd =
           yyyymmdd(DateTime(widget.day.year, widget.day.month, widget.day.day));
+
       widget.logic.ensureChecklistDay(ymd);
       widget.logic.nowHabitId = next.it.refId!;
     }
@@ -3542,7 +3595,18 @@ void _skipNowItem(String ymd, DayPlanItem it) {
     );
   }
 
+  bool _isSnoozed(DayPlanItem it, DateTime now) {
+    final u = it.snoozeUntil;
+    return u != null && u.isAfter(now);
+  }
+
   bool _isActionable(DayPlanItem it) {
+    final now = DateTime.now();
+
+    // ⛔️ Snooze = jamais actionable
+    if (_isSnoozed(it, now)) return false;
+
+    // ⛔️ Skips / Done list (ton système actuel)
     if (_skippedIds.contains(it.id)) return false;
     if (_doneTodayIds.contains(it.id)) return false;
 
@@ -3554,7 +3618,7 @@ void _skipNowItem(String ymd, DayPlanItem it) {
       case PlanKind.action:
         // règles de base action
         if (it.done) return false;
-        if (it.archived == true) return false; // si tu veux exclure "archives"
+        if (it.archived == true) return false;
         return true;
 
       default:
