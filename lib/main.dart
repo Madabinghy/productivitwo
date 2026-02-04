@@ -3031,6 +3031,82 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             );
           }
 
+          Future<void> _renameRoutineFromDashboard(
+              BuildContext context, Activity a) async {
+            String draft = a.name;
+
+            final String? newName = await showModalBottomSheet<String>(
+              context: context,
+              isScrollControlled: true,
+              showDragHandle: true,
+              builder: (ctx) {
+                return SafeArea(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.only(
+                      left: 16,
+                      right: 16,
+                      top: 12,
+                      bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+                    ),
+                    child: StatefulBuilder(
+                      builder: (ctx, setLocal) {
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              "Renommer la routine",
+                              style: TextStyle(
+                                  fontSize: 18, fontWeight: FontWeight.w800),
+                            ),
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              initialValue: a.name,
+                              autofocus: true,
+                              textCapitalization: TextCapitalization.sentences,
+                              decoration: const InputDecoration(
+                                hintText: "Nom de la routine",
+                              ),
+                              onChanged: (v) => setLocal(() => draft = v),
+                              onFieldSubmitted: (v) =>
+                                  Navigator.pop(ctx, v.trim()),
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton(
+                                    onPressed: () => Navigator.pop(ctx),
+                                    child: const Text("Annuler"),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: FilledButton(
+                                    onPressed: () =>
+                                        Navigator.pop(ctx, draft.trim()),
+                                    child: const Text("Enregistrer"),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                );
+              },
+            );
+
+            final v = (newName ?? '').trim();
+            if (v.isEmpty || v == a.name) return;
+            if (!mounted) return;
+
+            setState(() => a.name = v);
+            logic.onChange(); // persist
+          }
+
           Future<void> openHabitEditSheet({
             required BuildContext context,
             required AppLogic logic,
@@ -3105,12 +3181,18 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           // Titre
-                          Text(habit.name,
-                              style: TextStyle(
-                                fontSize: 18,
+
+                          InkWell(
+                            onTap: () =>
+                                _renameRoutineFromDashboard(context, habit),
+                            child: Text(
+                              habit.name,
+                              style: const TextStyle(
                                 fontWeight: FontWeight.w800,
-                                color: cs.onSurface,
-                              )),
+                                decoration: TextDecoration.underline,
+                              ),
+                            ),
+                          ),
                           const SizedBox(height: 8),
 
                           // Switch manuel / auto
@@ -3435,11 +3517,17 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(a.name,
-                                style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w800,
-                                    color: cs.onSurface)),
+                            InkWell(
+                              onTap: () =>
+                                  _renameRoutineFromDashboard(context, a),
+                              child: Text(
+                                a.name,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  decoration: TextDecoration.underline,
+                                ),
+                              ),
+                            ),
                             const SizedBox(height: 8),
 
                             // Basculer en "manuel"
