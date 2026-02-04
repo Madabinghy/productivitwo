@@ -2744,6 +2744,23 @@ extension TodayLogic on AppLogic {
     onChange();
   }
 
+  void clearNowSkippedFor(String ymd) {
+    state.nowSkippedByYmd.remove(ymd);
+    onChange();
+  }
+
+  void clearNowDoneFor(String ymd) {
+    state.nowDoneByYmd.remove(ymd);
+    onChange();
+  }
+
+// Option pratique : tout remettre visible
+  void clearNowHiddenFor(String ymd) {
+    state.nowSkippedByYmd.remove(ymd);
+    state.nowDoneByYmd.remove(ymd);
+    onChange();
+  }
+
   Future<void> addPlanAction({
     required String ymd,
     required String title,
