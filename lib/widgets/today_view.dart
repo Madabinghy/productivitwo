@@ -979,11 +979,10 @@ class _TodayViewState extends State<TodayView> {
 
 // ✅ Source unique pour tout l’écran
     final allActions =
-        baseOrAuto.where((x) => x.kind == PlanKind.action).toList();
+        baseOrAuto.where((x) => x.kind == PlanKind.action ||  x.kind != PlanKind.habit).toList();
 
-    final snoozedActions = allActions
-        .where((a) => a.kind == PlanKind.action)
-        .where((a) => !a.done && a.archived != true)
+    final snoozedActions = baseOrAuto
+        .where((a) => !a.done && a.archived != true&&!widget.logic.isCourse(a))
         .where(isSnoozed)
         .toList()
       ..sort((a, b) {
@@ -3940,6 +3939,8 @@ class _NowTabState extends State<NowTab> {
 
   bool _isActionable(DayPlanItem it) {
     final now = DateTime.now();
+    // ⛔️ Courses non snnooze
+    if (widget.logic.isCourse(it)) return false;
 
     // ⛔️ Snooze = jamais actionable
     if (_isSnoozed(it, now)) return false;

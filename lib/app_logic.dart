@@ -162,6 +162,10 @@ class AppLogic {
     );
   }
 
+  bool isCourse(DayPlanItem it) {
+    return it.kind == PlanKind.action && it.toPlan == true;
+  }
+
   String? runningActivityId() {
     // dernière session non terminée (si plusieurs, prends la plus récente)
     Session? last;
@@ -1112,16 +1116,47 @@ class AppLogic {
     onChange();
   }
 
+  DayPlanItem _resolveSnoozeTarget(DayPlanItem it, {DateTime? now}) {
+    if (it.kind == PlanKind.action && it.toPlan == true) {
+      return it; // ⛔ pas de snooze pour les courses
+    }
+    final t = now ?? DateTime.now();
+    final todayKey = yyyymmdd(DateTime(t.year, t.month, t.day));
+
+    if (it.kind == PlanKind.habit &&
+        (it.id.startsWith('virt:') || it.id.startsWith('virt:habit:'))) {
+      final habitId = it.refId;
+      if (habitId != null && habitId.isNotEmpty) {
+        return ensureHabitPlannedForDay(todayKey, habitId);
+      }
+    }
+    return it;
+  }
+
   Future<void> snoozeToTomorrow(DayPlanItem it) async {
     final now = DateTime.now();
-    it.snoozeUntil = _tomorrowStart(now);
+    final targetItem = _resolveSnoozeTarget(it, now: now);
+
+    targetItem.snoozeUntil = _tomorrowStart(now);
+    targetItem.isNowFocus = false;
+
+    onChange();
   }
 
   Future<void> snoozeToDate(BuildContext context, DayPlanItem it) async {
     final now = DateTime.now();
     final picked = await _pickDate(context, _startOfDay(now));
     if (picked == null) return;
-    it.snoozeUntil = _startOfDay(picked); // réapparait ce jour à 00:00
+
+    final targetItem = _resolveSnoozeTarget(it, now: now);
+
+    // heure par défaut : 12:00 (ou 18:00 si tu préfères)
+    final target = DateTime(picked.year, picked.month, picked.day, 12, 0);
+
+    targetItem.snoozeUntil = target;
+    targetItem.isNowFocus = false;
+
+    onChange();
   }
 
   void unsnooze(DayPlanItem it) {
