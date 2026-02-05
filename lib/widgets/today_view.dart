@@ -4032,26 +4032,81 @@ class _NowTabState extends State<NowTab> {
             const SizedBox(height: 14),
             Row(
               children: [
+                // ⏭ Passer (focus only)
                 Expanded(
-                    child: FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: doneToday > 0
-                        ? Colors.green
-                        : Theme.of(context).colorScheme.secondary,
+                  child: OutlinedButton(
+                    onPressed: () {
+                      _skipNowItem(ymd, it); // ton mécanisme existant
+                      setState(() => it.isNowFocus = false);
+                    },
+                    style: _neutralStyle(context),
+                    child: const Text("Passer"),
                   ),
-                  onPressed: () => _onPrimary(it),
-                  child: Text(_primaryLabel(it)),
-                )),
-                const SizedBox(width: 10),
-                FilledButton.tonal(
-                  onPressed: () => _skipNowItem(ymd, it),
-                  child: const Text("Passer"),
+                ),
+
+                const SizedBox(width: 8),
+
+                // 🌙 Ce soir (18h+)
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () async {
+                      await widget.logic.snoozeToTodayAfter(
+                        it,
+                        const TimeOfDay(hour: 18, minute: 0),
+                      );
+                      widget.logic.onChange();
+                      setState(() {});
+                    },
+                    style: _neutralStyle(context),
+                    child: const Text("18h+"),
+                  ),
+                ),
+
+                const SizedBox(width: 8),
+
+                // ☀️ Demain
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () async {
+                      await widget.logic.snoozeToTomorrow(it);
+                      widget.logic.onChange();
+                      setState(() {});
+                    },
+                    style: _neutralStyle(context),
+                    child: const Text("Demain"),
+                  ),
+                ),
+
+                const SizedBox(width: 8),
+
+                // 📅 Date (icône seule)
+                OutlinedButton(
+                  onPressed: () async {
+                    await widget.logic.snoozeToDate(context, it);
+                    widget.logic.onChange();
+                    setState(() {});
+                  },
+                  style: _neutralStyle(context),
+                  child: const Icon(Icons.calendar_today_outlined, size: 18),
                 ),
               ],
-            ),
+            )
           ],
         ),
       ),
+    );
+  }
+
+  ButtonStyle _neutralStyle(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return OutlinedButton.styleFrom(
+      foregroundColor: cs.onSurface.withOpacity(0.85),
+      backgroundColor: cs.surface.withOpacity(0.12),
+      side: BorderSide(color: cs.onSurface.withOpacity(0.25)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 12),
     );
   }
 

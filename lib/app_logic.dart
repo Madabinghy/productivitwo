@@ -1053,6 +1053,31 @@ class AppLogic {
     );
   }
 
+  Future<void> snoozeToTodayAfter(
+    DayPlanItem it,
+    TimeOfDay time, {
+    DateTime? now,
+  }) async {
+    final t = now ?? DateTime.now();
+
+    // aujourd’hui à HH:MM
+    var target = DateTime(t.year, t.month, t.day, time.hour, time.minute);
+
+    // si on est déjà après l’heure, on pousse à demain (comportement safe)
+    if (!target.isAfter(t)) {
+      target = target.add(const Duration(days: 1));
+    }
+
+    // ✅ ton champ snooze (adapte le nom)
+    it.snoozeUntil = target; // <-- si ton champ s’appelle snoozeUntil
+    // it.snoozeAt = target;  // <-- si chez toi c’est snoozeAt
+
+    // optionnel: sortir du focus maintenant
+    it.isNowFocus = false;
+
+    onChange();
+  }
+
   Future<void> snoozeToTomorrow(DayPlanItem it) async {
     final now = DateTime.now();
     it.snoozeUntil = _tomorrowStart(now);
