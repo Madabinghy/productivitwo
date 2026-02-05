@@ -2516,7 +2516,6 @@ class _NowTabState extends State<NowTab> {
   bool _skipDone = true; // option: sauter les items déjà “faits”
   final Set<String> _skippedIds = {};
   final Set<String> _doneTodayIds = {};
-  final Map<String, Set<String>> _checkedChecklistByPlan = {};
   bool _showArchives = false;
   bool _showGlobalArchives = false;
 
@@ -3781,7 +3780,7 @@ class _NowTabState extends State<NowTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _nowCard(context, next),
+          _nowCard(context, next, actionable.length),
           if (next.it.kind == PlanKind.habit && next.it.refId != null) ...[
             const SizedBox(height: 10),
             Row(
@@ -4036,7 +4035,7 @@ class _NowTabState extends State<NowTab> {
     );
   }
 
-  Widget _nowCard(BuildContext context, RowPlan rp) {
+  Widget _nowCard(BuildContext context, RowPlan rp, int total) {
     final it = rp.it;
     final subtitle = _subtitleFor(it);
     final doneToday = (it.kind == PlanKind.habit && it.refId != null)
@@ -4081,8 +4080,8 @@ class _NowTabState extends State<NowTab> {
                       });
                       _persistNowSets();
                     },
-                    child: Text(
-                      "Réinitialiser (${_skippedIds.length})",
+                    child:Text(
+                      "Réinitialiser (${_skippedIds.length} / $total)",
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                   ),
