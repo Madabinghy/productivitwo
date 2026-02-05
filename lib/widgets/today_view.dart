@@ -1223,40 +1223,6 @@ class _TodayViewState extends State<TodayView> {
             onTapAssign: (it) => _openAssignActivitySheet(context, it),
           ),
           const SizedBox(height: 12),
-          if (laterToday.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Text(
-                  "Plus tard aujourd’hui",
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w800, fontSize: 16),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  "(${laterToday.length})",
-                  style: TextStyle(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withOpacity(0.6),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            ...laterToday.map((it) {
-              // ✅ rendus différents selon action/routine
-              if (it.kind == PlanKind.action) {
-                return _todayTile(context, it,
-                    key: ValueKey("later:${it.id}"),
-                    showDrag: false,
-                    indexForDrag: 0);
-              } else {
-                return _habitTileLater(context, it); // petite tuile routine
-              }
-            }),
-          ],
           //_nowChecklistActions(), // ton bloc "Pour maintenant" (déjà OK)
           if (hasRunning &&
               (byActivity.isNotEmpty || byDomainOnly.isNotEmpty)) ...[
@@ -1348,7 +1314,40 @@ class _TodayViewState extends State<TodayView> {
               ),
             ],
           ],
-
+          if (laterToday.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Text(
+                  "Ce soir",
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w800, fontSize: 16),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  "(${laterToday.length})",
+                  style: TextStyle(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withOpacity(0.6),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ...laterToday.map((it) {
+              // ✅ rendus différents selon action/routine
+              if (it.kind == PlanKind.action) {
+                return _todayTile(context, it,
+                    key: ValueKey("later:${it.id}"),
+                    showDrag: false,
+                    indexForDrag: 0);
+              } else {
+                return _habitTileLater(context, it); // petite tuile routine
+              }
+            }),
+          ],
           if (doneActions.isNotEmpty) ...[
             const SizedBox(height: 8),
             InkWell(
