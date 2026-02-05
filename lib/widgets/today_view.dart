@@ -37,7 +37,6 @@ class _TodayViewState extends State<TodayView> {
   Timer? _runWatch;
   String? _lastRunningId;
   bool _showAll = true;
-  bool _showShopping = true;
   bool _showCourses = false; // repli/dépli manuel
   bool _showSnoozed = false; // dans ton State
 
@@ -372,12 +371,16 @@ class _TodayViewState extends State<TodayView> {
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 onChanged: (v) {
                   final done = v ?? false;
-                  setState(() => it.done = done);
 
-                  if (done && it.habitId != null) {
-                    widget.logic.archiveAction(it);
+                  if (done && it.toPlan == true) {
+                    widget.logic.archiveAction(
+                        it); // met archived=true + toPlan=false + done=false
+                    widget.logic.onChange();
+                    setState(() {});
+                    return;
                   }
 
+                  setState(() => it.done = done);
                   widget.logic.onChange();
                 },
               ),
@@ -978,11 +981,13 @@ class _TodayViewState extends State<TodayView> {
       ..sort((a, b) => a.snoozeUntil!.compareTo(b.snoozeUntil!));
 
 // ✅ Source unique pour tout l’écran
-    final allActions =
-        baseOrAuto.where((x) => x.kind == PlanKind.action ||  x.kind != PlanKind.habit).toList();
+    final allActions = baseOrAuto
+        .where((x) => x.kind == PlanKind.action || x.kind != PlanKind.habit)
+        .toList();
 
     final snoozedActions = baseOrAuto
-        .where((a) => !a.done && a.archived != true&&!widget.logic.isCourse(a))
+        .where(
+            (a) => !a.done && a.archived != true && !widget.logic.isCourse(a))
         .where(isSnoozed)
         .toList()
       ..sort((a, b) {
@@ -1506,9 +1511,6 @@ class _TodayViewState extends State<TodayView> {
 
     // Sommes-nous sur l'onglet "Aujourd'hui" ?
     final bool isTodayTab = !_planTomorrow;
-
-    // Libellé dyn. "Aujourd’hui :" / "Demain :"
-    final todayLabel = _planTomorrow ? 'Demain :' : 'Aujourd’hui :';
 
     // menu "…"
     final removeBtn = IconButton(
@@ -3226,8 +3228,9 @@ class _NowTabState extends State<NowTab> {
     setState(() {
       a.archived = false;
       a.done = false;
-      _showGlobalArchives = false;
-      _showArchives = false;
+      a.toPlan = true;
+/*       _showGlobalArchives = false;
+      _showArchives = false; */
     });
     widget.logic.onChange();
   }
@@ -3307,11 +3310,15 @@ class _NowTabState extends State<NowTab> {
 
     final list = widget.st.dayPlan.where((a) {
       if (a.kind != PlanKind.action) return false;
+
+      // ✅ À prévoir = pas fait, pas archivé, et toPlan=true
       if (a.done) return false;
-      return a.habitId == habitId; // ✅ liées à la routine, toutes dates
+      if (a.archived == true) return false;
+      if (a.toPlan != true) return false;
+
+      return a.habitId == habitId;
     }).toList();
 
-    // tri : les plus anciennes d'abord, puis ordre
     list.sort((a, b) {
       final c = a.yyyymmdd.compareTo(b.yyyymmdd);
       if (c != 0) return c;

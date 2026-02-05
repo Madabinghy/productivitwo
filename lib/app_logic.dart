@@ -1748,6 +1748,7 @@ class AppLogic {
 
   void archiveAction(DayPlanItem it) {
     it.archived = true;
+    it.toPlan = false; // sort de "À prévoir"
     it.done = false; // ✅ clé : sort de “Faits”
     onChange();
   }
