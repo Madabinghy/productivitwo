@@ -2630,7 +2630,7 @@ class _NowTabState extends State<NowTab> {
                           TextButton(
                             onPressed: () {
                               Navigator.pop(ctx);
-                
+
                               setState(() => it.isNowFocus = false);
                               widget.logic.state.dayPlan
                                   .removeWhere((e) => e.id == it.id);
@@ -2703,6 +2703,15 @@ class _NowTabState extends State<NowTab> {
   Widget _nowActionCard(BuildContext context, DayPlanItem it) {
     final cs = Theme.of(context).colorScheme;
 
+    final domainName = (it.domainId != null)
+        ? widget.st.domains
+            .firstWhere(
+              (d) => d.id == it.domainId,
+              orElse: () => Domain(id: it.domainId!, name: "Domaine"),
+            )
+            .name
+        : "Maintenant";
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -2715,11 +2724,14 @@ class _NowTabState extends State<NowTab> {
               children: [
                 Expanded(
                   child: Text(
-                    "MAINTENANT",
+                    domainName.toUpperCase(),
                     style: TextStyle(
                       letterSpacing: 1.2,
                       fontWeight: FontWeight.w800,
-                      color: cs.onSurface.withOpacity(0.6),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primary // 👈 encore mieux que onSurface
+                          .withOpacity(0.9),
                     ),
                   ),
                 ),
