@@ -1032,6 +1032,32 @@ class AppLogic {
   }
 
   // ---------- Snooze ----------
+  DayPlanItem ensureHabitPlannedForDay(String ymd, String habitId) {
+    final existing = state.dayPlan
+        .where((e) =>
+            e.yyyymmdd == ymd && e.kind == PlanKind.habit && e.refId == habitId)
+        .toList();
+
+    if (existing.isNotEmpty) return existing.first;
+
+    final a = state.activities.firstWhere((x) => x.id == habitId);
+    final it = DayPlanItem(
+      id: const Uuid().v4(),
+      kind: PlanKind.habit,
+      refId: habitId,
+      domainId: a.domainId,
+      title: a.name,
+      yyyymmdd: ymd,
+      done: false,
+      doneCount: 0,
+      allDay: true,
+      order: _nextOrderForDay(ymd),
+    );
+
+    state.dayPlan.add(it);
+    return it;
+  }
+
   bool isSnoozed(DayPlanItem it, DateTime now) {
     final u = it.snoozeUntil;
     return u != null && u.isAfter(now);
@@ -1059,21 +1085,29 @@ class AppLogic {
     DateTime? now,
   }) async {
     final t = now ?? DateTime.now();
+    final todayKey = yyyymmdd(DateTime(t.year, t.month, t.day));
+
+    // ✅ Si c’est une routine virtuelle, on la matérialise dans dayPlan
+    DayPlanItem targetItem = it;
+    if (it.kind == PlanKind.habit &&
+        (it.id.startsWith('virt:') || it.id.startsWith('virt:habit:'))) {
+      final habitId = it.refId;
+      if (habitId != null && habitId.isNotEmpty) {
+        targetItem = ensureHabitPlannedForDay(todayKey, habitId);
+      }
+    }
 
     // aujourd’hui à HH:MM
     var target = DateTime(t.year, t.month, t.day, time.hour, time.minute);
 
-    // si on est déjà après l’heure, on pousse à demain (comportement safe)
+    // si on est déjà après l’heure, on pousse à demain (safe)
     if (!target.isAfter(t)) {
       target = target.add(const Duration(days: 1));
     }
 
-    // ✅ ton champ snooze (adapte le nom)
-    it.snoozeUntil = target; // <-- si ton champ s’appelle snoozeUntil
-    // it.snoozeAt = target;  // <-- si chez toi c’est snoozeAt
-
-    // optionnel: sortir du focus maintenant
-    it.isNowFocus = false;
+    // ✅ IMPORTANT : on écrit sur targetItem (pas sur it)
+    targetItem.snoozeUntil = target;
+    targetItem.isNowFocus = false;
 
     onChange();
   }

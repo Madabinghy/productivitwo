@@ -955,6 +955,28 @@ class _TodayViewState extends State<TodayView> {
     final shoppingAct = widget.logic.shoppingActivity();
     final shoppingId = shoppingAct?.id;
 
+    bool isLaterToday(DayPlanItem it) {
+      final until = it.snoozeUntil; // adapte si besoin
+      if (until == null) return false;
+
+      final sameDay = until.year == now.year &&
+          until.month == now.month &&
+          until.day == now.day;
+      return sameDay && until.isAfter(now);
+    }
+
+    final laterToday = baseOrAuto.where((it) {
+      // on veut actions + routines
+      if (it.kind != PlanKind.action && it.kind != PlanKind.habit) return false;
+
+      // pas déjà fait
+      if (it.done) return false;
+
+      // snoozé aujourd’hui plus tard
+      return isLaterToday(it);
+    }).toList()
+      ..sort((a, b) => a.snoozeUntil!.compareTo(b.snoozeUntil!));
+
 // ✅ Source unique pour tout l’écran
     final allActions =
         baseOrAuto.where((x) => x.kind == PlanKind.action).toList();
@@ -1202,6 +1224,40 @@ class _TodayViewState extends State<TodayView> {
             onTapAssign: (it) => _openAssignActivitySheet(context, it),
           ),
           const SizedBox(height: 12),
+          if (laterToday.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Text(
+                  "Plus tard aujourd’hui",
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w800, fontSize: 16),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  "(${laterToday.length})",
+                  style: TextStyle(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withOpacity(0.6),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ...laterToday.map((it) {
+              // ✅ rendus différents selon action/routine
+              if (it.kind == PlanKind.action) {
+                return _todayTile(context, it,
+                    key: ValueKey("later:${it.id}"),
+                    showDrag: false,
+                    indexForDrag: 0);
+              } else {
+                return _habitTileLater(context, it); // petite tuile routine
+              }
+            }),
+          ],
           //_nowChecklistActions(), // ton bloc "Pour maintenant" (déjà OK)
           if (hasRunning &&
               (byActivity.isNotEmpty || byDomainOnly.isNotEmpty)) ...[
@@ -1382,15 +1438,27 @@ class _TodayViewState extends State<TodayView> {
     return out;
   }
 
-  Widget _sectionHeader(String t) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
-        child: Text(t,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.65),
-            )),
-      );
+  Widget _habitTileLater(BuildContext context, DayPlanItem it) {
+    final cs = Theme.of(context).colorScheme;
+    final until = it.snoozeUntil!;
+    final hh = until.hour.toString().padLeft(2, '0');
+    final mm = until.minute.toString().padLeft(2, '0');
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: Icon(Icons.repeat, color: cs.primary.withOpacity(0.8)),
+        title: Text(it.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: Text("⏰ $hh:$mm"),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () {
+          // option : la remettre en “maintenant” (unsnooze)
+          setState(() => it.snoozeUntil = null);
+          widget.logic.onChange();
+        },
+      ),
+    );
+  }
 
   Widget _buildFab() {
     return FloatingActionButton.extended(
@@ -4052,7 +4120,7 @@ class _NowTabState extends State<NowTab> {
                     onPressed: () async {
                       await widget.logic.snoozeToTodayAfter(
                         it,
-                        const TimeOfDay(hour: 18, minute: 0),
+                        const TimeOfDay(hour: 18, minute: 00),
                       );
                       widget.logic.onChange();
                       setState(() {});
