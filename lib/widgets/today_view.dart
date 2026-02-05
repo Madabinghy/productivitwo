@@ -2597,106 +2597,80 @@ class _NowTabState extends State<NowTab> {
                 ),
               ),
 
-            // ✅ “Choisir date”
-            Expanded(
-              child: SizedBox(
-                height: 35,
-                child: ActionChip(
-                  label: const Text("Choisir une date"),
-                  onPressed: pickDate,
-                  backgroundColor: cs.primary.withOpacity(0.12),
-                  labelStyle: TextStyle(
-                    color: cs.primary,
-                    fontWeight: FontWeight.w700,
+            // ✅ on force un saut de ligne avant les 2 boutons
+            const SizedBox(width: double.infinity),
+
+            SizedBox(
+              width: double.infinity,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                        height: 38,
+                        child: OutlinedButton.icon(
+                          onPressed: pickDate,
+                          icon: Icon(
+                            Icons.event,
+                            size: 18,
+                            color: cs.primary,
+                          ),
+                          label: const Text("Date"),
+                          style: OutlinedButton.styleFrom(
+                            backgroundColor: cs.primary.withOpacity(0.12),
+                            foregroundColor: cs.primary,
+                            side:
+                                BorderSide(color: cs.primary.withOpacity(0.35)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                          ),
+                        )),
                   ),
-                ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: SizedBox(
+                      height: 38,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _confirmDeleteAction(context, it),
+                        icon: const Icon(Icons.delete_outline, size: 18),
+                        label: const Text("Supprimer"),
+                        style: redOutlineStyle,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-            Expanded(
-              child: SizedBox(
-                height: 35,
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    showDialog(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: const Text("Supprimer ?"),
-                        content: const Text("Cette action sera supprimée."),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx),
-                            child: const Text("Annuler"),
-                          ),
-                          TextButton(
-                            onPressed: () {
-                              Navigator.pop(ctx);
-
-                              setState(() => it.isNowFocus = false);
-                              widget.logic.state.dayPlan
-                                  .removeWhere((e) => e.id == it.id);
-                              widget.logic.onChange();
-                              setState(() {});
-                            },
-                            child: const Text("Supprimer"),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.delete_outline, size: 18),
-                  label: const Text("Supprimer"),
-                  style: redOutlineStyle,
-                ),
-              ),
-            ),
-/*             OutlinedButton.icon(
-              onPressed: () {
-                showDialog(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text("Supprimer ?"),
-                    content: const Text("Cette action sera supprimée."),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        child: const Text("Annuler"),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.pop(ctx);
-
-                          setState(() => it.isNowFocus = false);
-                          widget.logic.state.dayPlan
-                              .removeWhere((e) => e.id == it.id);
-                          widget.logic.onChange();
-                          setState(() {});
-                        },
-                        child: const Text("Supprimer"),
-                      ),
-                    ],
-                  ),
-                );
-              },
-              icon: const Icon(Icons.delete_outline),
-              label: const Text("Supprimer"),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.red,
-                side: const BorderSide(color: Colors.red),
-              ),
-            ), */
           ],
         ),
-
-        //const SizedBox(height: 8),
-/*         Text(
-          "Astuce : appui long sur “Passer” pour choisir une date.",
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 12,
-            color: cs.onSurface.withOpacity(0.55),
-          ),
-        ), */
       ],
+    );
+  }
+
+  void _confirmDeleteAction(BuildContext context, DayPlanItem it) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Supprimer ?"),
+        content: const Text("Cette action sera supprimée."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Annuler"),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              setState(() => it.isNowFocus = false);
+              widget.logic.state.dayPlan.removeWhere((e) => e.id == it.id);
+              widget.logic.onChange();
+              setState(() {});
+            },
+            child: const Text("Supprimer"),
+          ),
+        ],
+      ),
     );
   }
 
