@@ -2741,7 +2741,7 @@ class _NowTabState extends State<NowTab> {
     );
   }
 
-  Widget _nowActionCard(BuildContext context, DayPlanItem it) {
+  Widget _nowActionCard(BuildContext context, DayPlanItem it, int skipped, int total) {
     final cs = Theme.of(context).colorScheme;
 
     final domainName = (it.domainId != null)
@@ -2776,13 +2776,26 @@ class _NowTabState extends State<NowTab> {
                     ),
                   ),
                 ),
-                TextButton(
-                  onPressed: () {
-                    setState(() => it.isNowFocus = false);
-                    widget.logic.onChange();
-                  },
-                  child: const Text("Retour"),
-                ),
+                if (_skippedIds.isNotEmpty)
+                  TextButton(
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 0),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      minimumSize: Size.zero,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _skippedIds.clear();
+                        _lockedPlanId = null;
+                      });
+                      _persistNowSets();
+                    },
+                    child:Text(
+                      "Réinitialiser (${_skippedIds.length} / $total)",
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
               ],
             ),
 
@@ -3733,7 +3746,7 @@ class _NowTabState extends State<NowTab> {
     if (focusedAction != null) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
-        child: _nowActionCard(context, focusedAction),
+        child: _nowActionCard(context, focusedAction,_skippedIds.length, actionable.length),
       );
     }
 
@@ -3752,7 +3765,7 @@ class _NowTabState extends State<NowTab> {
     if (next.it.kind == PlanKind.action) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
-        child: _nowActionCard(context, next.it),
+        child: _nowActionCard(context, next.it,_skippedIds.length, actionable.length),
       );
     }
 
