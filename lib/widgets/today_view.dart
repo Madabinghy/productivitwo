@@ -2082,35 +2082,6 @@ class _TodayViewState extends State<TodayView> {
     }
   }
 
-  Future<String?> _pickDomainId(BuildContext context) async {
-    final domains = widget.logic.state.domains;
-
-    return showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) {
-        return SafeArea(
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              const ListTile(
-                title: Text(
-                  "Choisir un domaine",
-                  style: TextStyle(fontWeight: FontWeight.w800),
-                ),
-              ),
-              for (final d in domains)
-                ListTile(
-                  title: Text(d.name),
-                  onTap: () => Navigator.pop(ctx, d.id),
-                ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   void _openAddSheet() {
     showModalBottomSheet(
       context: context,
@@ -2528,13 +2499,12 @@ class _NowTabState extends State<NowTab> {
     widget.logic.start(picked.id); // <-- adapte au nom chez toi
   }
 
-      Future<void> _passForToday(DayPlanItem it) async {
-      setState(() => it.isNowFocus = false);
-      final now = DateTime.now();
-      final ymd = yyyymmdd(DateTime(now.year, now.month, now.day));
-      _skipNowItem(
-          ymd, it); // <- persist dans nowSkippedByYmd + setState() déjà
-    }
+  Future<void> _passForToday(DayPlanItem it) async {
+    setState(() => it.isNowFocus = false);
+    final now = DateTime.now();
+    final ymd = yyyymmdd(DateTime(now.year, now.month, now.day));
+    _skipNowItem(ymd, it); // <- persist dans nowSkippedByYmd + setState() déjà
+  }
 
   Widget _snoozeBlock(BuildContext context, DayPlanItem it) {
     final cs = Theme.of(context).colorScheme;
@@ -2566,6 +2536,15 @@ class _NowTabState extends State<NowTab> {
       setState(() {});
     }
 
+    final redOutlineStyle = OutlinedButton.styleFrom(
+      side: BorderSide(
+        color: Colors.red.withOpacity(0.75),
+        width: 1,
+      ),
+      foregroundColor: Colors.red.withOpacity(0.85),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -2585,7 +2564,7 @@ class _NowTabState extends State<NowTab> {
             const SizedBox(width: 10),
             Expanded(
               child: GestureDetector(
-                onTap: ()  {
+                onTap: () {
                   _passForToday(it);
                   widget.logic.onChange();
                   setState(() {});
@@ -2619,27 +2598,104 @@ class _NowTabState extends State<NowTab> {
               ),
 
             // ✅ “Choisir date”
-            ActionChip(
-              label: const Text("Choisir une date"),
-              onPressed: pickDate,
-              backgroundColor: cs.primary.withOpacity(0.12),
-              labelStyle: TextStyle(
-                color: cs.primary,
-                fontWeight: FontWeight.w700,
+            Expanded(
+              child: SizedBox(
+                height: 35,
+                child: ActionChip(
+                  label: const Text("Choisir une date"),
+                  onPressed: pickDate,
+                  backgroundColor: cs.primary.withOpacity(0.12),
+                  labelStyle: TextStyle(
+                    color: cs.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
             ),
+            Expanded(
+              child: SizedBox(
+                height: 35,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text("Supprimer ?"),
+                        content: const Text("Cette action sera supprimée."),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text("Annuler"),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                
+                              setState(() => it.isNowFocus = false);
+                              widget.logic.state.dayPlan
+                                  .removeWhere((e) => e.id == it.id);
+                              widget.logic.onChange();
+                              setState(() {});
+                            },
+                            child: const Text("Supprimer"),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  label: const Text("Supprimer"),
+                  style: redOutlineStyle,
+                ),
+              ),
+            ),
+/*             OutlinedButton.icon(
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text("Supprimer ?"),
+                    content: const Text("Cette action sera supprimée."),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text("Annuler"),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+
+                          setState(() => it.isNowFocus = false);
+                          widget.logic.state.dayPlan
+                              .removeWhere((e) => e.id == it.id);
+                          widget.logic.onChange();
+                          setState(() {});
+                        },
+                        child: const Text("Supprimer"),
+                      ),
+                    ],
+                  ),
+                );
+              },
+              icon: const Icon(Icons.delete_outline),
+              label: const Text("Supprimer"),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.red,
+                side: const BorderSide(color: Colors.red),
+              ),
+            ), */
           ],
         ),
 
-        const SizedBox(height: 8),
-        Text(
+        //const SizedBox(height: 8),
+/*         Text(
           "Astuce : appui long sur “Passer” pour choisir une date.",
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 12,
             color: cs.onSurface.withOpacity(0.55),
           ),
-        ),
+        ), */
       ],
     );
   }
@@ -2711,8 +2767,7 @@ class _NowTabState extends State<NowTab> {
                         }
 
                         // sinon => START cette activité
-                         widget.logic
-                            .start(actId); // adapte au nom chez toi
+                        widget.logic.start(actId); // adapte au nom chez toi
                         if (!mounted) return;
                         setState(() {});
                         return;
@@ -2762,9 +2817,8 @@ class _NowTabState extends State<NowTab> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: FilledButton(
-                    style: FilledButton.styleFrom(
-                    backgroundColor: Colors.green
-                  ),
+                    style:
+                        FilledButton.styleFrom(backgroundColor: Colors.green),
                     onPressed: () {
                       setState(() {
                         it.done = true;

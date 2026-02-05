@@ -1996,6 +1996,11 @@ class AppLogic {
     onChange();
   }
 
+  void deletePlanItemById(String id) {
+    state.dayPlan.removeWhere((e) => e.id == id);
+    onChange();
+  }
+
   void movePlannedToTomorrowIfPresent(
     PlanKind kind,
     String refId, {

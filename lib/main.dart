@@ -1672,6 +1672,98 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   }
   // ---------- UI ----------
 
+  Future<String?> _askText(BuildContext ctx, String title) async {
+    final ctrl = TextEditingController();
+    return await showDialog<String>(
+      context: ctx,
+      builder: (_) => AlertDialog(
+        title: Text(title),
+        content: TextField(controller: ctrl, autofocus: true),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text),
+              child: const Text('OK')),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _createActionFromNow(BuildContext context) async {
+    final title = await _askText(context, "Nouvelle action");
+    final t = (title ?? "").trim();
+    if (t.isEmpty) return;
+
+    await logic.addPlanAction(
+      ymd: yyyymmdd(DateTime.now()),
+      title: t,
+      domainId: null,
+      activityId: null,
+      habitId: null,
+    );
+
+    logic.onChange();
+  }
+
+  Future<String?> _pickDomainId(BuildContext context) async {
+    final domains = logic.state.domains;
+
+    return showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              const ListTile(
+                title: Text(
+                  "Choisir un domaine",
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+              for (final d in domains)
+                ListTile(
+                  title: Text(d.name),
+                  onTap: () => Navigator.pop(ctx, d.id),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _createRoutineFromNow(BuildContext context) async {
+    final name = await _askText(context, "Nouvelle routine");
+    final n = (name ?? "").trim();
+    if (n.isEmpty) return;
+
+    final domainId = await _pickDomainId(context);
+    if (domainId == null) return;
+
+    // ✅ crée la routine comme ton AppRoot
+    final a = Activity(
+      domainId: domainId,
+      name: n,
+      type: 'habit',
+      habitFreq: HabitFreq.monthly, // 👈 1 / mois
+      habitTarget: 1,
+      autoTune: true,
+    );
+
+    logic.state.activities.add(a);
+    logic.onChange();
+
+    // (optionnel) la mettre au plan du jour tout de suite
+    // widget.logic.ensureHabitPlannedToday(a.id);
+
+    if (!mounted) return;
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     // 1) État de chargement (avant que FileStore ait chargé le JSON)
@@ -1806,6 +1898,34 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
           BottomNavigationBarItem(
               icon: Icon(Icons.checklist), label: 'À faire'),
           BottomNavigationBarItem(icon: Icon(Icons.show_chart), label: 'Stats'),
+        ],
+      ),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton(
+            heroTag: "fab_now_routine",
+            mini: true,
+            tooltip: "Nouvelle routine",
+            onPressed: () async {
+              await _createRoutineFromNow(context);
+              if (!mounted) return;
+              setState(() {});
+            },
+            child: const Icon(Icons.repeat),
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton(
+            heroTag: "fab_now_action",
+            tooltip: "Nouvelle action",
+            onPressed: () async {
+              await _createActionFromNow(context);
+              if (!mounted) return;
+              setState(() {});
+            },
+            child: const Icon(Icons.add),
+          ),
         ],
       ),
     );
