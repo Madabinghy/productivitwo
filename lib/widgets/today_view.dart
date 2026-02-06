@@ -1453,10 +1453,10 @@ class _TodayViewState extends State<TodayView> {
       child: ListTile(
         leading: Icon(Icons.repeat, color: cs.primary.withOpacity(0.8)),
         title: Text(it.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Text("⏰ $hh:$mm"),
+        subtitle: Text("🌙 $hh:$mm"),
         trailing: const Icon(Icons.chevron_right),
         onTap: () {
-          // option : la remettre en “maintenant” (unsnooze)
+          // option : la remettre en “maintenant” (unsnooze)⏰
           setState(() => it.snoozeUntil = null);
           widget.logic.onChange();
         },
@@ -2640,7 +2640,7 @@ class _NowTabState extends State<NowTab> {
                 onLongPress: pickDate,
                 child: FilledButton.tonal(
                   onPressed: null, // géré par GestureDetector
-                  child: const Text("Passer"),
+                  child: const Text("Aujourd'hui"),
                 ),
               ),
             ),
@@ -2664,6 +2664,24 @@ class _NowTabState extends State<NowTab> {
                   fontWeight: FontWeight.w600,
                 ),
               ),
+
+            // 🌙 Ce soir (18h+)
+            ActionChip(
+              label: Text("🌙 Soir - 18h+"),
+              onPressed: () async {
+                await widget.logic.snoozeToTodayAfter(
+                  it,
+                  const TimeOfDay(hour: 18, minute: 00),
+                );
+                widget.logic.onChange();
+                setState(() {});
+              },
+              backgroundColor: cs.surface.withOpacity(0.12),
+              labelStyle: TextStyle(
+                color: cs.onSurface.withOpacity(0.85),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
 
             // ✅ on force un saut de ligne avant les 2 boutons
             const SizedBox(width: double.infinity),
@@ -2818,7 +2836,7 @@ class _NowTabState extends State<NowTab> {
             Row(
               children: [
                 Expanded(
-                  flex:3,
+                  flex: 3,
                   child: Builder(
                     builder: (context) {
                       final running = widget.logic.runningActivity();
@@ -2893,7 +2911,7 @@ class _NowTabState extends State<NowTab> {
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  flex:2,
+                  flex: 2,
                   child: FilledButton(
                     style:
                         FilledButton.styleFrom(backgroundColor: Colors.green),
