@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
 import 'package:productivitwo_v1/widgets/filters_sheet.dart';
+import 'package:productivitwo_v1/widgets/habit_tile_full.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/widgets/tiny_bar.dart';
 import 'package:productivitwo_v1/widgets/today_view.dart';
@@ -4229,160 +4230,63 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             }
           }
 
-          Widget _buildHabitTile(Activity a) {
-            final now = DateTime.now();
-            final today = DateTime(now.year, now.month, now.day);
+Widget _buildHabitTile(Activity a) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
 
-            final dH = logic.habitSliding(a.id, 1);
-            final h90 = logic.habitSliding(a.id, 90);
+  final dH = logic.habitSliding(a.id, 1);
+  final h90 = logic.habitSliding(a.id, 90);
 
-            final quotaD = logic.dayQuotaFor(a);
-            final isDaily =
-                (a.habitFreq ?? HabitFreq.monthly) == HabitFreq.daily;
+  final quotaD = logic.dayQuotaFor(a);
+  final isDaily = (a.habitFreq ?? HabitFreq.monthly) == HabitFreq.daily;
 
-            final series30 = List<double>.generate(30, (i) {
-              final day = DateTime(now.year, now.month, now.day)
-                  .subtract(Duration(days: 29 - i));
-              return logic.habitValueOn(a.id, day).toDouble();
-            });
+  final series30 = List<double>.generate(30, (i) {
+    final day = DateTime(now.year, now.month, now.day).subtract(Duration(days: 29 - i));
+    return logic.habitValueOn(a.id, day).toDouble();
+  });
 
-            final double histMax =
-                isDaily ? quotaD.toDouble().clamp(1.0, 9999.0).toDouble() : 1.0;
+  final histMax = isDaily ? quotaD.toDouble().clamp(1.0, 9999.0) : 1.0;
 
-            final target = h90.ratio.clamp(0.0, 1.0);
-            final token = _ringAnimTokenByHabit[a.id] ?? 0;
+  final target = h90.ratio.clamp(0.0, 1.0);
+  final token = _ringAnimTokenByHabit[a.id] ?? 0;
 
-            return InkWell(
-              onLongPress: () => openHabitEditSheet(
-                context: context,
-                logic: logic,
-                habit: a,
-                onSaved: () => setSB(() {}),
-              ),
-              onTap: () => _openHabitManualEditor(a, setSB),
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    // Gauche : ring 90j + tap dédié
+  return HabitTileFull(
+    habit: a,
+    logic: logic,
+    ringTarget: target,
+    ringToken: token,
+    onRingBump: () => _triggerRingAnimFor(a.id, setSB),
+    series30: series30,
+    histMax: histMax,
+    subText: _habitSubText(
+      freq: a.habitFreq ?? HabitFreq.monthly,
+      dayDone: dH.done,
+      dayQuota: quotaD,
+      weekDone: logic.habitSliding(a.id, 7).done,
+      weekTarget: logic.weekTargetFrom(a),
+      monthDone: logic.habitSliding(a.id, 30).done,
+      monthTarget: logic.monthTargetFrom(a),
+    ),
+    onTap: () => _openHabitManualEditor(a, setSB),
+    onLongPress: () => openHabitEditSheet(
+      context: context,
+      logic: logic,
+      habit: a,
+      onSaved: () => setSB(() {}),
+    ),
+    onInc: () {
+      logic.incHabit(a.id, 1, today);
+      _unlockSoon(setSB);
+      setSB(() {});
+    },
+    onDec: () {
+      logic.incHabit(a.id, -1, today);
+      _unlockSoon(setSB);
+      setSB(() {});
+    },
+  );
+}
 
-                    SizedBox(
-                      width: 56,
-                      height: 56,
-                      child: TweenAnimationBuilder<double>(
-                        key: ValueKey("${a.id}|$token"), // ✅ reset l’animation
-                        tween: Tween<double>(begin: 1.0, end: target),
-                        duration: const Duration(seconds: 5),
-                        curve: Curves.easeOutCubic,
-                        builder: (context, p, _) {
-                          return MiniRingThick(
-                            progress: p,
-                            strokeWidth: 7,
-                            center: Text(
-                              "${(target * 100).round()}%",
-                              style: const TextStyle(
-                                  fontSize: 12, fontWeight: FontWeight.w800),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-
-                    const SizedBox(width: 12),
-
-                    // Milieu : titre + histogramme (tap possible sur l'histogramme)
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            a.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 16,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-
-                          // Histogramme 30j
-                          SizedBox(
-                            height: 26,
-                            child: GestureDetector(
-                              onTap: () => _openHabitManualEditor(a, setSB),
-                              child: MiniHistogram30d(
-                                values: series30,
-                                maxValue: histMax,
-                                highlightLast: true,
-                              ),
-                            ),
-                          ),
-
-                          const SizedBox(height: 4),
-
-                          // ✅ Petit texte explicatif
-                          Opacity(
-                            opacity: 0.65,
-                            child: Text(
-                              _habitSubText(
-                                freq: a.habitFreq ?? HabitFreq.monthly,
-                                dayDone: dH.done,
-                                dayQuota: quotaD,
-                                weekDone: logic.habitSliding(a.id, 7).done,
-                                weekTarget: logic.weekTargetFrom(a),
-                                monthDone: logic.habitSliding(a.id, 30).done,
-                                monthTarget: logic.monthTargetFrom(a),
-                              ),
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                height: 1.1,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-
-                    // Droite : + / - vertical
-                    SizedBox(
-                      width: 44,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          StepButton(
-                            icon: Icons.add,
-                            onTap: () {
-                              _triggerRingAnimFor(
-                                  a.id, setSB); // 1️⃣ lock + animation
-                              logic.incHabit(
-                                  a.id, 1, today); // 2️⃣ mise à jour métier
-                              _unlockSoon(setSB); // 3️⃣ relâche dans 5s
-                            },
-                          ),
-                          const SizedBox(height: 10),
-                          StepButton(
-                            icon: Icons.remove,
-                            onTap: () {
-                              _triggerRingAnimFor(
-                                  a.id, setSB); // 1️⃣ lock + animation
-                              logic.incHabit(
-                                  a.id, -1, today); // 2️⃣ mise à jour métier
-                              _unlockSoon(setSB); // 3️⃣ relâche dans 5s
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }
 
           // ---------- Rendu des sections ----------
           final list = ListView(

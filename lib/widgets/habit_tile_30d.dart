@@ -84,3 +84,4 @@ class NowHabit30dBar extends StatelessWidget {
     );
   }
 }
+

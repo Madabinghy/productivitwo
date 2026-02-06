@@ -9,6 +9,7 @@ import 'package:collection/collection.dart';
 import 'package:productivitwo_v1/widgets/assign_activity_sheet.dart';
 import 'package:productivitwo_v1/widgets/habit_tile_30d.dart'
     show NowHabit30dBar;
+import 'package:productivitwo_v1/widgets/now_habit_tile_full.dart';
 import 'package:productivitwo_v1/widgets/tiny_bar.dart';
 
 class TodayView extends StatefulWidget {
@@ -2741,7 +2742,8 @@ class _NowTabState extends State<NowTab> {
     );
   }
 
-  Widget _nowActionCard(BuildContext context, DayPlanItem it, int skipped, int total) {
+  Widget _nowActionCard(
+      BuildContext context, DayPlanItem it, int skipped, int total) {
     final cs = Theme.of(context).colorScheme;
 
     final domainName = (it.domainId != null)
@@ -2791,7 +2793,7 @@ class _NowTabState extends State<NowTab> {
                       });
                       _persistNowSets();
                     },
-                    child:Text(
+                    child: Text(
                       "Réinitialiser (${_skippedIds.length} / $total)",
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
@@ -2816,72 +2818,82 @@ class _NowTabState extends State<NowTab> {
             Row(
               children: [
                 Expanded(
-                  child: FilledButton.icon(
-                    onPressed: () async {
+                  flex:3,
+                  child: Builder(
+                    builder: (context) {
                       final running = widget.logic.runningActivity();
+                      final hasActivity = (it.activityId ?? '').isNotEmpty;
+                      final isRunningThis =
+                          running != null && running.id == it.activityId;
 
-                      // 1) si l’action a déjà une activité
-                      if ((it.activityId ?? '').isNotEmpty) {
-                        final actId = it.activityId!;
+                      final isStop = hasActivity && isRunningThis;
 
-                        // si c’est déjà l’activité en cours => STOP
-                        if (running != null && running.id == actId) {
-                          widget.logic.stopActive();
+                      return FilledButton.icon(
+                        onPressed: () async {
+                          final running = widget.logic.runningActivity();
+
+                          if (hasActivity) {
+                            final actId = it.activityId!;
+
+                            // 🟥 STOP
+                            if (running != null && running.id == actId) {
+                              widget.logic.stopActive();
+                              if (!mounted) return;
+                              setState(() {});
+                              return;
+                            }
+
+                            // ▶️ START
+                            widget.logic.start(actId);
+                            if (!mounted) return;
+                            setState(() {});
+                            return;
+                          }
+
+                          // ➕ Associer puis lancer
+                          await _startOrPickActivityForAction(context, it);
                           if (!mounted) return;
                           setState(() {});
-                          return;
-                        }
+                        },
 
-                        // sinon => START cette activité
-                        widget.logic.start(actId); // adapte au nom chez toi
-                        if (!mounted) return;
-                        setState(() {});
-                        return;
-                      }
+                        // 🔁 ICON
+                        icon: Icon(
+                          isStop ? Icons.stop : Icons.play_arrow,
+                        ),
 
-                      // 2) sinon : associer puis lancer
-                      await _startOrPickActivityForAction(context, it);
+                        // 🔁 LABEL
+                        label: Text(
+                          () {
+                            if (!hasActivity) return "Associer & lancer";
 
-                      if (!mounted) return;
-                      setState(() {}); // refresh subtitle si activité choisie
+                            final act = widget.st.activities.firstWhere(
+                              (a) => a.id == it.activityId,
+                              orElse: () => Activity(
+                                domainId: it.domainId ?? '',
+                                name: "Activité",
+                              ),
+                            );
+
+                            return isStop ? "Stop" : act.name;
+                          }(),
+                        ),
+
+                        // 🔴 STYLE CONDITIONNEL
+                        style: isStop
+                            ? FilledButton.styleFrom(
+                                backgroundColor:
+                                    Theme.of(context).colorScheme.error,
+                                foregroundColor:
+                                    Theme.of(context).colorScheme.onError,
+                              )
+                            : null,
+                      );
                     },
-                    icon: Icon(
-                      () {
-                        final running = widget.logic.runningActivity();
-                        if ((it.activityId ?? '').isEmpty)
-                          return Icons.play_arrow;
-                        if (running != null && running.id == it.activityId)
-                          return Icons.stop;
-                        return Icons.play_arrow;
-                      }(),
-                    ),
-                    label: Text(
-                      () {
-                        final running = widget.logic.runningActivity();
-
-                        // pas d’activité => associer
-                        if ((it.activityId ?? '').isEmpty)
-                          return "Associer & lancer";
-
-                        // nom activité
-                        final act = widget.st.activities.firstWhere(
-                          (a) => a.id == it.activityId,
-                          orElse: () => Activity(
-                              domainId: it.domainId ?? '', name: "Activité"),
-                        );
-
-                        // si c’est running => Stop
-                        if (running != null && running.id == it.activityId) {
-                          return "Stop";
-                        }
-
-                        return act.name; // ✅ "Lafay", "Productivitwo", etc.
-                      }(),
-                    ),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
+                  flex:2,
                   child: FilledButton(
                     style:
                         FilledButton.styleFrom(backgroundColor: Colors.green),
@@ -3746,7 +3758,8 @@ class _NowTabState extends State<NowTab> {
     if (focusedAction != null) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
-        child: _nowActionCard(context, focusedAction,_skippedIds.length, actionable.length),
+        child: _nowActionCard(
+            context, focusedAction, _skippedIds.length, actionable.length),
       );
     }
 
@@ -3765,7 +3778,8 @@ class _NowTabState extends State<NowTab> {
     if (next.it.kind == PlanKind.action) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
-        child: _nowActionCard(context, next.it,_skippedIds.length, actionable.length),
+        child: _nowActionCard(
+            context, next.it, _skippedIds.length, actionable.length),
       );
     }
 
@@ -3798,25 +3812,30 @@ class _NowTabState extends State<NowTab> {
             const SizedBox(height: 10),
             Row(
               children: [
-                IconButton(
+/*                 IconButton(
                   onPressed:
                       _canAdjust(next.it) ? () => _onDelta(next.it, -1) : null,
                   icon: const Icon(Icons.remove_circle_outline),
-                ),
+                ), */
                 Expanded(
-                  child: NowHabit30dBar(
-                    logic: widget.logic,
-                    st: widget.st,
-                    habitId: next.it.refId!,
-                    day: widget.day,
-                  ),
-                ),
-                IconButton(
+                    child: NowHabitTileFull(
+                  logic: widget.logic,
+                  st: widget.st,
+                  habitId: next.it.refId!,
+                  day: widget.day,
+                  onTap: () async {
+                    await _openHabitSettings(act);
+                  },
+                  onLongPress: () {
+                    // openHabitEditSheet etc.
+                  },
+                )),
+/*                 IconButton(
                   onPressed:
                       _canAdjust(next.it) ? () => _onDelta(next.it, 1) : null,
                   icon: const Icon(Icons.add_circle_outline),
-                ),
-                autoManualBadge(
+                ), */
+/*                 autoManualBadge(
                   act: act,
                   onLongPress: () async {
                     await _openHabitSettings(act);
@@ -3859,7 +3878,7 @@ class _NowTabState extends State<NowTab> {
                       );
                     });
                   },
-                ),
+                ), */
               ],
             ),
           ],
@@ -4093,7 +4112,7 @@ class _NowTabState extends State<NowTab> {
                       });
                       _persistNowSets();
                     },
-                    child:Text(
+                    child: Text(
                       "Réinitialiser (${_skippedIds.length} / $total)",
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
@@ -4119,38 +4138,6 @@ class _NowTabState extends State<NowTab> {
             const SizedBox(height: 14),
             Row(
               children: [
-                // ⏭ Passer (focus only)
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () {
-                      _skipNowItem(ymd, it); // ton mécanisme existant
-                      setState(() => it.isNowFocus = false);
-                    },
-                    style: _neutralStyle(context),
-                    child: const Text("Passer"),
-                  ),
-                ),
-
-                const SizedBox(width: 8),
-
-                // 🌙 Ce soir (18h+)
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () async {
-                      await widget.logic.snoozeToTodayAfter(
-                        it,
-                        const TimeOfDay(hour: 18, minute: 00),
-                      );
-                      widget.logic.onChange();
-                      setState(() {});
-                    },
-                    style: _neutralStyle(context),
-                    child: const Text("18h+"),
-                  ),
-                ),
-
-                const SizedBox(width: 8),
-
                 // ☀️ Demain
                 Expanded(
                   child: OutlinedButton(
@@ -4175,6 +4162,34 @@ class _NowTabState extends State<NowTab> {
                   },
                   style: _neutralStyle(context),
                   child: const Icon(Icons.calendar_today_outlined, size: 18),
+                ),
+                const SizedBox(width: 8),
+                // 🌙 Ce soir (18h+)
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () async {
+                      await widget.logic.snoozeToTodayAfter(
+                        it,
+                        const TimeOfDay(hour: 18, minute: 00),
+                      );
+                      widget.logic.onChange();
+                      setState(() {});
+                    },
+                    style: _neutralStyle(context),
+                    child: const Text("🌙 18h+"),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // ⏭ Passer (focus only)
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () {
+                      _skipNowItem(ymd, it); // ton mécanisme existant
+                      setState(() => it.isNowFocus = false);
+                    },
+                    style: _neutralStyle(context),
+                    child: const Text("⏭ Passer"),
+                  ),
                 ),
               ],
             )
