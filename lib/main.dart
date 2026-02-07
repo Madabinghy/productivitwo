@@ -2388,7 +2388,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     final total24Dur =
         totals24.values.fold<Duration>(Duration.zero, (a, b) => a + b);
 
-    final total24Hours = total24Dur.inMinutes / 60.0;
+    //final total24Hours = total24Dur.inMinutes / 60.0;
 
     final start7 = today.subtract(const Duration(days: 7));
     final end7 = today; // exclut aujourd’hui
@@ -2502,18 +2502,21 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
     final target7HoursAll = dailyTargetHoursAll * 7.0;
     final target90HoursAll = dailyTargetHoursAll * 90.0;
+    final total7HoursAbs = 7.0 * 24.0; // 168h
+final progTimeAll7 = (done7HoursAll / total7HoursAbs).clamp(0.0, 1.0);
 
     final haloAll = (dailyTargetHoursAll > 0)
         ? (totalTodayHours / dailyTargetHoursAll).clamp(0.0, 1.0)
         : 0.0;
+    final total24Hours = 24.0;
+    final haloAllAbs = (totalTodayHours / total24Hours).clamp(0.0, 1.0);
 
     final bigAll = (target7HoursAll > 0)
         ? (done7HoursAll / target7HoursAll).clamp(0.0, 1.0)
         : 0.0;
 
-    final progTimeAll90 = (target90HoursAll > 0)
-        ? (done90HoursAll / target90HoursAll).clamp(0.0, 1.0)
-        : 0.0;
+    final total90HoursAbs = 90.0 * 24.0; // 2160h
+    final progTimeAll90 = (done90HoursAll / total90HoursAbs).clamp(0.0, 1.0);
 
 // Label = depuis minuit (ce que tu veux afficher)
     final labelAll = _fmtHoursHM(totalTodayHours);
@@ -2554,7 +2557,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
     double snapToFull(
       double value, {
-      double threshold = 0.90,
+      double threshold = 0.97,
     }) {
       if (value >= threshold) return 1.0;
       return value.clamp(0.0, 1.0);
@@ -2582,8 +2585,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
               RepaintBoundary(
                 child: NestedGauge(
-                  bigProgress: snapToFull(bigAll),
-                  outerProgress: snapToFull(haloAll),
+                  bigProgress: snapToFull(progTimeAll7),
+                  outerProgress: snapToFull(haloAllAbs),
                   smallProgress: snapToFull(progTimeAll90),
                   bigColor: _colorForProgress(bigAll, context),
                   outerColor: Colors.cyanAccent,
@@ -2770,12 +2773,25 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                         ? (done7HoursD / target7HoursD).clamp(0.0, 1.0)
                         : 0.0;
 
-                    final smallProgressTime = target90HoursD > 0
+/*                     final smallProgressTime = target90HoursD > 0
                         ? (done90HoursD / target90HoursD).clamp(0.0, 1.0)
-                        : 0.0;
+                        : 0.0; */
+
+                    final total90HoursAbs = 90.0 * 24.0;
+                    final smallProgressTime =
+                        (done90HoursD / total90HoursAbs).clamp(0.0, 1.0);
 
                     final timeLabel = _fmtHoursHM(doneTodayHoursD);
 
+                    final totals90All = logic.timeTotalsByDomain(start90Inc, end90Inc);
+
+double domainShare90(String domainId) {
+  if (done90HoursAll <= 0) return 0.0;
+
+  final h = (totals90All[domainId]?.inMinutes ?? 0) / 60.0;
+  return (h / done90HoursAll).clamp(0.0, 1.0);
+}
+final share = domainShare90(d.id);
                     return SectionCard(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2792,7 +2808,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                                 child: NestedGauge(
                                   bigProgress: snapToFull(bigProgressTime),
                                   outerProgress: snapToFull(outerProgressTime),
-                                  smallProgress: snapToFull(smallProgressTime),
+                                  smallProgress: snapToFull(share),
                                   bigColor: _colorForProgress(
                                       bigProgressTime, context),
                                   outerColor: Colors.cyanAccent,
@@ -4230,63 +4246,65 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             }
           }
 
-Widget _buildHabitTile(Activity a) {
-  final now = DateTime.now();
-  final today = DateTime(now.year, now.month, now.day);
+          Widget _buildHabitTile(Activity a) {
+            final now = DateTime.now();
+            final today = DateTime(now.year, now.month, now.day);
 
-  final dH = logic.habitSliding(a.id, 1);
-  final h90 = logic.habitSliding(a.id, 90);
+            final dH = logic.habitSliding(a.id, 1);
+            final h90 = logic.habitSliding(a.id, 90);
 
-  final quotaD = logic.dayQuotaFor(a);
-  final isDaily = (a.habitFreq ?? HabitFreq.monthly) == HabitFreq.daily;
+            final quotaD = logic.dayQuotaFor(a);
+            final isDaily =
+                (a.habitFreq ?? HabitFreq.monthly) == HabitFreq.daily;
 
-  final series30 = List<double>.generate(30, (i) {
-    final day = DateTime(now.year, now.month, now.day).subtract(Duration(days: 29 - i));
-    return logic.habitValueOn(a.id, day).toDouble();
-  });
+            final series30 = List<double>.generate(30, (i) {
+              final day = DateTime(now.year, now.month, now.day)
+                  .subtract(Duration(days: 29 - i));
+              return logic.habitValueOn(a.id, day).toDouble();
+            });
 
-  final histMax = isDaily ? quotaD.toDouble().clamp(1.0, 9999.0) : 1.0;
+            final histMax =
+                isDaily ? quotaD.toDouble().clamp(1.0, 9999.0) : 1.0;
 
-  final target = h90.ratio.clamp(0.0, 1.0);
-  final token = _ringAnimTokenByHabit[a.id] ?? 0;
+            final target = h90.ratio.clamp(0.0, 1.0);
+            final token = _ringAnimTokenByHabit[a.id] ?? 0;
 
-  return HabitTileFull(
-    habit: a,
-    logic: logic,
-    ringTarget: target,
-    ringToken: token,
-    onRingBump: () => _triggerRingAnimFor(a.id, setSB),
-    series30: series30,
-    histMax: histMax,
-    subText: _habitSubText(
-      freq: a.habitFreq ?? HabitFreq.monthly,
-      dayDone: dH.done,
-      dayQuota: quotaD,
-      weekDone: logic.habitSliding(a.id, 7).done,
-      weekTarget: logic.weekTargetFrom(a),
-      monthDone: logic.habitSliding(a.id, 30).done,
-      monthTarget: logic.monthTargetFrom(a),
-    ),
-    onTap: () => _openHabitManualEditor(a, setSB),
-    onLongPress: () => openHabitEditSheet(
-      context: context,
-      logic: logic,
-      habit: a,
-      onSaved: () => setSB(() {}),
-    ),
-    onInc: () {
-      logic.incHabit(a.id, 1, today);
-      _unlockSoon(setSB);
-      setSB(() {});
-    },
-    onDec: () {
-      logic.incHabit(a.id, -1, today);
-      _unlockSoon(setSB);
-      setSB(() {});
-    },
-  );
-}
-
+            return HabitTileFull(
+              habit: a,
+              logic: logic,
+              ringTarget: target,
+              ringToken: token,
+              onRingBump: () => _triggerRingAnimFor(a.id, setSB),
+              series30: series30,
+              histMax: histMax,
+              subText: _habitSubText(
+                freq: a.habitFreq ?? HabitFreq.monthly,
+                dayDone: dH.done,
+                dayQuota: quotaD,
+                weekDone: logic.habitSliding(a.id, 7).done,
+                weekTarget: logic.weekTargetFrom(a),
+                monthDone: logic.habitSliding(a.id, 30).done,
+                monthTarget: logic.monthTargetFrom(a),
+              ),
+              onTap: () => _openHabitManualEditor(a, setSB),
+              onLongPress: () => openHabitEditSheet(
+                context: context,
+                logic: logic,
+                habit: a,
+                onSaved: () => setSB(() {}),
+              ),
+              onInc: () {
+                logic.incHabit(a.id, 1, today);
+                _unlockSoon(setSB);
+                setSB(() {});
+              },
+              onDec: () {
+                logic.incHabit(a.id, -1, today);
+                _unlockSoon(setSB);
+                setSB(() {});
+              },
+            );
+          }
 
           // ---------- Rendu des sections ----------
           final list = ListView(

@@ -156,18 +156,6 @@ class NestedGauge extends StatelessWidget {
   }
 
   Widget buildCenter(double progress) {
-    final done = progress >= 1.0;
-
-    if (done) {
-      return const Text(
-        "🎯",
-        style: TextStyle(
-          fontSize: 36, // 👈 icône bien visible
-          height: 1,
-        ),
-      );
-    }
-
     return Text(
       "${(progress * 100).round()}%",
       style: TextStyle(
@@ -181,7 +169,6 @@ class NestedGauge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final track = Colors.white.withValues(alpha: 0.08);
-    bool isDone(double p) => p >= 1.0;
     final expected = expectedSinceMidnight(DateTime.now());
 
     final content = SizedBox(
@@ -241,17 +228,26 @@ class NestedGauge extends StatelessWidget {
           // Texte...
           Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center, // 🔒 explicite
             children: [
-              Text(centerText,
-                  style: const TextStyle(
-                      fontSize: 25, fontWeight: FontWeight.w800)),
-              const SizedBox(width: 20),
-              Center(
-                child: buildCenter(smallProgress),
+              Text(
+                centerText,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 25,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
-              const SizedBox(height: 22),
+
+              const SizedBox(height: 15),
+
+              buildCenter(smallProgress), // pas besoin de Center ici
+
+              const SizedBox(height: 23),
+
               Text(
                 label,
+                textAlign: TextAlign.center, // 🔑 important
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
