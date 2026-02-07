@@ -3023,8 +3023,8 @@ extension TodayLogic on AppLogic {
     return (total7Dur.inMinutes / 60.0) / activeDays;
   }
 
-  List<int> minutesByHourLast24({DateTime? now}) {
-    final t = now ?? DateTime.now();
+  List<int> minutesByHourLast24(DateTime now) {
+    final t = now;
 
     DateTime floorToHour(DateTime d) =>
         DateTime(d.year, d.month, d.day, d.hour);

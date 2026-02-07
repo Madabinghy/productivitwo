@@ -959,9 +959,31 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+
     _tick = ValueNotifier<int>(0);
 
+    _startMinuteHeartbeat();
     _init();
+  }
+
+  void _startMinuteHeartbeat() {
+    _heartbeat?.cancel();
+
+    final now = DateTime.now();
+    final nextMinute =
+        DateTime(now.year, now.month, now.day, now.hour, now.minute + 1);
+    final delay = nextMinute.difference(now);
+
+    // 1) tick pile au prochain changement de minute
+    Timer(delay, () {
+      if (!mounted) return;
+      _tick.value++;
+
+      // 2) puis toutes les minutes
+      _heartbeat = Timer.periodic(const Duration(minutes: 1), (_) {
+        _tick.value++;
+      });
+    });
   }
 
   @override
@@ -1774,8 +1796,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       );
     }
 
-    final bins24 = logic.minutesByHourLast24();
-
     final filtersOn = logic.state.filters.enabled;
 
     // 2) App prête -> Scaffold complet
@@ -1825,20 +1845,39 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
           ],
         ),
       ), */
+      
       appBar: AppBar(
-        title: Row(
-          children: [
-            const SizedBox(width: 4),
-            AppBarProductivityBars(logic: logic, state: _state),
-            const SizedBox(width: 4),
-            MiniHourBars24h(bins: bins24),
-            const Spacer(),
-            RunningChipAppBar(
-                state: _state,
-                logic: logic,
-                onTap: () => setState(() => _tab = _Tab.now)),
-          ],
-        ),
+  title: Row(
+    children: [
+      const SizedBox(width: 4),
+
+      ValueListenableBuilder<int>(
+        valueListenable: _tick,
+        builder: (context, _, __) {
+          return AppBarProductivityBars(logic: logic, state: _state);
+        },
+      ),
+
+      const SizedBox(width: 4),
+
+      ValueListenableBuilder<int>(
+        valueListenable: _tick,
+        builder: (context, _, __) {
+          // recalcul au moment du tick (chaque minute)
+          
+          final bins24 = logic.minutesByHourLast24(DateTime.now());
+          return MiniHourBars24h(bins: bins24);
+        },
+      ),
+
+      const Spacer(),
+      RunningChipAppBar(
+        state: _state,
+        logic: logic,
+        onTap: () => setState(() => _tab = _Tab.now),
+      ),
+    ],
+  ),
         actions: [
           GestureDetector(
             onTap: () => _openFiltersSheet(context),
@@ -2503,7 +2542,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     final target7HoursAll = dailyTargetHoursAll * 7.0;
     final target90HoursAll = dailyTargetHoursAll * 90.0;
     final total7HoursAbs = 7.0 * 24.0; // 168h
-final progTimeAll7 = (done7HoursAll / total7HoursAbs).clamp(0.0, 1.0);
+    final progTimeAll7 = (done7HoursAll / total7HoursAbs).clamp(0.0, 1.0);
 
     final haloAll = (dailyTargetHoursAll > 0)
         ? (totalTodayHours / dailyTargetHoursAll).clamp(0.0, 1.0)
@@ -2783,15 +2822,17 @@ final progTimeAll7 = (done7HoursAll / total7HoursAbs).clamp(0.0, 1.0);
 
                     final timeLabel = _fmtHoursHM(doneTodayHoursD);
 
-                    final totals90All = logic.timeTotalsByDomain(start90Inc, end90Inc);
+                    final totals90All =
+                        logic.timeTotalsByDomain(start90Inc, end90Inc);
 
-double domainShare90(String domainId) {
-  if (done90HoursAll <= 0) return 0.0;
+                    double domainShare90(String domainId) {
+                      if (done90HoursAll <= 0) return 0.0;
 
-  final h = (totals90All[domainId]?.inMinutes ?? 0) / 60.0;
-  return (h / done90HoursAll).clamp(0.0, 1.0);
-}
-final share = domainShare90(d.id);
+                      final h = (totals90All[domainId]?.inMinutes ?? 0) / 60.0;
+                      return (h / done90HoursAll).clamp(0.0, 1.0);
+                    }
+
+                    final share = domainShare90(d.id);
                     return SectionCard(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
