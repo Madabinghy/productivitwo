@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/time_scope.dart';
 import 'package:uuid/uuid.dart';
 import 'package:productivitwo_v1/models.dart';
 
@@ -2827,6 +2828,82 @@ extension TodayLogic on AppLogic {
 
     onChange();
   }
+
+  Activity? suggestedCatchUpActivity({
+  Domain? domain,           // null = tous les domaines
+  required bool isHabitsTab,
+  bool excludeCourses = true,
+  double snap = 0.95,
+}) {
+  final String? domainId = domain?.id;
+
+  // --- base (exactement comme ton écran) ---
+  final base = isHabitsTab
+      ? state.activities
+          .where((a) =>
+              a.isHabit && (domainId == null || a.domainId == domainId))
+          .toList()
+      : state.activities
+          .where((a) =>
+              !a.isHabit && (domainId == null || a.domainId == domainId))
+          .toList();
+
+  if (base.isEmpty) return null;
+
+  // Exclusion "Courses" (simple MVP)
+  bool isExcluded(Activity a) {
+    if (!excludeCourses) return false;
+    return a.name.trim().toLowerCase() == 'courses';
+  }
+
+  if (isHabitsTab) {
+    // ---- HABITS : même logique que ton écran ----
+    final notReached = <Activity>[];
+
+    for (final a in base) {
+      if (isExcluded(a)) continue;
+      if (!habitReached(a)) notReached.add(a);
+    }
+
+    // tri “proche de 100% en haut”
+    int cmpByExit(Activity x, Activity y) {
+      double ratio(Activity a) {
+        final tgt = activeHabitTarget(a);
+        if (tgt <= 0) return 0.0;
+        final done = activeHabitDone(a);
+        return (done / tgt).clamp(0.0, 1.0);
+      }
+
+      return (1 - ratio(x)).compareTo(1 - ratio(y));
+    }
+
+    notReached.sort(cmpByExit);
+    return notReached.isEmpty ? null : notReached.first;
+  } else {
+    // ---- TIME : même logique que ton écran ----
+    final cache = <String, bool>{};
+
+    bool reached(Activity a) => cache.putIfAbsent(
+          a.id,
+          () => isTimeReachedByAvg7(
+            this,
+            a,
+            sessions: state.sessions,
+            snap: snap,
+          ),
+        );
+
+    final under = base.where((a) => !isExcluded(a) && !reached(a)).toList();
+
+    // ⚠️ Ici ton écran ne trie pas explicitement under,
+    // donc pour être "identique", on garde l'ordre de base.
+    // Si tu veux le même tri que l'écran "À rattraper" (si tu en ajoutes un),
+    // tu le mets ici aussi.
+
+    return under.isEmpty ? null : under.first;
+  }
+}
+
 
   Future<void> addPlanActivity({
     required String ymd,

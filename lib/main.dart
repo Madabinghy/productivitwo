@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -1798,86 +1799,59 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
     final filtersOn = logic.state.filters.enabled;
 
+    Widget trailingChip() {
+      final running = logic.runningActivity();
+      if (running != null) {
+        return RunningChipAppBar(
+          state: _state,
+          logic: logic,
+          onTap: () => setState(() => _tab = _Tab.now),
+        );
+      }
+
+      // On propose Temps (le tab de ton écran)
+      final act = logic.suggestedCatchUpActivity(
+        domain: null,
+        isHabitsTab: false, // Temps
+        excludeCourses: true,
+      );
+
+      if (act == null) return const SizedBox.shrink();
+
+      return ChallengeActivityChip(
+        key: const ValueKey("challengeChip"),
+        activity: act,
+        logic: logic,
+        onStarted: () => setState(() => _tab = _Tab.now),
+      );
+    }
+
     // 2) App prête -> Scaffold complet
     return Scaffold(
-/*       appBar: AppBar(
-        automaticallyImplyLeading: false, // pas de flèche retour
+      appBar: AppBar(
         title: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            if (_currentSession() != null)
-              const Padding(
-                padding: EdgeInsets.only(right: 8.0),
-                child: Icon(Icons.fiber_manual_record,
-                    color: Colors.red, size: 16),
-              ),
-            DropdownButton<TimeScope>(
-              value: scope,
-              underline: const SizedBox.shrink(),
-              items: const [
-                DropdownMenuItem(value: TimeScope.day, child: Text('Jour')),
-                DropdownMenuItem(value: TimeScope.week, child: Text('Semaine')),
-                DropdownMenuItem(value: TimeScope.month, child: Text('Mois')),
-              ],
-              onChanged: (v) => setState(() => scope = v ?? TimeScope.day),
+            const SizedBox(width: 4),
+            ValueListenableBuilder<int>(
+              valueListenable: _tick,
+              builder: (context, _, __) {
+                return AppBarProductivityBars(logic: logic, state: _state);
+              },
             ),
-            IconButton(
-              tooltip: 'Ajouter un domaine',
-              onPressed: _addDomainDialog,
-              icon: const Icon(Icons.create_new_folder_outlined),
+            const SizedBox(width: 4),
+            ValueListenableBuilder<int>(
+              valueListenable: _tick,
+              builder: (context, _, __) {
+                // recalcul au moment du tick (chaque minute)
+
+                final bins24 = logic.minutesByHourLast24(DateTime.now());
+                return MiniHourBars24h(bins: bins24);
+              },
             ),
-            IconButton(
-              tooltip: 'Gérer domaines & activités',
-              onPressed: _openManagementSheet,
-              icon: const Icon(Icons.tune),
-            ),
-            IconButton(
-              tooltip: "Inbox",
-              onPressed: _openInboxSheet,
-              icon: const Icon(Icons.inbox_outlined),
-            ),
-            // Dans ton AppBar actions:
-            IconButton(
-              tooltip: 'Panneau Dev',
-              icon: const Icon(Icons.developer_mode),
-              onPressed: () => _openDevPanel(context),
-            ),
+            const Spacer(),
+            trailingChip(),
           ],
         ),
-      ), */
-      
-      appBar: AppBar(
-  title: Row(
-    children: [
-      const SizedBox(width: 4),
-
-      ValueListenableBuilder<int>(
-        valueListenable: _tick,
-        builder: (context, _, __) {
-          return AppBarProductivityBars(logic: logic, state: _state);
-        },
-      ),
-
-      const SizedBox(width: 4),
-
-      ValueListenableBuilder<int>(
-        valueListenable: _tick,
-        builder: (context, _, __) {
-          // recalcul au moment du tick (chaque minute)
-          
-          final bins24 = logic.minutesByHourLast24(DateTime.now());
-          return MiniHourBars24h(bins: bins24);
-        },
-      ),
-
-      const Spacer(),
-      RunningChipAppBar(
-        state: _state,
-        logic: logic,
-        onTap: () => setState(() => _tab = _Tab.now),
-      ),
-    ],
-  ),
         actions: [
           GestureDetector(
             onTap: () => _openFiltersSheet(context),
@@ -3058,38 +3032,22 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     return dailyStrict ? dayOK : (dayOK || (weekOK && monthOK));
   }
 
-  bool isTimeReachedByAvg7(
-    AppLogic l,
-    Activity a, {
-    required List<Session> sessions,
-    double snap = 0.95,
-    DateTime? now,
-  }) {
-    final t = now ?? DateTime.now();
+  Activity? firstUnderToSuggestTime(List<Activity> base) {
+    const snap = 0.95;
+    final cache = <String, bool>{};
 
-    // objectif/jour (cohérent avec ton digital : target 7 / 7)
-    final d7 = l.timeSliding(a.id, 7);
-    final goalHoursPerDay = (d7.targetMin / 7.0) / 60.0;
+    bool reached(Activity a) => cache.putIfAbsent(
+          a.id,
+          () => isTimeReachedByAvg7(
+            logic,
+            a,
+            sessions: _state!.sessions,
+            snap: snap,
+          ),
+        );
 
-    if (goalHoursPerDay <= 0) return true;
-
-    // moyenne réelle 7j (cohérente avec ta courbe)
-    final start =
-        DateTime(t.year, t.month, t.day).subtract(const Duration(days: 59));
-    final end = DateTime(t.year, t.month, t.day).add(const Duration(days: 1));
-
-    final minutesByDay = timeByDayForActivity(
-      sessions: sessions,
-      activityId: a.id,
-      start: start,
-      end: end,
-      now: t,
-    );
-
-    final avg7h =
-        avgHoursNow(minutesByDay: minutesByDay, today: t, windowDays: 7);
-
-    return avg7h >= goalHoursPerDay * snap;
+    final under = base.where((a) => !reached(a)).toList();
+    return under.isEmpty ? null : under.first;
   }
 
   void _showDomainDetail(
@@ -5300,6 +5258,128 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             child: const Text("Enregistrer"),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class ChallengeActivityChip extends StatefulWidget {
+  final Activity activity;
+  final AppLogic logic;
+  final VoidCallback onStarted; // ex: switch tab to Now
+
+  const ChallengeActivityChip({
+    super.key,
+    required this.activity,
+    required this.logic,
+    required this.onStarted,
+  });
+
+  @override
+  State<ChallengeActivityChip> createState() => _ChallengeActivityChipState();
+}
+
+class _ChallengeActivityChipState extends State<ChallengeActivityChip> {
+  static const _duration = Duration(minutes: 5);
+
+  Timer? _timer;
+  DateTime? _endsAt;
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _start() {
+    // 1) démarre l’activité
+    widget.logic.start(widget.activity.id);
+
+    // 2) bascule sur l’onglet Now
+    widget.onStarted();
+
+    // 3) démarre le timer 5 min
+    _timer?.cancel();
+    _endsAt = DateTime.now().add(_duration);
+
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      final left = _endsAt!.difference(DateTime.now());
+
+      if (left.inSeconds <= 0) {
+        _timer?.cancel();
+        _endsAt = null;
+        setState(() {});
+
+        HapticFeedback.mediumImpact();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              "5 minutes terminées • ${widget.activity.name}",
+            ),
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: "Repartir",
+              onPressed: _start,
+            ),
+          ),
+        );
+      } else {
+        setState(() {});
+      }
+    });
+
+    setState(() {});
+  }
+
+  void _stop() {
+    _timer?.cancel();
+    _endsAt = null;
+    setState(() {});
+  }
+
+  String _mmss(Duration d) {
+    final m = d.inMinutes;
+    final s = d.inSeconds % 60;
+    return "${m}:${s.toString().padLeft(2, '0')}";
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final running = _endsAt != null;
+    final left = running ? _endsAt!.difference(DateTime.now()) : _duration;
+    final safeLeft = left.isNegative ? Duration.zero : left;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: running ? _stop : _start,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          color: Colors.white.withValues(alpha: 0.10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.timer_outlined, size: 18),
+            const SizedBox(width: 6),
+            Text(
+              "${_mmss(safeLeft)} • ${widget.activity.name}",
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Icon(
+              running ? Icons.stop_circle_outlined : Icons.play_circle_outline,
+              size: 18,
+            ),
+          ],
+        ),
       ),
     );
   }

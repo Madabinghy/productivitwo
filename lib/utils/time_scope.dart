@@ -2,6 +2,7 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 
 enum TimeScope { day, week, month }
@@ -334,40 +335,7 @@ class _MiniAvgLinePainter extends CustomPainter {
 
 DateTime nextDay(DateTime d) => d.add(const Duration(days: 1));
 
-Map<DateTime, int> timeByDayForActivity({
-  required List<Session> sessions,
-  required String activityId,
-  required DateTime start,
-  required DateTime end,
-  DateTime? now,
-}) {
-  final tNow = now ?? DateTime.now();
-  final map = <DateTime, int>{};
 
-  for (final s in sessions) {
-    if (s.activityId != activityId) continue;
-
-    final segStart = s.startAt.isAfter(start) ? s.startAt : start;
-    final segEndRaw = s.endAt ?? tNow;
-    final segEnd = segEndRaw.isBefore(end) ? segEndRaw : end;
-
-    if (!segEnd.isAfter(segStart)) continue;
-
-    var cursor = segStart;
-    while (cursor.isBefore(segEnd)) {
-      final d0 = DateTime(cursor.year, cursor.month, cursor.day);
-      final d1 = d0.add(const Duration(days: 1));
-      final sliceEnd = segEnd.isBefore(d1) ? segEnd : d1;
-
-      final minutes = sliceEnd.difference(cursor).inMinutes;
-      map[d0] = (map[d0] ?? 0) + minutes;
-
-      cursor = sliceEnd;
-    }
-  }
-
-  return map;
-}
 
 double avgMinutesPerDayTrailing({
   required Map<DateTime, int> minutesByDay,
@@ -411,4 +379,74 @@ double avgHoursNow({
     windowDays: windowDays,
   );
   return avgMin / 60.0;
+}
+
+  bool isTimeReachedByAvg7(
+    AppLogic l,
+    Activity a, {
+    required List<Session> sessions,
+    double snap = 0.95,
+    DateTime? now,
+  }) {
+    final t = now ?? DateTime.now();
+
+    // objectif/jour (cohérent avec ton digital : target 7 / 7)
+    final d7 = l.timeSliding(a.id, 7);
+    final goalHoursPerDay = (d7.targetMin / 7.0) / 60.0;
+
+    if (goalHoursPerDay <= 0) return true;
+
+    // moyenne réelle 7j (cohérente avec ta courbe)
+    final start =
+        DateTime(t.year, t.month, t.day).subtract(const Duration(days: 59));
+    final end = DateTime(t.year, t.month, t.day).add(const Duration(days: 1));
+
+    final minutesByDay = timeByDayForActivity(
+      sessions: sessions,
+      activityId: a.id,
+      start: start,
+      end: end,
+      now: t,
+    );
+
+    final avg7h =
+        avgHoursNow(minutesByDay: minutesByDay, today: t, windowDays: 7);
+
+    return avg7h >= goalHoursPerDay * snap;
+  }
+
+
+  Map<DateTime, int> timeByDayForActivity({
+  required List<Session> sessions,
+  required String activityId,
+  required DateTime start,
+  required DateTime end,
+  DateTime? now,
+}) {
+  final tNow = now ?? DateTime.now();
+  final map = <DateTime, int>{};
+
+  for (final s in sessions) {
+    if (s.activityId != activityId) continue;
+
+    final segStart = s.startAt.isAfter(start) ? s.startAt : start;
+    final segEndRaw = s.endAt ?? tNow;
+    final segEnd = segEndRaw.isBefore(end) ? segEndRaw : end;
+
+    if (!segEnd.isAfter(segStart)) continue;
+
+    var cursor = segStart;
+    while (cursor.isBefore(segEnd)) {
+      final d0 = DateTime(cursor.year, cursor.month, cursor.day);
+      final d1 = d0.add(const Duration(days: 1));
+      final sliceEnd = segEnd.isBefore(d1) ? segEnd : d1;
+
+      final minutes = sliceEnd.difference(cursor).inMinutes;
+      map[d0] = (map[d0] ?? 0) + minutes;
+
+      cursor = sliceEnd;
+    }
+  }
+
+  return map;
 }
