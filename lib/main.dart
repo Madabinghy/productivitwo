@@ -943,6 +943,12 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       false; // affiché une seule fois tant que l’app reste ouverte
   bool _filtersEnabled = false;
 
+  DateTime? _challengeEndsAt;
+  String? _challengeActivityId;
+
+  bool get _challengeActive =>
+      _challengeEndsAt != null && _challengeEndsAt!.isAfter(DateTime.now());
+
   // Champs d’état pour les badges
   List<GoalChange> _recentGoalChanges = [];
   Map<String, int> _domainAutoDeltas =
@@ -1800,8 +1806,39 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     final filtersOn = logic.state.filters.enabled;
 
     Widget trailingChip() {
-      final running = logic.runningActivity();
-      if (running != null) {
+      final runningAct = logic.runningActivity();
+
+      // état challenge global (dans AppRootState)
+      final endsAt = _challengeEndsAt; // DateTime?
+      final challengeActive = endsAt != null && endsAt.isAfter(DateTime.now());
+
+      if (challengeActive) {
+        final actName = _challengeActivityId == null
+            ? ''
+            : logic.state.activities
+                .firstWhere((a) => a.id == _challengeActivityId!)
+                .name;
+
+        return ChallengeActivityChip(
+          title: actName,
+          endsAt: endsAt,
+          duration: const Duration(minutes: 5),
+          onStart: () {}, // pas utilisé ici
+          onStop: () {
+            setState(() {
+              _challengeEndsAt = null;
+              _challengeActivityId = null;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                  content: Text("Challenge arrêté — activité continue")),
+            );
+          },
+        );
+      }
+
+      // activité normale en cours
+      if (runningAct != null) {
         return RunningChipAppBar(
           state: _state,
           logic: logic,
@@ -1809,20 +1846,28 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         );
       }
 
-      // On propose Temps (le tab de ton écran)
-      final act = logic.suggestedCatchUpActivity(
-        domain: null,
-        isHabitsTab: false, // Temps
-        excludeCourses: true,
-      );
+      // suggestion
+      final sug = logic.suggestedCatchUpTimeByRemainingToday(domain: null);
+      if (sug == null) return const SizedBox.shrink();
 
-      if (act == null) return const SizedBox.shrink();
+      final minutes = sug.doneMin == 0 ? 5 : sug.remainingMin.clamp(1, 5);
+      final duration = Duration(minutes: minutes);
 
       return ChallengeActivityChip(
-        key: const ValueKey("challengeChip"),
-        activity: act,
-        logic: logic,
-        onStarted: () => setState(() => _tab = _Tab.now),
+        title: sug.activity.name,
+        endsAt: null,
+        duration: duration,
+        onStart: () {
+          // 1) set global challenge
+          setState(() {
+            _challengeEndsAt = DateTime.now().add(duration);
+            _challengeActivityId = sug.activity.id;
+            _tab = _Tab.now;
+          });
+          // 2) start activity
+          logic.start(sug.activity.id);
+        },
+        onStop: () {}, // pas utilisé ici
       );
     }
 
@@ -5263,123 +5308,94 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   }
 }
 
-class ChallengeActivityChip extends StatefulWidget {
-  final Activity activity;
-  final AppLogic logic;
-  final VoidCallback onStarted; // ex: switch tab to Now
+class ChallengeActivityChip extends StatelessWidget {
+  final String title;
+  final DateTime? endsAt; // null => pas en cours
+  final Duration duration; // affichage quand pas en cours
+  final VoidCallback onStart;
+  final VoidCallback onStop;
 
   const ChallengeActivityChip({
     super.key,
-    required this.activity,
-    required this.logic,
-    required this.onStarted,
+    required this.title,
+    required this.endsAt,
+    required this.duration,
+    required this.onStart,
+    required this.onStop,
   });
 
-  @override
-  State<ChallengeActivityChip> createState() => _ChallengeActivityChipState();
-}
-
-class _ChallengeActivityChipState extends State<ChallengeActivityChip> {
-  static const _duration = Duration(minutes: 5);
-
-  Timer? _timer;
-  DateTime? _endsAt;
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  void _start() {
-    // 1) démarre l’activité
-    widget.logic.start(widget.activity.id);
-
-    // 2) bascule sur l’onglet Now
-    widget.onStarted();
-
-    // 3) démarre le timer 5 min
-    _timer?.cancel();
-    _endsAt = DateTime.now().add(_duration);
-
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      final left = _endsAt!.difference(DateTime.now());
-
-      if (left.inSeconds <= 0) {
-        _timer?.cancel();
-        _endsAt = null;
-        setState(() {});
-
-        HapticFeedback.mediumImpact();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              "5 minutes terminées • ${widget.activity.name}",
-            ),
-            duration: const Duration(seconds: 4),
-            action: SnackBarAction(
-              label: "Repartir",
-              onPressed: _start,
-            ),
-          ),
-        );
-      } else {
-        setState(() {});
-      }
-    });
-
-    setState(() {});
-  }
-
-  void _stop() {
-    _timer?.cancel();
-    _endsAt = null;
-    setState(() {});
-  }
-
   String _mmss(Duration d) {
-    final m = d.inMinutes;
-    final s = d.inSeconds % 60;
-    return "${m}:${s.toString().padLeft(2, '0')}";
+    final s = d.inSeconds.clamp(0, 999999);
+    final m = s ~/ 60;
+    final sec = s % 60;
+    return "$m:${sec.toString().padLeft(2, '0')}";
   }
 
   @override
   Widget build(BuildContext context) {
-    final running = _endsAt != null;
-    final left = running ? _endsAt!.difference(DateTime.now()) : _duration;
-    final safeLeft = left.isNegative ? Duration.zero : left;
+    return StreamBuilder<int>(
+      stream: Stream.periodic(const Duration(seconds: 1), (i) => i),
+      builder: (context, _) {
+        final running = endsAt != null && endsAt!.isAfter(DateTime.now());
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(999),
-      onTap: running ? _stop : _start,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(999),
-          color: Colors.white.withValues(alpha: 0.10),
+        final left = running ? endsAt!.difference(DateTime.now()) : duration;
+        final label = _mmss(left);
+
+        return Tooltip(
+          message: running
+              ? "Quitter le challenge (l’activité continue)"
+              : "Démarrer un challenge de ${duration.inMinutes} min",
+          waitDuration: const Duration(milliseconds: 400),
+          showDuration: const Duration(seconds: 2),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(999),
+            onTap: running ? onStop : onStart,
+            child: _chipUi(context, label, title, running),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _chipUi(
+      BuildContext context, String label, String title, bool running) {
+    final theme = Theme.of(context);
+    final bg = theme.appBarTheme.backgroundColor ?? theme.colorScheme.surface;
+    final accent = theme.colorScheme.primary;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        color: bg,
+        border: Border.all(
+          color: accent.withValues(alpha: 0.35),
+          width: 1,
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.timer_outlined, size: 18),
-            const SizedBox(width: 6),
-            Text(
-              "${_mmss(safeLeft)} • ${widget.activity.name}",
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-              ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.timer_outlined,
+              size: 18, color: accent.withValues(alpha: 0.85)),
+          const SizedBox(width: 6),
+          Text(
+            "$label • $title",
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              color: accent.withValues(alpha: 0.85),
             ),
-            const SizedBox(width: 6),
-            Icon(
-              running ? Icons.stop_circle_outlined : Icons.play_circle_outline,
-              size: 18,
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 6),
+          Icon(
+            running ? Icons.close : Icons.play_circle_outline,
+            size: 18,
+            color: accent.withValues(alpha: 0.85),
+          ),
+        ],
       ),
     );
   }

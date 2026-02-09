@@ -2491,6 +2491,18 @@ class DashboardDomainOrder {
   });
 }
 
+class SuggestedActivity {
+  final Activity activity;
+  final int remainingMin;
+  final int doneMin;
+
+  SuggestedActivity({
+    required this.activity,
+    required this.remainingMin,
+    required this.doneMin,
+  });
+}
+
 // =====================================================
 // ===================  EXTENSIONS  ====================
 // =====================================================
@@ -2829,81 +2841,170 @@ extension TodayLogic on AppLogic {
     onChange();
   }
 
-  Activity? suggestedCatchUpActivity({
-  Domain? domain,           // null = tous les domaines
-  required bool isHabitsTab,
-  bool excludeCourses = true,
-  double snap = 0.95,
-}) {
-  final String? domainId = domain?.id;
+  Map<String, Duration> timeTotalsByActivity(
+    DateTime start,
+    DateTime endExcl,
+  ) {
+    final Map<String, Duration> totals = {};
 
-  // --- base (exactement comme ton écran) ---
-  final base = isHabitsTab
-      ? state.activities
-          .where((a) =>
-              a.isHabit && (domainId == null || a.domainId == domainId))
-          .toList()
-      : state.activities
-          .where((a) =>
-              !a.isHabit && (domainId == null || a.domainId == domainId))
-          .toList();
+    for (final s in state.sessions) {
+      final DateTime sStart = s.startAt;
+      final DateTime sEnd = s.endAt ?? DateTime.now();
 
-  if (base.isEmpty) return null;
-
-  // Exclusion "Courses" (simple MVP)
-  bool isExcluded(Activity a) {
-    if (!excludeCourses) return false;
-    return a.name.trim().toLowerCase() == 'courses';
-  }
-
-  if (isHabitsTab) {
-    // ---- HABITS : même logique que ton écran ----
-    final notReached = <Activity>[];
-
-    for (final a in base) {
-      if (isExcluded(a)) continue;
-      if (!habitReached(a)) notReached.add(a);
-    }
-
-    // tri “proche de 100% en haut”
-    int cmpByExit(Activity x, Activity y) {
-      double ratio(Activity a) {
-        final tgt = activeHabitTarget(a);
-        if (tgt <= 0) return 0.0;
-        final done = activeHabitDone(a);
-        return (done / tgt).clamp(0.0, 1.0);
+      // hors fenêtre → skip
+      if (sEnd.isBefore(start) || !sStart.isBefore(endExcl)) {
+        continue;
       }
 
-      return (1 - ratio(x)).compareTo(1 - ratio(y));
+      // clamp dans la fenêtre
+      final DateTime a = sStart.isBefore(start) ? start : sStart;
+      final DateTime b = sEnd.isAfter(endExcl) ? endExcl : sEnd;
+
+      if (!b.isAfter(a)) continue;
+
+      final dur = b.difference(a);
+
+      totals[s.activityId] = (totals[s.activityId] ?? Duration.zero) + dur;
     }
 
-    notReached.sort(cmpByExit);
-    return notReached.isEmpty ? null : notReached.first;
-  } else {
-    // ---- TIME : même logique que ton écran ----
-    final cache = <String, bool>{};
-
-    bool reached(Activity a) => cache.putIfAbsent(
-          a.id,
-          () => isTimeReachedByAvg7(
-            this,
-            a,
-            sessions: state.sessions,
-            snap: snap,
-          ),
-        );
-
-    final under = base.where((a) => !isExcluded(a) && !reached(a)).toList();
-
-    // ⚠️ Ici ton écran ne trie pas explicitement under,
-    // donc pour être "identique", on garde l'ordre de base.
-    // Si tu veux le même tri que l'écran "À rattraper" (si tu en ajoutes un),
-    // tu le mets ici aussi.
-
-    return under.isEmpty ? null : under.first;
+    return totals;
   }
-}
 
+  SuggestedActivity? suggestedCatchUpTimeByRemainingToday({
+    Domain? domain, // null = tous domaines
+    bool excludeCourses = true,
+  }) {
+    final domainId = domain?.id;
+
+    final base = state.activities
+        .where((a) =>
+            !a.isHabit &&
+            a.goalMin > 0 &&
+            (domainId == null || a.domainId == domainId))
+        .toList();
+
+    bool excluded(Activity a) =>
+        excludeCourses && a.name.trim().toLowerCase() == 'courses';
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    final totalsToday = timeTotalsByActivity(today, now);
+
+    final candidates = <SuggestedActivity>[];
+
+    for (final a in base) {
+      if (excluded(a)) continue;
+
+      final doneMin = totalsToday[a.id]?.inMinutes ?? 0;
+      final remaining = a.goalMin - doneMin;
+
+      if (remaining <= 0) continue;
+
+      candidates.add(SuggestedActivity(
+        activity: a,
+        remainingMin: remaining,
+        doneMin: doneMin,
+      ));
+    }
+
+    if (candidates.isEmpty) {
+      debugPrint("[CHALLENGE] none");
+      return null;
+    }
+
+    candidates.sort((x, y) {
+      final c1 = x.remainingMin.compareTo(y.remainingMin);
+      if (c1 != 0) return c1;
+      return y.doneMin.compareTo(x.doneMin);
+    });
+
+    final best = candidates.first;
+
+    // ✅ DEBUG lisible
+    debugPrint(
+      "[CHALLENGE] best=${best.activity.name} "
+      "doneToday=${best.doneMin}min goal=${best.activity.goalMin}min "
+      "remaining=${best.remainingMin}min",
+    );
+
+    return best;
+  }
+
+  Activity? suggestedCatchUpActivity({
+    Domain? domain, // null = tous les domaines
+    required bool isHabitsTab,
+    bool excludeCourses = true,
+    double snap = 0.95,
+  }) {
+    final String? domainId = domain?.id;
+
+    // --- base (exactement comme ton écran) ---
+    final base = isHabitsTab
+        ? state.activities
+            .where((a) =>
+                a.isHabit && (domainId == null || a.domainId == domainId))
+            .toList()
+        : state.activities
+            .where((a) =>
+                !a.isHabit && (domainId == null || a.domainId == domainId))
+            .toList();
+
+    if (base.isEmpty) return null;
+
+    // Exclusion "Courses" (simple MVP)
+    bool isExcluded(Activity a) {
+      if (!excludeCourses) return false;
+      return a.name.trim().toLowerCase() == 'courses';
+    }
+
+    if (isHabitsTab) {
+      // ---- HABITS : même logique que ton écran ----
+      final notReached = <Activity>[];
+
+      for (final a in base) {
+        if (isExcluded(a)) continue;
+        if (!habitReached(a)) notReached.add(a);
+      }
+
+      // tri “proche de 100% en haut”
+      int cmpByExit(Activity x, Activity y) {
+        double ratio(Activity a) {
+          final tgt = activeHabitTarget(a);
+          if (tgt <= 0) return 0.0;
+          final done = activeHabitDone(a);
+          return (done / tgt).clamp(0.0, 1.0);
+        }
+
+        return (1 - ratio(x)).compareTo(1 - ratio(y));
+      }
+
+      notReached.sort(cmpByExit);
+      return notReached.isEmpty ? null : notReached.first;
+    } else {
+      // ---- TIME : même logique que ton écran ----
+      final cache = <String, bool>{};
+
+      bool reached(Activity a) => cache.putIfAbsent(
+            a.id,
+            () => isTimeReachedByAvg7(
+              this,
+              a,
+              sessions: state.sessions,
+              snap: snap,
+            ),
+          );
+
+      final under = base.where((a) => !isExcluded(a) && !reached(a)).toList();
+
+      // ⚠️ Ici ton écran ne trie pas explicitement under,
+      // donc pour être "identique", on garde l'ordre de base.
+      // Si tu veux le même tri que l'écran "À rattraper" (si tu en ajoutes un),
+      // tu le mets ici aussi.
+
+      return under.isEmpty ? null : under.first;
+    }
+  }
 
   Future<void> addPlanActivity({
     required String ymd,
