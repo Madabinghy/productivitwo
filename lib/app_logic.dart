@@ -115,6 +115,17 @@ class AppLogic {
     }
   }
 
+  bool shouldSurfacePlanItem(DayPlanItem it, DateTime now) {
+    // Action volante sans activité → toujours visible
+    final actId = it.refId;
+    if (actId == null || actId.isEmpty) return true;
+
+    // Si l’activité est snoozée → on ne remonte pas
+    if (isActivitySnoozed(actId, now)) return false;
+
+    return true;
+  }
+
   bool isActivitySnoozed(String activityId, DateTime now) {
     final iso = state.snoozedUntil[activityId];
     if (iso == null || iso.isEmpty) return false;

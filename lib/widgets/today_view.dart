@@ -7,8 +7,6 @@ import 'package:productivitwo_v1/main.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:collection/collection.dart';
 import 'package:productivitwo_v1/widgets/assign_activity_sheet.dart';
-import 'package:productivitwo_v1/widgets/habit_tile_30d.dart'
-    show NowHabit30dBar;
 import 'package:productivitwo_v1/widgets/now_habit_tile_full.dart';
 import 'package:productivitwo_v1/widgets/tiny_bar.dart';
 
@@ -465,112 +463,11 @@ class _TodayViewState extends State<TodayView> {
     );
   }
 
-  Future<void> _startOrPickActivityForAction_OLD(DayPlanItem it) async {
-    // 1) Récupérer / choisir l’activité
-    Activity? act = _activityById(it.activityId);
-
-    if (act == null) {
-      act = await _pickActivity(isHabit: false);
-      if (act == null) return;
-
-      // associer automatiquement
-      setState(() {
-        it.activityId = act!.id;
-        it.domainId = act.domainId;
-      });
-      widget.logic.onChange();
-    }
-
-    // 2) Vérifier activité en cours
-    final running = widget.logic.runningActivity();
-
-    // ✅ Aucun running (ou déjà la même) => start direct
-    if (running == null || running.id == act.id) {
-      widget.logic.start(act.id);
-      return;
-    }
-
-    // 3) Conflit => SnackBar de confirmation (AUCUN start/stop ici)
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    if (messenger == null) {
-      // Si jamais tu n’as plus de Scaffold au-dessus, fallback : on ne fait rien
-      debugPrint("No ScaffoldMessenger found (no Scaffold above?)");
-      return;
-    }
-
-    messenger.clearSnackBars();
-    messenger.showSnackBar(
-      SnackBar(
-        duration: const Duration(seconds: 6),
-        content: Text(
-          "« ${running.name}» en cours . "
-          "Changer pour « ${act.name} » ?",
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
-        action: SnackBarAction(
-          label: "Changer",
-          onPressed: () {
-            widget.logic.stopActive();
-            widget.logic.start(act!.id);
-          },
-        ),
-      ),
-    );
-  }
-
-  Activity? _actById(String? id) {
-    if (id == null) return null;
-    for (final a in widget.state.activities) {
-      if (a.id == id) return a;
-    }
-    return null;
-  }
-
-  String? _domainName(String? id) {
-    if (id == null || id.isEmpty) return null;
-    for (final d in widget.state.domains) {
-      if (d.id == id) return d.name;
-    }
-    return null;
-  }
-
   @override
   void initState() {
     super.initState();
 
     _base = DateTime.now();
-
-    Future<Activity?> _pickActivity(BuildContext context,
-        {String? domainId}) async {
-      final acts = widget.logic.state.activities
-          .where(
-              (a) => !a.isHabit && (domainId == null || a.domainId == domainId))
-          .toList();
-
-      if (acts.isEmpty) return null;
-
-      return showModalBottomSheet<Activity>(
-        context: context,
-        showDragHandle: true,
-        builder: (ctx) => SafeArea(
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              const ListTile(
-                title: Text("Associer à une activité",
-                    style: TextStyle(fontWeight: FontWeight.w800)),
-              ),
-              for (final a in acts)
-                ListTile(
-                  title: Text(a.name),
-                  onTap: () => Navigator.pop(ctx, a),
-                ),
-            ],
-          ),
-        ),
-      );
-    }
 
     // 1) housekeeping après build
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -595,16 +492,6 @@ class _TodayViewState extends State<TodayView> {
     _runWatch?.cancel();
     super.dispose();
   }
-  // --- Pulse de validation (coche verte animée) ---
-/*   final Set<String> _habitPulse = {};
-
-  void _firePulse(String planItemId) {
-    setState(() => _habitPulse.add(planItemId));
-    Future.delayed(const Duration(milliseconds: 650), () {
-      if (!mounted) return;
-      setState(() => _habitPulse.remove(planItemId));
-    });
-  } */
 
   Widget _domainHeader(String title) {
     return Padding(
@@ -616,63 +503,6 @@ class _TodayViewState extends State<TodayView> {
           color: Theme.of(context).colorScheme.onSurface.withOpacity(.75),
         ),
       ),
-    );
-  }
-
-  Widget _nowChecklistActions() {
-    final habitId = widget.logic.nowHabitId;
-    if (habitId == null) return const SizedBox.shrink();
-
-    final now = DateTime.now();
-    final ymd = yyyymmdd(DateTime(now.year, now.month, now.day));
-    widget.logic.ensureChecklistDay(ymd);
-
-    final items = widget.logic.checklistForHabit(habitId);
-    final checked = widget.logic.checkedTodayForHabit(habitId);
-    final remaining = items.where((x) => !checked.contains(x)).toList();
-
-    if (remaining.isEmpty) return const SizedBox.shrink();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Titre comme "Actions"
-        Row(
-          children: [
-            const Expanded(
-              child: Text(
-                "Pour maintenant",
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-              ),
-            ),
-            TextButton.icon(
-              onPressed: () {
-                widget.onGoNow?.call(habitId);
-              },
-              icon: const Icon(Icons.push_pin_outlined, size: 18),
-              label: const Text("Aller à Maintenant"),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-
-        // Liste "simple" (pas de Card)
-        ...remaining.map((label) {
-          return CheckboxListTile(
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            title: Text(label),
-            value: false,
-            onChanged: (v) {
-              setState(() {
-                widget.logic.setCheckedToday(habitId, label, v == true);
-              });
-            },
-          );
-        }),
-
-        const SizedBox(height: 12),
-      ],
     );
   }
 
@@ -708,96 +538,6 @@ class _TodayViewState extends State<TodayView> {
         break;
     }
     return target > 0 && done >= target;
-  }
-
-  Widget _focusSection(AppLogic logic) {
-    final acts = logic.focusToday;
-    if (acts.isEmpty) return const SizedBox.shrink();
-
-    Widget ringFor(Activity a) {
-      if (a.isHabit) {
-        final done = logic.activeHabitDone(a);
-        final tgt = logic.activeHabitTarget(a);
-        final prog = (tgt > 0) ? (done / tgt).clamp(0.0, 1.0) : 0.0;
-        return MiniRing(
-          progress: prog,
-          center: Text("$done/$tgt",
-              style:
-                  const TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
-        );
-      } else {
-        final now = DateTime.now();
-        final doneMin = logic
-            .totalForRangeByActivity(
-                a.id, now.subtract(const Duration(hours: 24)), now)
-            .inMinutes;
-        final tgt = a.goalMin;
-        final prog = (tgt > 0) ? (doneMin / tgt).clamp(0.0, 1.0) : 0.0;
-        return MiniRing(
-          progress: prog,
-          center: Text("${doneMin}m",
-              style:
-                  const TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
-        );
-      }
-    }
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text("🎯 Focus du jour",
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          const SizedBox(height: 8),
-          ...acts.map((a) => Card(
-                child: ListTile(
-                  leading: ringFor(a),
-                  title: Text(a.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w600)),
-                  trailing: IconButton(
-                    tooltip: "Retirer du focus",
-                    onPressed: () => setState(() => logic.toggleFocus(a.id)),
-                    icon: const Icon(Icons.close),
-                  ),
-                  // Optionnel : tap → lancer / inc / explications…
-                  onTap: () {
-                    if (!a.isHabit) {
-                      logic.start(a.id);
-                    } else {
-                      // par ex. incrémenter 1 pour une routine
-                      final today = DateTime.now();
-                      logic.incHabit(a.id, 1, today);
-                      setState(() {});
-                    }
-                  },
-                ),
-              )),
-          // Ligne d’actions rapide
-          Row(
-            children: [
-              TextButton.icon(
-                onPressed: () =>
-                    setState(() => logic.suggestAutoFocusForToday()),
-                icon: const Icon(Icons.auto_awesome),
-                label: const Text("Proposer"),
-              ),
-              const SizedBox(width: 8),
-              TextButton.icon(
-                onPressed: () => setState(() {
-                  logic.state.focusTodayIds.clear();
-                  logic.onChange();
-                }),
-                icon: const Icon(Icons.clear_all),
-                label: const Text("Vider"),
-              ),
-            ],
-          )
-        ],
-      ),
-    );
   }
 
   bool _showInbox = false; // plié par défaut
@@ -898,9 +638,6 @@ class _TodayViewState extends State<TodayView> {
     final hasRunning = isTodayTab && running != null;
 
     final isPlanning = hasRunning && (running!.role == ActivityRole.planning);
-
-    debugPrint(
-        "RUNNING=${running?.name} role=${running?.role} isPlanning=$isPlanning hasRunning=$hasRunning dom=${running?.domainId}");
 
     final forceAutoHabits = isTodayTab && isPlanning;
 
@@ -1189,36 +926,22 @@ class _TodayViewState extends State<TodayView> {
       ...byDomainOnly.map((e) => e.id),
     };
 
-    final actions =
-        openPoolFiltered.where((a) => !usedIds.contains(a.id)).toList();
 
-// 6) Groupement par domaine UNIQUEMENT sur actions
+final actions = openPoolFiltered
+    .where((it) => !usedIds.contains(it.id))
+    .where((it) {
+      final actId = (it.activityId ?? '').trim(); // ✅ ICI
+      if (actId.isEmpty) return true;             // action volante
+
+      return !widget.logic.isActivitySnoozed(actId, now);
+    })
+    .toList();
+
+    // 6) Groupement par domaine UNIQUEMENT sur actions
     final actionsByDomain = <String?, List<DayPlanItem>>{};
     for (final a in actions) {
       (actionsByDomain[a.domainId] ??= []).add(a);
     }
-
-    assert(() {
-      final seen = <String>{};
-      bool ok = true;
-
-      void addAll(String label, Iterable<DayPlanItem> xs) {
-        for (final x in xs) {
-          if (!seen.add(x.id)) {
-            debugPrint("DUPLICATE RENDER ($label): ${x.id} ${x.title}");
-            ok = false;
-          }
-        }
-      }
-
-      addAll("shoppingActions", shoppingActions);
-      addAll("byActivity", byActivity);
-      addAll("byDomainOnly", byDomainOnly);
-      addAll("actions", actions);
-      addAll("doneActions", doneActions);
-
-      return ok;
-    }());
 
     return Scaffold(
       body: ListView(
@@ -1486,15 +1209,6 @@ class _TodayViewState extends State<TodayView> {
       label: const Text('Inbox'),
     );
   }
-
-  DateTime _dayStart({bool tomorrow = false}) {
-    final now = DateTime.now();
-    final d0 = DateTime(now.year, now.month, now.day);
-    return tomorrow ? d0.add(const Duration(days: 1)) : d0;
-  }
-
-  DateTime _dayEnd({bool tomorrow = false}) =>
-      _dayStart(tomorrow: tomorrow).add(const Duration(days: 1));
 
   Widget _todayTile(
     BuildContext context,
@@ -2151,45 +1865,6 @@ class _TodayViewState extends State<TodayView> {
     }
   }
 
-  void _openAddSheet() {
-    showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) {
-        return SafeArea(
-          minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // 1) Ajouter une action volante
-              ListTile(
-                leading: const Icon(Icons.add_task),
-                title: const Text('Ajouter une action'),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  final title = await _askText(context, "Nouvelle action");
-                  final t = (title ?? '').trim();
-                  if (t.isEmpty) return;
-
-                  await widget.logic.addPlanAction(
-                    ymd: _ymd,
-                    title: t,
-                    domainId: null, // ✅ INBOX
-                    activityId: null, // ✅ INBOX
-                    habitId: null,
-                  );
-
-                  if (!mounted) return;
-                  setState(() {});
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   Future<String?> _askText(BuildContext ctx, String title) async {
     final ctrl = TextEditingController();
     return await showDialog<String>(
@@ -2260,29 +1935,6 @@ class _TodayViewState extends State<TodayView> {
                   onTap: () => Navigator.pop(ctx, a),
                 ))
             .toList(),
-      ),
-    );
-  }
-
-  void _showItemMenu(DayPlanItem it) {
-    showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            leading: const Icon(Icons.delete_outline),
-            title: const Text('Supprimer de la liste'),
-            onTap: () {
-              Navigator.pop(ctx);
-              setState(() {
-                widget.state.dayPlan.removeWhere((e) => e.id == it.id);
-                widget.logic.onChange(); // persistance via callback
-              });
-            },
-          ),
-        ],
       ),
     );
   }
