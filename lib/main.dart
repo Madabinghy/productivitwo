@@ -1805,6 +1805,137 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
     final filtersOn = logic.state.filters.enabled;
 
+    Future<void> _pickSnoozeDate(BuildContext context, Activity a) async {
+      final now = DateTime.now();
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: now.add(const Duration(days: 1)),
+        firstDate: now,
+        lastDate: now.add(const Duration(days: 365)),
+      );
+
+      if (picked == null) return;
+
+      // fin de journée locale
+      final until = DateTime(picked.year, picked.month, picked.day, 23, 59, 59);
+
+      logic.snoozeActivityUntil(a.id, until);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text("Masqué jusqu’au ${picked.day}/${picked.month}")),
+      );
+
+      setState(() {}); // refresh l’appbar
+    }
+
+    DateTime _endOfDay(DateTime d) =>
+        DateTime(d.year, d.month, d.day, 23, 59, 59);
+
+    String _fmtDate(DateTime d) =>
+        "${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}";
+
+    Future<void> showSnoozeSheetForActivity(
+      BuildContext context, {
+      required AppLogic logic,
+      required Activity activity,
+      VoidCallback? onAfter, // pour refresh/setState
+    }) async {
+      final now = DateTime.now();
+
+      Future<void> applyUntil(DateTime until) async {
+        logic.snoozeActivityUntil(activity.id, until);
+        onAfter?.call();
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Masqué jusqu’au ${_fmtDate(until)}")),
+        );
+      }
+
+      Future<void> pickDate() async {
+        final picked = await showDatePicker(
+          context: context,
+          initialDate: now.add(const Duration(days: 1)),
+          firstDate: now,
+          lastDate: now.add(const Duration(days: 365)),
+        );
+        if (picked == null) return;
+        await applyUntil(_endOfDay(picked));
+      }
+
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (ctx) {
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  title: Text("Masquer “${activity.name}”"),
+                  subtitle:
+                      const Text("Ne sera plus proposé avant la date choisie."),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.calendar_today_outlined),
+                  title: const Text("Demain"),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    await applyUntil(
+                        _endOfDay(now.add(const Duration(days: 1))));
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.calendar_view_week_outlined),
+                  title: const Text("Dans 3 jours"),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    await applyUntil(
+                        _endOfDay(now.add(const Duration(days: 3))));
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.event_repeat_outlined),
+                  title: const Text("Dans 7 jours"),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    await applyUntil(
+                        _endOfDay(now.add(const Duration(days: 7))));
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.edit_calendar_outlined),
+                  title: const Text("Choisir une date…"),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    await pickDate();
+                  },
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.restore),
+                  title: const Text("Annuler le masquage"),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    logic.clearSnooze(activity.id);
+                    onAfter?.call();
+                    ScaffoldMessenger.of(context).clearSnackBars();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Masquage annulé")),
+                    );
+                  },
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          );
+        },
+      );
+    }
+
     Widget trailingChip() {
       final runningAct = logic.runningActivity();
 
@@ -1834,6 +1965,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                   content: Text("Challenge arrêté — activité continue")),
             );
           },
+          onPickSnooze: () {}, // pas utilisé ici
         );
       }
 
@@ -1868,6 +2000,12 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
           logic.start(sug.activity.id);
         },
         onStop: () {}, // pas utilisé ici
+        onPickSnooze: () => showSnoozeSheetForActivity(
+          context,
+          logic: logic,
+          activity: sug.activity,
+          onAfter: () => setState(() {}),
+        ),
       );
     }
 
@@ -5314,6 +5452,7 @@ class ChallengeActivityChip extends StatelessWidget {
   final Duration duration; // affichage quand pas en cours
   final VoidCallback onStart;
   final VoidCallback onStop;
+  final VoidCallback? onPickSnooze;
 
   const ChallengeActivityChip({
     super.key,
@@ -5322,6 +5461,7 @@ class ChallengeActivityChip extends StatelessWidget {
     required this.duration,
     required this.onStart,
     required this.onStop,
+    required this.onPickSnooze,
   });
 
   String _mmss(Duration d) {
@@ -5350,6 +5490,7 @@ class ChallengeActivityChip extends StatelessWidget {
           child: InkWell(
             borderRadius: BorderRadius.circular(999),
             onTap: running ? onStop : onStart,
+            onLongPress: onPickSnooze,
             child: _chipUi(context, label, title, running),
           ),
         );

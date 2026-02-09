@@ -115,6 +115,24 @@ class AppLogic {
     }
   }
 
+  bool isActivitySnoozed(String activityId, DateTime now) {
+    final iso = state.snoozedUntil[activityId];
+    if (iso == null || iso.isEmpty) return false;
+    final until = DateTime.tryParse(iso);
+    if (until == null) return false;
+    return until.isAfter(now);
+  }
+
+  void snoozeActivityUntil(String activityId, DateTime until) {
+    state.snoozedUntil[activityId] = until.toIso8601String();
+    onChange();
+  }
+
+  void clearSnooze(String activityId) {
+    state.snoozedUntil.remove(activityId);
+    onChange();
+  }
+
   String? _lastRolloverDay;
   final List<HabitAssocEvent> habitAssocEvents = [];
 
@@ -2895,6 +2913,8 @@ extension TodayLogic on AppLogic {
 
     for (final a in base) {
       if (excluded(a)) continue;
+      // ✅ EXCLUSION SNOOZE
+      if (isActivitySnoozed(a.id, now)) continue;
 
       final doneMin = totalsToday[a.id]?.inMinutes ?? 0;
       final remaining = a.goalMin - doneMin;
