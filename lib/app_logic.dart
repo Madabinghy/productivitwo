@@ -324,6 +324,9 @@ class AppLogic {
 
   // ---------- TEMPS (type=time) ----------
   void start(String activityId) {
+    // ✅ si l’utilisateur démarre l’activité, on casse le snooze
+    clearSnooze(activityId);
+
     // 1) stop sessions en cours
     for (final s in state.sessions.where((s) => s.endAt == null)) {
       s.endAt = DateTime.now();
