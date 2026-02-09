@@ -2047,9 +2047,10 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                 return MiniHourBars24h(bins: bins24);
               },
             ),
-            const SizedBox(width: 10),
-            trailingChip(),
+            
             const Spacer(),
+            trailingChip(),
+            const SizedBox(width: 4),
                       GestureDetector(
             onTap: () => _openFiltersSheet(context),
             onLongPress: () {
