@@ -3329,70 +3329,70 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
           });
         }
 
-return SafeArea(
-  child: SingleChildScrollView(
-    padding: const EdgeInsets.only(bottom: 16),
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        ListTile(
-          title: Text(
-            a.name,
-            style: const TextStyle(fontWeight: FontWeight.w800),
+        return SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  title: Text(
+                    a.name,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  subtitle: Text(snoozed ? "Cachée (zzz)" : "Visible"),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.edit),
+                  title: const Text("Renommer"),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    final s = await _askText(context, "Renommer l’activité");
+                    if (s == null || s.trim().isEmpty) return;
+                    setState(() {
+                      a.name = s.trim();
+                      logic.onChange();
+                    });
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.snooze),
+                  title: const Text("Demain"),
+                  onTap: () =>
+                      hideUntil(_endOfDay(now.add(const Duration(days: 1)))),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.snooze),
+                  title: const Text("Dans 3 jours"),
+                  onTap: () =>
+                      hideUntil(_endOfDay(now.add(const Duration(days: 3)))),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.snooze),
+                  title: const Text("Dans 7 jours"),
+                  onTap: () =>
+                      hideUntil(_endOfDay(now.add(const Duration(days: 7)))),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.snooze),
+                  title: const Text("Choisir une date…"),
+                  onTap: pickDate,
+                ),
+                if (snoozed)
+                  ListTile(
+                    leading: const Icon(Icons.visibility),
+                    title: const Text("Afficher"),
+                    onTap: () {
+                      logic.unsnoozeActivity(a.id);
+                      Navigator.pop(ctx);
+                      setState(() {});
+                    },
+                  ),
+              ],
+            ),
           ),
-          subtitle: Text(snoozed ? "Cachée (zzz)" : "Visible"),
-        ),
-        const Divider(height: 1),
-
-        ListTile(
-          leading: const Icon(Icons.edit),
-          title: const Text("Renommer"),
-          onTap: () async {
-            Navigator.pop(ctx);
-            final s = await _askText(context, "Renommer l’activité");
-            if (s == null || s.trim().isEmpty) return;
-            setState(() {
-              a.name = s.trim();
-              logic.onChange();
-            });
-          },
-        ),
-
-        ListTile(
-          leading: const Icon(Icons.snooze),
-          title: const Text("Demain"),
-          onTap: () => hideUntil(_endOfDay(now.add(const Duration(days: 1)))),
-        ),
-        ListTile(
-          leading: const Icon(Icons.snooze),
-          title: const Text("Dans 3 jours"),
-          onTap: () => hideUntil(_endOfDay(now.add(const Duration(days: 3)))),
-        ),
-        ListTile(
-          leading: const Icon(Icons.snooze),
-          title: const Text("Dans 7 jours"),
-          onTap: () => hideUntil(_endOfDay(now.add(const Duration(days: 7)))),
-        ),
-        ListTile(
-          leading: const Icon(Icons.snooze),
-          title: const Text("Choisir une date…"),
-          onTap: pickDate,
-        ),
-
-        if (snoozed)
-          ListTile(
-            leading: const Icon(Icons.visibility),
-            title: const Text("Afficher"),
-            onTap: () {
-              logic.unsnoozeActivity(a.id);
-              Navigator.pop(ctx);
-              setState(() {});
-            },
-          ),
-      ],
-    ),
-  ),
-);
+        );
       },
     );
   }
@@ -4370,6 +4370,12 @@ return SafeArea(
               ...under.where((a) => logic.isActivitySnoozed(a.id, now)),
               ...over.where((a) => logic.isActivitySnoozed(a.id, now)),
             ];
+          }
+
+          if (isHabitsTab) {
+            visibleUnder = under;
+            visibleOver = over;
+            hiddenActivities = const []; // pas de snooze pour les habitudes
           }
 
           // ---------- Lock d'ordre visuel pendant +/− ----------
