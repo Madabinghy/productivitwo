@@ -126,13 +126,42 @@ class AppLogic {
     return true;
   }
 
-  bool isActivitySnoozed(String activityId, DateTime now) {
-    final iso = state.snoozedUntil[activityId];
-    if (iso == null || iso.isEmpty) return false;
-    final until = DateTime.tryParse(iso);
-    if (until == null) return false;
-    return until.isAfter(now);
+bool isActivitySnoozed(String? activityId, DateTime now) {
+  final id = (activityId ?? '').trim();
+  if (id.isEmpty) return false; // ✅ IMPORTANT
+
+  final s = state.snoozedUntil[id];
+  if (s == null || s.isEmpty) return false;
+
+  final u = DateTime.tryParse(s);
+  return u != null && u.isAfter(now);
+}
+
+void unsnoozeActivity(String? activityId) {
+  final id = (activityId ?? '').trim();
+  if (id.isEmpty) return;
+  state.snoozedUntil.remove(id);
+  onChange();
+}
+
+void snoozeActivityFar(String? activityId) {
+  final id = (activityId ?? '').trim();
+  if (id.isEmpty) return;
+  state.snoozedUntil[id] = DateTime(2099, 12, 31).toIso8601String();
+  onChange();
+}
+
+void toggleActivitySnooze(String? activityId) {
+  final id = (activityId ?? '').trim();
+  if (id.isEmpty) return; // ✅ IMPORTANT
+
+  final now = DateTime.now();
+  if (isActivitySnoozed(id, now)) {
+    unsnoozeActivity(id);
+  } else {
+    snoozeActivityFar(id);
   }
+}
 
   void snoozeActivityUntil(String activityId, DateTime until) {
     state.snoozedUntil[activityId] = until.toIso8601String();
@@ -321,6 +350,25 @@ class AppLogic {
   }
 
   bool isFocused(String activityId) => state.focusTodayIds.contains(activityId);
+
+  DateTime? snoozedUntilOf(String activityId) {
+  final s = state.snoozedUntil[activityId];
+  if (s == null) return null;
+  return DateTime.tryParse(s);
+}
+
+
+
+// “Cacher” sans toucher au modèle (date lointaine)
+void hideActivity(String activityId) {
+  snoozeActivityUntil(activityId, DateTime(2099, 12, 31));
+}
+
+bool isActivityHidden(String activityId) {
+  final u = snoozedUntilOf(activityId);
+  return u != null && u.year >= 2099;
+}
+
 
   // ---------- TEMPS (type=time) ----------
   void start(String activityId) {

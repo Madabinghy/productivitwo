@@ -2047,31 +2047,30 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                 return MiniHourBars24h(bins: bins24);
               },
             ),
-            
             const Spacer(),
             trailingChip(),
             const SizedBox(width: 4),
-                      GestureDetector(
-            onTap: () => _openFiltersSheet(context),
-            onLongPress: () {
-              HapticFeedback.heavyImpact();
+            GestureDetector(
+              onTap: () => _openFiltersSheet(context),
+              onLongPress: () {
+                HapticFeedback.heavyImpact();
 
-              setState(() {
-                logic.state.filters.enabled = !logic.state.filters.enabled;
-              });
+                setState(() {
+                  logic.state.filters.enabled = !logic.state.filters.enabled;
+                });
 
-              logic.onChange();
-            },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Icon(
-                Icons.tune,
-                color: filtersOn
-                    ? Theme.of(context).colorScheme.primary
-                    : Theme.of(context).iconTheme.color,
+                logic.onChange();
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Icon(
+                  Icons.tune,
+                  color: filtersOn
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).iconTheme.color,
+                ),
               ),
             ),
-          ),
           ],
         ),
       ),
@@ -3249,6 +3248,162 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     return under.isEmpty ? null : under.first;
   }
 
+  Future<void> _renameActivity(Activity a) async {
+    final s = await _askText(context, "Renommer l’activité");
+    if (s == null) return;
+    final name = s.trim();
+    if (name.isEmpty) return;
+
+    setState(() {
+      a.name = name;
+      logic.onChange();
+    });
+  }
+
+  void _openActivityBottomSheet(Activity a) {
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (_) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.edit),
+                title: const Text("Renommer"),
+                onTap: () {
+                  Navigator.pop(context);
+                  _renameActivity(a);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.snooze),
+                title: Text(
+                  logic.isActivitySnoozed(a.id, DateTime.now())
+                      ? "Réafficher l’activité"
+                      : "Cacher l’activité",
+                ),
+                onTap: () {
+                  logic.toggleActivitySnooze(a.id);
+                  Navigator.pop(context);
+                  setState(() {});
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  DateTime _endOfDay(DateTime d) =>
+      DateTime(d.year, d.month, d.day, 23, 59, 59);
+
+  void _openActivitySheet(Activity a) {
+    final now = DateTime.now();
+
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        final snoozed = logic.isActivitySnoozed(a.id, now);
+
+        Future<void> hideUntil(DateTime until) async {
+          logic.snoozeActivityUntil(a.id, until);
+          Navigator.pop(ctx);
+          setState(() {});
+        }
+
+        Future<void> pickDate() async {
+          Navigator.pop(ctx);
+          final picked = await showDatePicker(
+            context: context,
+            initialDate: now.add(const Duration(days: 1)),
+            firstDate: now,
+            lastDate: now.add(const Duration(days: 365)),
+          );
+          if (picked == null) return;
+          setState(() {
+            logic.snoozeActivityUntil(a.id, _endOfDay(picked));
+          });
+        }
+
+return SafeArea(
+  child: SingleChildScrollView(
+    padding: const EdgeInsets.only(bottom: 16),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ListTile(
+          title: Text(
+            a.name,
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+          subtitle: Text(snoozed ? "Cachée (zzz)" : "Visible"),
+        ),
+        const Divider(height: 1),
+
+        ListTile(
+          leading: const Icon(Icons.edit),
+          title: const Text("Renommer"),
+          onTap: () async {
+            Navigator.pop(ctx);
+            final s = await _askText(context, "Renommer l’activité");
+            if (s == null || s.trim().isEmpty) return;
+            setState(() {
+              a.name = s.trim();
+              logic.onChange();
+            });
+          },
+        ),
+
+        ListTile(
+          leading: const Icon(Icons.snooze),
+          title: const Text("Demain"),
+          onTap: () => hideUntil(_endOfDay(now.add(const Duration(days: 1)))),
+        ),
+        ListTile(
+          leading: const Icon(Icons.snooze),
+          title: const Text("Dans 3 jours"),
+          onTap: () => hideUntil(_endOfDay(now.add(const Duration(days: 3)))),
+        ),
+        ListTile(
+          leading: const Icon(Icons.snooze),
+          title: const Text("Dans 7 jours"),
+          onTap: () => hideUntil(_endOfDay(now.add(const Duration(days: 7)))),
+        ),
+        ListTile(
+          leading: const Icon(Icons.snooze),
+          title: const Text("Choisir une date…"),
+          onTap: pickDate,
+        ),
+
+        if (snoozed)
+          ListTile(
+            leading: const Icon(Icons.visibility),
+            title: const Text("Afficher"),
+            onTap: () {
+              logic.unsnoozeActivity(a.id);
+              Navigator.pop(ctx);
+              setState(() {});
+            },
+          ),
+      ],
+    ),
+  ),
+);
+      },
+    );
+  }
+
+  Widget _wrapTile(Activity a, int i, int len, Widget child) {
+    return InkWell(
+      onTap: () => _openActivitySheet(a),
+      child: child,
+    );
+  }
+
   void _showDomainDetail(
     Domain? domain,
     DateTime start,
@@ -4108,6 +4263,9 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             return ra.compareTo(rb); // plus proche des 100% en haut
           }
 
+          DateTime _endOfDay(DateTime d) =>
+              DateTime(d.year, d.month, d.day, 23, 59, 59);
+
           // ---------- UI helpers ----------
           Widget _sectionTitle(String text) => Padding(
                 padding:
@@ -4123,17 +4281,12 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                 ),
               );
 
-          Widget _wrapTile(Activity a, int i, int len, Widget tile) =>
-              KeyedSubtree(
-                key: ValueKey(a.id),
-                child: Column(
-                  children: [
-                    if (i == 0) const SizedBox(height: 4),
-                    tile,
-                    if (i < len - 1) const Divider(height: 8),
-                  ],
-                ),
-              );
+          Widget _wrapTile(Activity a, int i, int len, Widget child) {
+            return InkWell(
+              onTap: () => _openActivitySheet(a),
+              child: child,
+            );
+          }
 
           // ---------- Source triée ----------
 // 1) Source BRUTE (pas de filtrage "cap" ici)
@@ -4152,6 +4305,10 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                   .toList();
 
 // 2) Listes cibles
+
+          List<Activity> visibleUnder = [];
+          List<Activity> visibleOver = [];
+          List<Activity> hiddenActivities = [];
           List<Activity> under = [];
           List<Activity> over = [];
 
@@ -4201,6 +4358,18 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
             under = base.where((a) => !reached(a)).toList();
             over = base.where((a) => reached(a)).toList();
+
+            final now = DateTime.now();
+            visibleUnder = under
+                .where((a) => !logic.isActivitySnoozed(a.id, now))
+                .toList();
+            visibleOver =
+                over.where((a) => !logic.isActivitySnoozed(a.id, now)).toList();
+
+            hiddenActivities = [
+              ...under.where((a) => logic.isActivitySnoozed(a.id, now)),
+              ...over.where((a) => logic.isActivitySnoozed(a.id, now)),
+            ];
           }
 
           // ---------- Lock d'ordre visuel pendant +/− ----------
@@ -4504,25 +4673,126 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             );
           }
 
+          final now = DateTime.now();
+
+// base = ta liste actuelle (habit ou time) pour le domaine courant
+// (tu l’as déjà)
+
+          final hidden =
+              base.where((a) => logic.isActivityHidden(a.id)).toList();
+          final baseVisible =
+              base.where((a) => !logic.isActivityHidden(a.id)).toList();
+
+// ⚠️ IMPORTANT : recalcule under/over à partir de baseVisible, pas base
+          under = [];
+          over = [];
+
+          if (isHabitsTab) {
+            final notReached = <Activity>[];
+            final reached = <Activity>[];
+
+            for (final a in baseVisible) {
+              (logic.habitReached(a) ? reached : notReached).add(a);
+            }
+
+            // tri “proche de 100% en haut”
+            int cmpByExit(Activity x, Activity y) {
+              double ratio(Activity a) {
+                final tgt = logic.activeHabitTarget(a);
+                if (tgt <= 0) return 0.0;
+                final done = logic.activeHabitDone(a);
+                return (done / tgt).clamp(0.0, 1.0);
+              }
+
+              return (1 - ratio(x)).compareTo(1 - ratio(y));
+            }
+
+            notReached.sort(cmpByExit);
+            reached.sort(cmpByExit);
+
+            under = notReached;
+            over = reached;
+
+            final bool isGlobal = (domain == null);
+            if (isGlobal) over = [];
+          } else {
+            const snap = 0.95;
+            final cache = <String, bool>{};
+
+            bool reached(Activity a) => cache.putIfAbsent(
+                  a.id,
+                  () => isTimeReachedByAvg7(
+                    logic,
+                    a,
+                    sessions: _state!.sessions,
+                    snap: snap,
+                  ),
+                );
+
+            under = baseVisible.where((a) => !reached(a)).toList();
+            over = baseVisible.where((a) => reached(a)).toList();
+          }
+
           // ---------- Rendu des sections ----------
           final list = ListView(
             controller: scrollCtrl,
             padding: const EdgeInsets.only(bottom: 16),
             children: [
-              if (under.isNotEmpty) _sectionTitle("À rattraper"),
-              ...List.generate(under.length, (i) {
-                final a = under[i];
+              if (visibleUnder.isNotEmpty) _sectionTitle("À rattraper"),
+              ...List.generate(visibleUnder.length, (i) {
+                final a = visibleUnder[i];
                 final tile = a.isHabit ? _buildHabitTile(a) : _buildTimeTile(a);
-                return _wrapTile(a, i, under.length, tile);
+                return _wrapTile(a, i, visibleUnder.length, tile);
               }),
-              if (over.isNotEmpty && under.isNotEmpty)
+              if (visibleOver.isNotEmpty && visibleUnder.isNotEmpty)
                 const SizedBox(height: 8),
-              if (over.isNotEmpty) _sectionTitle("Déjà atteint"),
-              ...List.generate(over.length, (i) {
-                final a = over[i];
+              if (visibleOver.isNotEmpty) _sectionTitle("Déjà atteint"),
+              ...List.generate(visibleOver.length, (i) {
+                final a = visibleOver[i];
                 final tile = a.isHabit ? _buildHabitTile(a) : _buildTimeTile(a);
-                return _wrapTile(a, i, over.length, tile);
+                return _wrapTile(a, i, visibleOver.length, tile);
               }),
+              if (hiddenActivities.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                ExpansionTile(
+                  leading: const Icon(Icons.snooze, size: 20),
+                  title: Text(
+                    "Cachées (${hiddenActivities.length})",
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  children: hiddenActivities.map((a) {
+                    return ListTile(
+                      title: Text(
+                        a.name,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.75),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      subtitle: const Text("Activité masquée"),
+                      trailing: TextButton(
+                        child: const Text("Afficher"),
+                        onPressed: () {
+                          setState(() {
+                            logic.unsnoozeActivity(a.id);
+                          });
+
+                          // debug utile
+                          debugPrint(
+                              "[UNHIDE] ${a.name} id=${a.id} hidden=${logic.isActivityHidden(a.id)}");
+
+                          ScaffoldMessenger.of(context).clearSnackBars();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text("Activité réaffichée")),
+                          );
+                        },
+                      ),
+                      onTap: () => _openActivityBottomSheet(a),
+                    );
+                  }).toList(),
+                ),
+              ],
               if (under.isEmpty && over.isEmpty)
                 const Padding(
                   padding: EdgeInsets.all(24),

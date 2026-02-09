@@ -723,18 +723,23 @@ class _TodayViewState extends State<TodayView> {
         .where((x) => x.kind == PlanKind.action || x.kind != PlanKind.habit)
         .toList();
 
-    final snoozedActions = baseOrAuto
-        .where(
-            (a) => !a.done && a.archived != true && !widget.logic.isCourse(a))
-        .where(isSnoozed)
-        .toList()
-      ..sort((a, b) {
-        final au = a.snoozeUntil ?? DateTime.fromMillisecondsSinceEpoch(0);
-        final bu = b.snoozeUntil ?? DateTime.fromMillisecondsSinceEpoch(0);
-        final c = au.compareTo(bu);
-        if (c != 0) return c;
-        return a.title.compareTo(b.title);
-      });
+final snoozedActions = baseOrAuto
+    .where((a) => !a.done && a.archived != true && !widget.logic.isCourse(a))
+    // ✅ nouveau : cacher les actions dont l'activité est snoozée
+    .where((a) {
+      final actId = (a.activityId ?? '').trim();
+      if (actId.isEmpty) return true; // action volante => OK
+      return !widget.logic.isActivitySnoozed(actId, now);
+    })
+    .where(isSnoozed)
+    .toList()
+  ..sort((a, b) {
+    final au = a.snoozeUntil ?? DateTime.fromMillisecondsSinceEpoch(0);
+    final bu = b.snoozeUntil ?? DateTime.fromMillisecondsSinceEpoch(0);
+    final c = au.compareTo(bu);
+    if (c != 0) return c;
+    return a.title.compareTo(b.title);
+  });
 
     Widget _snoozedSection({
       required List<DayPlanItem> snoozed,
