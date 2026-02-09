@@ -1971,10 +1971,25 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
       // activité normale en cours
       if (runningAct != null) {
-        return RunningChipAppBar(
-          state: _state,
-          logic: logic,
-          onTap: () => setState(() => _tab = _Tab.now),
+        final theme = Theme.of(context);
+        final bg =
+            theme.appBarTheme.backgroundColor ?? theme.colorScheme.surface;
+        final accent = theme.colorScheme.primary;
+
+        return Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            color: bg,
+            border: Border.all(
+              color: accent.withValues(alpha: 0.35),
+              width: 1,
+            ),
+          ),
+          child: RunningChipAppBar(
+            state: _state,
+            logic: logic,
+            onTap: () => setState(() => _tab = _Tab.now),
+          ),
         );
       }
 
@@ -2012,16 +2027,17 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     // 2) App prête -> Scaffold complet
     return Scaffold(
       appBar: AppBar(
+        titleSpacing: 8,
         title: Row(
           children: [
-            const SizedBox(width: 4),
+            const SizedBox(width: 6),
             ValueListenableBuilder<int>(
               valueListenable: _tick,
               builder: (context, _, __) {
                 return AppBarProductivityBars(logic: logic, state: _state);
               },
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: 6),
             ValueListenableBuilder<int>(
               valueListenable: _tick,
               builder: (context, _, __) {
@@ -2031,15 +2047,13 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                 return MiniHourBars24h(bins: bins24);
               },
             ),
-            const Spacer(),
+            const SizedBox(width: 10),
             trailingChip(),
-          ],
-        ),
-        actions: [
-          GestureDetector(
+            const Spacer(),
+                      GestureDetector(
             onTap: () => _openFiltersSheet(context),
             onLongPress: () {
-              HapticFeedback.selectionClick();
+              HapticFeedback.heavyImpact();
 
               setState(() {
                 logic.state.filters.enabled = !logic.state.filters.enabled;
@@ -2057,7 +2071,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               ),
             ),
           ),
-        ],
+          ],
+        ),
       ),
 
 // --- Dans build(...) ---
