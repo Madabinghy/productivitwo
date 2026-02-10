@@ -2406,6 +2406,35 @@ class _NowTabState extends State<NowTab> {
             .name
         : "Maintenant";
 
+    final running = widget.logic.runningActivity();
+
+// Nom activité (fallback si introuvable)
+    final actName = hasActivity
+        ? (widget.logic.state.activities
+                .firstWhereOrNull((a) => a.id == actId)
+                ?.name ??
+            "Activité")
+        : "";
+
+// Est-ce que l’activité associée est celle qui tourne ?
+    final isRunningThis = hasActivity && running != null && running.id == actId;
+
+// Bouton principal
+    final btnIcon = !hasActivity
+        ? Icons.link
+        : (isRunningThis ? Icons.stop : Icons.play_arrow);
+
+    final btnLabel =
+        !hasActivity ? "Associer" : (isRunningThis ? "STOP" : actName);
+
+// Style rouge theme-friendly pour STOP
+    final ButtonStyle? stopStyle = isRunningThis
+        ? FilledButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.errorContainer,
+            foregroundColor: Theme.of(context).colorScheme.onErrorContainer,
+          )
+        : null;
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -2467,10 +2496,15 @@ class _NowTabState extends State<NowTab> {
 
             // ───── ACTIONS PRINCIPALES ─────
             FilledButton.icon(
-              icon: Icon(hasActivity ? Icons.play_arrow : Icons.link),
-              label: Text(hasActivity ? "Lancer" : "Associer"),
+              style: stopStyle,
+              icon: Icon(btnIcon),
+              label: Text(
+                btnLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
               onPressed: () async {
-                // 👉 CAS 1 : pas encore associé
+                // 1) pas associé => associer
                 if (!hasActivity) {
                   final act = await widget.logic
                       .openAssignActivitySheetAndWait(context, it);
@@ -2479,15 +2513,21 @@ class _NowTabState extends State<NowTab> {
 
                   setState(() {
                     it.activityId = act.id;
-                    it.domainId =
-                        act.domainId; // important pour les filtres NowTab
+                    it.domainId = act.domainId; // si ton DayPlanItem a domainId
                   });
-
-                  widget.logic.onChange(); // persistance
+                  widget.logic.onChange();
                   return;
                 }
 
-                // 👉 CAS 2 : déjà associé → on lance
+                // 2) associé + déjà en cours => STOP
+                if (isRunningThis) {
+                  widget.logic.stopActive();
+                  if (!mounted) return;
+                  setState(() {});
+                  return;
+                }
+
+                // 3) associé + pas en cours => START
                 widget.logic.start(actId);
                 if (!mounted) return;
                 setState(() {});
