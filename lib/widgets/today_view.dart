@@ -2392,11 +2392,93 @@ class _NowTabState extends State<NowTab> {
     );
   }
 
+  Future<void> _openSnoozeActivitySheet(
+      BuildContext context, Activity a) async {
+    final logic = widget.logic;
+    final now = DateTime.now();
+
+    DateTime endOfDay(DateTime d) =>
+        DateTime(d.year, d.month, d.day, 23, 59, 59);
+
+    Future<void> hideUntil(DateTime until) async {
+      logic.snoozeActivityUntil(a.id, until);
+      Navigator.pop(context);
+      if (!mounted) return;
+      setState(() {});
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        final snoozed = logic.isActivitySnoozed(a.id, now);
+
+        return SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.snooze),
+                  title: Text(a.name,
+                      style: const TextStyle(fontWeight: FontWeight.w800)),
+                  subtitle: Text(snoozed ? "Cachée (zzz)" : "Visible"),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  title: const Text("Demain"),
+                  onTap: () =>
+                      hideUntil(endOfDay(now.add(const Duration(days: 1)))),
+                ),
+                ListTile(
+                  title: const Text("Dans 3 jours"),
+                  onTap: () =>
+                      hideUntil(endOfDay(now.add(const Duration(days: 3)))),
+                ),
+                ListTile(
+                  title: const Text("Dans 7 jours"),
+                  onTap: () =>
+                      hideUntil(endOfDay(now.add(const Duration(days: 7)))),
+                ),
+                ListTile(
+                  title: const Text("Choisir une date…"),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: now.add(const Duration(days: 1)),
+                      firstDate: now,
+                      lastDate: now.add(const Duration(days: 365)),
+                    );
+                    if (picked == null) return;
+                    logic.snoozeActivityUntil(a.id, endOfDay(picked));
+                    if (!mounted) return;
+                    setState(() {});
+                  },
+                ),
+                if (snoozed)
+                  ListTile(
+                    leading: const Icon(Icons.visibility),
+                    title: const Text("Afficher"),
+                    onTap: () {
+                      logic.unsnoozeActivity(a.id);
+                      Navigator.pop(ctx);
+                      if (!mounted) return;
+                      setState(() {});
+                    },
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _nowActionCard(
       BuildContext context, DayPlanItem it, int skipped, int total) {
-    final actId = (it.activityId ?? '').trim();
-    final hasActivity = actId.isNotEmpty;
-
     final domainName = (it.domainId != null)
         ? widget.st.domains
             .firstWhere(
@@ -2408,27 +2490,21 @@ class _NowTabState extends State<NowTab> {
 
     final running = widget.logic.runningActivity();
 
-// Nom activité (fallback si introuvable)
-    final actName = hasActivity
-        ? (widget.logic.state.activities
-                .firstWhereOrNull((a) => a.id == actId)
-                ?.name ??
-            "Activité")
-        : "";
+    final actId = (it.activityId ?? '').trim(); // DayPlanItem action
+    final hasActivity = actId.isNotEmpty;
 
-// Est-ce que l’activité associée est celle qui tourne ?
+    Activity? act;
+    if (hasActivity) {
+      final idx =
+          widget.logic.state.activities.indexWhere((a) => a.id == actId);
+      if (idx >= 0) act = widget.logic.state.activities[idx];
+    }
+
+    final actName = act?.name ?? "Activité";
     final isRunningThis = hasActivity && running != null && running.id == actId;
 
-// Bouton principal
-    final btnIcon = !hasActivity
-        ? Icons.link
-        : (isRunningThis ? Icons.stop : Icons.play_arrow);
-
-    final btnLabel =
-        !hasActivity ? "Associer" : (isRunningThis ? "STOP" : actName);
-
-// Style rouge theme-friendly pour STOP
-    final ButtonStyle? stopStyle = isRunningThis
+// Style STOP (rouge mais theme-friendly)
+    final ButtonStyle? startStopStyle = isRunningThis
         ? FilledButton.styleFrom(
             backgroundColor: Theme.of(context).colorScheme.errorContainer,
             foregroundColor: Theme.of(context).colorScheme.onErrorContainer,
@@ -2495,43 +2571,93 @@ class _NowTabState extends State<NowTab> {
             const SizedBox(height: 16),
 
             // ───── ACTIONS PRINCIPALES ─────
-            FilledButton.icon(
-              style: stopStyle,
-              icon: Icon(btnIcon),
-              label: Text(
-                btnLabel,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              onPressed: () async {
-                // 1) pas associé => associer
-                if (!hasActivity) {
-                  final act = await widget.logic
-                      .openAssignActivitySheetAndWait(context, it);
-                  if (!mounted) return;
-                  if (act == null) return;
+            Row(
+              children: [
+                // 1) Start/Stop (ou Associer)
+                Expanded(
+                  child: FilledButton.icon(
+                    style: startStopStyle,
+                    icon: Icon(!hasActivity
+                        ? Icons.link
+                        : (isRunningThis ? Icons.stop : Icons.play_arrow)),
+                    label: Text(
+                      !hasActivity
+                          ? "Associer"
+                          : (isRunningThis ? "STOP" : actName),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    onPressed: () async {
+                      if (!hasActivity) {
+                        final picked = await widget.logic
+                            .openAssignActivitySheetAndWait(context, it);
+                        if (!mounted) return;
+                        if (picked == null) return;
 
-                  setState(() {
-                    it.activityId = act.id;
-                    it.domainId = act.domainId; // si ton DayPlanItem a domainId
-                  });
-                  widget.logic.onChange();
-                  return;
-                }
+                        setState(() {
+                          it.activityId = picked.id;
+                          it.domainId =
+                              picked.domainId; // si ton DayPlanItem a domainId
+                        });
+                        widget.logic.onChange();
+                        return;
+                      }
 
-                // 2) associé + déjà en cours => STOP
-                if (isRunningThis) {
-                  widget.logic.stopActive();
-                  if (!mounted) return;
-                  setState(() {});
-                  return;
-                }
+                      if (isRunningThis) {
+                        widget.logic.stopActive();
+                        if (!mounted) return;
+                        setState(() {});
+                        return;
+                      }
 
-                // 3) associé + pas en cours => START
-                widget.logic.start(actId);
-                if (!mounted) return;
-                setState(() {});
-              },
+                      widget.logic.start(actId);
+                      if (!mounted) return;
+                      setState(() {});
+                    },
+                  ),
+                ),
+
+                const SizedBox(width: 8),
+
+                // 2) Cacher l’activité (zzz) — seulement si associée
+                SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: IconButton(
+                    tooltip:
+                        hasActivity ? "Cacher l’activité" : "Associer d’abord",
+                    onPressed: !hasActivity || act == null
+                        ? null
+                        : () => _openSnoozeActivitySheet(context, act!),
+                    icon: const Icon(Icons.snooze),
+                  ),
+                ),
+
+                const SizedBox(width: 6),
+
+                // 3) Fait (petit bouton vert, icône seule)
+                SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: IconButton(
+                    tooltip: "Fait",
+                    onPressed: () {
+                      setState(() {
+                        it.done = true;
+                        it.isNowFocus = false;
+                      });
+                      widget.logic.onChange();
+                    },
+                    style: IconButton.styleFrom(
+                      backgroundColor:
+                          Theme.of(context).colorScheme.primaryContainer,
+                      foregroundColor:
+                          Theme.of(context).colorScheme.onPrimaryContainer,
+                    ),
+                    icon: const Icon(Icons.check),
+                  ),
+                ),
+              ],
             ),
 
             const SizedBox(height: 12),
