@@ -154,30 +154,6 @@ class _TodayViewState extends State<TodayView> {
     return null;
   }
 
-  Future<Activity?> _openAssignActivitySheetAndWait(
-    BuildContext context,
-    DayPlanItem action,
-  ) {
-    return showModalBottomSheet<Activity>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => AssignActivitySheet(
-        st: widget.logic.state,
-
-        // ✅ quand l’utilisateur choisit une activité
-        onPick: (act) {
-          Navigator.pop(context, act); // ← RENVOIE l’activité
-        },
-
-        // optionnel : rester en inbox
-        onKeepInbox: () {
-          Navigator.pop(context, null);
-        },
-      ),
-    );
-  }
-
   Future<void> _startOrPickActivityForAction(DayPlanItem it) async {
     final running = widget.logic.runningActivity();
 
@@ -207,7 +183,8 @@ class _TodayViewState extends State<TodayView> {
     }
 
     // 2️⃣ Pas d’activité → ouvrir le picker
-    final picked = await _openAssignActivitySheetAndWait(context, it);
+    final picked =
+        await widget.logic.openAssignActivitySheetAndWait(context, it);
     if (picked == null) return;
 
     setState(() {
@@ -723,23 +700,24 @@ class _TodayViewState extends State<TodayView> {
         .where((x) => x.kind == PlanKind.action || x.kind != PlanKind.habit)
         .toList();
 
-final snoozedActions = baseOrAuto
-    .where((a) => !a.done && a.archived != true && !widget.logic.isCourse(a))
-    // ✅ nouveau : cacher les actions dont l'activité est snoozée
-    .where((a) {
-      final actId = (a.activityId ?? '').trim();
-      if (actId.isEmpty) return true; // action volante => OK
-      return !widget.logic.isActivitySnoozed(actId, now);
-    })
-    .where(isSnoozed)
-    .toList()
-  ..sort((a, b) {
-    final au = a.snoozeUntil ?? DateTime.fromMillisecondsSinceEpoch(0);
-    final bu = b.snoozeUntil ?? DateTime.fromMillisecondsSinceEpoch(0);
-    final c = au.compareTo(bu);
-    if (c != 0) return c;
-    return a.title.compareTo(b.title);
-  });
+    final snoozedActions = baseOrAuto
+        .where(
+            (a) => !a.done && a.archived != true && !widget.logic.isCourse(a))
+        // ✅ nouveau : cacher les actions dont l'activité est snoozée
+        .where((a) {
+          final actId = (a.activityId ?? '').trim();
+          if (actId.isEmpty) return true; // action volante => OK
+          return !widget.logic.isActivitySnoozed(actId, now);
+        })
+        .where(isSnoozed)
+        .toList()
+      ..sort((a, b) {
+        final au = a.snoozeUntil ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bu = b.snoozeUntil ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final c = au.compareTo(bu);
+        if (c != 0) return c;
+        return a.title.compareTo(b.title);
+      });
 
     Widget _snoozedSection({
       required List<DayPlanItem> snoozed,
@@ -931,16 +909,13 @@ final snoozedActions = baseOrAuto
       ...byDomainOnly.map((e) => e.id),
     };
 
-
-final actions = openPoolFiltered
-    .where((it) => !usedIds.contains(it.id))
-    .where((it) {
+    final actions =
+        openPoolFiltered.where((it) => !usedIds.contains(it.id)).where((it) {
       final actId = (it.activityId ?? '').trim(); // ✅ ICI
-      if (actId.isEmpty) return true;             // action volante
+      if (actId.isEmpty) return true; // action volante
 
       return !widget.logic.isActivitySnoozed(actId, now);
-    })
-    .toList();
+    }).toList();
 
     // 6) Groupement par domaine UNIQUEMENT sur actions
     final actionsByDomain = <String?, List<DayPlanItem>>{};
@@ -2419,7 +2394,8 @@ class _NowTabState extends State<NowTab> {
 
   Widget _nowActionCard(
       BuildContext context, DayPlanItem it, int skipped, int total) {
-    final cs = Theme.of(context).colorScheme;
+    final actId = (it.activityId ?? '').trim();
+    final hasActivity = actId.isNotEmpty;
 
     final domainName = (it.domainId != null)
         ? widget.st.domains
@@ -2490,99 +2466,32 @@ class _NowTabState extends State<NowTab> {
             const SizedBox(height: 16),
 
             // ───── ACTIONS PRINCIPALES ─────
-            Row(
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: Builder(
-                    builder: (context) {
-                      final running = widget.logic.runningActivity();
-                      final hasActivity = (it.activityId ?? '').isNotEmpty;
-                      final isRunningThis =
-                          running != null && running.id == it.activityId;
+            FilledButton.icon(
+              icon: Icon(hasActivity ? Icons.play_arrow : Icons.link),
+              label: Text(hasActivity ? "Lancer" : "Associer"),
+              onPressed: () async {
+                // 👉 CAS 1 : pas encore associé
+                if (!hasActivity) {
+                  final act = await widget.logic
+                      .openAssignActivitySheetAndWait(context, it);
+                  if (!mounted) return;
+                  if (act == null) return;
 
-                      final isStop = hasActivity && isRunningThis;
+                  setState(() {
+                    it.activityId = act.id;
+                    it.domainId =
+                        act.domainId; // important pour les filtres NowTab
+                  });
 
-                      return FilledButton.icon(
-                        onPressed: () async {
-                          final running = widget.logic.runningActivity();
+                  widget.logic.onChange(); // persistance
+                  return;
+                }
 
-                          if (hasActivity) {
-                            final actId = it.activityId!;
-
-                            // 🟥 STOP
-                            if (running != null && running.id == actId) {
-                              widget.logic.stopActive();
-                              if (!mounted) return;
-                              setState(() {});
-                              return;
-                            }
-
-                            // ▶️ START
-                            widget.logic.start(actId);
-                            if (!mounted) return;
-                            setState(() {});
-                            return;
-                          }
-
-                          // ➕ Associer puis lancer
-                          await _startOrPickActivityForAction(context, it);
-                          if (!mounted) return;
-                          setState(() {});
-                        },
-
-                        // 🔁 ICON
-                        icon: Icon(
-                          isStop ? Icons.stop : Icons.play_arrow,
-                        ),
-
-                        // 🔁 LABEL
-                        label: Text(
-                          () {
-                            if (!hasActivity) return "Associer & lancer";
-
-                            final act = widget.st.activities.firstWhere(
-                              (a) => a.id == it.activityId,
-                              orElse: () => Activity(
-                                domainId: it.domainId ?? '',
-                                name: "Activité",
-                              ),
-                            );
-
-                            return isStop ? "Stop" : act.name;
-                          }(),
-                        ),
-
-                        // 🔴 STYLE CONDITIONNEL
-                        style: isStop
-                            ? FilledButton.styleFrom(
-                                backgroundColor:
-                                    Theme.of(context).colorScheme.error,
-                                foregroundColor:
-                                    Theme.of(context).colorScheme.onError,
-                              )
-                            : null,
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  flex: 2,
-                  child: FilledButton(
-                    style:
-                        FilledButton.styleFrom(backgroundColor: Colors.green),
-                    onPressed: () {
-                      setState(() {
-                        it.done = true;
-                        it.isNowFocus = false;
-                      });
-                      widget.logic.onChange();
-                    },
-                    child: const Text("Fait"),
-                  ),
-                ),
-              ],
+                // 👉 CAS 2 : déjà associé → on lance
+                widget.logic.start(actId);
+                if (!mounted) return;
+                setState(() {});
+              },
             ),
 
             const SizedBox(height: 12),
@@ -3487,11 +3396,6 @@ class _NowTabState extends State<NowTab> {
             const SizedBox(height: 10),
             Row(
               children: [
-/*                 IconButton(
-                  onPressed:
-                      _canAdjust(next.it) ? () => _onDelta(next.it, -1) : null,
-                  icon: const Icon(Icons.remove_circle_outline),
-                ), */
                 Expanded(
                     child: NowHabitTileFull(
                   logic: widget.logic,
@@ -3505,55 +3409,6 @@ class _NowTabState extends State<NowTab> {
                     // openHabitEditSheet etc.
                   },
                 )),
-/*                 IconButton(
-                  onPressed:
-                      _canAdjust(next.it) ? () => _onDelta(next.it, 1) : null,
-                  icon: const Icon(Icons.add_circle_outline),
-                ), */
-/*                 autoManualBadge(
-                  act: act,
-                  onLongPress: () async {
-                    await _openHabitSettings(act);
-                  },
-                  onToggle: () {
-                    setState(() {
-                      final isAuto = act.autoTune && !act.manualTarget;
-
-                      if (isAuto) {
-                        // ➜ passage en MANUEL
-                        act.autoTune = false;
-                        act.manualTarget = true;
-
-                        // ✅ garde-fou: en manuel, target >= 1
-                        if (act.habitTarget == null || act.habitTarget! <= 0) {
-                          act.habitTarget = 1;
-                        }
-                      } else {
-                        // ➜ retour en AUTO
-                        act.manualTarget = false;
-                        act.autoTune = true;
-                      }
-                    });
-
-                    widget.logic.onChange();
-
-                    final isAutoNow = act.autoTune && !act.manualTarget;
-                    final msg = isAutoNow
-                        ? "Mode auto : la cible s’ajuste selon vos saisies"
-                        : "Mode manuel : cible fixe — appui long pour modifier";
-
-                    // ✅ safe: pas pendant build
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (!mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(msg),
-                          duration: const Duration(milliseconds: 2500),
-                        ),
-                      );
-                    });
-                  },
-                ), */
               ],
             ),
           ],
@@ -3651,11 +3506,27 @@ class _NowTabState extends State<NowTab> {
 
   bool _isActionable(DayPlanItem it) {
     final now = DateTime.now();
-    // ⛔️ Courses non snnooze
+
+    // ⛔️ Courses non actionable
     if (widget.logic.isCourse(it)) return false;
 
-    // ⛔️ Snooze = jamais actionable
+    // ⛔️ Snooze item (plus tard) = jamais actionable
     if (_isSnoozed(it, now)) return false;
+
+    // ✅ NOUVEAU : si l’activité liée est snoozée => on cache dans NowTab
+    String actId = '';
+    if (it.kind == PlanKind.habit) {
+      actId = (it.refId ?? '').trim();
+    } else if (it.kind == PlanKind.action) {
+      // adapte selon ton modèle
+      actId = (it.activityId ?? '').trim(); // si existe
+      if (actId.isEmpty)
+        actId = (it.refId ?? '').trim(); // fallback si tu stockes là
+    }
+
+    if (actId.isNotEmpty && widget.logic.isActivitySnoozed(actId, now)) {
+      return false;
+    }
 
     // ⛔️ Skips / Done list (ton système actuel)
     if (_skippedIds.contains(it.id)) return false;
@@ -3663,14 +3534,11 @@ class _NowTabState extends State<NowTab> {
 
     switch (it.kind) {
       case PlanKind.habit:
-        // refId obligatoire
         return it.refId != null;
 
       case PlanKind.action:
-        // règles de base action
         if (it.done) return false;
         if (it.archived == true) return false;
-        final now = DateTime.now();
         final snooze = it.snoozeUntil;
         if (snooze != null && snooze.isAfter(now)) return false;
         return true;

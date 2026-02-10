@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
+import 'package:productivitwo_v1/widgets/assign_activity_sheet.dart';
 import 'package:uuid/uuid.dart';
 import 'package:productivitwo_v1/models.dart';
 
@@ -136,6 +137,30 @@ bool isActivitySnoozed(String? activityId, DateTime now) {
   final u = DateTime.tryParse(s);
   return u != null && u.isAfter(now);
 }
+
+  Future<Activity?> openAssignActivitySheetAndWait(
+    BuildContext context,
+    DayPlanItem action,
+  ) {
+    return showModalBottomSheet<Activity>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => AssignActivitySheet(
+        st: this.state,
+
+        // ✅ quand l’utilisateur choisit une activité
+        onPick: (act) {
+          Navigator.pop(context, act); // ← RENVOIE l’activité
+        },
+
+        // optionnel : rester en inbox
+        onKeepInbox: () {
+          Navigator.pop(context, null);
+        },
+      ),
+    );
+  }
 
 void unsnoozeActivity(String? activityId) {
   final id = (activityId ?? '').trim();
