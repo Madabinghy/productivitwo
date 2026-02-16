@@ -15,8 +15,6 @@ enum ActionStatus {
   archived,
 }
 
-
-
 class DayPlanItem {
   String id;
   PlanKind kind;
@@ -75,7 +73,7 @@ class DayPlanItem {
         'order': order,
         'toPlan': toPlan,
         'archived': archived,
-    'snoozeUntil': snoozeUntil?.toIso8601String(),
+        'snoozeUntil': snoozeUntil?.toIso8601String(),
       };
 
   static DayPlanItem from(Map j) {
@@ -115,6 +113,34 @@ class DayPlanItem {
     }
     return defaultValue;
   }
+}
+
+class ActivityLog {
+  final String id;
+  final String activityId;
+  final DateTime start;
+  final DateTime? end;
+
+  ActivityLog({
+    required this.id,
+    required this.activityId,
+    required this.start,
+    this.end,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'activityId': activityId,
+        'start': start.toIso8601String(),
+        'end': end?.toIso8601String(),
+      };
+
+  static ActivityLog from(Map<String, dynamic> j) => ActivityLog(
+        id: j['id'],
+        activityId: j['activityId'],
+        start: DateTime.parse(j['start']),
+        end: j['end'] != null ? DateTime.parse(j['end']) : null,
+      );
 }
 
 class InboxItem {
@@ -292,7 +318,7 @@ class Activity {
         createdAt = createdAt ?? DateTime.now();
 
   // -------- Helpers --------
-  bool get isHabit => type == 'habit'||type == 'action';
+  bool get isHabit => type == 'habit' || type == 'action';
 
   /// Fréquence « effective » (fallback mensuel si rien n’est défini).
   HabitFreq get effHabitFreq => habitFreq ?? HabitFreq.monthly;
@@ -594,6 +620,8 @@ class AppState {
   Map<String, Map<String, List<int>>> habitChecklistDone;
   FilterState filters;
 
+  List<ActivityLog> activityLogs;
+
   AppState({
     required this.domains,
     required this.activities,
@@ -616,6 +644,7 @@ class AppState {
     Map<String, List<String>>? nowSkippedByYmd,
     Map<String, List<String>>? nowDoneByYmd,
     Map<String, Map<String, List<int>>>? habitChecklistDone,
+    List<ActivityLog>? activityLogs,
     FilterState? filters,
   })  : snoozedUntil = snoozedUntil ?? <String, String>{},
         goals = goals ?? <Goal>[],
@@ -631,6 +660,7 @@ class AppState {
         nowDoneByYmd = nowDoneByYmd ?? <String, List<String>>{},
         habitChecklistDone =
             habitChecklistDone ?? <String, Map<String, List<int>>>{},
+        activityLogs = activityLogs ?? <ActivityLog>[],
         filters = filters ?? FilterState();
 
   Map<String, dynamic> toJson() => {
@@ -660,6 +690,7 @@ class AppState {
         'nowDoneByYmd': nowDoneByYmd,
         'habitChecklistByHabitId': habitChecklistByHabitId,
         'habitChecklistDone': habitChecklistDone,
+        'activityLogs': activityLogs.map((e) => e.toJson()).toList(),
         'filters': filters.toJson(),
       };
 

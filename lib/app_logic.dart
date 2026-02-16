@@ -89,6 +89,49 @@ class AppLogic {
   final Map<String, Set<String>> _checkedTodayByHabit =
       {}; // habitId -> labels cochés
 
+  Activity? _firstWhereOrNull<T extends Object>(
+    Iterable<Activity> items,
+    bool Function(Activity) test,
+  ) {
+    for (final x in items) {
+      if (test(x)) return x;
+    }
+    return null;
+  }
+
+  String activityName(String activityId) {
+    final a = _firstWhereOrNull(
+      state.activities,
+      (x) => x.id == activityId,
+    );
+    return a?.name ?? 'Activité';
+  }
+
+  List<ActivityLog> logsBetween(DateTime from, DateTime to) {
+    return state.activityLogs.where((l) {
+      final e = l.end ?? DateTime.now();
+      return l.start.isBefore(to) && e.isAfter(from); // intersection fenêtre
+    }).toList();
+  }
+
+  void deleteLog(String logId) {
+    state.activityLogs.removeWhere((l) => l.id == logId);
+    onChange(); // persiste
+  }
+
+  void updateLog(String logId, {DateTime? start, DateTime? end}) {
+    final idx = state.activityLogs.indexWhere((l) => l.id == logId);
+    if (idx < 0) return;
+    final old = state.activityLogs[idx];
+    state.activityLogs[idx] = ActivityLog(
+      id: old.id,
+      activityId: old.activityId,
+      start: start ?? old.start,
+      end: end,
+    );
+    onChange();
+  }
+
   void setNowFocus(String planItemId) {
     for (final p in state.dayPlan) {
       p.isNowFocus = false;
@@ -127,16 +170,16 @@ class AppLogic {
     return true;
   }
 
-bool isActivitySnoozed(String? activityId, DateTime now) {
-  final id = (activityId ?? '').trim();
-  if (id.isEmpty) return false; // ✅ IMPORTANT
+  bool isActivitySnoozed(String? activityId, DateTime now) {
+    final id = (activityId ?? '').trim();
+    if (id.isEmpty) return false; // ✅ IMPORTANT
 
-  final s = state.snoozedUntil[id];
-  if (s == null || s.isEmpty) return false;
+    final s = state.snoozedUntil[id];
+    if (s == null || s.isEmpty) return false;
 
-  final u = DateTime.tryParse(s);
-  return u != null && u.isAfter(now);
-}
+    final u = DateTime.tryParse(s);
+    return u != null && u.isAfter(now);
+  }
 
   Future<Activity?> openAssignActivitySheetAndWait(
     BuildContext context,
@@ -162,31 +205,31 @@ bool isActivitySnoozed(String? activityId, DateTime now) {
     );
   }
 
-void unsnoozeActivity(String? activityId) {
-  final id = (activityId ?? '').trim();
-  if (id.isEmpty) return;
-  state.snoozedUntil.remove(id);
-  onChange();
-}
-
-void snoozeActivityFar(String? activityId) {
-  final id = (activityId ?? '').trim();
-  if (id.isEmpty) return;
-  state.snoozedUntil[id] = DateTime(2099, 12, 31).toIso8601String();
-  onChange();
-}
-
-void toggleActivitySnooze(String? activityId) {
-  final id = (activityId ?? '').trim();
-  if (id.isEmpty) return; // ✅ IMPORTANT
-
-  final now = DateTime.now();
-  if (isActivitySnoozed(id, now)) {
-    unsnoozeActivity(id);
-  } else {
-    snoozeActivityFar(id);
+  void unsnoozeActivity(String? activityId) {
+    final id = (activityId ?? '').trim();
+    if (id.isEmpty) return;
+    state.snoozedUntil.remove(id);
+    onChange();
   }
-}
+
+  void snoozeActivityFar(String? activityId) {
+    final id = (activityId ?? '').trim();
+    if (id.isEmpty) return;
+    state.snoozedUntil[id] = DateTime(2099, 12, 31).toIso8601String();
+    onChange();
+  }
+
+  void toggleActivitySnooze(String? activityId) {
+    final id = (activityId ?? '').trim();
+    if (id.isEmpty) return; // ✅ IMPORTANT
+
+    final now = DateTime.now();
+    if (isActivitySnoozed(id, now)) {
+      unsnoozeActivity(id);
+    } else {
+      snoozeActivityFar(id);
+    }
+  }
 
   void snoozeActivityUntil(String activityId, DateTime until) {
     state.snoozedUntil[activityId] = until.toIso8601String();
@@ -231,6 +274,26 @@ void toggleActivitySnooze(String? activityId) {
     habitAssocEvents.add(HabitAssocEvent.pinned(routineId, activityId));
     onChange(); // si tu as déjà une persistance centrale; sinon setState côté UI
   }
+
+  void deleteSession(String sessionId) {
+    state.sessions.removeWhere((s) => s.id == sessionId);
+    onChange();
+  }
+
+void updateSession(
+  String sessionId, {
+  DateTime? startAt,
+  DateTime? endAt,
+  String? activityId,
+}) {
+  final s = state.sessions.firstWhere((x) => x.id == sessionId);
+
+  if (startAt != null) s.startAt = startAt;
+  s.endAt = endAt;
+  if (activityId != null) s.activityId = activityId;
+
+  onChange();
+}
 
   Activity? runningActivity() {
     Session? last;
@@ -377,23 +440,20 @@ void toggleActivitySnooze(String? activityId) {
   bool isFocused(String activityId) => state.focusTodayIds.contains(activityId);
 
   DateTime? snoozedUntilOf(String activityId) {
-  final s = state.snoozedUntil[activityId];
-  if (s == null) return null;
-  return DateTime.tryParse(s);
-}
-
-
+    final s = state.snoozedUntil[activityId];
+    if (s == null) return null;
+    return DateTime.tryParse(s);
+  }
 
 // “Cacher” sans toucher au modèle (date lointaine)
-void hideActivity(String activityId) {
-  snoozeActivityUntil(activityId, DateTime(2099, 12, 31));
-}
+  void hideActivity(String activityId) {
+    snoozeActivityUntil(activityId, DateTime(2099, 12, 31));
+  }
 
-bool isActivityHidden(String activityId) {
-  final u = snoozedUntilOf(activityId);
-  return u != null && u.year >= 2099;
-}
-
+  bool isActivityHidden(String activityId) {
+    final u = snoozedUntilOf(activityId);
+    return u != null && u.year >= 2099;
+  }
 
   // ---------- TEMPS (type=time) ----------
   void start(String activityId) {
@@ -615,15 +675,18 @@ bool isActivityHidden(String activityId) {
     return map;
   }
 
-  void stopActive() {
+  Session? stopActive() {
     final run = state.sessions.where((s) => s.endAt == null).toList();
-    if (run.isNotEmpty) {
-      final ended = run.last;
-      ended.endAt = DateTime.now();
-      onChange();
-      // boost auto (time)
-      maybeAutoAdjustActivity(ended.activityId);
-    }
+    if (run.isEmpty) return null;
+
+    final ended = run.last;
+    ended.endAt = DateTime.now();
+    onChange();
+
+    // boost auto (time)
+    maybeAutoAdjustActivity(ended.activityId);
+
+    return ended;
   }
 
   Duration totalForDay(DateTime day, {String? domainId}) {

@@ -654,6 +654,228 @@ class ProductivitwoApp extends StatelessWidget {
 
 enum TimeScope { day, week, month }
 
+class _EditSessionResult {
+  final bool delete;
+  final DateTime? startAt;
+  final DateTime? endAt;
+  final String? activityId;
+
+  const _EditSessionResult._({
+    required this.delete,
+    this.startAt,
+    this.endAt,
+    this.activityId,
+  });
+
+  factory _EditSessionResult.delete() =>
+      const _EditSessionResult._(delete: true);
+
+  factory _EditSessionResult.save({
+    DateTime? startAt,
+    DateTime? endAt,
+    String? activityId,
+  }) =>
+      _EditSessionResult._(
+        delete: false,
+        startAt: startAt,
+        endAt: endAt,
+        activityId: activityId,
+      );
+}
+
+class _EditSessionSheet extends StatefulWidget {
+  final Session session;
+  final AppLogic logic;
+
+  const _EditSessionSheet({
+    required this.session,
+    required this.logic,
+  });
+
+  @override
+  State<_EditSessionSheet> createState() => _EditSessionSheetState();
+}
+
+class _EditSessionSheetState extends State<_EditSessionSheet> {
+  late DateTime _start;
+  DateTime? _end;
+  late String _activityId;
+
+  @override
+  void initState() {
+    super.initState();
+    _start = widget.session.startAt;
+    _end = widget.session.endAt;
+    _activityId = widget.session.activityId;
+  }
+
+  Future<String?> _pickActivity(BuildContext context) async {
+    return showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (_) {
+        final acts = widget.logic.state.activities;
+
+        return ListView.builder(
+          itemCount: acts.length,
+          itemBuilder: (_, i) {
+            final a = acts[i];
+            return ListTile(
+              title: Text(a.name),
+              onTap: () => Navigator.pop(context, a.id),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String _activityName(BuildContext context, String activityId) {
+    final a = widget.logic.state.activities.firstWhere(
+      (x) => x.id == activityId,
+      orElse: () => Activity(domainId: '', name: 'Activité', habitTarget: 1),
+    );
+
+    return a.name.isEmpty ? "Activité" : a.name;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final dur = (_end ?? now).difference(_start);
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 8,
+          bottom: 16 + MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              "Modifier la session",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 12),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text("Activité"),
+              subtitle: Text(_activityName(context, _activityId)),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () async {
+                final selected = await _pickActivity(context);
+                if (selected != null) {
+                  setState(() => _activityId = selected);
+                }
+              },
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text("Début"),
+              subtitle: Text(_fmtDateTime(_start)),
+              onTap: () async {
+                final dt = await _pickDateTime(context, _start);
+                if (dt != null) setState(() => _start = dt);
+              },
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text("Fin"),
+              subtitle: Text(_end == null ? "En cours" : _fmtDateTime(_end!)),
+              trailing: _end == null
+                  ? TextButton(
+                      onPressed: () => setState(() => _end = now),
+                      child: const Text("Mettre maintenant"),
+                    )
+                  : TextButton(
+                      onPressed: () => setState(() => _end = null),
+                      child: const Text("Marquer en cours"),
+                    ),
+              onTap: () async {
+                final base = _end ?? now;
+                final dt = await _pickDateTime(context, base);
+                if (dt != null) setState(() => _end = dt);
+              },
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text("Durée : ${_fmtDur(dur)}"),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                TextButton.icon(
+                  onPressed: () =>
+                      Navigator.pop(context, _EditSessionResult.delete()),
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text("Supprimer"),
+                ),
+                const Spacer(),
+                FilledButton(
+                  onPressed: () {
+                    final e = _end;
+                    if (e != null && !e.isAfter(_start)) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text("La fin doit être après le début.")),
+                      );
+                      return;
+                    }
+                    Navigator.pop(
+                      context,
+                      _EditSessionResult.save(
+                        startAt: _start,
+                        endAt: _end,
+                        activityId: _activityId,
+                      ),
+                    );
+                  },
+                  child: const Text("Enregistrer"),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<DateTime?> _pickDateTime(
+      BuildContext context, DateTime initial) async {
+    final d = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime.now().subtract(const Duration(days: 30)),
+      lastDate: DateTime.now().add(const Duration(days: 1)),
+    );
+    if (d == null) return null;
+
+    final t = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: initial.hour, minute: initial.minute),
+    );
+    if (t == null) return null;
+
+    return DateTime(d.year, d.month, d.day, t.hour, t.minute);
+  }
+
+  String _fmtDateTime(DateTime dt) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return "${two(dt.day)}/${two(dt.month)}/${dt.year} ${two(dt.hour)}:${two(dt.minute)}";
+  }
+
+  String _fmtDur(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60);
+    if (h <= 0) return "${m}m";
+    return "${h}h${m.toString().padLeft(2, '0')}";
+  }
+}
+
 class RunningChipAppBar extends StatefulWidget {
   final AppState? state;
   final AppLogic logic;
@@ -840,6 +1062,45 @@ class _RunningBannerGlobalState extends State<RunningBannerGlobal> {
     return h > 0 ? "${h}h ${m}m ${sec}s" : "${m}m ${sec}s";
   }
 
+  Future<void> _openEditSessionSheet(
+    BuildContext context,
+    dynamic logic, // ou ton type de logic si tu veux
+    Session s,
+  ) async {
+    final res = await showModalBottomSheet<_EditSessionResult>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _EditSessionSheet(
+        session: s,
+        logic: logic,
+      ),
+    );
+
+    if (res == null) return;
+
+    if (res.delete) {
+      logic.deleteSession(s.id);
+      return;
+    }
+
+    final newStart = res.startAt ?? s.startAt;
+    final newEnd = res.endAt;
+
+    if (newEnd != null && !newEnd.isAfter(newStart)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("La fin doit être après le début.")),
+      );
+      return;
+    }
+
+    logic.updateSession(
+      s.id,
+      startAt: res.startAt,
+      endAt: res.endAt,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final st = widget.state;
@@ -921,6 +1182,154 @@ class _RunningBannerGlobalState extends State<RunningBannerGlobal> {
         ),
       ),
     );
+  }
+}
+
+class _Last24hSessionsSheet extends StatelessWidget {
+  final dynamic logic; // mets le type de ta logique si tu veux
+  const _Last24hSessionsSheet({required this.logic});
+
+  Future<void> _openEditSessionSheet(
+    BuildContext context,
+    dynamic logic, // ou ton type de logic si tu veux
+    Session s,
+  ) async {
+    final res = await showModalBottomSheet<_EditSessionResult>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _EditSessionSheet(
+        session: s,
+        logic: logic,
+      ),
+    );
+
+    if (res == null) return;
+
+    if (res.delete) {
+      logic.deleteSession(s.id);
+      return;
+    }
+
+    final newStart = res.startAt ?? s.startAt;
+    final newEnd = res.endAt;
+
+    if (newEnd != null && !newEnd.isAfter(newStart)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("La fin doit être après le début.")),
+      );
+      return;
+    }
+
+    logic.updateSession(
+      s.id,
+      startAt: res.startAt,
+      endAt: res.endAt,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final from = now.subtract(const Duration(hours: 24));
+
+    // 1) filtre sessions intersectant les dernières 24h
+    final List<Session> sessions = (logic.state.sessions as List)
+        .cast<Session>()
+        .where((s) => _intersectsWindow(s.startAt, s.endAt, from, now))
+        .toList()
+      ..sort((Session a, Session b) => b.startAt.compareTo(a.startAt));
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 8,
+          bottom: 16 + MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    "Dernières 24h",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                Text("${sessions.length}"),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (sessions.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Text("Aucune session sur les dernières 24h."),
+              )
+            else
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: sessions.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (_, i) {
+                    final s = sessions[i];
+                    final actName = _activityName(logic, s.activityId);
+
+                    final end = s.endAt;
+                    final dur = s.duration;
+
+                    return ListTile(
+                      title: Text(
+                        actName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        "${_hm(s.startAt)} → ${end == null ? "en cours" : _hm(end)}  •  ${_fmtDur(dur)}",
+                      ),
+                      onTap: () => _openEditSessionSheet(context, logic, s),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.edit),
+                        onPressed: () =>
+                            _openEditSessionSheet(context, logic, s),
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  bool _intersectsWindow(
+      DateTime start, DateTime? end, DateTime wStart, DateTime wEnd) {
+    final e = end ?? DateTime.now();
+    // intersection si start < wEnd ET end > wStart
+    return start.isBefore(wEnd) && e.isAfter(wStart);
+  }
+
+  String _activityName(dynamic logic, String activityId) {
+    // Comme ton runningActivity(): fallback Activity si introuvable
+    final a = logic.state.activities.firstWhere(
+      (x) => x.id == activityId,
+      orElse: () => Activity(domainId: '', name: 'Activité', habitTarget: 1),
+    );
+    return (a.name.isEmpty) ? "Activité" : a.name;
+  }
+
+  String _hm(DateTime d) =>
+      "${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}";
+
+  String _fmtDur(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60);
+    if (h <= 0) return "${m}m";
+    return "${h}h${m.toString().padLeft(2, '0')}";
   }
 }
 
@@ -1794,6 +2203,15 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     setState(() {});
   }
 
+  void _openLast24hSessionsSheet(BuildContext context, dynamic logic) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _Last24hSessionsSheet(logic: logic),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // 1) État de chargement (avant que FileStore ait chargé le JSON)
@@ -2041,10 +2459,17 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             ValueListenableBuilder<int>(
               valueListenable: _tick,
               builder: (context, _, __) {
-                // recalcul au moment du tick (chaque minute)
-
                 final bins24 = logic.minutesByHourLast24(DateTime.now());
-                return MiniHourBars24h(bins: bins24);
+
+                return GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _openLast24hSessionsSheet(context, logic),
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    child: MiniHourBars24h(bins: bins24),
+                  ),
+                );
               },
             ),
             const Spacer(),
