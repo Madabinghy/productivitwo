@@ -1333,6 +1333,20 @@ class _Last24hSessionsSheet extends StatelessWidget {
   }
 }
 
+class _HabitsAggByDomain {
+  final Map<String, int> doneTodayByDomain;
+  final Map<String, int> done7ByDomain;
+  final Map<String, int> done90ByDomain;
+  final Map<String, int> dailyTargetByDomain;
+
+  const _HabitsAggByDomain({
+    required this.doneTodayByDomain,
+    required this.done7ByDomain,
+    required this.done90ByDomain,
+    required this.dailyTargetByDomain,
+  });
+}
+
 class AppRoot extends StatefulWidget {
   const AppRoot({super.key});
   @override
@@ -3011,109 +3025,15 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildDashboardBody(BuildContext context) {
-// 1) Portée (calendaire)
-    final now = DateTime.now();
+  ({double prog7, double haloAbs, double prog90, double bigAll, String label})
+      _computeGlobalTimeGauges(DateTime now) {
     final today = DateTime(now.year, now.month, now.day);
 
-    final start90 = today.subtract(const Duration(days: 89));
-    final end90 = today.add(const Duration(days: 1)); // end exclusif
+    final start7Inc = today.subtract(const Duration(days: 6));
+    final end7Inc = today.add(const Duration(days: 1));
 
-    final start24 = now.subtract(const Duration(hours: 24));
-    final totals24 = logic.timeTotalsByDomain(start24, now);
-    final total24Dur =
-        totals24.values.fold<Duration>(Duration.zero, (a, b) => a + b);
-
-    //final total24Hours = total24Dur.inMinutes / 60.0;
-
-    final start7 = today.subtract(const Duration(days: 7));
-    final end7 = today; // exclut aujourd’hui
-
-    final totals7 = logic.timeTotalsByDomain(start7, end7);
-    final total7Dur =
-        totals7.values.fold<Duration>(Duration.zero, (a, b) => a + b);
-
-    final activeDays = totals7.values.where((d) => d > Duration.zero).length;
-
-    final avg7HoursPerDay =
-        activeDays == 0 ? 0.0 : (total7Dur.inMinutes / 60.0) / activeDays;
-
-    int _doneHabitsForDomainCalendar(
-        String domainId, DateTime start, DateTime end) {
-      // somme calendaire: [start, end)
-      int sum = 0;
-      DateTime d = DateTime(start.year, start.month, start.day);
-      while (d.isBefore(end)) {
-        for (final a in _state!.activities
-            .where((a) => a.isHabit && a.domainId == domainId)) {
-          sum += logic.habitValueOn(a.id, d);
-        }
-        d = d.add(const Duration(days: 1));
-      }
-      return sum;
-    }
-
-    int _targetHabitsForDomainCalendar(
-        String domainId, DateTime start, DateTime end) {
-      final days = end.difference(start).inDays;
-      int sum = 0;
-      for (final a in _state!.activities
-          .where((a) => a.isHabit && a.domainId == domainId)) {
-        sum += logic.dayQuotaFor(a) * days; // cible/jour (dérivée) × nb jours
-      }
-      return sum;
-    }
-
-// Version “Tous domaines”
-    int _doneHabitsAllCalendar(DateTime start, DateTime end) {
-      int sum = 0;
-      for (final d in _state!.domains) {
-        sum += _doneHabitsForDomainCalendar(d.id, start, end);
-      }
-      return sum;
-    }
-
-    int _targetHabitsAllCalendar(DateTime start, DateTime end) {
-      int sum = 0;
-      for (final d in _state!.domains) {
-        sum += _targetHabitsForDomainCalendar(d.id, start, end);
-      }
-      return sum;
-    }
-
-    final (startCal, endCal, days) = _rangeForScope(now);
-
-    // ✅ Fenêtres glissantes incluant aujourd’hui
-    final start7Inc =
-        today.subtract(const Duration(days: 6)); // 7 jours incluant aujourd’hui
-    final end7Inc = today.add(const Duration(days: 1)); // exclu demain
-    final start90Inc = today
-        .subtract(const Duration(days: 89)); // 90 jours incluant aujourd’hui
-    final end90Inc = today.add(const Duration(days: 1)); // exclu demain
-
-    // --- Fenêtre pour les HABITUDES ---
-    // Si scope == day : on prend les 7 derniers jours calendaires (aujourd'hui inclus)
-    // 4) Totaux HABITUDES (global + par domaine)
-    // -> utilisent désormais startHabits / endHabits et habitDays
-
-    final tomorrow = today.add(const Duration(days: 1));
-// ✅ Routines aujourd’hui
-    final doneToday = _doneHabitsAllCalendar(today, tomorrow);
-    final tgtToday = _targetHabitsAllCalendar(today, tomorrow);
-
-// ✅ Moyenne “semaine” (ratio global sur 7 jours)
-    final done7 = _doneHabitsAllCalendar(start7Inc, end7Inc);
-    final tgt7 = _targetHabitsAllCalendar(start7Inc, end7Inc);
-
-    final done90 = _doneHabitsAllCalendar(start90, end90);
-    final tgt90 = _targetHabitsAllCalendar(start90, end90);
-    final rate90 = tgt90 == 0 ? 0.0 : (done90 / tgt90).clamp(0.0, 1.0);
-
-    final rateToday = tgtToday == 0 ? 0.0 : (doneToday / tgtToday);
-    final rateWeek = tgt7 == 0 ? 0.0 : (done7 / tgt7);
-
-// ✅ Big = semaine si on a déjà fait quelque chose sur la semaine, sinon today
-    final bigForGauge = (done7 == 0 && doneToday > 0) ? rateToday : rateWeek;
+    final start90Inc = today.subtract(const Duration(days: 89));
+    final end90Inc = today.add(const Duration(days: 1));
 
     final totalsToday = logic.timeTotalsByDomain(today, now);
     final totalTodayDur =
@@ -3124,7 +3044,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         .where((a) => a.type == 'time' && a.goalMin > 0)
         .fold<int>(0, (sum, a) => sum + a.goalMin);
 
-// en heures
     final dailyTargetHoursAll = dailyTargetMinAll / 60.0;
 
     double totalHoursOverRange(DateTime start, DateTime endExcl) {
@@ -3137,13 +3056,10 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     final done90HoursAll = totalHoursOverRange(start90Inc, end90Inc);
 
     final target7HoursAll = dailyTargetHoursAll * 7.0;
-    final target90HoursAll = dailyTargetHoursAll * 90.0;
-    final total7HoursAbs = 7.0 * 24.0; // 168h
+
+    final total7HoursAbs = 7.0 * 24.0;
     final progTimeAll7 = (done7HoursAll / total7HoursAbs).clamp(0.0, 1.0);
 
-    final haloAll = (dailyTargetHoursAll > 0)
-        ? (totalTodayHours / dailyTargetHoursAll).clamp(0.0, 1.0)
-        : 0.0;
     final total24Hours = 24.0;
     final haloAllAbs = (totalTodayHours / total24Hours).clamp(0.0, 1.0);
 
@@ -3151,15 +3067,80 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         ? (done7HoursAll / target7HoursAll).clamp(0.0, 1.0)
         : 0.0;
 
-    final total90HoursAbs = 90.0 * 24.0; // 2160h
+    final total90HoursAbs = 90.0 * 24.0;
     final progTimeAll90 = (done90HoursAll / total90HoursAbs).clamp(0.0, 1.0);
 
-// Label = depuis minuit (ce que tu veux afficher)
     final labelAll = _fmtHoursHM(totalTodayHours);
-    debugPrint(
-        "avg7HoursPerDay=$avg7HoursPerDay totalTodayHours=$totalTodayHours total24Hours=$total24Hours");
 
-    ({int done, int target}) _primaryAggAll(DateTime today) {
+    return (
+      prog7: progTimeAll7,
+      haloAbs: haloAllAbs,
+      prog90: progTimeAll90,
+      bigAll: bigAll,
+      label: labelAll,
+    );
+  }
+
+  ({
+    double bigForGauge,
+    double rate90,
+    double outerPrimary,
+    String label,
+  }) _computeGlobalHabitsGauge(DateTime now) {
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+
+    // Fenêtres (calendaires)
+    final start7Inc = today.subtract(const Duration(days: 6));
+    final end7Inc = tomorrow;
+
+    final start90 = today.subtract(const Duration(days: 89));
+    final end90 = tomorrow;
+
+    int doneHabitsAllCalendar(DateTime start, DateTime end) {
+      int sum = 0;
+      for (final d in _state!.domains) {
+        // done par domaine
+        DateTime day = DateTime(start.year, start.month, start.day);
+        while (day.isBefore(end)) {
+          for (final a in _state!.activities
+              .where((a) => a.isHabit && a.domainId == d.id)) {
+            sum += logic.habitValueOn(a.id, day);
+          }
+          day = day.add(const Duration(days: 1));
+        }
+      }
+      return sum;
+    }
+
+    int targetHabitsAllCalendar(DateTime start, DateTime end) {
+      final days = end.difference(start).inDays;
+      int sum = 0;
+      for (final a in _state!.activities.where((a) => a.isHabit)) {
+        sum += logic.dayQuotaFor(a) * days;
+      }
+      return sum;
+    }
+
+    // Today / Week
+    final doneToday = doneHabitsAllCalendar(today, tomorrow);
+    final tgtToday = targetHabitsAllCalendar(today, tomorrow);
+
+    final done7 = doneHabitsAllCalendar(start7Inc, end7Inc);
+    final tgt7 = targetHabitsAllCalendar(start7Inc, end7Inc);
+
+    final rateToday = tgtToday == 0 ? 0.0 : (doneToday / tgtToday);
+    final rateWeek = tgt7 == 0 ? 0.0 : (done7 / tgt7);
+
+    final bigForGauge = (done7 == 0 && doneToday > 0) ? rateToday : rateWeek;
+
+    // 90j
+    final done90 = doneHabitsAllCalendar(start90, end90);
+    final tgt90 = targetHabitsAllCalendar(start90, end90);
+    final rate90 = tgt90 == 0 ? 0.0 : (done90 / tgt90).clamp(0.0, 1.0);
+
+    // Halo primary (ta logique existante, je la garde mais encapsulée)
+    ({int done, int target}) primaryAggAll(DateTime today) {
       int done = 0;
       int target = 0;
 
@@ -3181,342 +3162,369 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             break;
         }
       }
-
       return (done: done, target: target);
     }
 
-// Label épuré :
-    final aggP = _primaryAggAll(today);
-    final habitsLabel = "${aggP.done} / ${aggP.target}";
-    final outerHabitsPrimary =
+    final aggP = primaryAggAll(today);
+    final label = "${aggP.done} / ${aggP.target}";
+    final outerPrimary =
         aggP.target == 0 ? 0.0 : (aggP.done / aggP.target).clamp(0.0, 1.0);
 
-    double snapToFull(
-      double value, {
-      double threshold = 0.97,
-    }) {
-      if (value >= threshold) return 1.0;
-      return value.clamp(0.0, 1.0);
+    return (
+      bigForGauge: bigForGauge.clamp(0.0, 1.0),
+      rate90: rate90,
+      outerPrimary: outerPrimary,
+      label: label,
+    );
+  }
+
+  Widget _buildDashboardBody(BuildContext context) {
+    // 1) Temps “de contexte” (scope/range). OK de recalculer au build.
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    // Scope calendaire (détails domaine)
+    final (startCal, endCal, days) = _rangeForScope(now);
+
+    // Fenêtres calendaire utiles (habits / affichages)
+    final tomorrow = today.add(const Duration(days: 1));
+    final start7Inc =
+        today.subtract(const Duration(days: 6)); // 7 jours incluant aujourd’hui
+    final end7Inc = tomorrow; // exclu demain
+    final start90Inc = today
+        .subtract(const Duration(days: 89)); // 90 jours incluant aujourd’hui
+    final end90Inc = tomorrow;
+
+    // Helpers habits calendaire (tu peux les laisser ici)
+    int _doneHabitsForDomainCalendar(
+        String domainId, DateTime start, DateTime end) {
+      int sum = 0;
+      DateTime d = DateTime(start.year, start.month, start.day);
+      while (d.isBefore(end)) {
+        for (final a in _state!.activities
+            .where((a) => a.isHabit && a.domainId == domainId)) {
+          sum += logic.habitValueOn(a.id, d);
+        }
+        d = d.add(const Duration(days: 1));
+      }
+      return sum;
     }
 
-    debugPrint("ROUTINES bigForGauge=${snapToFull(bigForGauge)} "
-        "outer=${snapToFull(outerHabitsPrimary)} "
-        "small=${snapToFull(rate90)}");
+    int _targetHabitsForDomainCalendar(
+        String domainId, DateTime start, DateTime end) {
+      final days = end.difference(start).inDays;
+      int sum = 0;
+      for (final a in _state!.activities
+          .where((a) => a.isHabit && a.domainId == domainId)) {
+        sum += logic.dayQuotaFor(a) * days;
+      }
+      return sum;
+    }
+
+    int _doneHabitsAllCalendar(DateTime start, DateTime end) {
+      int sum = 0;
+      for (final d in _state!.domains) {
+        sum += _doneHabitsForDomainCalendar(d.id, start, end);
+      }
+      return sum;
+    }
+
+    int _targetHabitsAllCalendar(DateTime start, DateTime end) {
+      int sum = 0;
+      for (final d in _state!.domains) {
+        sum += _targetHabitsForDomainCalendar(d.id, start, end);
+      }
+      return sum;
+    }
+
+    // ⚠️ IMPORTANT :
+    // Les valeurs “live” (temps today jusqu’à now, halo, label, etc.)
+    // seront calculées dans ValueListenableBuilder via _compute... (voir plus bas)
+
     return Column(
       children: [
-        // Anneaux globaux (Temps & Habitudes)
         SectionCard(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-/* GaugeRing(
-  label: "${_scopeLabel()} — Temps",
-  centerText: _fmtHoursHM(maxHours),      // => "0h13m"
-  subText: avg90Txt,                      // => "Moy 90j : 42%"
-  progress: progTimeAll90,            // ou progTimeAll90 (voir note ci-dessous)
-  color: _colorForProgress(progTimeAll90, context), // couleur basée sur 90j ✅
-  onTap: () => _showDomainDetail(null, startCal, endCal, days, focus: 'time'),
-), */
+              // ✅ NestedGauge Temps (live) -> ValueListenableBuilder ici
+              ValueListenableBuilder<int>(
+                valueListenable: _tick,
+                builder: (context, _, __) {
+                  final now = DateTime.now();
 
-              RepaintBoundary(
-                child: NestedGauge(
-                  bigProgress: snapToFull(progTimeAll7),
-                  outerProgress: snapToFull(haloAllAbs),
-                  smallProgress: snapToFull(progTimeAll90),
-                  bigColor: _colorForProgress(bigAll, context),
-                  outerColor: Colors.cyanAccent,
-                  smallColor: _colorForProgress(progTimeAll90, context),
-                  centerText: "",
-                  label: labelAll,
-                  onTap: () => _showDomainDetail(null, startCal, endCal, days,
-                      focus: 'time'),
-                ),
+                  final g = _computeGlobalTimeGauges(now);
+
+                  return RepaintBoundary(
+                    child: NestedGauge(
+                      bigProgress: snapToFull(g.prog7),
+                      outerProgress: snapToFull(g.haloAbs),
+                      smallProgress: snapToFull(g.prog90),
+                      bigColor: _colorForProgress(g.prog7, context),
+                      outerColor: Colors.cyanAccent,
+                      smallColor: _colorForProgress(g.prog90, context),
+                      centerText: "",
+                      label: g.label,
+                      onTap: () => _showDomainDetail(
+                          null, startCal, endCal, days,
+                          focus: 'time'),
+                    ),
+                  );
+                },
               ),
+              // ✅ NestedGauge Habits (si tu veux live ou juste à la minute) -> ValueListenableBuilder ici
 
-/*               GaugeRing(
-                label: "Habitudes",
-                valueText: totalHabitsTarget == 0
-                    ? "0 / 0"
-                    : "$totalHabitsDone / $totalHabitsTarget",
-                progress: totalHabitProgress,
-                color: _colorForProgress(totalHabitProgress, context),
-                onTap: () => _showDomainDetail(null, startCal, endCal, days,
-                    focus: 'habit'),
-              ), */
+              ValueListenableBuilder<int>(
+                valueListenable: _tick,
+                builder: (context, _, __) {
+                  final h = _computeGlobalHabitsGauge(DateTime.now());
 
-              RepaintBoundary(
-                child: NestedGauge(
-                  bigProgress: snapToFull(bigForGauge),
-                  bigColor: _colorForProgress(bigForGauge, context),
-                  smallProgress: snapToFull(
-                      rate90), // option : tu peux mettre autre chose (voir note)
-                  outerProgress:
-                      snapToFull(outerHabitsPrimary), // ✅ halo = aujourd’hui
-                  smallColor: _colorForProgress(rate90, context), // ou neutre
-                  outerColor: Colors.cyanAccent,
-                  centerText: "",
-                  label: habitsLabel,
-                  size: 160,
-                  onTap: () => _showDomainDetail(null, startCal, endCal, days,
-                      focus: 'habit'),
-                ),
+                  return RepaintBoundary(
+                    child: NestedGauge(
+                      bigProgress: snapToFull(h.bigForGauge),
+                      bigColor: _colorForProgress(h.bigForGauge, context),
+                      smallProgress: snapToFull(h.rate90),
+                      outerProgress: snapToFull(h.outerPrimary),
+                      smallColor: _colorForProgress(h.rate90, context),
+                      outerColor: Colors.cyanAccent,
+                      centerText: "",
+                      label: h.label,
+                      size: 160,
+                      onTap: () => _showDomainDetail(
+                          null, startCal, endCal, days,
+                          focus: 'habit'),
+                    ),
+                  );
+                },
               ),
             ],
           ),
         ),
-
-        // Liste scrollable : Jauges par domaine + Sélecteur + Activités du domaine
         Expanded(
-          child: Builder(
-            builder: (context) {
+          child: ValueListenableBuilder<int>(
+            valueListenable: _tick,
+            builder: (context, _, __) {
               final now = DateTime.now();
-              final today = DateTime(now.year, now.month, now.day);
-
-              // ---------- TEMPS : maps (1 seule fois) ----------
-              final totalsTodayAll = logic.timeTotalsByDomain(today, now);
-              final totals24All = logic.timeTotalsByDomain(
-                  now.subtract(const Duration(hours: 24)), now);
-
-              final start7 = today.subtract(const Duration(days: 7));
-              final end7 = today; // exclut aujourd'hui
-              final totals7All = logic.timeTotalsByDomain(start7, end7);
-
-              final start90 = today.subtract(const Duration(days: 90));
-              final end90 = today;
-              final totals90All = logic.timeTotalsByDomain(start90, end90);
-
-              // ---------- TRI : delta temps (24h vs today, en %) ----------
-// ---------- TRI : delta visuel (valeurs clampées affichées) ----------
-              const haloReachedThreshold = 0.99; // ou 0.95 si tu veux plus doux
-// TRI : 1) ceux dont halo PAS atteint d'abord, 2) score desc
-              final order = logic.computeDashboardDomainOrder(
-                haloReachedThreshold:
-                    haloReachedThreshold, // la même valeur qu’avant
-              );
-              final sortedDomains = order.sortedDomains;
-
-              final actsById = {for (final a in _state!.activities) a.id: a};
-
-// Fenêtres
-              final today0 = DateTime(now.year, now.month, now.day);
-              final ymdToday = yyyymmdd(today0);
-
-              String ymd(DateTime d) =>
-                  yyyymmdd(DateTime(d.year, d.month, d.day));
-              final ymdStart7 = ymd(start7);
-              final ymdStart90 = ymd(start90);
-
-// Aggregats: domainId -> doneX
-              final doneTodayByDomain = <String, int>{};
-              final done7ByDomain = <String, int>{};
-              final done90ByDomain = <String, int>{};
-
-              for (final hp in _state!.habitProgress) {
-                final act = actsById[hp.activityId];
-                if (act == null) continue;
-                if (act.type != 'habit') continue;
-
-                final domId = act.domainId;
-                final v = hp.value;
-
-                final dayKey = hp.yyyymmdd;
-
-                // Today
-                if (dayKey == ymdToday) {
-                  doneTodayByDomain[domId] =
-                      (doneTodayByDomain[domId] ?? 0) + v;
-                }
-                // 7j (comparaison lexicographique OK si format yyyymmdd)
-                if (dayKey.compareTo(ymdStart7) >= 0 &&
-                    dayKey.compareTo(ymdToday) <= 0) {
-                  done7ByDomain[domId] = (done7ByDomain[domId] ?? 0) + v;
-                }
-                // 90j
-                if (dayKey.compareTo(ymdStart90) >= 0 &&
-                    dayKey.compareTo(ymdToday) <= 0) {
-                  done90ByDomain[domId] = (done90ByDomain[domId] ?? 0) + v;
-                }
-              }
-
-              final dailyTargetByDomain = <String, int>{};
-
-              for (final a in _state!.activities) {
-                if (a.type != 'habit') continue;
-                final q = logic.dayQuotaFor(a);
-                if (q <= 0) continue;
-                dailyTargetByDomain[a.domainId] =
-                    (dailyTargetByDomain[a.domainId] ?? 0) + q;
-              }
-
-              // ---------- UI ----------
-              return ListView(
-                children: [
-                  ...sortedDomains.map((d) {
-// ===== ROUTINES (domain) — NOUVELLE LOGIQUE =====
-                    final dailyTarget = dailyTargetByDomain[d.id] ?? 0;
-
-                    final doneToday = doneTodayByDomain[d.id] ?? 0;
-                    final done7 = done7ByDomain[d.id] ?? 0;
-                    final done90 = done90ByDomain[d.id] ?? 0;
-
-                    final target7 = dailyTarget * 7;
-                    final target90 = dailyTarget * 90;
-
-                    final rateTodayD = dailyTarget == 0
-                        ? 0.0
-                        : (doneToday / dailyTarget).clamp(0.0, 1.0);
-                    final rateWeekD =
-                        target7 == 0 ? 0.0 : (done7 / target7).clamp(0.0, 1.0);
-                    final rate90D = target90 == 0
-                        ? 0.0
-                        : (done90 / target90).clamp(0.0, 1.0);
-
-                    final routinesLabelD = "$doneToday / $dailyTarget";
-
-// ===== TEMPS (domain) — NOUVELLE LOGIQUE =====
-                    final dailyTargetMinD = _state!.activities
-                        .where((a) =>
-                            a.domainId == d.id &&
-                            a.type == 'time' &&
-                            a.goalMin > 0)
-                        .fold<int>(0, (sum, a) => sum + a.goalMin);
-
-                    final dailyTargetHoursD = dailyTargetMinD / 60.0;
-
-                    final doneTodayHoursD =
-                        (totalsTodayAll[d.id]?.inMinutes ?? 0) / 60.0;
-
-// 7 jours incluant aujourd’hui
-                    final totals7D =
-                        logic.timeTotalsByDomain(start7Inc, end7Inc);
-                    final done7HoursD = (totals7D[d.id]?.inMinutes ?? 0) / 60.0;
-
-// 90 jours incluant aujourd’hui
-                    final totals90D =
-                        logic.timeTotalsByDomain(start90Inc, end90Inc);
-                    final done90HoursD =
-                        (totals90D[d.id]?.inMinutes ?? 0) / 60.0;
-
-                    final target7HoursD = dailyTargetHoursD * 7.0;
-                    final target90HoursD = dailyTargetHoursD * 90.0;
-
-                    final outerProgressTime = dailyTargetHoursD > 0
-                        ? (doneTodayHoursD / dailyTargetHoursD).clamp(0.0, 1.0)
-                        : 0.0;
-
-                    final bigProgressTime = target7HoursD > 0
-                        ? (done7HoursD / target7HoursD).clamp(0.0, 1.0)
-                        : 0.0;
-
-/*                     final smallProgressTime = target90HoursD > 0
-                        ? (done90HoursD / target90HoursD).clamp(0.0, 1.0)
-                        : 0.0; */
-
-                    final total90HoursAbs = 90.0 * 24.0;
-                    final smallProgressTime =
-                        (done90HoursD / total90HoursAbs).clamp(0.0, 1.0);
-
-                    final timeLabel = _fmtHoursHM(doneTodayHoursD);
-
-                    final totals90All =
-                        logic.timeTotalsByDomain(start90Inc, end90Inc);
-
-                    double domainShare90(String domainId) {
-                      if (done90HoursAll <= 0) return 0.0;
-
-                      final h = (totals90All[domainId]?.inMinutes ?? 0) / 60.0;
-                      return (h / done90HoursAll).clamp(0.0, 1.0);
-                    }
-
-                    final share = domainShare90(d.id);
-                    return SectionCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(d.name,
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 8),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: [
-                              // ✅ Temps
-                              RepaintBoundary(
-                                child: NestedGauge(
-                                  bigProgress: snapToFull(bigProgressTime),
-                                  outerProgress: snapToFull(outerProgressTime),
-                                  smallProgress: snapToFull(share),
-                                  bigColor: _colorForProgress(
-                                      bigProgressTime, context),
-                                  outerColor: Colors.cyanAccent,
-                                  smallColor: _colorForProgress(
-                                      smallProgressTime, context),
-                                  centerText: "",
-                                  label: timeLabel,
-                                  size: 140,
-                                  onTap: () => _showDomainDetail(
-                                    d,
-                                    startCal,
-                                    endCal,
-                                    days,
-                                    focus: 'time',
-                                  ),
-                                ),
-                              ),
-
-                              RepaintBoundary(
-                                child: NestedGauge(
-                                  bigProgress: snapToFull(rateWeekD),
-                                  outerProgress: snapToFull(rateTodayD),
-                                  smallProgress: snapToFull(rate90D),
-                                  centerText: "",
-                                  bigColor:
-                                      _colorForProgress(rateWeekD, context),
-                                  outerColor: Colors.cyanAccent,
-                                  smallColor:
-                                      _colorForProgress(rate90D, context),
-                                  label: routinesLabelD,
-                                  size: 140,
-                                  onTap: () => _showDomainDetail(
-                                      d, startCal, endCal, days,
-                                      focus: 'habit'),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
-                  const SizedBox(height: 80),
-                ],
-              );
+              return _buildDomainListLive(context, now);
             },
           ),
-        ),
+        )
       ],
     );
   }
 
-/*   Widget _buildFocusFab() {
-    return GestureDetector(
-      onLongPress: () {
-        // Focus “domaine courant” si dispo, sinon global
-        final domId = selectedDomainId;
-        if (domId != null) {
-          _openFocusPanel(domainId: domId);
-        } else {
-          _openFocusPanel();
-        }
-      },
-      child: FloatingActionButton.extended(
-        onPressed: () => _openFocusPanel(), // Focus global
-        icon: const Icon(Icons.lightbulb),
-        label: const Text('Focus'),
-      ),
+  Widget _buildDomainListLive(BuildContext context, DateTime now) {
+    final today0 = DateTime(now.year, now.month, now.day);
+    final tomorrow = today0.add(const Duration(days: 1));
+
+    // Fenêtres “incluant aujourd’hui”
+    final start7Inc = today0.subtract(const Duration(days: 6));
+    final end7Inc = tomorrow;
+
+    final start90Inc = today0.subtract(const Duration(days: 89));
+    final end90Inc = tomorrow;
+
+    final (startCal, endCal, days) = _rangeForScope(now);
+
+    const haloReachedThreshold = 0.99;
+    final order = logic.computeDashboardDomainOrder(
+      haloReachedThreshold: haloReachedThreshold,
     );
-  } */
+    final sortedDomains = order.sortedDomains;
+
+    // ✅ TEMPS: maps calculées 1 seule fois par tick
+    final totalsTodayAll = logic.timeTotalsByDomain(today0, now);
+    final totals7All = logic.timeTotalsByDomain(start7Inc, end7Inc);
+    final totals90All = logic.timeTotalsByDomain(start90Inc, end90Inc);
+
+    // ✅ TOTAL 90h global (pour share)
+    final done90HoursAll = totals90All.values
+            .fold<Duration>(Duration.zero, (a, b) => a + b)
+            .inMinutes /
+        60.0;
+
+    // ✅ HABITS: maps calculées 1 seule fois par tick
+    final habitsAgg = _computeHabitsAggByDomain(
+        now); // (doneToday, done7, done90, dailyTarget)
+
+    double domainShare90(String domainId) {
+      if (done90HoursAll <= 0) return 0.0;
+      final h = (totals90All[domainId]?.inMinutes ?? 0) / 60.0;
+      return (h / done90HoursAll).clamp(0.0, 1.0);
+    }
+
+    return ListView(
+      children: [
+        ...sortedDomains.map((d) {
+          // ---- HABITS domain
+          final dailyTarget = habitsAgg.dailyTargetByDomain[d.id] ?? 0;
+          final doneToday = habitsAgg.doneTodayByDomain[d.id] ?? 0;
+          final done7 = habitsAgg.done7ByDomain[d.id] ?? 0;
+          final done90 = habitsAgg.done90ByDomain[d.id] ?? 0;
+
+          final target7 = dailyTarget * 7;
+          final target90 = dailyTarget * 90;
+
+          final rateTodayD = dailyTarget == 0
+              ? 0.0
+              : (doneToday / dailyTarget).clamp(0.0, 1.0);
+          final rateWeekD =
+              target7 == 0 ? 0.0 : (done7 / target7).clamp(0.0, 1.0);
+          final rate90D =
+              target90 == 0 ? 0.0 : (done90 / target90).clamp(0.0, 1.0);
+
+          final routinesLabelD = "$doneToday / $dailyTarget";
+
+          // ---- TIME domain
+          final dailyTargetMinD = _state!.activities
+              .where((a) =>
+                  a.domainId == d.id && a.type == 'time' && a.goalMin > 0)
+              .fold<int>(0, (sum, a) => sum + a.goalMin);
+
+          final dailyTargetHoursD = dailyTargetMinD / 60.0;
+
+          final doneTodayHoursD = (totalsTodayAll[d.id]?.inMinutes ?? 0) / 60.0;
+          final done7HoursD = (totals7All[d.id]?.inMinutes ?? 0) / 60.0;
+          final done90HoursD = (totals90All[d.id]?.inMinutes ?? 0) / 60.0;
+
+          final outerProgressTime = dailyTargetHoursD > 0
+              ? (doneTodayHoursD / dailyTargetHoursD).clamp(0.0, 1.0)
+              : 0.0;
+
+          final target7HoursD = dailyTargetHoursD * 7.0;
+          final bigProgressTime = target7HoursD > 0
+              ? (done7HoursD / target7HoursD).clamp(0.0, 1.0)
+              : 0.0;
+
+          final total90HoursAbs = 90.0 * 24.0;
+          final smallProgressTime =
+              (done90HoursD / total90HoursAbs).clamp(0.0, 1.0);
+
+          final share = domainShare90(d.id);
+          final timeLabel = _fmtHoursHM(doneTodayHoursD);
+
+          return SectionCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(d.name,
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    RepaintBoundary(
+                      child: NestedGauge(
+                        bigProgress: snapToFull(bigProgressTime),
+                        outerProgress: snapToFull(outerProgressTime),
+                        smallProgress: snapToFull(share),
+                        bigColor: _colorForProgress(bigProgressTime, context),
+                        outerColor: Colors.cyanAccent,
+                        smallColor:
+                            _colorForProgress(smallProgressTime, context),
+                        centerText: "",
+                        label: timeLabel,
+                        size: 140,
+                        onTap: () => _showDomainDetail(
+                            d, startCal, endCal, days,
+                            focus: 'time'),
+                      ),
+                    ),
+                    RepaintBoundary(
+                      child: NestedGauge(
+                        bigProgress: snapToFull(rateWeekD),
+                        outerProgress: snapToFull(rateTodayD),
+                        smallProgress: snapToFull(rate90D),
+                        centerText: "",
+                        bigColor: _colorForProgress(rateWeekD, context),
+                        outerColor: Colors.cyanAccent,
+                        smallColor: _colorForProgress(rate90D, context),
+                        label: routinesLabelD,
+                        size: 140,
+                        onTap: () => _showDomainDetail(
+                            d, startCal, endCal, days,
+                            focus: 'habit'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        }),
+        const SizedBox(height: 80),
+      ],
+    );
+  }
+
+  // Snap helper (gauge)
+  double snapToFull(double value, {double threshold = 0.97}) {
+    if (value >= threshold) return 1.0;
+    return value.clamp(0.0, 1.0);
+  }
+
+  _HabitsAggByDomain _computeHabitsAggByDomain(DateTime now) {
+    final today0 = DateTime(now.year, now.month, now.day);
+    final ymdToday = yyyymmdd(today0);
+
+    String ymd(DateTime d) => yyyymmdd(DateTime(d.year, d.month, d.day));
+
+    final ymdStart7 = ymd(today0.subtract(const Duration(days: 6)));
+    final ymdStart90 = ymd(today0.subtract(const Duration(days: 89)));
+
+    final actsById = {for (final a in _state!.activities) a.id: a};
+
+    final doneTodayByDomain = <String, int>{};
+    final done7ByDomain = <String, int>{};
+    final done90ByDomain = <String, int>{};
+
+    for (final hp in _state!.habitProgress) {
+      final act = actsById[hp.activityId];
+      if (act == null) continue;
+      if (act.type != 'habit') continue;
+
+      final domId = act.domainId;
+
+      // ⚠️ Ici on force en int
+      final v = hp.value.toInt();
+
+      final dayKey = hp.yyyymmdd;
+
+      if (dayKey == ymdToday) {
+        doneTodayByDomain[domId] = (doneTodayByDomain[domId] ?? 0) + v;
+      }
+
+      if (dayKey.compareTo(ymdStart7) >= 0 && dayKey.compareTo(ymdToday) <= 0) {
+        done7ByDomain[domId] = (done7ByDomain[domId] ?? 0) + v;
+      }
+
+      if (dayKey.compareTo(ymdStart90) >= 0 &&
+          dayKey.compareTo(ymdToday) <= 0) {
+        done90ByDomain[domId] = (done90ByDomain[domId] ?? 0) + v;
+      }
+    }
+
+    final dailyTargetByDomain = <String, int>{};
+
+    for (final a in _state!.activities) {
+      if (a.type != 'habit') continue;
+
+      final q = logic.dayQuotaFor(a).toInt();
+
+      if (q <= 0) continue;
+
+      dailyTargetByDomain[a.domainId] =
+          (dailyTargetByDomain[a.domainId] ?? 0) + q;
+    }
+
+    return _HabitsAggByDomain(
+      doneTodayByDomain: doneTodayByDomain,
+      done7ByDomain: done7ByDomain,
+      done90ByDomain: done90ByDomain,
+      dailyTargetByDomain: dailyTargetByDomain,
+    );
+  }
 
   Future<void> _createActivityDialog({
     String? domainId, // si null -> on affiche un dropdown
