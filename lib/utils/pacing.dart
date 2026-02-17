@@ -1,6 +1,7 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import '../app_logic.dart';
-import '../models.dart';
 
 DateTime startOfDay(DateTime now, {int dayStartHour = 0}) {
   final s = DateTime(now.year, now.month, now.day, dayStartHour);
@@ -25,7 +26,6 @@ class HabitPacingAgg {
 /// Agrège pour: domaine donné OU tous domaines si domainId == null
 HabitPacingAgg computeDailyPacingAggregate(AppLogic logic, {String? domainId, int dayStartHour = 0}) {
   final now = DateTime.now();
-  final todayKey = "${now.year.toString().padLeft(4,'0')}${now.month.toString().padLeft(2,'0')}${now.day.toString().padLeft(2,'0')}";
 
   // 1) liste des habitudes "count" quotidiennes du périmètre
   final acts = logic.state.activities.where((a) {

@@ -472,7 +472,7 @@ class FileStore {
     String _newId() =>
         'seed:${DateTime.now().millisecondsSinceEpoch}:${_seq++}';
 
-    final yesterday = DateTime.now().subtract(const Duration(days: 1));
+    DateTime.now().subtract(const Duration(days: 1));
     final today = DateTime.now();
 
     DayPlanItem toPlan({

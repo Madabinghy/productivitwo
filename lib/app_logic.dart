@@ -1,5 +1,7 @@
 // applogic.dart — version sans dailyTarget, cibles dérivées partout ✨
 
+// ignore_for_file: deprecated_member_use
+
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:collection/collection.dart';
@@ -299,7 +301,7 @@ void updateSession(
     Session? last;
     for (final s in state.sessions) {
       if (s.endAt != null) continue;
-      if (last == null || s.startAt.isAfter(last!.startAt)) last = s;
+      if (last == null || s.startAt.isAfter(last.startAt)) last = s;
     }
     if (last == null) return null;
 
@@ -318,7 +320,7 @@ void updateSession(
     Session? last;
     for (final s in state.sessions) {
       if (s.endAt != null) continue;
-      if (last == null || s.startAt.isAfter(last!.startAt)) last = s;
+      if (last == null || s.startAt.isAfter(last.startAt)) last = s;
     }
     return last?.activityId;
   }
@@ -372,11 +374,11 @@ void updateSession(
     DayPlanItem? last;
     for (final e in state.dayPlan) {
       if (e.yyyymmdd != tomoKey) continue;
-      if (last == null || e.order > last!.order) last = e;
+      if (last == null || e.order > last.order) last = e;
     }
 
     final sameAsLast =
-        last != null && last!.kind == kind && last!.refId == refId;
+        last != null && last.kind == kind && last.refId == refId;
     if (sameAsLast) return;
 
     state.dayPlan.add(
@@ -470,13 +472,6 @@ void updateSession(
         .add(Session(activityId: activityId, startAt: DateTime.now()));
 
     // 3) journal (burst) -> demain
-    final title = state.activities
-        .firstWhere(
-          (a) => a.id == activityId,
-          orElse: () =>
-              Activity(domainId: '', name: 'Activité', habitTarget: 1),
-        )
-        .name;
 
     removeFromDay(_todayKeyLocal(), PlanKind.activityTime, activityId);
     //logTomorrowIfLastDifferent(PlanKind.activityTime, activityId, title);
@@ -1733,14 +1728,6 @@ void updateSession(
     return changes;
   }
 
-  void _autoTuneHabitSafe(Activity a, {DateTime? now}) {
-    try {
-      autoTuneHabit(this, a, now: now);
-    } catch (_) {
-      // no-op
-    }
-  }
-
   // ---------- Mesures glissantes ----------
   DateTimeRange lastNDays(int n, {DateTime? now}) {
     final t = now ?? DateTime.now();
@@ -2045,7 +2032,7 @@ void updateSession(
         // 1) routines liées à l’activité en cours
         final focusList = byAct[focusActivityId] ?? const <DayPlanItem>[];
         if (focusList.isNotEmpty) {
-          final actName = activitiesById[focusActivityId!]?.name ?? "Activité";
+          final actName = activitiesById[focusActivityId]?.name ?? "Activité";
           rows.add(RowHeader("virt:sec:$domId:focus", "Routines • $actName"));
           rows.addAll(focusList.map(RowPlan.new));
         }
@@ -2158,11 +2145,11 @@ void updateSession(
     DayPlanItem? last;
     for (final e in state.dayPlan) {
       if (e.yyyymmdd != tomoKey) continue;
-      if (last == null || e.order > last!.order) last = e;
+      if (last == null || e.order > last.order) last = e;
     }
 
     final sameAsLast =
-        last != null && last!.kind == kind && last!.refId == refId;
+        last != null && last.kind == kind && last.refId == refId;
     if (sameAsLast) return;
 
     state.dayPlan.add(
@@ -2209,7 +2196,7 @@ void updateSession(
     DayPlanItem? last;
     for (final e in state.dayPlan) {
       if (e.yyyymmdd != dayKey) continue;
-      if (last == null || e.order > last!.order) last = e;
+      if (last == null || e.order > last.order) last = e;
     }
 
     final sameAsLast = last != null && last.kind == kind && last.refId == refId;
@@ -3240,11 +3227,6 @@ extension TodayLogic on AppLogic {
     onChange();
   }
 
-  bool _existsToday(String todayKey, DayPlanItem e) {
-    return state.dayPlan.any((x) =>
-        x.yyyymmdd == todayKey && x.kind == e.kind && x.refId == e.refId);
-  }
-
   void rolloverUndone({DateTime? now}) {
     final t = now ?? DateTime.now();
     final today = yyyymmdd(DateTime(t.year, t.month, t.day));
@@ -3649,17 +3631,7 @@ int _roundTo5(num x) => (x / 5.0).round() * 5;
 
 // ---------- Sliding helpers pour domaines/graphs ----------
 extension SlidingProgress on AppLogic {
-  ({DateTime start, DateTime end, int days}) _dayWin(DateTime now) {
-    final s = DateTime(now.year, now.month, now.day);
-    return (start: s, end: s.add(const Duration(days: 1)), days: 1);
-  }
 
-  ({DateTime start, DateTime end, int days}) _weekWin(DateTime now) {
-    final e =
-        DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
-    final s = e.subtract(const Duration(days: 7));
-    return (start: s, end: e, days: 7);
-  }
 
   double timePct(String activityId, DateTime start, DateTime end, int days) {
     final doneMin = totalForRangeByActivity(activityId, start, end).inMinutes;

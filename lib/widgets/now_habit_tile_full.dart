@@ -44,8 +44,7 @@ class NowHabitTileFull extends StatelessWidget {
       case HabitFreq.weekly:
         return "7j $weekDone/$weekTarget  •  Aujourd’hui $dayDone/$dayQuota";
       case HabitFreq.monthly:
-      default:
-        return "30j $monthDone/$monthTarget  •  Aujourd’hui $dayDone/$dayQuota";
+      return "30j $monthDone/$monthTarget  •  Aujourd’hui $dayDone/$dayQuota";
     }
   }
 
@@ -57,7 +56,7 @@ class NowHabitTileFull extends StatelessWidget {
 
     final act = st.activities.firstWhere((a) => a.id == habitId);
 
-    final dH = logic.habitSliding(habitId, 1);
+    logic.habitSliding(habitId, 1);
     final h90 = logic.habitSliding(habitId, 90);
 
     final quotaD = logic.dayQuotaFor(act);

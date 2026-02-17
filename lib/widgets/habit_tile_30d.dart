@@ -51,10 +51,7 @@ class NowHabit30dBar extends StatelessWidget {
             ? act.habitTarget!
             : quota * 30;
         return (30, tgt, "30 j");
-      default:
-        // fallback safe
-        return (30, (act.habitTarget ?? 30), "30 j");
-    }
+      }
   }
 
   @override

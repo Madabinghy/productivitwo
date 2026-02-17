@@ -1,9 +1,10 @@
+// ignore_for_file: deprecated_member_use
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
-import 'package:productivitwo_v1/main.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:collection/collection.dart';
 import 'package:productivitwo_v1/widgets/assign_activity_sheet.dart';
@@ -146,13 +147,6 @@ class _TodayViewState extends State<TodayView> {
     );
   }
 
-  Activity? _activityById(String? id) {
-    if (id == null || id.isEmpty) return null;
-    for (final a in widget.state.activities) {
-      if (a.id == id) return a;
-    }
-    return null;
-  }
 
   Future<void> _startOrPickActivityForAction(DayPlanItem it) async {
     final running = widget.logic.runningActivity();
@@ -614,7 +608,7 @@ class _TodayViewState extends State<TodayView> {
     final running = widget.logic.runningActivity();
     final hasRunning = isTodayTab && running != null;
 
-    final isPlanning = hasRunning && (running!.role == ActivityRole.planning);
+    final isPlanning = hasRunning && (running.role == ActivityRole.planning);
 
     final forceAutoHabits = isTodayTab && isPlanning;
 
@@ -936,7 +930,7 @@ class _TodayViewState extends State<TodayView> {
           if (hasRunning &&
               (byActivity.isNotEmpty || byDomainOnly.isNotEmpty)) ...[
             Text(
-              "Contexte • ${running!.name}",
+              "Contexte • ${running.name}",
               style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
             ),
             const SizedBox(height: 8),
@@ -1258,7 +1252,7 @@ class _TodayViewState extends State<TodayView> {
 
     // poignée de drag
     Widget dragHandle() {
-      final enabled = showDrag && indexForDrag != null;
+      final enabled = showDrag;
       final icon = Icon(
         Icons.drag_handle,
         size: 20,
@@ -1271,7 +1265,7 @@ class _TodayViewState extends State<TodayView> {
         return SizedBox(width: 32, height: 32, child: Center(child: icon));
 
       return ReorderableDragStartListener(
-        index: indexForDrag!,
+        index: indexForDrag,
         child: SizedBox(width: 32, height: 32, child: Center(child: icon)),
       );
     }
@@ -1900,24 +1894,6 @@ class _TodayViewState extends State<TodayView> {
     );
   }
 
-  Future<Activity?> _pickActivity({required bool isHabit}) async {
-    final acts = widget.state.activities
-        .where((a) => a.isHabit == isHabit)
-        .toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
-    return await showModalBottomSheet<Activity>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => ListView(
-        children: acts
-            .map((a) => ListTile(
-                  title: Text(a.name),
-                  onTap: () => Navigator.pop(ctx, a),
-                ))
-            .toList(),
-      ),
-    );
-  }
 
   Future<void> showHabitChecklist(
     BuildContext context, {
@@ -2165,39 +2141,7 @@ class _NowTabState extends State<NowTab> {
     }
   }
 
-  Future<Activity?> _pickActivityForAction(BuildContext context) async {
-    return await showModalBottomSheet<Activity>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => AssignActivitySheet(
-        st: widget.st,
-        onPick: (act) => Navigator.pop(context, act), // ✅ renvoie l’activité
-        onKeepInbox: () => Navigator.pop(context, null),
-      ),
-    );
-  }
 
-  Future<void> _startOrPickActivityForAction(
-      BuildContext context, DayPlanItem it) async {
-    // 1) déjà associée → start direct
-    if ((it.activityId ?? '').isNotEmpty) {
-      widget.logic.start(it.activityId!); // <-- adapte au nom chez toi
-      return;
-    }
-
-    // 2) sinon → picker
-    final picked = await _pickActivityForAction(context);
-    if (picked == null) return;
-
-    setState(() {
-      it.activityId = picked.id;
-      it.domainId = picked.domainId;
-    });
-    widget.logic.onChange();
-
-    widget.logic.start(picked.id); // <-- adapte au nom chez toi
-  }
 
   Future<void> _passForToday(DayPlanItem it) async {
     setState(() => it.isNowFocus = false);
@@ -3197,13 +3141,6 @@ class _NowTabState extends State<NowTab> {
     );
   }
 
-  Future<int?> _askInt(BuildContext context, String title,
-      {String? initial}) async {
-    final s =
-        await _promptText(title: title, initial: initial ?? ""); // tu l'as déjà
-    if (s == null) return null;
-    return int.tryParse(s.trim());
-  }
 
   String freqLabelForActivity(Activity act) {
     final f = widget.logic.effectiveHabitFreq(act);
@@ -3742,9 +3679,7 @@ class _NowTabState extends State<NowTab> {
       case PlanKind.activityTime:
       case PlanKind.action:
         return true;
-      default:
-        return false;
-    }
+      }
   }
 
   Widget _allSkippedView() {
@@ -3779,9 +3714,6 @@ class _NowTabState extends State<NowTab> {
   Widget _nowCard(BuildContext context, RowPlan rp, int total) {
     final it = rp.it;
     final subtitle = _subtitleFor(it);
-    final doneToday = (it.kind == PlanKind.habit && it.refId != null)
-        ? widget.logic.habitValueOn(it.refId!, widget.day)
-        : 0;
     final ymd =
         yyyymmdd(DateTime(widget.day.year, widget.day.month, widget.day.day));
 
@@ -3921,37 +3853,9 @@ class _NowTabState extends State<NowTab> {
     );
   }
 
-  void _onPrimary(DayPlanItem it) {
-    if (it.kind == PlanKind.habit) {
-      setState(() {
-        _doneTodayIds.add(it.id);
-        _lockedPlanId = null;
-      });
-      _persistNowSets();
-    }
-  }
 
-  String _primaryLabel(DayPlanItem it) {
-    if (it.kind != PlanKind.habit || it.refId == null) {
-      return "Fait";
-    }
 
-    final doneToday = widget.logic.habitValueOn(it.refId!, widget.day);
 
-    return doneToday > 0 ? "Ok pour aujourd’hui" : "Pas aujourd’hui";
-  }
-
-  bool _canAdjust(DayPlanItem it) {
-    return !_skippedIds.contains(it.id) && !_doneTodayIds.contains(it.id);
-  }
-
-  void _onDelta(DayPlanItem it, int delta) {
-    if (!_canAdjust(it)) return;
-    if (it.kind != PlanKind.habit || it.refId == null) return;
-
-    widget.logic.incHabit(it.refId!, delta, widget.day);
-    setState(() {}); // refresh jauge
-  }
 
   String? _subtitleFor(DayPlanItem it) {
     // Si tu veux afficher domaine / association, tu peux.

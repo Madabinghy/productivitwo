@@ -1,5 +1,6 @@
 // Déplace (ou définis) l’énum ici si elle était dans main.dart
-import 'dart:ui';
+
+// ignore_for_file: deprecated_member_use
 
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
