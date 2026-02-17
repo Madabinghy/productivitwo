@@ -1050,7 +1050,6 @@ class _RunningBannerGlobalState extends State<RunningBannerGlobal> {
     return h > 0 ? "${h}h ${m}m ${sec}s" : "${m}m ${sec}s";
   }
 
-
   @override
   Widget build(BuildContext context) {
     final st = widget.state;
@@ -1317,7 +1316,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   DateTime? _challengeEndsAt;
   String? _challengeActivityId;
 
-
   // Champs d’état pour les badges
   Map<String, int> _domainAutoDeltas =
       {}; // agrégat des deltas d’activités par domaine
@@ -1327,6 +1325,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   bool _saving = false;
 
   late final ValueNotifier<int> _tick; // seconds
+
 
   @override
   void initState() {
@@ -1602,8 +1601,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     );
   }
 
-
-
   // ---------- UI ----------
 
   Future<String?> _askText(BuildContext ctx, String title) async {
@@ -1718,46 +1715,35 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
     final filtersOn = logic.state.filters.enabled;
 
-
     DateTime _endOfDay(DateTime d) =>
         DateTime(d.year, d.month, d.day, 23, 59, 59);
 
     String _fmtDate(DateTime d) =>
         "${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}";
 
-    Future<void> showSnoozeSheetForActivity(
+    Future<bool> showSnoozeSheetForActivity(
       BuildContext context, {
       required AppLogic logic,
       required Activity activity,
-      VoidCallback? onAfter, // pour refresh/setState
     }) async {
       final now = DateTime.now();
 
-      Future<void> applyUntil(DateTime until) async {
-        logic.snoozeActivityUntil(activity.id, until);
-        onAfter?.call();
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).clearSnackBars();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Masqué jusqu’au ${_fmtDate(until)}")),
-        );
-      }
-
-      Future<void> pickDate() async {
-        final picked = await showDatePicker(
-          context: context,
-          initialDate: now.add(const Duration(days: 1)),
-          firstDate: now,
-          lastDate: now.add(const Duration(days: 365)),
-        );
-        if (picked == null) return;
-        await applyUntil(_endOfDay(picked));
-      }
-
-      await showModalBottomSheet<void>(
+      final bool? changed = await showModalBottomSheet<bool>(
         context: context,
         showDragHandle: true,
         builder: (ctx) {
+          Future<void> applyUntil(DateTime until) async {
+            logic.snoozeActivityUntil(activity.id, until);
+            if (!context.mounted) return;
+
+            ScaffoldMessenger.of(context).clearSnackBars();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("Masqué jusqu’au ${_fmtDate(until)}")),
+            );
+
+            Navigator.pop(ctx, true);
+          }
+
           return SafeArea(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -1771,50 +1757,35 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                 ListTile(
                   leading: const Icon(Icons.calendar_today_outlined),
                   title: const Text("Demain"),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    await applyUntil(
-                        _endOfDay(now.add(const Duration(days: 1))));
-                  },
+                  onTap: () =>
+                      applyUntil(_endOfDay(now.add(const Duration(days: 1)))),
                 ),
                 ListTile(
                   leading: const Icon(Icons.calendar_view_week_outlined),
                   title: const Text("Dans 3 jours"),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    await applyUntil(
-                        _endOfDay(now.add(const Duration(days: 3))));
-                  },
+                  onTap: () =>
+                      applyUntil(_endOfDay(now.add(const Duration(days: 3)))),
                 ),
                 ListTile(
                   leading: const Icon(Icons.event_repeat_outlined),
                   title: const Text("Dans 7 jours"),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    await applyUntil(
-                        _endOfDay(now.add(const Duration(days: 7))));
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.edit_calendar_outlined),
-                  title: const Text("Choisir une date…"),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    await pickDate();
-                  },
+                  onTap: () =>
+                      applyUntil(_endOfDay(now.add(const Duration(days: 7)))),
                 ),
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.restore),
                   title: const Text("Annuler le masquage"),
                   onTap: () {
-                    Navigator.pop(ctx);
                     logic.clearSnooze(activity.id);
-                    onAfter?.call();
+
+                    if (!context.mounted) return;
                     ScaffoldMessenger.of(context).clearSnackBars();
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text("Masquage annulé")),
                     );
+
+                    Navigator.pop(ctx, true);
                   },
                 ),
                 const SizedBox(height: 8),
@@ -1823,6 +1794,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
           );
         },
       );
+
+      return changed == true;
     }
 
     Widget trailingChip() {
@@ -1904,12 +1877,22 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
           logic.start(sug.activity.id);
         },
         onStop: () {}, // pas utilisé ici
-        onPickSnooze: () => showSnoozeSheetForActivity(
-          context,
-          logic: logic,
-          activity: sug.activity,
-          onAfter: () => setState(() {}),
-        ),
+        onPickSnooze: () async {
+          final changed = await showSnoozeSheetForActivity(
+            context,
+            logic: logic,
+            activity: sug.activity,
+          );
+
+          if (!mounted) return;
+          if (!changed) return;
+
+          setState(() {
+            // IMPORTANT: ici tu dois déclencher la logique qui choisit la suggestion
+            // soit en appelant une fonction, soit en “bumpant” un token.
+// (voir patch 3)
+          });
+        },
       );
     }
 
@@ -2053,7 +2036,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       ),
     );
   }
-
 
   int? effectiveTarget(Activity act) {
     switch (act.habitFreq) {
@@ -2726,101 +2708,75 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   DateTime _endOfDay(DateTime d) =>
       DateTime(d.year, d.month, d.day, 23, 59, 59);
 
-  void _openActivitySheet(Activity a) {
+  Future<bool> _openActivitySheet(Activity a) async {
     final now = DateTime.now();
 
-    showModalBottomSheet(
+    final bool? changed = await showModalBottomSheet<bool>(
       context: context,
       showDragHandle: true,
       builder: (ctx) {
-        final snoozed = logic.isActivitySnoozed(a.id, now);
-
         Future<void> hideUntil(DateTime until) async {
           logic.snoozeActivityUntil(a.id, until);
-          Navigator.pop(ctx);
-          setState(() {});
-        }
-
-        Future<void> pickDate() async {
-          Navigator.pop(ctx);
-          final picked = await showDatePicker(
-            context: context,
-            initialDate: now.add(const Duration(days: 1)),
-            firstDate: now,
-            lastDate: now.add(const Duration(days: 365)),
-          );
-          if (picked == null) return;
-          setState(() {
-            logic.snoozeActivityUntil(a.id, _endOfDay(picked));
-          });
+          Navigator.pop(ctx, true); // ✅ changed
         }
 
         return SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  title: Text(
-                    a.name,
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  subtitle: Text(snoozed ? "Cachée (zzz)" : "Visible"),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.edit),
-                  title: const Text("Renommer"),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    final s = await _askText(context, "Renommer l’activité");
-                    if (s == null || s.trim().isEmpty) return;
-                    setState(() {
-                      a.name = s.trim();
-                      logic.onChange();
-                    });
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.snooze),
-                  title: const Text("Demain"),
-                  onTap: () =>
-                      hideUntil(_endOfDay(now.add(const Duration(days: 1)))),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.snooze),
-                  title: const Text("Dans 3 jours"),
-                  onTap: () =>
-                      hideUntil(_endOfDay(now.add(const Duration(days: 3)))),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.snooze),
-                  title: const Text("Dans 7 jours"),
-                  onTap: () =>
-                      hideUntil(_endOfDay(now.add(const Duration(days: 7)))),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.snooze),
-                  title: const Text("Choisir une date…"),
-                  onTap: pickDate,
-                ),
-                if (snoozed)
-                  ListTile(
-                    leading: const Icon(Icons.visibility),
-                    title: const Text("Afficher"),
-                    onTap: () {
-                      logic.unsnoozeActivity(a.id);
-                      Navigator.pop(ctx);
-                      setState(() {});
-                    },
-                  ),
-              ],
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(title: Text(a.name)),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.calendar_today_outlined),
+                title: const Text("Demain"),
+                onTap: () =>
+                    hideUntil(_endOfDay(now.add(const Duration(days: 1)))),
+              ),
+              ListTile(
+                leading: const Icon(Icons.calendar_view_week_outlined),
+                title: const Text("Dans 3 jours"),
+                onTap: () =>
+                    hideUntil(_endOfDay(now.add(const Duration(days: 3)))),
+              ),
+              ListTile(
+                leading: const Icon(Icons.event_repeat_outlined),
+                title: const Text("Dans 7 jours"),
+                onTap: () =>
+                    hideUntil(_endOfDay(now.add(const Duration(days: 7)))),
+              ),
+              ListTile(
+                leading: const Icon(Icons.edit_calendar_outlined),
+                title: const Text("Choisir une date…"),
+                onTap: () async {
+                  // ✅ Variante clean: on choisit la date DANS le sheet,
+                  // puis on pop(true) quand c’est appliqué.
+                  final picked = await showDatePicker(
+                    context: ctx,
+                    initialDate: DateTime.now().add(const Duration(days: 1)),
+                    firstDate: DateTime.now(),
+                    lastDate: DateTime.now().add(const Duration(days: 365)),
+                  );
+                  if (picked == null) return;
+                  await hideUntil(_endOfDay(picked)); // pop(true)
+                },
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.restore),
+                title: const Text("Annuler le masquage"),
+                onTap: () {
+                  logic.clearSnooze(a.id);
+                  Navigator.pop(ctx, true); // ✅ changed
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
           ),
         );
       },
     );
+
+    return changed == true;
   }
 
   void _showDomainDetail(
@@ -3347,7 +3303,15 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
           Widget _wrapTile(Activity a, int i, int len, Widget child) {
             return InkWell(
-              onTap: () => _openActivitySheet(a),
+              onTap: () async {
+                final changed = await _openActivitySheet(a);
+                if (changed) {
+                  setSB(() {
+                    _lockActive =
+                        false; // ✅ évite que le lock garde l’ordre/sections figées
+                  });
+                }
+              },
               child: child,
             );
           }
@@ -3579,7 +3543,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             );
           }
 
-
           String _habitSubText({
             required HabitFreq freq,
             required int dayDone,
@@ -3659,15 +3622,9 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             );
           }
 
-
-// base = ta liste actuelle (habit ou time) pour le domaine courant
-// (tu l’as déjà)
-
-          base.where((a) => logic.isActivityHidden(a.id)).toList();
           final baseVisible =
               base.where((a) => !logic.isActivityHidden(a.id)).toList();
 
-// ⚠️ IMPORTANT : recalcule under/over à partir de baseVisible, pas base
           under = [];
           over = [];
 
@@ -3717,6 +3674,28 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             over = baseVisible.where((a) => reached(a)).toList();
           }
 
+// ✅ RE-CALC FINAL des sections visibles / cachées (à faire après under/over + lock)
+          final nowS = DateTime.now();
+
+          if (isHabitsTab) {
+            visibleUnder = under;
+            visibleOver = over;
+            hiddenActivities = const [];
+          } else {
+            visibleUnder = under
+                .where((a) => !logic.isActivitySnoozed(a.id, nowS))
+                .toList();
+
+            visibleOver = over
+                .where((a) => !logic.isActivitySnoozed(a.id, nowS))
+                .toList();
+
+            hiddenActivities = [
+              ...under.where((a) => logic.isActivitySnoozed(a.id, nowS)),
+              ...over.where((a) => logic.isActivitySnoozed(a.id, nowS)),
+            ];
+          }
+
           // ---------- Rendu des sections ----------
           final list = ListView(
             controller: scrollCtrl,
@@ -3757,13 +3736,14 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                       trailing: TextButton(
                         child: const Text("Afficher"),
                         onPressed: () {
-                          setState(() {
-                            logic.unsnoozeActivity(a.id);
-                          });
+                          logic.unsnoozeActivity(a.id);
 
-                          // debug utile
+                          // ✅ refresh du sheet (StatefulBuilder)
+                          setSB(() {});
+
                           debugPrint(
-                              "[UNHIDE] ${a.name} id=${a.id} hidden=${logic.isActivityHidden(a.id)}");
+                            "[UNHIDE] ${a.name} id=${a.id} snoozed=${logic.isActivitySnoozed(a.id, DateTime.now())}",
+                          );
 
                           ScaffoldMessenger.of(context).clearSnackBars();
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -3828,7 +3808,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     if (p >= 0.25) return Colors.orange;
     return Colors.redAccent;
   }
-
 }
 
 class ChallengeActivityChip extends StatelessWidget {
