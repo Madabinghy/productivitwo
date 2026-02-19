@@ -79,6 +79,7 @@ class HabitAssocEvent {
 
 class AppLogic {
   AppState state;
+
   final void Function() onChange;
   AppLogic(this.state, this.onChange);
 
@@ -90,6 +91,118 @@ class AppLogic {
 
   final Map<String, Set<String>> _checkedTodayByHabit =
       {}; // habitId -> labels cochés
+
+  final ValueNotifier<int> rev = ValueNotifier<int>(0);
+
+  void bumpRev() => rev.value++;
+
+  void reorderTodayBucket({
+    required String yyyymmdd,
+    required List<DayPlanItem>
+        bucketVisible, // la liste affichée (todo ou courses)
+    required int oldIndex,
+    required int newIndex,
+  }) {
+    if (oldIndex < 0 || oldIndex >= bucketVisible.length) return;
+    if (newIndex < 0 || newIndex > bucketVisible.length) return;
+
+    if (newIndex > oldIndex) newIndex -= 1;
+    if (newIndex < 0 || newIndex >= bucketVisible.length) return;
+
+    final moved = bucketVisible[oldIndex];
+    final target = bucketVisible[newIndex];
+
+    // liste canonique du jour (inclut inbox + todo + courses) triée par order
+    final all = state.dayPlan.where((it) => it.yyyymmdd == yyyymmdd).toList()
+      ..sort((a, b) => a.order.compareTo(b.order));
+
+    final from = all.indexWhere((e) => e.id == moved.id);
+    final to = all.indexWhere((e) => e.id == target.id);
+    if (from == -1 || to == -1) return;
+
+    final item = all.removeAt(from);
+    final insertAt = (from < to) ? to - 1 : to;
+    all.insert(insertAt, item);
+
+    // réécrit order (simple et robuste)
+    for (int i = 0; i < all.length; i++) {
+      all[i].order = i;
+    }
+
+    // replace dans state.dayPlan
+    state.dayPlan.removeWhere((it) => it.yyyymmdd == yyyymmdd);
+    state.dayPlan.addAll(all);
+
+    onChange();
+    bumpRev();
+  }
+
+  void pushTodayItemToEnd({
+    required String yyyymmdd,
+    required String itemId,
+  }) {
+    // liste canonique du jour (dans l’ordre)
+    final today = state.dayPlan.where((it) => it.yyyymmdd == yyyymmdd).toList()
+      ..sort((a, b) => a.order.compareTo(b.order));
+
+    final idx = today.indexWhere((it) => it.id == itemId);
+    if (idx == -1) return;
+
+    final moved = today.removeAt(idx);
+    today.add(moved); // ✅ dernier
+
+    // réécrit les order (robuste)
+    for (int i = 0; i < today.length; i++) {
+      today[i].order = i;
+    }
+
+    // remplace dans state.dayPlan
+    state.dayPlan.removeWhere((it) => it.yyyymmdd == yyyymmdd);
+    state.dayPlan.addAll(today);
+
+    onChange();
+    rev.value++; // ✅ refresh NowTab/TodayView si tu utilises rev
+  }
+
+  TodaySections todaySections({
+    required String yyyymmdd,
+    DateTime? now,
+    bool hideDone = true,
+  }) {
+    final now0 = now ?? DateTime.now();
+
+    bool isVisibleBase(DayPlanItem it) {
+      if (it.archived) return false;
+      if (hideDone && it.done) return false;
+
+      final u = it.snoozeUntil;
+      if (u != null && u.isAfter(now0)) return false;
+
+      return true;
+    }
+
+    final allToday = state.dayPlan
+        .where((it) => it.yyyymmdd == yyyymmdd)
+        .where(isVisibleBase)
+        .toList()
+      ..sort((a, b) => a.order.compareTo(b.order));
+
+    final todo = <DayPlanItem>[];
+    final inbox = <DayPlanItem>[];
+    final courses = <DayPlanItem>[];
+
+    for (final it in allToday) {
+      if (it.isCourses) {
+        courses.add(it);
+      } else if (it.isInbox) {
+        inbox.add(it);
+      } else {
+        todo.add(it);
+      }
+    }
+
+    return TodaySections(todo: todo, inbox: inbox, courses: courses);
+  }
 
   Activity? _firstWhereOrNull<T extends Object>(
     Iterable<Activity> items,
@@ -282,20 +395,20 @@ class AppLogic {
     onChange();
   }
 
-void updateSession(
-  String sessionId, {
-  DateTime? startAt,
-  DateTime? endAt,
-  String? activityId,
-}) {
-  final s = state.sessions.firstWhere((x) => x.id == sessionId);
+  void updateSession(
+    String sessionId, {
+    DateTime? startAt,
+    DateTime? endAt,
+    String? activityId,
+  }) {
+    final s = state.sessions.firstWhere((x) => x.id == sessionId);
 
-  if (startAt != null) s.startAt = startAt;
-  s.endAt = endAt;
-  if (activityId != null) s.activityId = activityId;
+    if (startAt != null) s.startAt = startAt;
+    s.endAt = endAt;
+    if (activityId != null) s.activityId = activityId;
 
-  onChange();
-}
+    onChange();
+  }
 
   Activity? runningActivity() {
     Session? last;
@@ -377,8 +490,7 @@ void updateSession(
       if (last == null || e.order > last.order) last = e;
     }
 
-    final sameAsLast =
-        last != null && last.kind == kind && last.refId == refId;
+    final sameAsLast = last != null && last.kind == kind && last.refId == refId;
     if (sameAsLast) return;
 
     state.dayPlan.add(
@@ -2148,8 +2260,7 @@ void updateSession(
       if (last == null || e.order > last.order) last = e;
     }
 
-    final sameAsLast =
-        last != null && last.kind == kind && last.refId == refId;
+    final sameAsLast = last != null && last.kind == kind && last.refId == refId;
     if (sameAsLast) return;
 
     state.dayPlan.add(
@@ -3631,8 +3742,6 @@ int _roundTo5(num x) => (x / 5.0).round() * 5;
 
 // ---------- Sliding helpers pour domaines/graphs ----------
 extension SlidingProgress on AppLogic {
-
-
   double timePct(String activityId, DateTime start, DateTime end, int days) {
     final doneMin = totalForRangeByActivity(activityId, start, end).inMinutes;
     final goalDay =
@@ -3778,4 +3887,22 @@ class _MiniHistogramPainter extends CustomPainter {
     }
     return false;
   }
+}
+
+class TodaySections {
+  final List<DayPlanItem> todo;
+  final List<DayPlanItem> inbox;
+  final List<DayPlanItem> courses;
+
+  TodaySections({
+    required this.todo,
+    required this.inbox,
+    required this.courses,
+  });
+}
+
+extension DayPlanItemBuckets on DayPlanItem {
+  bool get isInbox => (refId == null || (refId ?? '').isEmpty);
+  bool get isCourses => toPlan == true;
+  bool get isTodo => !isInbox && !isCourses;
 }

@@ -147,7 +147,6 @@ class _TodayViewState extends State<TodayView> {
     );
   }
 
-
   Future<void> _startOrPickActivityForAction(DayPlanItem it) async {
     final running = widget.logic.runningActivity();
 
@@ -464,7 +463,7 @@ class _TodayViewState extends State<TodayView> {
     super.dispose();
   }
 
-  Widget _domainHeader(String title) {
+/*   Widget _domainHeader(String title) {
     return Padding(
       padding: const EdgeInsets.only(top: 8, bottom: 8),
       child: Text(
@@ -475,7 +474,7 @@ class _TodayViewState extends State<TodayView> {
         ),
       ),
     );
-  }
+  } */
 
   String get _ymd {
     final d = _planTomorrow ? _base.add(const Duration(days: 1)) : _base;
@@ -917,6 +916,9 @@ class _TodayViewState extends State<TodayView> {
       (actionsByDomain[a.domainId] ??= []).add(a);
     }
 
+    final sections = widget.logic.todaySections(yyyymmdd: ymd);
+    final todo = sections.todo; // ✅ même ordre que NowTab
+
     return Scaffold(
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
@@ -990,32 +992,49 @@ class _TodayViewState extends State<TodayView> {
 
           if (_showAll) ...[
             const SizedBox(height: 8),
-
-            // Puis chaque domaine connu
-            for (final d in widget.logic.state.domains) ...[
-              if ((actionsByDomain[d.id] ?? const []).isNotEmpty) ...[
-                _domainHeader(d.name),
-                ...(actionsByDomain[d.id]!).map((it) => _todayTile(
-                      context,
-                      it,
-                      key: ValueKey('domain${d.id}:${it.id}'),
-                      showDrag: false,
-                      indexForDrag: 0,
-                    )),
-                const SizedBox(height: 12),
-              ],
-            ],
-
-            // Si vraiment aucune action (dans otherActions)
-            if (actions.isEmpty) ...[
+            if (todo.isEmpty)
               Text(
                 "Aucune action pour l’instant.",
                 style: TextStyle(
                   color:
                       Theme.of(context).colorScheme.onSurface.withOpacity(.7),
                 ),
+              )
+            else
+              ReorderableListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: todo.length,
+                onReorder: (oldIndex, newIndex) {
+                  setState(() {
+                    widget.logic.reorderTodayBucket(
+                      yyyymmdd: ymd,
+                      bucketVisible: todo,
+                      oldIndex: oldIndex,
+                      newIndex: newIndex,
+                    );
+                  });
+                },
+                itemBuilder: (context, i) {
+                  final it = todo[i];
+
+                  // ✅ ta tuile existante, mais il faut une key stable AU NIVEAU DU ROOT
+                  final tile = _todayTile(
+                    context,
+                    it,
+                    key: ValueKey("todo:${it.id}"),
+                    showDrag: true,
+                    indexForDrag: i,
+                  );
+
+                  // Important : pour ReorderableListView, le widget retourné doit avoir la key
+                  return KeyedSubtree(
+                    key: ValueKey("todoWrap:${it.id}"),
+                    child: tile,
+                  );
+                },
               ),
-            ],
+            const SizedBox(height: 12),
           ],
           if (laterToday.isNotEmpty) ...[
             const SizedBox(height: 16),
@@ -1894,7 +1913,6 @@ class _TodayViewState extends State<TodayView> {
     );
   }
 
-
   Future<void> showHabitChecklist(
     BuildContext context, {
     required String title,
@@ -2141,8 +2159,6 @@ class _NowTabState extends State<NowTab> {
     }
   }
 
-
-
   Future<void> _passForToday(DayPlanItem it) async {
     setState(() => it.isNowFocus = false);
     final now = DateTime.now();
@@ -2209,14 +2225,22 @@ class _NowTabState extends State<NowTab> {
             Expanded(
               child: GestureDetector(
                 onTap: () {
-                  _passForToday(it);
-                  widget.logic.onChange();
-                  setState(() {});
+                  final ymd = yyyymmdd(DateTime(
+                      widget.day.year, widget.day.month, widget.day.day));
+
+                  widget.logic.pushTodayItemToEnd(
+                    yyyymmdd: ymd,
+                    itemId: it.id,
+                  );
+
+                  // si pushTodayItemToEnd fait déjà onChange()+rev++, tu peux enlever les 2 lignes ci-dessous
+                  // widget.logic.onChange();
+                  // setState(() {});
                 },
                 onLongPress: pickDate,
                 child: FilledButton.tonal(
-                  onPressed: null, // géré par GestureDetector
-                  child: const Text("Aujourd'hui"),
+                  onPressed: null,
+                  child: const Text("Plus tard"),
                 ),
               ),
             ),
@@ -3141,7 +3165,6 @@ class _NowTabState extends State<NowTab> {
     );
   }
 
-
   String freqLabelForActivity(Activity act) {
     final f = widget.logic.effectiveHabitFreq(act);
     return freqLabel(f);
@@ -3410,127 +3433,71 @@ class _NowTabState extends State<NowTab> {
 
   @override
   Widget build(BuildContext context) {
-    final ymd =
-        yyyymmdd(DateTime(widget.day.year, widget.day.month, widget.day.day));
-    _ensureDay(ymd);
-    final assoc =
-        widget.logic.routineToActivityId(widget.logic.habitAssocEvents);
+    return ValueListenableBuilder<int>(
+      valueListenable: widget.logic.rev, // ✅ rebuild quand reorder/onChange
+      builder: (context, _, __) {
+        final ymd = yyyymmdd(
+          DateTime(widget.day.year, widget.day.month, widget.day.day),
+        );
 
-    final rows = widget.buildRowsGrouped(
-      items: widget.items,
-      st: widget.st,
-      logic: widget.logic,
-      assoc: assoc,
-    );
+        _ensureDay(ymd);
 
-    _applyForcedHabitIfAny(rows);
+        // ✅ même source / même ordre que TodayView ("À faire")
+        final todo = widget.logic.todaySections(yyyymmdd: ymd).todo;
 
-    final plans = rows.whereType<RowPlan>().toList();
-    final actionable = plans.where((rp) => _isActionable(rp.it)).toList();
-    debugPrint("NOW actionable=${actionable.length}");
-    if (actionable.isNotEmpty) {
-      debugPrint(
-          "NOW first actionable kind=${actionable.first.it.kind} id=${actionable.first.it.id} done=${actionable.first.it.done}");
-    }
+        final assoc =
+            widget.logic.routineToActivityId(widget.logic.habitAssocEvents);
 
-// ✅ 1) Si une action a été "envoyée vers Maintenant", elle est prioritaire
-    DayPlanItem? focusedAction;
-    for (final x in widget.items) {
-      if (x.kind == PlanKind.action && x.isNowFocus == true && !x.done) {
-        focusedAction = x;
-        break;
-      }
-    }
+// ✅ hydrate l’association activité si manquante
+        for (final it in todo) {
+          // 1) Routine (habit)
+          if (it.kind == PlanKind.habit) {
+            final habitKey = (it.refId ?? it.habitId ?? '').trim();
+            if ((it.activityId ?? '').trim().isEmpty && habitKey.isNotEmpty) {
+              final actId = assoc[habitKey];
+              if (actId != null && actId.isNotEmpty) {
+                it.activityId = actId; // DayPlanItem est mutable chez toi ✅
+              }
+            }
+          }
 
-    if (focusedAction != null) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
-        child: _nowActionCard(
-            context, focusedAction, _skippedIds.length, actionable.length),
-      );
-    }
+          debugPrint("[NOWTAB] first=${todo.isEmpty ? 'none' : todo.first.title} actId=${todo.isEmpty ? '' : (todo.first.activityId ?? '')}");
 
-    final next = _pickNow(rows); // RowPlan?
+          // 2) Action (si chez toi l'action a un refId et l'activité est stockée ailleurs)
+          // Si ton assign sheet écrit déjà it.activityId, tu peux ignorer ce bloc.
+          // Sinon, il faut un resolver (ex: activityIdFromActionRef)
+          // if (it.kind == PlanKind.action && (it.activityId ?? '').isEmpty && (it.refId ?? '').isNotEmpty) {
+          //   final actId = widget.logic.activityIdFromActionRef(it.refId!);
+          //   if (actId != null && actId.isNotEmpty) it.activityId = actId;
+          // }
+        }
 
-    if (next == null) {
-      final hasActionableIgnoringSkips =
-          plans.any((rp) => _isActionableIgnoringSkips(rp.it));
-      if (hasActionableIgnoringSkips) {
-        return _allSkippedView();
-      }
-      return _allDoneView(context);
-    }
+        // ✅ 1) priorité : action envoyée vers Maintenant
+        DayPlanItem? focusedAction;
+        for (final x in todo) {
+          if (x.kind == PlanKind.action && x.isNowFocus == true && !x.done) {
+            focusedAction = x;
+            break;
+          }
+        }
 
-// ✅ Si c’est une action -> affiche la carte action
-    if (next.it.kind == PlanKind.action) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
-        child: _nowActionCard(
-            context, next.it, _skippedIds.length, actionable.length),
-      );
-    }
+        final chosen = focusedAction ?? (todo.isNotEmpty ? todo.first : null);
 
-// ✅ Si c’est une routine -> checklist
-    if (next.it.kind == PlanKind.habit && next.it.refId != null) {
-      final ymd =
-          yyyymmdd(DateTime(widget.day.year, widget.day.month, widget.day.day));
+        if (chosen == null) {
+          return _allDoneView(context);
+        }
 
-      widget.logic.ensureChecklistDay(ymd);
-      widget.logic.nowHabitId = next.it.refId!;
-    }
-
-    final habitId = next.it.refId;
-    if (habitId == null) return _allDoneView(context);
-    ; // sécurité
-
-    final act = widget.st.activities.firstWhere(
-      (a) => a.id == habitId,
-    );
-
-    // ✅ sinon on affiche la carte "Maintenant"
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(
-          16, 16, 16, 120), // 👈 120 pour éviter l’overflow avec la bottom bar
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _nowCard(context, next, actionable.length),
-          if (next.it.kind == PlanKind.habit && next.it.refId != null) ...[
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                    child: NowHabitTileFull(
-                  logic: widget.logic,
-                  st: widget.st,
-                  habitId: next.it.refId!,
-                  day: widget.day,
-                  onTap: () async {
-                    await _openHabitSettings(act);
-                  },
-                  onLongPress: () {
-                    // openHabitEditSheet etc.
-                  },
-                )),
-              ],
-            ),
-          ],
-          if (next.it.kind == PlanKind.habit) ...[
-            const SizedBox(height: 10),
-            _routineChecklist(next.it),
-          ],
-          const SizedBox(height: 12),
-          _activitiesSuggestionForCurrent(next.it),
-          if (next.it.kind == PlanKind.habit) ...[
-            const SizedBox(height: 10),
-            _toPlanSection(next.it),
-            const SizedBox(height: 10),
-            _archivesSection(next.it),
-            const SizedBox(height: 10),
-            _archivesGlobalSection(),
-          ],
-        ],
-      ),
+        // ✅ NowTab = 1er item de "À faire"
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+          child: _nowActionCard(
+            context,
+            chosen,
+            _skippedIds.length,
+            todo.length,
+          ),
+        );
+      },
     );
   }
 
@@ -3679,7 +3646,7 @@ class _NowTabState extends State<NowTab> {
       case PlanKind.activityTime:
       case PlanKind.action:
         return true;
-      }
+    }
   }
 
   Widget _allSkippedView() {
@@ -3852,10 +3819,6 @@ class _NowTabState extends State<NowTab> {
       padding: const EdgeInsets.symmetric(vertical: 12),
     );
   }
-
-
-
-
 
   String? _subtitleFor(DayPlanItem it) {
     // Si tu veux afficher domaine / association, tu peux.
