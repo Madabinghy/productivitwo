@@ -210,6 +210,83 @@ class AppLogic {
     return TodaySections(todo: todo, inbox: inbox, courses: courses);
   }
 
+  void movePlannedToDayIfPresent(
+    PlanKind kind,
+    String refId,
+    String targetYmd, {
+    bool addIfMissing = true,
+  }) {
+    // cherche item existant aujourd’hui/demain/etc (peu importe le jour courant)
+    DayPlanItem? found;
+    for (final it in state.dayPlan) {
+      if (it.kind == kind && it.refId == refId) {
+        found = it;
+        break;
+      }
+    }
+
+    if (found == null) {
+      if (!addIfMissing) return;
+
+      found = DayPlanItem(
+        id: _uuid.v4(),
+        kind: kind,
+        refId: refId,
+        title: '', // ou tu remplis depuis l’activité
+        yyyymmdd: targetYmd,
+        order: 0,
+        allDay: true,
+      );
+      state.dayPlan.add(found);
+    }
+
+    // max order du target day
+    final sameDay =
+        state.dayPlan.where((x) => x.yyyymmdd == targetYmd).toList();
+    final maxOrder = sameDay.isEmpty
+        ? 0
+        : sameDay.map((x) => x.order).reduce((a, b) => a > b ? a : b);
+
+    found.yyyymmdd = targetYmd;
+    found.order = maxOrder + 1;
+    found.snoozeUntil = null;
+    onChange();
+    rev.value++;
+  }
+
+  void movePlanItemToDay(String itemId, String targetYmd) {
+  final it = state.dayPlan.firstWhere((x) => x.id == itemId);
+
+  // max order du jour cible
+  final sameDay = state.dayPlan.where((x) => x.yyyymmdd == targetYmd).toList();
+  final maxOrder = sameDay.isEmpty
+      ? 0
+      : sameDay.map((x) => x.order).reduce((a, b) => a > b ? a : b);
+
+  it.yyyymmdd = targetYmd;
+  it.order = maxOrder + 1;
+  it.snoozeUntil = null; // optionnel: évite incohérences
+  onChange();
+  rev.value++;
+}
+
+  void moveItemToDayById(String itemId, String targetYmd) {
+    final it = state.dayPlan.firstWhere((x) => x.id == itemId);
+
+    // max order du target day
+    final sameDay =
+        state.dayPlan.where((x) => x.yyyymmdd == targetYmd).toList();
+    final maxOrder = sameDay.isEmpty
+        ? 0
+        : sameDay.map((x) => x.order).reduce((a, b) => a > b ? a : b);
+
+    it.yyyymmdd = targetYmd;
+    it.order = maxOrder + 1;
+    it.snoozeUntil = null; // évite un snooze “today” sur un autre jour
+    onChange();
+    rev.value++;
+  }
+
   Activity? _firstWhereOrNull<T extends Object>(
     Iterable<Activity> items,
     bool Function(Activity) test,

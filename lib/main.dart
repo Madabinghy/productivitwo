@@ -1703,6 +1703,50 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     );
   }
 
+  bool _shouldShowFab() {
+    switch (_tab) {
+      case _Tab.today:
+        return true;
+      case _Tab.now:
+        return false;
+      case _Tab.stats:
+        return false;
+      default:
+        return false;
+    }
+  }
+
+  Widget _buildFab() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        FloatingActionButton(
+          heroTag: "fab_now_routine",
+          mini: true,
+          tooltip: "Nouvelle routine",
+          onPressed: () async {
+            await _createRoutineFromNow(context);
+            if (!mounted) return;
+            setState(() {});
+          },
+          child: const Icon(Icons.repeat),
+        ),
+        const SizedBox(height: 12),
+        FloatingActionButton(
+          heroTag: "fab_now_action",
+          tooltip: "Nouvelle action",
+          onPressed: () async {
+            await _createActionFromNow(context);
+            if (!mounted) return;
+            setState(() {});
+          },
+          child: const Icon(Icons.add),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // 1) État de chargement (avant que FileStore ait chargé le JSON)
@@ -1990,34 +2034,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
           BottomNavigationBarItem(icon: Icon(Icons.show_chart), label: 'Stats'),
         ],
       ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          FloatingActionButton(
-            heroTag: "fab_now_routine",
-            mini: true,
-            tooltip: "Nouvelle routine",
-            onPressed: () async {
-              await _createRoutineFromNow(context);
-              if (!mounted) return;
-              setState(() {});
-            },
-            child: const Icon(Icons.repeat),
-          ),
-          const SizedBox(height: 12),
-          FloatingActionButton(
-            heroTag: "fab_now_action",
-            tooltip: "Nouvelle action",
-            onPressed: () async {
-              await _createActionFromNow(context);
-              if (!mounted) return;
-              setState(() {});
-            },
-            child: const Icon(Icons.add),
-          ),
-        ],
-      ),
+
+      floatingActionButton: _shouldShowFab() ? _buildFab() : null,
     );
   }
 

@@ -28,6 +28,8 @@ class TodayView extends StatefulWidget {
   State<TodayView> createState() => _TodayViewState();
 }
 
+enum _Scope { today, tomorrow } // ou ton enum existant
+
 class _TodayViewState extends State<TodayView> {
   // Choix JOUR: aujourd’hui / demain
   late DateTime _base;
@@ -39,6 +41,8 @@ class _TodayViewState extends State<TodayView> {
   bool _showAll = true;
   bool _showCourses = false; // repli/dépli manuel
   bool _showSnoozed = false; // dans ton State
+
+  _Scope _scope = _Scope.today;
 
   Widget _coursesSection({
     required List<DayPlanItem> courses,
@@ -592,6 +596,14 @@ class _TodayViewState extends State<TodayView> {
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
+    final baseDay = DateTime(now.year, now.month, now.day);
+
+    final day = (_scope == _Scope.today)
+        ? baseDay
+        : baseDay.add(const Duration(days: 1));
+
+    final ymd = yyyymmdd(day);
+
     final todayDate = DateTime(now.year, now.month, now.day);
 
     bool isSnoozed(DayPlanItem it) {
@@ -599,7 +611,6 @@ class _TodayViewState extends State<TodayView> {
       return u != null && u.isAfter(now);
     }
 
-    final ymd = _ymd;
     final isTodayTab = ymd == yyyymmdd(now);
 
     // 1) Base: plan du jour affiché
@@ -619,6 +630,7 @@ class _TodayViewState extends State<TodayView> {
     // --- planOrAuto utilise forceAutoHabits ---
     List<DayPlanItem> planOrAuto() {
       // ✅ En planification, on force l'ajout des "virtHabits" même si le plan n’est pas vide
+      if (!isTodayTab) return basePlan;
       if (!isEmptyHabitsToday && !forceAutoHabits) return basePlan;
 
       final habits =
@@ -695,7 +707,7 @@ class _TodayViewState extends State<TodayView> {
 
 // ✅ Source unique pour tout l’écran
     final allActions = baseOrAuto
-        .where((x) => x.kind == PlanKind.action || x.kind != PlanKind.habit)
+        .where((x) => x.kind == PlanKind.action || x.kind == PlanKind.habit)
         .toList();
 
     final snoozedActions = baseOrAuto
@@ -928,13 +940,25 @@ class _TodayViewState extends State<TodayView> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
         children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: SegmentedButton<_Scope>(
+              segments: const [
+                ButtonSegment(value: _Scope.today, label: Text("Aujourd’hui")),
+                ButtonSegment(value: _Scope.tomorrow, label: Text("Demain")),
+              ],
+              selected: {_scope},
+              onSelectionChanged: (s) => setState(() => _scope = s.first),
+            ),
+          ),
           _inboxSection(
             inbox: inboxActions,
             onTapAssign: (it) => _openAssignActivitySheet(context, it),
           ),
           const SizedBox(height: 12),
           //_nowChecklistActions(), // ton bloc "Pour maintenant" (déjà OK)
-          if (hasRunning &&
+          if (isTodayTab &&
+              hasRunning &&
               (byActivity.isNotEmpty || byDomainOnly.isNotEmpty)) ...[
             Text(
               "Contexte • ${running.name}",
@@ -1041,7 +1065,7 @@ class _TodayViewState extends State<TodayView> {
               ),
             const SizedBox(height: 12),
           ],
-          if (laterToday.isNotEmpty) ...[
+          if (isTodayTab && laterToday.isNotEmpty) ...[
             const SizedBox(height: 16),
             Row(
               children: [
@@ -1075,7 +1099,7 @@ class _TodayViewState extends State<TodayView> {
               }
             }),
           ],
-          if (doneActions.isNotEmpty) ...[
+          if (isTodayTab && doneActions.isNotEmpty) ...[
             const SizedBox(height: 8),
             InkWell(
               onTap: () => setState(() => _showDone = !_showDone),
@@ -1126,17 +1150,18 @@ class _TodayViewState extends State<TodayView> {
               }),
             ],
           ],
-          _snoozedSection(
-            snoozed: snoozedActions,
-            onUnsnooze: (it) {
-              setState(() => it.snoozeUntil = null);
-              widget.logic.onChange();
-            },
-          ),
+          if (isTodayTab)
+            _snoozedSection(
+              snoozed: snoozedActions,
+              onUnsnooze: (it) {
+                setState(() => it.snoozeUntil = null);
+                widget.logic.onChange();
+              },
+            ),
         ],
       ),
-      floatingActionButton: _buildFab(), // ton FAB existant pour ajouter
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      //floatingActionButton: _buildFab(), // ton FAB existant pour ajouter
+      //floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 
@@ -1214,79 +1239,35 @@ class _TodayViewState extends State<TodayView> {
     required Key key,
     required bool showDrag,
     required int indexForDrag,
-    VoidCallback? onTapOverride, // ✅ NEW
+    VoidCallback? onTapOverride,
   }) {
-    // Jour affiché selon l’onglet
     final now = DateTime.now();
-    final viewed = _planTomorrow ? now.add(const Duration(days: 1)) : now;
-    final day = DateTime(viewed.year, viewed.month, viewed.day);
-    final rootKey = key;
 
-    // Sommes-nous sur l'onglet "Aujourd'hui" ?
-    final bool isTodayTab = !_planTomorrow;
+    // ✅ jour affiché (aujourd’hui / demain) selon ton ancienne logique
+    final viewed =
+        (_scope == _Scope.today) ? now : now.add(const Duration(days: 1));
 
-    // menu "…"
-    final removeBtn = IconButton(
-      icon: const Icon(Icons.close, size: 18),
-      tooltip: 'Retirer de la liste du jour',
-      visualDensity: VisualDensity.compact,
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints.tightFor(width: 32, height: 32),
-      onPressed: () {
-        setState(() {
-          widget.state.dayPlan.removeWhere((e) => e.id == it.id);
-          widget.logic.onChange(); // persiste
-        });
-      },
-    );
+    final isTodayTab = (_scope == _Scope.today);
 
-    Widget moveArrowIfAny() {
-      if (!isTodayTab) return const SizedBox.shrink();
+    final viewedDay = DateTime(viewed.year, viewed.month, viewed.day);
+    final ymdViewed = yyyymmdd(viewedDay);
 
-      // ✅ Actions jetables: refId null mais on veut quand même pouvoir déplacer
-      final canMove = (it.kind == PlanKind.action) || (it.refId != null);
-      if (!canMove) return const SizedBox.shrink();
+    final isVirtual = it.id.startsWith('virt:');
 
-      return IconButton(
-        tooltip: 'Déplacer vers demain',
-        icon: const Icon(Icons.arrow_forward, size: 20),
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints.tightFor(width: 32, height: 32),
-        visualDensity: VisualDensity.compact,
-        onPressed: () {
-          if (it.kind == PlanKind.action) {
-            widget.logic.moveItemToTomorrowById(it.id); // ✅ nouvelle méthode
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Action déplacée vers demain')),
-            );
-          } else {
-            widget.logic.movePlannedToTomorrowIfPresent(
-              it.kind,
-              it.refId!,
-              addIfMissing: true,
-            );
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Déplacé vers demain')),
-            );
-          }
-          setState(() {});
-        },
-      );
-    }
+    // --- UI helpers -----------------------------------------------------------
 
-    // poignée de drag
     Widget dragHandle() {
-      final enabled = showDrag;
       final icon = Icon(
         Icons.drag_handle,
         size: 20,
-        color: enabled
+        color: showDrag
             ? Colors.white.withValues(alpha: 0.85)
             : Colors.white.withValues(alpha: 0.25),
       );
 
-      if (!enabled)
+      if (!showDrag) {
         return SizedBox(width: 32, height: 32, child: Center(child: icon));
+      }
 
       return ReorderableDragStartListener(
         index: indexForDrag,
@@ -1294,38 +1275,116 @@ class _TodayViewState extends State<TodayView> {
       );
     }
 
-    ReorderableDragStartListener dragHandleFor(DayPlanItem it) {
-      return ReorderableDragStartListener(
-        index: widget.logic
-            .planFor(yyyymmdd(_planTomorrow
-                ? DateTime.now().add(const Duration(days: 1))
-                : DateTime.now()))
-            .indexWhere((e) => e.id == it.id),
-        child: const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 8), // au lieu de 12
-          child: Icon(Icons.drag_handle, size: 20),
+    Widget btnCompact({
+      required IconData icon,
+      required String tooltip,
+      required VoidCallback? onPressed,
+      double size = 20,
+    }) {
+      return IconButton(
+        tooltip: tooltip,
+        icon: Icon(icon, size: size),
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+        visualDensity: VisualDensity.compact,
+        onPressed: onPressed,
+      );
+    }
+
+    void toast(String msg) {
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    }
+
+    // ❌ pour les virtuels : pas de déplacement “entre jours”
+    Widget moveDayArrowsIfAny() {
+      final canMove =
+          !isVirtual && ((it.kind == PlanKind.action) || (it.refId != null));
+      if (!canMove) return const SizedBox.shrink();
+
+      // viewed = today ou tomorrow selon onglet
+      final ymdPrev = yyyymmdd(viewedDay.subtract(const Duration(days: 1)));
+      final ymdNext = yyyymmdd(viewedDay.add(const Duration(days: 1)));
+
+      // Sur today : → (vers demain)
+      // Sur tomorrow : ← (vers today) et → (vers après-demain)
+      final forwardTooltip =
+          isTodayTab ? "Déplacer vers demain" : "Déplacer vers après-demain";
+      final backTooltip = "Renvoyer à aujourd’hui";
+
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (!isTodayTab)
+            btnCompact(
+              icon: Icons.arrow_back,
+              tooltip: backTooltip,
+              onPressed: () {
+                widget.logic.movePlanItemToDay(it.id, ymdPrev);
+                toast("Déplacé vers aujourd’hui");
+                setState(() {});
+              },
+            ),
+          btnCompact(
+            icon: Icons.arrow_forward,
+            tooltip: forwardTooltip,
+            onPressed: () {
+              widget.logic.movePlanItemToDay(it.id, ymdNext);
+              toast(isTodayTab
+                  ? "Déplacé vers demain"
+                  : "Déplacé vers après-demain");
+              setState(() {});
+            },
+          ),
+        ],
+      );
+    }
+
+    Widget moveToEndArrowIfAny() {
+      final canMoveEnd =
+          !isVirtual; // tu peux aussi autoriser actions virtuelles si tu veux
+      return btnCompact(
+        icon: Icons.arrow_downward,
+        tooltip:
+            isVirtual ? "Raccourci (non planifié)" : "Mettre en fin de liste",
+        onPressed: canMoveEnd
+            ? () {
+                widget.logic.movePlanItemToEnd(ymdViewed, it.id);
+                setState(() {});
+              }
+            : null,
+      );
+    }
+
+    final removeBtn = btnCompact(
+      icon: Icons.close,
+      tooltip: "Retirer de la liste du jour",
+      onPressed: () {
+        setState(() {
+          widget.state.dayPlan.removeWhere((e) => e.id == it.id);
+          widget.logic.onChange();
+        });
+      },
+      size: 18,
+    );
+
+    Widget buildTitle(String title, {bool struck = false, bool dim = false}) {
+      return Text(
+        title,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontWeight: FontWeight.w700,
+          fontSize: 18,
+          decoration: struck ? TextDecoration.lineThrough : null,
+          color: dim ? Colors.white.withValues(alpha: 0.55) : null,
         ),
       );
     }
 
-    // helpers d’affichage
-    Widget buildTitle(String title) => Text(
-          title,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
-        );
-
-    Widget buildSub(String text) => Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Text(
-            text,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-          ),
-        );
+    // --- SWITCH by kind -------------------------------------------------------
 
     switch (it.kind) {
-// ---------------- ACTION ----------------
       case PlanKind.action:
         {
           final content = GestureDetector(
@@ -1339,7 +1398,7 @@ class _TodayViewState extends State<TodayView> {
           );
 
           return Dismissible(
-            key: rootKey,
+            key: key,
             direction: DismissDirection.endToStart,
             background: Container(
               alignment: Alignment.centerRight,
@@ -1352,11 +1411,10 @@ class _TodayViewState extends State<TodayView> {
           );
         }
 
-      // ---------------- ACTIVITÉ (temps) ----------------
       case PlanKind.activityTime:
         {
-          final now = DateTime.now();
-          final dayStart = DateTime(now.year, now.month, now.day);
+          final dayStart =
+              DateTime(viewedDay.year, viewedDay.month, viewedDay.day);
           final dur =
               widget.logic.totalForRangeByActivity(it.refId!, dayStart, now);
 
@@ -1366,7 +1424,7 @@ class _TodayViewState extends State<TodayView> {
               setState(() {});
             },
             icon: const Icon(Icons.play_arrow),
-            label: const Text('Lancer'),
+            label: Text(it.refId == null ? "Lancer" : "Lancer"),
           );
 
           return Card(
@@ -1376,38 +1434,53 @@ class _TodayViewState extends State<TodayView> {
               padding: const EdgeInsets.symmetric(vertical: 10),
               child: Row(
                 children: [
-                  if (showDrag) dragHandleFor(it),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (showDrag) dragHandle(),
+                      moveToEndArrowIfAny(),
+                    ],
+                  ),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        buildTitle(it.title),
-                        const SizedBox(height: 4),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            // "Aujourd’hui :" + valeur
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text("Aujourd’hui :",
-                                      style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w400)),
-                                  buildSub(
-                                    "${dur.inMinutes ~/ 60}h ${dur.inMinutes % 60}m",
-                                  ),
-                                ],
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 6),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          buildTitle(it.title),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      isTodayTab ? "Aujourd’hui :" : "Demain :",
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w400,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      "${dur.inMinutes ~/ 60}h ${dur.inMinutes % 60}m",
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            startBtn,
-                            removeBtn,
-                            moveArrowIfAny(),
-                          ],
-                        ),
-                      ],
+                              const SizedBox(width: 8),
+                              startBtn,
+                              removeBtn,
+                              moveDayArrowsIfAny(),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -1416,13 +1489,8 @@ class _TodayViewState extends State<TodayView> {
           );
         }
 
-      // ---------------- HABITUDE ----------------
-// ---------------- HABITUDE ----------------
       case PlanKind.habit:
         {
-          // IMPORTANT: `day` doit déjà être le jour affiché (aujourd’hui/demain),
-          // comme dans ton code actuel.
-
           final act =
               widget.state.activities.firstWhereOrNull((a) => a.id == it.refId);
 
@@ -1431,33 +1499,18 @@ class _TodayViewState extends State<TodayView> {
               key: key,
               margin: const EdgeInsets.only(bottom: 8),
               child: ListTile(
-                title: Text(
-                  it.title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 15,
-                  ),
-                  maxLines: 4, // ou null pour illimité
-                  overflow: TextOverflow.visible, // ou TextOverflow.clip
-                  softWrap: true,
-                ),
+                title: Text(it.title,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600, fontSize: 15)),
                 subtitle: const Text("Activité introuvable (supprimée ?)"),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete),
-                  onPressed: () {
-                    setState(() {
-                      widget.state.dayPlan.removeWhere((e) => e.id == it.id);
-                      widget.logic.onChange();
-                    });
-                  },
-                ),
+                trailing: removeBtn,
               ),
             );
           }
 
           final freq = widget.logic.effectiveHabitFreq(act);
 
-          final dayDone = widget.logic.habitValueOn(it.refId!, day);
+          final dayDone = widget.logic.habitValueOn(it.refId!, viewedDay);
           final dayQuota = widget.logic.dayQuotaFor(act);
 
           final weekDone = widget.logic.habitSliding(it.refId!, 7).done;
@@ -1468,7 +1521,6 @@ class _TodayViewState extends State<TodayView> {
 
           int doneShown;
           int targetShown;
-
           switch (freq) {
             case HabitFreq.daily:
               doneShown = dayDone;
@@ -1483,10 +1535,21 @@ class _TodayViewState extends State<TodayView> {
               targetShown = monthTarget;
               break;
           }
-          final done = doneShown;
-          final target = targetShown;
 
-          String subText() => widget.logic.habitSubText(
+          final isAuto = act.autoTune && !act.manualTarget;
+          final isCheckbox = !isAuto && targetShown <= 1;
+          final showTicks = !isAuto && !isCheckbox && targetShown <= 8;
+          final isCounterMode = isAuto || targetShown >= 9;
+
+          void inc(int delta) {
+            setState(() => widget.logic.incHabit(it.refId!, delta, viewedDay));
+          }
+
+          final reached = targetShown > 0 && doneShown >= targetShown;
+          final isReachedToday = isVirtual ? it.done : reached;
+
+          String subText({required bool showTodayText}) =>
+              widget.logic.habitSubText(
                 freq: freq,
                 dayDone: dayDone,
                 dayQuota: dayQuota,
@@ -1494,112 +1557,21 @@ class _TodayViewState extends State<TodayView> {
                 weekTarget: weekTarget,
                 monthDone: monthDone,
                 monthTarget: monthTarget,
-                swowTodayText: true,
+                swowTodayText: showTodayText,
               );
-
-          // UI rules:
-          // - target <= 1  -> checkbox
-          // - 2..10        -> ticks (cercles), auto ou manuel
-          // - >= 11        -> counter (+/- + saisir)
-          final isAuto = act.autoTune && !act.manualTarget;
-          final isCheckbox = !isAuto && target <= 1;
-          final showTicks = !isAuto && !isCheckbox && target <= 8;
-          final isCounterMode = isAuto || target >= 9;
-          final isManual = act.manualTarget;
-
-          void inc(int delta) => setState(() {
-                widget.logic.incHabit(it.refId!, delta, day);
-              });
-
-          Future<int?> _askInt(BuildContext context, String title) async {
-            final s = await _askNumbersOnly(context, title);
-            if (s == null) return null;
-            return int.tryParse(s.trim());
-          }
-
-          Widget moreCompact() => SizedBox(
-                width: 32,
-                height: 32,
-                child: Center(child: removeBtn),
-              );
-
-          Widget moveArrowIfAny() {
-            if (!isTodayTab) return const SizedBox.shrink();
-
-            // ✅ Actions jetables: refId null mais on veut quand même pouvoir déplacer
-            final canMove = (it.kind == PlanKind.action) || (it.refId != null);
-            if (!canMove) return const SizedBox.shrink();
-
-            return IconButton(
-              tooltip: 'Déplacer vers demain',
-              icon: const Icon(Icons.arrow_forward, size: 20),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints.tightFor(width: 32, height: 32),
-              visualDensity: VisualDensity.compact,
-              onPressed: () {
-                if (it.kind == PlanKind.action) {
-                  widget.logic
-                      .moveItemToTomorrowById(it.id); // ✅ nouvelle méthode
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('Action déplacée vers demain')),
-                  );
-                } else {
-                  widget.logic.movePlannedToTomorrowIfPresent(
-                    it.kind,
-                    it.refId!,
-                    addIfMissing: true,
-                  );
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Déplacé vers demain')),
-                  );
-                }
-                setState(() {});
-              },
-            );
-          }
-
-          Widget autoBackBtnIfManual() {
-            if (!isManual) return const SizedBox.shrink();
-            return IconButton(
-              tooltip: 'Repasser en mode auto',
-              icon: const Icon(
-                Icons.horizontal_rule,
-                size: 18,
-              ),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints.tightFor(width: 32, height: 32),
-              visualDensity: VisualDensity.compact,
-              onPressed: () {
-                setState(() {
-                  act.manualTarget = false;
-                  act.autoTune = true; // sécurité
-                });
-                widget.logic.onChange();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Mode auto activé'),
-                    duration: Duration(milliseconds: 900),
-                  ),
-                );
-              },
-            );
-          }
 
           Widget checkboxCompact() => Checkbox(
-                value: done >= 1,
-                onChanged: (v) => inc((v == true ? 1 : 0) - done),
+                value: doneShown >= 1,
+                onChanged: (v) => inc((v == true ? 1 : 0) - doneShown),
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 visualDensity: VisualDensity.compact,
               );
 
-          final isVirtual = it.id.startsWith('virt:');
-
-// ✅ vrai "atteint" pour les habits réels
-          final reached = target > 0 && done >= target;
-
-// ✅ pour virtuels, on garde it.done
-          final isReachedToday = isVirtual ? it.done : reached;
+          Future<int?> askInt(BuildContext context, String title) async {
+            final s = await _askNumbersOnly(context, title);
+            if (s == null) return null;
+            return int.tryParse(s.trim());
+          }
 
           return Card(
             key: key,
@@ -1613,45 +1585,29 @@ class _TodayViewState extends State<TodayView> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (showDrag) dragHandle(),
-
-                      // Mettre plus tard (fin de liste) — si tu veux le garder pour les routines
-                      IconButton(
-                        icon: const Icon(Icons.arrow_downward),
-                        tooltip: isVirtual
-                            ? 'Raccourci (non planifié)'
-                            : 'Mettre plus tard (fin de liste)',
-                        onPressed: isVirtual
-                            ? null
-                            : () {
-                                final ymd = yyyymmdd(DateTime(
-                                    viewed.year, viewed.month, viewed.day));
-                                widget.logic.movePlanItemToEnd(ymd, it.id);
-                                setState(() {});
-                              },
-                      ),
+                      moveToEndArrowIfAny(),
                     ],
                   ),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Ligne 1 — Titre + checkbox (uniquement si target <= 1)
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: DefaultTextStyle.merge(
-                                style: TextStyle(
-                                  color: isReachedToday
-                                      ? Colors.white.withValues(alpha: 0.55)
-                                      : Colors.white.withValues(alpha: 0.90),
-                                  decoration: isReachedToday
-                                      ? TextDecoration.lineThrough
-                                      : null,
-                                ),
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 6),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Title row
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
                                 child: Row(
                                   children: [
-                                    Expanded(child: buildTitle(it.title)),
+                                    Expanded(
+                                      child: buildTitle(
+                                        it.title,
+                                        struck: isReachedToday,
+                                        dim: isReachedToday,
+                                      ),
+                                    ),
                                     if (isReachedToday) ...[
                                       const SizedBox(width: 6),
                                       Icon(
@@ -1664,195 +1620,111 @@ class _TodayViewState extends State<TodayView> {
                                   ],
                                 ),
                               ),
-                            ),
-                            if (isCheckbox) ...[
-                              const SizedBox(width: 8),
-                              checkboxCompact(),
+                              if (isCheckbox) ...[
+                                const SizedBox(width: 8),
+                                checkboxCompact(),
+                              ],
                             ],
-                          ],
-                        ),
+                          ),
 
-                        // Ligne 2 — "Aujourd’hui/Demain : X / Y" + (… + →)
-                        // On la garde pour checkbox et ticks (pas pour compteur).
-
-                        // Ligne 3 — cercles (2..10) OU compteur (>= 11)
-                        if (isCounterMode) ...[
                           const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.remove_circle_outline),
-                                onPressed: () => inc(-1),
-                                visualDensity: VisualDensity.compact,
-                              ),
 
-                              Text(
-                                widget.logic.habitSubText(
-                                  freq: freq,
-                                  dayDone: dayDone,
-                                  dayQuota: dayQuota,
-                                  weekDone: weekDone,
-                                  weekTarget: weekTarget,
-                                  monthDone: monthDone,
-                                  monthTarget: monthTarget,
-                                  swowTodayText: false,
+                          // Content row
+                          if (isCounterMode) ...[
+                            Row(
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.remove_circle_outline),
+                                  onPressed: () => inc(-1),
+                                  visualDensity: VisualDensity.compact,
                                 ),
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-
-                              IconButton(
-                                icon: const Icon(Icons.add_circle_outline),
-                                onPressed: () => inc(1),
-                                visualDensity: VisualDensity.compact,
-                              ),
-
-                              IconButton(
-                                tooltip: "Saisir",
-                                icon: const Icon(Icons.keyboard_alt_outlined,
-                                    size: 20),
-                                visualDensity: VisualDensity.compact,
-                                constraints: const BoxConstraints.tightFor(
-                                    width: 34, height: 34),
-                                padding: EdgeInsets.zero,
-                                onPressed: () async {
-                                  final v = await _askInt(
-                                      context, "Valeur pour aujourd'hui");
-                                  if (v == null) return;
-                                  final delta = v - done;
-                                  if (delta != 0) {
-                                    widget.logic
-                                        .incHabit(it.refId!, delta, day);
-                                    setState(() {});
-                                  }
-                                },
-                              ),
-                              const Spacer(),
-/* 
-                              // ✅ Toggle Auto/Manuel ultra compact
-                              Builder(builder: (context) {
-                                final isAutoMode =
-                                    act.autoTune && !act.manualTarget;
-
-                                return InkWell(
-                                  borderRadius: BorderRadius.circular(10),
-                                  onTap: () {
-                                    setState(() {
-                                      if (isAutoMode) {
-                                        act.manualTarget =
-                                            true; // passe en manuel
-                                        act.autoTune =
-                                            false; // garantit auto inactif
-                                      } else {
-                                        act.manualTarget =
-                                            false; // repasse en auto
-                                        act.autoTune =
-                                            true; // garantit auto actif
-                                      }
-                                    });
-                                    widget.logic.onChange();
-
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(isAutoMode
-                                            ? "Mode manuel"
-                                            : "Mode auto"),
-                                        duration:
-                                            const Duration(milliseconds: 900),
-                                      ),
-                                    );
-                                  },
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 6, vertical: 4),
-                                    child: Icon(
-                                      isAutoMode
-                                          ? Icons.trending_up
-                                          : Icons.horizontal_rule,
-                                      size: 16,
-                                      color: isAutoMode
-                                          ? Colors.cyanAccent
-                                              .withValues(alpha: 0.9)
-                                          : Colors.white
-                                              .withValues(alpha: 0.85),
+                                Expanded(
+                                  child: Text(
+                                    subText(showTodayText: false),
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
                                     ),
                                   ),
-                                );
-                              }), */
-
-                              //if (!isVirtual) moreCompact(),
-                              if (!isVirtual) moveArrowIfAny(),
-                            ],
-                          ),
-                        ] else if (showTicks) ...[
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: isAuto
-                                    ? HabitAutoTicksRow(
-                                        done: doneShown,
-                                        target: targetShown,
-                                        onIncOne: () => inc(1),
-                                        onDecOne: () => inc(-1),
-                                      )
-                                    : HabitTicksRow(
-                                        done: doneShown,
-                                        target: targetShown,
-                                        onIncOne: () => inc(1),
-                                        onDecOne: () => inc(-1),
-                                        onOpenFull: () => showHabitChecklist(
-                                          context,
-                                          title: it.title,
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.add_circle_outline),
+                                  onPressed: () => inc(1),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                                btnCompact(
+                                  icon: Icons.keyboard_alt_outlined,
+                                  tooltip: "Saisir",
+                                  onPressed: () async {
+                                    final v = await askInt(context, "Valeur");
+                                    if (v == null) return;
+                                    final delta = v - doneShown;
+                                    if (delta != 0) {
+                                      widget.logic.incHabit(
+                                          it.refId!, delta, viewedDay);
+                                      setState(() {});
+                                    }
+                                  },
+                                ),
+                                const SizedBox(width: 4),
+                                moveDayArrowsIfAny(),
+                              ],
+                            ),
+                          ] else if (showTicks) ...[
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: isAuto
+                                      ? HabitAutoTicksRow(
                                           done: doneShown,
-                                          target:
-                                              targetShown, // ✅ ici aussi (tu avais target)
-                                          onSet: (newDone) {
-                                            final delta = newDone - doneShown;
-                                            if (delta != 0) {
-                                              widget.logic.incHabit(
-                                                  it.refId!, delta, day);
-                                              setState(() {});
-                                            }
-                                          },
+                                          target: targetShown,
+                                          onIncOne: () => inc(1),
+                                          onDecOne: () => inc(-1),
+                                        )
+                                      : HabitTicksRow(
+                                          done: doneShown,
+                                          target: targetShown,
+                                          onIncOne: () => inc(1),
+                                          onDecOne: () => inc(-1),
+                                          onOpenFull: () => showHabitChecklist(
+                                            context,
+                                            title: it.title,
+                                            done: doneShown,
+                                            target: targetShown,
+                                            onSet: (newDone) {
+                                              final delta = newDone - doneShown;
+                                              if (delta != 0) {
+                                                widget.logic.incHabit(it.refId!,
+                                                    delta, viewedDay);
+                                                setState(() {});
+                                              }
+                                            },
+                                          ),
                                         ),
-                                      ),
-                              ),
-
-                              // ✅ bouton retour auto si on est en manuel
-                              //autoBackBtnIfManual(),
-                              //if (!isVirtual) moreCompact(),
-                              if (!isVirtual) moveArrowIfAny(),
-                            ],
-                          ),
-                        ] else if (!isCounterMode) ...[
-                          const SizedBox(height: 6),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  subText(),
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
+                                ),
+                                const SizedBox(width: 4),
+                                moveDayArrowsIfAny(),
+                              ],
+                            ),
+                          ] else ...[
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    subText(showTodayText: true),
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  //autoBackBtnIfManual(), // ✅ nouveau
-                                  //if (!isVirtual) moreCompact(),
-                                  if (!isVirtual) moveArrowIfAny(),
-                                ],
-                              ),
-                            ],
-                          ),
+                                const SizedBox(width: 4),
+                                moveDayArrowsIfAny(),
+                              ],
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ),
                 ],
@@ -2397,7 +2269,8 @@ class _NowTabState extends State<NowTab> {
                   leading: const Icon(Icons.snooze),
                   title: Text(a.name,
                       style: const TextStyle(fontWeight: FontWeight.w800)),
-                  subtitle: Text(snoozed ? "Cachée (zzz)" : "Cacher l'activité ?"),
+                  subtitle:
+                      Text(snoozed ? "Cachée (zzz)" : "Cacher l'activité ?"),
                 ),
                 const Divider(height: 1),
                 ListTile(
@@ -2506,6 +2379,13 @@ class _NowTabState extends State<NowTab> {
       (a) => a.id == habitId,
       orElse: () => Activity(domainId: '', name: it.title, habitTarget: 1),
     );
+
+    // Nom du domaine
+    final domName = widget.st.domains
+        .firstWhere((d) => d.id == it.domainId,
+            orElse: () => Domain(id: it.domainId, name: "Domaine"))
+        .name;
+
     final linkedAct = _activityById(it.activityId);
     final hasLinked = linkedAct != null;
     return SingleChildScrollView(
@@ -2513,7 +2393,7 @@ class _NowTabState extends State<NowTab> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // ✅ ton header routine (tu peux réutiliser _nowCard si tu veux)
-          Text(it.title,
+          Text(domName,
               style:
                   const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
           const SizedBox(height: 10),
@@ -3673,7 +3553,7 @@ class _NowTabState extends State<NowTab> {
 
         if (chosen.kind == PlanKind.habit) {
           return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
             child: _nowHabitCard(context, chosen), // ✅ nouveau
           );
         }
