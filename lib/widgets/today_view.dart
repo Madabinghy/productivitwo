@@ -199,7 +199,12 @@ class _TodayViewState extends State<TodayView> {
     return true;
   }
 
-  Widget _actionCardContent(DayPlanItem it) {
+  Widget _actionCardContent(
+    DayPlanItem it, {
+    required DateTime viewedDay,
+    required String ymdViewed,
+    required bool isTodayTab,
+  }) {
     // Lookup routine (habit)
     Activity? habit;
     if ((it.habitId ?? '').isNotEmpty) {
@@ -225,6 +230,90 @@ class _TodayViewState extends State<TodayView> {
           ?.name;
     }
 
+    // ---------- helpers UI ----------
+    Widget iconBtn({
+      required IconData icon,
+      required String tooltip,
+      required VoidCallback onPressed,
+    }) {
+      return IconButton(
+        tooltip: tooltip,
+        icon: Icon(icon, size: 18),
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+        visualDensity: VisualDensity.compact,
+        onPressed: onPressed,
+      );
+    }
+
+    void toast(String msg) {
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    }
+
+    // day keys
+    final now = DateTime.now();
+    final base = DateTime(now.year, now.month, now.day);
+    final todayYmd = yyyymmdd(base);
+    final tomorrowYmd = yyyymmdd(base.add(const Duration(days: 1)));
+    final afterTomorrowYmd = yyyymmdd(base.add(const Duration(days: 2)));
+
+    final isOnToday = (ymdViewed == todayYmd);
+    final destForward = isOnToday ? tomorrowYmd : afterTomorrowYmd;
+    final destBackward = todayYmd;
+
+    void moveToTop() {
+      widget.logic.movePlanItemToTop(ymdViewed, it.id);
+      widget.logic.onChange();
+      setState(() {});
+    }
+
+    void moveToEnd() {
+      widget.logic.movePlanItemToEnd(ymdViewed, it.id);
+      widget.logic.onChange();
+      setState(() {});
+    }
+
+    void moveToDay(String targetYmd, {required bool forward}) {
+      // ✅ il te faut une méthode de déplacement générique
+      // -> si tu l’as déjà : moveItemToDayById
+      widget.logic.moveItemToDayById(it.id, targetYmd);
+      widget.logic.onChange();
+      setState(() {});
+      toast(forward
+          ? (isOnToday ? 'Déplacé vers demain' : 'Déplacé vers après-demain')
+          : 'Renvoyé à aujourd’hui');
+    }
+
+    Widget moveDayArrows() {
+      // Aujourd’hui : seulement →
+      if (isOnToday) {
+        return iconBtn(
+          icon: Icons.arrow_forward,
+          tooltip: 'Déplacer vers demain',
+          onPressed: () => moveToDay(destForward, forward: true),
+        );
+      }
+
+      // Demain : ← et →
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          iconBtn(
+            icon: Icons.arrow_back,
+            tooltip: 'Renvoyer à aujourd’hui',
+            onPressed: () => moveToDay(destBackward, forward: false),
+          ),
+          iconBtn(
+            icon: Icons.arrow_forward,
+            tooltip: 'Déplacer vers après-demain',
+            onPressed: () => moveToDay(destForward, forward: true),
+          ),
+        ],
+      );
+    }
+
+    // ---------- render ----------
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: Padding(
@@ -262,9 +351,7 @@ class _TodayViewState extends State<TodayView> {
                   Text(
                     it.title,
                     style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                    ),
+                        fontWeight: FontWeight.w600, fontSize: 15),
                   ),
 
                   // Routine
@@ -336,6 +423,32 @@ class _TodayViewState extends State<TodayView> {
                       ),
                     ),
                   ],
+
+                  const SizedBox(height: 6),
+
+                  // ✅ LIGNE CONTROLES (comme routines)
+                  Row(
+                    children: [
+                      const Spacer(),
+                      iconBtn(
+                        icon: Icons.arrow_upward,
+                        tooltip: "En haut",
+                        onPressed: moveToTop,
+                      ),
+                      iconBtn(
+                        icon: Icons.arrow_downward,
+                        tooltip: "En bas",
+                        onPressed: moveToEnd,
+                      ),
+                      if (!isTodayTab) ...[
+                        // quand tu es sur l’onglet demain, tu veux aussi ← →
+                        moveDayArrows(),
+                      ] else ...[
+                        // today: juste →
+                        moveDayArrows(),
+                      ],
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -350,8 +463,7 @@ class _TodayViewState extends State<TodayView> {
                   final done = v ?? false;
 
                   if (done && it.toPlan == true) {
-                    widget.logic.archiveAction(
-                        it); // met archived=true + toPlan=false + done=false
+                    widget.logic.archiveAction(it);
                     widget.logic.onChange();
                     setState(() {});
                     return;
@@ -362,22 +474,22 @@ class _TodayViewState extends State<TodayView> {
                 },
               ),
             ),
+
+            // SNOOZE
             PopupMenuButton<String>(
               tooltip: 'Plus tard',
               onSelected: (v) async {
-                setState(() {});
+                // ⚠️ pas de setState(async) ici : ok, on le fait autour
                 if (v == 'tomorrow') {
                   await widget.logic.snoozeToTomorrow(it);
-                  widget.logic.onChange();
-                  setState(() {});
                 } else if (v == 'date') {
                   await widget.logic.snoozeToDate(context, it);
-                  widget.logic.onChange();
-                  setState(() {});
                 } else if (v == 'unsnooze') {
-                  setState(() => widget.logic.unsnooze(it));
-                  widget.logic.onChange();
+                  widget.logic.unsnooze(it);
                 }
+                widget.logic.onChange();
+                if (!mounted) return;
+                setState(() {});
               },
               itemBuilder: (_) => [
                 const PopupMenuItem(
@@ -1139,7 +1251,7 @@ class _TodayViewState extends State<TodayView> {
             if (_showDone) ...[
               ...doneActions.map((it) {
                 // tu peux réutiliser ton Dismissible + _actionCardContent
-                final content = _actionCardContent(it);
+                final viewedDay = DateTime.now();
                 return Dismissible(
                   key: ValueKey("done:${it.id}"),
                   direction: DismissDirection.endToStart,
@@ -1150,7 +1262,12 @@ class _TodayViewState extends State<TodayView> {
                     child: const Icon(Icons.delete, color: Colors.red),
                   ),
                   onDismissed: (_) => _deleteActionWithUndo(it),
-                  child: Opacity(opacity: 0.55, child: content),
+                  child: _actionCardContent(
+                    it,
+                    viewedDay: viewedDay,
+                    ymdViewed: ymd,
+                    isTodayTab: isTodayTab,
+                  ),
                 );
               }),
             ],
@@ -1449,6 +1566,22 @@ class _TodayViewState extends State<TodayView> {
       );
     }
 
+    Widget moveToTopArrowIfAny() {
+      final ymd = yyyymmdd(viewedDay);
+
+      return IconButton(
+        icon: const Icon(Icons.arrow_upward, size: 20),
+        tooltip: "Mettre en haut",
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+        visualDensity: VisualDensity.compact,
+        onPressed: () {
+          widget.logic.movePlanItemToTop(ymd, it.id);
+          setState(() {});
+        },
+      );
+    }
+
     final removeBtn = btnCompact(
       icon: Icons.close,
       tooltip: "Retirer de la liste du jour",
@@ -1460,6 +1593,134 @@ class _TodayViewState extends State<TodayView> {
       },
       size: 18,
     );
+
+    Widget _actionControlsRow(DayPlanItem it) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          btnCompact(
+            icon: Icons.arrow_upward,
+            tooltip: "En haut",
+            onPressed: () {
+              final ymd =
+                  yyyymmdd(DateTime(viewed.year, viewed.month, viewed.day));
+              widget.logic.movePlanItemToTop(ymd, it.id);
+              setState(() {});
+            },
+          ),
+          btnCompact(
+            icon: Icons.arrow_downward,
+            tooltip: "En bas",
+            onPressed: () {
+              final ymd =
+                  yyyymmdd(DateTime(viewed.year, viewed.month, viewed.day));
+              widget.logic.movePlanItemToEnd(ymd, it.id);
+              setState(() {});
+            },
+          ),
+          // ← / → (today/tomorrow) si tu l’as déjà
+          moveDayArrowsIfAny(),
+          // ✕
+          btnCompact(
+            icon: Icons.close,
+            tooltip: "Retirer",
+            onPressed: () {
+              setState(() {
+                widget.state.dayPlan.removeWhere((e) => e.id == it.id);
+                widget.logic.onChange();
+              });
+            },
+          ),
+        ],
+      );
+    }
+
+    String _actionSubtitle(DayPlanItem it) {
+      final actId = (it.activityId ?? '').trim();
+      if (actId.isEmpty) return "Inbox";
+      final a = widget.state.activities.firstWhereOrNull((x) => x.id == actId);
+      return "Activité • ${a?.name ?? '—'}";
+    }
+
+    Widget _actionCardLikeHabit(DayPlanItem it) {
+      final dim = it.done;
+      final cs = Theme.of(context).colorScheme;
+
+      return Card(
+        margin: const EdgeInsets.only(bottom: 8),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (showDrag) ...[
+                dragHandle(),
+                const SizedBox(width: 6),
+              ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Ligne 1 : titre + checkbox
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            it.title,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                              color: dim
+                                  ? cs.onSurface.withOpacity(.55)
+                                  : cs.onSurface.withOpacity(.92),
+                              decoration:
+                                  dim ? TextDecoration.lineThrough : null,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Checkbox(
+                          value: it.done,
+                          onChanged: (v) {
+                            setState(() => it.done = v ?? false);
+                            widget.logic.onChange();
+                          },
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 6),
+
+                    // Ligne 2 : sous-texte + boutons à droite (comme routines)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _actionSubtitle(
+                                it), // 👉 remplace par ton sous-texte actuel
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: cs.onSurface.withOpacity(.65),
+                            ),
+                          ),
+                        ),
+                        _actionControlsRow(it),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     Widget buildTitle(String title, {bool struck = false, bool dim = false}) {
       return Text(
@@ -1480,18 +1741,18 @@ class _TodayViewState extends State<TodayView> {
     switch (it.kind) {
       case PlanKind.action:
         {
-          final content = GestureDetector(
+          final card = GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: onTapOverride ??
                 () {
                   setState(() => it.done = !it.done);
                   widget.logic.onChange();
                 },
-            child: _actionCardContent(it),
+            child: _actionCardLikeHabit(it),
           );
 
           return Dismissible(
-            key: key,
+            key: ValueKey("dismiss:${it.id}"),
             direction: DismissDirection.endToStart,
             background: Container(
               alignment: Alignment.centerRight,
@@ -1500,7 +1761,7 @@ class _TodayViewState extends State<TodayView> {
               child: const Icon(Icons.delete, color: Colors.red),
             ),
             onDismissed: (_) => _deleteActionWithUndo(it),
-            child: content,
+            child: card,
           );
         }
 
@@ -1616,12 +1877,14 @@ class _TodayViewState extends State<TodayView> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                                    // ✅ Boutons “organisation” (pas de comptage ici)
+                  // ✅ Boutons “organisation” (pas de comptage ici)
                   Row(
                     children: [
                       // Drag handle si tu veux le garder dans la tuile
                       if (showDrag) dragHandle(),
                       if (showDrag) const SizedBox(width: 6),
+
+                      moveToTopArrowIfAny(),
 
                       // Mettre fin de liste
                       moveToEndArrowIfAny(),
@@ -1637,6 +1900,7 @@ class _TodayViewState extends State<TodayView> {
                       if (!isVirtual) removeBtn,
                     ],
                   ),
+
                   NowHabitTileFull(
                     logic: widget.logic,
                     st: widget.state, // ✅ TodayView => state

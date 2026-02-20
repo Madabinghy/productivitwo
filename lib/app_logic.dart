@@ -2071,6 +2071,26 @@ class AppLogic {
     onChange();
   }
 
+  void movePlanItemToTop(String yyyymmdd, String itemId) {
+  final dayItems = state.dayPlan
+      .where((e) => e.yyyymmdd == yyyymmdd)
+      .toList()
+    ..sort((a, b) => a.order.compareTo(b.order));
+
+  final index = dayItems.indexWhere((e) => e.id == itemId);
+  if (index <= 0) return; // déjà en haut ou introuvable
+
+  final item = dayItems.removeAt(index);
+  dayItems.insert(0, item);
+
+  // Réindexation propre
+  for (int i = 0; i < dayItems.length; i++) {
+    dayItems[i].order = i;
+  }
+
+  onChange();
+}
+
   String habitFreqLabel(HabitFreq f) {
     switch (f) {
       case HabitFreq.daily:
