@@ -8,6 +8,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:collection/collection.dart';
 import 'package:productivitwo_v1/widgets/assign_activity_sheet.dart';
+import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
 import 'package:productivitwo_v1/widgets/now_habit_tile_full.dart';
 import 'package:productivitwo_v1/widgets/tiny_bar.dart';
 
@@ -1214,6 +1215,64 @@ class _TodayViewState extends State<TodayView> {
     );
   }
 
+  Future<String?> _promptText({
+    required String title,
+    String initial = "",
+  }) async {
+    final c = TextEditingController(text: initial);
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: c,
+          autofocus: true,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => Navigator.of(ctx).pop(c.text.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(null),
+            child: const Text("Annuler"),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(c.text.trim()),
+            child: const Text("OK"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _renameRoutine(Activity act) async {
+    // ✅ simple guard
+    final current = act.name.trim();
+    final txt = await _promptText(
+      title: "Renommer la routine",
+      initial: current,
+    );
+
+    final next = (txt ?? "").trim();
+    if (next.isEmpty || next == current) return;
+
+    setState(() {
+      act.name = next;
+    });
+
+    widget.logic.onChange();
+
+    // optionnel: petit feedback
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Routine renommée"),
+          duration: Duration(milliseconds: 900),
+        ),
+      );
+    });
+  }
+
   Widget _buildFab() {
     return FloatingActionButton.extended(
       onPressed: () async {
@@ -1234,6 +1293,36 @@ class _TodayViewState extends State<TodayView> {
       },
       icon: const Icon(Icons.inbox, size: 20),
       label: const Text('Inbox'),
+    );
+  }
+
+  Future<void> _openHabitSettings(Activity act) async {
+    final res = await showHabitSettingsSheet(
+      context,
+      act: act,
+      onRename: () => _renameRoutine(act), // optionnel
+    );
+
+    if (res == null) return;
+
+    widget.logic.applyHabitSettings(
+      act,
+      freq: res.freq,
+      target: res.target,
+      isAuto: res.isAuto,
+    );
+
+    setState(() {});
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          "Réglages enregistrés : ${freqLabel(res.freq)} • cible ${res.target}",
+        ),
+        duration: const Duration(milliseconds: 2000),
+      ),
     );
   }
 
@@ -1495,242 +1584,75 @@ class _TodayViewState extends State<TodayView> {
 
       case PlanKind.habit:
         {
+          final habitId = it.refId;
           final act =
-              widget.state.activities.firstWhereOrNull((a) => a.id == it.refId);
+              widget.state.activities.firstWhereOrNull((a) => a.id == habitId);
 
-          if (act == null) {
+          if (act == null || habitId == null || habitId.isEmpty) {
             return Card(
               key: key,
               margin: const EdgeInsets.only(bottom: 8),
               child: ListTile(
-                title: Text(it.title,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w600, fontSize: 15)),
+                title: Text(
+                  it.title,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w600, fontSize: 15),
+                ),
                 subtitle: const Text("Activité introuvable (supprimée ?)"),
                 trailing: removeBtn,
               ),
             );
           }
 
-          final freq = widget.logic.effectiveHabitFreq(act);
+          // ✅ Ta logique "virtuel" reste valable
+          final isVirtual = it.id.startsWith('virt:');
 
-          final dayDone = widget.logic.habitValueOn(it.refId!, viewedDay);
-          final dayQuota = widget.logic.dayQuotaFor(act);
-
-          final weekDone = widget.logic.habitSliding(it.refId!, 7).done;
-          final weekTarget = widget.logic.weekTargetFrom(act);
-
-          final monthDone = widget.logic.habitSliding(it.refId!, 30).done;
-          final monthTarget = widget.logic.monthTargetFrom(act);
-
-          int doneShown;
-          int targetShown;
-          switch (freq) {
-            case HabitFreq.daily:
-              doneShown = dayDone;
-              targetShown = dayQuota;
-              break;
-            case HabitFreq.weekly:
-              doneShown = weekDone;
-              targetShown = weekTarget;
-              break;
-            case HabitFreq.monthly:
-              doneShown = monthDone;
-              targetShown = monthTarget;
-              break;
-          }
-
-          final isAuto = act.autoTune && !act.manualTarget;
-          final isCheckbox = !isAuto && targetShown <= 1;
-          final showTicks = !isAuto && !isCheckbox && targetShown <= 8;
-          final isCounterMode = isAuto || targetShown >= 9;
-
-          void inc(int delta) {
-            setState(() => widget.logic.incHabit(it.refId!, delta, viewedDay));
-          }
-
-          final reached = targetShown > 0 && doneShown >= targetShown;
-          final isReachedToday = isVirtual ? it.done : reached;
-
-          String subText({required bool showTodayText}) =>
-              widget.logic.habitSubText(
-                freq: freq,
-                dayDone: dayDone,
-                dayQuota: dayQuota,
-                weekDone: weekDone,
-                weekTarget: weekTarget,
-                monthDone: monthDone,
-                monthTarget: monthTarget,
-                swowTodayText: showTodayText,
-              );
-
-          Widget checkboxCompact() => Checkbox(
-                value: doneShown >= 1,
-                onChanged: (v) => inc((v == true ? 1 : 0) - doneShown),
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                visualDensity: VisualDensity.compact,
-              );
-
-          Future<int?> askInt(BuildContext context, String title) async {
-            final s = await _askNumbersOnly(context, title);
-            if (s == null) return null;
-            return int.tryParse(s.trim());
-          }
-
+          // ✅ UI : NowHabitTileFull + row d’actions
           return Card(
             key: key,
             margin: const EdgeInsets.only(bottom: 8),
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
+                                    // ✅ Boutons “organisation” (pas de comptage ici)
+                  Row(
                     children: [
+                      // Drag handle si tu veux le garder dans la tuile
                       if (showDrag) dragHandle(),
+                      if (showDrag) const SizedBox(width: 6),
+
+                      // Mettre fin de liste
                       moveToEndArrowIfAny(),
+
+                      const SizedBox(width: 6),
+
+                      // Flèches jour (←/→)
+                      moveDayArrowsIfAny(),
+
+                      const Spacer(),
+
+                      // Optionnel : retirer du jour (désactivé pour virtuel si tu veux)
+                      if (!isVirtual) removeBtn,
                     ],
                   ),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 6),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Title row
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: buildTitle(
-                                        it.title,
-                                        struck: isReachedToday,
-                                        dim: isReachedToday,
-                                      ),
-                                    ),
-                                    if (isReachedToday) ...[
-                                      const SizedBox(width: 6),
-                                      Icon(
-                                        Icons.check_circle,
-                                        size: 16,
-                                        color: Colors.greenAccent
-                                            .withValues(alpha: 0.85),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                              if (isCheckbox) ...[
-                                const SizedBox(width: 8),
-                                checkboxCompact(),
-                              ],
-                            ],
-                          ),
-
-                          const SizedBox(height: 6),
-
-                          // Content row
-                          if (isCounterMode) ...[
-                            Row(
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.remove_circle_outline),
-                                  onPressed: () => inc(-1),
-                                  visualDensity: VisualDensity.compact,
-                                ),
-                                Expanded(
-                                  child: Text(
-                                    subText(showTodayText: false),
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.add_circle_outline),
-                                  onPressed: () => inc(1),
-                                  visualDensity: VisualDensity.compact,
-                                ),
-                                btnCompact(
-                                  icon: Icons.keyboard_alt_outlined,
-                                  tooltip: "Saisir",
-                                  onPressed: () async {
-                                    final v = await askInt(context, "Valeur");
-                                    if (v == null) return;
-                                    final delta = v - doneShown;
-                                    if (delta != 0) {
-                                      widget.logic.incHabit(
-                                          it.refId!, delta, viewedDay);
-                                      setState(() {});
-                                    }
-                                  },
-                                ),
-                                const SizedBox(width: 4),
-                                moveDayArrowsIfAny(),
-                              ],
-                            ),
-                          ] else if (showTicks) ...[
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: isAuto
-                                      ? HabitAutoTicksRow(
-                                          done: doneShown,
-                                          target: targetShown,
-                                          onIncOne: () => inc(1),
-                                          onDecOne: () => inc(-1),
-                                        )
-                                      : HabitTicksRow(
-                                          done: doneShown,
-                                          target: targetShown,
-                                          onIncOne: () => inc(1),
-                                          onDecOne: () => inc(-1),
-                                          onOpenFull: () => showHabitChecklist(
-                                            context,
-                                            title: it.title,
-                                            done: doneShown,
-                                            target: targetShown,
-                                            onSet: (newDone) {
-                                              final delta = newDone - doneShown;
-                                              if (delta != 0) {
-                                                widget.logic.incHabit(it.refId!,
-                                                    delta, viewedDay);
-                                                setState(() {});
-                                              }
-                                            },
-                                          ),
-                                        ),
-                                ),
-                                const SizedBox(width: 4),
-                                moveDayArrowsIfAny(),
-                              ],
-                            ),
-                          ] else ...[
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    subText(showTodayText: true),
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                moveDayArrowsIfAny(),
-                              ],
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
+                  NowHabitTileFull(
+                    logic: widget.logic,
+                    st: widget.state, // ✅ TodayView => state
+                    habitId: habitId,
+                    day: viewedDay, // ✅ ton jour affiché
+                    onTap: () async {
+                      // ouvre tes settings routine
+                      await _openHabitSettings(act);
+                    },
+                    onLongPress: () async {
+                      // si tu veux ouvrir le sheet d’édition complet
+                      // openHabitEditSheet(...) ou ton editor
+                    },
                   ),
+
+                  const SizedBox(height: 6),
                 ],
               ),
             ),
@@ -2364,6 +2286,36 @@ class _NowTabState extends State<NowTab> {
     widget.logic.rev.value++; // si tu utilises rev
   }
 
+  Future<void> _openHabitSettings(Activity act) async {
+    final res = await showHabitSettingsSheet(
+      context,
+      act: act,
+      onRename: () => _renameRoutine(act), // optionnel
+    );
+
+    if (res == null) return;
+
+    widget.logic.applyHabitSettings(
+      act,
+      freq: res.freq,
+      target: res.target,
+      isAuto: res.isAuto,
+    );
+
+    setState(() {});
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          "Réglages enregistrés : ${freqLabel(res.freq)} • cible ${res.target}",
+        ),
+        duration: const Duration(milliseconds: 2000),
+      ),
+    );
+  }
+
   Widget _nowHabitCard(BuildContext context, DayPlanItem it) {
     final ymd =
         yyyymmdd(DateTime(widget.day.year, widget.day.month, widget.day.day));
@@ -2395,7 +2347,7 @@ class _NowTabState extends State<NowTab> {
     final running = widget.logic.runningActivity();
     final isRunningThis =
         hasLinked && running != null && running.id == linkedAct.id;
-        
+
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3300,167 +3252,6 @@ class _NowTabState extends State<NowTab> {
         const SnackBar(
           content: Text("Routine renommée"),
           duration: Duration(milliseconds: 900),
-        ),
-      );
-    });
-  }
-
-  Future<void> _openHabitSettings(Activity act) async {
-    final res = await showModalBottomSheet<_HabitSettingsResult>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) {
-        HabitFreq freq = act.habitFreq ?? HabitFreq.daily;
-        int target = (act.habitTarget ?? 1);
-        bool isAuto = act.autoTune && !act.manualTarget;
-
-        // garde-fous
-        if (target <= 0) target = 1;
-
-        return StatefulBuilder(
-          builder: (ctx, setSB) => Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                InkWell(
-                  onTap: () => _renameRoutine(act),
-                  child: Text(
-                    act.name,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      decoration: TextDecoration.underline,
-                      decorationColor: Theme.of(context)
-                          .colorScheme
-                          .primary
-                          .withOpacity(0.6),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-
-                // ---- Auto / Manuel
-                Row(
-                  children: [
-                    const Text("Mode",
-                        style: TextStyle(fontWeight: FontWeight.w700)),
-                    const Spacer(),
-                    ChoiceChip(
-                      label: const Text("Auto"),
-                      selected: isAuto,
-                      onSelected: (_) => setSB(() => isAuto = true),
-                    ),
-                    const SizedBox(width: 8),
-                    ChoiceChip(
-                      label: const Text("Manuel"),
-                      selected: !isAuto,
-                      onSelected: (_) => setSB(() => isAuto = false),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-
-                // ---- Fréquence
-                Row(
-                  children: [
-                    const Text("Fréquence",
-                        style: TextStyle(fontWeight: FontWeight.w700)),
-                    const Spacer(),
-                    DropdownButton<HabitFreq>(
-                      value: freq,
-                      items: HabitFreq.values
-                          .map((f) => DropdownMenuItem(
-                                value: f,
-                                child: Text(freqLabel(f)),
-                              ))
-                          .toList(),
-                      onChanged: (v) => setSB(() {
-                        if (v == null) return;
-                        freq = v;
-                      }),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-
-                // ---- Cible
-                Row(
-                  children: [
-                    const Text("Cible",
-                        style: TextStyle(fontWeight: FontWeight.w700)),
-                    const Spacer(),
-                    IconButton(
-                      onPressed: () =>
-                          setSB(() => target = (target - 1).clamp(1, 999)),
-                      icon: const Icon(Icons.remove_circle_outline),
-                    ),
-                    Text("$target",
-                        style: const TextStyle(fontWeight: FontWeight.w800)),
-                    IconButton(
-                      onPressed: () =>
-                          setSB(() => target = (target + 1).clamp(1, 999)),
-                      icon: const Icon(Icons.add_circle_outline),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        child: const Text("Annuler"),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: () => Navigator.pop(
-                          ctx,
-                          _HabitSettingsResult(
-                              freq: freq, target: target, isAuto: isAuto),
-                        ),
-                        child: const Text("Enregistrer"),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-
-    if (res == null) return;
-
-    setState(() {
-      // fréquence + cible
-      act.habitFreq = res.freq;
-      act.habitTarget = res.target;
-
-      // mode auto/manuel
-      if (res.isAuto) {
-        act.manualTarget = false;
-        act.autoTune = true;
-      } else {
-        act.autoTune = false;
-        act.manualTarget = true;
-        if (act.habitTarget == null || act.habitTarget! <= 0)
-          act.habitTarget = 1;
-      }
-    });
-
-    widget.logic.onChange();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              "Réglages enregistrés : ${freqLabel(res.freq)} • cible ${res.target}"),
-          duration: const Duration(milliseconds: 2000),
         ),
       );
     });

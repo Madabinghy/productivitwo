@@ -2048,6 +2048,40 @@ class AppLogic {
     return same.map((e) => e.order).reduce((a, b) => a > b ? a : b) + 1;
   }
 
+// app_logic.dart
+  void applyHabitSettings(
+    Activity act, {
+    required HabitFreq freq,
+    required int target,
+    required bool isAuto,
+  }) {
+    final safeTarget = target < 1 ? 1 : target;
+
+    act.habitFreq = freq;
+
+    if (isAuto) {
+      act.manualTarget = false;
+      act.autoTune = true;
+    } else {
+      act.autoTune = false;
+      act.manualTarget = true;
+      act.habitTarget = safeTarget;
+    }
+
+    onChange();
+  }
+
+  String habitFreqLabel(HabitFreq f) {
+    switch (f) {
+      case HabitFreq.daily:
+        return "Quotidienne";
+      case HabitFreq.weekly:
+        return "Hebdomadaire";
+      case HabitFreq.monthly:
+        return "Mensuelle";
+    }
+  }
+
   void ensurePlannedTomorrow(PlanKind kind, String refId) {
     final tomoKey = _tomorrowKey();
     final exists = state.dayPlan.any(
