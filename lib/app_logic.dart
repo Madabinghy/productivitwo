@@ -169,14 +169,14 @@ class AppLogic {
     DateTime? now,
     bool hideDone = true,
   }) {
-    final now0 = now ?? DateTime.now();
+    final now = DateTime.now();
 
     bool isVisibleBase(DayPlanItem it) {
       if (it.archived) return false;
       if (hideDone && it.done) return false;
 
       final u = it.snoozeUntil;
-      if (u != null && u.isAfter(now0)) return false;
+      if (u != null && u.isAfter(now)) return false;
 
       return true;
     }
@@ -184,7 +184,13 @@ class AppLogic {
     final allToday = state.dayPlan
         .where((it) => it.yyyymmdd == yyyymmdd)
         .where(isVisibleBase)
-        .toList()
+        .where((it) {
+      final actId = (it.activityId ?? '').trim();
+      if (actId.isEmpty) return true;
+
+      // 🚫 si activité snoozed → on ne montre pas l’item
+      return !isActivitySnoozed(actId, now);
+    }).toList()
       ..sort((a, b) => a.order.compareTo(b.order));
 
     final todo = <DayPlanItem>[];
@@ -192,9 +198,9 @@ class AppLogic {
     final courses = <DayPlanItem>[];
 
     for (final it in allToday) {
-      if (it.isCourses) {
+      if (it.toPlan) {
         courses.add(it);
-      } else if (it.isInbox) {
+      } else if (it.status == ActionStatus.inbox) {
         inbox.add(it);
       } else {
         todo.add(it);
@@ -3092,17 +3098,17 @@ extension TodayLogic on AppLogic {
             : (plan.last.order + 1)); // Demain/autre -> en fin
 
     state.dayPlan.add(DayPlanItem(
-      id: _uuid.v4(),
-      kind: PlanKind.action,
-      title: title,
-      yyyymmdd: key,
-      order: ord,
+        id: _uuid.v4(),
+        kind: PlanKind.action,
+        title: title,
+        yyyymmdd: key,
+        order: ord,
 
-      // ✅ liaison GTD
-      domainId: domainId,
-      activityId: activityId,
-      habitId: habitId,
-    ));
+        // ✅ liaison GTD
+        domainId: domainId,
+        activityId: activityId,
+        habitId: habitId,
+        status: ActionStatus.inbox));
 
     onChange();
   }
@@ -3902,7 +3908,20 @@ class TodaySections {
 }
 
 extension DayPlanItemBuckets on DayPlanItem {
-  bool get isInbox => (refId == null || (refId ?? '').isEmpty);
+  bool get hasActivityLink => (activityId ?? '').trim().isNotEmpty;
+
   bool get isCourses => toPlan == true;
-  bool get isTodo => !isInbox && !isCourses;
+
+  bool get isInbox {
+    // ✅ le plus propre : un vrai status inbox
+    if (status == ActionStatus.inbox) return true;
+
+    // ✅ fallback : action non clarifiée = pas d’activité liée
+    if (kind == PlanKind.action) return !hasActivityLink;
+
+    // routines (PlanKind.habit) ne dépendent pas de refId pour “inbox”
+    return false;
+  }
+
+  bool get isTodo => !archived && !isCourses && !isInbox;
 }

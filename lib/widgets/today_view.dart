@@ -572,12 +572,17 @@ class _TodayViewState extends State<TodayView> {
           setState(() {
             action.activityId = act.id;
             action.domainId = act.domainId;
+
+            // ✅ Inbox -> Active (clarifié)
+            action.status = ActionStatus.active;
           });
+
           widget.logic.onChange();
+          widget.logic.rev.value++; // ✅ si tu utilises rev pour refresh NowTab
           Navigator.pop(context);
         },
         onKeepInbox: () {
-          // optionnel: rien à faire, juste fermer
+          // rien à faire, on garde ActionStatus.inbox
           Navigator.pop(context);
         },
       ),
@@ -1725,7 +1730,7 @@ class _TodayViewState extends State<TodayView> {
                                 },
                               ),
                               const Spacer(),
-
+/* 
                               // ✅ Toggle Auto/Manuel ultra compact
                               Builder(builder: (context) {
                                 final isAutoMode =
@@ -1775,9 +1780,9 @@ class _TodayViewState extends State<TodayView> {
                                     ),
                                   ),
                                 );
-                              }),
+                              }), */
 
-                              if (!isVirtual) moreCompact(),
+                              //if (!isVirtual) moreCompact(),
                               if (!isVirtual) moveArrowIfAny(),
                             ],
                           ),
@@ -1817,8 +1822,8 @@ class _TodayViewState extends State<TodayView> {
                               ),
 
                               // ✅ bouton retour auto si on est en manuel
-                              autoBackBtnIfManual(),
-                              if (!isVirtual) moreCompact(),
+                              //autoBackBtnIfManual(),
+                              //if (!isVirtual) moreCompact(),
                               if (!isVirtual) moveArrowIfAny(),
                             ],
                           ),
@@ -1839,8 +1844,8 @@ class _TodayViewState extends State<TodayView> {
                               Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  autoBackBtnIfManual(), // ✅ nouveau
-                                  if (!isVirtual) moreCompact(),
+                                  //autoBackBtnIfManual(), // ✅ nouveau
+                                  //if (!isVirtual) moreCompact(),
                                   if (!isVirtual) moveArrowIfAny(),
                                 ],
                               ),
@@ -2392,7 +2397,7 @@ class _NowTabState extends State<NowTab> {
                   leading: const Icon(Icons.snooze),
                   title: Text(a.name,
                       style: const TextStyle(fontWeight: FontWeight.w800)),
-                  subtitle: Text(snoozed ? "Cachée (zzz)" : "Visible"),
+                  subtitle: Text(snoozed ? "Cachée (zzz)" : "Cacher l'activité ?"),
                 ),
                 const Divider(height: 1),
                 ListTile(
@@ -2442,6 +2447,172 @@ class _NowTabState extends State<NowTab> {
           ),
         );
       },
+    );
+  }
+
+  Activity? _activityById(String? id) {
+    final actId = (id ?? '').trim();
+    if (actId.isEmpty) return null;
+    for (final a in widget.logic.state.activities) {
+      if (a.id == actId) return a;
+    }
+    return null;
+  }
+
+  Future<void> _pickAndAttachActivityToPlanItem(DayPlanItem it) async {
+    // ✅ réutilise ton sheet d’assign existant
+    // Si tu as une version qui "return Activity?", prends celle-là.
+    Activity? picked;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => AssignActivitySheet(
+        st: widget.logic.state,
+        onPick: (act) {
+          picked = act;
+          Navigator.pop(context);
+        },
+        onKeepInbox: () => Navigator.pop(context),
+      ),
+    );
+
+    if (picked == null) return;
+
+    setState(() {
+      it.activityId = picked!.id;
+      it.domainId = picked!.domainId;
+    });
+    widget.logic.onChange();
+    widget.logic.rev.value++; // si tu utilises rev
+  }
+
+  Widget _nowHabitCard(BuildContext context, DayPlanItem it) {
+    final ymd =
+        yyyymmdd(DateTime(widget.day.year, widget.day.month, widget.day.day));
+
+    // it.refId = habitId chez toi (routine)
+    final habitId = it.refId ?? it.habitId;
+    if (habitId == null) {
+      // fallback : si routine mal formée
+      return _nowActionCard(context, it, _skippedIds.length, 1);
+    }
+
+    // ✅ garde ton comportement checklist
+    widget.logic.ensureChecklistDay(ymd);
+    widget.logic.nowHabitId = habitId;
+
+    final act = widget.st.activities.firstWhere(
+      (a) => a.id == habitId,
+      orElse: () => Activity(domainId: '', name: it.title, habitTarget: 1),
+    );
+    final linkedAct = _activityById(it.activityId);
+    final hasLinked = linkedAct != null;
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // ✅ ton header routine (tu peux réutiliser _nowCard si tu veux)
+          Text(it.title,
+              style:
+                  const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+          const SizedBox(height: 10),
+
+          // ✅ tuile routine détaillée (celle que tu avais)
+          NowHabitTileFull(
+            logic: widget.logic,
+            st: widget.st,
+            habitId: habitId,
+            day: widget.day,
+            onTap: () async {
+              await _openHabitSettings(act);
+            },
+            onLongPress: () {
+              // openHabitEditSheet etc.
+            },
+          ),
+
+          const SizedBox(height: 10),
+          if (hasLinked) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    "Liée à : ${linkedAct!.name}",
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(.65),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                TextButton(
+                  onPressed: () {
+                    setState(() => it.activityId = null); // ✅ désassocier
+                    widget.logic.onChange();
+                    widget.logic.rev.value++;
+                  },
+                  child: const Text("Désassocier"),
+                ),
+              ],
+            ),
+          ],
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  icon: Icon(hasLinked ? Icons.play_arrow : Icons.link),
+                  label: Text(hasLinked ? linkedAct.name : "Associer"),
+                  onPressed: () async {
+                    if (!hasLinked) {
+                      await _pickAndAttachActivityToPlanItem(it);
+                      return; // après association, le rebuild mettra le nom
+                    }
+                    // ✅ associé -> lance
+                    widget.logic.start(linkedAct.id);
+                    widget.logic.rev.value++;
+                  },
+                  onLongPress: hasLinked
+                      ? () async {
+                          // ✅ optionnel : changer l’association
+                          await _pickAndAttachActivityToPlanItem(it);
+                        }
+                      : null,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.snooze),
+                  label: const Text("Masquer"),
+                  // ✅ visible mais grisé si pas associé
+                  onPressed: !hasLinked
+                      ? null
+                      : () => _openSnoozeActivitySheet(context, linkedAct),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 10),
+          // ✅ checklist (ton rendu existant)
+          _routineChecklist(it),
+
+          const SizedBox(height: 12),
+          _activitiesSuggestionForCurrent(it),
+
+          const SizedBox(height: 10),
+          _toPlanSection(it),
+          const SizedBox(height: 10),
+          _archivesSection(it),
+          const SizedBox(height: 10),
+          _archivesGlobalSection(),
+        ],
+      ),
     );
   }
 
@@ -3461,7 +3632,8 @@ class _NowTabState extends State<NowTab> {
             }
           }
 
-          debugPrint("[NOWTAB] first=${todo.isEmpty ? 'none' : todo.first.title} actId=${todo.isEmpty ? '' : (todo.first.activityId ?? '')}");
+          debugPrint(
+              "[NOWTAB] first=${todo.isEmpty ? 'none' : todo.first.title} actId=${todo.isEmpty ? '' : (todo.first.activityId ?? '')}");
 
           // 2) Action (si chez toi l'action a un refId et l'activité est stockée ailleurs)
           // Si ton assign sheet écrit déjà it.activityId, tu peux ignorer ce bloc.
@@ -3487,16 +3659,26 @@ class _NowTabState extends State<NowTab> {
           return _allDoneView(context);
         }
 
-        // ✅ NowTab = 1er item de "À faire"
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
-          child: _nowActionCard(
-            context,
-            chosen,
-            _skippedIds.length,
-            todo.length,
-          ),
-        );
+        if (chosen.kind == PlanKind.action) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+            child: _nowActionCard(
+              context,
+              chosen,
+              _skippedIds.length,
+              todo.length,
+            ),
+          );
+        }
+
+        if (chosen.kind == PlanKind.habit) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+            child: _nowHabitCard(context, chosen), // ✅ nouveau
+          );
+        }
+
+        return _allDoneView(context);
       },
     );
   }

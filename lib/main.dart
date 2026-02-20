@@ -1326,7 +1326,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
   late final ValueNotifier<int> _tick; // seconds
 
-
   @override
   void initState() {
     super.initState();
@@ -1555,9 +1554,9 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       case 0:
         return _Tab.dashboard;
       case 1:
-        return _Tab.now;
-      case 2:
         return _Tab.today;
+      case 2:
+        return _Tab.now;
       default:
         return _Tab.stats;
     }
@@ -1985,9 +1984,9 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
           BottomNavigationBarItem(
               icon: Icon(Icons.dashboard), label: 'Dashboard'),
           BottomNavigationBarItem(
-              icon: Icon(Icons.play_arrow), label: 'Maintenant'),
-          BottomNavigationBarItem(
               icon: Icon(Icons.checklist), label: 'À faire'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.play_arrow), label: 'Maintenant'),
           BottomNavigationBarItem(icon: Icon(Icons.show_chart), label: 'Stats'),
         ],
       ),

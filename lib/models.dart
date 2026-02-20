@@ -12,6 +12,7 @@ enum ActionStatus {
   active,
   done,
   archived,
+  inbox,
 }
 
 class DayPlanItem {
@@ -73,11 +74,27 @@ class DayPlanItem {
         'toPlan': toPlan,
         'archived': archived,
         'snoozeUntil': snoozeUntil?.toIso8601String(),
+
+        // ✅ AJOUT
+        'status': status.name,
+
+        // (optionnel mais propre)
+        'createdAt': createdAt.toIso8601String(),
       };
 
   static DayPlanItem from(Map j) {
     final done = _asBool(j['done']);
     final doneCount = j['doneCount'] ?? (done ? 1 : 0);
+
+    final statusStr = (j['status'] ?? 'active').toString();
+    final st = ActionStatus.values.firstWhere(
+      (e) => e.name == statusStr,
+      orElse: () => ActionStatus.active,
+    );
+
+    final createdAt = j['createdAt'] != null
+        ? DateTime.tryParse(j['createdAt'] as String)
+        : null;
 
     return DayPlanItem(
       id: j['id'],
@@ -93,11 +110,17 @@ class DayPlanItem {
       allDay: _asBool(j['allDay']),
       isNowFocus: _asBool(j['isNowFocus']),
       order: j['order'] ?? 0,
-      toPlan: _asBool(j['toPlan']), // ✅ ici
-      archived: _asBool(j['archived']), // ✅ ici
+      toPlan: _asBool(j['toPlan']),
+      archived: _asBool(j['archived']),
       snoozeUntil: j['snoozeUntil'] != null
           ? DateTime.tryParse(j['snoozeUntil'] as String)
           : null,
+
+      // ✅ AJOUT
+      status: st,
+
+      // (optionnel)
+      createdAt: createdAt,
     );
   }
 
