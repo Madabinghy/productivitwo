@@ -2392,6 +2392,10 @@ class _NowTabState extends State<NowTab> {
 
     final linkedAct = _activityById(it.activityId);
     final hasLinked = linkedAct != null;
+    final running = widget.logic.runningActivity();
+    final isRunningThis =
+        hasLinked && running != null && running.id == linkedAct.id;
+        
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2449,21 +2453,57 @@ class _NowTabState extends State<NowTab> {
             children: [
               Expanded(
                 child: FilledButton.icon(
-                  icon: Icon(hasLinked ? Icons.play_arrow : Icons.link),
-                  label: Text(hasLinked ? linkedAct.name : "Associer"),
+                  icon: Icon(
+                    !hasLinked
+                        ? Icons.link
+                        : (isRunningThis ? Icons.stop : Icons.play_arrow),
+                    size: 20,
+                  ),
+                  label: Text(
+                    !hasLinked
+                        ? "Associer"
+                        : (isRunningThis ? "Stop" : linkedAct.name),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+
+                  // ✅ rouge si STOP
+                  style: isRunningThis
+                      ? FilledButton.styleFrom(
+                          backgroundColor: Colors.red.withOpacity(0.85),
+                          foregroundColor: Colors.white,
+                        )
+                      : null,
+
                   onPressed: () async {
+                    // 1) pas associé -> associer
                     if (!hasLinked) {
                       await _pickAndAttachActivityToPlanItem(it);
-                      return; // après association, le rebuild mettra le nom
+                      setState(() {}); // ✅ refresh immédiat
+                      return;
                     }
-                    // ✅ associé -> lance
+
+                    // 2) associé + en cours -> STOP
+                    if (isRunningThis) {
+                      widget.logic.stopActive();
+                      setState(() {}); // ✅ refresh immédiat
+                      return;
+                    }
+
+                    // 3) associé + pas en cours -> START (optionnel: stop autre session)
+                    if (running != null) widget.logic.stopActive();
                     widget.logic.start(linkedAct.id);
+
+                    // si tu utilises rev.value++ pour rafraîchir d’autres widgets
                     widget.logic.rev.value++;
+
+                    setState(() {});
                   },
+
                   onLongPress: hasLinked
                       ? () async {
-                          // ✅ optionnel : changer l’association
                           await _pickAndAttachActivityToPlanItem(it);
+                          setState(() {});
                         }
                       : null,
                 ),
