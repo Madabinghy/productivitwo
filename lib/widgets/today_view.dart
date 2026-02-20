@@ -837,17 +837,27 @@ class _TodayViewState extends State<TodayView> {
     final forceAutoHabits = isTodayTab && isPlanning;
 
     // --- planOrAuto utilise forceAutoHabits ---
-    List<DayPlanItem> planOrAuto() {
-      // ✅ En planification, on force l'ajout des "virtHabits" même si le plan n’est pas vide
-      if (!isTodayTab) return basePlan;
-      if (!isEmptyHabitsToday && !forceAutoHabits) return basePlan;
 
+    List<DayPlanItem> planOrAuto() {
+      // On part toujours du plan existant
+      final plan = basePlan;
+
+      // On calcule virtHabits (routines non planifiées mais sous la cible)
       final habits =
           widget.logic.state.activities.where((a) => a.isHabit).toList();
 
+      final plannedHabitIds = plan
+          .where((x) => x.kind == PlanKind.habit && x.refId != null)
+          .map((x) => x.refId!)
+          .toSet();
+
       final under = habits.where((a) {
         final freq = widget.logic.effectiveHabitFreq(a);
-        final target = widget.logic.effectiveHabitTarget(a);
+        final target = widget.logic.effectiveHabitTarget(a).clamp(1, 9999);
+
+        final now = DateTime.now();
+        final todayDate = DateTime(now.year, now.month, now.day);
+
         int done;
         switch (freq) {
           case HabitFreq.daily:
@@ -860,13 +870,8 @@ class _TodayViewState extends State<TodayView> {
             done = widget.logic.habitSliding(a.id, 30).done;
             break;
         }
-        return target > 0 && done < target;
+        return done < target;
       });
-
-      final plannedHabitIds = basePlan
-          .where((x) => x.kind == PlanKind.habit && x.refId != null)
-          .map((x) => x.refId!)
-          .toSet();
 
       final virtHabits = under
           .where((a) => !plannedHabitIds.contains(a.id))
@@ -877,14 +882,12 @@ class _TodayViewState extends State<TodayView> {
                 domainId: a.domainId,
                 title: a.name,
                 yyyymmdd: ymd,
-                done: false,
-                doneCount: 0,
                 allDay: true,
                 order: 1 << 30,
               ))
           .toList();
 
-      return [...basePlan, ...virtHabits];
+      return [...plan, ...virtHabits];
     }
 
     final baseOrAuto = planOrAuto();
@@ -1713,7 +1716,6 @@ class _TodayViewState extends State<TodayView> {
           ),
           // ← / → (today/tomorrow) si tu l’as déjà
           moveDayArrowsIfAny(),
-
         ],
       );
     }

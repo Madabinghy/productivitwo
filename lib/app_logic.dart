@@ -164,40 +164,88 @@ class AppLogic {
     rev.value++; // ✅ refresh NowTab/TodayView si tu utilises rev
   }
 
-  TodaySections todaySections({
-    required String yyyymmdd,
-    DateTime? now,
-    bool hideDone = true,
-  }) {
-    final now = DateTime.now();
+TodaySections todaySections({
+  required String yyyymmdd,
+  DateTime? now,
+  bool hideDone = true,
+  bool includeVirtualHabits = false,
+}) {
+  final n = now ?? DateTime.now();
 
-    bool isVisibleBase(DayPlanItem it) {
-      if (it.archived) return false;
-      if (hideDone && it.done) return false;
+  bool isVisibleBase(DayPlanItem it) {
+    if (it.archived) return false;
+    if (hideDone && it.done) return false;
+    final u = it.snoozeUntil;
+    if (u != null && u.isAfter(n)) return false;
+    return true;
+  }
 
-      final u = it.snoozeUntil;
-      if (u != null && u.isAfter(now)) return false;
+  final base = state.dayPlan
+      .where((it) => it.yyyymmdd == yyyymmdd)
+      .where(isVisibleBase)
+      .where((it) {
+        final actId = (it.activityId ?? '').trim();
+        if (actId.isEmpty) return true;
+        return !isActivitySnoozed(actId, n);
+      })
+      .toList();
 
-      return true;
-    }
+  // ✅ ajoute les virtHabits si demandé (uniquement aujourd’hui en général)
+  final merged = <DayPlanItem>[...base];
 
-    final allToday = state.dayPlan
-        .where((it) => it.yyyymmdd == yyyymmdd)
-        .where(isVisibleBase)
-        .where((it) {
-      final actId = (it.activityId ?? '').trim();
-      if (actId.isEmpty) return true;
+  if (includeVirtualHabits) {
+    final plannedHabitIds = base
+        .where((x) => x.kind == PlanKind.habit && (x.refId ?? '').isNotEmpty)
+        .map((x) => x.refId!)
+        .toSet();
 
-      // 🚫 si activité snoozed → on ne montre pas l’item
-      return !isActivitySnoozed(actId, now);
-    }).toList()
-      ..sort((a, b) => a.order.compareTo(b.order));
+    final todayDate = DateTime(n.year, n.month, n.day);
 
-    final todo = <DayPlanItem>[];
-    final inbox = <DayPlanItem>[];
-    final courses = <DayPlanItem>[];
+    final virtHabits = state.activities
+        .where((a) => a.isHabit)
+        .where((a) {
+          final freq = effectiveHabitFreq(a);
+          final target = effectiveHabitTarget(a);
+          int done;
+          switch (freq) {
+            case HabitFreq.daily:
+              done = habitValueOn(a.id, todayDate);
+              break;
+            case HabitFreq.weekly:
+              done = habitSliding(a.id, 7).done;
+              break;
+            case HabitFreq.monthly:
+              done = habitSliding(a.id, 30).done;
+              break;
+          }
+          return target > 0 && done < target;
+        })
+        .where((a) => !plannedHabitIds.contains(a.id))
+        .map((a) => DayPlanItem(
+              id: 'virt:${a.id}',
+              kind: PlanKind.habit,
+              refId: a.id,
+              domainId: a.domainId,
+              title: a.name,
+              yyyymmdd: yyyymmdd,
+              allDay: true,
+              order: 1 << 30,
+            ))
+        .toList();
 
-    for (final it in allToday) {
+    merged.addAll(virtHabits);
+  }
+
+  merged.sort((a, b) => a.order.compareTo(b.order));
+
+  // ✅ bucketing
+  final todo = <DayPlanItem>[];
+  final inbox = <DayPlanItem>[];
+  final courses = <DayPlanItem>[];
+
+  for (final it in merged) {
+    // IMPORTANT: inbox/courses ne concernent que les ACTIONS
+    if (it.kind == PlanKind.action) {
       if (it.toPlan) {
         courses.add(it);
       } else if (it.status == ActionStatus.inbox) {
@@ -205,10 +253,15 @@ class AppLogic {
       } else {
         todo.add(it);
       }
+    } else {
+      // routines / activityTime -> toujours todo
+      todo.add(it);
     }
-
-    return TodaySections(todo: todo, inbox: inbox, courses: courses);
   }
+
+  return TodaySections(todo: todo, inbox: inbox, courses: courses);
+}
+
 
   void movePlannedToDayIfPresent(
     PlanKind kind,
