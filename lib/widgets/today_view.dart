@@ -199,6 +199,99 @@ class _TodayViewState extends State<TodayView> {
     return true;
   }
 
+  Widget _cardWithTopTools({
+    required Key key,
+    required Widget content,
+    required Widget tools, // row de boutons compact
+  }) {
+    return Card(
+      key: key,
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Stack(
+        children: [
+          // Contenu normal, on laisse un petit padding top pour pas que l'overlay masque tout
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 18, 12, 10),
+            child: content,
+          ),
+
+          // Toolbar en overlay
+          Positioned(
+            top: 4,
+            left: 6,
+            right: 6,
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: tools,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _topToolsRow({
+    required DayPlanItem it,
+    required bool showDrag,
+    required int indexForDrag,
+  }) {
+    Widget miniBtn(IconData icon, String tip, VoidCallback onTap) {
+      return IconButton(
+        tooltip: tip,
+        icon: Icon(icon, size: 18),
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+        visualDensity: VisualDensity.compact,
+        onPressed: onTap,
+      );
+    }
+
+    final now = DateTime.now();
+    final baseDay = DateTime(now.year, now.month, now.day);
+
+    final day = (_scope == _Scope.today)
+        ? baseDay
+        : baseDay.add(const Duration(days: 1));
+
+    final ymd = yyyymmdd(day);
+
+    return Row(
+      mainAxisSize: MainAxisSize.max,
+      children: [
+        if (showDrag)
+          ReorderableDragStartListener(
+            index: indexForDrag,
+            child: const Padding(
+              padding: EdgeInsets.only(right: 6),
+              child: Icon(Icons.drag_handle, size: 18),
+            ),
+          ),
+        const Spacer(),
+        miniBtn(Icons.arrow_upward, "En haut", () {
+          widget.logic.movePlanItemToTop(ymd, it.id);
+          widget.logic.onChange();
+          setState(() {});
+        }),
+        miniBtn(Icons.arrow_downward, "En bas", () {
+          widget.logic.movePlanItemToEnd(ymd, it.id);
+          widget.logic.onChange();
+          setState(() {});
+        }),
+        miniBtn(Icons.arrow_forward, "Demain", () {
+          widget.logic.moveItemToTomorrowById(it.id);
+          widget.logic.onChange();
+          setState(() {});
+        }),
+        miniBtn(Icons.close, "Retirer", () {
+          setState(() {
+            widget.state.dayPlan.removeWhere((e) => e.id == it.id);
+            widget.logic.onChange();
+          });
+        }),
+      ],
+    );
+  }
+
   Widget _actionCardContent(
     DayPlanItem it, {
     required DateTime viewedDay,
@@ -1620,17 +1713,7 @@ class _TodayViewState extends State<TodayView> {
           ),
           // ← / → (today/tomorrow) si tu l’as déjà
           moveDayArrowsIfAny(),
-          // ✕
-          btnCompact(
-            icon: Icons.close,
-            tooltip: "Retirer",
-            onPressed: () {
-              setState(() {
-                widget.state.dayPlan.removeWhere((e) => e.id == it.id);
-                widget.logic.onChange();
-              });
-            },
-          ),
+
         ],
       );
     }
@@ -1650,71 +1733,79 @@ class _TodayViewState extends State<TodayView> {
         margin: const EdgeInsets.only(bottom: 8),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-          child: Row(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (showDrag) ...[
-                dragHandle(),
-                const SizedBox(width: 6),
-              ],
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Ligne 1 : titre + checkbox
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            it.title,
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 16,
-                              color: dim
-                                  ? cs.onSurface.withOpacity(.55)
-                                  : cs.onSurface.withOpacity(.92),
-                              decoration:
-                                  dim ? TextDecoration.lineThrough : null,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Checkbox(
-                          value: it.done,
-                          onChanged: (v) {
-                            setState(() => it.done = v ?? false);
-                            widget.logic.onChange();
-                          },
-                          materialTapTargetSize:
-                              MaterialTapTargetSize.shrinkWrap,
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 6),
-
-                    // Ligne 2 : sous-texte + boutons à droite (comme routines)
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            _actionSubtitle(
-                                it), // 👉 remplace par ton sous-texte actuel
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              color: cs.onSurface.withOpacity(.65),
-                            ),
-                          ),
-                        ),
-                        _actionControlsRow(it),
-                      ],
-                    ),
+              // ✅ LIGNE 1 : OUTILS (flèches) — AUCUN TITRE ICI
+              Row(
+                children: [
+                  if (showDrag) ...[
+                    dragHandle(),
+                    const SizedBox(width: 6),
                   ],
+                  // Flèche haut / bas / demain / etc
+                  _actionControlsRow(it), // <-- ton row d'icônes
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 18),
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints:
+                        const BoxConstraints.tightFor(width: 32, height: 32),
+                    onPressed: () {
+                      setState(() {
+                        widget.state.dayPlan.removeWhere((e) => e.id == it.id);
+                        widget.logic.onChange();
+                      });
+                    },
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 8),
+
+              // ✅ LIGNE 2 : TITRE (plein largeur)
+              Text(
+                it.title,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                  color: dim
+                      ? cs.onSurface.withOpacity(.55)
+                      : cs.onSurface.withOpacity(.92),
+                  decoration: dim ? TextDecoration.lineThrough : null,
                 ),
+              ),
+
+              const SizedBox(height: 6),
+
+              // ✅ LIGNE 3 : Sous-texte + checkbox (ou autres)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Text(
+                      _actionSubtitle(it),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurface.withOpacity(.65),
+                      ),
+                    ),
+                  ),
+                  Checkbox(
+                    value: it.done,
+                    onChanged: (v) {
+                      setState(() => it.done = v ?? false);
+                      widget.logic.onChange();
+                    },
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ],
               ),
             ],
           ),
