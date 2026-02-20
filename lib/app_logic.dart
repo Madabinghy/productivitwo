@@ -255,20 +255,21 @@ class AppLogic {
   }
 
   void movePlanItemToDay(String itemId, String targetYmd) {
-  final it = state.dayPlan.firstWhere((x) => x.id == itemId);
+    final it = state.dayPlan.firstWhere((x) => x.id == itemId);
 
-  // max order du jour cible
-  final sameDay = state.dayPlan.where((x) => x.yyyymmdd == targetYmd).toList();
-  final maxOrder = sameDay.isEmpty
-      ? 0
-      : sameDay.map((x) => x.order).reduce((a, b) => a > b ? a : b);
+    // max order du jour cible
+    final sameDay =
+        state.dayPlan.where((x) => x.yyyymmdd == targetYmd).toList();
+    final maxOrder = sameDay.isEmpty
+        ? 0
+        : sameDay.map((x) => x.order).reduce((a, b) => a > b ? a : b);
 
-  it.yyyymmdd = targetYmd;
-  it.order = maxOrder + 1;
-  it.snoozeUntil = null; // optionnel: évite incohérences
-  onChange();
-  rev.value++;
-}
+    it.yyyymmdd = targetYmd;
+    it.order = maxOrder + 1;
+    it.snoozeUntil = null; // optionnel: évite incohérences
+    onChange();
+    rev.value++;
+  }
 
   void moveItemToDayById(String itemId, String targetYmd) {
     final it = state.dayPlan.firstWhere((x) => x.id == itemId);
@@ -330,12 +331,22 @@ class AppLogic {
     onChange();
   }
 
-  void setNowFocus(String planItemId) {
-    for (final p in state.dayPlan) {
-      p.isNowFocus = false;
+  void setNowFocus(String actionId) {
+    // ✅ un seul pinned à la fois
+    for (final it in state.dayPlan) {
+      if (it.kind == PlanKind.action && it.isNowFocus == true) {
+        it.isNowFocus = false;
+      }
     }
-    final idx = state.dayPlan.indexWhere((p) => p.id == planItemId);
-    if (idx >= 0) state.dayPlan[idx].isNowFocus = true;
+    DayPlanItem? x;
+    for (final e in state.dayPlan) {
+      if (e.id == actionId) {
+        x = e;
+        break;
+      }
+    }
+    if (x != null) x.isNowFocus = true;
+
     onChange();
   }
 
@@ -2075,17 +2086,43 @@ class AppLogic {
         break;
     }
 
+    String? linkedActivityId;
+
+    if (kind == PlanKind.habit) {
+      // ✅ IMPORTANT : ici refId = habitId
+      // On essaie de retrouver l’activité associée à cette routine
+      // 1) si tu as une méthode dédiée, utilise-la:
+      // linkedActivityId = linkedActivityIdForHabit(refId);
+
+      // 2) sinon (fallback), essaye de trouver un item existant aujourd’hui avec la même routine
+      final todayKey =
+          _todayKey(); // si tu l’as, sinon calcule yyyymmdd(DateTime.now())
+      final existing = state.dayPlan.cast<DayPlanItem?>().firstWhere(
+            (e) =>
+                e != null &&
+                e.yyyymmdd == todayKey &&
+                e.kind == PlanKind.habit &&
+                e.refId == refId,
+            orElse: () => null,
+          );
+      linkedActivityId = existing?.activityId;
+    }
+
     state.dayPlan.add(DayPlanItem(
       id: _uuid.v4(),
       kind: kind,
       refId: refId,
-      domainId:
-          act?.domainId.isNotEmpty == true ? act!.domainId : null, // ✅ NEW
+      domainId: act?.domainId.isNotEmpty == true ? act!.domainId : null,
       title: title,
       yyyymmdd: tomoKey,
       done: false,
       allDay: false,
       order: _nextOrderForDay(tomoKey),
+
+      // ✅ activityId selon le type
+      activityId: (kind == PlanKind.activityTime)
+          ? refId
+          : (kind == PlanKind.habit ? linkedActivityId : null),
     ));
 
     onChange();

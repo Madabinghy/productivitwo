@@ -151,14 +151,14 @@ class _TodayViewState extends State<TodayView> {
     );
   }
 
-  Future<void> _startOrPickActivityForAction(DayPlanItem it) async {
+  Future<bool> _startOrPickActivityForAction(DayPlanItem it) async {
     final running = widget.logic.runningActivity();
 
     // 1️⃣ Action déjà liée à une activité
     if (it.activityId != null && it.activityId!.isNotEmpty) {
-      // même activité déjà en cours → rien à faire
+      // même activité déjà en cours → rien à faire (mais on considère OK)
       if (running != null && running.id == it.activityId) {
-        return;
+        return true;
       }
 
       // sinon on stoppe ce qui tourne (si besoin)
@@ -176,13 +176,13 @@ class _TodayViewState extends State<TodayView> {
       );
 
       widget.logic.start(act.id);
-      return;
+      return true;
     }
 
     // 2️⃣ Pas d’activité → ouvrir le picker
     final picked =
         await widget.logic.openAssignActivitySheetAndWait(context, it);
-    if (picked == null) return;
+    if (picked == null) return false; // ✅ annulé
 
     setState(() {
       it.activityId = picked.id;
@@ -194,6 +194,8 @@ class _TodayViewState extends State<TodayView> {
     final running2 = widget.logic.runningActivity();
     if (running2 != null) widget.logic.stopActive();
     widget.logic.start(picked.id);
+
+    return true;
   }
 
   Widget _actionCardContent(DayPlanItem it) {
@@ -242,7 +244,8 @@ class _TodayViewState extends State<TodayView> {
                     : "Associer puis lancer",
                 padding: EdgeInsets.zero,
                 onPressed: () async {
-                  await _startOrPickActivityForAction(it);
+                  final ok = await _startOrPickActivityForAction(it);
+                  if (!ok) return;
                   widget.logic.setNowFocus(it.id);
                   widget.onGoNowTab?.call();
                 },
@@ -957,7 +960,7 @@ class _TodayViewState extends State<TodayView> {
           ),
           const SizedBox(height: 12),
           //_nowChecklistActions(), // ton bloc "Pour maintenant" (déjà OK)
-          if (isTodayTab &&
+          /*         if (isTodayTab &&
               hasRunning &&
               (byActivity.isNotEmpty || byDomainOnly.isNotEmpty)) ...[
             Text(
@@ -965,7 +968,7 @@ class _TodayViewState extends State<TodayView> {
               style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
             ),
             const SizedBox(height: 8),
-            if (byActivity.isNotEmpty) ...[
+             if (byActivity.isNotEmpty) ...[
               Text(
                 "Liées à l’activité",
                 style: TextStyle(
@@ -996,8 +999,9 @@ class _TodayViewState extends State<TodayView> {
                   showDrag: false,
                   indexForDrag: 0)),
               const SizedBox(height: 12),
-            ],
+            ], 
           ],
+          */
           const SizedBox(height: 12),
           _coursesSection(
             courses: shoppingActions,
@@ -3534,6 +3538,19 @@ class _NowTabState extends State<NowTab> {
         }
 
         final chosen = focusedAction ?? (todo.isNotEmpty ? todo.first : null);
+        final bool isPinned =
+            (focusedAction != null && identical(chosen, focusedAction));
+
+        void _unpinNow() {
+          final a = focusedAction;
+          if (a == null) return;
+
+          setState(() {
+            a.isNowFocus = false; // ✅ enlève l’action forcée
+          });
+
+          widget.logic.onChange();
+        }
 
         if (chosen == null) {
           return _allDoneView(context);
@@ -3542,11 +3559,36 @@ class _NowTabState extends State<NowTab> {
         if (chosen.kind == PlanKind.action) {
           return Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
-            child: _nowActionCard(
-              context,
-              chosen,
-              _skippedIds.length,
-              todo.length,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (isPinned) ...[
+                  Row(
+                    children: [
+                      IconButton(
+                        tooltip: "Désépingler",
+                        icon: const Icon(Icons.arrow_back),
+                        onPressed: _unpinNow,
+                      ),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          "Action épinglée",
+                          style: TextStyle(
+                              fontWeight: FontWeight.w800, fontSize: 16),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                _nowActionCard(
+                  context,
+                  chosen,
+                  _skippedIds.length,
+                  todo.length,
+                ),
+              ],
             ),
           );
         }
