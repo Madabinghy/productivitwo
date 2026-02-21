@@ -44,7 +44,7 @@ class NowHabitTileFull extends StatelessWidget {
       case HabitFreq.weekly:
         return "7j $weekDone/$weekTarget  •  Aujourd’hui $dayDone/$dayQuota";
       case HabitFreq.monthly:
-      return "30j $monthDone/$monthTarget  •  Aujourd’hui $dayDone/$dayQuota";
+        return "30j $monthDone/$monthTarget  •  Aujourd’hui $dayDone/$dayQuota";
     }
   }
 
@@ -61,14 +61,49 @@ class NowHabitTileFull extends StatelessWidget {
 
     final quotaD = logic.dayQuotaFor(act);
     final freq = logic.effectiveHabitFreq(act);
-    final isDaily = (act.habitFreq ?? HabitFreq.monthly) == HabitFreq.daily;
 
-    final series30 = List<double>.generate(30, (i) {
-      final day30 = DateTime(d0.year, d0.month, d0.day).subtract(Duration(days: 29 - i));
-      return logic.habitValueOn(habitId, day30).toDouble();
+    double _expectedPerDay() {
+      final t = logic.effectiveHabitTarget(act).clamp(1, 999999);
+      switch (freq) {
+        case HabitFreq.daily:
+          return t.toDouble(); // ex: 10/jour
+        case HabitFreq.weekly:
+          return t / 7.0; // ex: 1/semaine => 0.14/j
+        case HabitFreq.monthly:
+          return t / 30.0; // ex: 1/mois => 0.03/j
+      }
+    }
+
+    double _avg7At(DateTime d) {
+      double sum = 0;
+      for (int k = 0; k < 7; k++) {
+        final dd = DateTime(d.year, d.month, d.day).subtract(Duration(days: k));
+        sum += logic.habitValueOn(habitId, dd).toDouble();
+      }
+      return sum / 7.0;
+    }
+
+    final isDaily = (freq == HabitFreq.daily);
+
+    final raw30 = List<double>.generate(30, (i) {
+      final d =
+          DateTime(d0.year, d0.month, d0.day).subtract(Duration(days: 29 - i));
+      return logic.habitValueOn(habitId, d).toDouble();
     });
 
-    final histMax = isDaily ? quotaD.toDouble().clamp(1.0, 9999.0) : 1.0;
+    List<double> ewma(List<double> xs, {double alpha = 0.25}) {
+      final out = List<double>.filled(xs.length, 0);
+      double s = xs.isEmpty ? 0 : xs.first;
+      for (int i = 0; i < xs.length; i++) {
+        s = alpha * xs[i] + (1 - alpha) * s;
+        out[i] = s;
+      }
+      return out;
+    }
+
+    final series30 = ewma(raw30, alpha: 0.25);
+
+    final histMax = isDaily ? quotaD.toDouble().clamp(1.0, 9999.0) : 1.5;
 
     final target = h90.ratio.clamp(0.0, 1.0);
 
@@ -105,7 +140,8 @@ class NowHabitTileFull extends StatelessWidget {
                     strokeWidth: 7,
                     center: Text(
                       "${(target * 100).round()}%",
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                      style: const TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.w800),
                     ),
                   );
                 },
@@ -123,10 +159,10 @@ class NowHabitTileFull extends StatelessWidget {
                     act.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 16),
                   ),
                   const SizedBox(height: 8),
-
                   SizedBox(
                     height: 26,
                     child: GestureDetector(
@@ -138,9 +174,7 @@ class NowHabitTileFull extends StatelessWidget {
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 4),
-
                   Opacity(
                     opacity: 0.65,
                     child: Text(

@@ -73,6 +73,13 @@ class HabitAssocEvent {
           habitId: habitId, fromActivityId: fromActId, toActivityId: toActId);
 }
 
+class HabitTrendPoint {
+  final DateTime day; // jour de l’axe (30 points)
+  final double avg7; // moyenne brute / jour (sur 7 jours)
+  final double ratio; // avg7 / rythmeAttendu (0..1+)
+  const HabitTrendPoint(this.day, this.avg7, this.ratio);
+}
+
 // =====================================================
 // ===============  LOGIQUE PRINCIPALE  ================
 // =====================================================
@@ -95,6 +102,130 @@ class AppLogic {
   final ValueNotifier<int> rev = ValueNotifier<int>(0);
 
   void bumpRev() => rev.value++;
+
+  double _expectedPerDay(Activity a) {
+    final freq = effectiveHabitFreq(a);
+    final target = effectiveHabitTarget(a).clamp(1, 999999);
+
+    switch (freq) {
+      case HabitFreq.daily:
+        return target.toDouble(); // ex: 10/j
+      case HabitFreq.weekly:
+        return target / 7.0; // ex: 1/sem => ~0.142/j
+      case HabitFreq.monthly:
+        return target / 30.0; // ex: 1/mois => ~0.033/j
+    }
+  }
+
+  List<int> habitBars30dUi(String habitId, DateTime now, {int maxBar = 10}) {
+    final a = state.activities.firstWhere((x) => x.id == habitId);
+    final freq = effectiveHabitFreq(a);
+
+    final end = DateTime(now.year, now.month, now.day);
+    final start = end.subtract(const Duration(days: 29));
+
+    int valueOn(DateTime d) =>
+        habitValueOn(habitId, DateTime(d.year, d.month, d.day));
+
+    double expectedPerDay() {
+      final t = effectiveHabitTarget(a).clamp(1, 999999);
+      switch (freq) {
+        case HabitFreq.daily:
+          return t.toDouble(); // ex 10/j
+        case HabitFreq.weekly:
+          return t / 7.0; // ex 1/sem => 0.14/j
+        case HabitFreq.monthly:
+          return t / 30.0; // ex 1/mois => 0.03/j
+      }
+    }
+
+    double avg7At(DateTime d) {
+      int sum = 0;
+      for (int i = 0; i < 7; i++) {
+        final dd = d.subtract(Duration(days: i));
+        sum += valueOn(dd);
+      }
+      return sum / 7.0;
+    }
+
+    final out = <int>[];
+    final exp = expectedPerDay();
+
+    for (int i = 0; i < 30; i++) {
+      final d = start.add(Duration(days: i));
+
+      if (freq == HabitFreq.daily) {
+        // ✅ exactement comme avant (barres brutes)
+        final v = valueOn(d).clamp(0, maxBar);
+        out.add(v);
+      } else {
+        // ✅ lissé + normalisé
+        final avg7 = avg7At(d);
+        final ratio = exp <= 0.000001 ? 0.0 : (avg7 / exp); // 1.0 = au rythme
+        final scaled = (ratio * maxBar).round(); // 0..maxBar
+        out.add(scaled.clamp(0, maxBar));
+      }
+    }
+
+    return out;
+  }
+
+  List<HabitTrendPoint> habitTrend30dAvg7(String habitId, DateTime now) {
+    final a = state.activities.firstWhere((x) => x.id == habitId);
+    final expected = _expectedPerDay(a); // rythme attendu / jour
+
+    final end = _dayOnly(now);
+    final start = end.subtract(const Duration(days: 29)); // 30 jours inclus
+
+    // Pour accélérer : map ymd -> value
+    final map = <String, int>{};
+    for (final hp in state.habitProgress) {
+      if (hp.activityId != habitId) continue;
+      map[hp.yyyymmdd] = hp.value;
+    }
+
+    int valueOn(DateTime d) => map[yyyymmdd(d)] ?? 0;
+
+    // calc avg7 sur fenêtre [d-6..d]
+    double avg7At(DateTime d) {
+      int sum = 0;
+      for (int i = 0; i < 7; i++) {
+        final dd = d.subtract(Duration(days: i));
+        sum += valueOn(dd);
+      }
+      return sum / 7.0;
+    }
+
+    final out = <HabitTrendPoint>[];
+    for (int i = 0; i < 30; i++) {
+      final d = start.add(Duration(days: i));
+      final avg7 = avg7At(d);
+
+      // ratio “progression vs rythme attendu”
+      final ratio = expected <= 0.000001 ? 0.0 : (avg7 / expected);
+
+      out.add(HabitTrendPoint(d, avg7, ratio));
+    }
+    return out;
+  }
+
+  DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  DateTime _parseYmd(String ymd) {
+    // ymd = "YYYYMMDD"
+    final y = int.parse(ymd.substring(0, 4));
+    final m = int.parse(ymd.substring(4, 6));
+    final d = int.parse(ymd.substring(6, 8));
+    return DateTime(y, m, d);
+  }
+
+  int habitValueOnYmd(String habitId, String ymd) {
+    final idx = state.habitProgress.indexWhere(
+      (h) => h.activityId == habitId && h.yyyymmdd == ymd,
+    );
+    if (idx < 0) return 0;
+    return state.habitProgress[idx].value;
+  }
 
   void deleteActivityCascade(String activityId) {
     final id = activityId.trim();
