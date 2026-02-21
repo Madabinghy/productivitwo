@@ -1989,11 +1989,11 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                 logic.onChange();
               },
               child: Icon(
-                  Icons.tune,
-                  color: filtersOn
-                      ? Theme.of(context).colorScheme.primary
-                      : Theme.of(context).iconTheme.color,
-                ),
+                Icons.tune,
+                color: filtersOn
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).iconTheme.color,
+              ),
             ),
             const SizedBox(width: 2),
           ],
@@ -3582,6 +3582,50 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             }
           }
 
+          Widget _dismissibleActivityTile(Activity a, Widget child) {
+            return Dismissible(
+              key: ValueKey("dashAct:${a.id}"),
+              direction: DismissDirection.endToStart,
+              background: Container(
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                color: Colors.red.withOpacity(0.15),
+                child: const Icon(Icons.delete, color: Colors.red),
+              ),
+              confirmDismiss: (_) async {
+                return await showDialog<bool>(
+                      context: context,
+                      builder: (_) => AlertDialog(
+                        title: Text("Supprimer « ${a.name} » ?"),
+                        content: Text(a.isHabit
+                            ? "Cette routine sera supprimée et retirée des plans."
+                            : "Cette activité sera supprimée et retirée des plans."),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text("Annuler"),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text("Supprimer"),
+                          ),
+                        ],
+                      ),
+                    ) ??
+                    false;
+              },
+              onDismissed: (_) {
+                logic.deleteActivityCascade(a.id); // ✅ ta méthode AppLogic
+                setSB(() {}); // ✅ refresh du sheet
+                ScaffoldMessenger.of(context).clearSnackBars();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text("Supprimé : ${a.name}")),
+                );
+              },
+              child: child,
+            );
+          }
+
           Widget _buildHabitTile(Activity a) {
             final now = DateTime.now();
             final today = DateTime(now.year, now.month, now.day);
@@ -3725,7 +3769,10 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               ...List.generate(visibleUnder.length, (i) {
                 final a = visibleUnder[i];
                 final tile = a.isHabit ? _buildHabitTile(a) : _buildTimeTile(a);
-                return _wrapTile(a, i, visibleUnder.length, tile);
+
+                final wrapped = _wrapTile(a, i, visibleUnder.length, tile);
+
+                return _dismissibleActivityTile(a, wrapped);
               }),
               if (visibleOver.isNotEmpty && visibleUnder.isNotEmpty)
                 const SizedBox(height: 8),
@@ -3733,7 +3780,10 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               ...List.generate(visibleOver.length, (i) {
                 final a = visibleOver[i];
                 final tile = a.isHabit ? _buildHabitTile(a) : _buildTimeTile(a);
-                return _wrapTile(a, i, visibleOver.length, tile);
+
+                final wrapped = _wrapTile(a, i, visibleOver.length, tile);
+
+                return _dismissibleActivityTile(a, wrapped);
               }),
               if (hiddenActivities.isNotEmpty) ...[
                 const SizedBox(height: 12),
@@ -3744,7 +3794,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   children: hiddenActivities.map((a) {
-                    return ListTile(
+                    final content = ListTile(
                       title: Text(
                         a.name,
                         style: TextStyle(
@@ -3757,14 +3807,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                         child: const Text("Afficher"),
                         onPressed: () {
                           logic.unsnoozeActivity(a.id);
-
-                          // ✅ refresh du sheet (StatefulBuilder)
                           setSB(() {});
-
-                          debugPrint(
-                            "[UNHIDE] ${a.name} id=${a.id} snoozed=${logic.isActivitySnoozed(a.id, DateTime.now())}",
-                          );
-
                           ScaffoldMessenger.of(context).clearSnackBars();
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
@@ -3774,6 +3817,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                       ),
                       onTap: () => _openActivityBottomSheet(a),
                     );
+
+                    return _dismissibleActivityTile(a, content);
                   }).toList(),
                 ),
               ],

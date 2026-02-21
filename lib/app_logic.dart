@@ -96,6 +96,49 @@ class AppLogic {
 
   void bumpRev() => rev.value++;
 
+  void deleteActivityCascade(String activityId) {
+    final id = activityId.trim();
+    if (id.isEmpty) return;
+
+    // 1) stop si c’est l’activité en cours
+    final running = runningActivity();
+    if (running != null && running.id == id) {
+      stopActive();
+    }
+
+    // 2) supprime l’activité
+    state.activities.removeWhere((a) => a.id == id);
+
+    // 3) nettoie les plans (DayPlanItem)
+    for (final it in state.dayPlan) {
+      // si l’item représente cette activité/routine directement
+      if (it.refId == id &&
+          (it.kind == PlanKind.habit || it.kind == PlanKind.activityTime)) {
+        // on le retire complètement (virt: aussi)
+        // -> on peut le marquer pour suppression
+        it.archived = true; // ou removeWhere plus bas
+      }
+
+      // si c’est une action liée à cette activité
+      if ((it.activityId ?? '') == id) {
+        it.activityId = null; // action redevient “inbox” ou neutre
+      }
+
+      // si tu utilises habitId sur actions et que ça pointe vers la routine supprimée
+      if ((it.habitId ?? '') == id) {
+        it.habitId = null;
+      }
+    }
+
+    // 4) purge des items archivé (si tu veux supprimer au lieu de masquer)
+    state.dayPlan.removeWhere((it) => it.archived == true && (it.refId == id));
+
+    // 5) purge filtres
+    state.filters.activityIds.remove(id);
+
+    onChange();
+  }
+
   void reorderTodayBucket({
     required String yyyymmdd,
     required List<DayPlanItem>
@@ -164,104 +207,102 @@ class AppLogic {
     rev.value++; // ✅ refresh NowTab/TodayView si tu utilises rev
   }
 
-TodaySections todaySections({
-  required String yyyymmdd,
-  DateTime? now,
-  bool hideDone = true,
-  bool includeVirtualHabits = false,
-}) {
-  final n = now ?? DateTime.now();
+  TodaySections todaySections({
+    required String yyyymmdd,
+    DateTime? now,
+    bool hideDone = true,
+    bool includeVirtualHabits = false,
+  }) {
+    final n = now ?? DateTime.now();
 
-  bool isVisibleBase(DayPlanItem it) {
-    if (it.archived) return false;
-    if (hideDone && it.done) return false;
-    final u = it.snoozeUntil;
-    if (u != null && u.isAfter(n)) return false;
-    return true;
-  }
+    bool isVisibleBase(DayPlanItem it) {
+      if (it.archived) return false;
+      if (hideDone && it.done) return false;
+      final u = it.snoozeUntil;
+      if (u != null && u.isAfter(n)) return false;
+      return true;
+    }
 
-  final base = state.dayPlan
-      .where((it) => it.yyyymmdd == yyyymmdd)
-      .where(isVisibleBase)
-      .where((it) {
-        final actId = (it.activityId ?? '').trim();
-        if (actId.isEmpty) return true;
-        return !isActivitySnoozed(actId, n);
-      })
-      .toList();
+    final base = state.dayPlan
+        .where((it) => it.yyyymmdd == yyyymmdd)
+        .where(isVisibleBase)
+        .where((it) {
+      final actId = (it.activityId ?? '').trim();
+      if (actId.isEmpty) return true;
+      return !isActivitySnoozed(actId, n);
+    }).toList();
 
-  // ✅ ajoute les virtHabits si demandé (uniquement aujourd’hui en général)
-  final merged = <DayPlanItem>[...base];
+    // ✅ ajoute les virtHabits si demandé (uniquement aujourd’hui en général)
+    final merged = <DayPlanItem>[...base];
 
-  if (includeVirtualHabits) {
-    final plannedHabitIds = base
-        .where((x) => x.kind == PlanKind.habit && (x.refId ?? '').isNotEmpty)
-        .map((x) => x.refId!)
-        .toSet();
+    if (includeVirtualHabits) {
+      final plannedHabitIds = base
+          .where((x) => x.kind == PlanKind.habit && (x.refId ?? '').isNotEmpty)
+          .map((x) => x.refId!)
+          .toSet();
 
-    final todayDate = DateTime(n.year, n.month, n.day);
+      final todayDate = DateTime(n.year, n.month, n.day);
 
-    final virtHabits = state.activities
-        .where((a) => a.isHabit)
-        .where((a) {
-          final freq = effectiveHabitFreq(a);
-          final target = effectiveHabitTarget(a);
-          int done;
-          switch (freq) {
-            case HabitFreq.daily:
-              done = habitValueOn(a.id, todayDate);
-              break;
-            case HabitFreq.weekly:
-              done = habitSliding(a.id, 7).done;
-              break;
-            case HabitFreq.monthly:
-              done = habitSliding(a.id, 30).done;
-              break;
-          }
-          return target > 0 && done < target;
-        })
-        .where((a) => !plannedHabitIds.contains(a.id))
-        .map((a) => DayPlanItem(
-              id: 'virt:${a.id}',
-              kind: PlanKind.habit,
-              refId: a.id,
-              domainId: a.domainId,
-              title: a.name,
-              yyyymmdd: yyyymmdd,
-              allDay: true,
-              order: 1 << 30,
-            ))
-        .toList();
+      final virtHabits = state.activities
+          .where((a) => a.isHabit)
+          .where((a) {
+            final freq = effectiveHabitFreq(a);
+            final target = effectiveHabitTarget(a);
+            int done;
+            switch (freq) {
+              case HabitFreq.daily:
+                done = habitValueOn(a.id, todayDate);
+                break;
+              case HabitFreq.weekly:
+                done = habitSliding(a.id, 7).done;
+                break;
+              case HabitFreq.monthly:
+                done = habitSliding(a.id, 30).done;
+                break;
+            }
+            return target > 0 && done < target;
+          })
+          .where((a) => !plannedHabitIds.contains(a.id))
+          .map((a) => DayPlanItem(
+                id: 'virt:${a.id}',
+                kind: PlanKind.habit,
+                refId: a.id,
+                domainId: a.domainId,
+                title: a.name,
+                yyyymmdd: yyyymmdd,
+                allDay: true,
+                order: 1 << 30,
+              ))
+          .toList();
 
-    merged.addAll(virtHabits);
-  }
+      merged.addAll(virtHabits);
+    }
 
-  merged.sort((a, b) => a.order.compareTo(b.order));
+    merged.sort((a, b) => a.order.compareTo(b.order));
 
-  // ✅ bucketing
-  final todo = <DayPlanItem>[];
-  final inbox = <DayPlanItem>[];
-  final courses = <DayPlanItem>[];
+    // ✅ bucketing
+    final todo = <DayPlanItem>[];
+    final inbox = <DayPlanItem>[];
+    final courses = <DayPlanItem>[];
 
-  for (final it in merged) {
-    // IMPORTANT: inbox/courses ne concernent que les ACTIONS
-    if (it.kind == PlanKind.action) {
-      if (it.toPlan) {
-        courses.add(it);
-      } else if (it.status == ActionStatus.inbox) {
-        inbox.add(it);
+    for (final it in merged) {
+      // IMPORTANT: inbox/courses ne concernent que les ACTIONS
+      if (it.kind == PlanKind.action) {
+        if (it.toPlan) {
+          courses.add(it);
+        } else if (it.status == ActionStatus.inbox) {
+          inbox.add(it);
+        } else {
+          todo.add(it);
+        }
       } else {
+        // routines / activityTime -> toujours todo
         todo.add(it);
       }
-    } else {
-      // routines / activityTime -> toujours todo
-      todo.add(it);
     }
+
+    return TodaySections(todo: todo, inbox: inbox, courses: courses);
   }
-
-  return TodaySections(todo: todo, inbox: inbox, courses: courses);
-}
-
 
   void movePlannedToDayIfPresent(
     PlanKind kind,
@@ -2125,24 +2166,22 @@ TodaySections todaySections({
   }
 
   void movePlanItemToTop(String yyyymmdd, String itemId) {
-  final dayItems = state.dayPlan
-      .where((e) => e.yyyymmdd == yyyymmdd)
-      .toList()
-    ..sort((a, b) => a.order.compareTo(b.order));
+    final dayItems = state.dayPlan.where((e) => e.yyyymmdd == yyyymmdd).toList()
+      ..sort((a, b) => a.order.compareTo(b.order));
 
-  final index = dayItems.indexWhere((e) => e.id == itemId);
-  if (index <= 0) return; // déjà en haut ou introuvable
+    final index = dayItems.indexWhere((e) => e.id == itemId);
+    if (index <= 0) return; // déjà en haut ou introuvable
 
-  final item = dayItems.removeAt(index);
-  dayItems.insert(0, item);
+    final item = dayItems.removeAt(index);
+    dayItems.insert(0, item);
 
-  // Réindexation propre
-  for (int i = 0; i < dayItems.length; i++) {
-    dayItems[i].order = i;
+    // Réindexation propre
+    for (int i = 0; i < dayItems.length; i++) {
+      dayItems[i].order = i;
+    }
+
+    onChange();
   }
-
-  onChange();
-}
 
   String habitFreqLabel(HabitFreq f) {
     switch (f) {
