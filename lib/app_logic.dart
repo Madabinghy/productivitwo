@@ -2970,6 +2970,30 @@ TodaySections todaySections({
   }
 }
 
+extension FiltersX on AppLogic {
+  bool passesFilters(DayPlanItem it) {
+    final f = state.filters;
+
+    // auto-actif
+    final isActive = f.domainIds.isNotEmpty || f.activityIds.isNotEmpty;
+    if (!isActive) return true;
+
+    final domId = (it.domainId ?? '').trim();
+    if (f.domainIds.isNotEmpty) {
+      if (domId.isEmpty) return false;
+      if (!f.domainIds.contains(domId)) return false;
+    }
+
+    final actId = (it.activityId ?? '').trim();
+    if (f.activityIds.isNotEmpty) {
+      if (actId.isEmpty) return false;
+      if (!f.activityIds.contains(actId)) return false;
+    }
+
+    return true;
+  }
+}
+
 class DashboardDomainOrder {
   final Map<String, double> scoreByDomain;
   final Map<String, bool> haloReachedByDomain;

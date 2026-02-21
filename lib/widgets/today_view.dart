@@ -45,6 +45,29 @@ class _TodayViewState extends State<TodayView> {
 
   _Scope _scope = _Scope.today;
 
+  bool _passesFilters(DayPlanItem it) {
+    final f = widget.logic.state.filters; // ou _state!.filters si tu préfères
+
+    // ✅ auto-actif
+    if (!f.isActive) return true;
+
+    // filtre domaine
+    final domId = (it.domainId ?? '').trim();
+    if (f.domainIds.isNotEmpty) {
+      if (domId.isEmpty) return false;
+      if (!f.domainIds.contains(domId)) return false;
+    }
+
+    // filtre activité (time)
+    final actId = (it.activityId ?? '').trim();
+    if (f.activityIds.isNotEmpty) {
+      if (actId.isEmpty) return false;
+      if (!f.activityIds.contains(actId)) return false;
+    }
+
+    return true;
+  }
+
   Widget _coursesSection({
     required List<DayPlanItem> courses,
     required bool autoExpanded,
@@ -1075,7 +1098,7 @@ class _TodayViewState extends State<TodayView> {
 
     final f = widget.logic.state.filters;
 
-    final openPoolFiltered = (!f.enabled)
+    final openPoolFiltered = (!f.isActive)
         ? openPool
         : openPool.where((a) {
             // Domain
@@ -1146,7 +1169,10 @@ class _TodayViewState extends State<TodayView> {
     }
 
     final sections = widget.logic.todaySections(yyyymmdd: ymd);
-    final todo = sections.todo; // ✅ même ordre que NowTab
+
+    var todo = sections.todo.where(_passesFilters).toList();
+    var inbox = inboxActions.where(_passesFilters).toList();
+    var courses = sections.courses.where(_passesFilters).toList();
 
     return Scaffold(
       body: ListView(
@@ -1164,7 +1190,7 @@ class _TodayViewState extends State<TodayView> {
             ),
           ),
           _inboxSection(
-            inbox: inboxActions,
+            inbox: inbox,
             onTapAssign: (it) => _openAssignActivitySheet(context, it),
           ),
           const SizedBox(height: 12),
@@ -3686,7 +3712,7 @@ class _NowTabState extends State<NowTab> {
         _ensureDay(ymd);
 
         // ✅ même source / même ordre que TodayView ("À faire")
-        final todo = widget.logic.todaySections(yyyymmdd: ymd).todo;
+        final todo = widget.items;
 
         final assoc =
             widget.logic.routineToActivityId(widget.logic.habitAssocEvents);

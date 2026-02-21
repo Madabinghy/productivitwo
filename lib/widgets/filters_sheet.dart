@@ -124,7 +124,7 @@ class _FiltersSheetState extends State<FiltersSheet> {
                   ],
                 ),
                 const SizedBox(height: 8),
-                SwitchListTile(
+/*                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   value: f.enabled,
                   title: const Text("Activer les filtres"),
@@ -132,6 +132,31 @@ class _FiltersSheetState extends State<FiltersSheet> {
                     setState(() => f.enabled = v);
                     _save();
                   },
+                ), */
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.circle,
+                        size: 10,
+                        color: f.isActive
+                            ? Theme.of(context).colorScheme.primary
+                            : Colors.grey,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        f.isActive ? "Filtres actifs" : "Aucun filtre",
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withOpacity(.75),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 8),
                 const Text("Domaines",

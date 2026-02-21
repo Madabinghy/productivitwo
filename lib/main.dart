@@ -1572,7 +1572,12 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 // 2) Body : route correctement vers TodayView
   Widget _buildBody(BuildContext context) {
     final st = _state!;
-    final todayItems = _todayItems(); // ta méthode
+    final ymd = yyyymmdd(DateTime.now());
+    final sections = logic.todaySections(yyyymmdd: ymd);
+
+// si tu veux “liste globale affichée” = todo + routines etc,
+// prends ta même source que TodayView (souvent sections.todo + habits visibles)
+    final filteredTodo = sections.todo.where(logic.passesFilters).toList();
 
     return IndexedStack(
       index: _tabIndex(_tab),
@@ -1581,9 +1586,9 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         NowTab(
           logic: logic,
           st: st,
-          items: todayItems,
+          items: filteredTodo,
           day: DateTime.now(),
-          buildRowsGrouped: logic.buildRowsGrouped, // si tu l'as déplacée
+          buildRowsGrouped: logic.buildRowsGrouped,
           onGoTodo: () => setState(() => _tab = _Tab.today),
         ),
         TodayView(
@@ -1756,7 +1761,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       );
     }
 
-    final filtersOn = logic.state.filters.enabled;
+    final filtersOn = logic.state.filters.isActive;
 
     DateTime _endOfDay(DateTime d) =>
         DateTime(d.year, d.month, d.day, 23, 59, 59);
@@ -1942,17 +1947,17 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     // 2) App prête -> Scaffold complet
     return Scaffold(
       appBar: AppBar(
-        titleSpacing: 8,
+        titleSpacing: 5,
         title: Row(
           children: [
-            const SizedBox(width: 6),
+            const SizedBox(width: 3),
             ValueListenableBuilder<int>(
               valueListenable: _tick,
               builder: (context, _, __) {
                 return AppBarProductivityBars(logic: logic, state: _state);
               },
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 3),
             ValueListenableBuilder<int>(
               valueListenable: _tick,
               builder: (context, _, __) {
@@ -1971,7 +1976,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             ),
             const Spacer(),
             trailingChip(),
-            const SizedBox(width: 4),
+            const SizedBox(width: 10),
             GestureDetector(
               onTap: () => _openFiltersSheet(context),
               onLongPress: () {
@@ -1983,16 +1988,14 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
                 logic.onChange();
               },
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Icon(
+              child: Icon(
                   Icons.tune,
                   color: filtersOn
                       ? Theme.of(context).colorScheme.primary
                       : Theme.of(context).iconTheme.color,
                 ),
-              ),
             ),
+            const SizedBox(width: 2),
           ],
         ),
       ),

@@ -566,7 +566,7 @@ class FilterState {
   bool includeNoActivity;
 
   FilterState({
-    this.enabled = false,
+    this.enabled = true,
     this.focusOnly = false,
     Set<String>? domainIds,
     Set<String>? activityIds,
@@ -605,6 +605,8 @@ class FilterState {
       includeNoActivity: (m['includeNoActivity'] as bool?) ?? true,
     );
   }
+
+  bool get isActive => domainIds.isNotEmpty || activityIds.isNotEmpty;
 }
 
 class AppState {
