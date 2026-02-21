@@ -2956,12 +2956,212 @@ class _NowTabState extends State<NowTab> {
             const SizedBox(height: 8),
 
             // ───── SNOOZE BLOCK (SCROLLABLE) ─────
-            _snoozeBlock(context, it),
+            Flexible(child: _checklistBlock(context, it)),
           ],
         ),
       ),
     );
   }
+
+  Future<String?> _askText(BuildContext ctx, String title) async {
+    final ctrl = TextEditingController();
+    return await showDialog<String>(
+      context: ctx,
+      builder: (_) => AlertDialog(
+        title: Text(title),
+        content: TextField(controller: ctrl, autofocus: true),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text),
+              child: const Text('OK')),
+        ],
+      ),
+    );
+  }
+
+  void _ensureChecklistIds(DayPlanItem it) {
+    final seen = <String>{};
+
+    for (final c in it.checklist) {
+      var id = c.id.trim();
+
+      if (id.isEmpty || seen.contains(id)) {
+        id = "${DateTime.now().microsecondsSinceEpoch}_${seen.length}";
+        c.id = id;
+      }
+      seen.add(id);
+    }
+  }
+
+  Future<void> _addChecklistItem(DayPlanItem it) async {
+    final txt = await _askText(context, "Ajouter un item");
+    if (txt == null) return;
+
+    final t = txt.trim();
+    if (t.isEmpty) return;
+
+    setState(() {
+      it.checklist.add(ChecklistItem(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        title: t,
+        done: false,
+      ));
+    });
+
+    widget.logic.onChange();
+  }
+
+  Widget _checklistBlock(BuildContext context, DayPlanItem it) {
+    final cs = Theme.of(context).colorScheme;
+
+    final total = it.checklist.length;
+    final doneCount = it.checklist.where((x) => x.done).length;
+    final hasItems = total > 0;
+    final allDone = hasItems && doneCount == total;
+    final noneDone = doneCount == 0;
+
+    void setAll(bool v) {
+      setState(() {
+        for (final c in it.checklist) {
+          c.done = v;
+        }
+      });
+      widget.logic.onChange();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Header
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                "Checklist${hasItems ? " ($doneCount/$total)" : ""}",
+                style:
+                    const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+              ),
+            ),
+
+            // ✅ Tout cocher
+            IconButton(
+              tooltip: "Tout cocher",
+              onPressed: (!hasItems || allDone) ? null : () => setAll(true),
+              icon: const Icon(Icons.done_all),
+            ),
+
+            // ✅ Tout décocher
+            IconButton(
+              tooltip: "Tout décocher",
+              onPressed: (!hasItems || noneDone) ? null : () => setAll(false),
+              icon: const Icon(Icons.remove_done),
+            ),
+
+            // Ajouter
+            IconButton(
+              tooltip: "Ajouter",
+              onPressed: () => _addChecklistItem(it),
+              icon: const Icon(Icons.add),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 8),
+
+        // ✅ IMPORTANT : contraindre + scroll
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 260),
+          child: it.checklist.isEmpty
+              ? Opacity(
+                  opacity: 0.6,
+                  child: Text(
+                    "Aucun item.",
+                    style: TextStyle(color: cs.onSurface.withOpacity(.7)),
+                  ),
+                )
+                
+              : ReorderableListView.builder(
+                  shrinkWrap: true,
+                  buildDefaultDragHandles: false,
+                  itemCount: it.checklist.length,
+                  onReorder: (oldIndex, newIndex) {
+                    setState(() {
+                      if (newIndex > oldIndex) newIndex -= 1;
+                      final x = it.checklist.removeAt(oldIndex);
+                      it.checklist.insert(newIndex, x);
+                    });
+                    widget.logic.onChange();
+                  },
+                  itemBuilder: (context, i) {
+                    final c = it.checklist[i];
+
+                    final k = (c.id.trim().isNotEmpty)
+                        ? ValueKey("chk:${it.id}:${c.id}")
+                        : ValueKey("chk:${it.id}:idx:$i");
+
+                    return ListTile(
+                      key: k,
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: ReorderableDragStartListener(
+                        index: i,
+                        child: const Icon(Icons.drag_handle),
+                      ),
+                      title: Text(
+                        c.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          decoration:
+                              c.done ? TextDecoration.lineThrough : null,
+                          color: c.done
+                              ? cs.onSurface.withOpacity(.55)
+                              : cs.onSurface.withOpacity(.92),
+                        ),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Checkbox(
+                            value: c.done,
+                            onChanged: (v) {
+                              setState(() => c.done = v ?? false);
+                              widget.logic.onChange();
+                            },
+                            materialTapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          IconButton(
+                            tooltip: "Supprimer",
+                            onPressed: () {
+                              setState(() => it.checklist.removeAt(i));
+                              widget.logic.onChange();
+                            },
+                            icon: const Icon(Icons.delete_outline),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  final redOutlineStyle = OutlinedButton.styleFrom(
+    side: BorderSide(
+      color: Colors.red.withOpacity(0.75),
+      width: 1,
+    ),
+    foregroundColor: Colors.red.withOpacity(0.85),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+  );
 
   Future<String?> _promptText({
     required String title,

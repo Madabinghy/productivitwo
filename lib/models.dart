@@ -15,6 +15,34 @@ enum ActionStatus {
   inbox,
 }
 
+class ChecklistItem {
+  String id;
+  String title;
+  bool done;
+
+  ChecklistItem({required this.id, required this.title, this.done = false});
+
+  Map<String, dynamic> toJson() => {
+        "id": id,
+        "title": title,
+        "done": done,
+      };
+
+  static ChecklistItem from(Map j) {
+    final rawId = (j["id"] ?? "").toString().trim();
+    final title = (j["title"] ?? "").toString();
+    final done = (j["done"] == true);
+
+    return ChecklistItem(
+      id: rawId.isNotEmpty
+          ? rawId
+          : "migr_${DateTime.now().microsecondsSinceEpoch}", // ✅
+      title: title,
+      done: done,
+    );
+  }
+}
+
 class DayPlanItem {
   String id;
   PlanKind kind;
@@ -35,6 +63,9 @@ class DayPlanItem {
   ActionStatus status;
   DateTime createdAt;
 
+  // ✅ NEW
+  List<ChecklistItem> checklist;
+
   DayPlanItem({
     required this.id,
     required this.kind,
@@ -54,8 +85,12 @@ class DayPlanItem {
     DateTime? createdAt,
     this.snoozeUntil,
     ActionStatus? status,
+
+    // ✅ NEW
+    List<ChecklistItem>? checklist,
   })  : createdAt = createdAt ?? DateTime.now(),
-        status = status ?? ActionStatus.active;
+        status = status ?? ActionStatus.active,
+        checklist = checklist ?? <ChecklistItem>[];
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -77,9 +112,10 @@ class DayPlanItem {
 
         // ✅ AJOUT
         'status': status.name,
-
-        // (optionnel mais propre)
         'createdAt': createdAt.toIso8601String(),
+
+        // ✅ CHECKLIST
+        'checklist': checklist.map((c) => c.toJson()).toList(),
       };
 
   static DayPlanItem from(Map j) {
@@ -95,6 +131,16 @@ class DayPlanItem {
     final createdAt = j['createdAt'] != null
         ? DateTime.tryParse(j['createdAt'] as String)
         : null;
+
+    // ✅ CHECKLIST parse (safe)
+    final rawChecklist = j['checklist'];
+    final checklist = <ChecklistItem>[];
+    if (rawChecklist is List) {
+      for (final e in rawChecklist) {
+        if (e is Map) checklist.add(ChecklistItem.from(e));
+        if (e is Map<String, dynamic>) checklist.add(ChecklistItem.from(e));
+      }
+    }
 
     return DayPlanItem(
       id: j['id'],
@@ -115,12 +161,11 @@ class DayPlanItem {
       snoozeUntil: j['snoozeUntil'] != null
           ? DateTime.tryParse(j['snoozeUntil'] as String)
           : null,
-
-      // ✅ AJOUT
       status: st,
-
-      // (optionnel)
       createdAt: createdAt,
+
+      // ✅ NEW
+      checklist: checklist,
     );
   }
 

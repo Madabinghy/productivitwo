@@ -19,6 +19,75 @@ class FileStore {
     }
   }
 
+
+void _cleanChecklists(AppState st) {
+  for (final it in st.dayPlan) {
+    if (it.checklist.isEmpty) continue;
+
+    final seen = <String>{};
+    final cleaned = <ChecklistItem>[];
+
+    for (final c in it.checklist) {
+      // 1️⃣ id vide → on régénère
+      if (c.id.trim().isEmpty) {
+        c.id = "${DateTime.now().microsecondsSinceEpoch}";
+      }
+
+      // 2️⃣ dédup par titre (simple et efficace)
+      final key = c.title.trim().toLowerCase();
+
+      if (seen.add(key)) {
+        cleaned.add(c);
+      }
+    }
+
+    it.checklist = cleaned;
+  }
+}
+
+Future<AppState> loadOrInitCleaner() async {
+  final f = await _file();
+  final bak = File('${f.path}.bak');
+
+  AppState? tryDecode(String s) {
+    final t = s.trim();
+    if (t.isEmpty) return null;
+    try {
+      return AppState.decode(t);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  if (await f.exists()) {
+    final main = tryDecode(await f.readAsString());
+    if (main != null) {
+      _cleanChecklists(main);
+      await save(main); // ✅ réécrit propre
+      return main;
+    }
+
+    if (await bak.exists()) {
+      final b = tryDecode(await bak.readAsString());
+      if (b != null) {
+        _cleanChecklists(b);
+        await save(b); // ✅ répare + nettoie
+        return b;
+      }
+    }
+
+    final st = _seedMinimal();
+    _cleanChecklists(st);
+    await save(st);
+    return st;
+  }
+
+  final st = _seedMinimal();
+  _cleanChecklists(st);
+  await save(st);
+  return st;
+}
+
   Future<AppState> loadOrInit() async {
     final f = await _file();
     final bak = File('${f.path}.bak');
