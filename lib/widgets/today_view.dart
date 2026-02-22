@@ -894,12 +894,25 @@ class _TodayViewState extends State<TodayView> {
       debugPrint("[TODAY] under habits = ${under.map((x) => x.name).toList()}");
 
       final plannedHabitIds = basePlan
-          .where((x) => x.kind == PlanKind.habit && x.refId != null)
+          .where((x) => x.kind == PlanKind.habit)
+          .map((x) => (x.refId ?? x.habitId ?? '').trim())
+          .where((s) => s.isNotEmpty)
+          .toSet();
+
+      final plannedSomewhereElse = widget.logic.state.dayPlan
+          .where((x) =>
+              x.kind == PlanKind.habit &&
+              x.refId != null &&
+              x.refId!.isNotEmpty &&
+              x.archived != true)
+          .where((x) => x.yyyymmdd != ymd) // autre jour que celui affiché
           .map((x) => x.refId!)
           .toSet();
 
       final virtHabits = under
           .where((a) => !plannedHabitIds.contains(a.id))
+          .where(
+              (a) => !plannedSomewhereElse.contains(a.id)) // ✅ bloque doublons
           .map((a) => DayPlanItem(
                 id: 'virt:${a.id}',
                 kind: PlanKind.habit,
@@ -910,7 +923,7 @@ class _TodayViewState extends State<TodayView> {
                 done: false,
                 doneCount: 0,
                 allDay: true,
-                order: 1 << 30, // à la fin
+                order: 1 << 30,
               ))
           .toList();
 
@@ -1716,120 +1729,133 @@ class _TodayViewState extends State<TodayView> {
       );
     }
 
-Future<void> _openActionSheet(BuildContext context, DayPlanItem it) async {
-  final res = await showModalBottomSheet<_ActionSheetResult>(
-    context: context,
-    showDragHandle: true,
-    isScrollControlled: true,
-    builder: (ctx) {
-      return Padding(
-        padding: EdgeInsets.only(
-          left: 16,
-          right: 16,
-          top: 10,
-          bottom: 16 + MediaQuery.of(ctx).viewInsets.bottom,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // ---- Titre (rename)
-            Row(
+    Future<void> _openActionSheet(BuildContext context, DayPlanItem it) async {
+      final res = await showModalBottomSheet<_ActionSheetResult>(
+        context: context,
+        showDragHandle: true,
+        isScrollControlled: true,
+        builder: (ctx) {
+          return Padding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 10,
+              bottom: 16 + MediaQuery.of(ctx).viewInsets.bottom,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(
-                  child: Text(
-                    it.title,
-                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+                // ---- Titre (rename)
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        it.title,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 18),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: "Renommer",
+                      onPressed: () async {
+                        final txt = await _askText(ctx, "Renommer l’action");
+                        if (txt == null) return;
+                        final t = txt.trim();
+                        if (t.isEmpty) return;
+                        Navigator.pop(ctx, _ActionSheetResult(rename: t));
+                      },
+                      icon: const Icon(Icons.edit),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 8),
+
+                // ---- Activité liée
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text("Activité"),
+                  subtitle: Text(
+                    (it.activityId ?? '').isEmpty
+                        ? "Aucune"
+                        : (widget.logic.state.activities
+                            .firstWhere((a) => a.id == it.activityId,
+                                orElse: () => Activity(
+                                    domainId: '',
+                                    name: 'Activité',
+                                    habitTarget: 1))
+                            .name),
+                  ),
+                  trailing: Wrap(
+                    spacing: 8,
+                    children: [
+                      TextButton(
+                        onPressed: () async {
+                          final picked = await widget.logic
+                              .openAssignActivitySheetAndWait(ctx, it);
+                          if (picked == null) return;
+                          Navigator.pop(
+                              ctx,
+                              _ActionSheetResult(
+                                  newActivityId: picked.id,
+                                  newDomainId: picked.domainId));
+                        },
+                        child: Text((it.activityId ?? '').isEmpty
+                            ? "Associer"
+                            : "Changer"),
+                      ),
+                      if ((it.activityId ?? '').isNotEmpty)
+                        TextButton(
+                          onPressed: () => Navigator.pop(
+                              ctx, _ActionSheetResult(unlink: true)),
+                          child: const Text("Retirer"),
+                        ),
+                    ],
                   ),
                 ),
-                IconButton(
-                  tooltip: "Renommer",
-                  onPressed: () async {
-                    final txt = await _askText(ctx, "Renommer l’action");
-                    if (txt == null) return;
-                    final t = txt.trim();
-                    if (t.isEmpty) return;
-                    Navigator.pop(ctx, _ActionSheetResult(rename: t));
-                  },
-                  icon: const Icon(Icons.edit),
+
+                const Divider(height: 16),
+
+                // ---- Valider explicitement
+                FilledButton.icon(
+                  onPressed: () =>
+                      Navigator.pop(ctx, _ActionSheetResult(markDone: true)),
+                  icon: const Icon(Icons.check),
+                  label: const Text("Marquer comme fait"),
+                ),
+
+                const SizedBox(height: 12),
+
+                // ---- Supprimer (optionnel)
+                TextButton(
+                  onPressed: () =>
+                      Navigator.pop(ctx, _ActionSheetResult(delete: true)),
+                  child: const Text("Supprimer"),
                 ),
               ],
             ),
-
-            const SizedBox(height: 8),
-
-            // ---- Activité liée
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text("Activité"),
-              subtitle: Text(
-                (it.activityId ?? '').isEmpty
-                    ? "Aucune"
-                    : (widget.logic.state.activities
-                            .firstWhere((a) => a.id == it.activityId,
-                                orElse: () => Activity(domainId: '', name: 'Activité', habitTarget: 1))
-                            .name),
-              ),
-              trailing: Wrap(
-                spacing: 8,
-                children: [
-                  TextButton(
-                    onPressed: () async {
-                      final picked = await widget.logic.openAssignActivitySheetAndWait(ctx, it);
-                      if (picked == null) return;
-                      Navigator.pop(ctx, _ActionSheetResult(newActivityId: picked.id, newDomainId: picked.domainId));
-                    },
-                    child: Text((it.activityId ?? '').isEmpty ? "Associer" : "Changer"),
-                  ),
-                  if ((it.activityId ?? '').isNotEmpty)
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx, _ActionSheetResult(unlink: true)),
-                      child: const Text("Retirer"),
-                    ),
-                ],
-              ),
-            ),
-
-            const Divider(height: 16),
-
-            // ---- Valider explicitement
-            FilledButton.icon(
-              onPressed: () => Navigator.pop(ctx, _ActionSheetResult(markDone: true)),
-              icon: const Icon(Icons.check),
-              label: const Text("Marquer comme fait"),
-            ),
-
-            const SizedBox(height: 12),
-
-            // ---- Supprimer (optionnel)
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, _ActionSheetResult(delete: true)),
-              child: const Text("Supprimer"),
-            ),
-          ],
-        ),
+          );
+        },
       );
-    },
-  );
 
-  if (res == null) return;
+      if (res == null) return;
 
-  setState(() {
-    if (res.rename != null) it.title = res.rename!;
-    if (res.unlink == true) it.activityId = null;
-    if (res.newActivityId != null) {
-      it.activityId = res.newActivityId;
-      it.domainId = res.newDomainId ?? it.domainId;
+      setState(() {
+        if (res.rename != null) it.title = res.rename!;
+        if (res.unlink == true) it.activityId = null;
+        if (res.newActivityId != null) {
+          it.activityId = res.newActivityId;
+          it.domainId = res.newDomainId ?? it.domainId;
+        }
+        if (res.markDone == true) it.done = true;
+      });
+
+      if (res.delete == true) {
+        widget.state.dayPlan.removeWhere((e) => e.id == it.id);
+      }
+
+      widget.logic.onChange();
     }
-    if (res.markDone == true) it.done = true;
-  });
-
-  if (res.delete == true) {
-    widget.state.dayPlan.removeWhere((e) => e.id == it.id);
-  }
-
-  widget.logic.onChange();
-}
-
 
     Widget buildTitle(String title, {bool struck = false, bool dim = false}) {
       return Text(
@@ -1852,11 +1878,12 @@ Future<void> _openActionSheet(BuildContext context, DayPlanItem it) async {
         {
           final card = GestureDetector(
             behavior: HitTestBehavior.opaque,
-onTap: onTapOverride ?? () async {
-  await _openActionSheet(context, it);
-  if (!mounted) return;
-  setState(() {});
-},
+            onTap: onTapOverride ??
+                () async {
+                  await _openActionSheet(context, it);
+                  if (!mounted) return;
+                  setState(() {});
+                },
             child: _actionCardLikeHabit(it),
           );
 

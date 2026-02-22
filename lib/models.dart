@@ -122,50 +122,32 @@ class DayPlanItem {
     final done = _asBool(j['done']);
     final doneCount = j['doneCount'] ?? (done ? 1 : 0);
 
-    final statusStr = (j['status'] ?? 'active').toString();
-    final st = ActionStatus.values.firstWhere(
-      (e) => e.name == statusStr,
-      orElse: () => ActionStatus.active,
+    final kindStr = (j['kind'] as String?)?.trim();
+
+    final kind = PlanKind.values.firstWhere(
+      (k) => k.name == kindStr,
+      orElse: () => PlanKind.action, // ✅ ou une valeur par défaut cohérente
     );
 
-    final createdAt = j['createdAt'] != null
-        ? DateTime.tryParse(j['createdAt'] as String)
-        : null;
+    String? refId = (j['refId'] as String?)?.trim();
+    String? habitId = (j['habitId'] as String?)?.trim();
 
-    // ✅ CHECKLIST parse (safe)
-    final rawChecklist = j['checklist'];
-    final checklist = <ChecklistItem>[];
-    if (rawChecklist is List) {
-      for (final e in rawChecklist) {
-        if (e is Map) checklist.add(ChecklistItem.from(e));
-        if (e is Map<String, dynamic>) checklist.add(ChecklistItem.from(e));
-      }
+    if (kind == PlanKind.habit && (refId == null || refId.isEmpty)) {
+      refId = habitId;
+      habitId = null;
     }
 
     return DayPlanItem(
       id: j['id'],
-      kind: PlanKind.values.firstWhere((k) => k.name == j['kind']),
-      refId: j['refId'],
+      kind: kind, // ✅ ok
+      refId: refId,
+      habitId: habitId,
       domainId: j['domainId'],
       activityId: j['activityId'],
-      habitId: j['habitId'],
       title: j['title'] ?? '',
       yyyymmdd: j['yyyymmdd'],
       done: done,
       doneCount: doneCount,
-      allDay: _asBool(j['allDay']),
-      isNowFocus: _asBool(j['isNowFocus']),
-      order: j['order'] ?? 0,
-      toPlan: _asBool(j['toPlan']),
-      archived: _asBool(j['archived']),
-      snoozeUntil: j['snoozeUntil'] != null
-          ? DateTime.tryParse(j['snoozeUntil'] as String)
-          : null,
-      status: st,
-      createdAt: createdAt,
-
-      // ✅ NEW
-      checklist: checklist,
     );
   }
 

@@ -103,20 +103,20 @@ class AppLogic {
 
   void bumpRev() => rev.value++;
 
+  void moveItemToEnd(String ymd, DayPlanItem it) {
+    // si jamais c’est un virt: on ignore (ou tu peux matérialiser avant)
+    if (it.id.startsWith('virt:')) return;
 
-void moveItemToEnd(String ymd, DayPlanItem it) {
-  // si jamais c’est un virt: on ignore (ou tu peux matérialiser avant)
-  if (it.id.startsWith('virt:')) return;
+    final today = state.dayPlan.where((x) => x.yyyymmdd == ymd).toList();
+    int maxOrder = 0;
+    for (final x in today) {
+      if (x.order > maxOrder) maxOrder = x.order;
+    }
 
-  final today = state.dayPlan.where((x) => x.yyyymmdd == ymd).toList();
-  int maxOrder = 0;
-  for (final x in today) {
-    if (x.order > maxOrder) maxOrder = x.order;
+    it.order = maxOrder + 1;
+    onChange();
   }
 
-  it.order = maxOrder + 1;
-  onChange();
-}
   DateTime _parseYmd(String ymd) {
     // ymd = "YYYYMMDD"
     final y = int.parse(ymd.substring(0, 4));
@@ -125,29 +125,73 @@ void moveItemToEnd(String ymd, DayPlanItem it) {
     return DateTime(y, m, d);
   }
 
-void moveItemToTomorrow(String ymdToday, DayPlanItem it) {
-  if (it.id.startsWith('virt:')) return;
+  void moveItemToTomorrow(String ymdToday, DayPlanItem it) {
+    if (it.id.startsWith('virt:')) return;
 
-  final d = _parseYmd(ymdToday); // adapte à ton helper
-  final tomorrow = d.add(const Duration(days: 1));
-  final ymdTomorrow = yyyymmdd(tomorrow);
+    final d = _parseYmd(ymdToday); // adapte à ton helper
+    final tomorrow = d.add(const Duration(days: 1));
+    final ymdTomorrow = yyyymmdd(tomorrow);
 
-  // order fin de liste demain
-  final tomorrowItems =
-      state.dayPlan.where((x) => x.yyyymmdd == ymdTomorrow).toList();
-  int maxOrder = 0;
-  for (final x in tomorrowItems) {
-    if (x.order > maxOrder) maxOrder = x.order;
+    // order fin de liste demain
+    final tomorrowItems =
+        state.dayPlan.where((x) => x.yyyymmdd == ymdTomorrow).toList();
+    int maxOrder = 0;
+    for (final x in tomorrowItems) {
+      if (x.order > maxOrder) maxOrder = x.order;
+    }
+
+    it.yyyymmdd = ymdTomorrow;
+    it.order = maxOrder + 1;
+
+    // optionnel : si c’était l’action focus Now, on la “détache”
+    it.isNowFocus = false;
+
+    onChange();
   }
 
-  it.yyyymmdd = ymdTomorrow;
-  it.order = maxOrder + 1;
+  Future<void> sendToTomorrow(DayPlanItem it) async {
+    final now = DateTime.now();
+    final tomorrow =
+        DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
+    final ymdTomorrow = yyyymmdd(tomorrow);
 
-  // optionnel : si c’était l’action focus Now, on la “détache”
-  it.isNowFocus = false;
+    // ✅ virtuel -> on matérialise un vrai item demain, sans clone du virtuel
+    if (it.id.startsWith('virt:') && it.kind == PlanKind.habit) {
+      final habitId = (it.refId ?? it.habitId ?? '').trim();
+      if (habitId.isEmpty) return;
 
-  onChange();
-}
+      ensurePlannedOnce(
+        ymdTomorrow,
+        PlanKind.habit,
+        habitId,
+        it.title,
+        domainId: it.domainId,
+      );
+      onChange();
+      return;
+    }
+
+    // ✅ item normal -> déplacement
+    moveItemToDay(it, ymdTomorrow);
+  }
+
+  void moveItemToDay(DayPlanItem it, String toYmd) {
+    // déplace le même objet, pas de clone
+    it.yyyymmdd = toYmd;
+    it.snoozeUntil = null;
+
+    // option : le remettre en fin de liste du jour cible
+    it.order = _nextOrderForDay(toYmd);
+
+    onChange();
+  }
+
+  int _nextOrderForDay(String ymd) {
+    final sameDay = state.dayPlan.where((x) => x.yyyymmdd == ymd);
+    if (sameDay.isEmpty) return 0;
+    final maxOrder = sameDay.fold<int>(0, (m, x) => x.order > m ? x.order : m);
+    return maxOrder + 1;
+  }
 
   void ensureUnderHabitsPlannedToday({
     required String ymd,
@@ -2366,12 +2410,6 @@ void moveItemToTomorrow(String ymdToday, DayPlanItem it) {
   String _todayKey() => yyyymmdd(DateTime.now());
   String _tomorrowKey() =>
       yyyymmdd(DateTime.now().add(const Duration(days: 1)));
-
-  int _nextOrderForDay(String ymd) {
-    final same = state.dayPlan.where((e) => e.yyyymmdd == ymd);
-    if (same.isEmpty) return 0;
-    return same.map((e) => e.order).reduce((a, b) => a > b ? a : b) + 1;
-  }
 
 // app_logic.dart
   void applyHabitSettings(
