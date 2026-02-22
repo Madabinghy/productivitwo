@@ -825,6 +825,8 @@ class _TodayViewState extends State<TodayView> {
     );
   }
 
+  String? _lastAutoPlannedYmd;
+
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
@@ -836,6 +838,16 @@ class _TodayViewState extends State<TodayView> {
 
     final ymd = yyyymmdd(day);
     final todayDate = DateTime(now.year, now.month, now.day);
+
+    // ✅ matérialise 1 seule fois par ymd
+    if (_scope == _Scope.today && _lastAutoPlannedYmd != ymd) {
+      _lastAutoPlannedYmd = ymd;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        widget.logic.ensureUnderHabitsPlannedToday(ymd: ymd, now: now);
+        setState(() {}); // refresh UI une fois les items créés
+      });
+    }
 
     bool isSnoozed(DayPlanItem it) {
       final u = it.snoozeUntil;

@@ -103,6 +103,73 @@ class AppLogic {
 
   void bumpRev() => rev.value++;
 
+  void ensureUnderHabitsPlannedToday({
+    required String ymd,
+    required DateTime now,
+  }) {
+    final today = DateTime(now.year, now.month, now.day);
+
+    // base items du jour
+    final todayItems = state.dayPlan.where((it) => it.yyyymmdd == ymd).toList();
+
+    final plannedHabitIds = todayItems
+        .where((x) => x.kind == PlanKind.habit && (x.refId ?? '').isNotEmpty)
+        .map((x) => x.refId!)
+        .toSet();
+
+    // ordre "fin de liste"
+    int maxOrder = 0;
+    for (final it in todayItems) {
+      if (it.order > maxOrder) maxOrder = it.order;
+    }
+
+    final habits = state.activities.where((a) => a.isHabit).toList();
+
+    bool changed = false;
+
+    for (final a in habits) {
+      if (plannedHabitIds.contains(a.id)) continue;
+
+      final freq = effectiveHabitFreq(a);
+      final target = effectiveHabitTarget(a);
+
+      int done;
+      switch (freq) {
+        case HabitFreq.daily:
+          done = habitValueOn(a.id, today);
+          break;
+        case HabitFreq.weekly:
+          done = habitSliding(a.id, 7).done;
+          break;
+        case HabitFreq.monthly:
+          done = habitSliding(a.id, 30).done;
+          break;
+      }
+
+      if (!(target > 0 && done < target)) continue;
+
+      // ✅ crée un vrai DayPlanItem habit
+      state.dayPlan.add(
+        DayPlanItem(
+          id: 'p:${DateTime.now().microsecondsSinceEpoch}',
+          kind: PlanKind.habit,
+          refId: a.id,
+          domainId: a.domainId,
+          title: a.name,
+          yyyymmdd: ymd,
+          done: false,
+          doneCount: 0,
+          allDay: true,
+          order: ++maxOrder, // fin de liste
+        ),
+      );
+
+      changed = true;
+    }
+
+    if (changed) onChange();
+  }
+
   double _expectedPerDay(Activity a) {
     final freq = effectiveHabitFreq(a);
     final target = effectiveHabitTarget(a).clamp(1, 999999);
