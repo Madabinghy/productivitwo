@@ -1716,6 +1716,121 @@ class _TodayViewState extends State<TodayView> {
       );
     }
 
+Future<void> _openActionSheet(BuildContext context, DayPlanItem it) async {
+  final res = await showModalBottomSheet<_ActionSheetResult>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (ctx) {
+      return Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 10,
+          bottom: 16 + MediaQuery.of(ctx).viewInsets.bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // ---- Titre (rename)
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    it.title,
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+                  ),
+                ),
+                IconButton(
+                  tooltip: "Renommer",
+                  onPressed: () async {
+                    final txt = await _askText(ctx, "Renommer l’action");
+                    if (txt == null) return;
+                    final t = txt.trim();
+                    if (t.isEmpty) return;
+                    Navigator.pop(ctx, _ActionSheetResult(rename: t));
+                  },
+                  icon: const Icon(Icons.edit),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 8),
+
+            // ---- Activité liée
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text("Activité"),
+              subtitle: Text(
+                (it.activityId ?? '').isEmpty
+                    ? "Aucune"
+                    : (widget.logic.state.activities
+                            .firstWhere((a) => a.id == it.activityId,
+                                orElse: () => Activity(domainId: '', name: 'Activité', habitTarget: 1))
+                            .name),
+              ),
+              trailing: Wrap(
+                spacing: 8,
+                children: [
+                  TextButton(
+                    onPressed: () async {
+                      final picked = await widget.logic.openAssignActivitySheetAndWait(ctx, it);
+                      if (picked == null) return;
+                      Navigator.pop(ctx, _ActionSheetResult(newActivityId: picked.id, newDomainId: picked.domainId));
+                    },
+                    child: Text((it.activityId ?? '').isEmpty ? "Associer" : "Changer"),
+                  ),
+                  if ((it.activityId ?? '').isNotEmpty)
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, _ActionSheetResult(unlink: true)),
+                      child: const Text("Retirer"),
+                    ),
+                ],
+              ),
+            ),
+
+            const Divider(height: 16),
+
+            // ---- Valider explicitement
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(ctx, _ActionSheetResult(markDone: true)),
+              icon: const Icon(Icons.check),
+              label: const Text("Marquer comme fait"),
+            ),
+
+            const SizedBox(height: 12),
+
+            // ---- Supprimer (optionnel)
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, _ActionSheetResult(delete: true)),
+              child: const Text("Supprimer"),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+
+  if (res == null) return;
+
+  setState(() {
+    if (res.rename != null) it.title = res.rename!;
+    if (res.unlink == true) it.activityId = null;
+    if (res.newActivityId != null) {
+      it.activityId = res.newActivityId;
+      it.domainId = res.newDomainId ?? it.domainId;
+    }
+    if (res.markDone == true) it.done = true;
+  });
+
+  if (res.delete == true) {
+    widget.state.dayPlan.removeWhere((e) => e.id == it.id);
+  }
+
+  widget.logic.onChange();
+}
+
+
     Widget buildTitle(String title, {bool struck = false, bool dim = false}) {
       return Text(
         title,
@@ -1737,11 +1852,11 @@ class _TodayViewState extends State<TodayView> {
         {
           final card = GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: onTapOverride ??
-                () {
-                  setState(() => it.done = !it.done);
-                  widget.logic.onChange();
-                },
+onTap: onTapOverride ?? () async {
+  await _openActionSheet(context, it);
+  if (!mounted) return;
+  setState(() {});
+},
             child: _actionCardLikeHabit(it),
           );
 
@@ -4315,5 +4430,23 @@ class _HabitSettingsResult {
     required this.freq,
     required this.target,
     required this.isAuto,
+  });
+}
+
+class _ActionSheetResult {
+  final String? rename;
+  final bool? unlink;
+  final String? newActivityId;
+  final String? newDomainId;
+  final bool? markDone;
+  final bool? delete;
+
+  _ActionSheetResult({
+    this.rename,
+    this.unlink,
+    this.newActivityId,
+    this.newDomainId,
+    this.markDone,
+    this.delete,
   });
 }
