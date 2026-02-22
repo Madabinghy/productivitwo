@@ -2596,9 +2596,34 @@ class _NowTabState extends State<NowTab> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // ✅ ton header routine (tu peux réutiliser _nowCard si tu veux)
-          Text(domName,
-              style:
-                  const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+          Row(
+            children: [
+              IconButton(
+                tooltip: "Fin de liste",
+                icon: const Icon(Icons.arrow_downward),
+                onPressed: () {
+                  setState(() {
+                    widget.logic.moveItemToEnd(ymd, it);
+                  });
+                },
+              ),
+              Text(domName,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w900, fontSize: 18)),
+              const SizedBox(width: 6),
+              IconButton(
+                tooltip: "À demain",
+                icon: const Icon(Icons.arrow_forward),
+                onPressed: () {
+                  setState(() {
+                    widget.logic.moveItemToTomorrow(ymd, it);
+                    // si tu veux passer à l’item suivant automatiquement :
+                    _skippedIds.add(it.id); // optionnel si tu gères skip
+                  });
+                },
+              ),
+            ],
+          ),
           const SizedBox(height: 10),
 
           // ✅ tuile routine détaillée (celle que tu avais)
@@ -2785,6 +2810,9 @@ class _NowTabState extends State<NowTab> {
           )
         : null;
 
+    final ymd =
+        yyyymmdd(DateTime.now()); // ou la date affichée si tu passes day
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -2808,7 +2836,28 @@ class _NowTabState extends State<NowTab> {
                     ),
                   ),
                 ),
-                if (_skippedIds.isNotEmpty)
+                IconButton(
+                  tooltip: "Fin de liste",
+                  icon: const Icon(Icons.arrow_downward),
+                  onPressed: () {
+                    setState(() {
+                      widget.logic.moveItemToEnd(ymd, it);
+                    });
+                  },
+                ),
+                const SizedBox(width: 6),
+                IconButton(
+                  tooltip: "À demain",
+                  icon: const Icon(Icons.arrow_forward),
+                  onPressed: () {
+                    setState(() {
+                      widget.logic.moveItemToTomorrow(ymd, it);
+                      // si tu veux passer à l’item suivant automatiquement :
+                      _skippedIds.add(it.id); // optionnel si tu gères skip
+                    });
+                  },
+                ),
+/*                 if (_skippedIds.isNotEmpty)
                   TextButton(
                     style: TextButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
@@ -2827,7 +2876,7 @@ class _NowTabState extends State<NowTab> {
                       "Réinitialiser (${_skippedIds.length} / $total)",
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
-                  ),
+                  ), */
               ],
             ),
 

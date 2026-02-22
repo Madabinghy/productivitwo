@@ -103,6 +103,52 @@ class AppLogic {
 
   void bumpRev() => rev.value++;
 
+
+void moveItemToEnd(String ymd, DayPlanItem it) {
+  // si jamais c’est un virt: on ignore (ou tu peux matérialiser avant)
+  if (it.id.startsWith('virt:')) return;
+
+  final today = state.dayPlan.where((x) => x.yyyymmdd == ymd).toList();
+  int maxOrder = 0;
+  for (final x in today) {
+    if (x.order > maxOrder) maxOrder = x.order;
+  }
+
+  it.order = maxOrder + 1;
+  onChange();
+}
+  DateTime _parseYmd(String ymd) {
+    // ymd = "YYYYMMDD"
+    final y = int.parse(ymd.substring(0, 4));
+    final m = int.parse(ymd.substring(4, 6));
+    final d = int.parse(ymd.substring(6, 8));
+    return DateTime(y, m, d);
+  }
+
+void moveItemToTomorrow(String ymdToday, DayPlanItem it) {
+  if (it.id.startsWith('virt:')) return;
+
+  final d = _parseYmd(ymdToday); // adapte à ton helper
+  final tomorrow = d.add(const Duration(days: 1));
+  final ymdTomorrow = yyyymmdd(tomorrow);
+
+  // order fin de liste demain
+  final tomorrowItems =
+      state.dayPlan.where((x) => x.yyyymmdd == ymdTomorrow).toList();
+  int maxOrder = 0;
+  for (final x in tomorrowItems) {
+    if (x.order > maxOrder) maxOrder = x.order;
+  }
+
+  it.yyyymmdd = ymdTomorrow;
+  it.order = maxOrder + 1;
+
+  // optionnel : si c’était l’action focus Now, on la “détache”
+  it.isNowFocus = false;
+
+  onChange();
+}
+
   void ensureUnderHabitsPlannedToday({
     required String ymd,
     required DateTime now,
@@ -277,14 +323,6 @@ class AppLogic {
   }
 
   DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
-
-  DateTime _parseYmd(String ymd) {
-    // ymd = "YYYYMMDD"
-    final y = int.parse(ymd.substring(0, 4));
-    final m = int.parse(ymd.substring(4, 6));
-    final d = int.parse(ymd.substring(6, 8));
-    return DateTime(y, m, d);
-  }
 
   int habitValueOnYmd(String habitId, String ymd) {
     final idx = state.habitProgress.indexWhere(
@@ -1492,11 +1530,6 @@ class AppLogic {
         ts: DateTime.now(),
         contextActivityId: running?.id,
       ));
-
-      // ✅ PIN automatique si une activité tourne
-      if (running != null) {
-        pinHabitToActivity(activityId, running.id);
-      }
     }
     if (delta > 0 && doneOnDay > 0) {
       final ymdToday = yyyymmdd(currentDay);
