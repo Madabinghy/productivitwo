@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
 import 'package:productivitwo_v1/widgets/filters_sheet.dart';
+import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
 import 'package:productivitwo_v1/widgets/habit_tile_full.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/widgets/today_view.dart';
@@ -3140,7 +3141,66 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             );
           }
 
-          Future<void> _openHabitManualEditor(
+          Future<String?> _promptText({
+            required String title,
+            String initial = "",
+          }) async {
+            final c = TextEditingController(text: initial);
+            return showDialog<String>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: Text(title),
+                content: TextField(
+                  controller: c,
+                  autofocus: true,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => Navigator.of(ctx).pop(c.text.trim()),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(null),
+                    child: const Text("Annuler"),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.of(ctx).pop(c.text.trim()),
+                    child: const Text("OK"),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          Future<void> _renameRoutine(Activity act) async {
+            // ✅ simple guard
+            final current = act.name.trim();
+            final txt = await _promptText(
+              title: "Renommer la routine",
+              initial: current,
+            );
+
+            final next = (txt ?? "").trim();
+            if (next.isEmpty || next == current) return;
+
+            setState(() {
+              act.name = next;
+            });
+
+            logic.onChange();
+
+            // optionnel: petit feedback
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("Routine renommée"),
+                  duration: Duration(milliseconds: 900),
+                ),
+              );
+            });
+          }
+
+
+/*           Future<void> _openHabitManualEditor(
               Activity a, void Function(void Function()) refresh) async {
             final cs = Theme.of(context).colorScheme;
 
@@ -3304,7 +3364,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                 );
               },
             );
-          }
+          } */
 
           // ---------- UI helpers ----------
           Widget _sectionTitle(String text) => Padding(
@@ -3626,6 +3686,26 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             );
           }
 
+          List<double> movingAverage(List<double> values, int window) {
+            if (values.isEmpty) return const [];
+            if (window <= 1) return values;
+
+            final n = values.length;
+            final out = List<double>.filled(n, 0);
+
+            for (int i = 0; i < n; i++) {
+              final start = (i - window + 1) < 0 ? 0 : (i - window + 1);
+              double sum = 0;
+              int count = 0;
+              for (int j = start; j <= i; j++) {
+                sum += values[j];
+                count++;
+              }
+              out[i] = count == 0 ? 0 : (sum / count);
+            }
+            return out;
+          }
+
           Widget _buildHabitTile(Activity a) {
             final now = DateTime.now();
             final today = DateTime(now.year, now.month, now.day);
@@ -3633,18 +3713,25 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             final dH = logic.habitSliding(a.id, 1);
             final h90 = logic.habitSliding(a.id, 90);
 
-            final quotaD = logic.dayQuotaFor(a);
-            final isDaily =
-                (a.habitFreq ?? HabitFreq.monthly) == HabitFreq.daily;
-
-            final series30 = List<double>.generate(30, (i) {
+            final series30Raw = List<double>.generate(30, (i) {
               final day = DateTime(now.year, now.month, now.day)
                   .subtract(Duration(days: 29 - i));
               return logic.habitValueOn(a.id, day).toDouble();
             });
 
-            final histMax =
-                isDaily ? quotaD.toDouble().clamp(1.0, 9999.0) : 1.0;
+// ✅ Smooth partout (daily inclus)
+            const smoothWindow = 7; // tu peux tester 5 / 7 / 10
+            final series30 = movingAverage(series30Raw, smoothWindow);
+
+            final freq = logic.effectiveHabitFreq(a);
+            final quotaD = logic.dayQuotaFor(a);
+
+            final maxSeries =
+                series30.fold<double>(0.0, (m, v) => v > m ? v : m);
+
+            final histMax = (freq == HabitFreq.daily)
+                ? quotaD.toDouble().clamp(1.0, 9999.0)
+                : maxSeries.clamp(1.0, 9999.0);
 
             final target = h90.ratio.clamp(0.0, 1.0);
             final token = _ringAnimTokenByHabit[a.id] ?? 0;
@@ -3666,7 +3753,20 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                 monthDone: logic.habitSliding(a.id, 30).done,
                 monthTarget: logic.monthTargetFrom(a),
               ),
-              onTap: () => _openHabitManualEditor(a, setSB),
+              onTap: () async {
+                await showHabitSettingsSheet(
+                  context,
+                  act: a,
+                  onRename: (refresh) async {
+                    await _renameRoutine(a);
+                    refresh(); // update titre dans le sheet
+                  },
+                  onSaved: () {
+                    logic.onChange();
+                    setSB(() {}); // ✅ rebuild du dashboard sheet
+                  },
+                );
+              },
               onLongPress: () => openHabitEditSheet(
                 context: context,
                 logic: logic,

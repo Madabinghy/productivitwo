@@ -24,14 +24,19 @@ String freqLabel(HabitFreq f) {
   }
 }
 
+
+
 Future<HabitSettingsResult?> showHabitSettingsSheet(
   BuildContext context, {
   required Activity act,
-  Future<void> Function()? onRename, // callback UI (optionnel)
+  Future<void> Function(VoidCallback refresh)? onRename, // ✅ refresh hook
+  VoidCallback? onSaved, // ✅ pour le parent sheet (Dashboard)
+  bool applyDirectly = true, // ✅ par défaut on mute act (simple)
 }) async {
-  return showModalBottomSheet<HabitSettingsResult>(
+  final res = await showModalBottomSheet<HabitSettingsResult>(
     context: context,
     showDragHandle: true,
+    isScrollControlled: true,
     builder: (ctx) {
       HabitFreq freq = act.habitFreq ?? HabitFreq.daily;
       int target = (act.habitTarget ?? 1);
@@ -40,131 +45,168 @@ Future<HabitSettingsResult?> showHabitSettingsSheet(
       if (target <= 0) target = 1;
 
       return StatefulBuilder(
-        builder: (ctx, setSB) => Padding(
-          padding: EdgeInsets.fromLTRB(
-            16,
-            10,
-            16,
-            24 + MediaQuery.of(ctx).viewInsets.bottom,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              InkWell(
-                onTap: onRename == null
-                    ? null
-                    : () async {
-                        await onRename();
-                        // on ne ferme pas le sheet: le nom se rafraîchit
-                        setSB(() {});
-                      },
-                child: Text(
-                  act.name,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    decoration:
-                        onRename == null ? TextDecoration.none : TextDecoration.underline,
-                    decorationColor:
-                        Theme.of(context).colorScheme.primary.withOpacity(0.6),
+        builder: (ctx, setSB) {
+          void refresh() => setSB(() {});
+
+          void applyToAct() {
+            act.habitFreq = freq;
+            act.habitTarget = target;
+
+            if (isAuto) {
+              act.manualTarget = false;
+              act.autoTune = true;
+            } else {
+              act.autoTune = false;
+              act.manualTarget = true;
+              if ((act.habitTarget ?? 0) <= 0) act.habitTarget = 1;
+            }
+          }
+
+          return Padding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 10,
+              bottom: 24 + MediaQuery.of(ctx).viewInsets.bottom,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                InkWell(
+                  onTap: () async {
+                    if (onRename == null) return;
+                    await onRename(refresh);
+                    refresh();
+                  },
+                  child: Text(
+                    act.name,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      decoration: TextDecoration.underline,
+                      decorationColor:
+                          Theme.of(ctx).colorScheme.primary.withOpacity(0.6),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 14),
+                const SizedBox(height: 14),
 
-              // ---- Auto / Manuel
-              Row(
-                children: [
-                  const Text("Mode",
-                      style: TextStyle(fontWeight: FontWeight.w700)),
-                  const Spacer(),
-                  ChoiceChip(
-                    label: const Text("Auto"),
-                    selected: isAuto,
-                    onSelected: (_) => setSB(() => isAuto = true),
-                  ),
-                  const SizedBox(width: 8),
-                  ChoiceChip(
-                    label: const Text("Manuel"),
-                    selected: !isAuto,
-                    onSelected: (_) => setSB(() => isAuto = false),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // ---- Fréquence
-              Row(
-                children: [
-                  const Text("Fréquence",
-                      style: TextStyle(fontWeight: FontWeight.w700)),
-                  const Spacer(),
-                  DropdownButton<HabitFreq>(
-                    value: freq,
-                    items: HabitFreq.values
-                        .map((f) => DropdownMenuItem(
-                              value: f,
-                              child: Text(freqLabel(f)),
-                            ))
-                        .toList(),
-                    onChanged: (v) => setSB(() {
-                      if (v == null) return;
-                      freq = v;
-                    }),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // ---- Cible
-              Row(
-                children: [
-                  const Text("Cible",
-                      style: TextStyle(fontWeight: FontWeight.w700)),
-                  const Spacer(),
-                  IconButton(
-                    onPressed: () =>
-                        setSB(() => target = (target - 1).clamp(1, 999)),
-                    icon: const Icon(Icons.remove_circle_outline),
-                  ),
-                  Text("$target",
-                      style: const TextStyle(fontWeight: FontWeight.w800)),
-                  IconButton(
-                    onPressed: () =>
-                        setSB(() => target = (target + 1).clamp(1, 999)),
-                    icon: const Icon(Icons.add_circle_outline),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text("Annuler"),
+                Row(
+                  children: [
+                    const Text("Mode",
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                    const Spacer(),
+                    ChoiceChip(
+                      label: const Text("Auto"),
+                      selected: isAuto,
+                      onSelected: (_) => setSB(() => isAuto = true),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () => Navigator.pop(
-                        ctx,
-                        HabitSettingsResult(
-                          freq: freq,
-                          target: target,
-                          isAuto: isAuto,
-                        ),
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: const Text("Manuel"),
+                      selected: !isAuto,
+                      onSelected: (_) => setSB(() => isAuto = false),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                Row(
+                  children: [
+                    const Text("Fréquence",
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                    const Spacer(),
+                    DropdownButton<HabitFreq>(
+                      value: freq,
+                      items: HabitFreq.values
+                          .map((f) => DropdownMenuItem(
+                                value: f,
+                                child: Text(freqLabel(f)),
+                              ))
+                          .toList(),
+                      onChanged: (v) => setSB(() {
+                        if (v == null) return;
+                        freq = v;
+                      }),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                Row(
+                  children: [
+                    const Text("Cible",
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: () =>
+                          setSB(() => target = (target - 1).clamp(1, 999)),
+                      icon: const Icon(Icons.remove_circle_outline),
+                    ),
+                    Text("$target",
+                        style: const TextStyle(fontWeight: FontWeight.w800)),
+                    IconButton(
+                      onPressed: () =>
+                          setSB(() => target = (target + 1).clamp(1, 999)),
+                      icon: const Icon(Icons.add_circle_outline),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text("Annuler"),
                       ),
-                      child: const Text("Enregistrer"),
                     ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () {
+                          // on ferme en renvoyant le résultat
+                          Navigator.pop(
+                            ctx,
+                            HabitSettingsResult(
+                              freq: freq,
+                              target: target,
+                              isAuto: isAuto,
+                            ),
+                          );
+                        },
+                        child: const Text("Enregistrer"),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
       );
     },
   );
+
+  if (res == null) return null;
+
+  // ✅ option 1 (recommandé): appliquer ici => tout le monde bénéficie
+  if (applyDirectly) {
+    act.habitFreq = res.freq;
+    act.habitTarget = res.target;
+
+    if (res.isAuto) {
+      act.manualTarget = false;
+      act.autoTune = true;
+    } else {
+      act.autoTune = false;
+      act.manualTarget = true;
+      if ((act.habitTarget ?? 0) <= 0) act.habitTarget = 1;
+    }
+  }
+
+  // ✅ si appel depuis un sheet parent => refresh parent
+  onSaved?.call();
+
+  return res;
 }

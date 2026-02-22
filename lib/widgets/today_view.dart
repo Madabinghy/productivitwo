@@ -1428,36 +1428,6 @@ class _TodayViewState extends State<TodayView> {
     );
   }
 
-  Future<void> _openHabitSettings(Activity act) async {
-    final res = await showHabitSettingsSheet(
-      context,
-      act: act,
-      onRename: () => _renameRoutine(act), // optionnel
-    );
-
-    if (res == null) return;
-
-    widget.logic.applyHabitSettings(
-      act,
-      freq: res.freq,
-      target: res.target,
-      isAuto: res.isAuto,
-    );
-
-    setState(() {});
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          "Réglages enregistrés : ${freqLabel(res.freq)} • cible ${res.target}",
-        ),
-        duration: const Duration(milliseconds: 2000),
-      ),
-    );
-  }
-
   Widget _todayTile(
     BuildContext context,
     DayPlanItem it, {
@@ -1919,8 +1889,23 @@ class _TodayViewState extends State<TodayView> {
                     habitId: habitId,
                     day: viewedDay, // ✅ ton jour affiché
                     onTap: () async {
-                      // ouvre tes settings routine
-                      await _openHabitSettings(act);
+                      final res = await showHabitSettingsSheet(
+                        context,
+                        act: act,
+                        onRename: (refresh) async {
+                          await _renameRoutine(act);
+                          refresh();
+                        },
+                        onSaved: () {
+                          widget.logic.onChange();
+                          setState(() {}); // ✅ refresh TodayView
+                        },
+                      );
+
+                      if (res == null) return;
+
+                      // Si tu as laissé applyDirectly=true (par défaut), tu n'as RIEN d'autre à faire.
+                      // Sinon, applique ici.
                     },
                     onLongPress: () async {
                       // si tu veux ouvrir le sheet d’édition complet
@@ -2562,36 +2547,6 @@ class _NowTabState extends State<NowTab> {
     widget.logic.rev.value++; // si tu utilises rev
   }
 
-  Future<void> _openHabitSettings(Activity act) async {
-    final res = await showHabitSettingsSheet(
-      context,
-      act: act,
-      onRename: () => _renameRoutine(act), // optionnel
-    );
-
-    if (res == null) return;
-
-    widget.logic.applyHabitSettings(
-      act,
-      freq: res.freq,
-      target: res.target,
-      isAuto: res.isAuto,
-    );
-
-    setState(() {});
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          "Réglages enregistrés : ${freqLabel(res.freq)} • cible ${res.target}",
-        ),
-        duration: const Duration(milliseconds: 2000),
-      ),
-    );
-  }
-
   Widget _nowHabitCard(BuildContext context, DayPlanItem it) {
     final ymd =
         yyyymmdd(DateTime(widget.day.year, widget.day.month, widget.day.day));
@@ -2641,7 +2596,23 @@ class _NowTabState extends State<NowTab> {
             habitId: habitId,
             day: widget.day,
             onTap: () async {
-              await _openHabitSettings(act);
+              final res = await showHabitSettingsSheet(
+                context,
+                act: act,
+                onRename: (refresh) async {
+                  await _renameRoutine(act);
+                  refresh();
+                },
+                onSaved: () {
+                  widget.logic.onChange();
+                  setState(() {}); // ✅ refresh TodayView
+                },
+              );
+
+              if (res == null) return;
+
+              // Si tu as laissé applyDirectly=true (par défaut), tu n'as RIEN d'autre à faire.
+              // Sinon, applique ici.
             },
             onLongPress: () {
               // openHabitEditSheet etc.
@@ -3082,7 +3053,6 @@ class _NowTabState extends State<NowTab> {
                     style: TextStyle(color: cs.onSurface.withOpacity(.7)),
                   ),
                 )
-                
               : ReorderableListView.builder(
                   shrinkWrap: true,
                   buildDefaultDragHandles: false,
