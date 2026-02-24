@@ -891,8 +891,6 @@ class _TodayViewState extends State<TodayView> {
         return target > 0 && done < target;
       }).toList();
 
-      debugPrint("[TODAY] under habits = ${under.map((x) => x.name).toList()}");
-
       final plannedHabitIds = basePlan
           .where((x) => x.kind == PlanKind.habit)
           .map((x) => (x.refId ?? x.habitId ?? '').trim())
@@ -1101,14 +1099,36 @@ class _TodayViewState extends State<TodayView> {
 
     // ✅ FILTRES AUTO-ACTIFS (dès qu’il y a au moins 1 filtre sélectionné)
     final f = widget.logic.state.filters;
-    final filtersActive = f.domainIds.isNotEmpty || f.activityIds.isNotEmpty;
+    final manualFiltersActive =
+        f.domainIds.isNotEmpty || f.activityIds.isNotEmpty;
 
-    bool passesAutoFilters(DayPlanItem it) {
-      if (!filtersActive) return true;
-      return _passesFilters(it); // tu gardes ton helper actuel
+// activité en cours (uniquement sur l’onglet “today”)
+    final runningId = hasRunning ? running!.id : null;
+
+    /// ✅ Inbox stricte (ta définition actuelle)
+    bool isInbox(DayPlanItem a) {
+      final noDomain = (a.domainId == null || a.domainId!.isEmpty);
+      final noAct = (a.activityId == null || a.activityId!.isEmpty);
+      final notCourses = a.toPlan != true;
+      return noDomain && noAct && notCourses;
     }
 
-    final openPoolFiltered = openPool.where(passesAutoFilters).toList();
+    bool passesEffectiveFilters(DayPlanItem it) {
+      // 1) filtres manuels => ton filtre actuel
+      if (manualFiltersActive) return _passesFilters(it);
+
+      // 2) sinon, si activité en cours => ne montrer que cette activité + inbox
+      if (runningId != null) {
+        final itAct = (it.activityId ?? '').trim();
+        if (itAct.isNotEmpty) return itAct == runningId;
+        return isInbox(it); // ✅ inbox seulement, pas “tous les vides”
+      }
+
+      // 3) sinon => pas de filtre
+      return true;
+    }
+
+    final openPoolFiltered = openPool.where(passesEffectiveFilters).toList();
 
     // ✅ INBOX (neutres)
     final inboxActions = openPoolFiltered.where((a) {
@@ -3995,10 +4015,7 @@ class _NowTabState extends State<NowTab> {
               }
             }
           }
-
-          debugPrint(
-              "[NOWTAB] first=${todo.isEmpty ? 'none' : todo.first.title} actId=${todo.isEmpty ? '' : (todo.first.activityId ?? '')}");
-
+          
           // 2) Action (si chez toi l'action a un refId et l'activité est stockée ailleurs)
           // Si ton assign sheet écrit déjà it.activityId, tu peux ignorer ce bloc.
           // Sinon, il faut un resolver (ex: activityIdFromActionRef)

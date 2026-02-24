@@ -1475,7 +1475,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     try {
       await store.save(_state!);
     } catch (e) {
-      // debugPrint('save failed: $e');
     } finally {
       _saving = false;
     }
@@ -1563,11 +1562,11 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     }
   }
 
-  List<DayPlanItem> _todayItems() {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final ymd = yyyymmdd(today);
-    return logic.planItemsFor(ymd);
+  bool isInbox(DayPlanItem a) {
+    final noDomain = (a.domainId == null || a.domainId!.isEmpty);
+    final noAct = (a.activityId == null || a.activityId!.isEmpty);
+    final notCourses = a.toPlan != true;
+    return noDomain && noAct && notCourses;
   }
 
 // 2) Body : route correctement vers TodayView
@@ -1576,9 +1575,25 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     final ymd = yyyymmdd(DateTime.now());
     final sections = logic.todaySections(yyyymmdd: ymd);
 
-// si tu veux “liste globale affichée” = todo + routines etc,
-// prends ta même source que TodayView (souvent sections.todo + habits visibles)
-    final filteredTodo = sections.todo.where(logic.passesFilters).toList();
+    final f = logic.state.filters;
+    final manualActive = f.domainIds.isNotEmpty || f.activityIds.isNotEmpty;
+
+    final running = logic.runningActivity();
+    final runningId = running?.id;
+
+    bool passesEffective(DayPlanItem it) {
+      if (manualActive) return logic.passesFilters(it);
+
+      if (runningId != null) {
+        final itAct = (it.activityId ?? '').trim();
+        if (itAct.isNotEmpty) return itAct == runningId;
+        return isInbox(it); // ✅ inbox seulement
+      }
+
+      return true;
+    }
+
+    final filteredTodo = sections.todo.where(passesEffective).toList();
 
     return IndexedStack(
       index: _tabIndex(_tab),
@@ -2262,9 +2277,19 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                       smallColor: _colorForProgress(g.prog90, context),
                       centerText: "",
                       label: g.label,
-                      onTap: () => _showDomainDetail(
-                          null, startCal, endCal, days,
-                          focus: 'time'),
+                      onTap: () async {
+                        debugPrint("TAP gauge -> opening sheet");
+                        final goNow = await _showDomainDetail(
+                            null, startCal, endCal, days,
+                            focus: 'time');
+                        debugPrint("SHEET result = $goNow");
+
+                        if (!mounted) return;
+                        if (goNow == true) {
+                          debugPrint("Switch tab -> NOW");
+                          setState(() => _tab = _Tab.now);
+                        }
+                      },
                     ),
                   );
                 },
@@ -2422,9 +2447,20 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                         centerText: "",
                         label: timeLabel,
                         size: 140,
-                        onTap: () => _showDomainDetail(
-                            d, startCal, endCal, days,
-                            focus: 'time'),
+                        onTap: () async {
+                          final goNow = await _showDomainDetail(
+                            d,
+                            startCal,
+                            endCal,
+                            days,
+                            focus: 'time',
+                          );
+
+                          if (!mounted) return;
+                          if (goNow == true) {
+                            setState(() => _tab = _Tab.now);
+                          }
+                        },
                       ),
                     ),
                     RepaintBoundary(
@@ -2800,7 +2836,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     return changed == true;
   }
 
-  void _showDomainDetail(
+  Future<bool?> _showDomainDetail(
     Domain? domain,
     DateTime start,
     DateTime end,
@@ -2835,7 +2871,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       });
     }
 
-    showModalBottomSheet(
+    return showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
@@ -3198,7 +3234,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               );
             });
           }
-
 
 /*           Future<void> _openHabitManualEditor(
               Activity a, void Function(void Function()) refresh) async {
@@ -3615,7 +3650,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               trailing: FilledButton.icon(
                 onPressed: () {
                   logic.start(a.id);
-                  Navigator.pop(ctx);
+                  Navigator.pop(ctx, true); // ✅ renvoie "true" au parent
                 },
                 icon: const Icon(Icons.play_arrow),
                 label: const Text("Go"),
@@ -3719,7 +3754,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               return logic.habitValueOn(a.id, day).toDouble();
             });
 
-// ✅ Smooth partout (daily inclus)
+            // ✅ Smooth partout (daily inclus)
             const smoothWindow = 7; // tu peux tester 5 / 7 / 10
             final series30 = movingAverage(series30Raw, smoothWindow);
 
@@ -3838,7 +3873,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             over = baseVisible.where((a) => reached(a)).toList();
           }
 
-// ✅ RE-CALC FINAL des sections visibles / cachées (à faire après under/over + lock)
+          // ✅ RE-CALC FINAL des sections visibles / cachées (à faire après under/over + lock)
           final nowS = DateTime.now();
 
           if (isHabitsTab) {

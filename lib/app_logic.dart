@@ -3735,11 +3735,6 @@ extension TodayLogic on AppLogic {
       ));
     }
 
-    if (candidates.isEmpty) {
-      debugPrint("[CHALLENGE] none");
-      return null;
-    }
-
     candidates.sort((x, y) {
       final c1 = x.remainingMin.compareTo(y.remainingMin);
       if (c1 != 0) return c1;
@@ -3747,13 +3742,6 @@ extension TodayLogic on AppLogic {
     });
 
     final best = candidates.first;
-
-    // ✅ DEBUG lisible
-    debugPrint(
-      "[CHALLENGE] best=${best.activity.name} "
-      "doneToday=${best.doneMin}min goal=${best.activity.goalMin}min "
-      "remaining=${best.remainingMin}min",
-    );
 
     return best;
   }

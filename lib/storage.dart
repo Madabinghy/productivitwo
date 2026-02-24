@@ -706,11 +706,11 @@ Future<void> save(AppState st) async {
   await tmp.rename(f.path);
 
   // 🔍 DEBUG : vérifier si toPlan=true est bien écrit dans le fichier
-  final s = await f.readAsString();
+/*   final s = await f.readAsString();
   debugPrint(
     s.contains('"toPlan":true')
         ? "SAVE FILE → has toPlan true"
         : "SAVE FILE → no toPlan true",
-  );
+  ); */
 }
 }
