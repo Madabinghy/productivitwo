@@ -2693,10 +2693,9 @@ class _NowTabState extends State<NowTab> {
     return null;
   }
 
-  Future<void> _pickAndAttachActivityToPlanItem(DayPlanItem it) async {
-    // ✅ réutilise ton sheet d’assign existant
-    // Si tu as une version qui "return Activity?", prends celle-là.
+  Future<Activity?> _pickActivity() async {
     Activity? picked;
+
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -2711,14 +2710,19 @@ class _NowTabState extends State<NowTab> {
       ),
     );
 
+    return picked;
+  }
+
+  Future<void> _pickAndAttachActivityToRoutine(String habitId) async {
+    final picked = await _pickActivity();
     if (picked == null) return;
 
-    setState(() {
-      it.activityId = picked!.id;
-      it.domainId = picked!.domainId;
-    });
-    widget.logic.onChange();
-    widget.logic.rev.value++; // si tu utilises rev
+    await widget.logic.attachLinkedActivityToRoutine(
+      habitId,
+      picked.id,
+    );
+
+    setState(() {});
   }
 
   Widget _nowHabitCard(BuildContext context, DayPlanItem it) {
@@ -2747,11 +2751,16 @@ class _NowTabState extends State<NowTab> {
             orElse: () => Domain(id: it.domainId, name: "Domaine"))
         .name;
 
-    final linkedAct = _activityById(it.activityId);
+// routine activity = act (celle que tu as déjà trouvée via habitId)
+    final linkedId = act.linkedActivityId; // ✅ nouveau champ sur Activity
+    final linkedAct =
+        (linkedId == null || linkedId.isEmpty) ? null : _activityById(linkedId);
+
     final hasLinked = linkedAct != null;
+
     final running = widget.logic.runningActivity();
     final isRunningThis =
-        hasLinked && running != null && running.id == linkedAct.id;
+        hasLinked && running != null && running.id == linkedAct!.id;
 
     return SingleChildScrollView(
       child: Column(
@@ -2837,10 +2846,12 @@ class _NowTabState extends State<NowTab> {
                   ),
                 ),
                 TextButton(
-                  onPressed: () {
-                    setState(() => it.activityId = null); // ✅ désassocier
+                  onPressed: () async {
+                    await widget.logic
+                        .attachLinkedActivityToRoutine(habitId, null);
                     widget.logic.onChange();
                     widget.logic.rev.value++;
+                    setState(() {});
                   },
                   child: const Text("Désassocier"),
                 ),
@@ -2876,8 +2887,8 @@ class _NowTabState extends State<NowTab> {
                   onPressed: () async {
                     // 1) pas associé -> associer
                     if (!hasLinked) {
-                      await _pickAndAttachActivityToPlanItem(it);
-                      setState(() {}); // ✅ refresh immédiat
+                      await _pickAndAttachActivityToRoutine(habitId);
+                      setState(() {});
                       return;
                     }
 
@@ -2900,7 +2911,8 @@ class _NowTabState extends State<NowTab> {
 
                   onLongPress: hasLinked
                       ? () async {
-                          await _pickAndAttachActivityToPlanItem(it);
+                          await widget.logic
+                              .attachLinkedActivityToRoutine(habitId, null);
                           setState(() {});
                         }
                       : null,
@@ -4015,7 +4027,7 @@ class _NowTabState extends State<NowTab> {
               }
             }
           }
-          
+
           // 2) Action (si chez toi l'action a un refId et l'activité est stockée ailleurs)
           // Si ton assign sheet écrit déjà it.activityId, tu peux ignorer ce bloc.
           // Sinon, il faut un resolver (ex: activityIdFromActionRef)

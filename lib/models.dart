@@ -349,6 +349,8 @@ class Activity {
   final DateTime createdAt;
   DateTime? lastTuneAt;
 
+  final String? linkedActivityId;
+
   Activity({
     String? id,
     required this.domainId,
@@ -363,6 +365,7 @@ class Activity {
     this.autoTune = true,
     DateTime? createdAt,
     this.lastTuneAt,
+    this.linkedActivityId,
   })  : id = id ?? _uuid.v4(), // <-- sans const ici
         createdAt = createdAt ?? DateTime.now();
 
@@ -389,6 +392,7 @@ class Activity {
         'habitTarget': habitTarget,
         'manualTarget': manualTarget,
         'autoTune': autoTune,
+        'linkedActivityId':linkedActivityId,
         'createdAt': createdAt.toIso8601String(),
         'lastTuneAt': lastTuneAt?.toIso8601String(),
       };
@@ -428,6 +432,7 @@ class Activity {
       habitTarget: parsedTarget,
       manualTarget: j['manualTarget'] ?? false,
       autoTune: j['autoTune'] ?? true,
+      linkedActivityId:j['linkedActivityId'],
       createdAt: j['createdAt'] != null
           ? DateTime.parse(j['createdAt'])
           : DateTime.now(),
@@ -450,6 +455,7 @@ class Activity {
     bool? autoTune,
     DateTime? createdAt,
     DateTime? lastTuneAt,
+    String? linkedActivityId,
   }) {
     return Activity(
       id: id ?? this.id,
@@ -464,6 +470,7 @@ class Activity {
       autoTune: autoTune ?? this.autoTune,
       createdAt: createdAt ?? this.createdAt,
       lastTuneAt: lastTuneAt ?? this.lastTuneAt,
+      linkedActivityId: linkedActivityId ?? this.linkedActivityId,
     );
   }
 
@@ -486,7 +493,8 @@ class Activity {
         other.manualTarget == manualTarget &&
         other.autoTune == autoTune &&
         other.createdAt == createdAt &&
-        other.lastTuneAt == lastTuneAt;
+        other.lastTuneAt == lastTuneAt&&
+        other.linkedActivityId == linkedActivityId ;
   }
 
   @override
@@ -503,6 +511,7 @@ class Activity {
         autoTune,
         createdAt,
         lastTuneAt,
+        linkedActivityId,
       );
 }
 

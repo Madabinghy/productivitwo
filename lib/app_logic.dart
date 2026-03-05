@@ -125,6 +125,69 @@ class AppLogic {
     return DateTime(y, m, d);
   }
 
+
+Future<void> attachLinkedActivityToRoutine(
+  String habitId,
+  String? linkedTimeActivityId,
+) async {
+  final acts = state.activities;
+
+  final idx = acts.indexWhere((a) => a.id == habitId);
+  if (idx == -1) return;
+
+  final routine = acts[idx];
+
+  final updated = routine.copyWith(
+    linkedActivityId: linkedTimeActivityId,
+  );
+
+  // remplace dans la liste existante
+  acts[idx] = updated;
+
+  // si tu as une persistance
+  //await saveActivity(updated);
+
+  // refresh UI
+  onChange();
+  rev.value++;
+}
+
+  String? resolvedLaunchActivityId(DayPlanItem it) {
+    // action classique
+    if (it.kind == PlanKind.action) {
+      final id = it.activityId;
+      return (id == null || id.isEmpty) ? null : id;
+    }
+
+    // routine
+    if (it.kind == PlanKind.habit) {
+      final routineId = it.activityId;
+      if (routineId == null || routineId.isEmpty) return null;
+
+      final routine = getActivityById(routineId);
+
+      // si la routine est liée à une autre activité (ex: musculation)
+      final linked = routine?.linkedActivityId;
+
+      // priorité à l'activité liée
+      if (linked != null && linked.isNotEmpty) {
+        return linked;
+      }
+
+      // sinon on lance la routine elle-même
+      return routineId;
+    }
+
+    return null;
+  }
+
+  Activity? getActivityById(String id) {
+    for (final a in state.activities) {
+      if (a.id == id) return a;
+    }
+    return null;
+  }
+
   void moveItemToTomorrow(String ymdToday, DayPlanItem it) {
     if (it.id.startsWith('virt:')) return;
 
