@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
+import 'package:productivitwo_v1/widgets/appbar_routines_summery.dart';
 import 'package:productivitwo_v1/widgets/filters_sheet.dart';
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
 import 'package:productivitwo_v1/widgets/habit_tile_full.dart';
@@ -1581,17 +1582,17 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     final running = logic.runningActivity();
     final runningId = running?.id;
 
-bool passesEffective(DayPlanItem it) {
-  if (manualActive) return logic.passesFilters(it);
+    bool passesEffective(DayPlanItem it) {
+      if (manualActive) return logic.passesFilters(it);
 
-  if (runningId != null) {
-    final itAct = logic.effectiveActivityId(it);
-    if (itAct != null && itAct.isNotEmpty) return itAct == runningId;
-    return isInbox(it); // ✅ inbox seulement
-  }
+      if (runningId != null) {
+        final itAct = logic.effectiveActivityId(it);
+        if (itAct != null && itAct.isNotEmpty) return itAct == runningId;
+        return isInbox(it); // ✅ inbox seulement
+      }
 
-  return true;
-}
+      return true;
+    }
 
     final filteredTodo = sections.todo.where(passesEffective).toList();
 
@@ -1960,6 +1961,133 @@ bool passesEffective(DayPlanItem it) {
       );
     }
 
+    void _showRoutineProgressSheet(BuildContext context) {
+      final items = logic.routineProgressItemsForCurrentPeriod();
+
+      final under = items.where((e) => e.isCatchup).toList();
+      final over = items.where((e) => e.isReached).toList();
+
+      showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        isScrollControlled: true,
+        builder: (ctx) {
+          final theme = Theme.of(ctx);
+          final cs = theme.colorScheme;
+
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  /// ---------- Titre ----------
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.emoji_events_rounded,
+                        color: cs.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Progression habitudes',
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  /// ---------- À rattraper ----------
+                  if (under.isNotEmpty) ...[
+                    Text(
+                      'À rattraper',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    ...under.map(
+                      (e) => ListTile(
+                        leading: const Icon(Icons.radio_button_unchecked),
+                        title: Text(e.label),
+                        subtitle: Text('${e.done} / ${e.target}'),
+                        trailing: SizedBox(
+                          width: 60,
+                          child: LinearProgressIndicator(
+                            value: e.progress,
+                            minHeight: 6,
+                            backgroundColor: cs.surfaceContainerHighest,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
+                  /// ---------- Déjà atteint ----------
+                  if (over.isNotEmpty) ...[
+                    Text(
+                      'Déjà atteint',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    ...over.map(
+                      (e) => ListTile(
+                        leading: const Icon(
+                          Icons.check_circle,
+                          color: Colors.green,
+                        ),
+                        title: Text(e.label),
+                        subtitle: Text('${e.done} / ${e.target}'),
+                      ),
+                    ),
+                  ],
+
+                  /// ---------- Cas vide ----------
+                  if (under.isEmpty && over.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 40),
+                      child: Center(
+                        child: Text(
+                          "Aucune habitude active",
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    }
+
+    Widget _buildRoutineChip(BuildContext context) {
+      final summary = logic.routineProgressSummaryForCurrentPeriod();
+
+      if (summary.total == 0) {
+        return const SizedBox.shrink();
+      }
+
+      return RoutineAppBarChip(
+        summary: summary,
+        onTap: () {
+          _showRoutineProgressSheet(context);
+        },
+      );
+    }
+
     // 2) App prête -> Scaffold complet
     return Scaffold(
       appBar: AppBar(
@@ -1991,7 +2119,7 @@ bool passesEffective(DayPlanItem it) {
               },
             ),
             const Spacer(),
-            trailingChip(),
+            _buildRoutineChip(context),
             const SizedBox(width: 10),
             GestureDetector(
               onTap: () => _openFiltersSheet(context),

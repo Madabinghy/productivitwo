@@ -210,3 +210,75 @@ Future<HabitSettingsResult?> showHabitSettingsSheet(
 
   return res;
 }
+
+
+class RoutineCatchupSummary {
+  final int achieved;
+  final int remaining;
+
+  const RoutineCatchupSummary({
+    required this.achieved,
+    required this.remaining,
+  });
+
+  int get total => achieved + remaining;
+
+  double get progress {
+    if (total == 0) return 0;
+    return achieved / total;
+  }
+
+  bool get allDone => remaining == 0 && total > 0;
+}
+
+
+class RoutineCatchupChip extends StatelessWidget {
+  final RoutineCatchupSummary summary;
+  final VoidCallback? onTap;
+
+  const RoutineCatchupChip({
+    super.key,
+    required this.summary,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          color: cs.surfaceContainerHighest,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.emoji_events_rounded,
+              size: 16,
+              color: summary.allDone ? cs.primary : cs.secondary,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              '${summary.achieved} / ${summary.remaining}',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 36,
+              child: LinearProgressIndicator(
+                value: summary.progress,
+                minHeight: 6,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

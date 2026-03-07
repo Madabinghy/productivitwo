@@ -7,7 +7,9 @@ import 'dart:math' as math;
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
+import 'package:productivitwo_v1/widgets/appbar_routines_summery.dart';
 import 'package:productivitwo_v1/widgets/assign_activity_sheet.dart';
+import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
 import 'package:uuid/uuid.dart';
 import 'package:productivitwo_v1/models.dart';
 
@@ -171,6 +173,68 @@ class AppLogic {
     }
 
     return null;
+  }
+
+  RoutineCatchupSummary routineCatchupSummary() {
+    final routines = routineProgressItemsForCurrentPeriod();
+
+    int achieved = 0;
+    int remaining = 0;
+
+    for (final r in routines) {
+      if (r.done >= r.target) {
+        achieved++;
+      } else {
+        remaining++;
+      }
+    }
+
+    return RoutineCatchupSummary(
+      achieved: achieved,
+      remaining: remaining,
+    );
+  }
+
+  RoutineProgressSummary routineProgressSummaryForCurrentPeriod() {
+    final items = routineProgressItemsForCurrentPeriod();
+
+    int reached = 0;
+    int catchup = 0;
+
+    for (final it in items) {
+      if (it.isReached) {
+        reached++;
+      } else if (it.isCatchup) {
+        catchup++;
+      }
+    }
+
+    return RoutineProgressSummary(
+      reached: reached,
+      catchup: catchup,
+    );
+  }
+
+  List<RoutineProgressItem> routineProgressItemsForCurrentPeriod() {
+    final base = state.activities.where((a) => a.isHabit).toList();
+
+    double ratio(Activity a) {
+      final tgt = activeHabitTarget(a);
+      if (tgt <= 0) return 0.0;
+      final done = activeHabitDone(a);
+      return (done / tgt).clamp(0.0, 1.0);
+    }
+
+    base.sort((x, y) => (1 - ratio(x)).compareTo(1 - ratio(y)));
+
+    return base
+        .map((a) => RoutineProgressItem(
+              label: a.name,
+              done: activeHabitDone(a),
+              target: activeHabitTarget(a),
+            ))
+        .where((it) => it.target > 0)
+        .toList();
   }
 
   String? effectiveActivityId(DayPlanItem it) {
