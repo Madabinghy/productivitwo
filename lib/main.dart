@@ -1581,17 +1581,17 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     final running = logic.runningActivity();
     final runningId = running?.id;
 
-    bool passesEffective(DayPlanItem it) {
-      if (manualActive) return logic.passesFilters(it);
+bool passesEffective(DayPlanItem it) {
+  if (manualActive) return logic.passesFilters(it);
 
-      if (runningId != null) {
-        final itAct = (it.activityId ?? '').trim();
-        if (itAct.isNotEmpty) return itAct == runningId;
-        return isInbox(it); // ✅ inbox seulement
-      }
+  if (runningId != null) {
+    final itAct = logic.effectiveActivityId(it);
+    if (itAct != null && itAct.isNotEmpty) return itAct == runningId;
+    return isInbox(it); // ✅ inbox seulement
+  }
 
-      return true;
-    }
+  return true;
+}
 
     final filteredTodo = sections.todo.where(passesEffective).toList();
 

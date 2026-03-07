@@ -1113,15 +1113,50 @@ class _TodayViewState extends State<TodayView> {
       return noDomain && noAct && notCourses;
     }
 
+    Activity? _activityById(String? id) {
+      final actId = (id ?? '').trim();
+      if (actId.isEmpty) return null;
+      for (final a in widget.logic.state.activities) {
+        if (a.id == actId) return a;
+      }
+      return null;
+    }
+
+    String? effectiveActivityId(DayPlanItem it) {
+      // action / item classique
+      if (it.kind == PlanKind.action) {
+        final id = (it.activityId ?? '').trim();
+        return id.isEmpty ? null : id;
+      }
+
+      // habit / routine
+      if (it.kind == PlanKind.habit) {
+        final habitId = (it.refId ?? it.habitId ?? '').trim();
+        if (habitId.isEmpty) return null;
+
+        final routineAct = _activityById(habitId);
+        final linkedId = (routineAct?.linkedActivityId ?? '').trim();
+        if (linkedId.isNotEmpty) return linkedId;
+
+        // fallback legacy si besoin
+        final legacy = (it.activityId ?? '').trim();
+        return legacy.isEmpty ? null : legacy;
+      }
+
+      // autres types si nécessaire
+      final id = (it.activityId ?? '').trim();
+      return id.isEmpty ? null : id;
+    }
+
     bool passesEffectiveFilters(DayPlanItem it) {
       // 1) filtres manuels => ton filtre actuel
       if (manualFiltersActive) return _passesFilters(it);
 
       // 2) sinon, si activité en cours => ne montrer que cette activité + inbox
       if (runningId != null) {
-        final itAct = (it.activityId ?? '').trim();
-        if (itAct.isNotEmpty) return itAct == runningId;
-        return isInbox(it); // ✅ inbox seulement, pas “tous les vides”
+        final itAct = effectiveActivityId(it);
+        if (itAct != null && itAct.isNotEmpty) return itAct == runningId;
+        return isInbox(it);
       }
 
       // 3) sinon => pas de filtre
@@ -4011,31 +4046,6 @@ class _NowTabState extends State<NowTab> {
 
         // ✅ même source / même ordre que TodayView ("À faire")
         final todo = widget.items;
-
-        final assoc =
-            widget.logic.routineToActivityId(widget.logic.habitAssocEvents);
-
-// ✅ hydrate l’association activité si manquante
-        for (final it in todo) {
-          // 1) Routine (habit)
-          if (it.kind == PlanKind.habit) {
-            final habitKey = (it.refId ?? it.habitId ?? '').trim();
-            if ((it.activityId ?? '').trim().isEmpty && habitKey.isNotEmpty) {
-              final actId = assoc[habitKey];
-              if (actId != null && actId.isNotEmpty) {
-                it.activityId = actId; // DayPlanItem est mutable chez toi ✅
-              }
-            }
-          }
-
-          // 2) Action (si chez toi l'action a un refId et l'activité est stockée ailleurs)
-          // Si ton assign sheet écrit déjà it.activityId, tu peux ignorer ce bloc.
-          // Sinon, il faut un resolver (ex: activityIdFromActionRef)
-          // if (it.kind == PlanKind.action && (it.activityId ?? '').isEmpty && (it.refId ?? '').isNotEmpty) {
-          //   final actId = widget.logic.activityIdFromActionRef(it.refId!);
-          //   if (actId != null && actId.isNotEmpty) it.activityId = actId;
-          // }
-        }
 
         // ✅ 1) priorité : action envoyée vers Maintenant
         DayPlanItem? focusedAction;

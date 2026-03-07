@@ -125,32 +125,85 @@ class AppLogic {
     return DateTime(y, m, d);
   }
 
+  Future<void> attachLinkedActivityToRoutine(
+    String habitId,
+    String? linkedTimeActivityId,
+  ) async {
+    final acts = state.activities;
 
-Future<void> attachLinkedActivityToRoutine(
-  String habitId,
-  String? linkedTimeActivityId,
-) async {
-  final acts = state.activities;
+    final idx = acts.indexWhere((a) => a.id == habitId);
+    if (idx == -1) return;
 
-  final idx = acts.indexWhere((a) => a.id == habitId);
-  if (idx == -1) return;
+    final routine = acts[idx];
 
-  final routine = acts[idx];
+    final updated = routine.copyWith(
+      linkedActivityId: linkedTimeActivityId,
+    );
 
-  final updated = routine.copyWith(
-    linkedActivityId: linkedTimeActivityId,
-  );
+    // remplace dans la liste existante
+    acts[idx] = updated;
 
-  // remplace dans la liste existante
-  acts[idx] = updated;
+    // si tu as une persistance
+    //await saveActivity(updated);
 
-  // si tu as une persistance
-  //await saveActivity(updated);
+    // refresh UI
+    onChange();
+    rev.value++;
+  }
 
-  // refresh UI
-  onChange();
-  rev.value++;
-}
+  String? resolvedLinkedActivityId(DayPlanItem it) {
+    // action classique
+    if (it.kind == PlanKind.action) {
+      final id = it.activityId?.trim();
+      return (id == null || id.isEmpty) ? null : id;
+    }
+
+    // habit / routine
+    if (it.kind == PlanKind.habit) {
+      final habitId = (it.refId ?? it.habitId ?? '').trim();
+      if (habitId.isEmpty) return null;
+
+      final act = _activityById(habitId);
+      final linked = act?.linkedActivityId?.trim();
+      if (linked != null && linked.isNotEmpty) return linked;
+
+      return null;
+    }
+
+    return null;
+  }
+
+  String? effectiveActivityId(DayPlanItem it) {
+    if (it.kind == PlanKind.action) {
+      final id = (it.activityId ?? '').trim();
+      return id.isEmpty ? null : id;
+    }
+
+    if (it.kind == PlanKind.habit) {
+      final habitId = (it.refId ?? it.habitId ?? '').trim();
+      if (habitId.isEmpty) return null;
+
+      final routineAct = _activityById(habitId);
+      final linkedId = (routineAct?.linkedActivityId ?? '').trim();
+      if (linkedId.isNotEmpty) return linkedId;
+
+      // fallback legacy
+      final legacy = (it.activityId ?? '').trim();
+      return legacy.isEmpty ? null : legacy;
+    }
+
+    final id = (it.activityId ?? '').trim();
+    return id.isEmpty ? null : id;
+  }
+
+  Activity? _activityById(String? id) {
+    final actId = (id ?? '').trim();
+    if (actId.isEmpty) return null;
+    for (final a in state.activities) {
+      if (a.id == actId) return a;
+    }
+    return null;
+  }
 
   String? resolvedLaunchActivityId(DayPlanItem it) {
     // action classique

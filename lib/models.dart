@@ -470,7 +470,7 @@ class Activity {
       autoTune: autoTune ?? this.autoTune,
       createdAt: createdAt ?? this.createdAt,
       lastTuneAt: lastTuneAt ?? this.lastTuneAt,
-      linkedActivityId: linkedActivityId ?? this.linkedActivityId,
+      linkedActivityId: linkedActivityId ?? null,
     );
   }
 
