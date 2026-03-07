@@ -1967,6 +1967,31 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       final under = items.where((e) => e.isCatchup).toList();
       final over = items.where((e) => e.isReached).toList();
 
+      void _openRoutineInNowTab(Activity activity) {
+        final ymd = yyyymmdd(DateTime.now());
+        final sections = logic.todaySections(yyyymmdd: ymd);
+
+        // IMPORTANT : chercher dans la source brute, sans passesEffective
+        final items = sections.todo.toList();
+
+        DayPlanItem? match;
+        for (final it in items) {
+          if ((it.refId ?? '') == activity.id) {
+            match = it;
+            break;
+          }
+        }
+
+        if (match != null) {
+          logic.movePlanItemToTop(ymd, match.id);
+          logic.onChange();
+        }
+
+        setState(() {
+          _tab = _Tab.now;
+        });
+      }
+
       showModalBottomSheet<void>(
         context: context,
         showDragHandle: true,
@@ -2017,6 +2042,10 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                     const SizedBox(height: 8),
                     ...under.map(
                       (e) => ListTile(
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _openRoutineInNowTab(e.activity);
+                        },
                         leading: const Icon(Icons.radio_button_unchecked),
                         title: Text(e.label),
                         subtitle: Text('${e.done} / ${e.target}'),
@@ -2074,6 +2103,31 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     }
 
     Widget _buildRoutineChip(BuildContext context) {
+      final runningAct = logic.runningActivity();
+      // activité normale en cours
+      if (runningAct != null) {
+        final theme = Theme.of(context);
+        final bg =
+            theme.appBarTheme.backgroundColor ?? theme.colorScheme.surface;
+        final accent = theme.colorScheme.primary;
+
+        return Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            color: bg,
+            border: Border.all(
+              color: accent.withValues(alpha: 0.35),
+              width: 1,
+            ),
+          ),
+          child: RunningChipAppBar(
+            state: _state,
+            logic: logic,
+            onTap: () => setState(() => _tab = _Tab.now),
+          ),
+        );
+      }
+
       final summary = logic.routineProgressSummaryForCurrentPeriod();
 
       if (summary.total == 0) {

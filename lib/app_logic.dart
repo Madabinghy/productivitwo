@@ -229,6 +229,7 @@ class AppLogic {
 
     return base
         .map((a) => RoutineProgressItem(
+              activity: a,
               label: a.name,
               done: activeHabitDone(a),
               target: activeHabitTarget(a),
@@ -2613,6 +2614,33 @@ class AppLogic {
 
     onChange();
   }
+
+
+  bool isInbox(DayPlanItem a) {
+    final noDomain = (a.domainId == null || a.domainId!.isEmpty);
+    final noAct = (a.activityId == null || a.activityId!.isEmpty);
+    final notCourses = a.toPlan != true;
+    return noDomain && noAct && notCourses;
+  }
+
+    bool passesEffective(DayPlanItem it) {
+
+    final f = state.filters;
+    final manualActive = f.domainIds.isNotEmpty || f.activityIds.isNotEmpty;
+
+    final running = runningActivity();
+    final runningId = running?.id;
+      if (manualActive) return passesFilters(it);
+
+      if (runningId != null) {
+        final itAct = effectiveActivityId(it);
+        if (itAct != null && itAct.isNotEmpty) return itAct == runningId;
+        return isInbox(it); // ✅ inbox seulement
+      }
+
+      return true;
+    }
+
 
   void movePlanItemToTop(String yyyymmdd, String itemId) {
     final dayItems = state.dayPlan.where((e) => e.yyyymmdd == yyyymmdd).toList()

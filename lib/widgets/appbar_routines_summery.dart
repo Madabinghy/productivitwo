@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/models.dart';
 
 class RoutineProgressSummary {
   final int reached;
@@ -88,11 +89,13 @@ class RoutineAppBarChip extends StatelessWidget {
 }
 
 class RoutineProgressItem {
+  final Activity activity;
   final String label;
   final int done;
   final int target;
 
   const RoutineProgressItem({
+    required this.activity,
     required this.label,
     required this.done,
     required this.target,
