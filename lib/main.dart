@@ -1315,9 +1315,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   _Tab _tab = _Tab.dashboard;
 // affiché une seule fois tant que l’app reste ouverte
 
-  DateTime? _challengeEndsAt;
-  String? _challengeActivityId;
-
   // Champs d’état pour les badges
   Map<String, int> _domainAutoDeltas =
       {}; // agrégat des deltas d’activités par domaine
@@ -1780,188 +1777,47 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
     final filtersOn = logic.state.filters.isActive;
 
-    DateTime _endOfDay(DateTime d) =>
-        DateTime(d.year, d.month, d.day, 23, 59, 59);
-
-    String _fmtDate(DateTime d) =>
-        "${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}";
-
-    Future<bool> showSnoozeSheetForActivity(
-      BuildContext context, {
-      required AppLogic logic,
-      required Activity activity,
-    }) async {
-      final now = DateTime.now();
-
-      final bool? changed = await showModalBottomSheet<bool>(
-        context: context,
-        showDragHandle: true,
-        builder: (ctx) {
-          Future<void> applyUntil(DateTime until) async {
-            logic.snoozeActivityUntil(activity.id, until);
-            if (!context.mounted) return;
-
-            ScaffoldMessenger.of(context).clearSnackBars();
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text("Masqué jusqu’au ${_fmtDate(until)}")),
-            );
-
-            Navigator.pop(ctx, true);
-          }
-
-          return SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  title: Text("Masquer “${activity.name}”"),
-                  subtitle:
-                      const Text("Ne sera plus proposé avant la date choisie."),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.calendar_today_outlined),
-                  title: const Text("Demain"),
-                  onTap: () =>
-                      applyUntil(_endOfDay(now.add(const Duration(days: 1)))),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.calendar_view_week_outlined),
-                  title: const Text("Dans 3 jours"),
-                  onTap: () =>
-                      applyUntil(_endOfDay(now.add(const Duration(days: 3)))),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.event_repeat_outlined),
-                  title: const Text("Dans 7 jours"),
-                  onTap: () =>
-                      applyUntil(_endOfDay(now.add(const Duration(days: 7)))),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.restore),
-                  title: const Text("Annuler le masquage"),
-                  onTap: () {
-                    logic.clearSnooze(activity.id);
-
-                    if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).clearSnackBars();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Masquage annulé")),
-                    );
-
-                    Navigator.pop(ctx, true);
-                  },
-                ),
-                const SizedBox(height: 8),
-              ],
-            ),
-          );
-        },
-      );
-
-      return changed == true;
-    }
-
-    Widget trailingChip() {
-      final runningAct = logic.runningActivity();
-
-      // état challenge global (dans AppRootState)
-      final endsAt = _challengeEndsAt; // DateTime?
-      final challengeActive = endsAt != null && endsAt.isAfter(DateTime.now());
-
-      if (challengeActive) {
-        final actName = _challengeActivityId == null
-            ? ''
-            : logic.state.activities
-                .firstWhere((a) => a.id == _challengeActivityId!)
-                .name;
-
-        return ChallengeActivityChip(
-          title: actName,
-          endsAt: endsAt,
-          duration: const Duration(minutes: 5),
-          onStart: () {}, // pas utilisé ici
-          onStop: () {
-            setState(() {
-              _challengeEndsAt = null;
-              _challengeActivityId = null;
-            });
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                  content: Text("Challenge arrêté — activité continue")),
-            );
-          },
-          onPickSnooze: () {}, // pas utilisé ici
-        );
-      }
-
-      // activité normale en cours
-      if (runningAct != null) {
-        final theme = Theme.of(context);
-        final bg =
-            theme.appBarTheme.backgroundColor ?? theme.colorScheme.surface;
-        final accent = theme.colorScheme.primary;
-
-        return Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
-            color: bg,
-            border: Border.all(
-              color: accent.withValues(alpha: 0.35),
-              width: 1,
-            ),
-          ),
-          child: RunningChipAppBar(
-            state: _state,
-            logic: logic,
-            onTap: () => setState(() => _tab = _Tab.now),
-          ),
-        );
-      }
-
-      // suggestion
-      final sug = logic.suggestedCatchUpTimeByRemainingToday(domain: null);
-      if (sug == null) return const SizedBox.shrink();
-
-      final minutes = sug.doneMin == 0 ? 5 : sug.remainingMin.clamp(1, 5);
-      final duration = Duration(minutes: minutes);
-
-      return ChallengeActivityChip(
-        title: sug.activity.name,
-        endsAt: null,
-        duration: duration,
-        onStart: () {
-          // 1) set global challenge
-          setState(() {
-            _challengeEndsAt = DateTime.now().add(duration);
-            _challengeActivityId = sug.activity.id;
-            _tab = _Tab.now;
-          });
-          // 2) start activity
-          logic.start(sug.activity.id);
-        },
-        onStop: () {}, // pas utilisé ici
-        onPickSnooze: () async {
-          final changed = await showSnoozeSheetForActivity(
-            context,
-            logic: logic,
-            activity: sug.activity,
-          );
-
-          if (!mounted) return;
-          if (!changed) return;
-
-          setState(() {
-            // IMPORTANT: ici tu dois déclencher la logique qui choisit la suggestion
-            // soit en appelant une fonction, soit en “bumpant” un token.
-// (voir patch 3)
-          });
-        },
-      );
-    }
-
     void _showRoutineProgressSheet(BuildContext context) {
+      double _roughRoutineRatioAt(DateTime day) {
+        final habits = logic.state.activities.where((a) => a.isHabit).toList();
+
+        int reached = 0;
+        int total = 0;
+
+        for (final a in habits) {
+          final target = logic.activeHabitTarget(a);
+          if (target <= 0) continue;
+
+          total++;
+
+          final done = logic.habitValueOn(a.id, day);
+          if (done >= target) {
+            reached++;
+          }
+        }
+
+        return total == 0 ? 0.0 : reached / total;
+      }
+
+      List<double> _routineCatchupRatio30d() {
+        final now = DateTime.now();
+        final out = <double>[];
+
+        for (int i = 0; i < 29; i++) {
+          final day = DateTime(now.year, now.month, now.day)
+              .subtract(Duration(days: 29 - i));
+
+          // logique provisoire / approximative pour les jours passés
+          out.add(_roughRoutineRatioAt(day));
+        }
+
+        // dernier point = logique exacte du sheet
+        final summary = logic.routineProgressSummaryForCurrentPeriod();
+        out.add(summary.total == 0 ? 0.0 : summary.reached / summary.total);
+
+        return out;
+      }
+
       final items = logic.routineProgressItemsForCurrentPeriod();
 
       final under = items.where((e) => e.isCatchup).toList();
@@ -1991,6 +1847,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
           _tab = _Tab.now;
         });
       }
+
+      final ratio30 = _routineCatchupRatio30d();
 
       showModalBottomSheet<void>(
         context: context,
@@ -2027,6 +1885,40 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                         onPressed: () => Navigator.pop(ctx),
                       ),
                     ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  Text(
+                    'Évolution sur 30 jours',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: cs.outlineVariant.withValues(alpha: .4),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        TinyRatioBars(values: ratio30),
+                        const SizedBox(height: 8),
+                        Text(
+                          '${(ratio30.isNotEmpty ? ratio30.last * 100 : 0).round()}% à jour',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
 
                   const SizedBox(height: 16),

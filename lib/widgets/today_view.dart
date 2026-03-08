@@ -3,7 +3,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:collection/collection.dart';
@@ -33,8 +32,6 @@ enum _Scope { today, tomorrow } // ou ton enum existant
 
 class _TodayViewState extends State<TodayView> {
   // Choix JOUR: aujourd’hui / demain
-  late DateTime _base;
-  bool _planTomorrow = false;
   bool _showDone = false;
 
   Timer? _runWatch;
@@ -222,98 +219,6 @@ class _TodayViewState extends State<TodayView> {
     return true;
   }
 
-  Widget _cardWithTopTools({
-    required Key key,
-    required Widget content,
-    required Widget tools, // row de boutons compact
-  }) {
-    return Card(
-      key: key,
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Stack(
-        children: [
-          // Contenu normal, on laisse un petit padding top pour pas que l'overlay masque tout
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 18, 12, 10),
-            child: content,
-          ),
-
-          // Toolbar en overlay
-          Positioned(
-            top: 4,
-            left: 6,
-            right: 6,
-            child: Align(
-              alignment: Alignment.topLeft,
-              child: tools,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _topToolsRow({
-    required DayPlanItem it,
-    required bool showDrag,
-    required int indexForDrag,
-  }) {
-    Widget miniBtn(IconData icon, String tip, VoidCallback onTap) {
-      return IconButton(
-        tooltip: tip,
-        icon: Icon(icon, size: 18),
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints.tightFor(width: 28, height: 28),
-        visualDensity: VisualDensity.compact,
-        onPressed: onTap,
-      );
-    }
-
-    final now = DateTime.now();
-    final baseDay = DateTime(now.year, now.month, now.day);
-
-    final day = (_scope == _Scope.today)
-        ? baseDay
-        : baseDay.add(const Duration(days: 1));
-
-    final ymd = yyyymmdd(day);
-
-    return Row(
-      mainAxisSize: MainAxisSize.max,
-      children: [
-        if (showDrag)
-          ReorderableDragStartListener(
-            index: indexForDrag,
-            child: const Padding(
-              padding: EdgeInsets.only(right: 6),
-              child: Icon(Icons.drag_handle, size: 18),
-            ),
-          ),
-        const Spacer(),
-        miniBtn(Icons.arrow_upward, "En haut", () {
-          widget.logic.movePlanItemToTop(ymd, it.id);
-          widget.logic.onChange();
-          setState(() {});
-        }),
-        miniBtn(Icons.arrow_downward, "En bas", () {
-          widget.logic.movePlanItemToEnd(ymd, it.id);
-          widget.logic.onChange();
-          setState(() {});
-        }),
-        miniBtn(Icons.arrow_forward, "Demain", () {
-          widget.logic.moveItemToTomorrowById(it.id);
-          widget.logic.onChange();
-          setState(() {});
-        }),
-        miniBtn(Icons.close, "Retirer", () {
-          setState(() {
-            widget.state.dayPlan.removeWhere((e) => e.id == it.id);
-            widget.logic.onChange();
-          });
-        }),
-      ],
-    );
-  }
 
   Widget _actionCardContent(
     DayPlanItem it, {
@@ -673,7 +578,6 @@ class _TodayViewState extends State<TodayView> {
   void initState() {
     super.initState();
 
-    _base = DateTime.now();
 
     // 1) housekeeping après build
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -712,10 +616,6 @@ class _TodayViewState extends State<TodayView> {
     );
   } */
 
-  String get _ymd {
-    final d = _planTomorrow ? _base.add(const Duration(days: 1)) : _base;
-    return yyyymmdd(d);
-  }
 
   void _startupHousekeeping() {
     widget.logic.maybeCarryFromYesterday();
@@ -862,7 +762,6 @@ class _TodayViewState extends State<TodayView> {
     // ✅ running / planning
     final running = widget.logic.runningActivity();
     final hasRunning = isTodayTab && running != null;
-    final isPlanning = hasRunning && (running!.role == ActivityRole.planning);
 
     // --- planOrAuto : injecte virtHabits (aujourd’hui seulement)
     List<DayPlanItem> planOrAuto() {
@@ -1081,7 +980,7 @@ class _TodayViewState extends State<TodayView> {
     }
 
     final autoExpanded =
-        running != null && shoppingId != null && running!.id == shoppingId;
+        running != null && shoppingId != null && running.id == shoppingId;
 
     // 1) DONE
     final doneActions =
@@ -1103,7 +1002,7 @@ class _TodayViewState extends State<TodayView> {
         f.domainIds.isNotEmpty || f.activityIds.isNotEmpty;
 
 // activité en cours (uniquement sur l’onglet “today”)
-    final runningId = hasRunning ? running!.id : null;
+    final runningId = hasRunning ? running.id : null;
 
     /// ✅ Inbox stricte (ta définition actuelle)
     bool isInbox(DayPlanItem a) {
@@ -1181,7 +1080,6 @@ class _TodayViewState extends State<TodayView> {
             .where((a) => a.activityId == shoppingId && a.toPlan == true)
             .toList();
 
-    // ✅ TODO = le reste (openPoolFiltered - inbox - courses)
     final usedIds = <String>{
       ...inboxActions.map((e) => e.id),
       ...shoppingActions.map((e) => e.id),
@@ -1485,28 +1383,6 @@ class _TodayViewState extends State<TodayView> {
     });
   }
 
-  Widget _buildFab() {
-    return FloatingActionButton.extended(
-      onPressed: () async {
-        final title = await _askText(context, "À faire !");
-        final t = (title ?? '').trim();
-        if (t.isEmpty) return;
-
-        await widget.logic.addPlanAction(
-          ymd: _ymd,
-          title: t,
-          domainId: null,
-          activityId: null,
-          habitId: null,
-        );
-
-        if (!mounted) return;
-        setState(() {});
-      },
-      icon: const Icon(Icons.inbox, size: 20),
-      label: const Text('Inbox'),
-    );
-  }
 
   Widget _todayTile(
     BuildContext context,
@@ -2150,41 +2026,6 @@ class _TodayViewState extends State<TodayView> {
     );
   }
 
-  Future<String?> _askNumbersOnly(
-    BuildContext context,
-    String title,
-  ) async {
-    return showDialog<String>(
-      context: context,
-      builder: (context) {
-        final controller = TextEditingController();
-
-        return AlertDialog(
-          title: Text(title),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            keyboardType: TextInputType.number, // ✅ clavier chiffres
-            textInputAction: TextInputAction.done,
-            inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly, // ✅ uniquement chiffres
-            ],
-            onSubmitted: (_) => Navigator.of(context).pop(controller.text),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Annuler'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(controller.text),
-              child: const Text('OK'),
-            ),
-          ],
-        );
-      },
-    );
-  }
 
   Future<void> showHabitChecklist(
     BuildContext context, {
@@ -2412,8 +2253,8 @@ class NowTab extends StatefulWidget {
 }
 
 class _NowTabState extends State<NowTab> {
-  String? _lockedPlanId; // 👉 gèle “ce qu’on fait maintenant”
-  bool _skipDone = true; // option: sauter les items déjà “faits”
+// 👉 gèle “ce qu’on fait maintenant”
+// option: sauter les items déjà “faits”
   final Set<String> _skippedIds = {};
   final Set<String> _doneTodayIds = {};
   bool _showArchives = false;
@@ -2432,206 +2273,8 @@ class _NowTabState extends State<NowTab> {
     }
   }
 
-  Future<void> _passForToday(DayPlanItem it) async {
-    setState(() => it.isNowFocus = false);
-    final now = DateTime.now();
-    final ymd = yyyymmdd(DateTime(now.year, now.month, now.day));
-    _skipNowItem(ymd, it); // <- persist dans nowSkippedByYmd + setState() déjà
-  }
 
-  Widget _snoozeBlock(BuildContext context, DayPlanItem it) {
-    final cs = Theme.of(context).colorScheme;
-    final now = DateTime.now();
-    DateTime day0 = DateTime(now.year, now.month, now.day);
 
-    DateTime d(int addDays) => day0.add(Duration(days: addDays));
-
-    String labelFor(int addDays) {
-      if (addDays == 1) return "Demain";
-      // J+2..J+6 affiché joli
-      const wd = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
-      final dt = d(addDays);
-      final w = wd[dt.weekday - 1];
-      return "$w ${dt.day}";
-    }
-
-    Future<void> apply(DateTime when) async {
-      setState(() => it.isNowFocus = false);
-      it.snoozeUntil = when;
-      widget.logic.onChange();
-      setState(() {});
-    }
-
-    Future<void> pickDate() async {
-      setState(() => it.isNowFocus = false);
-      await widget.logic.snoozeToDate(context, it); // ton datepicker existant
-      widget.logic.onChange();
-      setState(() {});
-    }
-
-    final redOutlineStyle = OutlinedButton.styleFrom(
-      side: BorderSide(
-        color: Colors.red.withOpacity(0.75),
-        width: 1,
-      ),
-      foregroundColor: Colors.red.withOpacity(0.85),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-    );
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // ✅ Rangée 1 : Demain + Passer
-        Row(
-          children: [
-            Expanded(
-              child: FilledButton.tonal(
-                onPressed: () async {
-                  await widget.logic.snoozeToTomorrow(it);
-                  widget.logic.onChange();
-                  setState(() {});
-                },
-                child: const Text("Demain"),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: GestureDetector(
-                onTap: () {
-                  final ymd = yyyymmdd(DateTime(
-                      widget.day.year, widget.day.month, widget.day.day));
-
-                  widget.logic.pushTodayItemToEnd(
-                    yyyymmdd: ymd,
-                    itemId: it.id,
-                  );
-
-                  // si pushTodayItemToEnd fait déjà onChange()+rev++, tu peux enlever les 2 lignes ci-dessous
-                  // widget.logic.onChange();
-                  // setState(() {});
-                },
-                onLongPress: pickDate,
-                child: FilledButton.tonal(
-                  onPressed: null,
-                  child: const Text("Plus tard"),
-                ),
-              ),
-            ),
-          ],
-        ),
-
-        const SizedBox(height: 10),
-
-        // ✅ Rangée 2 : J+2..J+6
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final addDays in [2, 3, 4, 5, 6])
-              ActionChip(
-                label: Text(labelFor(addDays)),
-                onPressed: () => apply(d(addDays)),
-                backgroundColor: cs.surface.withOpacity(0.12),
-                labelStyle: TextStyle(
-                  color: cs.onSurface.withOpacity(0.85),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-
-            // 🌙 Ce soir (18h+)
-            ActionChip(
-              label: Text("🌙 Soir - 18h+"),
-              onPressed: () async {
-                await widget.logic.snoozeToTodayAfter(
-                  it,
-                  const TimeOfDay(hour: 18, minute: 00),
-                );
-                widget.logic.onChange();
-                setState(() {});
-              },
-              backgroundColor: cs.surface.withOpacity(0.12),
-              labelStyle: TextStyle(
-                color: cs.onSurface.withOpacity(0.85),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-
-            // ✅ on force un saut de ligne avant les 2 boutons
-            const SizedBox(width: double.infinity),
-
-            SizedBox(
-              width: double.infinity,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: SizedBox(
-                        height: 38,
-                        child: OutlinedButton.icon(
-                          onPressed: pickDate,
-                          icon: Icon(
-                            Icons.event,
-                            size: 18,
-                            color: cs.primary,
-                          ),
-                          label: const Text("Date"),
-                          style: OutlinedButton.styleFrom(
-                            backgroundColor: cs.primary.withOpacity(0.12),
-                            foregroundColor: cs.primary,
-                            side:
-                                BorderSide(color: cs.primary.withOpacity(0.35)),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                          ),
-                        )),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: SizedBox(
-                      height: 38,
-                      child: OutlinedButton.icon(
-                        onPressed: () => _confirmDeleteAction(context, it),
-                        icon: const Icon(Icons.delete_outline, size: 18),
-                        label: const Text("Supprimer"),
-                        style: redOutlineStyle,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  void _confirmDeleteAction(BuildContext context, DayPlanItem it) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Supprimer ?"),
-        content: const Text("Cette action sera supprimée."),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text("Annuler"),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              setState(() => it.isNowFocus = false);
-              widget.logic.state.dayPlan.removeWhere((e) => e.id == it.id);
-              widget.logic.onChange();
-              setState(() {});
-            },
-            child: const Text("Supprimer"),
-          ),
-        ],
-      ),
-    );
-  }
 
   Future<void> _openSnoozeActivitySheet(
       BuildContext context, Activity a) async {
@@ -2795,7 +2438,7 @@ class _NowTabState extends State<NowTab> {
 
     final running = widget.logic.runningActivity();
     final isRunningThis =
-        hasLinked && running != null && running.id == linkedAct!.id;
+        hasLinked && running != null && running.id == linkedAct.id;
 
     return SingleChildScrollView(
       child: Column(
@@ -2869,7 +2512,7 @@ class _NowTabState extends State<NowTab> {
               children: [
                 Expanded(
                   child: Text(
-                    "Liée à : ${linkedAct!.name}",
+                    "Liée à : ${linkedAct.name}",
                     style: TextStyle(
                       fontSize: 12,
                       color: Theme.of(context)
@@ -3223,19 +2866,6 @@ class _NowTabState extends State<NowTab> {
     );
   }
 
-  void _ensureChecklistIds(DayPlanItem it) {
-    final seen = <String>{};
-
-    for (final c in it.checklist) {
-      var id = c.id.trim();
-
-      if (id.isEmpty || seen.contains(id)) {
-        id = "${DateTime.now().microsecondsSinceEpoch}_${seen.length}";
-        c.id = id;
-      }
-      seen.add(id);
-    }
-  }
 
   Future<void> _addChecklistItem(DayPlanItem it) async {
     final txt = await _askText(context, "Ajouter un item");
@@ -3432,29 +3062,6 @@ class _NowTabState extends State<NowTab> {
     );
   }
 
-  void _applyForcedHabitIfAny(List<RowItem> rows) {
-    final forced = widget.logic.forcedNowHabitId;
-    if (forced == null) return;
-
-    RowPlan? match;
-    for (final r in rows.whereType<RowPlan>()) {
-      if (r.it.kind == PlanKind.habit && r.it.refId == forced) {
-        match = r;
-        break;
-      }
-    }
-
-    if (match == null) {
-      widget.logic.forcedNowHabitId = null;
-      return;
-    }
-
-    _skippedIds.remove(match.it.id);
-    _doneTodayIds.remove(match.it.id);
-    _lockedPlanId = match.it.id;
-
-    widget.logic.forcedNowHabitId = null;
-  }
 
   Widget _routineChecklist(DayPlanItem it) {
     if (it.kind != PlanKind.habit || it.refId == null) {
@@ -3627,13 +3234,6 @@ class _NowTabState extends State<NowTab> {
     );
   }
 
-  void _persistNowSets() {
-    final ymd = _skippedYmd;
-    if (ymd == null) return;
-
-    widget.logic.setNowSkipped(ymd, _skippedIds);
-    widget.logic.setNowDone(ymd, _doneTodayIds);
-  }
 
   void _loadPersistedForDay(String ymd) {
     _skippedIds
@@ -3654,7 +3254,6 @@ class _NowTabState extends State<NowTab> {
     if (_skippedYmd != ymd) {
       _skippedYmd = ymd;
       _loadPersistedForDay(ymd);
-      _lockedPlanId = null;
     }
   }
 
@@ -4021,17 +3620,6 @@ class _NowTabState extends State<NowTab> {
     );
   }
 
-  void _skipNowItem(String ymd, DayPlanItem it) {
-    final list = widget.logic.state.nowSkippedByYmd[ymd] ?? <String>[];
-    if (!list.contains(it.id)) list.add(it.id);
-    widget.logic.state.nowSkippedByYmd[ymd] = list;
-
-    // ✅ sync cache local
-    _skippedIds.add(it.id);
-
-    widget.logic.onChange();
-    setState(() {});
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -4192,268 +3780,13 @@ class _NowTabState extends State<NowTab> {
     );
   }
 
-  bool _isSnoozed(DayPlanItem it, DateTime now) {
-    final u = it.snoozeUntil;
-    return u != null && u.isAfter(now);
-  }
 
-  bool _isActionable(DayPlanItem it) {
-    final now = DateTime.now();
 
-    // ⛔️ Courses non actionable
-    if (widget.logic.isCourse(it)) return false;
 
-    // ⛔️ Snooze item (plus tard) = jamais actionable
-    if (_isSnoozed(it, now)) return false;
 
-    // ✅ NOUVEAU : si l’activité liée est snoozée => on cache dans NowTab
-    String actId = '';
-    if (it.kind == PlanKind.habit) {
-      actId = (it.refId ?? '').trim();
-    } else if (it.kind == PlanKind.action) {
-      // adapte selon ton modèle
-      actId = (it.activityId ?? '').trim(); // si existe
-      if (actId.isEmpty)
-        actId = (it.refId ?? '').trim(); // fallback si tu stockes là
-    }
 
-    if (actId.isNotEmpty && widget.logic.isActivitySnoozed(actId, now)) {
-      return false;
-    }
 
-    // ⛔️ Skips / Done list (ton système actuel)
-    if (_skippedIds.contains(it.id)) return false;
-    if (_doneTodayIds.contains(it.id)) return false;
 
-    switch (it.kind) {
-      case PlanKind.habit:
-        return it.refId != null;
-
-      case PlanKind.action:
-        if (it.done) return false;
-        if (it.archived == true) return false;
-        final snooze = it.snoozeUntil;
-        if (snooze != null && snooze.isAfter(now)) return false;
-        return true;
-
-      default:
-        return false;
-    }
-  }
-
-  RowPlan? _pickNow(List<RowItem> rows) {
-    // lock
-    if (_lockedPlanId != null) {
-      for (final rp in rows.whereType<RowPlan>()) {
-        if (rp.it.id == _lockedPlanId && _isActionable(rp.it)) return rp;
-      }
-      _lockedPlanId = null;
-    }
-
-    // first actionable
-    for (final rp in rows.whereType<RowPlan>()) {
-      if (_isActionable(rp.it)) {
-        _lockedPlanId = rp.it.id;
-        return rp;
-      }
-    }
-    return null;
-  }
-
-  bool _isActionableIgnoringSkips(DayPlanItem it) {
-    if (_doneTodayIds.contains(it.id)) return false;
-    if (_skipDone && it.done) return false;
-
-    switch (it.kind) {
-      case PlanKind.habit:
-      case PlanKind.activityTime:
-      case PlanKind.action:
-        return true;
-    }
-  }
-
-  Widget _allSkippedView() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text("😌 Tu as tout passé",
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 10),
-            const Text(
-                "Il reste des choses à faire, mais tu les as mises de côté.",
-                textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: () => setState(() => _skippedIds.clear()),
-              child: const Text("Réinitialiser les passes"),
-            ),
-            const SizedBox(height: 10),
-            OutlinedButton(
-              onPressed: widget.onGoTodo,
-              child: const Text("Voir la liste"),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _nowCard(BuildContext context, RowPlan rp, int total) {
-    final it = rp.it;
-    final subtitle = _subtitleFor(it);
-    final ymd =
-        yyyymmdd(DateTime(widget.day.year, widget.day.month, widget.day.day));
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    "MAINTENANT",
-                    style: TextStyle(
-                      letterSpacing: 1.2,
-                      fontWeight: FontWeight.w800,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withOpacity(0.6),
-                    ),
-                  ),
-                ),
-                if (_skippedIds.isNotEmpty)
-                  TextButton(
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 0),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      minimumSize: Size.zero,
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        _skippedIds.clear();
-                        _lockedPlanId = null;
-                      });
-                      _persistNowSets();
-                    },
-                    child: Text(
-                      "Réinitialiser (${_skippedIds.length} / $total)",
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              it.title,
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-            ),
-            if (subtitle != null) ...[
-              const SizedBox(height: 6),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  fontSize: 13,
-                  color:
-                      Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-                ),
-              ),
-            ],
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                // ☀️ Demain
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () async {
-                      await widget.logic.snoozeToTomorrow(it);
-                      widget.logic.onChange();
-                      setState(() {});
-                    },
-                    style: _neutralStyle(context),
-                    child: const Text("Demain"),
-                  ),
-                ),
-
-                const SizedBox(width: 8),
-
-                // 📅 Date (icône seule)
-                OutlinedButton(
-                  onPressed: () async {
-                    await widget.logic.snoozeToDate(context, it);
-                    widget.logic.onChange();
-                    setState(() {});
-                  },
-                  style: _neutralStyle(context),
-                  child: const Icon(Icons.calendar_today_outlined, size: 18),
-                ),
-                const SizedBox(width: 8),
-                // 🌙 Ce soir (18h+)
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () async {
-                      await widget.logic.snoozeToTodayAfter(
-                        it,
-                        const TimeOfDay(hour: 18, minute: 00),
-                      );
-                      widget.logic.onChange();
-                      setState(() {});
-                    },
-                    style: _neutralStyle(context),
-                    child: const Text("🌙 18h+"),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // ⏭ Passer (focus only)
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () {
-                      _skipNowItem(ymd, it); // ton mécanisme existant
-                      setState(() => it.isNowFocus = false);
-                    },
-                    style: _neutralStyle(context),
-                    child: const Text("⏭ Passer"),
-                  ),
-                ),
-              ],
-            )
-          ],
-        ),
-      ),
-    );
-  }
-
-  ButtonStyle _neutralStyle(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return OutlinedButton.styleFrom(
-      foregroundColor: cs.onSurface.withOpacity(0.85),
-      backgroundColor: cs.surface.withOpacity(0.12),
-      side: BorderSide(color: cs.onSurface.withOpacity(0.25)),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      padding: const EdgeInsets.symmetric(vertical: 12),
-    );
-  }
-
-  String? _subtitleFor(DayPlanItem it) {
-    // Si tu veux afficher domaine / association, tu peux.
-    // On a domainId sur DayPlanItem, sinon via refId->Activity.
-    final dom = it.domainId;
-    if (dom == null) return null;
-    final d = widget.st.domains.firstWhere(
-      (x) => x.id == dom,
-      orElse: () => Domain(id: dom, name: "Domaine"),
-    );
-    return "Domaine : ${d.name}";
-  }
 
 /*   void _onSkip() {
     setState(() {
@@ -4486,17 +3819,6 @@ class _NowTabState extends State<NowTab> {
       ),
     );
   }
-}
-
-class _HabitSettingsResult {
-  final HabitFreq freq;
-  final int target;
-  final bool isAuto;
-  const _HabitSettingsResult({
-    required this.freq,
-    required this.target,
-    required this.isAuto,
-  });
 }
 
 class _ActionSheetResult {

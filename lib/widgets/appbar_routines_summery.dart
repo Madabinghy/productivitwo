@@ -105,3 +105,47 @@ class RoutineProgressItem {
   bool get isCatchup => target > 0 && done < target;
   double get progress => target <= 0 ? 0.0 : (done / target).clamp(0.0, 1.0);
 }
+
+
+class TinyRatioBars extends StatelessWidget {
+  final List<double> values;
+  final double height;
+
+  const TinyRatioBars({
+    super.key,
+    required this.values,
+    this.height = 56,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    if (values.isEmpty) return const SizedBox.shrink();
+
+    return SizedBox(
+      height: height,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          for (final v in values)
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 1),
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Container(
+                    height: height * v.clamp(0.0, 1.0),
+                    decoration: BoxDecoration(
+                      color: cs.primary.withValues(alpha: .75),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}

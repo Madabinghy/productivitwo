@@ -62,27 +62,6 @@ class NowHabitTileFull extends StatelessWidget {
     final quotaD = logic.dayQuotaFor(act);
     final freq = logic.effectiveHabitFreq(act);
 
-    double _expectedPerDay() {
-      final t = logic.effectiveHabitTarget(act).clamp(1, 999999);
-      switch (freq) {
-        case HabitFreq.daily:
-          return t.toDouble(); // ex: 10/jour
-        case HabitFreq.weekly:
-          return t / 7.0; // ex: 1/semaine => 0.14/j
-        case HabitFreq.monthly:
-          return t / 30.0; // ex: 1/mois => 0.03/j
-      }
-    }
-
-    double _avg7At(DateTime d) {
-      double sum = 0;
-      for (int k = 0; k < 7; k++) {
-        final dd = DateTime(d.year, d.month, d.day).subtract(Duration(days: k));
-        sum += logic.habitValueOn(habitId, dd).toDouble();
-      }
-      return sum / 7.0;
-    }
-
     final isDaily = (freq == HabitFreq.daily);
 
     final raw30 = List<double>.generate(30, (i) {

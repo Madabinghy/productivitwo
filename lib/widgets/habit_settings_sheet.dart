@@ -47,21 +47,7 @@ Future<HabitSettingsResult?> showHabitSettingsSheet(
       return StatefulBuilder(
         builder: (ctx, setSB) {
           void refresh() => setSB(() {});
-
-          void applyToAct() {
-            act.habitFreq = freq;
-            act.habitTarget = target;
-
-            if (isAuto) {
-              act.manualTarget = false;
-              act.autoTune = true;
-            } else {
-              act.autoTune = false;
-              act.manualTarget = true;
-              if ((act.habitTarget ?? 0) <= 0) act.habitTarget = 1;
-            }
-          }
-
+          
           return Padding(
             padding: EdgeInsets.only(
               left: 16,
