@@ -64,7 +64,7 @@ class RoutineAppBarChip extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  '${summary.reached} / ${summary.catchup}',
+                  '${summary.reached} / ${summary.reached+summary.catchup}',
                   style: textStyle,
                 ),
                 const SizedBox(width: 8),
@@ -103,6 +103,5 @@ class RoutineProgressItem {
 
   bool get isReached => target > 0 && done >= target;
   bool get isCatchup => target > 0 && done < target;
-  double get progress =>
-      target <= 0 ? 0.0 : (done / target).clamp(0.0, 1.0);
+  double get progress => target <= 0 ? 0.0 : (done / target).clamp(0.0, 1.0);
 }
