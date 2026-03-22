@@ -219,7 +219,6 @@ class _TodayViewState extends State<TodayView> {
     return true;
   }
 
-
   Widget _actionCardContent(
     DayPlanItem it, {
     required DateTime viewedDay,
@@ -578,7 +577,6 @@ class _TodayViewState extends State<TodayView> {
   void initState() {
     super.initState();
 
-
     // 1) housekeeping après build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _startupHousekeeping();
@@ -615,7 +613,6 @@ class _TodayViewState extends State<TodayView> {
       ),
     );
   } */
-
 
   void _startupHousekeeping() {
     widget.logic.maybeCarryFromYesterday();
@@ -1047,13 +1044,30 @@ class _TodayViewState extends State<TodayView> {
       return id.isEmpty ? null : id;
     }
 
+    bool isActivitySnoozedNow(String? activityId) {
+      final id = (activityId ?? '').trim();
+      if (id.isEmpty) return false;
+
+      final iso = widget.logic.state.snoozedUntil[id];
+      if (iso == null || iso.isEmpty) return false;
+
+      final until = DateTime.tryParse(iso);
+      if (until == null) return false;
+
+      return until.isAfter(DateTime.now());
+    }
+
     bool passesEffectiveFilters(DayPlanItem it) {
+      final itAct = effectiveActivityId(it);
+
+      // 0) masquer tout item lié à une activité cachée / snoozée
+      if (isActivitySnoozedNow(itAct)) return false;
+
       // 1) filtres manuels => ton filtre actuel
       if (manualFiltersActive) return _passesFilters(it);
 
       // 2) sinon, si activité en cours => ne montrer que cette activité + inbox
       if (runningId != null) {
-        final itAct = effectiveActivityId(it);
         if (itAct != null && itAct.isNotEmpty) return itAct == runningId;
         return isInbox(it);
       }
@@ -1382,7 +1396,6 @@ class _TodayViewState extends State<TodayView> {
       );
     });
   }
-
 
   Widget _todayTile(
     BuildContext context,
@@ -2026,7 +2039,6 @@ class _TodayViewState extends State<TodayView> {
     );
   }
 
-
   Future<void> showHabitChecklist(
     BuildContext context, {
     required String title,
@@ -2272,9 +2284,6 @@ class _NowTabState extends State<NowTab> {
         return ['Courses', 'Dents', 'Peau'];
     }
   }
-
-
-
 
   Future<void> _openSnoozeActivitySheet(
       BuildContext context, Activity a) async {
@@ -2866,7 +2875,6 @@ class _NowTabState extends State<NowTab> {
     );
   }
 
-
   Future<void> _addChecklistItem(DayPlanItem it) async {
     final txt = await _askText(context, "Ajouter un item");
     if (txt == null) return;
@@ -3062,7 +3070,6 @@ class _NowTabState extends State<NowTab> {
     );
   }
 
-
   Widget _routineChecklist(DayPlanItem it) {
     if (it.kind != PlanKind.habit || it.refId == null) {
       return const SizedBox.shrink();
@@ -3233,7 +3240,6 @@ class _NowTabState extends State<NowTab> {
       ],
     );
   }
-
 
   void _loadPersistedForDay(String ymd) {
     _skippedIds
@@ -3620,7 +3626,6 @@ class _NowTabState extends State<NowTab> {
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<int>(
@@ -3779,14 +3784,6 @@ class _NowTabState extends State<NowTab> {
       ),
     );
   }
-
-
-
-
-
-
-
-
 
 /*   void _onSkip() {
     setState(() {

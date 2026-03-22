@@ -1579,13 +1579,30 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     final running = logic.runningActivity();
     final runningId = running?.id;
 
+    bool isActivitySnoozedNow(String? activityId) {
+      final id = (activityId ?? '').trim();
+      if (id.isEmpty) return false;
+
+      final iso = logic.state.snoozedUntil[id];
+      if (iso == null || iso.isEmpty) return false;
+
+      final until = DateTime.tryParse(iso);
+      if (until == null) return false;
+
+      return until.isAfter(DateTime.now());
+    }
+
     bool passesEffective(DayPlanItem it) {
+      final itAct = logic.effectiveActivityId(it);
+
+      // ✅ masquer les items liés à une activité cachée
+      if (isActivitySnoozedNow(itAct)) return false;
+
       if (manualActive) return logic.passesFilters(it);
 
       if (runningId != null) {
-        final itAct = logic.effectiveActivityId(it);
         if (itAct != null && itAct.isNotEmpty) return itAct == runningId;
-        return isInbox(it); // ✅ inbox seulement
+        return isInbox(it);
       }
 
       return true;
@@ -2945,6 +2962,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       });
     }
 
+    bool hiddenExpanded = true;
+
     return showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -3752,44 +3771,88 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
           }
 
           Widget _dismissibleActivityTile(Activity a, Widget child) {
+            final now = DateTime.now();
+
             return Dismissible(
               key: ValueKey("dashAct:${a.id}"),
-              direction: DismissDirection.endToStart,
+              direction: DismissDirection.horizontal,
               background: Container(
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                color: Colors.cyanAccent.withOpacity(0.15),
+                child: const Row(
+                  children: [
+                    Icon(Icons.arrow_forward_rounded, color: Colors.cyanAccent),
+                    SizedBox(width: 8),
+                    Text("À demain"),
+                  ],
+                ),
+              ),
+              secondaryBackground: Container(
                 alignment: Alignment.centerRight,
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 color: Colors.red.withOpacity(0.15),
                 child: const Icon(Icons.delete, color: Colors.red),
               ),
-              confirmDismiss: (_) async {
-                return await showDialog<bool>(
-                      context: context,
-                      builder: (_) => AlertDialog(
-                        title: Text("Supprimer « ${a.name} » ?"),
-                        content: Text(a.isHabit
-                            ? "Cette routine sera supprimée et retirée des plans."
-                            : "Cette activité sera supprimée et retirée des plans."),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, false),
-                            child: const Text("Annuler"),
-                          ),
-                          FilledButton(
-                            onPressed: () => Navigator.pop(context, true),
-                            child: const Text("Supprimer"),
-                          ),
-                        ],
+              confirmDismiss: (direction) async {
+                if (direction == DismissDirection.startToEnd) {
+                  final running = logic.runningActivity();
+                  if (running != null && running.id == a.id) {
+                    ScaffoldMessenger.of(context).clearSnackBars();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content:
+                            Text("Impossible de reporter l’activité en cours"),
                       ),
-                    ) ??
-                    false;
+                    );
+                    return false;
+                  }
+
+                  logic.snoozeActivityUntil(a.id, _endOfDay(now));
+                  setSB(() {});
+/* 
+                  ScaffoldMessenger.of(context).clearSnackBars();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("Reporté à demain : ${a.name}")),
+                  ); */
+
+                  return false;
+                }
+
+                if (direction == DismissDirection.endToStart) {
+                  return await showDialog<bool>(
+                        context: context,
+                        builder: (_) => AlertDialog(
+                          title: Text("Supprimer « ${a.name} » ?"),
+                          content: Text(a.isHabit
+                              ? "Cette routine sera supprimée et retirée des plans."
+                              : "Cette activité sera supprimée et retirée des plans."),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text("Annuler"),
+                            ),
+                            FilledButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text("Supprimer"),
+                            ),
+                          ],
+                        ),
+                      ) ??
+                      false;
+                }
+
+                return false;
               },
-              onDismissed: (_) {
-                logic.deleteActivityCascade(a.id); // ✅ ta méthode AppLogic
-                setSB(() {}); // ✅ refresh du sheet
-                ScaffoldMessenger.of(context).clearSnackBars();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text("Supprimé : ${a.name}")),
-                );
+              onDismissed: (direction) {
+                if (direction == DismissDirection.endToStart) {
+                  logic.deleteActivityCascade(a.id);
+                  setSB(() {});
+                  ScaffoldMessenger.of(context).clearSnackBars();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("Supprimé : ${a.name}")),
+                  );
+                }
               },
               child: child,
             );
@@ -3996,13 +4059,23 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               }),
               if (hiddenActivities.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                ExpansionTile(
+                ListTile(
                   leading: const Icon(Icons.snooze, size: 20),
                   title: Text(
                     "Cachées (${hiddenActivities.length})",
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
-                  children: hiddenActivities.map((a) {
+                  trailing: Icon(
+                    hiddenExpanded ? Icons.expand_less : Icons.expand_more,
+                  ),
+                  onTap: () {
+                    setSB(() {
+                      hiddenExpanded = !hiddenExpanded;
+                    });
+                  },
+                ),
+                if (hiddenExpanded)
+                  ...hiddenActivities.map((a) {
                     final content = ListTile(
                       title: Text(
                         a.name,
@@ -4017,19 +4090,19 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                         onPressed: () {
                           logic.unsnoozeActivity(a.id);
                           setSB(() {});
-                          ScaffoldMessenger.of(context).clearSnackBars();
+/*                           ScaffoldMessenger.of(context).clearSnackBars();
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                                content: Text("Activité réaffichée")),
-                          );
+                              content: Text("Activité réaffichée"),
+                            ),
+                          ); */
                         },
                       ),
                       onTap: () => _openActivityBottomSheet(a),
                     );
 
                     return _dismissibleActivityTile(a, content);
-                  }).toList(),
-                ),
+                  }),
               ],
               if (under.isEmpty && over.isEmpty)
                 const Padding(
