@@ -10,11 +10,11 @@ echo "=== Flutter version ==="
 flutter --version
 
 echo "=== Installing Flutter dependencies ==="
-cd "$CI_WORKSPACE"
+cd "$CI_PRIMARY_REPOSITORY_PATH"
 flutter pub get
 
 echo "=== Installing CocoaPods dependencies ==="
-cd "$CI_WORKSPACE/ios"
+cd "$CI_PRIMARY_REPOSITORY_PATH/ios"
 pod install
 
 echo "=== Pre-build done ==="
