@@ -2349,71 +2349,41 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     return Column(
       children: [
         SectionCard(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              // ✅ NestedGauge Temps (live) -> ValueListenableBuilder ici
-              ValueListenableBuilder<int>(
-                valueListenable: _tick,
-                builder: (context, _, __) {
-                  final now = DateTime.now();
-
-                  final g = _computeGlobalTimeGauges(now);
-
-                  return RepaintBoundary(
-                    child: NestedGauge(
-                      bigProgress: snapToFull(g.prog7),
-                      outerProgress: snapToFull(g.haloAbs),
-                      smallProgress: snapToFull(g.prog90),
-                      bigColor: _colorForProgress(g.prog7, context),
-                      outerColor: Colors.cyanAccent,
-                      smallColor: _colorForProgress(g.prog90, context),
-                      centerText: "",
-                      label: g.label,
-                      onTap: () async {
-                        debugPrint("TAP gauge -> opening sheet");
-                        final goNow = await _showDomainDetail(
-                            null, startCal, endCal, days,
-                            focus: 'time');
-                        debugPrint("SHEET result = $goNow");
-
-                        if (!mounted) return;
-                        if (goNow == true) {
-                          debugPrint("Switch tab -> NOW");
-                          setState(() => _tab = _Tab.now);
-                        }
-                      },
-                    ),
-                  );
-                },
-              ),
-              // ✅ NestedGauge Habits (si tu veux live ou juste à la minute) -> ValueListenableBuilder ici
-
-              ValueListenableBuilder<int>(
-                valueListenable: _tick,
-                builder: (context, _, __) {
-                  final h = _computeGlobalHabitsGauge(DateTime.now());
-
-                  return RepaintBoundary(
-                    child: NestedGauge(
-                      bigProgress: snapToFull(h.bigForGauge),
-                      bigColor: _colorForProgress(h.bigForGauge, context),
-                      smallProgress: snapToFull(h.rate90),
-                      outerProgress: snapToFull(h.outerPrimary),
-                      smallColor: _colorForProgress(h.rate90, context),
-                      outerColor: Colors.cyanAccent,
-                      centerText: "",
-                      label: h.label,
-                      size: 160,
-                      onTap: () => _showDomainDetail(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+          child: ValueListenableBuilder<int>(
+            valueListenable: _tick,
+            builder: (context, _, __) {
+              final now = DateTime.now();
+              final g = _computeGlobalTimeGauges(now);
+              final h = _computeGlobalHabitsGauge(now);
+              return Column(
+                children: [
+                  _buildProgressRow(
+                    icon: Icons.timer_outlined,
+                    label: 'Temps · ${g.label}',
+                    progress: g.prog7,
+                    color: _colorForProgress(g.prog7, context),
+                    onTap: () async {
+                      final goNow = await _showDomainDetail(
                           null, startCal, endCal, days,
-                          focus: 'habit'),
-                    ),
-                  );
-                },
-              ),
-            ],
+                          focus: 'time');
+                      if (!mounted) return;
+                      if (goNow == true) setState(() => _tab = _Tab.now);
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  _buildProgressRow(
+                    icon: Icons.repeat,
+                    label: 'Routines · ${h.label}',
+                    progress: h.bigForGauge,
+                    color: _colorForProgress(h.bigForGauge, context),
+                    onTap: () => _showDomainDetail(
+                        null, startCal, endCal, days,
+                        focus: 'habit'),
+                  ),
+                ],
+              );
+            },
           ),
         ),
         Expanded(
@@ -2526,52 +2496,30 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                 Text(d.name,
                     style: const TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                Column(
                   children: [
-                    RepaintBoundary(
-                      child: NestedGauge(
-                        bigProgress: snapToFull(bigProgressTime),
-                        outerProgress: snapToFull(outerProgressTime),
-                        smallProgress: snapToFull(share),
-                        bigColor: _colorForProgress(bigProgressTime, context),
-                        outerColor: Colors.cyanAccent,
-                        smallColor:
-                            _colorForProgress(smallProgressTime, context),
-                        centerText: "",
-                        label: timeLabel,
-                        size: 140,
-                        onTap: () async {
-                          final goNow = await _showDomainDetail(
-                            d,
-                            startCal,
-                            endCal,
-                            days,
-                            focus: 'time',
-                          );
-
-                          if (!mounted) return;
-                          if (goNow == true) {
-                            setState(() => _tab = _Tab.now);
-                          }
-                        },
-                      ),
-                    ),
-                    RepaintBoundary(
-                      child: NestedGauge(
-                        bigProgress: snapToFull(rateWeekD),
-                        outerProgress: snapToFull(rateTodayD),
-                        smallProgress: snapToFull(rate90D),
-                        centerText: "",
-                        bigColor: _colorForProgress(rateWeekD, context),
-                        outerColor: Colors.cyanAccent,
-                        smallColor: _colorForProgress(rate90D, context),
-                        label: routinesLabelD,
-                        size: 140,
-                        onTap: () => _showDomainDetail(
+                    _buildProgressRow(
+                      icon: Icons.timer_outlined,
+                      label: 'Temps · $timeLabel',
+                      progress: bigProgressTime,
+                      color: _colorForProgress(bigProgressTime, context),
+                      onTap: () async {
+                        final goNow = await _showDomainDetail(
                             d, startCal, endCal, days,
-                            focus: 'habit'),
-                      ),
+                            focus: 'time');
+                        if (!mounted) return;
+                        if (goNow == true) setState(() => _tab = _Tab.now);
+                      },
+                    ),
+                    const SizedBox(height: 6),
+                    _buildProgressRow(
+                      icon: Icons.repeat,
+                      label: 'Routines · $routinesLabelD',
+                      progress: rateWeekD,
+                      color: _colorForProgress(rateWeekD, context),
+                      onTap: () => _showDomainDetail(
+                          d, startCal, endCal, days,
+                          focus: 'habit'),
                     ),
                   ],
                 ),
@@ -4157,6 +4105,46 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     if (p >= 0.50) return Colors.green;
     if (p >= 0.25) return Colors.orange;
     return Colors.redAccent;
+  }
+
+  Widget _buildProgressRow({
+    required IconData icon,
+    required String label,
+    required double progress,
+    required Color color,
+    VoidCallback? onTap,
+  }) {
+    final p = progress.clamp(0.0, 1.0);
+    return GestureDetector(
+      onTap: onTap,
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.white.withOpacity(0.7))),
+                const SizedBox(height: 3),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: LinearProgressIndicator(
+                    value: p,
+                    minHeight: 4,
+                    backgroundColor: color.withOpacity(0.15),
+                    valueColor: AlwaysStoppedAnimation<Color>(color),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
