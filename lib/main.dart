@@ -2180,7 +2180,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     }
   }
 
-  ({double prog7, double haloAbs, double prog90, double bigAll, String label})
+  ({double prog7, double haloAbs, double prog90, double bigAll, String label, double todayProgress, String centerText, String subText})
       _computeGlobalTimeGauges(DateTime now) {
     final today = DateTime(now.year, now.month, now.day);
 
@@ -2227,12 +2227,31 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
     final labelAll = _fmtHoursHM(totalTodayHours);
 
+    // Pour GaugeRing : progression aujourd'hui vs objectif journalier
+    final todayProg = dailyTargetHoursAll > 0
+        ? (totalTodayHours / dailyTargetHoursAll).clamp(0.0, 1.5)
+        : 0.0;
+    final totalTodayMin = totalTodayDur.inMinutes;
+    final doneH = totalTodayMin ~/ 60;
+    final doneM = totalTodayMin % 60;
+    final centerTxt = doneH > 0
+        ? '${doneH}h${doneM.toString().padLeft(2, '0')}'
+        : '${doneM}min';
+    final goalH = dailyTargetMinAll ~/ 60;
+    final goalM = dailyTargetMinAll % 60;
+    final subTxt = goalH > 0
+        ? 'Objectif ${goalH}h${goalM > 0 ? goalM.toString().padLeft(2, '0') : ''}'
+        : 'Objectif ${dailyTargetMinAll}min';
+
     return (
       prog7: progTimeAll7,
       haloAbs: haloAllAbs,
       prog90: progTimeAll90,
       bigAll: bigAll,
       label: labelAll,
+      todayProgress: todayProg,
+      centerText: centerTxt,
+      subText: subTxt,
     );
   }
 
@@ -2241,6 +2260,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     double rate90,
     double outerPrimary,
     String label,
+    String centerText,
+    String subText,
   }) _computeGlobalHabitsGauge(DateTime now) {
     final today = DateTime(now.year, now.month, now.day);
     final tomorrow = today.add(const Duration(days: 1));
@@ -2330,6 +2351,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       rate90: rate90,
       outerPrimary: outerPrimary,
       label: label,
+      centerText: label,
+      subText: 'Routines',
     );
   }
 
@@ -2349,20 +2372,23 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     return Column(
       children: [
         SectionCard(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
           child: ValueListenableBuilder<int>(
             valueListenable: _tick,
             builder: (context, _, __) {
               final now = DateTime.now();
               final g = _computeGlobalTimeGauges(now);
               final h = _computeGlobalHabitsGauge(now);
-              return Column(
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  _buildProgressRow(
-                    icon: Icons.timer_outlined,
-                    label: 'Temps · ${g.label}',
-                    progress: g.prog7,
-                    color: _colorForProgress(g.prog7, context),
+                  GaugeRing(
+                    label: 'Temps',
+                    progress: g.todayProgress,
+                    centerText: g.centerText,
+                    subText: g.subText,
+                    color: _colorForProgress(g.todayProgress, context),
+                    size: 150,
                     onTap: () async {
                       final goNow = await _showDomainDetail(
                           null, startCal, endCal, days,
@@ -2371,12 +2397,13 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                       if (goNow == true) setState(() => _tab = _Tab.now);
                     },
                   ),
-                  const SizedBox(height: 10),
-                  _buildProgressRow(
-                    icon: Icons.repeat,
-                    label: 'Routines · ${h.label}',
-                    progress: h.bigForGauge,
-                    color: _colorForProgress(h.bigForGauge, context),
+                  GaugeRing(
+                    label: 'Routines',
+                    progress: h.outerPrimary,
+                    centerText: h.centerText,
+                    subText: h.subText,
+                    color: _colorForProgress(h.outerPrimary, context),
+                    size: 150,
                     onTap: () => _showDomainDetail(
                         null, startCal, endCal, days,
                         focus: 'habit'),
