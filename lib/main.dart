@@ -1721,10 +1721,13 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     );
 
     logic.state.activities.add(a);
-    logic.onChange();
 
-    // (optionnel) la mettre au plan du jour tout de suite
-    // widget.logic.ensureHabitPlannedToday(a.id);
+    // Matérialise immédiatement dans le plan du jour pour qu'elle soit déplaçable
+    final ymd = yyyymmdd(DateTime.now());
+    logic.ensurePlannedOnce(ymd, PlanKind.habit, a.id, a.name,
+        domainId: a.domainId);
+
+    logic.onChange();
 
     if (!mounted) return;
     setState(() {});
