@@ -9,8 +9,12 @@ export PATH="$PATH:$HOME/flutter/bin"
 echo "=== Flutter version ==="
 flutter --version
 
-echo "=== Installing dependencies ==="
+echo "=== Installing Flutter dependencies ==="
 cd "$CI_WORKSPACE"
 flutter pub get
+
+echo "=== Installing CocoaPods dependencies ==="
+cd "$CI_WORKSPACE/ios"
+pod install
 
 echo "=== Pre-build done ==="
