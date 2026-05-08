@@ -2850,7 +2850,90 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ListTile(title: Text(a.name)),
+              ListTile(
+                title: InkWell(
+                  onTap: () {
+                    String draft = a.name;
+                    showModalBottomSheet<void>(
+                      context: context,
+                      isScrollControlled: true,
+                      showDragHandle: true,
+                      builder: (ctx2) => SafeArea(
+                        child: SingleChildScrollView(
+                          padding: EdgeInsets.only(
+                            left: 16, right: 16, top: 12,
+                            bottom: MediaQuery.of(ctx2).viewInsets.bottom + 16,
+                          ),
+                          child: StatefulBuilder(
+                            builder: (ctx2, setLocal) => Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text("Renommer l'activité",
+                                    style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w800)),
+                                const SizedBox(height: 12),
+                                TextFormField(
+                                  initialValue: a.name,
+                                  autofocus: true,
+                                  textCapitalization:
+                                      TextCapitalization.sentences,
+                                  decoration: const InputDecoration(
+                                      hintText: "Nom de l'activité"),
+                                  onChanged: (v) =>
+                                      setLocal(() => draft = v),
+                                  onFieldSubmitted: (_) {
+                                    final v = draft.trim();
+                                    if (v.isNotEmpty) {
+                                      setState(() => a.name = v);
+                                      logic.onChange();
+                                    }
+                                    Navigator.pop(ctx2);
+                                    Navigator.pop(ctx, true);
+                                  },
+                                ),
+                                const SizedBox(height: 16),
+                                Row(children: [
+                                  Expanded(
+                                    child: OutlinedButton(
+                                      onPressed: () => Navigator.pop(ctx2),
+                                      child: const Text("Annuler"),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: FilledButton(
+                                      onPressed: () {
+                                        final v = draft.trim();
+                                        if (v.isNotEmpty) {
+                                          setState(() => a.name = v);
+                                          logic.onChange();
+                                        }
+                                        Navigator.pop(ctx2);
+                                        Navigator.pop(ctx, true);
+                                      },
+                                      child: const Text("Enregistrer"),
+                                    ),
+                                  ),
+                                ]),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                  child: Text(
+                    a.name,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ),
+              ),
               const Divider(height: 1),
               ListTile(
                 leading: const Icon(Icons.calendar_today_outlined),
@@ -3672,21 +3755,21 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               leading: SizedBox(
                 width: 82,
-                height: 64, // ✅ un peu plus haut
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     DigitalAvgText(
                       text: fmtHhMmFromHours(goalHoursPerDay),
-                      fontSize: 14,
+                      fontSize: 13,
                       suffix: "",
                       textColor: cs.onSurface.withOpacity(0.75),
                       bgOpacity: 0.03,
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4), // ✅
+                          horizontal: 8, vertical: 1),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     DigitalAvgText(
                       text: fmtHhMmFromHours(avg7),
                       fontSize: 11,
@@ -3694,7 +3777,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                       textColor: cs.primary.withOpacity(0.95),
                       bgOpacity: 0.05,
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 3), // ✅
+                          horizontal: 8, vertical: 1),
                     ),
                   ],
                 ),
