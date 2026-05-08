@@ -3718,13 +3718,13 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                   ),
                 ],
               ),
-              trailing: FilledButton.icon(
+              trailing: IconButton.filled(
                 onPressed: () {
                   logic.start(a.id);
-                  Navigator.pop(ctx, true); // ✅ renvoie "true" au parent
+                  Navigator.pop(ctx, true);
                 },
                 icon: const Icon(Icons.play_arrow),
-                label: const Text("Go"),
+                tooltip: "Démarrer",
               ),
             );
           }
@@ -4158,34 +4158,38 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     VoidCallback? onTap,
   }) {
     final p = progress.clamp(0.0, 1.0);
-    return GestureDetector(
+    return InkWell(
       onTap: onTap,
-      child: Row(
-        children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label,
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.white.withOpacity(0.7))),
-                const SizedBox(height: 3),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(2),
-                  child: LinearProgressIndicator(
-                    value: p,
-                    minHeight: 4,
-                    backgroundColor: color.withOpacity(0.15),
-                    valueColor: AlwaysStoppedAnimation<Color>(color),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.white.withOpacity(0.7))),
+                  const SizedBox(height: 3),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(2),
+                    child: LinearProgressIndicator(
+                      value: p,
+                      minHeight: 6,
+                      backgroundColor: color.withOpacity(0.15),
+                      valueColor: AlwaysStoppedAnimation<Color>(color),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
