@@ -3718,13 +3718,13 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                   ),
                 ],
               ),
-              trailing: IconButton.filled(
+              trailing: FilledButton.icon(
                 onPressed: () {
                   logic.start(a.id);
                   Navigator.pop(ctx, true);
                 },
                 icon: const Icon(Icons.play_arrow),
-                tooltip: "Démarrer",
+                label: const Text("Go"),
               ),
             );
           }
