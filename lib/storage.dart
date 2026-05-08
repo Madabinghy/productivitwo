@@ -1,6 +1,11 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'models.dart';
+
+// ─── Clé localStorage pour le web ───────────────────────────────────────────
+const _kWebKey = 'productivitwo_data';
 
 class FileStore {
   static const _fileName = 'productivitwo.json';
@@ -12,12 +17,52 @@ class FileStore {
 
   // NEW: supprime le fichier de données
   Future<void> wipe() async {
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_kWebKey);
+      return;
+    }
     final f = await _file();
     if (await f.exists()) {
       await f.delete();
     }
   }
 
+
+void _migrateLinkedActivities(AppState st) {
+  Domain? santeDomain;
+  for (final d in st.domains) {
+    if (d.name == 'Santé' || d.name == 'Sante') {
+      santeDomain = d;
+      break;
+    }
+  }
+  if (santeDomain == null) return;
+
+  // Trouve ou crée l'activité "Soin" dans Santé
+  Activity? soinAct;
+  for (final a in st.activities) {
+    if (a.domainId == santeDomain.id && a.name == 'Soin' && a.type == 'time') {
+      soinAct = a;
+      break;
+    }
+  }
+
+  if (soinAct == null) {
+    soinAct = Activity(domainId: santeDomain.id, name: 'Soin', type: 'time', goalMin: 1);
+    st.activities.add(soinAct);
+  }
+
+  // Lie Hygiène du matin et Hygiène du soir à Soin si pas encore fait
+  for (int i = 0; i < st.activities.length; i++) {
+    final a = st.activities[i];
+    if (!a.isHabit) continue;
+    if (a.name != 'Hygiène du matin' && a.name != 'Hygiène du soir') continue;
+    final linked = (a.linkedActivityId ?? '').trim();
+    if (linked.isNotEmpty) continue;
+    st.activities[i] = a.copyWith(linkedActivityId: soinAct.id);
+  }
+}
 
 void _cleanChecklists(AppState st) {
   for (final it in st.dayPlan) {
@@ -45,9 +90,6 @@ void _cleanChecklists(AppState st) {
 }
 
 Future<AppState> loadOrInitCleaner() async {
-  final f = await _file();
-  final bak = File('${f.path}.bak');
-
   AppState? tryDecode(String s) {
     final t = s.trim();
     if (t.isEmpty) return null;
@@ -58,19 +100,41 @@ Future<AppState> loadOrInitCleaner() async {
     }
   }
 
+  if (kIsWeb) {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_kWebKey);
+    if (raw != null) {
+      final st = tryDecode(raw);
+      if (st != null) {
+        _cleanChecklists(st);
+        await save(st);
+        return st;
+      }
+    }
+    final st = _seedMinimal();
+    _cleanChecklists(st);
+    await save(st);
+    return st;
+  }
+
+  final f = await _file();
+  final bak = File('${f.path}.bak');
+
   if (await f.exists()) {
     final main = tryDecode(await f.readAsString());
     if (main != null) {
+      _migrateLinkedActivities(main);
       _cleanChecklists(main);
-      await save(main); // ✅ réécrit propre
+      await save(main);
       return main;
     }
 
     if (await bak.exists()) {
       final b = tryDecode(await bak.readAsString());
       if (b != null) {
+        _migrateLinkedActivities(b);
         _cleanChecklists(b);
-        await save(b); // ✅ répare + nettoie
+        await save(b);
         return b;
       }
     }
@@ -88,9 +152,6 @@ Future<AppState> loadOrInitCleaner() async {
 }
 
   Future<AppState> loadOrInit() async {
-    final f = await _file();
-    final bak = File('${f.path}.bak');
-
     AppState? tryDecode(String s) {
       final t = s.trim();
       if (t.isEmpty) return null;
@@ -101,14 +162,34 @@ Future<AppState> loadOrInitCleaner() async {
       }
     }
 
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_kWebKey);
+      if (raw != null) {
+        final st = tryDecode(raw);
+        if (st != null) return st;
+      }
+      final st = _seedMinimal();
+      await save(st);
+      return st;
+    }
+
+    final f = await _file();
+    final bak = File('${f.path}.bak');
+
     if (await f.exists()) {
       final main = tryDecode(await f.readAsString());
-      if (main != null) return main;
+      if (main != null) {
+        _migrateLinkedActivities(main);
+        await save(main);
+        return main;
+      }
 
       if (await bak.exists()) {
         final b = tryDecode(await bak.readAsString());
         if (b != null) {
-          await save(b); // répare le main
+          _migrateLinkedActivities(b);
+          await save(b);
           return b;
         }
       }
@@ -157,6 +238,7 @@ Future<AppState> loadOrInitCleaner() async {
       int target = 1,
       bool manualTarget = true,
       bool autoTune = false,
+      String? linkedActivityId,
     }) =>
         Activity(
           domainId: domainId,
@@ -166,6 +248,7 @@ Future<AppState> loadOrInitCleaner() async {
           habitTarget: target,
           manualTarget: manualTarget,
           autoTune: autoTune,
+          linkedActivityId: linkedActivityId,
         );
 
     Activity weeklyCountHabit(
@@ -199,6 +282,8 @@ Future<AppState> loadOrInitCleaner() async {
         );
 
     // ========== Activités (time) ==========
+    final soinAct = timeAct(sante.id, 'Soin');
+
     final activities = <Activity>[
       // Spiritualité
       timeAct(spiritualite.id, 'Prier'),
@@ -218,6 +303,7 @@ Future<AppState> loadOrInitCleaner() async {
       timeAct(sport.id, 'Étirements'),
 
       // Santé
+      soinAct,
       timeAct(sante.id, 'Hygiène'),
       timeAct(sante.id, 'Cuisine'),
       timeAct(sante.id, 'Sommeil'),
@@ -242,8 +328,8 @@ Future<AppState> loadOrInitCleaner() async {
     // ========== Routines (habits) ==========
     final habits = <Activity>[
       // --- HYGIÈNE / SANTÉ ---
-      habit(sante.id, 'Hygiène du matin', freq: HabitFreq.daily),
-      habit(sante.id, 'Hygiène du soir', freq: HabitFreq.daily),
+      habit(sante.id, 'Hygiène du matin', freq: HabitFreq.daily, linkedActivityId: soinAct.id),
+      habit(sante.id, 'Hygiène du soir', freq: HabitFreq.daily, linkedActivityId: soinAct.id),
       habit(sante.id, 'Hygiène hebdomadaire', freq: HabitFreq.weekly),
       dailyCountHabit(
         sante.id,
@@ -685,11 +771,17 @@ Future<AppState> loadOrInitCleaner() async {
   }
 
 Future<void> save(AppState st) async {
+  final content = st.encode();
+
+  if (kIsWeb) {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kWebKey, content);
+    return;
+  }
+
   final f = await _file();
   final tmp = File('${f.path}.tmp');
   final bak = File('${f.path}.bak');
-
-  final content = st.encode();
 
   // 1) écrit dans tmp
   await tmp.writeAsString(content, flush: true);
