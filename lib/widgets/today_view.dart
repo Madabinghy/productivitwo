@@ -1659,7 +1659,13 @@ class _TodayViewState extends State<TodayView> {
                   Checkbox(
                     value: it.done,
                     onChanged: (v) {
-                      setState(() => it.done = v ?? false);
+                      final done = v ?? false;
+                      if (done && it.toPlan == true) {
+                        widget.logic.archiveAction(it);
+                        setState(() {});
+                        return;
+                      }
+                      setState(() => it.done = done);
                       widget.logic.onChange();
                     },
                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -3481,16 +3487,8 @@ class _NowTabState extends State<NowTab> {
                       tooltip: "Marquer fait",
                       icon: const Icon(Icons.check, size: 18),
                       onPressed: () {
-                        setState(() {
-                          a.done = true;
-
-                          // ✅ ARCHIVAGE AUTO si l’action appartient à une routine (donc "à prévoir")
-                          if (a.habitId != null) {
-                            a.archived = true;
-                          }
-                        });
-
-                        widget.logic.onChange();
+                        widget.logic.archiveAction(a);
+                        setState(() {});
                       },
                     ),
                   ],

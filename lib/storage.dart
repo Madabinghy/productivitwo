@@ -29,6 +29,18 @@ class FileStore {
   }
 
 
+void _migrateCoursesArchived(AppState st) {
+  if (st.coursesArchivedOnce) return;
+  for (final item in st.dayPlan) {
+    if (item.kind != PlanKind.action) continue;
+    if (item.toPlan != true) continue;
+    if (item.habitId == null || item.habitId!.isEmpty) continue;
+    item.archived = true;
+    item.done = false;
+  }
+  st.coursesArchivedOnce = true;
+}
+
 void _migrateLinkedActivities(AppState st) {
   Domain? santeDomain;
   for (final d in st.domains) {
@@ -123,6 +135,7 @@ Future<AppState> loadOrInitCleaner() async {
   if (await f.exists()) {
     final main = tryDecode(await f.readAsString());
     if (main != null) {
+      _migrateCoursesArchived(main);
       _migrateLinkedActivities(main);
       _cleanChecklists(main);
       await save(main);
@@ -132,6 +145,7 @@ Future<AppState> loadOrInitCleaner() async {
     if (await bak.exists()) {
       final b = tryDecode(await bak.readAsString());
       if (b != null) {
+        _migrateCoursesArchived(b);
         _migrateLinkedActivities(b);
         _cleanChecklists(b);
         await save(b);
@@ -180,6 +194,7 @@ Future<AppState> loadOrInitCleaner() async {
     if (await f.exists()) {
       final main = tryDecode(await f.readAsString());
       if (main != null) {
+        _migrateCoursesArchived(main);
         _migrateLinkedActivities(main);
         await save(main);
         return main;
@@ -188,6 +203,7 @@ Future<AppState> loadOrInitCleaner() async {
       if (await bak.exists()) {
         final b = tryDecode(await bak.readAsString());
         if (b != null) {
+          _migrateCoursesArchived(b);
           _migrateLinkedActivities(b);
           await save(b);
           return b;
@@ -639,7 +655,7 @@ Future<AppState> loadOrInitCleaner() async {
         title: title,
         yyyymmdd: yyyymmdd(today),
         done: false,
-        archived: false,
+        archived: true,
         toPlan: true,
         doneCount: 0,
         allDay: true,

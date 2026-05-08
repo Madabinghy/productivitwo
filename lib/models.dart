@@ -139,7 +139,7 @@ class DayPlanItem {
 
     return DayPlanItem(
       id: j['id'],
-      kind: kind, // ✅ ok
+      kind: kind,
       refId: refId,
       habitId: habitId,
       domainId: j['domainId'],
@@ -148,6 +148,25 @@ class DayPlanItem {
       yyyymmdd: j['yyyymmdd'],
       done: done,
       doneCount: doneCount,
+      allDay: _asBool(j['allDay']),
+      isNowFocus: _asBool(j['isNowFocus']),
+      order: (j['order'] as num?)?.toInt() ?? 0,
+      toPlan: _asBool(j['toPlan']),
+      archived: _asBool(j['archived']),
+      snoozeUntil: j['snoozeUntil'] != null
+          ? DateTime.tryParse(j['snoozeUntil'])
+          : null,
+      status: ActionStatus.values.firstWhere(
+        (s) => s.name == j['status'],
+        orElse: () => ActionStatus.active,
+      ),
+      createdAt: j['createdAt'] != null
+          ? DateTime.tryParse(j['createdAt']) ?? DateTime.now()
+          : null,
+      checklist: (j['checklist'] as List?)
+              ?.map((c) => ChecklistItem.from(c))
+              .toList() ??
+          [],
     );
   }
 
@@ -681,6 +700,7 @@ class AppState {
   FilterState filters;
 
   List<ActivityLog> activityLogs;
+  bool coursesArchivedOnce;
 
   AppState({
     required this.domains,
@@ -706,6 +726,7 @@ class AppState {
     Map<String, Map<String, List<int>>>? habitChecklistDone,
     List<ActivityLog>? activityLogs,
     FilterState? filters,
+    this.coursesArchivedOnce = false,
   })  : snoozedUntil = snoozedUntil ?? <String, String>{},
         goals = goals ?? <Goal>[],
         inbox = inbox ?? <InboxItem>[],
@@ -752,6 +773,7 @@ class AppState {
         'habitChecklistDone': habitChecklistDone,
         'activityLogs': activityLogs.map((e) => e.toJson()).toList(),
         'filters': filters.toJson(),
+        'coursesArchivedOnce': coursesArchivedOnce,
       };
 
   static AppState from(Map j) {
@@ -816,6 +838,7 @@ class AppState {
       habitChecklistByHabitId: _mapSL(j['habitChecklistByHabitId']),
       habitChecklistDone: _mapSMapListInt(j['habitChecklistDone']),
       filters: FilterState.from(j['filters']),
+      coursesArchivedOnce: (j['coursesArchivedOnce'] as bool?) ?? false,
     );
   }
 
