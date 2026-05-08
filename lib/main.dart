@@ -3988,6 +3988,22 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             over = baseVisible.where((a) => reached(a)).toList();
           }
 
+          // ---------- Lock d'ordre visuel pendant +/− (2ème passe) ----------
+          if (_lockActive) {
+            final byId = {for (final a in baseVisible) a.id: a};
+            under = _lockUnderIds
+                .map((id) => byId[id])
+                .whereType<Activity>()
+                .toList();
+            over = _lockOverIds
+                .map((id) => byId[id])
+                .whereType<Activity>()
+                .toList();
+          } else {
+            _lockUnderIds = under.map((a) => a.id).toList();
+            _lockOverIds = over.map((a) => a.id).toList();
+          }
+
           // ✅ RE-CALC FINAL des sections visibles / cachées (à faire après under/over + lock)
           final nowS = DateTime.now();
 
