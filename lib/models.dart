@@ -701,6 +701,7 @@ class AppState {
 
   List<ActivityLog> activityLogs;
   bool coursesArchivedOnce;
+  bool linkedActivitiesMigratedOnce;
 
   AppState({
     required this.domains,
@@ -727,6 +728,7 @@ class AppState {
     List<ActivityLog>? activityLogs,
     FilterState? filters,
     this.coursesArchivedOnce = false,
+    this.linkedActivitiesMigratedOnce = false,
   })  : snoozedUntil = snoozedUntil ?? <String, String>{},
         goals = goals ?? <Goal>[],
         inbox = inbox ?? <InboxItem>[],
@@ -774,6 +776,7 @@ class AppState {
         'activityLogs': activityLogs.map((e) => e.toJson()).toList(),
         'filters': filters.toJson(),
         'coursesArchivedOnce': coursesArchivedOnce,
+        'linkedActivitiesMigratedOnce': linkedActivitiesMigratedOnce,
       };
 
   static AppState from(Map j) {
@@ -839,6 +842,7 @@ class AppState {
       habitChecklistDone: _mapSMapListInt(j['habitChecklistDone']),
       filters: FilterState.from(j['filters']),
       coursesArchivedOnce: (j['coursesArchivedOnce'] as bool?) ?? false,
+      linkedActivitiesMigratedOnce: (j['linkedActivitiesMigratedOnce'] as bool?) ?? false,
     );
   }
 

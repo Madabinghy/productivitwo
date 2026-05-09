@@ -42,6 +42,8 @@ void _migrateCoursesArchived(AppState st) {
 }
 
 void _migrateLinkedActivities(AppState st) {
+  if (st.linkedActivitiesMigratedOnce) return;
+
   Domain? santeDomain;
   for (final d in st.domains) {
     if (d.name == 'Santé' || d.name == 'Sante') {
@@ -74,6 +76,8 @@ void _migrateLinkedActivities(AppState st) {
     if (linked.isNotEmpty) continue;
     st.activities[i] = a.copyWith(linkedActivityId: soinAct.id);
   }
+
+  st.linkedActivitiesMigratedOnce = true;
 }
 
 void _cleanChecklists(AppState st) {
