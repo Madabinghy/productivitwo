@@ -90,7 +90,7 @@ class _GoalsViewState extends State<GoalsView> {
                   ),
                   if (_showDone)
                     for (final g in doneGoals)
-                      _GoalCard(
+                      GoalCard(
                         goal: g,
                         muted: true,
                         onTap: null,
@@ -132,7 +132,7 @@ class _GoalsViewState extends State<GoalsView> {
       ),
       SliverList(
         delegate: SliverChildBuilderDelegate(
-          (ctx, i) => _GoalCard(
+          (ctx, i) => GoalCard(
             goal: goals[i],
             muted: false,
             onTap: () => _openGoalSheet(context, goals[i]),
@@ -251,15 +251,180 @@ class _GoalsViewState extends State<GoalsView> {
   }
 }
 
+// ── Sheet objectifs d'un domaine ─────────────────────────────────────────────
+
+class DomainGoalsSheet extends StatefulWidget {
+  final Domain domain;
+  final AppLogic logic;
+  final AppState state;
+
+  const DomainGoalsSheet({
+    super.key,
+    required this.domain,
+    required this.logic,
+    required this.state,
+  });
+
+  @override
+  State<DomainGoalsSheet> createState() => _DomainGoalsSheetState();
+}
+
+class _DomainGoalsSheetState extends State<DomainGoalsSheet> {
+  AppLogic get logic => widget.logic;
+  AppState get st => widget.state;
+  Domain get domain => widget.domain;
+
+  @override
+  Widget build(BuildContext context) {
+    final activeGoals = st.goals
+        .where((g) => g.domainId == domain.id && g.status == 'active')
+        .toList();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 0, 0, 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 8, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Objectifs · ${domain.name}',
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                TextButton.icon(
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Ajouter'),
+                  onPressed: () => _addGoalDialog(context),
+                ),
+              ],
+            ),
+          ),
+          if (activeGoals.isEmpty)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 8, 20, 16),
+              child: Text(
+                'Aucun objectif actif pour ce domaine.',
+                style: TextStyle(color: Colors.grey),
+              ),
+            )
+          else
+            ...activeGoals.map((g) => GoalCard(
+                  goal: g,
+                  muted: false,
+                  onTap: () => _openGoalSheet(context, g),
+                  onArchive: () => _confirmArchive(context, g),
+                )),
+        ],
+      ),
+    );
+  }
+
+  void _openGoalSheet(BuildContext context, Goal goal) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => _GoalDetailSheet(
+        goal: goal,
+        logic: logic,
+        state: st,
+        onChanged: () => setState(() {}),
+      ),
+    );
+  }
+
+  Future<void> _addGoalDialog(BuildContext context) async {
+    final titleCtrl = TextEditingController();
+    final actionCtrl = TextEditingController();
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Nouvel objectif · ${domain.name}'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: titleCtrl,
+                autofocus: true,
+                decoration:
+                    const InputDecoration(labelText: 'Objectif'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: actionCtrl,
+                decoration: const InputDecoration(
+                    labelText: 'Première action (optionnel)'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
+          FilledButton(
+            onPressed: () {
+              final title = titleCtrl.text.trim();
+              if (title.isEmpty) return;
+              logic.createGoal(
+                domainId: domain.id,
+                title: title,
+                firstAction: actionCtrl.text.trim().isEmpty
+                    ? null
+                    : actionCtrl.text.trim(),
+              );
+              setState(() {});
+              Navigator.pop(ctx);
+            },
+            child: const Text('Ajouter'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmArchive(BuildContext context, Goal goal) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Archiver ?'),
+        content: Text('Archiver "${goal.title}" ?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annuler')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Archiver'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      logic.archiveGoal(goal.id);
+      setState(() {});
+    }
+  }
+}
+
 // ── Card résumé ──────────────────────────────────────────────────────────────
 
-class _GoalCard extends StatelessWidget {
+class GoalCard extends StatelessWidget {
   final Goal goal;
   final bool muted;
   final VoidCallback? onTap;
   final VoidCallback? onArchive;
 
-  const _GoalCard({
+  const GoalCard({
+    super.key,
     required this.goal,
     required this.muted,
     required this.onTap,

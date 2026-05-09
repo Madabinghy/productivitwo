@@ -17,7 +17,7 @@ import 'package:productivitwo_v1/storage.dart';
 import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
 
-enum _Tab { dashboard, now, today, goals, stats }
+enum _Tab { dashboard, now, today, stats }
 
 class MiniRingThick extends StatelessWidget {
   const MiniRingThick({
@@ -1543,10 +1543,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         return 1;
       case _Tab.today:
         return 2;
-      case _Tab.goals:
-        return 3;
       case _Tab.stats:
-        return 4;
+        return 3;
     }
   }
 
@@ -1558,8 +1556,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         return _Tab.today;
       case 2:
         return _Tab.now;
-      case 3:
-        return _Tab.goals;
       default:
         return _Tab.stats;
     }
@@ -1636,7 +1632,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
           },
           onGoNowTab: () => setState(() => _tab = _Tab.now),
         ),
-        GoalsView(logic: logic, state: st),
         StatsView(logic: logic, state: st, selectedDomainId: null),
       ],
     );
@@ -1756,8 +1751,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         return false;
       case _Tab.stats:
         return false;
-      case _Tab.goals:
-        return false; // GoalsView a son propre FAB
       default:
         return false;
     }
@@ -2144,7 +2137,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _tabIndex(_tab),
         onTap: (i) => setState(() => _tab = _tabFromIndex(i)),
-        type: BottomNavigationBarType.fixed, // important à 4 tabs
+        type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(
               icon: Icon(Icons.dashboard), label: 'Dashboard'),
@@ -2152,8 +2145,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               icon: Icon(Icons.checklist), label: 'À faire'),
           BottomNavigationBarItem(
               icon: Icon(Icons.play_arrow), label: 'Maintenant'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.flag_outlined), label: 'Objectifs'),
           BottomNavigationBarItem(
               icon: Icon(Icons.show_chart), label: 'Stats'),
         ],
@@ -2527,6 +2518,22 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
           final share = domainShare90(d.id);
           final timeLabel = _fmtHoursHM(doneTodayHoursD);
 
+          // ---- GOALS domain
+          final domainGoals = _state!.goals
+              .where((g) => g.domainId == d.id && g.status == 'active')
+              .toList();
+          final goalCount = domainGoals.length;
+          final totalActions =
+              domainGoals.fold<int>(0, (s, g) => s + g.stepsTotal);
+          final doneActions =
+              domainGoals.fold<int>(0, (s, g) => s + g.stepsDone);
+          final goalsProgress = totalActions > 0
+              ? (doneActions / totalActions).clamp(0.0, 1.0)
+              : 0.0;
+          final goalsLabel = goalCount == 0
+              ? 'Objectifs'
+              : 'Objectifs · $goalCount actif${goalCount > 1 ? 's' : ''}';
+
           return SectionCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2558,6 +2565,25 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                       onTap: () => _showDomainDetail(
                           d, startCal, endCal, days,
                           focus: 'habit'),
+                    ),
+                    const SizedBox(height: 6),
+                    _buildProgressRow(
+                      icon: Icons.flag_outlined,
+                      label: goalsLabel,
+                      progress: goalsProgress,
+                      color: _colorForProgress(goalsProgress, context),
+                      onTap: () => showModalBottomSheet(
+                        context: context,
+                        isScrollControlled: true,
+                        showDragHandle: true,
+                        builder: (_) => DomainGoalsSheet(
+                          domain: d,
+                          logic: logic,
+                          state: _state!,
+                        ),
+                      ).then((_) {
+                        if (mounted) setState(() {});
+                      }),
                     ),
                   ],
                 ),
