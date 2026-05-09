@@ -2,6 +2,12 @@
 
 set -e
 
+# Redirige les téléchargements Flutter (Dart SDK, artifacts) vers le miroir
+# officiel Flutter pour contourner le blocage de storage.googleapis.com
+# sur Xcode Cloud.
+export FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
+export PUB_HOSTED_URL=https://pub.flutter-io.cn
+
 echo "=== Installing Flutter ==="
 git clone https://github.com/flutter/flutter.git --depth 1 -b stable "$HOME/flutter"
 export PATH="$PATH:$HOME/flutter/bin"
