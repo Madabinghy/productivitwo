@@ -10,13 +10,14 @@ import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
 import 'package:productivitwo_v1/widgets/habit_tile_full.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/widgets/today_view.dart';
+import 'package:productivitwo_v1/widgets/goals_view.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/storage.dart';
 import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
 
-enum _Tab { dashboard, now, today, stats }
+enum _Tab { dashboard, now, today, goals, stats }
 
 class MiniRingThick extends StatelessWidget {
   const MiniRingThick({
@@ -1542,8 +1543,10 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         return 1;
       case _Tab.today:
         return 2;
-      case _Tab.stats:
+      case _Tab.goals:
         return 3;
+      case _Tab.stats:
+        return 4;
     }
   }
 
@@ -1555,6 +1558,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         return _Tab.today;
       case 2:
         return _Tab.now;
+      case 3:
+        return _Tab.goals;
       default:
         return _Tab.stats;
     }
@@ -1631,6 +1636,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
           },
           onGoNowTab: () => setState(() => _tab = _Tab.now),
         ),
+        GoalsView(logic: logic, state: st),
         StatsView(logic: logic, state: st, selectedDomainId: null),
       ],
     );
@@ -1750,6 +1756,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         return false;
       case _Tab.stats:
         return false;
+      case _Tab.goals:
+        return false; // GoalsView a son propre FAB
       default:
         return false;
     }
@@ -2144,7 +2152,10 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               icon: Icon(Icons.checklist), label: 'À faire'),
           BottomNavigationBarItem(
               icon: Icon(Icons.play_arrow), label: 'Maintenant'),
-          BottomNavigationBarItem(icon: Icon(Icons.show_chart), label: 'Stats'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.flag_outlined), label: 'Objectifs'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.show_chart), label: 'Stats'),
         ],
       ),
 

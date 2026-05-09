@@ -1579,6 +1579,11 @@ class _TodayViewState extends State<TodayView> {
     }
 
     String _actionSubtitle(DayPlanItem it) {
+      if (it.goalActionId != null) {
+        final g = widget.state.goals.firstWhereOrNull(
+            (g) => g.actions.any((a) => a.id == it.goalActionId));
+        if (g != null) return '🎯 ${g.title}';
+      }
       final actId = (it.activityId ?? '').trim();
       if (actId.isEmpty) return "Inbox";
       final a = widget.state.activities.firstWhereOrNull((x) => x.id == actId);

@@ -1350,14 +1350,14 @@ class AppLogic {
     required String domainId,
     required String title,
     String? activityId,
-    String? nextAction,
+    String? firstAction,
     String? context,
   }) {
     final g = createGoal(
       domainId: domainId,
       title: title,
       activityId: activityId,
-      nextAction: nextAction,
+      firstAction: firstAction,
       context: context,
     );
     inboxRemove(inboxId);
@@ -1369,33 +1369,101 @@ class AppLogic {
     required String domainId,
     required String title,
     String? activityId,
-    String? nextAction,
+    String? firstAction,
     String? context,
   }) {
     final g = Goal(
       domainId: domainId,
       title: title,
       activityId: activityId,
-      nextAction: nextAction,
       context: context,
-      status: 'active', // <- ajuste si ton modèle utilise un enum/const
-      createdAt: DateTime.now(), // <- si ton modèle a ce champ
+      status: 'active',
+      createdAt: DateTime.now(),
     );
+    if (firstAction != null && firstAction.trim().isNotEmpty) {
+      g.actions.add(GoalAction(title: firstAction.trim()));
+    }
     state.goals.add(g);
     onChange();
     return g;
   }
 
-  void setGoalNextAction(String goalId, String? nextAction) {
+  void addGoalAction(String goalId, String title) {
     final g = state.goals.firstWhere((x) => x.id == goalId);
-    g.nextAction = nextAction;
+    g.actions.add(GoalAction(title: title.trim()));
+    onChange();
+  }
+
+  void deleteGoalAction(String goalId, String actionId) {
+    final g = state.goals.firstWhere((x) => x.id == goalId);
+    g.actions.removeWhere((a) => a.id == actionId);
+    // Retire aussi les DayPlanItems liés
+    state.dayPlan.removeWhere((it) => it.goalActionId == actionId);
+    onChange();
+  }
+
+  void toggleGoalAction(String goalId, String actionId, bool done) {
+    final g = state.goals.firstWhere((x) => x.id == goalId);
+    final idx = g.actions.indexWhere((a) => a.id == actionId);
+    if (idx < 0) return;
+    g.actions[idx].done = done;
+    g.actions[idx].doneAt = done ? DateTime.now() : null;
+    // Synchronise les DayPlanItems liés
+    for (final it in state.dayPlan) {
+      if (it.goalActionId == actionId) it.done = done;
+    }
+    onChange();
+  }
+
+  void reorderGoalActions(String goalId, int oldIndex, int newIndex) {
+    final g = state.goals.firstWhere((x) => x.id == goalId);
+    if (newIndex > oldIndex) newIndex -= 1;
+    final item = g.actions.removeAt(oldIndex);
+    g.actions.insert(newIndex, item);
+    onChange();
+  }
+
+  void setGoalLinkedActivity(String goalId, String? activityId) {
+    final g = state.goals.firstWhere((x) => x.id == goalId);
+    g.activityId = activityId;
+    onChange();
+  }
+
+  void toggleGoalLinkedHabit(String goalId, String habitId) {
+    final g = state.goals.firstWhere((x) => x.id == goalId);
+    if (g.linkedHabitIds.contains(habitId)) {
+      g.linkedHabitIds.remove(habitId);
+    } else {
+      g.linkedHabitIds.add(habitId);
+    }
+    onChange();
+  }
+
+  void addGoalActionToToday(String goalId, String actionId) {
+    final g = state.goals.firstWhere((x) => x.id == goalId);
+    final a = g.actions.firstWhere((x) => x.id == actionId);
+    final ymd = yyyymmdd(DateTime.now());
+    // Évite les doublons
+    if (state.dayPlan.any((it) => it.goalActionId == actionId)) return;
+    final maxOrder = state.dayPlan
+        .where((it) => it.yyyymmdd == ymd)
+        .fold<int>(0, (m, it) => it.order > m ? it.order : m);
+    state.dayPlan.add(DayPlanItem(
+      id: _uuid.v4(),
+      kind: PlanKind.action,
+      title: a.title,
+      yyyymmdd: ymd,
+      domainId: g.domainId,
+      goalActionId: actionId,
+      order: maxOrder + 1,
+    ));
     onChange();
   }
 
   void markGoalDone(String goalId) {
     final g = state.goals.firstWhere((x) => x.id == goalId);
     g.status = 'done';
-    g.doneAt = DateTime.now(); // si ton modèle a ce champ
+    g.doneAt = DateTime.now();
     onChange();
   }
 
@@ -3358,28 +3426,12 @@ class AppLogic {
 // 2) Sinon, si effort estimé (en minutes) + activité liée → calcule via sessions temps
 // 3) Sinon, pas de métrique (ratio/label = null)
   ({double? ratio, String? label}) goalProgress(Goal g, {DateTime? now}) {
-    // 1) Étapes
-    if (g.stepsPlanned != null && g.stepsPlanned! > 0) {
-      final planned = g.stepsPlanned!;
-      final done = g.stepsDone.clamp(0, planned);
-      final r = (done / planned).clamp(0.0, 1.0);
-      return (ratio: r, label: "Étapes ${done}/${planned}");
+    final total = g.stepsTotal;
+    if (total > 0) {
+      final done = g.stepsDone;
+      final r = (done / total).clamp(0.0, 1.0);
+      return (ratio: r, label: "$done/$total actions");
     }
-
-    // 2) Effort Temps (nécessite une activité liée et une estimation en minutes)
-    if (g.effortEstimateMin != null &&
-        g.effortEstimateMin! > 0 &&
-        g.activityId != null) {
-      final start = g.createdAt; // début de l’obj (supposé présent dans Goal)
-      final end = now ?? DateTime.now();
-      final spent =
-          totalForRangeByActivity(g.activityId!, start, end).inMinutes;
-      final est = g.effortEstimateMin!;
-      final r = (spent / est).clamp(0.0, 1.0);
-      return (ratio: r, label: "Effort ${spent}/${est}m");
-    }
-
-    // 3) Pas de métrique mesurable pour l’instant
     return (ratio: null, label: null);
   }
 
@@ -3406,20 +3458,7 @@ class AppLogic {
 
 // ========= GOALS: incrémenter/décrémenter le nombre d’étapes =========
   void incGoalStep(String goalId, {int delta = 1}) {
-    final i = state.goals.indexWhere((x) => x.id == goalId);
-    if (i < 0) return;
-    final g = state.goals[i];
-
-    // stepsPlanned peut être null → on clamp seulement sur 0..(planned?) si présent
-    if (g.stepsPlanned != null) {
-      final maxSteps = g.stepsPlanned!;
-      g.stepsDone = (g.stepsDone + delta).clamp(0, maxSteps);
-    } else {
-      // pas de plafond connu : clamp 0..999999 (ou ce que tu veux)
-      g.stepsDone = (g.stepsDone + delta).clamp(0, 999999);
-    }
-
-    onChange(); // persiste + notifie l’UI
+    // stepsDone est dérivé de actions — no-op, gardé pour compatibilité
   }
 
 // Cible active (selon la fréquence courante de la routine)
@@ -3755,9 +3794,20 @@ extension TodayLogic on AppLogic {
     // ACTION → cochée = supprimée
     if (it.kind == PlanKind.action) {
       if (value) {
+        // Marque la GoalAction correspondante comme faite
+        if (it.goalActionId != null) {
+          for (final g in state.goals) {
+            final ai = g.actions.indexWhere((a) => a.id == it.goalActionId);
+            if (ai >= 0) {
+              g.actions[ai].done = true;
+              g.actions[ai].doneAt = DateTime.now();
+              break;
+            }
+          }
+        }
         final removed = state.dayPlan.removeAt(idx);
         onChange();
-        return removed; // <-- pour annuler
+        return removed;
       }
       return null;
     }

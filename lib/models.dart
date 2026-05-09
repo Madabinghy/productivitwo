@@ -50,6 +50,7 @@ class DayPlanItem {
   String? domainId;
   String? activityId;
   String? habitId;
+  String? goalActionId;
   String title;
   String yyyymmdd;
   bool done;
@@ -73,6 +74,7 @@ class DayPlanItem {
     this.domainId,
     this.activityId,
     this.habitId,
+    this.goalActionId,
     required this.title,
     required this.yyyymmdd,
     this.done = false,
@@ -99,6 +101,7 @@ class DayPlanItem {
         'domainId': domainId,
         'activityId': activityId,
         'habitId': habitId,
+        'goalActionId': goalActionId,
         'title': title,
         'yyyymmdd': yyyymmdd,
         'done': done,
@@ -142,6 +145,7 @@ class DayPlanItem {
       kind: kind,
       refId: refId,
       habitId: habitId,
+      goalActionId: j['goalActionId'] as String?,
       domainId: j['domainId'],
       activityId: j['activityId'],
       title: j['title'] ?? '',
@@ -233,19 +237,40 @@ class InboxItem {
 
 // --- OBJECTIFS (GTD light) ---
 // status: 'active' | 'done' | 'archived'
-class Goal {
-  String id, domainId, title;
-  String status; // 'active' par défaut
-  String? activityId; // activité support (optionnel)
-  String? nextAction; // une seule "prochaine action"
-  String? context; // ex: "maison", "travail" (optionnel)
-  DateTime createdAt;
+class GoalAction {
+  String id;
+  String title;
+  bool done;
   DateTime? doneAt;
 
-  int? effortEstimateMin; // estimation totale en minutes (ex: 600 = 10 h)
-  int? stepsPlanned; // nb d'étapes prévues (ex: 5 chapitres)
-  int stepsDone; // nb d'étapes réalisées
-  DateTime? dueDate; // (optionnel) pour plus tard
+  GoalAction({String? id, required this.title, this.done = false, this.doneAt})
+      : id = id ?? _uuid.v4();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'done': done,
+        'doneAt': doneAt?.toIso8601String(),
+      };
+
+  static GoalAction from(Map j) => GoalAction(
+        id: j['id'],
+        title: j['title'] ?? '',
+        done: j['done'] as bool? ?? (j['doneAt'] != null),
+        doneAt: j['doneAt'] != null ? DateTime.tryParse(j['doneAt']) : null,
+      );
+}
+
+class Goal {
+  String id, domainId, title;
+  String status;
+  String? activityId;
+  List<String> linkedHabitIds;
+  String? context;
+  DateTime createdAt;
+  DateTime? doneAt;
+  DateTime? dueDate;
+  List<GoalAction> actions;
 
   Goal({
     String? id,
@@ -253,16 +278,22 @@ class Goal {
     required this.title,
     this.status = 'active',
     this.activityId,
-    this.nextAction,
+    List<String>? linkedHabitIds,
     this.context,
     DateTime? createdAt,
     this.doneAt,
-    this.effortEstimateMin,
-    this.stepsPlanned,
-    this.stepsDone = 0,
     this.dueDate,
+    List<GoalAction>? actions,
   })  : id = id ?? _uuid.v4(),
-        createdAt = createdAt ?? DateTime.now();
+        createdAt = createdAt ?? DateTime.now(),
+        linkedHabitIds = linkedHabitIds ?? [],
+        actions = actions ?? [];
+
+  GoalAction? get nextAction =>
+      actions.where((a) => !a.done).firstOrNull;
+
+  int get stepsDone => actions.where((a) => a.done).length;
+  int get stepsTotal => actions.length;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -270,31 +301,52 @@ class Goal {
         'title': title,
         'status': status,
         'activityId': activityId,
-        'nextAction': nextAction,
+        'linkedHabitIds': linkedHabitIds,
         'context': context,
         'createdAt': createdAt.toIso8601String(),
         'doneAt': doneAt?.toIso8601String(),
-        'effortEstimateMin': effortEstimateMin,
-        'stepsPlanned': stepsPlanned,
-        'stepsDone': stepsDone,
         'dueDate': dueDate?.toIso8601String(),
+        'actions': actions.map((a) => a.toJson()).toList(),
       };
 
-  static Goal from(Map j) => Goal(
-        id: j['id'],
-        domainId: j['domainId'],
-        title: j['title'],
-        status: j['status'] ?? 'active',
-        activityId: j['activityId'],
-        nextAction: j['nextAction'],
-        context: j['context'],
-        createdAt: DateTime.parse(j['createdAt']),
-        doneAt: j['doneAt'] != null ? DateTime.parse(j['doneAt']) : null,
-        effortEstimateMin: j['effortEstimateMin'],
-        stepsPlanned: j['stepsPlanned'],
-        stepsDone: (j['stepsDone'] ?? 0),
-        dueDate: j['dueDate'] != null ? DateTime.parse(j['dueDate']) : null,
-      );
+  static Goal from(Map j) {
+    // Migration : ancien format avait nextAction (String) + doneActions (List)
+    final List<GoalAction> actions = [];
+    final rawDone = j['doneActions'] as List?;
+    if (rawDone != null) {
+      for (final e in rawDone) {
+        actions.add(GoalAction.from({...e, 'done': true}));
+      }
+    }
+    final rawActions = j['actions'] as List?;
+    if (rawActions != null) {
+      for (final e in rawActions) {
+        actions.add(GoalAction.from(e));
+      }
+    }
+    final oldNext = j['nextAction'] as String?;
+    if (oldNext != null &&
+        oldNext.isNotEmpty &&
+        !actions.any((a) => !a.done)) {
+      actions.add(GoalAction(title: oldNext, done: false));
+    }
+    return Goal(
+      id: j['id'],
+      domainId: j['domainId'],
+      title: j['title'],
+      status: j['status'] ?? 'active',
+      activityId: j['activityId'],
+      linkedHabitIds: (j['linkedHabitIds'] as List?)
+              ?.map((e) => e as String)
+              .toList() ??
+          [],
+      context: j['context'],
+      createdAt: DateTime.parse(j['createdAt']),
+      doneAt: j['doneAt'] != null ? DateTime.parse(j['doneAt']) : null,
+      dueDate: j['dueDate'] != null ? DateTime.parse(j['dueDate']) : null,
+      actions: actions,
+    );
+  }
 }
 
 /// --- DOMAINES ---
