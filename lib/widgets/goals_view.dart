@@ -733,6 +733,11 @@ class _GoalDetailSheetState extends State<_GoalDetailSheet>
                   setState(() {});
                   widget.onChanged();
                 },
+                onRemoveFromToday: () {
+                  logic.removeGoalActionFromToday(a.id);
+                  setState(() {});
+                  widget.onChanged();
+                },
                 onDelete: () {
                   logic.deleteGoalAction(goal.id, a.id);
                   setState(() {});
@@ -944,6 +949,7 @@ class _ActionTile extends StatelessWidget {
   final bool alreadyInToday;
   final void Function(bool) onToggle;
   final VoidCallback onAddToToday;
+  final VoidCallback onRemoveFromToday;
   final VoidCallback onDelete;
 
   const _ActionTile({
@@ -953,6 +959,7 @@ class _ActionTile extends StatelessWidget {
     required this.alreadyInToday,
     required this.onToggle,
     required this.onAddToToday,
+    required this.onRemoveFromToday,
     required this.onDelete,
   });
 
@@ -971,8 +978,7 @@ class _ActionTile extends StatelessWidget {
             action.title,
             style: TextStyle(
               fontSize: 14,
-              fontWeight:
-                  isFirst ? FontWeight.w500 : FontWeight.normal,
+              fontWeight: isFirst ? FontWeight.w500 : FontWeight.normal,
             ),
           ),
         ),
@@ -980,14 +986,14 @@ class _ActionTile extends StatelessWidget {
           IconButton(
             icon: Icon(Icons.today_outlined,
                 size: 18, color: theme.colorScheme.secondary),
-            tooltip: 'Ajouter à aujourd\'hui',
+            tooltip: 'Planifier aujourd\'hui',
             onPressed: onAddToToday,
           )
         else
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Icon(Icons.today,
-                size: 18, color: theme.colorScheme.primary),
+          IconButton(
+            icon: Icon(Icons.today, size: 18, color: theme.colorScheme.primary),
+            tooltip: 'Retirer du plan du jour',
+            onPressed: onRemoveFromToday,
           ),
         IconButton(
           icon: Icon(Icons.delete_outline,

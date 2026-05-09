@@ -1394,6 +1394,11 @@ class AppLogic {
     onChange();
   }
 
+  void removeGoalActionFromToday(String actionId) {
+    state.dayPlan.removeWhere((it) => it.goalActionId == actionId);
+    onChange();
+  }
+
   void deleteGoalAction(String goalId, String actionId) {
     final g = state.goals.firstWhere((x) => x.id == goalId);
     g.actions.removeWhere((a) => a.id == actionId);
