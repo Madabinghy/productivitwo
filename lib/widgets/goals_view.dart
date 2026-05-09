@@ -805,6 +805,22 @@ class _GoalDetailSheetState extends State<_GoalDetailSheet>
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       children: [
+        _SectionLabel('Domaine'),
+        const SizedBox(height: 6),
+        DropdownButtonFormField<String>(
+          value: goal.domainId,
+          decoration: const InputDecoration(isDense: true),
+          items: st.domains
+              .map((d) => DropdownMenuItem(value: d.id, child: Text(d.name)))
+              .toList(),
+          onChanged: (v) {
+            if (v == null || v == goal.domainId) return;
+            logic.setGoalDomain(goal.id, v);
+            setState(() {});
+            widget.onChanged();
+          },
+        ),
+        const SizedBox(height: 20),
         _SectionLabel('Activité liée (temps)'),
         const SizedBox(height: 6),
         DropdownButtonFormField<String>(

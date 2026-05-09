@@ -1426,6 +1426,20 @@ class AppLogic {
   void setGoalLinkedActivity(String goalId, String? activityId) {
     final g = state.goals.firstWhere((x) => x.id == goalId);
     g.activityId = activityId;
+    final actionIds = g.actions.map((a) => a.id).toSet();
+    for (final item in state.dayPlan) {
+      if (item.goalActionId != null && actionIds.contains(item.goalActionId)) {
+        item.activityId = activityId;
+      }
+    }
+    onChange();
+  }
+
+  void setGoalDomain(String goalId, String domainId) {
+    final g = state.goals.firstWhere((x) => x.id == goalId);
+    g.domainId = domainId;
+    g.activityId = null;
+    g.linkedHabitIds.clear();
     onChange();
   }
 
@@ -1454,6 +1468,7 @@ class AppLogic {
       title: a.title,
       yyyymmdd: ymd,
       domainId: g.domainId,
+      activityId: g.activityId,
       goalActionId: actionId,
       order: maxOrder + 1,
     ));
