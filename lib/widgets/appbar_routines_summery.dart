@@ -71,7 +71,10 @@ class RoutineAppBarChip extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 if (trend30d != null && trend30d!.isNotEmpty)
-                  TinyRatioBars(values: trend30d!, height: 20)
+                  SizedBox(
+                    width: 64,
+                    child: TinyRatioBars(values: trend30d!, height: 20),
+                  )
                 else
                   SizedBox(
                     width: 40,
