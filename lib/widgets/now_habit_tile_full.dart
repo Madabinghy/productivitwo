@@ -136,7 +136,7 @@ class NowHabitTileFull extends StatelessWidget {
                 children: [
                   Text(
                     act.name,
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                         fontWeight: FontWeight.w700, fontSize: 16),
