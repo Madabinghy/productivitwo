@@ -1979,23 +1979,28 @@ class _TodayViewState extends State<TodayView> {
 
                 const Divider(height: 16),
 
-                // ---- Valider explicitement
-                FilledButton.icon(
-                  onPressed: () =>
-                      Navigator.pop(ctx, _ActionSheetResult(markDone: true)),
-                  icon: const Icon(Icons.check),
-                  label: const Text("Marquer comme fait"),
+                Row(
+                  children: [
+                    if (it.goalActionId != null) ...[
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(
+                              ctx, _ActionSheetResult(deactivate: true)),
+                          child: const Text("Retirer de la liste"),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: () => Navigator.pop(
+                            ctx, _ActionSheetResult(markDone: true)),
+                        icon: const Icon(Icons.check),
+                        label: const Text("Marquer fait"),
+                      ),
+                    ),
+                  ],
                 ),
-
-                const SizedBox(height: 12),
-
-                // ---- Désactiver (retirer du plan, garder dans l'objectif)
-                if (it.goalActionId != null)
-                  TextButton(
-                    onPressed: () => Navigator.pop(
-                        ctx, _ActionSheetResult(deactivate: true)),
-                    child: const Text("Retirer de la liste"),
-                  ),
 
                 // ---- Supprimer (optionnel)
                 TextButton(
