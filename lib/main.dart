@@ -3990,16 +3990,17 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               return logic.habitValueOn(a.id, day).toDouble();
             });
 
-            // Lissage uniquement pour les quotidiennes
-            final smoothWindow = (freq == HabitFreq.daily) ? 7 : 1;
+            const smoothWindow = 7;
             final series30 = movingAverage(series30Raw, smoothWindow);
 
             final maxSeries =
                 series30.fold<double>(0.0, (m, v) => v > m ? v : m);
 
+            // Daily : barres relatives à la cible journalière
+            // Autres : barres relatives au max de la série (toujours 100% de hauteur)
             final histMax = (freq == HabitFreq.daily)
                 ? quotaD.toDouble().clamp(1.0, 9999.0)
-                : maxSeries.clamp(1.0, 9999.0);
+                : maxSeries.clamp(0.01, 9999.0);
 
             // Ring adaptatif selon la fréquence
             final ringRatio = switch (freq) {
