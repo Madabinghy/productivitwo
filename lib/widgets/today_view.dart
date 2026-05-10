@@ -4034,8 +4034,10 @@ class _NowTabState extends State<NowTab> {
 
   Widget _buildBlockChipBar(BuildContext context, String ymd) {
     final logic = widget.logic;
-    final sortedBlocks = [...logic.state.blocks]
-      ..sort((a, b) => a.order.compareTo(b.order));
+    final sortedBlocks = ([...logic.state.blocks]
+          ..sort((a, b) => a.order.compareTo(b.order)))
+        .where((b) => !logic.isBlockDisabledForDay(b.id, ymd))
+        .toList();
     if (sortedBlocks.isEmpty) return const SizedBox.shrink();
 
     return SizedBox(
@@ -4048,7 +4050,6 @@ class _NowTabState extends State<NowTab> {
         itemBuilder: (context, i) {
           final b = sortedBlocks[i];
           final isActive = _activeBlockId == b.id;
-          final isDisabled = logic.isBlockDisabledForDay(b.id, ymd);
           final isComplete = logic.isBlockComplete(b.id, ymd);
           final label =
               '${b.emoji != null ? "${b.emoji} " : ""}${b.name}';
@@ -4063,13 +4064,11 @@ class _NowTabState extends State<NowTab> {
                 ? const Icon(Icons.check_circle, size: 14)
                 : null,
             showCheckmark: false,
-            onSelected: isDisabled
-                ? null
-                : (_) {
-                    setState(() {
-                      _activeBlockId = isActive ? null : b.id;
-                    });
-                  },
+            onSelected: (_) {
+              setState(() {
+                _activeBlockId = isActive ? null : b.id;
+              });
+            },
           );
         },
       ),
@@ -4138,9 +4137,10 @@ class _NowTabState extends State<NowTab> {
           }
         }
 
-        // Vérifie que le bloc actif existe encore
+        // Vérifie que le bloc actif existe encore et n'est pas désactivé
         if (_activeBlockId != null &&
-            !logic.state.blocks.any((b) => b.id == _activeBlockId)) {
+            (!logic.state.blocks.any((b) => b.id == _activeBlockId) ||
+                logic.isBlockDisabledForDay(_activeBlockId!, ymd))) {
           _activeBlockId = null;
         }
 
