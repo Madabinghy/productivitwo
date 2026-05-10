@@ -17,11 +17,13 @@ class RoutineProgressSummary {
 
 class RoutineAppBarChip extends StatelessWidget {
   final RoutineProgressSummary summary;
+  final List<double>? trend30d;
   final VoidCallback? onTap;
 
   const RoutineAppBarChip({
     super.key,
     required this.summary,
+    this.trend30d,
     this.onTap,
   });
 
@@ -68,17 +70,20 @@ class RoutineAppBarChip extends StatelessWidget {
                   style: textStyle,
                 ),
                 const SizedBox(width: 8),
-                SizedBox(
-                  width: 40,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(99),
-                    child: LinearProgressIndicator(
-                      value: summary.progress,
-                      minHeight: 6,
-                      backgroundColor: cs.surfaceContainerLow,
+                if (trend30d != null && trend30d!.isNotEmpty)
+                  TinyRatioBars(values: trend30d!, height: 20)
+                else
+                  SizedBox(
+                    width: 40,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(99),
+                      child: LinearProgressIndicator(
+                        value: summary.progress,
+                        minHeight: 6,
+                        backgroundColor: cs.surfaceContainerLow,
+                      ),
                     ),
                   ),
-                ),
               ],
             ),
           ),

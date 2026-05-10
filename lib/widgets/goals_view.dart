@@ -1060,14 +1060,14 @@ class _ActionTile extends StatelessWidget {
         ),
         if (!alreadyInToday)
           IconButton(
-            icon: Icon(Icons.today_outlined,
+            icon: Icon(Icons.arrow_circle_right_outlined,
                 size: 18, color: theme.colorScheme.secondary),
             tooltip: 'Planifier aujourd\'hui',
             onPressed: onAddToToday,
           )
         else
           IconButton(
-            icon: Icon(Icons.today, size: 18, color: theme.colorScheme.primary),
+            icon: Icon(Icons.arrow_circle_right, size: 18, color: theme.colorScheme.primary),
             tooltip: 'Retirer du plan du jour',
             onPressed: onRemoveFromToday,
           ),

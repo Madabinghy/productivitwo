@@ -2037,6 +2037,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
       return RoutineAppBarChip(
         summary: summary,
+        trend30d: logic.habitDailyAdherenceRates(30),
         onTap: () {
           _showRoutineProgressSheet(context);
         },
@@ -2536,6 +2537,16 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                 Column(
                   children: [
                     _buildProgressRow(
+                      icon: Icons.flag_outlined,
+                      label: goalsLabel,
+                      progress: goalsProgress,
+                      color: _colorForProgress(goalsProgress, context),
+                      onTap: () => _showDomainDetail(
+                          d, startCal, endCal, days,
+                          focus: 'goal'),
+                    ),
+                    const SizedBox(height: 6),
+                    _buildProgressRow(
                       icon: Icons.timer_outlined,
                       label: 'Temps · $timeLabel',
                       progress: bigProgressTime,
@@ -2557,16 +2568,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                       onTap: () => _showDomainDetail(
                           d, startCal, endCal, days,
                           focus: 'habit'),
-                    ),
-                    const SizedBox(height: 6),
-                    _buildProgressRow(
-                      icon: Icons.flag_outlined,
-                      label: goalsLabel,
-                      progress: goalsProgress,
-                      color: _colorForProgress(goalsProgress, context),
-                      onTap: () => _showDomainDetail(
-                          d, startCal, endCal, days,
-                          focus: 'goal'),
                     ),
                   ],
                 ),
@@ -3662,9 +3663,9 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               SegmentedButton<String>(
                 expandedInsets: EdgeInsets.zero,
                 segments: const [
-                  ButtonSegment(value: 'goal', label: Text('Objectifs')),
-                  ButtonSegment(value: 'time', label: Text('Temps')),
-                  ButtonSegment(value: 'habit', label: Text('Habitudes')),
+                  ButtonSegment(value: 'goal', icon: Icon(Icons.flag_rounded)),
+                  ButtonSegment(value: 'time', icon: Icon(Icons.access_time_rounded)),
+                  ButtonSegment(value: 'habit', icon: Icon(Icons.repeat_rounded)),
                 ],
                 selected: {tab},
                 onSelectionChanged: (s) => setSB(() => tab = s.first),

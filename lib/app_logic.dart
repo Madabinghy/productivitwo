@@ -3527,6 +3527,24 @@ class AppLogic {
     });
   }
 
+  /// Taux d'adhérence quotidien sur les N derniers jours (valeur 0.0–1.0 par jour).
+  /// Utilisé pour afficher l'évolution en mini-barres dans l'AppBar.
+  List<double> habitDailyAdherenceRates(int days) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final dailyTarget = sumHabitTarget(null, 1);
+    if (dailyTarget <= 0) return List.filled(days, 0.0);
+
+    return List.generate(days, (i) {
+      final day = today.subtract(Duration(days: days - 1 - i));
+      int done = 0;
+      for (final a in state.activities.where((a) => a.isHabit)) {
+        done += habitValueOn(a.id, day);
+      }
+      return (done / dailyTarget).clamp(0.0, 1.0);
+    });
+  }
+
   /// Somme des réalisés sur N jours pour un domaine.
   int sumHabitDone(String? domainId, int days) {
     final r = lastNDays(days); // [now - days, now)

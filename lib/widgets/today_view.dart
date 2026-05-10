@@ -1314,9 +1314,9 @@ class _TodayViewState extends State<TodayView> {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: SegmentedButton<_Scope>(
               segments: const [
-                ButtonSegment(value: _Scope.goals, label: Text("Objectifs")),
-                ButtonSegment(value: _Scope.today, label: Text("Focus")),
-                ButtonSegment(value: _Scope.tomorrow, label: Text("Demain")),
+                ButtonSegment(value: _Scope.goals, icon: Icon(Icons.flag_rounded)),
+                ButtonSegment(value: _Scope.today, icon: Icon(Icons.bolt_rounded)),
+                ButtonSegment(value: _Scope.tomorrow, icon: Icon(Icons.arrow_forward_rounded)),
               ],
               selected: {_scope},
               onSelectionChanged: (s) => setState(() => _scope = s.first),
