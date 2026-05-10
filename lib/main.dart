@@ -2564,18 +2564,9 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                       label: goalsLabel,
                       progress: goalsProgress,
                       color: _colorForProgress(goalsProgress, context),
-                      onTap: () => showModalBottomSheet(
-                        context: context,
-                        isScrollControlled: true,
-                        showDragHandle: true,
-                        builder: (_) => DomainGoalsSheet(
-                          domain: d,
-                          logic: logic,
-                          state: _state!,
-                        ),
-                      ).then((_) {
-                        if (mounted) setState(() {});
-                      }),
+                      onTap: () => _showDomainDetail(
+                          d, startCal, endCal, days,
+                          focus: 'goal'),
                     ),
                   ],
                 ),
