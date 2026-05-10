@@ -331,11 +331,11 @@ class _TodayViewState extends State<TodayView> {
                   IconButton(
                     tooltip: isDisabled ? "Réactiver" : "Passer aujourd'hui",
                     icon: Icon(
-                      isDisabled ? Icons.arrow_back : Icons.arrow_forward,
+                      Icons.arrow_forward,
                       size: 18,
                       color: isDisabled
-                          ? cs.primary
-                          : cs.onSurface.withOpacity(0.5),
+                          ? cs.onSurface.withOpacity(0.3)
+                          : cs.primary,
                     ),
                     onPressed: () {
                       logic.toggleBlockDisabledForDay(block.id, ymd);
