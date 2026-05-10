@@ -56,14 +56,14 @@ void _migrateLinkedActivities(AppState st) {
   // Trouve ou crée l'activité "Soin" dans Santé
   Activity? soinAct;
   for (final a in st.activities) {
-    if (a.domainId == santeDomain.id && a.name == 'Soin' && a.type == 'time') {
+    if (a.domainId == santeDomain.id && a.name == 'Soins' && a.type == 'time') {
       soinAct = a;
       break;
     }
   }
 
   if (soinAct == null) {
-    soinAct = Activity(domainId: santeDomain.id, name: 'Soin', type: 'time', goalMin: 1);
+    soinAct = Activity(domainId: santeDomain.id, name: 'Soins', type: 'time', goalMin: 1);
     st.activities.add(soinAct);
   }
 
@@ -275,6 +275,7 @@ Future<AppState> loadOrInitCleaner() async {
       String domainId,
       String name, {
       required int target,
+      String? linkedActivityId,
     }) =>
         Activity(
           domainId: domainId,
@@ -282,14 +283,16 @@ Future<AppState> loadOrInitCleaner() async {
           type: 'habit',
           habitFreq: HabitFreq.weekly,
           habitTarget: target,
-          manualTarget: true, // 👈 clé
-          autoTune: false, // 👈 clé
+          manualTarget: true,
+          autoTune: false,
+          linkedActivityId: linkedActivityId,
         );
 
     Activity dailyCountHabit(
       String domainId,
       String name, {
       required int target,
+      String? linkedActivityId,
     }) =>
         Activity(
           domainId: domainId,
@@ -297,45 +300,57 @@ Future<AppState> loadOrInitCleaner() async {
           type: 'habit',
           habitFreq: HabitFreq.daily,
           habitTarget: target,
-          manualTarget: true, // 👈 clé
-          autoTune: false, // 👈 clé
+          manualTarget: true,
+          autoTune: false,
+          linkedActivityId: linkedActivityId,
         );
 
     // ========== Activités (time) ==========
-    final soinAct = timeAct(sante.id, 'Soin');
+    final soinAct        = timeAct(sante.id, 'Soins');
+    final hygieneAct     = timeAct(sante.id, 'Hygiène');
+    final cuisineAct     = timeAct(sante.id, 'Cuisine');
+    final nettoyerAct    = timeAct(environnement.id, 'Nettoyer');
+    final lessiveAct     = timeAct(environnement.id, 'Lessive');
+    final exterieurAct   = timeAct(environnement.id, 'Extérieur');
+    final etirementAct   = timeAct(sport.id, 'Étirements');
+    final intendanceAct  = timeAct(organisation.id, 'Intendance');
+    final planifAct      = timeAct(organisation.id, 'Planification', role: ActivityRole.planning);
+    final prierAct       = timeAct(spiritualite.id, 'Prier');
+    final lireBibleAct   = timeAct(spiritualite.id, 'Lire la Bible');
+    final interventAct   = timeAct(business.id, 'Interventions');
 
     final activities = <Activity>[
       // Spiritualité
-      timeAct(spiritualite.id, 'Prier'),
+      prierAct,
       timeAct(spiritualite.id, 'Méditation'),
-      timeAct(spiritualite.id, 'Lire la Bible'),
+      lireBibleAct,
 
       // Environnement / Maison
-      timeAct(environnement.id, 'Nettoyer'),
+      nettoyerAct,
       timeAct(environnement.id, 'Ranger'),
-      timeAct(environnement.id, 'Lessive'),
-      timeAct(environnement.id, 'Extérieur'),
+      lessiveAct,
+      exterieurAct,
       timeAct(environnement.id, 'Rénovation'),
 
       // Sport
       timeAct(sport.id, 'Courir'),
       timeAct(sport.id, 'Musculation'),
-      timeAct(sport.id, 'Étirements'),
+      etirementAct,
 
       // Santé
       soinAct,
-      timeAct(sante.id, 'Hygiène'),
-      timeAct(sante.id, 'Cuisine'),
+      hygieneAct,
+      cuisineAct,
       timeAct(sante.id, 'Sommeil'),
 
       // Organisation
-      timeAct(organisation.id, 'Intendance'),
-      timeAct(organisation.id, 'Planification', role: ActivityRole.planning),
+      intendanceAct,
+      planifAct,
       timeAct(organisation.id, 'Préparation'),
       timeAct(organisation.id, 'Courses', role: ActivityRole.shopping),
 
       // Business
-      timeAct(business.id, 'Interventions'),
+      interventAct,
       timeAct(business.id, 'Suivi'),
       timeAct(business.id, 'Facturation'),
       timeAct(business.id, 'Contenu'),
@@ -348,62 +363,69 @@ Future<AppState> loadOrInitCleaner() async {
     // ========== Routines (habits) ==========
     final habits = <Activity>[
       // --- HYGIÈNE / SANTÉ ---
-      habit(sante.id, 'Hygiène du matin', freq: HabitFreq.daily, linkedActivityId: soinAct.id),
-      habit(sante.id, 'Hygiène du soir', freq: HabitFreq.daily, linkedActivityId: soinAct.id),
-      habit(sante.id, 'Hygiène hebdomadaire', freq: HabitFreq.weekly),
+      habit(sante.id, ‘Hygiène du matin’, freq: HabitFreq.daily, linkedActivityId: soinAct.id),
+      habit(sante.id, ‘Hygiène du soir’, freq: HabitFreq.daily, linkedActivityId: soinAct.id),
+      habit(sante.id, ‘Hygiène hebdomadaire’, freq: HabitFreq.weekly, linkedActivityId: hygieneAct.id),
       dailyCountHabit(
         sante.id,
         "Boire de l’eau",
         target: 10,
+        linkedActivityId: cuisineAct.id,
       ),
       dailyCountHabit(
         sante.id,
         "Manger équilibré",
         target: 3,
+        linkedActivityId: cuisineAct.id,
       ),
       weeklyCountHabit(
         sante.id,
         "Planifier les repas",
         target: 2,
+        linkedActivityId: cuisineAct.id,
       ),
       weeklyCountHabit(
         sante.id,
         "Batch cooking",
         target: 2,
+        linkedActivityId: cuisineAct.id,
       ),
 
       // --- MAISON ---
-      habit(environnement.id, 'Faire la vaisselle', freq: HabitFreq.daily),
-      habit(environnement.id, "Passer l'aspirateur", freq: HabitFreq.weekly),
+      habit(environnement.id, ‘Faire la vaisselle’, freq: HabitFreq.daily, linkedActivityId: nettoyerAct.id),
+      habit(environnement.id, "Passer l’aspirateur", freq: HabitFreq.weekly, linkedActivityId: nettoyerAct.id),
       weeklyCountHabit(
         environnement.id,
         "Nettoyage rapide",
         target: 3,
+        linkedActivityId: nettoyerAct.id,
       ),
       weeklyCountHabit(
         environnement.id,
         "Faire une lessive",
         target: 3,
+        linkedActivityId: lessiveAct.id,
       ),
-      habit(environnement.id, 'Gérer la voiture', freq: HabitFreq.weekly),
-      habit(environnement.id, 'Changer draps/serviettes',
-          freq: HabitFreq.weekly),
+      habit(environnement.id, ‘Gérer la voiture’, freq: HabitFreq.weekly, linkedActivityId: exterieurAct.id),
+      habit(environnement.id, ‘Changer draps/serviettes’, freq: HabitFreq.weekly, linkedActivityId: lessiveAct.id),
 
       // --- ORGANISATION / GTD ---
-      habit(organisation.id, 'Revue hebdomadaire', freq: HabitFreq.weekly),
-      habit(organisation.id, 'Saisir mes dépenses', freq: HabitFreq.daily),
-      habit(organisation.id, 'Suivre mon budget', freq: HabitFreq.weekly),
+      habit(organisation.id, ‘Revue hebdomadaire’, freq: HabitFreq.weekly, linkedActivityId: planifAct.id),
+      habit(organisation.id, ‘Saisir mes dépenses’, freq: HabitFreq.daily, linkedActivityId: intendanceAct.id),
+      habit(organisation.id, ‘Suivre mon budget’, freq: HabitFreq.weekly, linkedActivityId: intendanceAct.id),
 
       // --- SPIRITUEL ---
       dailyCountHabit(
         spiritualite.id,
         "Lire un chapitre",
         target: 3,
+        linkedActivityId: lireBibleAct.id,
       ),
       weeklyCountHabit(
         spiritualite.id,
         "Aller à la Prière",
         target: 2,
+        linkedActivityId: prierAct.id,
       ),
 
       // --- SPORT ---
@@ -413,11 +435,10 @@ Future<AppState> loadOrInitCleaner() async {
         target: 3,
       ),
 
-      // ✅ Souplesse regroupée : 1 routine + checklist 35 items
-      habit(sport.id, 'Étirements', freq: HabitFreq.weekly),
+      habit(sport.id, ‘Étirements’, freq: HabitFreq.weekly, linkedActivityId: etirementAct.id),
 
       // --- BUSINESS ---
-      habit(business.id, 'Préparer une intervention', freq: HabitFreq.daily),
+      habit(business.id, ‘Préparer une intervention’, freq: HabitFreq.daily, linkedActivityId: interventAct.id),
     ];
 
     Activity habitByName(String name) =>
