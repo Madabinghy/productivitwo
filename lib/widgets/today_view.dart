@@ -42,6 +42,7 @@ class _TodayViewState extends State<TodayView> {
   bool _showCourses = false; // repli/dépli manuel
   bool _showSnoozed = false; // dans ton State
   final Set<String> _collapsedBlockIds = {}; // blocs repliés dans Aujourd'hui
+  bool _showBlocks = true;
 
   _Scope _scope = _Scope.today;
 
@@ -1462,6 +1463,10 @@ class _TodayViewState extends State<TodayView> {
                     style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
                   ),
                 ),
+                TextButton(
+                  onPressed: () => setState(() => _showBlocks = !_showBlocks),
+                  child: Text(_showBlocks ? 'Masquer' : 'Voir tout'),
+                ),
                 IconButton(
                   tooltip: 'Gérer les blocs',
                   icon: const Icon(Icons.tune, size: 20),
@@ -1469,25 +1474,27 @@ class _TodayViewState extends State<TodayView> {
                 ),
               ],
             ),
-            if (sortedBlocks.isEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: TextButton.icon(
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Créer un premier bloc'),
-                  onPressed: () => showDayBlocksSheet(context, logic: widget.logic).then((_) => setState(() {})),
-                ),
-              )
-            else ...[
-              const SizedBox(height: 4),
-              for (final b in sortedBlocks)
-                _buildBlockSection(
-                  context,
-                  b,
-                  blockItemsByBlockId[b.id] ?? [],
-                  ymd,
-                ),
-              const SizedBox(height: 8),
+            if (_showBlocks) ...[
+              if (sortedBlocks.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: TextButton.icon(
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Créer un premier bloc'),
+                    onPressed: () => showDayBlocksSheet(context, logic: widget.logic).then((_) => setState(() {})),
+                  ),
+                )
+              else ...[
+                const SizedBox(height: 4),
+                for (final b in sortedBlocks)
+                  _buildBlockSection(
+                    context,
+                    b,
+                    blockItemsByBlockId[b.id] ?? [],
+                    ymd,
+                  ),
+                const SizedBox(height: 8),
+              ],
             ],
           ],
           _inboxSection(
