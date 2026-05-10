@@ -3652,15 +3652,15 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
           // ---------- Header ----------
           final title = domain?.name ?? "Tous les domaines";
-          final header = Row(
+          final header = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text(title,
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold)),
-              ),
-              const SizedBox(width: 8),
+              Text(title,
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
               SegmentedButton<String>(
+                expandedInsets: EdgeInsets.zero,
                 segments: const [
                   ButtonSegment(value: 'goal', label: Text('Objectifs')),
                   ButtonSegment(value: 'time', label: Text('Temps')),
