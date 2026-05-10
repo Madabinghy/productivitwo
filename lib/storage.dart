@@ -80,6 +80,42 @@ void _migrateLinkedActivities(AppState st) {
   st.linkedActivitiesMigratedOnce = true;
 }
 
+void _migrateVoitureActivity(AppState st) {
+  if (st.voitureMigratedOnce) return;
+
+  Domain? environnementDomain;
+  for (final d in st.domains) {
+    if (d.name == 'Environnement') {
+      environnementDomain = d;
+      break;
+    }
+  }
+  if (environnementDomain == null) return;
+
+  // Trouve ou crée l'activité "Voiture"
+  Activity? voitureAct;
+  for (final a in st.activities) {
+    if (a.domainId == environnementDomain.id && a.name == 'Voiture' && a.type == 'time') {
+      voitureAct = a;
+      break;
+    }
+  }
+  if (voitureAct == null) {
+    voitureAct = Activity(domainId: environnementDomain.id, name: 'Voiture', type: 'time', goalMin: 1);
+    st.activities.add(voitureAct);
+  }
+
+  // Lie "Gérer la voiture" à l'activité "Voiture"
+  for (int i = 0; i < st.activities.length; i++) {
+    final a = st.activities[i];
+    if (!a.isHabit) continue;
+    if (a.name != 'Gérer la voiture') continue;
+    st.activities[i] = a.copyWith(linkedActivityId: voitureAct.id);
+  }
+
+  st.voitureMigratedOnce = true;
+}
+
 void _cleanChecklists(AppState st) {
   for (final it in st.dayPlan) {
     if (it.checklist.isEmpty) continue;
@@ -141,6 +177,7 @@ Future<AppState> loadOrInitCleaner() async {
     if (main != null) {
       _migrateCoursesArchived(main);
       _migrateLinkedActivities(main);
+      _migrateVoitureActivity(main);
       _cleanChecklists(main);
       await save(main);
       return main;
@@ -151,6 +188,7 @@ Future<AppState> loadOrInitCleaner() async {
       if (b != null) {
         _migrateCoursesArchived(b);
         _migrateLinkedActivities(b);
+        _migrateVoitureActivity(b);
         _cleanChecklists(b);
         await save(b);
         return b;
@@ -200,6 +238,7 @@ Future<AppState> loadOrInitCleaner() async {
       if (main != null) {
         _migrateCoursesArchived(main);
         _migrateLinkedActivities(main);
+        _migrateVoitureActivity(main);
         await save(main);
         return main;
       }
@@ -209,6 +248,7 @@ Future<AppState> loadOrInitCleaner() async {
         if (b != null) {
           _migrateCoursesArchived(b);
           _migrateLinkedActivities(b);
+          _migrateVoitureActivity(b);
           await save(b);
           return b;
         }
@@ -311,6 +351,7 @@ Future<AppState> loadOrInitCleaner() async {
     final nettoyerAct    = timeAct(environnement.id, 'Nettoyer');
     final lessiveAct     = timeAct(environnement.id, 'Lessive');
     final exterieurAct   = timeAct(environnement.id, 'Extérieur');
+    final voitureAct     = timeAct(environnement.id, 'Voiture');
     final etirementAct   = timeAct(sport.id, 'Étirements');
     final intendanceAct  = timeAct(organisation.id, 'Intendance');
     final planifAct      = timeAct(organisation.id, 'Planification', role: ActivityRole.planning);
@@ -329,6 +370,7 @@ Future<AppState> loadOrInitCleaner() async {
       timeAct(environnement.id, 'Ranger'),
       lessiveAct,
       exterieurAct,
+      voitureAct,
       timeAct(environnement.id, 'Rénovation'),
 
       // Sport
@@ -404,7 +446,7 @@ Future<AppState> loadOrInitCleaner() async {
         target: 3,
         linkedActivityId: lessiveAct.id,
       ),
-      habit(environnement.id, 'Gérer la voiture', freq: HabitFreq.weekly, linkedActivityId: exterieurAct.id),
+      habit(environnement.id, 'Gérer la voiture', freq: HabitFreq.weekly, linkedActivityId: voitureAct.id),
       habit(environnement.id, 'Changer draps/serviettes', freq: HabitFreq.weekly, linkedActivityId: lessiveAct.id),
 
       // --- ORGANISATION / GTD ---

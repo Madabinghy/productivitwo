@@ -754,6 +754,7 @@ class AppState {
   List<ActivityLog> activityLogs;
   bool coursesArchivedOnce;
   bool linkedActivitiesMigratedOnce;
+  bool voitureMigratedOnce;
 
   AppState({
     required this.domains,
@@ -781,6 +782,7 @@ class AppState {
     FilterState? filters,
     this.coursesArchivedOnce = false,
     this.linkedActivitiesMigratedOnce = false,
+    this.voitureMigratedOnce = false,
   })  : snoozedUntil = snoozedUntil ?? <String, String>{},
         goals = goals ?? <Goal>[],
         inbox = inbox ?? <InboxItem>[],
@@ -829,6 +831,7 @@ class AppState {
         'filters': filters.toJson(),
         'coursesArchivedOnce': coursesArchivedOnce,
         'linkedActivitiesMigratedOnce': linkedActivitiesMigratedOnce,
+        'voitureMigratedOnce': voitureMigratedOnce,
       };
 
   static AppState from(Map j) {
@@ -895,6 +898,7 @@ class AppState {
       filters: FilterState.from(j['filters']),
       coursesArchivedOnce: (j['coursesArchivedOnce'] as bool?) ?? false,
       linkedActivitiesMigratedOnce: (j['linkedActivitiesMigratedOnce'] as bool?) ?? false,
+      voitureMigratedOnce: (j['voitureMigratedOnce'] as bool?) ?? false,
     );
   }
 
