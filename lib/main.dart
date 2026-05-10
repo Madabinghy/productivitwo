@@ -1286,19 +1286,6 @@ class _Last24hSessionsSheet extends StatelessWidget {
   }
 }
 
-class _HabitsAggByDomain {
-  final Map<String, int> doneTodayByDomain;
-  final Map<String, int> done7ByDomain;
-  final Map<String, int> done90ByDomain;
-  final Map<String, int> dailyTargetByDomain;
-
-  const _HabitsAggByDomain({
-    required this.doneTodayByDomain,
-    required this.done7ByDomain,
-    required this.done90ByDomain,
-    required this.dailyTargetByDomain,
-  });
-}
 
 class AppRoot extends StatefulWidget {
   const AppRoot({super.key});
@@ -2346,36 +2333,14 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     final tgt90 = targetHabitsAllCalendar(start90, end90);
     final rate90 = tgt90 == 0 ? 0.0 : (done90 / tgt90).clamp(0.0, 1.0);
 
-    // Halo primary (ta logique existante, je la garde mais encapsulée)
-    ({int done, int target}) primaryAggAll(DateTime today) {
-      int done = 0;
-      int target = 0;
-
-      for (final a in _state!.activities.where((x) => x.isHabit)) {
-        final f = a.habitFreq ?? HabitFreq.monthly;
-
-        switch (f) {
-          case HabitFreq.daily:
-            done += logic.habitSliding(a.id, 1).done;
-            target += logic.dayQuotaFor(a);
-            break;
-          case HabitFreq.weekly:
-            done += logic.habitSliding(a.id, 7).done;
-            target += logic.weekTargetFrom(a);
-            break;
-          case HabitFreq.monthly:
-            done += logic.habitSliding(a.id, 7).done;
-            target += logic.weekTargetFrom(a);
-            break;
-        }
-      }
-      return (done: done, target: target);
-    }
-
-    final aggP = primaryAggAll(today);
-    final label = "${aggP.done} / ${aggP.target}";
-    final outerPrimary =
-        aggP.target == 0 ? 0.0 : (aggP.done / aggP.target).clamp(0.0, 1.0);
+    // Comptage binaire : routines atteintes / total
+    final routineItems = logic.routineProgressItemsForCurrentPeriod();
+    final totalRoutines = routineItems.length;
+    final reachedRoutines = routineItems.where((it) => it.isReached).length;
+    final label = "$reachedRoutines / $totalRoutines";
+    final outerPrimary = totalRoutines == 0
+        ? 0.0
+        : (reachedRoutines / totalRoutines).clamp(0.0, 1.0);
 
     return (
       bigForGauge: bigForGauge.clamp(0.0, 1.0),
@@ -2487,9 +2452,17 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             .inMinutes /
         60.0;
 
-    // ✅ HABITS: maps calculées 1 seule fois par tick
-    final habitsAgg = _computeHabitsAggByDomain(
-        now); // (doneToday, done7, done90, dailyTarget)
+    // ✅ ROUTINES: comptage binaire "atteinte ou non" par domaine
+    final routineItems = logic.routineProgressItemsForCurrentPeriod();
+    final routineReachedByDomain = <String, int>{};
+    final routineTotalByDomain = <String, int>{};
+    for (final item in routineItems) {
+      final domId = item.activity.domainId;
+      routineTotalByDomain[domId] = (routineTotalByDomain[domId] ?? 0) + 1;
+      if (item.isReached) {
+        routineReachedByDomain[domId] = (routineReachedByDomain[domId] ?? 0) + 1;
+      }
+    }
 
     double domainShare90(String domainId) {
       if (done90HoursAll <= 0) return 0.0;
@@ -2500,24 +2473,14 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     return ListView(
       children: [
         ...sortedDomains.map((d) {
-          // ---- HABITS domain
-          final dailyTarget = habitsAgg.dailyTargetByDomain[d.id] ?? 0;
-          final doneToday = habitsAgg.doneTodayByDomain[d.id] ?? 0;
-          final done7 = habitsAgg.done7ByDomain[d.id] ?? 0;
-          final done90 = habitsAgg.done90ByDomain[d.id] ?? 0;
-
-          final target7 = dailyTarget * 7;
-          final target90 = dailyTarget * 90;
-
-          final rateTodayD = dailyTarget == 0
+          // ---- ROUTINES domain (binaire : atteinte ou non)
+          final routinesReached = routineReachedByDomain[d.id] ?? 0;
+          final routinesTotal = routineTotalByDomain[d.id] ?? 0;
+          final routinesProgress = routinesTotal == 0
               ? 0.0
-              : (doneToday / dailyTarget).clamp(0.0, 1.0);
-          final rateWeekD =
-              target7 == 0 ? 0.0 : (done7 / target7).clamp(0.0, 1.0);
-          final rate90D =
-              target90 == 0 ? 0.0 : (done90 / target90).clamp(0.0, 1.0);
-
-          final routinesLabelD = "$doneToday / $dailyTarget";
+              : (routinesReached / routinesTotal).clamp(0.0, 1.0);
+          final routinesLabelD =
+              routinesTotal == 0 ? '' : '$routinesReached / $routinesTotal';
 
           // ---- TIME domain
           final dailyTargetMinD = _state!.activities
@@ -2589,8 +2552,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                     _buildProgressRow(
                       icon: Icons.repeat,
                       label: 'Routines · $routinesLabelD',
-                      progress: rateWeekD,
-                      color: _colorForProgress(rateWeekD, context),
+                      progress: routinesProgress,
+                      color: _colorForProgress(routinesProgress, context),
                       onTap: () => _showDomainDetail(
                           d, startCal, endCal, days,
                           focus: 'habit'),
@@ -2629,68 +2592,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   double snapToFull(double value, {double threshold = 0.97}) {
     if (value >= threshold) return 1.0;
     return value.clamp(0.0, 1.0);
-  }
-
-  _HabitsAggByDomain _computeHabitsAggByDomain(DateTime now) {
-    final today0 = DateTime(now.year, now.month, now.day);
-    final ymdToday = yyyymmdd(today0);
-
-    String ymd(DateTime d) => yyyymmdd(DateTime(d.year, d.month, d.day));
-
-    final ymdStart7 = ymd(today0.subtract(const Duration(days: 6)));
-    final ymdStart90 = ymd(today0.subtract(const Duration(days: 89)));
-
-    final actsById = {for (final a in _state!.activities) a.id: a};
-
-    final doneTodayByDomain = <String, int>{};
-    final done7ByDomain = <String, int>{};
-    final done90ByDomain = <String, int>{};
-
-    for (final hp in _state!.habitProgress) {
-      final act = actsById[hp.activityId];
-      if (act == null) continue;
-      if (act.type != 'habit') continue;
-
-      final domId = act.domainId;
-
-      // ⚠️ Ici on force en int
-      final v = hp.value.toInt();
-
-      final dayKey = hp.yyyymmdd;
-
-      if (dayKey == ymdToday) {
-        doneTodayByDomain[domId] = (doneTodayByDomain[domId] ?? 0) + v;
-      }
-
-      if (dayKey.compareTo(ymdStart7) >= 0 && dayKey.compareTo(ymdToday) <= 0) {
-        done7ByDomain[domId] = (done7ByDomain[domId] ?? 0) + v;
-      }
-
-      if (dayKey.compareTo(ymdStart90) >= 0 &&
-          dayKey.compareTo(ymdToday) <= 0) {
-        done90ByDomain[domId] = (done90ByDomain[domId] ?? 0) + v;
-      }
-    }
-
-    final dailyTargetByDomain = <String, int>{};
-
-    for (final a in _state!.activities) {
-      if (a.type != 'habit') continue;
-
-      final q = logic.dayQuotaFor(a).toInt();
-
-      if (q <= 0) continue;
-
-      dailyTargetByDomain[a.domainId] =
-          (dailyTargetByDomain[a.domainId] ?? 0) + q;
-    }
-
-    return _HabitsAggByDomain(
-      doneTodayByDomain: doneTodayByDomain,
-      done7ByDomain: done7ByDomain,
-      done90ByDomain: done90ByDomain,
-      dailyTargetByDomain: dailyTargetByDomain,
-    );
   }
 
   Future<void> _createActivityDialog({
