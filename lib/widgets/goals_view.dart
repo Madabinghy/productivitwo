@@ -818,26 +818,34 @@ class GoalDetailSheetState extends State<GoalDetailSheet>
             ),
           ),
           for (final a in done)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 3),
-              child: Row(
-                children: [
-                  const Icon(Icons.check, size: 14, color: Colors.green),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(a.title,
-                        style: const TextStyle(
-                            fontSize: 13,
-                            decoration: TextDecoration.lineThrough,
-                            color: Colors.grey)),
-                  ),
-                  if (a.doneAt != null)
-                    Text(
-                      _fmt.format(a.doneAt!),
-                      style: TextStyle(
-                          fontSize: 11, color: Colors.grey.shade400),
+            InkWell(
+              onTap: () {
+                logic.toggleGoalAction(goal.id, a.id, false);
+                setState(() {});
+                widget.onChanged();
+              },
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check_box_rounded, size: 18, color: Colors.green),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(a.title,
+                          style: const TextStyle(
+                              fontSize: 13,
+                              decoration: TextDecoration.lineThrough,
+                              color: Colors.grey)),
                     ),
-                ],
+                    if (a.doneAt != null)
+                      Text(
+                        _fmt.format(a.doneAt!),
+                        style: TextStyle(
+                            fontSize: 11, color: Colors.grey.shade400),
+                      ),
+                  ],
+                ),
               ),
             ),
           const SizedBox(height: 40),
