@@ -266,6 +266,45 @@ class _TodayViewState extends State<TodayView> {
     );
   }
 
+  Widget _blockItemTile(BuildContext context, DayPlanItem it) {
+    final cs = Theme.of(context).colorScheme;
+    final isDone = it.done;
+
+    return InkWell(
+      onTap: () {
+        it.done = !it.done;
+        widget.logic.onChange();
+        setState(() {});
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            Icon(
+              isDone ? Icons.check_circle : Icons.radio_button_unchecked,
+              size: 20,
+              color: isDone ? cs.primary : cs.onSurface.withOpacity(0.35),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                it.title,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: isDone
+                      ? cs.onSurface.withOpacity(0.4)
+                      : cs.onSurface,
+                  decoration: isDone ? TextDecoration.lineThrough : null,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildBlockSection(
     BuildContext context,
     DayBlock block,
@@ -350,13 +389,7 @@ class _TodayViewState extends State<TodayView> {
           ),
           if (!isCollapsed && !isDisabled) ...[
             const Divider(height: 1),
-            ...items.map((it) => _todayTile(
-                  context,
-                  it,
-                  key: ValueKey('block_it:${it.id}'),
-                  showDrag: false,
-                  indexForDrag: 0,
-                )),
+            ...items.map((it) => _blockItemTile(context, it)),
             if (items.isEmpty)
               Padding(
                 padding: const EdgeInsets.all(12),
