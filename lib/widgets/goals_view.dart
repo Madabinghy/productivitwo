@@ -149,7 +149,7 @@ class _GoalsViewState extends State<GoalsView> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (ctx) => _GoalDetailSheet(
+      builder: (ctx) => GoalDetailSheet(
         goal: goal,
         logic: logic,
         state: st,
@@ -330,7 +330,7 @@ class _DomainGoalsSheetState extends State<DomainGoalsSheet> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (ctx) => _GoalDetailSheet(
+      builder: (ctx) => GoalDetailSheet(
         goal: goal,
         logic: logic,
         state: st,
@@ -545,13 +545,13 @@ class GoalCard extends StatelessWidget {
 
 // ── Sheet de détail ──────────────────────────────────────────────────────────
 
-class _GoalDetailSheet extends StatefulWidget {
+class GoalDetailSheet extends StatefulWidget {
   final Goal goal;
   final AppLogic logic;
   final AppState state;
   final VoidCallback onChanged;
 
-  const _GoalDetailSheet({
+  const GoalDetailSheet({
     required this.goal,
     required this.logic,
     required this.state,
@@ -559,10 +559,10 @@ class _GoalDetailSheet extends StatefulWidget {
   });
 
   @override
-  State<_GoalDetailSheet> createState() => _GoalDetailSheetState();
+  State<GoalDetailSheet> createState() => GoalDetailSheetState();
 }
 
-class _GoalDetailSheetState extends State<_GoalDetailSheet>
+class GoalDetailSheetState extends State<GoalDetailSheet>
     with SingleTickerProviderStateMixin {
   late TabController _tabs;
   final _fmt = DateFormat('d MMM', 'fr');

@@ -7,6 +7,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:collection/collection.dart';
 import 'package:productivitwo_v1/widgets/assign_activity_sheet.dart';
+import 'package:productivitwo_v1/widgets/goals_view.dart';
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
 import 'package:productivitwo_v1/widgets/now_habit_tile_full.dart';
 import 'package:productivitwo_v1/widgets/tiny_bar.dart';
@@ -28,7 +29,7 @@ class TodayView extends StatefulWidget {
   State<TodayView> createState() => _TodayViewState();
 }
 
-enum _Scope { today, tomorrow } // ou ton enum existant
+enum _Scope { goals, today, tomorrow }
 
 class _TodayViewState extends State<TodayView> {
   // Choix JOUR: aujourd’hui / demain
@@ -63,6 +64,202 @@ class _TodayViewState extends State<TodayView> {
     }
 
     return true;
+  }
+
+  Future<void> _addGoalDialog(BuildContext context, {String? preselectedDomainId}) async {
+    final logic = widget.logic;
+    final st = widget.state;
+    String? selectedDomainId = preselectedDomainId ?? (st.domains.isNotEmpty ? st.domains.first.id : null);
+    final titleCtrl = TextEditingController();
+    final actionCtrl = TextEditingController();
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) => AlertDialog(
+          title: const Text('Nouvel objectif'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  value: selectedDomainId,
+                  decoration: const InputDecoration(labelText: 'Domaine'),
+                  items: st.domains
+                      .map((d) => DropdownMenuItem(value: d.id, child: Text(d.name)))
+                      .toList(),
+                  onChanged: (v) => setS(() => selectedDomainId = v),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: titleCtrl,
+                  autofocus: true,
+                  decoration: const InputDecoration(labelText: 'Objectif'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: actionCtrl,
+                  decoration: const InputDecoration(labelText: 'Première action (optionnel)'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+            FilledButton(
+              onPressed: () {
+                final title = titleCtrl.text.trim();
+                if (title.isEmpty || selectedDomainId == null) return;
+                logic.createGoal(
+                  domainId: selectedDomainId!,
+                  title: title,
+                  firstAction: actionCtrl.text.trim().isEmpty ? null : actionCtrl.text.trim(),
+                );
+                setState(() {});
+                Navigator.pop(ctx);
+              },
+              child: const Text('Ajouter'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openGoalDetail(BuildContext context, Goal goal) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => GoalDetailSheet(
+        goal: goal,
+        logic: widget.logic,
+        state: widget.state,
+        onChanged: () => setState(() {}),
+      ),
+    );
+  }
+
+  Widget _buildGoalsContent(BuildContext context) {
+    final logic = widget.logic;
+    final st = widget.state;
+    final filters = logic.state.filters;
+
+    // Activité en cours → domaine prioritaire
+    final running = logic.runningActivity();
+    final runningDomainId = running?.domainId;
+
+    // Objectifs actifs filtrés par domaine
+    var activeGoals = st.goals.where((g) => g.status == 'active').toList();
+    if (filters.domainIds.isNotEmpty) {
+      activeGoals = activeGoals.where((g) => filters.domainIds.contains(g.domainId)).toList();
+    }
+
+    // Domaines ayant des objectifs, avec domaine de l'activité en cours en tête
+    final domainsWithGoals = st.domains
+        .where((d) => activeGoals.any((g) => g.domainId == d.id))
+        .toList()
+      ..sort((a, b) {
+        if (a.id == runningDomainId) return -1;
+        if (b.id == runningDomainId) return 1;
+        return 0;
+      });
+
+    if (activeGoals.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              filters.domainIds.isNotEmpty
+                  ? 'Aucun objectif dans ce domaine.'
+                  : 'Aucun objectif actif.',
+              style: const TextStyle(color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: () => _addGoalDialog(context),
+              icon: const Icon(Icons.add),
+              label: const Text('Créer un objectif'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 120),
+      children: [
+        for (final domain in domainsWithGoals) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 8, 4),
+            child: Row(
+              children: [
+                if (domain.id == runningDomainId)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: Icon(Icons.play_circle_outline,
+                        size: 16, color: Theme.of(context).colorScheme.primary),
+                  ),
+                Expanded(
+                  child: Text(
+                    domain.name,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: domain.id == runningDomainId
+                          ? Theme.of(context).colorScheme.primary
+                          : Colors.grey,
+                    ),
+                  ),
+                ),
+                TextButton.icon(
+                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Ajouter'),
+                  onPressed: () => _addGoalDialog(context, preselectedDomainId: domain.id),
+                ),
+              ],
+            ),
+          ),
+          for (final goal in activeGoals.where((g) => g.domainId == domain.id))
+            GoalCard(
+              goal: goal,
+              muted: false,
+              onTap: () => _openGoalDetail(context, goal),
+              onArchive: () async {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Archiver ?'),
+                    content: Text('Archiver "${goal.title}" ?'),
+                    actions: [
+                      TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('Annuler')),
+                      FilledButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('Archiver')),
+                    ],
+                  ),
+                );
+                if (confirm == true) {
+                  logic.archiveGoal(goal.id);
+                  setState(() {});
+                }
+              },
+            ),
+        ],
+        const Divider(height: 32),
+        Center(
+          child: TextButton.icon(
+            onPressed: () => _addGoalDialog(context),
+            icon: const Icon(Icons.add),
+            label: const Text('Nouvel objectif'),
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _coursesSection({
@@ -1110,13 +1307,13 @@ class _TodayViewState extends State<TodayView> {
     // Donc on utilise directement todo/inbox/courses.
 
     return Scaffold(
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
+      body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: SegmentedButton<_Scope>(
               segments: const [
+                ButtonSegment(value: _Scope.goals, label: Text("Objectifs")),
                 ButtonSegment(value: _Scope.today, label: Text("Aujourd’hui")),
                 ButtonSegment(value: _Scope.tomorrow, label: Text("Demain")),
               ],
@@ -1124,6 +1321,13 @@ class _TodayViewState extends State<TodayView> {
               onSelectionChanged: (s) => setState(() => _scope = s.first),
             ),
           ),
+          if (_scope == _Scope.goals)
+            Expanded(child: _buildGoalsContent(context))
+          else
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
+                children: [
           _inboxSection(
             inbox: inboxActions,
             onTapAssign: (it) => _openAssignActivitySheet(context, it),
@@ -1288,6 +1492,9 @@ class _TodayViewState extends State<TodayView> {
                 setState(() => it.snoozeUntil = null);
                 widget.logic.onChange();
               },
+            ),
+                ],
+              ),
             ),
         ],
       ),
