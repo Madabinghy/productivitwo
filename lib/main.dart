@@ -2983,14 +2983,15 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
     bool hiddenExpanded = true;
 
+    String tab = focus == 'habit' ? 'habit' : focus == 'goal' ? 'goal' : 'time';
+    final scrollCtrl = ScrollController();
+
     return showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
       backgroundColor: cs.surface,
       builder: (ctx) {
-        String tab = focus == 'habit' ? 'habit' : focus == 'goal' ? 'goal' : 'time';
-        final scrollCtrl = ScrollController();
 
         return StatefulBuilder(builder: (ctx, setSB) {
           Future<void> _renameRoutineFromDashboard(
