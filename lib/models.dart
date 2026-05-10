@@ -63,6 +63,7 @@ class DayPlanItem {
   DateTime? snoozeUntil;
   ActionStatus status;
   DateTime createdAt;
+  String? blockId; // bloc journalier auquel cet item est assigné
 
   // ✅ NEW
   List<ChecklistItem> checklist;
@@ -87,6 +88,7 @@ class DayPlanItem {
     DateTime? createdAt,
     this.snoozeUntil,
     ActionStatus? status,
+    this.blockId,
 
     // ✅ NEW
     List<ChecklistItem>? checklist,
@@ -116,6 +118,7 @@ class DayPlanItem {
         // ✅ AJOUT
         'status': status.name,
         'createdAt': createdAt.toIso8601String(),
+        'blockId': blockId,
 
         // ✅ CHECKLIST
         'checklist': checklist.map((c) => c.toJson()).toList(),
@@ -167,6 +170,7 @@ class DayPlanItem {
       createdAt: j['createdAt'] != null
           ? DateTime.tryParse(j['createdAt']) ?? DateTime.now()
           : null,
+      blockId: j['blockId'] as String?,
       checklist: (j['checklist'] as List?)
               ?.map((c) => ChecklistItem.from(c))
               .toList() ??
@@ -185,6 +189,40 @@ class DayPlanItem {
     }
     return defaultValue;
   }
+}
+
+class DayBlock {
+  String id;
+  String name;
+  String? emoji;
+  int order;
+  List<String> activityIds; // routines (refId) toujours assignées à ce bloc
+
+  DayBlock({
+    String? id,
+    required this.name,
+    this.emoji,
+    this.order = 0,
+    List<String>? activityIds,
+  })  : id = id ?? _uuid.v4(),
+        activityIds = activityIds ?? [];
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'emoji': emoji,
+        'order': order,
+        'activityIds': activityIds,
+      };
+
+  static DayBlock from(Map j) => DayBlock(
+        id: j['id'],
+        name: j['name'] ?? '',
+        emoji: j['emoji'],
+        order: (j['order'] as num?)?.toInt() ?? 0,
+        activityIds:
+            (j['activityIds'] as List?)?.cast<String>() ?? <String>[],
+      );
 }
 
 class ActivityLog {
@@ -756,6 +794,10 @@ class AppState {
   bool linkedActivitiesMigratedOnce;
   bool voitureMigratedOnce;
 
+  // Blocs journaliers
+  List<DayBlock> blocks;
+  Map<String, List<String>> disabledBlocksByYmd; // ymd -> [blockIds désactivés]
+
   AppState({
     required this.domains,
     required this.activities,
@@ -774,6 +816,8 @@ class AppState {
     List<HabitHit>? habitHits,
     Map<String, String>? habitPinnedActivity,
     Map<String, List<String>>? habitChecklistByHabitId,
+    List<DayBlock>? blocks,
+    Map<String, List<String>>? disabledBlocksByYmd,
     // ✅ NOUVEAU
     Map<String, List<String>>? nowSkippedByYmd,
     Map<String, List<String>>? nowDoneByYmd,
@@ -798,7 +842,9 @@ class AppState {
         habitChecklistDone =
             habitChecklistDone ?? <String, Map<String, List<int>>>{},
         activityLogs = activityLogs ?? <ActivityLog>[],
-        filters = filters ?? FilterState();
+        filters = filters ?? FilterState(),
+        blocks = blocks ?? <DayBlock>[],
+        disabledBlocksByYmd = disabledBlocksByYmd ?? <String, List<String>>{};
 
   Map<String, dynamic> toJson() => {
         'domains': domains.map((e) => e.toJson()).toList(),
@@ -832,6 +878,8 @@ class AppState {
         'coursesArchivedOnce': coursesArchivedOnce,
         'linkedActivitiesMigratedOnce': linkedActivitiesMigratedOnce,
         'voitureMigratedOnce': voitureMigratedOnce,
+        'blocks': blocks.map((e) => e.toJson()).toList(),
+        'disabledBlocksByYmd': disabledBlocksByYmd,
       };
 
   static AppState from(Map j) {
@@ -899,6 +947,8 @@ class AppState {
       coursesArchivedOnce: (j['coursesArchivedOnce'] as bool?) ?? false,
       linkedActivitiesMigratedOnce: (j['linkedActivitiesMigratedOnce'] as bool?) ?? false,
       voitureMigratedOnce: (j['voitureMigratedOnce'] as bool?) ?? false,
+      blocks: _list(j['blocks'], (e) => DayBlock.from(e)),
+      disabledBlocksByYmd: _mapSL(j['disabledBlocksByYmd']),
     );
   }
 

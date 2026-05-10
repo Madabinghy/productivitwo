@@ -4352,6 +4352,118 @@ extension TodayLogic on AppLogic {
     return bins;
   }
 
+  // ── Blocs journaliers ──────────────────────────────────────────────────────
+
+  String? effectiveBlockId(DayPlanItem it) {
+    if ((it.blockId ?? '').isNotEmpty) return it.blockId;
+    final actId = (it.refId ?? it.activityId ?? '').trim();
+    if (actId.isEmpty) return null;
+    for (final b in state.blocks) {
+      if (b.activityIds.contains(actId)) return b.id;
+    }
+    return null;
+  }
+
+  List<DayPlanItem> blockItemsForDay(String blockId, String ymd) {
+    return state.dayPlan.where((it) {
+      if (it.yyyymmdd != ymd) return false;
+      if (it.archived) return false;
+      return effectiveBlockId(it) == blockId;
+    }).toList()
+      ..sort((a, b) => a.order.compareTo(b.order));
+  }
+
+  bool isBlockComplete(String blockId, String ymd) {
+    final items = blockItemsForDay(blockId, ymd);
+    if (items.isEmpty) return true;
+    return items.every((it) => it.done);
+  }
+
+  bool isBlockDisabledForDay(String blockId, String ymd) {
+    return (state.disabledBlocksByYmd[ymd] ?? []).contains(blockId);
+  }
+
+  void toggleBlockDisabledForDay(String blockId, String ymd) {
+    final list = state.disabledBlocksByYmd[ymd] ??= [];
+    if (list.contains(blockId)) {
+      list.remove(blockId);
+    } else {
+      list.add(blockId);
+    }
+    onChange();
+  }
+
+  DayBlock? nextIncompleteBlock(String ymd) {
+    final sorted = [...state.blocks]..sort((a, b) => a.order.compareTo(b.order));
+    for (final b in sorted) {
+      if (isBlockDisabledForDay(b.id, ymd)) continue;
+      if (!isBlockComplete(b.id, ymd)) return b;
+    }
+    return null;
+  }
+
+  void createBlock(String name, {String? emoji}) {
+    final maxOrder = state.blocks.isEmpty
+        ? 0
+        : state.blocks.map((b) => b.order).reduce(math.max) + 1;
+    state.blocks.add(DayBlock(name: name, emoji: emoji, order: maxOrder));
+    onChange();
+  }
+
+  void deleteBlock(String blockId) {
+    state.blocks.removeWhere((b) => b.id == blockId);
+    for (final it in state.dayPlan) {
+      if (it.blockId == blockId) it.blockId = null;
+    }
+    onChange();
+  }
+
+  void updateBlock(String blockId, {String? name, String? emoji, bool clearEmoji = false}) {
+    final b = state.blocks.firstWhereOrNull((b) => b.id == blockId);
+    if (b == null) return;
+    if (name != null) b.name = name;
+    if (clearEmoji) {
+      b.emoji = null;
+    } else if (emoji != null) {
+      b.emoji = emoji;
+    }
+    onChange();
+  }
+
+  void reorderBlocks(int oldIndex, int newIndex) {
+    final sorted = [...state.blocks]..sort((a, b) => a.order.compareTo(b.order));
+    if (newIndex > oldIndex) newIndex--;
+    final b = sorted.removeAt(oldIndex);
+    sorted.insert(newIndex, b);
+    for (int i = 0; i < sorted.length; i++) {
+      sorted[i].order = i;
+    }
+    onChange();
+  }
+
+  void addActivityToBlock(String blockId, String activityId) {
+    final b = state.blocks.firstWhereOrNull((b) => b.id == blockId);
+    if (b == null) return;
+    if (!b.activityIds.contains(activityId)) b.activityIds.add(activityId);
+    onChange();
+  }
+
+  void removeActivityFromBlock(String blockId, String activityId) {
+    final b = state.blocks.firstWhereOrNull((b) => b.id == blockId);
+    if (b == null) return;
+    b.activityIds.remove(activityId);
+    onChange();
+  }
+
+  void assignActionToBlock(String dayPlanItemId, String? blockId) {
+    final it = state.dayPlan.firstWhereOrNull((x) => x.id == dayPlanItemId);
+    if (it == null) return;
+    it.blockId = blockId;
+    onChange();
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+
   void ensureTodayDailyHabits({DateTime? now}) {
     final t = now ?? DateTime.now();
     final todayKey = yyyymmdd(t);

@@ -7,6 +7,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:collection/collection.dart';
 import 'package:productivitwo_v1/widgets/assign_activity_sheet.dart';
+import 'package:productivitwo_v1/widgets/day_block_sheet.dart';
 import 'package:productivitwo_v1/widgets/goals_view.dart';
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
 import 'package:productivitwo_v1/widgets/now_habit_tile_full.dart';
@@ -16,7 +17,7 @@ class TodayView extends StatefulWidget {
   final AppLogic logic;
   final AppState state;
   final void Function(String habitId)? onGoNow;
-  final VoidCallback? onGoNowTab; // ✅ juste switch d’onglet
+  final VoidCallback? onGoNowTab; // ✅ juste switch d'onglet
   const TodayView({
     super.key,
     required this.logic,
@@ -32,7 +33,7 @@ class TodayView extends StatefulWidget {
 enum _Scope { goals, today, tomorrow }
 
 class _TodayViewState extends State<TodayView> {
-  // Choix JOUR: aujourd’hui / demain
+  // Choix JOUR: aujourd'hui / demain
   bool _showDone = false;
 
   Timer? _runWatch;
@@ -40,6 +41,7 @@ class _TodayViewState extends State<TodayView> {
   bool _showAll = true;
   bool _showCourses = false; // repli/dépli manuel
   bool _showSnoozed = false; // dans ton State
+  final Set<String> _collapsedBlockIds = {}; // blocs repliés dans Aujourd'hui
 
   _Scope _scope = _Scope.today;
 
@@ -263,6 +265,114 @@ class _TodayViewState extends State<TodayView> {
     );
   }
 
+  Widget _buildBlockSection(
+    BuildContext context,
+    DayBlock block,
+    List<DayPlanItem> items,
+    String ymd,
+  ) {
+    final logic = widget.logic;
+    final cs = Theme.of(context).colorScheme;
+    final isCollapsed = _collapsedBlockIds.contains(block.id);
+    final isDisabled = logic.isBlockDisabledForDay(block.id, ymd);
+    final doneCount = items.where((it) => it.done).length;
+    final total = items.length;
+    final isComplete = total > 0 && doneCount == total;
+    final label = '${block.emoji != null ? "${block.emoji} " : ""}${block.name}';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        children: [
+          InkWell(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+            onTap: () => setState(() {
+              if (isCollapsed) {
+                _collapsedBlockIds.remove(block.id);
+              } else {
+                _collapsedBlockIds.add(block.id);
+              }
+            }),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+              child: Row(
+                children: [
+                  if (isComplete)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: Icon(Icons.check_circle,
+                          size: 18, color: cs.primary),
+                    ),
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                        color: isDisabled
+                            ? cs.onSurface.withOpacity(0.4)
+                            : isComplete
+                                ? cs.primary
+                                : null,
+                        decoration: isDisabled ? TextDecoration.lineThrough : null,
+                      ),
+                    ),
+                  ),
+                  if (total > 0)
+                    Text(
+                      '$doneCount/$total',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: cs.onSurface.withOpacity(0.55),
+                      ),
+                    ),
+                  const SizedBox(width: 4),
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert, size: 18),
+                    itemBuilder: (_) => [
+                      PopupMenuItem(
+                        value: 'toggle',
+                        child: Text(isDisabled
+                            ? 'Réactiver pour aujourd\'hui'
+                            : 'Passer aujourd\'hui'),
+                      ),
+                    ],
+                    onSelected: (v) {
+                      if (v == 'toggle') {
+                        logic.toggleBlockDisabledForDay(block.id, ymd);
+                        setState(() {});
+                      }
+                    },
+                  ),
+                  Icon(isCollapsed ? Icons.expand_more : Icons.expand_less,
+                      size: 20),
+                ],
+              ),
+            ),
+          ),
+          if (!isCollapsed && !isDisabled) ...[
+            const Divider(height: 1),
+            ...items.map((it) => _todayTile(
+                  context,
+                  it,
+                  key: ValueKey('block_it:${it.id}'),
+                  showDrag: false,
+                  indexForDrag: 0,
+                )),
+            if (items.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(
+                  'Aucun item dans ce bloc pour aujourd\'hui.',
+                  style: TextStyle(color: cs.onSurface.withOpacity(0.55)),
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _coursesSection({
     required List<DayPlanItem> courses,
     required bool autoExpanded,
@@ -398,7 +508,7 @@ class _TodayViewState extends State<TodayView> {
       return true;
     }
 
-    // 2️⃣ Pas d’activité → ouvrir le picker
+    // 2️⃣ Pas d'activité → ouvrir le picker
     final picked =
         await widget.logic.openAssignActivitySheetAndWait(context, it);
     if (picked == null) return false; // ✅ annulé
@@ -494,17 +604,17 @@ class _TodayViewState extends State<TodayView> {
 
     void moveToDay(String targetYmd, {required bool forward}) {
       // ✅ il te faut une méthode de déplacement générique
-      // -> si tu l’as déjà : moveItemToDayById
+      // -> si tu l'as déjà : moveItemToDayById
       widget.logic.moveItemToDayById(it.id, targetYmd);
       widget.logic.onChange();
       setState(() {});
       toast(forward
-          ? (isOnToday ? 'Déplacé vers demain' : 'Déplacé vers après-demain')
-          : 'Renvoyé à aujourd’hui');
+          ? (isOnToday ? 'Déplacé vers demain' : "Déplacé vers après-demain")
+          : "Renvoyé à aujourd'hui");
     }
 
     Widget moveDayArrows() {
-      // Aujourd’hui : seulement →
+      // Aujourd'hui : seulement →
       if (isOnToday) {
         return iconBtn(
           icon: Icons.arrow_forward,
@@ -519,7 +629,7 @@ class _TodayViewState extends State<TodayView> {
         children: [
           iconBtn(
             icon: Icons.arrow_back,
-            tooltip: 'Renvoyer à aujourd’hui',
+            tooltip: "Renvoyer à aujourd'hui",
             onPressed: () => moveToDay(destBackward, forward: false),
           ),
           iconBtn(
@@ -548,7 +658,7 @@ class _TodayViewState extends State<TodayView> {
                   size: 20,
                 ),
                 tooltip: activity != null
-                    ? "Lancer l’activité"
+                    ? "Lancer l'activité"
                     : "Associer puis lancer",
                 padding: EdgeInsets.zero,
                 onPressed: () async {
@@ -659,7 +769,7 @@ class _TodayViewState extends State<TodayView> {
                         onPressed: moveToEnd,
                       ),
                       if (!isTodayTab) ...[
-                        // quand tu es sur l’onglet demain, tu veux aussi ← →
+                        // quand tu es sur l'onglet demain, tu veux aussi ← →
                         moveDayArrows(),
                       ] else ...[
                         // today: juste →
@@ -711,7 +821,7 @@ class _TodayViewState extends State<TodayView> {
               },
               itemBuilder: (_) => [
                 const PopupMenuItem(
-                    value: 'tomorrow', child: Text("Pas aujourd’hui")),
+                    value: 'tomorrow', child: Text("Pas aujourd'hui")),
                 const PopupMenuItem(
                     value: 'date', child: Text("Choisir une date…")),
                 if (it.snoozeUntil != null)
@@ -958,7 +1068,7 @@ class _TodayViewState extends State<TodayView> {
     final running = widget.logic.runningActivity();
     final hasRunning = isTodayTab && running != null;
 
-    // --- planOrAuto : injecte virtHabits (aujourd’hui seulement)
+    // --- planOrAuto : injecte virtHabits (aujourd'hui seulement)
     List<DayPlanItem> planOrAuto() {
       if (!isTodayTab) return basePlan; // demain : pas de virtHabits
 
@@ -1191,12 +1301,12 @@ class _TodayViewState extends State<TodayView> {
       return !widget.logic.isActivitySnoozed(actId, now);
     }).toList();
 
-    // ✅ FILTRES AUTO-ACTIFS (dès qu’il y a au moins 1 filtre sélectionné)
+    // ✅ FILTRES AUTO-ACTIFS (dès qu'il y a au moins 1 filtre sélectionné)
     final f = widget.logic.state.filters;
     final manualFiltersActive =
         f.domainIds.isNotEmpty || f.activityIds.isNotEmpty;
 
-// activité en cours (uniquement sur l’onglet “today”)
+// activité en cours (uniquement sur l'onglet “today”)
     final runningId = hasRunning ? running.id : null;
 
     /// ✅ Inbox stricte (ta définition actuelle)
@@ -1297,6 +1407,19 @@ class _TodayViewState extends State<TodayView> {
       ...shoppingActions.map((e) => e.id),
     };
 
+    // Items assignés à un bloc (exclus de la liste libre)
+    final sortedBlocks = [...widget.logic.state.blocks]
+      ..sort((a, b) => a.order.compareTo(b.order));
+    final blockItemsByBlockId = <String, List<DayPlanItem>>{};
+    for (final b in sortedBlocks) {
+      blockItemsByBlockId[b.id] = widget.logic.blockItemsForDay(b.id, ymd);
+    }
+    final blockItemIds = <String>{
+      for (final items in blockItemsByBlockId.values)
+        for (final it in items) it.id,
+    };
+    usedIds.addAll(blockItemIds);
+
     final todo =
         openPoolFiltered.where((it) => !usedIds.contains(it.id)).toList();
 
@@ -1329,6 +1452,44 @@ class _TodayViewState extends State<TodayView> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
                 children: [
+          // Blocs journaliers
+          if (isTodayTab) ...[
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Blocs',
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Gérer les blocs',
+                  icon: const Icon(Icons.tune, size: 20),
+                  onPressed: () => showDayBlocksSheet(context, logic: widget.logic).then((_) => setState(() {})),
+                ),
+              ],
+            ),
+            if (sortedBlocks.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: TextButton.icon(
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Créer un premier bloc'),
+                  onPressed: () => showDayBlocksSheet(context, logic: widget.logic).then((_) => setState(() {})),
+                ),
+              )
+            else ...[
+              const SizedBox(height: 4),
+              for (final b in sortedBlocks)
+                _buildBlockSection(
+                  context,
+                  b,
+                  blockItemsByBlockId[b.id] ?? [],
+                  ymd,
+                ),
+              const SizedBox(height: 8),
+            ],
+          ],
           _inboxSection(
             inbox: inboxActions,
             onTapAssign: (it) => _openAssignActivitySheet(context, it),
@@ -1347,6 +1508,13 @@ class _TodayViewState extends State<TodayView> {
                   style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
                 ),
               ),
+              if (isTodayTab && sortedBlocks.isNotEmpty)
+                TextButton.icon(
+                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                  icon: const Icon(Icons.tune, size: 16),
+                  label: const Text('Blocs'),
+                  onPressed: () => showDayBlocksSheet(context, logic: widget.logic).then((_) => setState(() {})),
+                ),
               TextButton(
                 onPressed: () => setState(() => _showAll = !_showAll),
                 child: Text(_showAll ? "Masquer" : "Voir tout"),
@@ -1357,7 +1525,7 @@ class _TodayViewState extends State<TodayView> {
             const SizedBox(height: 8),
             if (todo.isEmpty)
               Text(
-                "Aucune action pour l’instant.",
+                "Aucune action pour l'instant.",
                 style: TextStyle(
                   color:
                       Theme.of(context).colorScheme.onSurface.withOpacity(.7),
@@ -1615,7 +1783,7 @@ class _TodayViewState extends State<TodayView> {
   }) {
     final now = DateTime.now();
 
-    // ✅ jour affiché (aujourd’hui / demain) selon ton ancienne logique
+    // ✅ jour affiché (aujourd'hui / demain) selon ton ancienne logique
     final viewed =
         (_scope == _Scope.today) ? now : now.add(const Duration(days: 1));
 
@@ -1682,7 +1850,7 @@ class _TodayViewState extends State<TodayView> {
       // Sur tomorrow : ← (vers today) et → (vers après-demain)
       final forwardTooltip =
           isTodayTab ? "Déplacer vers demain" : "Déplacer vers après-demain";
-      final backTooltip = "Renvoyer à aujourd’hui";
+      final backTooltip = "Renvoyer à aujourd'hui";
 
       return Row(
         mainAxisSize: MainAxisSize.min,
@@ -1693,7 +1861,7 @@ class _TodayViewState extends State<TodayView> {
               tooltip: backTooltip,
               onPressed: () {
                 widget.logic.movePlanItemToDay(it.id, ymdPrev);
-                toast("Déplacé vers aujourd’hui");
+                toast("Déplacé vers aujourd'hui");
                 setState(() {});
               },
             ),
@@ -1780,7 +1948,7 @@ class _TodayViewState extends State<TodayView> {
               setState(() {});
             },
           ),
-          // ← / → (today/tomorrow) si tu l’as déjà
+          // ← / → (today/tomorrow) si tu l'as déjà
           moveDayArrowsIfAny(),
         ],
       );
@@ -1921,7 +2089,7 @@ class _TodayViewState extends State<TodayView> {
                     IconButton(
                       tooltip: "Renommer",
                       onPressed: () async {
-                        final txt = await _askText(ctx, "Renommer l’action");
+                        final txt = await _askText(ctx, "Renommer l'action");
                         if (txt == null) return;
                         final t = txt.trim();
                         if (t.isEmpty) return;
@@ -2128,7 +2296,7 @@ class _TodayViewState extends State<TodayView> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      isTodayTab ? "Aujourd’hui :" : "Demain :",
+                                      isTodayTab ? "Aujourd'hui :" : "Demain :",
                                       style: const TextStyle(
                                         fontSize: 13,
                                         fontWeight: FontWeight.w400,
@@ -2186,7 +2354,7 @@ class _TodayViewState extends State<TodayView> {
           // ✅ Ta logique "virtuel" reste valable
           final isVirtual = it.id.startsWith('virt:');
 
-          // ✅ UI : NowHabitTileFull + row d’actions
+          // ✅ UI : NowHabitTileFull + row d'actions
           return Card(
             key: key,
             margin: const EdgeInsets.only(bottom: 8),
@@ -2244,7 +2412,7 @@ class _TodayViewState extends State<TodayView> {
                       // Sinon, applique ici.
                     },
                     onLongPress: () async {
-                      // si tu veux ouvrir le sheet d’édition complet
+                      // si tu veux ouvrir le sheet d'édition complet
                       // openHabitEditSheet(...) ou ton editor
                     },
                   ),
@@ -2503,7 +2671,7 @@ class NowTab extends StatefulWidget {
 }
 
 class _NowTabState extends State<NowTab> {
-// 👉 gèle “ce qu’on fait maintenant”
+// 👉 gèle “ce qu'on fait maintenant”
 // option: sauter les items déjà “faits”
   final Set<String> _skippedIds = {};
   final Set<String> _doneTodayIds = {};
@@ -2511,6 +2679,7 @@ class _NowTabState extends State<NowTab> {
   bool _showGlobalArchives = false;
 
   String? _skippedYmd;
+  String? _activeBlockId; // bloc actif en mode séquence
 
   List<String> checklistForHabit(String habitName) {
     switch (habitName.toLowerCase()) {
@@ -2713,7 +2882,7 @@ class _NowTabState extends State<NowTab> {
                 onPressed: () {
                   setState(() {
                     widget.logic.moveItemToTomorrow(ymd, it);
-                    // si tu veux passer à l’item suivant automatiquement :
+                    // si tu veux passer à l'item suivant automatiquement :
                     _skippedIds.add(it.id); // optionnel si tu gères skip
                   });
                 },
@@ -2828,7 +2997,7 @@ class _NowTabState extends State<NowTab> {
                     if (running != null) widget.logic.stopActive();
                     widget.logic.start(linkedAct.id);
 
-                    // si tu utilises rev.value++ pour rafraîchir d’autres widgets
+                    // si tu utilises rev.value++ pour rafraîchir d'autres widgets
                     widget.logic.rev.value++;
 
                     setState(() {});
@@ -2916,7 +3085,7 @@ class _NowTabState extends State<NowTab> {
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
-          mainAxisSize: MainAxisSize.min, // 🔑 évite l’overflow
+          mainAxisSize: MainAxisSize.min, // 🔑 évite l'overflow
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // ───── HEADER ─────
@@ -2951,7 +3120,7 @@ class _NowTabState extends State<NowTab> {
                   onPressed: () {
                     setState(() {
                       widget.logic.moveItemToTomorrow(ymd, it);
-                      // si tu veux passer à l’item suivant automatiquement :
+                      // si tu veux passer à l'item suivant automatiquement :
                       _skippedIds.add(it.id); // optionnel si tu gères skip
                     });
                   },
@@ -3041,13 +3210,13 @@ class _NowTabState extends State<NowTab> {
 
                 const SizedBox(width: 8),
 
-                // 2) Cacher l’activité (zzz) — seulement si associée
+                // 2) Cacher l'activité (zzz) — seulement si associée
                 SizedBox(
                   width: 44,
                   height: 44,
                   child: IconButton(
                     tooltip:
-                        hasActivity ? "Cacher l’activité" : "Associer d’abord",
+                        hasActivity ? "Cacher l'activité" : "Associer d'abord",
                     onPressed: !hasActivity || act == null
                         ? null
                         : () => _openSnoozeActivitySheet(context, act!),
@@ -3322,7 +3491,7 @@ class _NowTabState extends State<NowTab> {
     String scopeLabel() {
       switch (freq) {
         case HabitFreq.daily:
-          return "Aujourd’hui";
+          return "Aujourd'hui";
         case HabitFreq.weekly:
           return "Cette semaine";
         case HabitFreq.monthly:
@@ -3695,7 +3864,7 @@ class _NowTabState extends State<NowTab> {
             const SizedBox(height: 6),
             if (actions.isEmpty)
               Text(
-                "Rien à prévoir pour l’instant.",
+                "Rien à prévoir pour l'instant.",
                 style: TextStyle(
                   color:
                       Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
@@ -3856,6 +4025,89 @@ class _NowTabState extends State<NowTab> {
     );
   }
 
+  Widget _buildBlockChipBar(BuildContext context, String ymd) {
+    final logic = widget.logic;
+    final sortedBlocks = [...logic.state.blocks]
+      ..sort((a, b) => a.order.compareTo(b.order));
+    if (sortedBlocks.isEmpty) return const SizedBox.shrink();
+
+    return SizedBox(
+      height: 48,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: sortedBlocks.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, i) {
+          final b = sortedBlocks[i];
+          final isActive = _activeBlockId == b.id;
+          final isDisabled = logic.isBlockDisabledForDay(b.id, ymd);
+          final isComplete = logic.isBlockComplete(b.id, ymd);
+          final label =
+              '${b.emoji != null ? "${b.emoji} " : ""}${b.name}';
+
+          return FilterChip(
+            selected: isActive,
+            label: Text(label,
+                style: TextStyle(
+                    fontWeight:
+                        isActive ? FontWeight.w700 : FontWeight.w500)),
+            avatar: isComplete
+                ? const Icon(Icons.check_circle, size: 14)
+                : null,
+            showCheckmark: false,
+            onSelected: isDisabled
+                ? null
+                : (_) {
+                    setState(() {
+                      _activeBlockId = isActive ? null : b.id;
+                    });
+                  },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _blockCompleteView(BuildContext context, String ymd) {
+    final nextBlock = widget.logic.nextIncompleteBlock(ymd);
+    final cs = Theme.of(context).colorScheme;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.check_circle_outline,
+                size: 56, color: cs.primary),
+            const SizedBox(height: 16),
+            const Text(
+              'Bloc terminé !',
+              style:
+                  TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 20),
+            if (nextBlock != null)
+              FilledButton.icon(
+                icon: const Icon(Icons.arrow_forward),
+                label: Text(
+                    '${nextBlock.emoji != null ? "${nextBlock.emoji} " : ""}${nextBlock.name}'),
+                onPressed: () =>
+                    setState(() => _activeBlockId = nextBlock.id),
+              ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () =>
+                  setState(() => _activeBlockId = null),
+              child: const Text('Vue sans bloc'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<int>(
@@ -3867,88 +4119,196 @@ class _NowTabState extends State<NowTab> {
 
         _ensureDay(ymd);
 
-        // ✅ même source / même ordre que TodayView ("À faire")
-        final todo = widget.items;
+        final logic = widget.logic;
+        final sortedBlocks = [...logic.state.blocks]
+          ..sort((a, b) => a.order.compareTo(b.order));
 
-        // ✅ 1) priorité : action envoyée vers Maintenant
-        DayPlanItem? focusedAction;
-        for (final x in todo) {
-          if (x.kind == PlanKind.action && x.isNowFocus == true && !x.done) {
-            focusedAction = x;
-            break;
+        // Auto-détection du prochain bloc incomplet si aucun bloc actif
+        if (_activeBlockId == null && sortedBlocks.isNotEmpty) {
+          final next = logic.nextIncompleteBlock(ymd);
+          if (next != null) {
+            _activeBlockId = next.id;
           }
         }
 
-        final chosen = focusedAction ?? (todo.isNotEmpty ? todo.first : null);
-        final bool isPinned =
-            (focusedAction != null && identical(chosen, focusedAction));
-
-        void _unpinNow() {
-          final a = focusedAction;
-          if (a == null) return;
-
-          setState(() {
-            a.isNowFocus = false; // ✅ enlève l’action forcée
-          });
-
-          widget.logic.onChange();
+        // Vérifie que le bloc actif existe encore
+        if (_activeBlockId != null &&
+            !logic.state.blocks.any((b) => b.id == _activeBlockId)) {
+          _activeBlockId = null;
         }
 
-        if (chosen == null) {
-          return _allDoneView(context);
-        }
+        Widget content;
 
-        if (chosen.kind == PlanKind.action) {
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (isPinned) ...[
-                  Row(
-                    children: [
-                      IconButton(
-                        tooltip: "Désépingler",
-                        icon: const Icon(Icons.arrow_back),
-                        onPressed: _unpinNow,
-                      ),
-                      const SizedBox(width: 8),
-                      const Expanded(
-                        child: Text(
-                          "Action épinglée",
-                          style: TextStyle(
-                              fontWeight: FontWeight.w800, fontSize: 16),
+        if (_activeBlockId != null) {
+          // Mode séquence bloc
+          final blockItems = logic
+              .blockItemsForDay(_activeBlockId!, ymd)
+              .where((it) =>
+                  !it.done && !_skippedIds.contains(it.id))
+              .toList();
+
+          if (blockItems.isEmpty) {
+            content = _blockCompleteView(context, ymd);
+          } else {
+            final chosen = blockItems.first;
+            final blockItems_ = logic.blockItemsForDay(_activeBlockId!, ymd);
+            final doneInBlock =
+                blockItems_.where((it) => it.done).length;
+            final totalInBlock = blockItems_.length;
+            final activeBlock = logic.state.blocks
+                .firstWhere((b) => b.id == _activeBlockId);
+            final blockLabel =
+                '${activeBlock.emoji != null ? "${activeBlock.emoji} " : ""}${activeBlock.name}';
+
+            if (chosen.kind == PlanKind.action) {
+              content = Padding(
+                padding:
+                    const EdgeInsets.fromLTRB(16, 8, 16, 120),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '$blockLabel · $doneInBlock/$totalInBlock',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .primary,
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                ],
-                _nowActionCard(
-                  context,
-                  chosen,
-                  _skippedIds.length,
-                  todo.length,
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    _nowActionCard(
+                        context, chosen, _skippedIds.length,
+                        totalInBlock),
+                  ],
                 ),
-              ],
-            ),
-          );
+              );
+            } else if (chosen.kind == PlanKind.habit) {
+              content = Padding(
+                padding:
+                    const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      '$blockLabel · $doneInBlock/$totalInBlock',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .primary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Expanded(
+                        child: _nowHabitCard(context, chosen)),
+                  ],
+                ),
+              );
+            } else {
+              content = _blockCompleteView(context, ymd);
+            }
+          }
+        } else {
+          // Mode libre (sans bloc)
+          final todo = widget.items
+              .where((it) =>
+                  (widget.logic.effectiveBlockId(it) ?? '').isEmpty)
+              .toList();
+
+          DayPlanItem? focusedAction;
+          for (final x in todo) {
+            if (x.kind == PlanKind.action &&
+                x.isNowFocus == true &&
+                !x.done) {
+              focusedAction = x;
+              break;
+            }
+          }
+
+          final chosen =
+              focusedAction ?? (todo.isNotEmpty ? todo.first : null);
+          final bool isPinned =
+              (focusedAction != null && identical(chosen, focusedAction));
+
+          void unpinNow() {
+            final a = focusedAction;
+            if (a == null) return;
+            setState(() => a.isNowFocus = false);
+            widget.logic.onChange();
+          }
+
+          if (chosen == null) {
+            content = _allDoneView(context);
+          } else if (chosen.kind == PlanKind.action) {
+            content = Padding(
+              padding:
+                  const EdgeInsets.fromLTRB(16, 16, 16, 120),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (isPinned) ...[
+                    Row(
+                      children: [
+                        IconButton(
+                          tooltip: 'Désépingler',
+                          icon: const Icon(Icons.arrow_back),
+                          onPressed: unpinNow,
+                        ),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'Action épinglée',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 16),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  _nowActionCard(
+                      context, chosen, _skippedIds.length,
+                      todo.length),
+                ],
+              ),
+            );
+          } else if (chosen.kind == PlanKind.habit) {
+            content = Padding(
+              padding:
+                  const EdgeInsets.fromLTRB(16, 16, 16, 16),
+              child: _nowHabitCard(context, chosen),
+            );
+          } else {
+            content = _allDoneView(context);
+          }
         }
 
-        if (chosen.kind == PlanKind.habit) {
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-            child: _nowHabitCard(context, chosen), // ✅ nouveau
-          );
-        }
-
-        return _allDoneView(context);
+        return Column(
+          children: [
+            if (sortedBlocks.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _buildBlockChipBar(context, ymd),
+              const SizedBox(height: 4),
+            ],
+            Expanded(child: content),
+          ],
+        );
       },
     );
   }
 
   Widget _activitiesSuggestionForCurrent(DayPlanItem it) {
-    // On ne propose que si l’item actuel est une routine
+    // On ne propose que si l'item actuel est une routine
     if (it.kind != PlanKind.habit) return const SizedBox.shrink();
 
     // Domain du plan item (déjà stocké chez toi dans DayPlanItem)
@@ -3962,7 +4322,7 @@ class _NowTabState extends State<NowTab> {
 
     if (acts.isEmpty) return const SizedBox.shrink();
 
-    // (option) éviter de proposer l’activité déjà en cours
+    // (option) éviter de proposer l'activité déjà en cours
     final running = widget.logic.runningActivity();
     final filtered =
         running == null ? acts : acts.where((a) => a.id != running.id).toList();
@@ -4000,8 +4360,8 @@ class _NowTabState extends State<NowTab> {
                       widget.logic
                           .start(a.id); // ✅ adapte le nom exact si besoin
                       setState(() {
-                        // Optionnel: on peut locker l’item actuel pour rester dessus
-                        // (et l’utilisateur clique ensuite "Fait" => assoc)
+                        // Optionnel: on peut locker l'item actuel pour rester dessus
+                        // (et l'utilisateur clique ensuite "Fait" => assoc)
                       });
                     },
                     icon: const Icon(Icons.play_arrow, size: 18),
@@ -4034,7 +4394,7 @@ class _NowTabState extends State<NowTab> {
                 style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
             const SizedBox(height: 10),
             Text(
-              "Tu peux lancer une activité ou ajouter une routine dans l’onglet À faire.",
+              "Tu peux lancer une activité ou ajouter une routine dans l'onglet À faire.",
               textAlign: TextAlign.center,
               style: TextStyle(
                 color:
