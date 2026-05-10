@@ -307,7 +307,6 @@ Future<AppState> loadOrInitCleaner() async {
 
     // ========== Activités (time) ==========
     final soinAct        = timeAct(sante.id, 'Soins');
-    final hygieneAct     = timeAct(sante.id, 'Hygiène');
     final cuisineAct     = timeAct(sante.id, 'Cuisine');
     final nettoyerAct    = timeAct(environnement.id, 'Nettoyer');
     final lessiveAct     = timeAct(environnement.id, 'Lessive');
@@ -339,7 +338,6 @@ Future<AppState> loadOrInitCleaner() async {
 
       // Santé
       soinAct,
-      hygieneAct,
       cuisineAct,
       timeAct(sante.id, 'Sommeil'),
 
@@ -363,12 +361,12 @@ Future<AppState> loadOrInitCleaner() async {
     // ========== Routines (habits) ==========
     final habits = <Activity>[
       // --- HYGIÈNE / SANTÉ ---
-      habit(sante.id, ‘Hygiène du matin’, freq: HabitFreq.daily, linkedActivityId: soinAct.id),
-      habit(sante.id, ‘Hygiène du soir’, freq: HabitFreq.daily, linkedActivityId: soinAct.id),
-      habit(sante.id, ‘Hygiène hebdomadaire’, freq: HabitFreq.weekly, linkedActivityId: hygieneAct.id),
+      habit(sante.id, 'Hygiène du matin', freq: HabitFreq.daily, linkedActivityId: soinAct.id),
+      habit(sante.id, 'Hygiène du soir', freq: HabitFreq.daily, linkedActivityId: soinAct.id),
+      habit(sante.id, 'Hygiène hebdomadaire', freq: HabitFreq.weekly, linkedActivityId: soinAct.id),
       dailyCountHabit(
         sante.id,
-        "Boire de l’eau",
+        "Boire de l'eau",
         target: 10,
         linkedActivityId: cuisineAct.id,
       ),
@@ -392,8 +390,8 @@ Future<AppState> loadOrInitCleaner() async {
       ),
 
       // --- MAISON ---
-      habit(environnement.id, ‘Faire la vaisselle’, freq: HabitFreq.daily, linkedActivityId: nettoyerAct.id),
-      habit(environnement.id, "Passer l’aspirateur", freq: HabitFreq.weekly, linkedActivityId: nettoyerAct.id),
+      habit(environnement.id, 'Faire la vaisselle', freq: HabitFreq.daily, linkedActivityId: nettoyerAct.id),
+      habit(environnement.id, "Passer l'aspirateur", freq: HabitFreq.weekly, linkedActivityId: nettoyerAct.id),
       weeklyCountHabit(
         environnement.id,
         "Nettoyage rapide",
@@ -406,13 +404,13 @@ Future<AppState> loadOrInitCleaner() async {
         target: 3,
         linkedActivityId: lessiveAct.id,
       ),
-      habit(environnement.id, ‘Gérer la voiture’, freq: HabitFreq.weekly, linkedActivityId: exterieurAct.id),
-      habit(environnement.id, ‘Changer draps/serviettes’, freq: HabitFreq.weekly, linkedActivityId: lessiveAct.id),
+      habit(environnement.id, 'Gérer la voiture', freq: HabitFreq.weekly, linkedActivityId: exterieurAct.id),
+      habit(environnement.id, 'Changer draps/serviettes', freq: HabitFreq.weekly, linkedActivityId: lessiveAct.id),
 
       // --- ORGANISATION / GTD ---
-      habit(organisation.id, ‘Revue hebdomadaire’, freq: HabitFreq.weekly, linkedActivityId: planifAct.id),
-      habit(organisation.id, ‘Saisir mes dépenses’, freq: HabitFreq.daily, linkedActivityId: intendanceAct.id),
-      habit(organisation.id, ‘Suivre mon budget’, freq: HabitFreq.weekly, linkedActivityId: intendanceAct.id),
+      habit(organisation.id, 'Revue hebdomadaire', freq: HabitFreq.weekly, linkedActivityId: planifAct.id),
+      habit(organisation.id, 'Saisir mes dépenses', freq: HabitFreq.daily, linkedActivityId: intendanceAct.id),
+      habit(organisation.id, 'Suivre mon budget', freq: HabitFreq.weekly, linkedActivityId: intendanceAct.id),
 
       // --- SPIRITUEL ---
       dailyCountHabit(
@@ -435,10 +433,10 @@ Future<AppState> loadOrInitCleaner() async {
         target: 3,
       ),
 
-      habit(sport.id, ‘Étirements’, freq: HabitFreq.weekly, linkedActivityId: etirementAct.id),
+      habit(sport.id, 'Étirements', freq: HabitFreq.weekly, linkedActivityId: etirementAct.id),
 
       // --- BUSINESS ---
-      habit(business.id, ‘Préparer une intervention’, freq: HabitFreq.daily, linkedActivityId: interventAct.id),
+      habit(business.id, 'Préparer une intervention', freq: HabitFreq.daily, linkedActivityId: interventAct.id),
     ];
 
     Activity habitByName(String name) =>
@@ -448,7 +446,7 @@ Future<AppState> loadOrInitCleaner() async {
     final hSoir = habitByName('Hygiène du soir');
     final hHebdo = habitByName('Hygiène hebdomadaire');
 
-    final hEau = habitByName('Boire de l’eau');
+    final hEau = habitByName("Boire de l'eau");
 
     final hMangerEq = habitByName('Manger équilibré');
 
@@ -567,7 +565,7 @@ Future<AppState> loadOrInitCleaner() async {
       // Draps/serviettes
       hDraps.id: [
         'Changer draps',
-        'Changer taies d’oreiller',
+        "Changer taies d'oreiller",
         'Changer serviettes',
         'Lancer lavage draps/serviettes',
       ],

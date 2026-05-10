@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use
 
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -2105,6 +2106,34 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                     ? Theme.of(context).colorScheme.primary
                     : Theme.of(context).iconTheme.color,
               ),
+            ),
+            const SizedBox(width: 2),
+            // 🛠 DEV ONLY — bouton reset data
+            IconButton(
+              icon: const Icon(Icons.restart_alt, size: 20),
+              tooltip: 'Réinitialiser les données',
+              onPressed: () async {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Réinitialiser ?'),
+                    content: const Text(
+                        'Toutes les données seront supprimées et l\'app repartira du seed initial.'),
+                    actions: [
+                      TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('Annuler')),
+                      FilledButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('Réinitialiser')),
+                    ],
+                  ),
+                );
+                if (confirm == true) {
+                  await FileStore().wipe();
+                  exit(0);
+                }
+              },
             ),
             const SizedBox(width: 2),
           ],
