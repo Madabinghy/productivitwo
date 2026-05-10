@@ -226,6 +226,7 @@ class _TodayViewState extends State<TodayView> {
             GoalCard(
               goal: goal,
               muted: false,
+              logic: widget.logic,
               onTap: () => _openGoalDetail(context, goal),
               onArchive: () async {
                 final confirm = await showDialog<bool>(
@@ -1312,12 +1313,9 @@ class _TodayViewState extends State<TodayView> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: SegmentedButton<_Scope>(
-              style: const ButtonStyle(
-                textStyle: WidgetStatePropertyAll(TextStyle(fontSize: 12)),
-              ),
               segments: const [
                 ButtonSegment(value: _Scope.goals, label: Text("Objectifs")),
-                ButtonSegment(value: _Scope.today, label: Text("Aujourd’hui")),
+                ButtonSegment(value: _Scope.today, label: Text("Focus")),
                 ButtonSegment(value: _Scope.tomorrow, label: Text("Demain")),
               ],
               selected: {_scope},

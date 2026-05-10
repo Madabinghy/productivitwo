@@ -4179,6 +4179,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                         GoalCard(
                           goal: g,
                           muted: false,
+                          logic: logic,
                           onTap: () => openGoalDetail(g),
                           onArchive: () async {
                             final confirm = await showDialog<bool>(

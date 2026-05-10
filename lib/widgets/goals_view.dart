@@ -135,6 +135,7 @@ class _GoalsViewState extends State<GoalsView> {
           (ctx, i) => GoalCard(
             goal: goals[i],
             muted: false,
+            logic: logic,
             onTap: () => _openGoalSheet(context, goals[i]),
             onArchive: () => _confirmArchive(context, goals[i]),
           ),
@@ -317,6 +318,7 @@ class _DomainGoalsSheetState extends State<DomainGoalsSheet> {
             ...activeGoals.map((g) => GoalCard(
                   goal: g,
                   muted: false,
+                  logic: logic,
                   onTap: () => _openGoalSheet(context, g),
                   onArchive: () => _confirmArchive(context, g),
                 )),
@@ -422,6 +424,7 @@ class GoalCard extends StatelessWidget {
   final bool muted;
   final VoidCallback? onTap;
   final VoidCallback? onArchive;
+  final AppLogic? logic;
 
   const GoalCard({
     super.key,
@@ -429,6 +432,7 @@ class GoalCard extends StatelessWidget {
     required this.muted,
     required this.onTap,
     required this.onArchive,
+    this.logic,
   });
 
   @override
@@ -535,10 +539,55 @@ class GoalCard extends StatelessWidget {
                       fontStyle: FontStyle.italic),
                 ),
               ],
+              if (logic != null && goal.linkedHabitIds.isNotEmpty && !isDone) ...[
+                const SizedBox(height: 6),
+                _RoutineChipsRow(goal: goal, logic: logic!),
+              ],
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _RoutineChipsRow extends StatelessWidget {
+  final Goal goal;
+  final AppLogic logic;
+
+  const _RoutineChipsRow({required this.goal, required this.logic});
+
+  @override
+  Widget build(BuildContext context) {
+    final habits = logic.state.activities
+        .where((a) => a.isHabit && goal.linkedHabitIds.contains(a.id))
+        .toList();
+    if (habits.isEmpty) return const SizedBox.shrink();
+
+    return Wrap(
+      spacing: 6,
+      runSpacing: 4,
+      children: habits.map((h) {
+        final reached = logic.habitReached(h);
+        final color = reached ? Colors.green : Colors.grey.shade400;
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              h.name,
+              style: TextStyle(fontSize: 11, color: color),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        );
+      }).toList(),
     );
   }
 }
@@ -858,18 +907,45 @@ class GoalDetailSheetState extends State<GoalDetailSheet>
                   fontStyle: FontStyle.italic,
                   fontSize: 13))
         else
-          for (final h in habits)
-            CheckboxListTile(
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              title: Text(h.name, style: const TextStyle(fontSize: 14)),
-              value: goal.linkedHabitIds.contains(h.id),
-              onChanged: (_) {
-                logic.toggleGoalLinkedHabit(goal.id, h.id);
-                setState(() {});
-                widget.onChanged();
-              },
-            ),
+          for (final h in habits) ...[
+            () {
+              final done = logic.activeHabitDone(h);
+              final target = logic.activeHabitTarget(h);
+              final reached = target > 0 && done >= target;
+              final progressText = target > 0 ? '$done / $target' : null;
+              final color = reached
+                  ? Colors.green
+                  : (done > 0 ? Colors.orange : Colors.grey.shade400);
+              return CheckboxListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: Text(h.name, style: const TextStyle(fontSize: 14)),
+                subtitle: progressText == null
+                    ? null
+                    : Row(
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                                color: color, shape: BoxShape.circle),
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            reached ? 'Atteinte · $progressText' : progressText,
+                            style: TextStyle(fontSize: 11, color: color),
+                          ),
+                        ],
+                      ),
+                value: goal.linkedHabitIds.contains(h.id),
+                onChanged: (_) {
+                  logic.toggleGoalLinkedHabit(goal.id, h.id);
+                  setState(() {});
+                  widget.onChanged();
+                },
+              );
+            }(),
+          ],
         const SizedBox(height: 40),
       ],
     );
