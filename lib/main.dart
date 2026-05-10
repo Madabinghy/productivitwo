@@ -2335,8 +2335,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             target += logic.weekTargetFrom(a);
             break;
           case HabitFreq.monthly:
-            done += logic.habitSliding(a.id, 30).done;
-            target += logic.monthTargetFrom(a);
+            done += logic.habitSliding(a.id, 7).done;
+            target += logic.weekTargetFrom(a);
             break;
         }
       }
@@ -3981,7 +3981,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             final today = DateTime(now.year, now.month, now.day);
 
             final dH = logic.habitSliding(a.id, 1);
-            final h90 = logic.habitSliding(a.id, 90);
+            final freq = logic.effectiveHabitFreq(a);
+            final quotaD = logic.dayQuotaFor(a);
 
             final series30Raw = List<double>.generate(30, (i) {
               final day = DateTime(now.year, now.month, now.day)
@@ -3989,12 +3990,9 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               return logic.habitValueOn(a.id, day).toDouble();
             });
 
-            // ✅ Smooth partout (daily inclus)
-            const smoothWindow = 7; // tu peux tester 5 / 7 / 10
+            // Lissage uniquement pour les quotidiennes
+            final smoothWindow = (freq == HabitFreq.daily) ? 7 : 1;
             final series30 = movingAverage(series30Raw, smoothWindow);
-
-            final freq = logic.effectiveHabitFreq(a);
-            final quotaD = logic.dayQuotaFor(a);
 
             final maxSeries =
                 series30.fold<double>(0.0, (m, v) => v > m ? v : m);
@@ -4003,13 +4001,18 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                 ? quotaD.toDouble().clamp(1.0, 9999.0)
                 : maxSeries.clamp(1.0, 9999.0);
 
-            final target = h90.ratio.clamp(0.0, 1.0);
+            // Ring adaptatif selon la fréquence
+            final ringRatio = switch (freq) {
+              HabitFreq.daily => logic.habitSliding(a.id, 7).ratio,
+              HabitFreq.weekly => logic.habitSliding(a.id, 7).ratio,
+              HabitFreq.monthly => logic.habitSliding(a.id, 30).ratio,
+            };
             final token = _ringAnimTokenByHabit[a.id] ?? 0;
 
             return HabitTileFull(
               habit: a,
               logic: logic,
-              ringTarget: target,
+              ringTarget: ringRatio,
               ringToken: token,
               onRingBump: () => _triggerRingAnimFor(a.id, setSB),
               series30: series30,

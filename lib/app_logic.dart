@@ -2608,21 +2608,18 @@ class AppLogic {
 
     final a = state.activities.firstWhere((x) => x.id == activityId);
 
-    // cible "par jour" dérivée (selon ta fréquence effective)
-    int perDay;
+    // Cible proportionnelle à la fenêtre demandée
+    final int target;
+    final t2 = effectiveHabitTarget(a);
     switch (effectiveHabitFreq(a)) {
       case HabitFreq.daily:
-        perDay = effectiveHabitTarget(a);
-        break;
+        target = t2 * days;
       case HabitFreq.weekly:
-        perDay = (effectiveHabitTarget(a) / 7).ceil();
-        break;
+        target = (t2 * days / 7.0).round().clamp(1, 999999);
       case HabitFreq.monthly:
-        perDay = (effectiveHabitTarget(a) / 30).ceil();
-        break;
+        target = (t2 * days / 30.0).round().clamp(1, 999999);
     }
 
-    final target = perDay * days;
     final ratio = target > 0 ? (done / target).clamp(0.0, 1.0) : 0.0;
 
     return (done: done, target: target, ratio: ratio);
