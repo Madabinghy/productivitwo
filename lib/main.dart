@@ -2998,7 +2998,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       showDragHandle: true,
       backgroundColor: cs.surface,
       builder: (ctx) {
-        String tab = (focus == 'habit') ? 'habit' : 'time';
+        String tab = focus == 'habit' ? 'habit' : focus == 'goal' ? 'goal' : 'time';
         final scrollCtrl = ScrollController();
 
         return StatefulBuilder(builder: (ctx, setSB) {
@@ -3670,6 +3670,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               const SizedBox(width: 8),
               SegmentedButton<String>(
                 segments: const [
+                  ButtonSegment(value: 'goal', label: Text('Objectifs')),
                   ButtonSegment(value: 'time', label: Text('Temps')),
                   ButtonSegment(value: 'habit', label: Text('Habitudes')),
                 ],
@@ -4078,6 +4079,164 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               ...under.where((a) => logic.isActivitySnoozed(a.id, nowS)),
               ...over.where((a) => logic.isActivitySnoozed(a.id, nowS)),
             ];
+          }
+
+          // ---------- Onglet Objectifs ----------
+          if (tab == 'goal') {
+            final activeGoals = _state!.goals
+                .where((g) =>
+                    g.status == 'active' &&
+                    (domainId == null || g.domainId == domainId))
+                .toList();
+
+            void openGoalDetail(Goal g) {
+              showModalBottomSheet(
+                context: ctx,
+                isScrollControlled: true,
+                showDragHandle: true,
+                builder: (_) => GoalDetailSheet(
+                  goal: g,
+                  logic: logic,
+                  state: _state!,
+                  onChanged: () => setSB(() {}),
+                ),
+              );
+            }
+
+            Future<void> addGoalForDomain() async {
+              String? selDomainId = domainId ??
+                  (_state!.domains.isNotEmpty ? _state!.domains.first.id : null);
+              final titleCtrl = TextEditingController();
+              final actionCtrl = TextEditingController();
+
+              await showDialog(
+                context: ctx,
+                builder: (dctx) => StatefulBuilder(
+                  builder: (dctx, setD) => AlertDialog(
+                    title: const Text('Nouvel objectif'),
+                    content: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (domainId == null)
+                            DropdownButtonFormField<String>(
+                              value: selDomainId,
+                              decoration: const InputDecoration(labelText: 'Domaine'),
+                              items: _state!.domains
+                                  .map((d) => DropdownMenuItem(value: d.id, child: Text(d.name)))
+                                  .toList(),
+                              onChanged: (v) => setD(() => selDomainId = v),
+                            ),
+                          if (domainId == null) const SizedBox(height: 12),
+                          TextField(
+                            controller: titleCtrl,
+                            autofocus: true,
+                            decoration: const InputDecoration(labelText: 'Objectif'),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: actionCtrl,
+                            decoration: const InputDecoration(labelText: 'Première action (optionnel)'),
+                          ),
+                        ],
+                      ),
+                    ),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(dctx), child: const Text('Annuler')),
+                      FilledButton(
+                        onPressed: () {
+                          final title = titleCtrl.text.trim();
+                          if (title.isEmpty || selDomainId == null) return;
+                          logic.createGoal(
+                            domainId: selDomainId!,
+                            title: title,
+                            firstAction: actionCtrl.text.trim().isEmpty ? null : actionCtrl.text.trim(),
+                          );
+                          setSB(() {});
+                          Navigator.pop(dctx);
+                        },
+                        child: const Text('Ajouter'),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            final goalList = activeGoals.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text('Aucun objectif actif.',
+                            style: TextStyle(color: Colors.grey)),
+                        const SizedBox(height: 16),
+                        FilledButton.icon(
+                          onPressed: addGoalForDomain,
+                          icon: const Icon(Icons.add),
+                          label: const Text('Créer un objectif'),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView(
+                    controller: scrollCtrl,
+                    padding: const EdgeInsets.only(bottom: 100),
+                    children: [
+                      for (final g in activeGoals)
+                        GoalCard(
+                          goal: g,
+                          muted: false,
+                          onTap: () => openGoalDetail(g),
+                          onArchive: () async {
+                            final confirm = await showDialog<bool>(
+                              context: ctx,
+                              builder: (c) => AlertDialog(
+                                title: const Text('Archiver ?'),
+                                content: Text('Archiver "${g.title}" ?'),
+                                actions: [
+                                  TextButton(
+                                      onPressed: () => Navigator.pop(c, false),
+                                      child: const Text('Annuler')),
+                                  FilledButton(
+                                      onPressed: () => Navigator.pop(c, true),
+                                      child: const Text('Archiver')),
+                                ],
+                              ),
+                            );
+                            if (confirm == true) {
+                              logic.archiveGoal(g.id);
+                              setSB(() {});
+                            }
+                          },
+                        ),
+                    ],
+                  );
+
+            final goalBody = Padding(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 8,
+                bottom: MediaQuery.of(ctx).viewInsets.bottom,
+              ),
+              child: Column(children: [
+                header,
+                const SizedBox(height: 8),
+                Expanded(child: goalList),
+              ]),
+            );
+
+            return Scaffold(
+              backgroundColor: Colors.transparent,
+              body: goalBody,
+              floatingActionButton: FloatingActionButton.extended(
+                onPressed: addGoalForDomain,
+                icon: const Icon(Icons.add),
+                label: const Text('Nouvel objectif'),
+              ),
+              floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+            );
           }
 
           // ---------- Rendu des sections ----------
