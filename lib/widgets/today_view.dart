@@ -1989,8 +1989,18 @@ class _TodayViewState extends State<TodayView> {
 
                 const SizedBox(height: 12),
 
+                // ---- Désactiver (retirer du plan, garder dans l'objectif)
+                if (it.goalActionId != null)
+                  TextButton(
+                    onPressed: () => Navigator.pop(
+                        ctx, _ActionSheetResult(deactivate: true)),
+                    child: const Text("Retirer de la liste"),
+                  ),
+
                 // ---- Supprimer (optionnel)
                 TextButton(
+                  style: TextButton.styleFrom(
+                      foregroundColor: Theme.of(ctx).colorScheme.error),
                   onPressed: () =>
                       Navigator.pop(ctx, _ActionSheetResult(delete: true)),
                   child: const Text("Supprimer"),
@@ -2015,6 +2025,10 @@ class _TodayViewState extends State<TodayView> {
 
       if (res.delete == true) {
         widget.state.dayPlan.removeWhere((e) => e.id == it.id);
+      }
+
+      if (res.deactivate == true && it.goalActionId != null) {
+        widget.logic.removeGoalActionFromToday(it.goalActionId!);
       }
 
       widget.logic.onChange();
@@ -4036,6 +4050,7 @@ class _ActionSheetResult {
   final String? newDomainId;
   final bool? markDone;
   final bool? delete;
+  final bool? deactivate;
 
   _ActionSheetResult({
     this.rename,
@@ -4044,5 +4059,6 @@ class _ActionSheetResult {
     this.newDomainId,
     this.markDone,
     this.delete,
+    this.deactivate,
   });
 }
