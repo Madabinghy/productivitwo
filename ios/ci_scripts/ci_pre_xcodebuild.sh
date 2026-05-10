@@ -24,6 +24,8 @@ flutter precache --ios
 
 echo "=== Installing CocoaPods dependencies ==="
 cd "$CI_PRIMARY_REPOSITORY_PATH/ios"
-pod install
+gem install cocoapods --no-document
+pod repo add trunk https://cdn.cocoapods.org/ 2>/dev/null || pod repo update trunk 2>/dev/null || true
+pod install --repo-update
 
 echo "=== Pre-build done ==="
