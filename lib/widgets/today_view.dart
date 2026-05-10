@@ -328,21 +328,18 @@ class _TodayViewState extends State<TodayView> {
                       ),
                     ),
                   const SizedBox(width: 4),
-                  PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_vert, size: 18),
-                    itemBuilder: (_) => [
-                      PopupMenuItem(
-                        value: 'toggle',
-                        child: Text(isDisabled
-                            ? 'Réactiver pour aujourd\'hui'
-                            : 'Passer aujourd\'hui'),
-                      ),
-                    ],
-                    onSelected: (v) {
-                      if (v == 'toggle') {
-                        logic.toggleBlockDisabledForDay(block.id, ymd);
-                        setState(() {});
-                      }
+                  IconButton(
+                    tooltip: isDisabled ? "Réactiver" : "Passer aujourd'hui",
+                    icon: Icon(
+                      isDisabled ? Icons.arrow_back : Icons.arrow_forward,
+                      size: 18,
+                      color: isDisabled
+                          ? cs.primary
+                          : cs.onSurface.withOpacity(0.5),
+                    ),
+                    onPressed: () {
+                      logic.toggleBlockDisabledForDay(block.id, ymd);
+                      setState(() {});
                     },
                   ),
                   Icon(isCollapsed ? Icons.expand_more : Icons.expand_less,
