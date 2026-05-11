@@ -4356,9 +4356,32 @@ class _NowTabState extends State<NowTab> {
 
   Widget _buildBlockChipBar(BuildContext context, String ymd) {
     final logic = widget.logic;
+    final runningAct = logic.runningActivity();
+
+    bool blockHasActivityItem(DayBlock b) {
+      if (runningAct == null) return true;
+      return logic.blockItemsForDay(b.id, ymd).any((it) {
+        final actId = it.kind == PlanKind.habit
+            ? (() {
+                final habitId = (it.refId ?? it.habitId ?? '').trim();
+                if (habitId.isEmpty) return null;
+                final routineAct = widget.st.activities
+                    .firstWhereOrNull((a) => a.id == habitId);
+                final linked = (routineAct?.linkedActivityId ?? '').trim();
+                return linked.isNotEmpty ? linked : it.activityId;
+              })()
+            : (it.activityId ?? '').trim().isEmpty
+                ? null
+                : it.activityId;
+        return actId == runningAct.id;
+      });
+    }
+
     final sortedBlocks = ([...logic.state.blocks]
           ..sort((a, b) => a.order.compareTo(b.order)))
-        .where((b) => !logic.isBlockDisabledForDay(b.id, ymd))
+        .where((b) =>
+            !logic.isBlockDisabledForDay(b.id, ymd) &&
+            blockHasActivityItem(b))
         .toList();
     if (sortedBlocks.isEmpty) return const SizedBox.shrink();
 
