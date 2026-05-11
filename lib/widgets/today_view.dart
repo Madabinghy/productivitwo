@@ -1639,8 +1639,23 @@ class _TodayViewState extends State<TodayView> {
       ..sort((a, b) => a.order.compareTo(b.order));
     final blockItemsByBlockId = <String, List<DayPlanItem>>{};
     for (final b in sortedBlocks) {
-      blockItemsByBlockId[b.id] = widget.logic.blockItemsForDay(b.id, ymd);
+      var items = widget.logic.blockItemsForDay(b.id, ymd);
+      // Si une activité est en cours, on filtre les items du bloc
+      // pour n'afficher que ceux qui lui sont liés
+      if (runningId != null) {
+        items = items.where((it) {
+          final actId = effectiveActivityId(it);
+          return actId == runningId;
+        }).toList();
+      }
+      blockItemsByBlockId[b.id] = items;
     }
+    // Avec filtre actif, on n'affiche que les blocs qui ont des items liés
+    final visibleBlocks = runningId != null
+        ? sortedBlocks
+            .where((b) => blockItemsByBlockId[b.id]!.isNotEmpty)
+            .toList()
+        : sortedBlocks;
     final blockItemIds = <String>{
       for (final items in blockItemsByBlockId.values)
         for (final it in items) it.id,
@@ -1720,7 +1735,7 @@ class _TodayViewState extends State<TodayView> {
                 )
               else ...[
                 const SizedBox(height: 4),
-                for (final b in sortedBlocks)
+                for (final b in visibleBlocks)
                   _buildBlockSection(
                     context,
                     b,
