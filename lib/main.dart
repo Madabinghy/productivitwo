@@ -2,8 +2,10 @@
 
 import 'dart:io';
 import 'package:collection/collection.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'firebase_options.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
 import 'package:productivitwo_v1/widgets/appbar_routines_summery.dart';
@@ -619,7 +621,13 @@ class _StatsViewState extends State<StatsView> {
   }
 }
 
-void main() => runApp(const ProductivitwoApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  if (Platform.isAndroid) {
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  }
+  runApp(const ProductivitwoApp());
+}
 
 class ProductivitwoApp extends StatelessWidget {
   const ProductivitwoApp({super.key});

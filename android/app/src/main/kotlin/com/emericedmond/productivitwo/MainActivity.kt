@@ -1,4 +1,4 @@
-package com.example.productivitwo_v1_starter
+package com.emericedmond.productivitwo
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "752644759129",
+    "project_id": "productivitwo-app",
+    "storage_bucket": "productivitwo-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:752644759129:android:291bdc6c171092bf411b48",
+        "android_client_info": {
+          "package_name": "com.emericedmond.productivitwo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAdBcYNODOju3Jt7Ov5OyIIcu7ug48Ocp0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
