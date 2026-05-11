@@ -1,6 +1,7 @@
 // ignore_for_file: deprecated_member_use
 
 import 'dart:io';
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -995,6 +996,126 @@ class _RunningChipAppBarState extends State<RunningChipAppBar> {
             child: Icon(Icons.stop, size: 16, color: runningColor),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class RunningActivityBanner extends StatefulWidget {
+  final AppState? state;
+  final AppLogic logic;
+  final VoidCallback? onTap;
+
+  const RunningActivityBanner({
+    super.key,
+    required this.state,
+    required this.logic,
+    this.onTap,
+  });
+
+  @override
+  State<RunningActivityBanner> createState() => _RunningActivityBannerState();
+}
+
+class _RunningActivityBannerState extends State<RunningActivityBanner>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse;
+  Timer? _clock;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+    _clock = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    _clock?.cancel();
+    super.dispose();
+  }
+
+  String _fmt(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return h > 0 ? '${h}h $m:$s' : '$m:$s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final st = widget.state;
+    if (st == null) return const SizedBox.shrink();
+
+    final session = st.sessions.lastWhereOrNull((s) => s.endAt == null);
+    if (session == null) return const SizedBox.shrink();
+
+    final activity = st.activities.firstWhereOrNull(
+            (a) => a.id == session.activityId) ??
+        Activity(domainId: '', name: 'Activité', habitTarget: 1);
+
+    final elapsed = DateTime.now().difference(session.startAt);
+    final cs = Theme.of(context).colorScheme;
+
+    return GestureDetector(
+      onTap: widget.onTap,
+      child: Container(
+        height: 38,
+        color: cs.primaryContainer.withOpacity(0.6),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          children: [
+            AnimatedBuilder(
+              animation: _pulse,
+              builder: (_, __) => Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: cs.primary
+                      .withOpacity(0.4 + 0.6 * _pulse.value),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                activity.name,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: cs.onPrimaryContainer,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Text(
+              _fmt(elapsed),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                fontFeatures: const [FontFeature.tabularFigures()],
+                color: cs.onPrimaryContainer,
+              ),
+            ),
+            const SizedBox(width: 12),
+            GestureDetector(
+              onTap: () {
+                widget.logic.stopActive();
+                setState(() {});
+              },
+              child: Icon(Icons.stop_rounded,
+                  size: 20, color: cs.onPrimaryContainer),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2005,43 +2126,12 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     }
 
     Widget _buildRoutineChip(BuildContext context) {
-      final runningAct = logic.runningActivity();
-      // activité normale en cours
-      if (runningAct != null) {
-        final theme = Theme.of(context);
-        final bg =
-            theme.appBarTheme.backgroundColor ?? theme.colorScheme.surface;
-        final accent = theme.colorScheme.primary;
-
-        return Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
-            color: bg,
-            border: Border.all(
-              color: accent.withValues(alpha: 0.35),
-              width: 1,
-            ),
-          ),
-          child: RunningChipAppBar(
-            state: _state,
-            logic: logic,
-            onTap: () => setState(() => _tab = _Tab.now),
-          ),
-        );
-      }
-
       final summary = logic.routineProgressSummaryForCurrentPeriod();
-
-      if (summary.total == 0) {
-        return const SizedBox.shrink();
-      }
-
+      if (summary.total == 0) return const SizedBox.shrink();
       return RoutineAppBarChip(
         summary: summary,
         trend30d: logic.habitDailyAdherenceRates(30),
-        onTap: () {
-          _showRoutineProgressSheet(context);
-        },
+        onTap: () => _showRoutineProgressSheet(context),
       );
     }
 
@@ -2131,7 +2221,23 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
 // --- Dans build(...) ---
 
-      body: _buildBody(context),
+      body: Column(
+        children: [
+          ValueListenableBuilder<int>(
+            valueListenable: _tick,
+            builder: (_, __, ___) {
+              final running = logic.runningActivity();
+              if (running == null) return const SizedBox.shrink();
+              return RunningActivityBanner(
+                state: _state,
+                logic: logic,
+                onTap: () => setState(() => _tab = _Tab.now),
+              );
+            },
+          ),
+          Expanded(child: _buildBody(context)),
+        ],
+      ),
       /* Stack(
         children: [
           Padding(
