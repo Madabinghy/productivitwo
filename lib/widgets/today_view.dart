@@ -4451,19 +4451,12 @@ class _NowTabState extends State<NowTab> {
         final sortedBlocks = [...logic.state.blocks]
           ..sort((a, b) => a.order.compareTo(b.order));
 
-        // Auto-détection : timer en cours → bloc lié en priorité,
-        // sinon prochain bloc incomplet
+        // Auto-détection uniquement si aucun bloc actif :
+        // timer en cours → bloc lié en priorité, sinon prochain bloc incomplet
         if (_activeBlockId == null && sortedBlocks.isNotEmpty) {
           final fromTimer = logic.blockForRunningActivity(ymd);
           final next = fromTimer ?? logic.nextIncompleteBlock(ymd);
           if (next != null) _activeBlockId = next.id;
-        }
-
-        // Si un timer démarre et son bloc est différent du bloc actif,
-        // on bascule automatiquement
-        final timerBlock = logic.blockForRunningActivity(ymd);
-        if (timerBlock != null && _activeBlockId != timerBlock.id) {
-          _activeBlockId = timerBlock.id;
         }
 
         // Vérifie que le bloc actif existe encore et n'est pas désactivé
