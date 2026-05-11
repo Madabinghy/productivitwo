@@ -270,12 +270,33 @@ class _TodayViewState extends State<TodayView> {
   // Retourne l'id du bloc sélectionné, '' pour désassigner, null si annulé
   Widget _blockItemTile(BuildContext context, DayPlanItem it) {
     final cs = Theme.of(context).colorScheme;
-    final isDone = it.done;
+    final logic = widget.logic;
+    final today = DateTime.now();
+
+    // Pour les routines, "done" = quota atteint sur la période
+    bool isDone;
+    if (it.kind == PlanKind.habit) {
+      final habitId = it.refId ?? it.habitId;
+      final act = habitId == null
+          ? null
+          : logic.state.activities.firstWhereOrNull((a) => a.id == habitId);
+      isDone = act != null ? logic.habitReached(act) : it.done;
+    } else {
+      isDone = it.done;
+    }
 
     return InkWell(
       onTap: () {
-        it.done = !it.done;
-        widget.logic.onChange();
+        if (it.kind == PlanKind.habit) {
+          final habitId = it.refId ?? it.habitId;
+          if (habitId != null) {
+            // +1 si non atteint, -1 si déjà atteint (toggle)
+            logic.incHabit(habitId, isDone ? -1 : 1, today);
+          }
+        } else {
+          it.done = !it.done;
+        }
+        logic.onChange();
         setState(() {});
       },
       child: Padding(
