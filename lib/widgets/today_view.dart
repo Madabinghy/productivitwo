@@ -317,6 +317,19 @@ class _TodayViewState extends State<TodayView> {
             ),
             // Quota > 1 : compteur + bouton +
             if (quota > 1) ...[
+              SizedBox(
+                width: 32,
+                height: 32,
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(Icons.remove, size: 18,
+                      color: done > 0
+                          ? cs.onSurface.withOpacity(0.5)
+                          : cs.onSurface.withOpacity(0.2)),
+                  onPressed: done > 0 ? () => inc(-1) : null,
+                ),
+              ),
               Text(
                 '$done/$quota',
                 style: TextStyle(
@@ -327,7 +340,6 @@ class _TodayViewState extends State<TodayView> {
                       : cs.onSurface.withOpacity(0.55),
                 ),
               ),
-              const SizedBox(width: 4),
               SizedBox(
                 width: 32,
                 height: 32,
