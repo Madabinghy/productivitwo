@@ -30,7 +30,7 @@ class TodayView extends StatefulWidget {
   State<TodayView> createState() => _TodayViewState();
 }
 
-enum _Scope { goals, today, tomorrow }
+enum _Scope { goals, today }
 
 class _TodayViewState extends State<TodayView> {
   // Choix JOUR: aujourd'hui / demain
@@ -40,8 +40,9 @@ class _TodayViewState extends State<TodayView> {
   String? _lastRunningId;
   bool _showAll = true;
   bool _showCourses = false; // repli/dépli manuel
-  bool _showSnoozed = false; // dans ton State
-  final Set<String> _collapsedBlockIds = {}; // blocs repliés dans Aujourd'hui
+  bool _showSnoozed = false;
+  bool _showTomorrow = false;
+  final Set<String> _collapsedBlockIds = {};
   bool _showBlocks = true;
 
   _Scope _scope = _Scope.today;
@@ -303,6 +304,89 @@ class _TodayViewState extends State<TodayView> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _tomorrowSection({required String tomorrowYmd}) {
+    final todayYmd = yyyymmdd(DateTime.now());
+    final items = widget.logic.planFor(tomorrowYmd)
+        .where((it) => !it.archived && !it.done)
+        .toList()
+      ..sort((a, b) => a.order.compareTo(b.order));
+
+    if (items.isEmpty && !_showTomorrow) return const SizedBox.shrink();
+
+    final cs = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _showTomorrow = !_showTomorrow),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Demain${items.isNotEmpty ? " (${items.length})" : ""}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: cs.onSurface.withOpacity(0.6),
+                    ),
+                  ),
+                ),
+                Icon(
+                  _showTomorrow ? Icons.expand_less : Icons.expand_more,
+                  size: 20,
+                  color: cs.onSurface.withOpacity(0.5),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_showTomorrow) ...[
+          if (items.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                'Rien de prévu pour demain.',
+                style: TextStyle(color: cs.onSurface.withOpacity(0.5)),
+              ),
+            )
+          else
+            for (final it in items)
+              Card(
+                margin: const EdgeInsets.only(bottom: 6),
+                child: ListTile(
+                  dense: true,
+                  leading: Icon(
+                    it.kind == PlanKind.habit
+                        ? Icons.repeat
+                        : Icons.check_box_outline_blank,
+                    size: 18,
+                    color: cs.onSurface.withOpacity(0.4),
+                  ),
+                  title: Text(
+                    it.title,
+                    style: const TextStyle(fontSize: 14),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: IconButton(
+                    tooltip: "Ramener à aujourd'hui",
+                    icon: Icon(Icons.arrow_back,
+                        size: 18, color: cs.primary),
+                    onPressed: () {
+                      widget.logic.moveItemToDayById(it.id, todayYmd);
+                      widget.logic.onChange();
+                      setState(() {});
+                    },
+                  ),
+                ),
+              ),
+        ],
+      ],
     );
   }
 
@@ -635,14 +719,27 @@ class _TodayViewState extends State<TodayView> {
     }
 
     void moveToDay(String targetYmd, {required bool forward}) {
-      // ✅ il te faut une méthode de déplacement générique
-      // -> si tu l'as déjà : moveItemToDayById
+      final fromYmd = ymdViewed;
       widget.logic.moveItemToDayById(it.id, targetYmd);
       widget.logic.onChange();
       setState(() {});
-      toast(forward
-          ? (isOnToday ? 'Déplacé vers demain' : "Déplacé vers après-demain")
-          : "Renvoyé à aujourd'hui");
+      final msg = forward
+          ? (isOnToday ? 'Déplacé à demain' : 'Déplacé à après-demain')
+          : "Renvoyé à aujourd'hui";
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(msg),
+        action: forward
+            ? SnackBarAction(
+                label: 'Annuler',
+                onPressed: () {
+                  widget.logic.moveItemToDayById(it.id, fromYmd);
+                  widget.logic.onChange();
+                  setState(() {});
+                },
+              )
+            : null,
+      ));
     }
 
     Widget moveDayArrows() {
@@ -1472,7 +1569,6 @@ class _TodayViewState extends State<TodayView> {
               segments: const [
                 ButtonSegment(value: _Scope.goals, icon: Icon(Icons.flag_rounded)),
                 ButtonSegment(value: _Scope.today, icon: Icon(Icons.bolt_rounded)),
-                ButtonSegment(value: _Scope.tomorrow, icon: Icon(Icons.arrow_forward_rounded)),
               ],
               selected: {_scope},
               onSelectionChanged: (s) => setState(() => _scope = s.first),
@@ -1701,6 +1797,12 @@ class _TodayViewState extends State<TodayView> {
                 widget.logic.onChange();
               },
             ),
+          // Section Demain (repliable)
+          if (isTodayTab) ...[
+            const SizedBox(height: 8),
+            _tomorrowSection(tomorrowYmd: yyyymmdd(
+              DateTime.now().add(const Duration(days: 1)))),
+          ],
                 ],
               ),
             ),
@@ -2965,11 +3067,22 @@ class _NowTabState extends State<NowTab> {
                 tooltip: "À demain",
                 icon: const Icon(Icons.arrow_forward),
                 onPressed: () {
-                  setState(() {
-                    widget.logic.moveItemToTomorrow(ymd, it);
-                    // si tu veux passer à l'item suivant automatiquement :
-                    _skippedIds.add(it.id); // optionnel si tu gères skip
-                  });
+                  widget.logic.moveItemToTomorrow(ymd, it);
+                  _skippedIds.add(it.id);
+                  setState(() {});
+                  ScaffoldMessenger.of(context).clearSnackBars();
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: const Text('Déplacé à demain'),
+                    action: SnackBarAction(
+                      label: 'Annuler',
+                      onPressed: () {
+                        widget.logic.moveItemToDayById(it.id, ymd);
+                        _skippedIds.remove(it.id);
+                        widget.logic.onChange();
+                        setState(() {});
+                      },
+                    ),
+                  ));
                 },
               ),
             ],
@@ -3202,10 +3315,22 @@ class _NowTabState extends State<NowTab> {
                   tooltip: "À demain",
                   icon: const Icon(Icons.arrow_forward),
                   onPressed: () {
-                    setState(() {
-                      widget.logic.moveItemToTomorrow(ymd, it);
-                      _skippedIds.add(it.id);
-                    });
+                    widget.logic.moveItemToTomorrow(ymd, it);
+                    _skippedIds.add(it.id);
+                    setState(() {});
+                    ScaffoldMessenger.of(context).clearSnackBars();
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: const Text('Déplacé à demain'),
+                      action: SnackBarAction(
+                        label: 'Annuler',
+                        onPressed: () {
+                          widget.logic.moveItemToDayById(it.id, ymd);
+                          _skippedIds.remove(it.id);
+                          widget.logic.onChange();
+                          setState(() {});
+                        },
+                      ),
+                    ));
                   },
                 ),
 /*                 if (_skippedIds.isNotEmpty)
