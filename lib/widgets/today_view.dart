@@ -487,7 +487,18 @@ class _TodayViewState extends State<TodayView> {
     final cs = Theme.of(context).colorScheme;
     final isCollapsed = _collapsedBlockIds.contains(block.id);
     final isDisabled = logic.isBlockDisabledForDay(block.id, ymd);
-    final doneCount = items.where((it) => it.done).length;
+    bool _itemIsDone(DayPlanItem it) {
+      if (it.kind == PlanKind.habit) {
+        final habitId = it.refId ?? it.habitId;
+        final act = habitId == null
+            ? null
+            : logic.state.activities.firstWhereOrNull((a) => a.id == habitId);
+        return act != null ? logic.habitReached(act) : it.done;
+      }
+      return it.done;
+    }
+
+    final doneCount = items.where(_itemIsDone).length;
     final total = items.length;
     final isComplete = total > 0 && doneCount == total;
     final label = '${block.emoji != null ? "${block.emoji} " : ""}${block.name}';
