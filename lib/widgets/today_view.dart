@@ -4477,20 +4477,42 @@ class _NowTabState extends State<NowTab> {
 
         if (_activeBlockId != null) {
           // Mode séquence bloc
-          final blockItems = logic
-              .blockItemsForDay(_activeBlockId!, ymd)
-              .where((it) =>
-                  !it.done && !_skippedIds.contains(it.id))
+          final runningAct = logic.runningActivity();
+
+          // Filtre par activité en cours si un timer est actif
+          bool passesActivityFilter(DayPlanItem it) {
+            if (runningAct == null) return true;
+            final actId = it.kind == PlanKind.habit
+                ? (() {
+                    final habitId = (it.refId ?? it.habitId ?? '').trim();
+                    if (habitId.isEmpty) return null;
+                    final routineAct = widget.st.activities
+                        .firstWhereOrNull((a) => a.id == habitId);
+                    final linked =
+                        (routineAct?.linkedActivityId ?? '').trim();
+                    return linked.isNotEmpty ? linked : it.activityId;
+                  })()
+                : (it.activityId ?? '').trim().isEmpty
+                    ? null
+                    : it.activityId;
+            return actId == runningAct.id;
+          }
+
+          final allBlockItems = logic.blockItemsForDay(_activeBlockId!, ymd)
+              .where(passesActivityFilter)
+              .toList();
+
+          final blockItems = allBlockItems
+              .where((it) => !it.done && !_skippedIds.contains(it.id))
               .toList();
 
           if (blockItems.isEmpty) {
             content = _blockCompleteView(context, ymd);
           } else {
             final chosen = blockItems.first;
-            final blockItems_ = logic.blockItemsForDay(_activeBlockId!, ymd);
             final doneInBlock =
-                blockItems_.where((it) => it.done).length;
-            final totalInBlock = blockItems_.length;
+                allBlockItems.where((it) => it.done).length;
+            final totalInBlock = allBlockItems.length;
             final activeBlock = logic.state.blocks
                 .firstWhere((b) => b.id == _activeBlockId);
             final blockLabel =
