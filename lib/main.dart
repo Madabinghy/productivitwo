@@ -14,6 +14,7 @@ import 'package:productivitwo_v1/widgets/today_view.dart';
 import 'package:productivitwo_v1/widgets/goals_view.dart';
 import 'package:productivitwo_v1/widgets/day_block_sheet.dart';
 import 'package:productivitwo_v1/widgets/new_action_sheet.dart';
+import 'package:productivitwo_v1/widgets/new_routine_sheet.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/storage.dart';
@@ -1693,32 +1694,23 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   }
 
   Future<void> _createRoutineFromNow(BuildContext context) async {
-    final name = await _askText(context, "Nouvelle routine");
-    final n = (name ?? "").trim();
-    if (n.isEmpty) return;
-
-    final domainId = await _pickDomainId(context);
-    if (domainId == null) return;
-
-    String? blockId;
-    if (logic.state.blocks.isNotEmpty && mounted) {
-      blockId = await showBlockPickerSheet(context, logic: logic);
-      if (blockId == null) return; // annulé
-    }
+    final result = await showNewRoutineSheet(context, logic: logic);
+    if (result == null) return;
 
     final a = Activity(
-      domainId: domainId,
-      name: n,
+      domainId: result.domainId,
+      name: result.name,
       type: 'habit',
       habitFreq: HabitFreq.monthly,
       habitTarget: 1,
       autoTune: true,
+      linkedActivityId: result.linkedActivityId,
     );
 
     logic.state.activities.add(a);
 
-    if ((blockId ?? '').isNotEmpty) {
-      logic.addActivityToBlock(blockId!, a.id);
+    if ((result.blockId ?? '').isNotEmpty) {
+      logic.addActivityToBlock(result.blockId!, a.id);
     }
 
     final ymd = yyyymmdd(DateTime.now());
