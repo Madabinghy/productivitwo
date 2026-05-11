@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/widgets/day_block_sheet.dart';
 import 'package:intl/intl.dart';
 
 class GoalsView extends StatefulWidget {
@@ -777,8 +778,17 @@ class GoalDetailSheetState extends State<GoalDetailSheet>
                   setState(() {});
                   widget.onChanged();
                 },
-                onAddToToday: () {
-                  logic.addGoalActionToToday(goal.id, a.id);
+                onAddToToday: () async {
+                  String? blockId;
+                  if (logic.state.blocks.isNotEmpty && context.mounted) {
+                    blockId = await showBlockPickerSheet(
+                      context,
+                      logic: logic,
+                      currentBlockId: null,
+                    );
+                    if (blockId == null) return; // annulé
+                  }
+                  logic.addGoalActionToToday(goal.id, a.id, blockId: blockId);
                   setState(() {});
                   widget.onChanged();
                 },
@@ -1032,7 +1042,7 @@ class _ActionTile extends StatelessWidget {
   final bool isFirst;
   final bool alreadyInToday;
   final void Function(bool) onToggle;
-  final VoidCallback onAddToToday;
+  final Future<void> Function() onAddToToday;
   final VoidCallback onRemoveFromToday;
   final VoidCallback onDelete;
 

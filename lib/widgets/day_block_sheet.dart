@@ -3,6 +3,57 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 
+/// Affiche un picker de blocs et retourne l'id sélectionné,
+/// '' pour désassigner, null si annulé.
+Future<String?> showBlockPickerSheet(
+  BuildContext context, {
+  required AppLogic logic,
+  String? currentBlockId,
+}) async {
+  final blocks = [...logic.state.blocks]
+    ..sort((a, b) => a.order.compareTo(b.order));
+
+  if (blocks.isEmpty) return null;
+
+  return showModalBottomSheet<String>(
+    context: context,
+    showDragHandle: true,
+    builder: (ctx) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Assigner à un bloc',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+              ),
+            ),
+          ),
+          const Divider(height: 1),
+          for (final b in blocks)
+            ListTile(
+              leading: Text(b.emoji ?? '📦',
+                  style: const TextStyle(fontSize: 20)),
+              title: Text(b.name),
+              trailing:
+                  b.id == currentBlockId ? const Icon(Icons.check) : null,
+              onTap: () => Navigator.pop(ctx, b.id),
+            ),
+          ListTile(
+            leading: const Icon(Icons.close),
+            title: const Text('Sans bloc'),
+            onTap: () => Navigator.pop(ctx, ''),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    ),
+  );
+}
+
 Future<void> showDayBlocksSheet(
   BuildContext context, {
   required AppLogic logic,

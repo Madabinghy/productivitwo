@@ -1458,7 +1458,7 @@ class AppLogic {
     onChange();
   }
 
-  void addGoalActionToToday(String goalId, String actionId) {
+  void addGoalActionToToday(String goalId, String actionId, {String? blockId}) {
     final g = state.goals.firstWhere((x) => x.id == goalId);
     final a = g.actions.firstWhere((x) => x.id == actionId);
     final ymd = yyyymmdd(DateTime.now());
@@ -1475,6 +1475,7 @@ class AppLogic {
       domainId: g.domainId,
       activityId: g.activityId,
       goalActionId: actionId,
+      blockId: (blockId ?? '').isEmpty ? null : blockId,
       order: maxOrder + 1,
     ));
     onChange();

@@ -266,6 +266,7 @@ class _TodayViewState extends State<TodayView> {
     );
   }
 
+  // Retourne l'id du bloc sélectionné, '' pour désassigner, null si annulé
   Widget _blockItemTile(BuildContext context, DayPlanItem it) {
     final cs = Theme.of(context).colorScheme;
     final isDone = it.done;
@@ -1451,8 +1452,9 @@ class _TodayViewState extends State<TodayView> {
     };
     usedIds.addAll(blockItemIds);
 
-    final todo =
-        openPoolFiltered.where((it) => !usedIds.contains(it.id)).toList();
+    final todo = openPoolFiltered
+        .where((it) => !usedIds.contains(it.id) && it.kind != PlanKind.habit)
+        .toList();
 
     // (Optionnel) tu peux garder ton tri par order déjà fait via allActions,
     // ici on stabilise :
@@ -2181,6 +2183,52 @@ class _TodayViewState extends State<TodayView> {
                     ],
                   ),
                 ),
+
+                // ---- Bloc assigné
+                if (widget.logic.state.blocks.isNotEmpty) ...[
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text("Bloc"),
+                    subtitle: Text(() {
+                      final bid = widget.logic.effectiveBlockId(it);
+                      if (bid == null) return "Aucun";
+                      final b = widget.logic.state.blocks
+                          .firstWhereOrNull((b) => b.id == bid);
+                      if (b == null) return "Aucun";
+                      return '${b.emoji != null ? "${b.emoji} " : ""}${b.name}';
+                    }()),
+                    trailing: Wrap(
+                      spacing: 8,
+                      children: [
+                        TextButton(
+                          onPressed: () async {
+                            final picked = await showBlockPickerSheet(
+                                ctx,
+                                logic: widget.logic,
+                                currentBlockId: it.blockId);
+                            if (picked == null) return;
+                            widget.logic.assignActionToBlock(
+                                it.id, picked.isEmpty ? null : picked);
+                            if (!mounted) return;
+                            Navigator.pop(ctx, _ActionSheetResult());
+                          },
+                          child: Text(
+                              (widget.logic.effectiveBlockId(it) == null)
+                                  ? "Assigner"
+                                  : "Changer"),
+                        ),
+                        if (widget.logic.effectiveBlockId(it) != null)
+                          TextButton(
+                            onPressed: () {
+                              widget.logic.assignActionToBlock(it.id, null);
+                              Navigator.pop(ctx, _ActionSheetResult());
+                            },
+                            child: const Text("Retirer"),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
 
                 const Divider(height: 16),
 
@@ -3128,19 +3176,6 @@ class _NowTabState extends State<NowTab> {
             // ───── HEADER ─────
             Row(
               children: [
-                Expanded(
-                  child: Text(
-                    domainName.toUpperCase(),
-                    style: TextStyle(
-                      letterSpacing: 1.2,
-                      fontWeight: FontWeight.w800,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .primary // 👈 encore mieux que onSurface
-                          .withOpacity(0.9),
-                    ),
-                  ),
-                ),
                 IconButton(
                   tooltip: "Fin de liste",
                   icon: const Icon(Icons.arrow_downward),
@@ -3150,15 +3185,26 @@ class _NowTabState extends State<NowTab> {
                     });
                   },
                 ),
-                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    domainName.toUpperCase(),
+                    style: TextStyle(
+                      letterSpacing: 1.2,
+                      fontWeight: FontWeight.w800,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withOpacity(0.9),
+                    ),
+                  ),
+                ),
                 IconButton(
                   tooltip: "À demain",
                   icon: const Icon(Icons.arrow_forward),
                   onPressed: () {
                     setState(() {
                       widget.logic.moveItemToTomorrow(ymd, it);
-                      // si tu veux passer à l'item suivant automatiquement :
-                      _skippedIds.add(it.id); // optionnel si tu gères skip
+                      _skippedIds.add(it.id);
                     });
                   },
                 ),
