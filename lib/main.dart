@@ -13,6 +13,7 @@ import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/widgets/today_view.dart';
 import 'package:productivitwo_v1/widgets/goals_view.dart';
 import 'package:productivitwo_v1/widgets/day_block_sheet.dart';
+import 'package:productivitwo_v1/widgets/new_action_sheet.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/storage.dart';
@@ -1648,20 +1649,15 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   }
 
   Future<void> _createActionFromNow(BuildContext context) async {
-    final title = await _askText(context, "Nouvelle action");
-    final t = (title ?? "").trim();
-    if (t.isEmpty) return;
-
-    String? blockId;
-    if (logic.state.blocks.isNotEmpty && mounted) {
-      blockId = await showBlockPickerSheet(context, logic: logic);
-      if (blockId == null) return; // annulé
-    }
+    final result = await showNewActionSheet(context, logic: logic);
+    if (result == null) return;
 
     await logic.addPlanAction(
       ymd: yyyymmdd(DateTime.now()),
-      title: t,
-      blockId: blockId,
+      title: result.title,
+      domainId: result.domainId,
+      activityId: result.activityId,
+      blockId: result.blockId,
     );
 
     logic.onChange();
