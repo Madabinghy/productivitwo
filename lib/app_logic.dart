@@ -4405,14 +4405,18 @@ extension TodayLogic on AppLogic {
 
     if (linkedRoutines.isEmpty) return null;
 
-    // Cherche le premier bloc non-désactivé et non-complet
-    // qui contient l'une de ces routines
+    // Cherche le bloc qui contient l'une de ces routines.
+    // Si ce bloc est désactivé pour aujourd'hui, on le réactive
+    // automatiquement — lancer le timer est un signal d'intention explicite.
     final sorted = [...state.blocks]..sort((a, b) => a.order.compareTo(b.order));
     for (final block in sorted) {
-      if (isBlockDisabledForDay(block.id, ymd)) continue;
       final hasRoutine =
           linkedRoutines.any((r) => block.activityIds.contains(r.id));
-      if (hasRoutine) return block;
+      if (!hasRoutine) continue;
+      if (isBlockDisabledForDay(block.id, ymd)) {
+        toggleBlockDisabledForDay(block.id, ymd); // réactive
+      }
+      return block;
     }
 
     return null;
