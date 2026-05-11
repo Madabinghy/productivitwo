@@ -2509,43 +2509,79 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               final g = _computeGlobalTimeGauges(now);
               final h = _computeGlobalHabitsGauge(now);
               final obj = _computeGoalsGauge();
-              return Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              final cs = Theme.of(context).colorScheme;
+              return Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  GaugeRing(
-                    label: 'Temps',
-                    progress: g.todayProgress,
-                    centerText: g.centerText,
-                    subText: g.subText,
-                    color: _colorForProgress(g.todayProgress, context),
-                    size: 110,
-                    onTap: () async {
-                      final goNow = await _showDomainDetail(
-                          null, startCal, endCal, days,
-                          focus: 'time');
-                      if (!mounted) return;
-                      if (goNow == true) setState(() => _tab = _Tab.now);
-                    },
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      GaugeRing(
+                        label: 'Temps',
+                        progress: g.todayProgress,
+                        centerText: g.centerText,
+                        subText: g.subText,
+                        color: _colorForProgress(g.todayProgress, context),
+                        size: 150,
+                        onTap: () async {
+                          final goNow = await _showDomainDetail(
+                              null, startCal, endCal, days,
+                              focus: 'time');
+                          if (!mounted) return;
+                          if (goNow == true) setState(() => _tab = _Tab.now);
+                        },
+                      ),
+                      GaugeRing(
+                        label: 'Routines',
+                        progress: h.outerPrimary,
+                        centerText: h.centerText,
+                        subText: h.subText,
+                        color: _colorForProgress(h.outerPrimary, context),
+                        size: 150,
+                        onTap: () => _showDomainDetail(
+                            null, startCal, endCal, days,
+                            focus: 'habit'),
+                      ),
+                    ],
                   ),
-                  GaugeRing(
-                    label: 'Routines',
-                    progress: h.outerPrimary,
-                    centerText: h.centerText,
-                    subText: h.subText,
-                    color: _colorForProgress(h.outerPrimary, context),
-                    size: 110,
-                    onTap: () => _showDomainDetail(
-                        null, startCal, endCal, days,
-                        focus: 'habit'),
-                  ),
-                  GaugeRing(
-                    label: 'Objectifs',
-                    progress: obj.progress,
-                    centerText: obj.centerText,
-                    subText: obj.subText,
-                    color: _colorForProgress(obj.progress, context),
-                    size: 110,
+                  const SizedBox(height: 12),
+                  GestureDetector(
                     onTap: () => setState(() => _tab = _Tab.today),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        children: [
+                          Icon(Icons.flag_rounded,
+                              size: 16,
+                              color: _colorForProgress(obj.progress, context)),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(99),
+                              child: LinearProgressIndicator(
+                                value: obj.progress,
+                                minHeight: 8,
+                                backgroundColor:
+                                    cs.surfaceContainerHighest,
+                                color: _colorForProgress(
+                                    obj.progress, context),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            obj.centerText == '—'
+                                ? obj.subText
+                                : '${obj.centerText}  ·  ${obj.subText}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: cs.onSurface.withOpacity(0.6),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ],
               );
