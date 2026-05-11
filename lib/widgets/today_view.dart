@@ -273,29 +273,85 @@ class _TodayViewState extends State<TodayView> {
     final logic = widget.logic;
     final today = DateTime.now();
 
-    // Pour les routines, "done" = quota atteint sur la période
-    bool isDone;
     if (it.kind == PlanKind.habit) {
       final habitId = it.refId ?? it.habitId;
       final act = habitId == null
           ? null
           : logic.state.activities.firstWhereOrNull((a) => a.id == habitId);
-      isDone = act != null ? logic.habitReached(act) : it.done;
-    } else {
-      isDone = it.done;
+
+      final quota = act != null ? logic.dayQuotaFor(act) : 1;
+      final done = habitId != null ? logic.habitValueOn(habitId, today) : 0;
+      final isDone = done >= quota;
+
+      void inc(int delta) {
+        if (habitId == null) return;
+        logic.incHabit(habitId, delta, today);
+        logic.onChange();
+        setState(() {});
+      }
+
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: [
+            // Coche simple si quota = 1, sinon icône d'état
+            GestureDetector(
+              onTap: () => inc(isDone ? -1 : 1),
+              child: Icon(
+                isDone ? Icons.check_circle : Icons.radio_button_unchecked,
+                size: 20,
+                color: isDone ? cs.primary : cs.onSurface.withOpacity(0.35),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                it.title,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: isDone ? cs.onSurface.withOpacity(0.4) : cs.onSurface,
+                  decoration: isDone ? TextDecoration.lineThrough : null,
+                ),
+              ),
+            ),
+            // Quota > 1 : compteur + bouton +
+            if (quota > 1) ...[
+              Text(
+                '$done/$quota',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: isDone
+                      ? cs.primary
+                      : cs.onSurface.withOpacity(0.55),
+                ),
+              ),
+              const SizedBox(width: 4),
+              SizedBox(
+                width: 32,
+                height: 32,
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(Icons.add, size: 18,
+                      color: isDone
+                          ? cs.onSurface.withOpacity(0.3)
+                          : cs.primary),
+                  onPressed: isDone ? null : () => inc(1),
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
     }
 
+    // Action simple
+    final isDone = it.done;
     return InkWell(
       onTap: () {
-        if (it.kind == PlanKind.habit) {
-          final habitId = it.refId ?? it.habitId;
-          if (habitId != null) {
-            // +1 si non atteint, -1 si déjà atteint (toggle)
-            logic.incHabit(habitId, isDone ? -1 : 1, today);
-          }
-        } else {
-          it.done = !it.done;
-        }
+        it.done = !it.done;
         logic.onChange();
         setState(() {});
       },
@@ -315,9 +371,7 @@ class _TodayViewState extends State<TodayView> {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
-                  color: isDone
-                      ? cs.onSurface.withOpacity(0.4)
-                      : cs.onSurface,
+                  color: isDone ? cs.onSurface.withOpacity(0.4) : cs.onSurface,
                   decoration: isDone ? TextDecoration.lineThrough : null,
                 ),
               ),
