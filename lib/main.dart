@@ -12,6 +12,7 @@ import 'package:productivitwo_v1/widgets/habit_tile_full.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/widgets/today_view.dart';
 import 'package:productivitwo_v1/widgets/goals_view.dart';
+import 'package:productivitwo_v1/widgets/day_block_sheet.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/storage.dart';
@@ -1651,12 +1652,16 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     final t = (title ?? "").trim();
     if (t.isEmpty) return;
 
+    String? blockId;
+    if (logic.state.blocks.isNotEmpty && mounted) {
+      blockId = await showBlockPickerSheet(context, logic: logic);
+      if (blockId == null) return; // annulé
+    }
+
     await logic.addPlanAction(
       ymd: yyyymmdd(DateTime.now()),
       title: t,
-      domainId: null,
-      activityId: null,
-      habitId: null,
+      blockId: blockId,
     );
 
     logic.onChange();
@@ -1699,19 +1704,27 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     final domainId = await _pickDomainId(context);
     if (domainId == null) return;
 
-    // ✅ crée la routine comme ton AppRoot
+    String? blockId;
+    if (logic.state.blocks.isNotEmpty && mounted) {
+      blockId = await showBlockPickerSheet(context, logic: logic);
+      if (blockId == null) return; // annulé
+    }
+
     final a = Activity(
       domainId: domainId,
       name: n,
       type: 'habit',
-      habitFreq: HabitFreq.monthly, // 👈 1 / mois
+      habitFreq: HabitFreq.monthly,
       habitTarget: 1,
       autoTune: true,
     );
 
     logic.state.activities.add(a);
 
-    // Matérialise immédiatement dans le plan du jour pour qu'elle soit déplaçable
+    if ((blockId ?? '').isNotEmpty) {
+      logic.addActivityToBlock(blockId!, a.id);
+    }
+
     final ymd = yyyymmdd(DateTime.now());
     logic.ensurePlannedOnce(ymd, PlanKind.habit, a.id, a.name,
         domainId: a.domainId);

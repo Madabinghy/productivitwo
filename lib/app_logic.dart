@@ -3926,23 +3926,22 @@ extension TodayLogic on AppLogic {
   Future<void> addPlanAction({
     required String ymd,
     required String title,
-
-    // ✅ nouveaux champs (optionnels)
     String? domainId,
     String? activityId,
     String? habitId,
+    String? blockId,
   }) async {
-    final key = ymd; // respecte l'onglet (aujourd'hui/demain/...)
+    final key = ymd;
 
-    final plan = planFor(key); // trié par order
+    final plan = planFor(key);
     final todayKey = _todayKeyLocal();
     final isToday = (key == todayKey);
 
     final ord = plan.isEmpty
         ? 0
         : (isToday
-            ? (plan.first.order - 1) // Aujourd'hui -> en tête
-            : (plan.last.order + 1)); // Demain/autre -> en fin
+            ? (plan.first.order - 1)
+            : (plan.last.order + 1));
 
     state.dayPlan.add(DayPlanItem(
         id: _uuid.v4(),
@@ -3950,11 +3949,10 @@ extension TodayLogic on AppLogic {
         title: title,
         yyyymmdd: key,
         order: ord,
-
-        // ✅ liaison GTD
         domainId: domainId,
         activityId: activityId,
         habitId: habitId,
+        blockId: (blockId ?? '').isEmpty ? null : blockId,
         status: ActionStatus.inbox));
 
     onChange();
