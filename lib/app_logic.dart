@@ -4392,6 +4392,32 @@ extension TodayLogic on AppLogic {
     onChange();
   }
 
+  // Trouve le bloc associé à l'activité en cours via la chaîne
+  // timer → linkedActivityId → routine → block.activityIds
+  DayBlock? blockForRunningActivity(String ymd) {
+    final running = runningActivity();
+    if (running == null) return null;
+
+    // Routines qui ont cette activité comme timer lié
+    final linkedRoutines = state.activities
+        .where((a) => a.isHabit && a.linkedActivityId == running.id)
+        .toList();
+
+    if (linkedRoutines.isEmpty) return null;
+
+    // Cherche le premier bloc non-désactivé et non-complet
+    // qui contient l'une de ces routines
+    final sorted = [...state.blocks]..sort((a, b) => a.order.compareTo(b.order));
+    for (final block in sorted) {
+      if (isBlockDisabledForDay(block.id, ymd)) continue;
+      final hasRoutine =
+          linkedRoutines.any((r) => block.activityIds.contains(r.id));
+      if (hasRoutine) return block;
+    }
+
+    return null;
+  }
+
   DayBlock? nextIncompleteBlock(String ymd) {
     final sorted = [...state.blocks]..sort((a, b) => a.order.compareTo(b.order));
     for (final b in sorted) {
