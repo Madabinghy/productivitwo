@@ -2354,6 +2354,31 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     );
   }
 
+  ({double progress, String centerText, String subText})
+      _computeGoalsGauge() {
+    final goals =
+        _state!.goals.where((g) => g.status == 'active').toList();
+    final totalGoals = goals.length;
+
+    if (totalGoals == 0) {
+      return (progress: 0.0, centerText: '—', subText: '0 objectif');
+    }
+
+    final totalSteps =
+        goals.fold<int>(0, (sum, g) => sum + g.stepsTotal);
+    final doneSteps =
+        goals.fold<int>(0, (sum, g) => sum + g.stepsDone);
+
+    final progress =
+        totalSteps == 0 ? 0.0 : (doneSteps / totalSteps).clamp(0.0, 1.0);
+    final centerText =
+        totalSteps == 0 ? '$totalGoals' : '$doneSteps/$totalSteps';
+    final subText =
+        '$totalGoals objectif${totalGoals > 1 ? "s" : ""}';
+
+    return (progress: progress, centerText: centerText, subText: subText);
+  }
+
   Widget _buildDashboardBody(BuildContext context) {
     // 1) Temps “de contexte” (scope/range). OK de recalculer au build.
     final now = DateTime.now();
@@ -2377,6 +2402,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               final now = DateTime.now();
               final g = _computeGlobalTimeGauges(now);
               final h = _computeGlobalHabitsGauge(now);
+              final obj = _computeGoalsGauge();
               return Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
@@ -2386,7 +2412,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                     centerText: g.centerText,
                     subText: g.subText,
                     color: _colorForProgress(g.todayProgress, context),
-                    size: 150,
+                    size: 110,
                     onTap: () async {
                       final goNow = await _showDomainDetail(
                           null, startCal, endCal, days,
@@ -2401,10 +2427,19 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                     centerText: h.centerText,
                     subText: h.subText,
                     color: _colorForProgress(h.outerPrimary, context),
-                    size: 150,
+                    size: 110,
                     onTap: () => _showDomainDetail(
                         null, startCal, endCal, days,
                         focus: 'habit'),
+                  ),
+                  GaugeRing(
+                    label: 'Objectifs',
+                    progress: obj.progress,
+                    centerText: obj.centerText,
+                    subText: obj.subText,
+                    color: _colorForProgress(obj.progress, context),
+                    size: 110,
+                    onTap: () => setState(() => _tab = _Tab.today),
                   ),
                 ],
               );
