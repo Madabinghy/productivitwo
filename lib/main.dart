@@ -614,6 +614,45 @@ class _StatsViewState extends State<StatsView> {
                   ),
                 ),
               ),
+            const SizedBox(height: 40),
+            Center(
+              child: TextButton(
+                style: TextButton.styleFrom(
+                  foregroundColor: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: .35),
+                ),
+                onPressed: () async {
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Réinitialiser les données ?'),
+                      content: const Text(
+                          'Toutes les données seront supprimées. Cette action est irréversible.'),
+                      actions: [
+                        TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('Annuler')),
+                        FilledButton(
+                            style: FilledButton.styleFrom(
+                              backgroundColor:
+                                  Theme.of(ctx).colorScheme.error,
+                            ),
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: const Text('Réinitialiser')),
+                      ],
+                    ),
+                  );
+                  if (confirm == true) {
+                    await FileStore().wipe();
+                    exit(0);
+                  }
+                },
+                child: const Text('Réinitialiser les données'),
+              ),
+            ),
+            const SizedBox(height: 60),
             ],
           ),
         ),
@@ -2453,13 +2492,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             ValueListenableBuilder<int>(
               valueListenable: _tick,
               builder: (context, _, __) {
-                return AppBarProductivityBars(logic: logic, state: _state);
-              },
-            ),
-            const SizedBox(width: 3),
-            ValueListenableBuilder<int>(
-              valueListenable: _tick,
-              builder: (context, _, __) {
                 final bins24 = logic.minutesByHourLast24(DateTime.now());
                 final cs = Theme.of(context).colorScheme;
                 return Padding(
@@ -2509,34 +2541,6 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                     ? Theme.of(context).colorScheme.primary
                     : Theme.of(context).iconTheme.color,
               ),
-            ),
-            const SizedBox(width: 2),
-            // 🛠 DEV ONLY — bouton reset data
-            IconButton(
-              icon: const Icon(Icons.restart_alt, size: 20),
-              tooltip: 'Réinitialiser les données',
-              onPressed: () async {
-                final confirm = await showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('Réinitialiser ?'),
-                    content: const Text(
-                        'Toutes les données seront supprimées et l\'app repartira du seed initial.'),
-                    actions: [
-                      TextButton(
-                          onPressed: () => Navigator.pop(ctx, false),
-                          child: const Text('Annuler')),
-                      FilledButton(
-                          onPressed: () => Navigator.pop(ctx, true),
-                          child: const Text('Réinitialiser')),
-                    ],
-                  ),
-                );
-                if (confirm == true) {
-                  await FileStore().wipe();
-                  exit(0);
-                }
-              },
             ),
             const SizedBox(width: 2),
           ],
@@ -3077,7 +3081,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             ),
           );
         }),
-        const SizedBox(height: 80),
+        const SizedBox(height: 60),
       ],
     );
   }
