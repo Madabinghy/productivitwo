@@ -29,6 +29,18 @@ class FileStore {
   }
 
 
+void _migrateDomainIdBackfill(AppState st) {
+  if (st.domainIdBackfilledOnce) return;
+  final actById = {for (final a in st.activities) a.id: a};
+  for (final item in st.dayPlan) {
+    if ((item.domainId ?? '').isNotEmpty) continue;
+    final actId = (item.activityId ?? '').trim();
+    if (actId.isEmpty) continue;
+    item.domainId = actById[actId]?.domainId;
+  }
+  st.domainIdBackfilledOnce = true;
+}
+
 void _migrateCoursesArchived(AppState st) {
   if (st.coursesArchivedOnce) return;
   for (final item in st.dayPlan) {
@@ -175,6 +187,7 @@ Future<AppState> loadOrInitCleaner() async {
   if (await f.exists()) {
     final main = tryDecode(await f.readAsString());
     if (main != null) {
+      _migrateDomainIdBackfill(main);
       _migrateCoursesArchived(main);
       _migrateLinkedActivities(main);
       _migrateVoitureActivity(main);

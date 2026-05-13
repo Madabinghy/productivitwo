@@ -865,6 +865,7 @@ class AppState {
   int weeklyScoreTarget; // % objectif hebdomadaire (0-100) // yyyymmdd où le défi a été passé
   int notifHour;   // heure du rappel quotidien (défaut 9)
   int notifMinute; // minute du rappel quotidien (défaut 0)
+  bool domainIdBackfilledOnce;
 
   AppState({
     required this.domains,
@@ -891,6 +892,7 @@ class AppState {
     this.weeklyScoreTarget = 80,
     this.notifHour = 9,
     this.notifMinute = 0,
+    this.domainIdBackfilledOnce = false,
     // ✅ NOUVEAU
     Map<String, List<String>>? nowSkippedByYmd,
     Map<String, List<String>>? nowDoneByYmd,
@@ -960,6 +962,7 @@ class AppState {
         'weeklyScoreTarget': weeklyScoreTarget,
         'notifHour': notifHour,
         'notifMinute': notifMinute,
+        'domainIdBackfilledOnce': domainIdBackfilledOnce,
       };
 
   static AppState from(Map j) {
@@ -1037,6 +1040,7 @@ class AppState {
       weeklyScoreTarget: (j['weeklyScoreTarget'] as int?) ?? 80,
       notifHour: (j['notifHour'] as int?) ?? 9,
       notifMinute: (j['notifMinute'] as int?) ?? 0,
+      domainIdBackfilledOnce: (j['domainIdBackfilledOnce'] as bool?) ?? false,
     );
   }
 
