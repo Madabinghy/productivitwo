@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
@@ -10,8 +12,10 @@ class NotificationService {
   static const _channelId = 'routines_daily';
   static const _notifId = 1;
 
+  static bool get _supported => Platform.isAndroid || Platform.isIOS;
+
   static Future<void> init() async {
-    if (_initialized) return;
+    if (_initialized || !_supported) return;
 
     tz.initializeTimeZones();
     try {
@@ -36,6 +40,7 @@ class NotificationService {
   }
 
   static Future<void> requestPermissions() async {
+    if (!_supported) return;
     final android = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     final ios = _plugin.resolvePlatformSpecificImplementation<
@@ -52,6 +57,7 @@ class NotificationService {
     int minute = 0,
     required int routineCount,
   }) async {
+    if (!_supported) return;
     if (!_initialized) await init();
 
     await _plugin.cancel(_notifId);
@@ -92,5 +98,8 @@ class NotificationService {
     return next;
   }
 
-  static Future<void> cancelAll() => _plugin.cancelAll();
+  static Future<void> cancelAll() async {
+    if (!_supported) return;
+    await _plugin.cancelAll();
+  }
 }
