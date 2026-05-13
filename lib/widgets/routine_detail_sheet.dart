@@ -124,6 +124,70 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
               ),
             ],
 
+            // Paliers de streak (visible même sans historique)
+            if (logic.effectiveHabitFreq(act) == HabitFreq.daily) ...[
+              const SizedBox(height: 10),
+              Text(
+                'Paliers',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: cs.onSurface.withOpacity(.5),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  MapEntry(3, BadgeId.streak3),
+                  MapEntry(7, BadgeId.streak7),
+                  MapEntry(21, BadgeId.streak21),
+                  MapEntry(66, BadgeId.streak66),
+                  MapEntry(100, BadgeId.streak100),
+                ].map<Widget>((e) {
+                  final days = e.key;
+                  final id = e.value;
+                  final isEarned = logic.state.earnedBadges
+                      .any((b) => b.id == id && b.habitId == habitId);
+                  final meta = badgeMeta(id);
+                  if (isEarned) {
+                    return Chip(
+                      backgroundColor: cs.primaryContainer,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      label: Text(
+                        '${meta.emoji} ${meta.label}',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                          color: cs.onPrimaryContainer,
+                        ),
+                      ),
+                    );
+                  }
+                  final progress = currentStreak.clamp(0, days);
+                  return Chip(
+                    backgroundColor:
+                        cs.surfaceContainerHighest.withOpacity(.35),
+                    side: BorderSide(
+                        color: cs.outlineVariant.withOpacity(.4)),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    label: Text(
+                      '${meta.emoji} $progress / ${days}j',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                        color: cs.onSurface.withOpacity(.45),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+
             const SizedBox(height: 12),
 
             if (hasLinked)

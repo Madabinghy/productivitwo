@@ -3390,6 +3390,95 @@ class AppLogic {
     return (f == HabitFreq.daily) ? t : 1; // hebdo/mensuel = 1/jour
   }
 
+  // Score journalier pour un jour passé (daily habits uniquement).
+  double _dailyScoreFor(DateTime day) {
+    final ymd = yyyymmdd(day);
+    final d = DateTime(day.year, day.month, day.day);
+    final actions = state.dayPlan
+        .where((it) =>
+            it.yyyymmdd == ymd && it.kind == PlanKind.action && !it.archived)
+        .toList();
+    final actionsDone = actions.where((it) => it.done).length;
+    int routinesDone = 0, routinesTotal = 0;
+    for (final act in state.activities.where((a) => a.isHabit)) {
+      if (effectiveHabitFreq(act) != HabitFreq.daily) continue;
+      final quota = dayQuotaFor(act);
+      if (quota <= 0) continue;
+      routinesTotal++;
+      if (habitValueOn(act.id, d) >= quota) routinesDone++;
+    }
+    final done = actionsDone + routinesDone;
+    final total = actions.length + routinesTotal;
+    return total == 0 ? 0.0 : done / total;
+  }
+
+  /// Vérifie tous les paliers et ajoute les badges manquants dans `state.earnedBadges`.
+  /// Retourne la liste des badges nouvellement débloqués.
+  List<EarnedBadge> checkAndAwardBadges() {
+    final today = yyyymmdd(DateTime.now());
+    final now = DateTime.now();
+    final newBadges = <EarnedBadge>[];
+
+    void award(BadgeId id, {String? habitId}) {
+      if (state.earnedBadges
+          .any((b) => b.id == id && b.habitId == habitId)) return;
+      final badge = EarnedBadge(id: id, habitId: habitId, earnedAt: today);
+      state.earnedBadges.add(badge);
+      newBadges.add(badge);
+    }
+
+    // --- Streaks par routine quotidienne ---
+    for (final act in state.activities.where((a) => a.isHabit)) {
+      if (effectiveHabitFreq(act) != HabitFreq.daily) continue;
+      final streak = habitCurrentStreak(act.id);
+      if (streak >= 3) award(BadgeId.streak3, habitId: act.id);
+      if (streak >= 7) award(BadgeId.streak7, habitId: act.id);
+      if (streak >= 21) award(BadgeId.streak21, habitId: act.id);
+      if (streak >= 66) award(BadgeId.streak66, habitId: act.id);
+      if (streak >= 100) award(BadgeId.streak100, habitId: act.id);
+    }
+
+    // --- Volume d'actions complétées (historique total) ---
+    final totalDone =
+        state.dayPlan.where((it) => it.kind == PlanKind.action && it.done).length;
+    if (totalDone >= 10) award(BadgeId.actions10);
+    if (totalDone >= 50) award(BadgeId.actions50);
+    if (totalDone >= 100) award(BadgeId.actions100);
+
+    // --- Score journalier ---
+    final todayYmd = yyyymmdd(now);
+    final todayActions = state.dayPlan
+        .where((it) =>
+            it.yyyymmdd == todayYmd &&
+            it.kind == PlanKind.action &&
+            !it.archived)
+        .toList();
+    final todayActionsDone = todayActions.where((it) => it.done).length;
+    final routineSummary = routineProgressSummaryForCurrentPeriod();
+    final scoreDone = todayActionsDone + routineSummary.reached;
+    final scoreTotal = todayActions.length + routineSummary.total;
+
+    if (scoreTotal > 0 && scoreDone >= scoreTotal) {
+      award(BadgeId.scoreFirst100);
+
+      // Vérifie N jours consécutifs passés à 80%+
+      bool consecutiveDaysAt80(int days) {
+        final base = DateTime(now.year, now.month, now.day);
+        for (int i = 1; i <= days; i++) {
+          if (_dailyScoreFor(base.subtract(Duration(days: i))) < 0.80) {
+            return false;
+          }
+        }
+        return true;
+      }
+
+      if (consecutiveDaysAt80(7)) award(BadgeId.score7dAt80);
+      if (consecutiveDaysAt80(30)) award(BadgeId.score30dAt80);
+    }
+
+    return newBadges;
+  }
+
   /// Nombre de jours consécutifs où le quota est atteint (en partant d'aujourd'hui ou d'hier).
   /// Retourne 0 pour les routines hebdo/mensuelles.
   int habitCurrentStreak(String habitId) {

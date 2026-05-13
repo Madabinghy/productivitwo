@@ -754,6 +754,67 @@ class FilterState {
   bool get isActive => domainIds.isNotEmpty || activityIds.isNotEmpty;
 }
 
+// ─── Badges ──────────────────────────────────────────────────────────────────
+
+enum BadgeId {
+  streak3, streak7, streak21, streak66, streak100,
+  scoreFirst100, score7dAt80, score30dAt80,
+  actions10, actions50, actions100,
+}
+
+class BadgeMeta {
+  final String emoji;
+  final String label;
+  final String description;
+  const BadgeMeta(this.emoji, this.label, this.description);
+}
+
+BadgeMeta badgeMeta(BadgeId id) {
+  switch (id) {
+    case BadgeId.streak3:      return const BadgeMeta('🔥', '3 jours',        'Série de 3 jours d\'affilée');
+    case BadgeId.streak7:      return const BadgeMeta('🔥', '7 jours',        'Une semaine sans fauter');
+    case BadgeId.streak21:     return const BadgeMeta('⚡', '21 jours',       'L\'habitude est prise');
+    case BadgeId.streak66:     return const BadgeMeta('💎', '66 jours',       'Ancré dans le quotidien');
+    case BadgeId.streak100:    return const BadgeMeta('👑', '100 jours',      'Centurion');
+    case BadgeId.scoreFirst100:return const BadgeMeta('⭐', 'Journée parfaite','Première journée à 100%');
+    case BadgeId.score7dAt80:  return const BadgeMeta('🌟', 'Semaine solide', '7 jours consécutifs à 80%+');
+    case BadgeId.score30dAt80: return const BadgeMeta('🌟', 'Mois solide',    '30 jours consécutifs à 80%+');
+    case BadgeId.actions10:    return const BadgeMeta('✅', '10 actions',      'En route !');
+    case BadgeId.actions50:    return const BadgeMeta('✅', '50 actions',      'Productif !');
+    case BadgeId.actions100:   return const BadgeMeta('✅', '100 actions',     'Centurion des tâches');
+  }
+}
+
+class EarnedBadge {
+  final BadgeId id;
+  final String? habitId; // null = badge global
+  final String earnedAt; // yyyymmdd
+
+  EarnedBadge({required this.id, this.habitId, required this.earnedAt});
+
+  Map<String, dynamic> toJson() => {
+    'id': id.name,
+    if (habitId != null) 'habitId': habitId,
+    'earnedAt': earnedAt,
+  };
+
+  static EarnedBadge? tryFrom(dynamic j) {
+    try {
+      final m = j as Map;
+      final id = BadgeId.values.firstWhere((b) => b.name == m['id'] as String);
+      return EarnedBadge(
+        id: id,
+        habitId: m['habitId'] as String?,
+        earnedAt: m['earnedAt'] as String,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 class AppState {
   List<Domain> domains;
   List<Activity> activities;
@@ -798,6 +859,9 @@ class AppState {
   List<DayBlock> blocks;
   Map<String, List<String>> disabledBlocksByYmd; // ymd -> [blockIds désactivés]
 
+  // Gamification
+  List<EarnedBadge> earnedBadges;
+
   AppState({
     required this.domains,
     required this.activities,
@@ -818,6 +882,7 @@ class AppState {
     Map<String, List<String>>? habitChecklistByHabitId,
     List<DayBlock>? blocks,
     Map<String, List<String>>? disabledBlocksByYmd,
+    List<EarnedBadge>? earnedBadges,
     // ✅ NOUVEAU
     Map<String, List<String>>? nowSkippedByYmd,
     Map<String, List<String>>? nowDoneByYmd,
@@ -844,7 +909,8 @@ class AppState {
         activityLogs = activityLogs ?? <ActivityLog>[],
         filters = filters ?? FilterState(),
         blocks = blocks ?? <DayBlock>[],
-        disabledBlocksByYmd = disabledBlocksByYmd ?? <String, List<String>>{};
+        disabledBlocksByYmd = disabledBlocksByYmd ?? <String, List<String>>{},
+        earnedBadges = earnedBadges ?? <EarnedBadge>[];
 
   Map<String, dynamic> toJson() => {
         'domains': domains.map((e) => e.toJson()).toList(),
@@ -880,6 +946,7 @@ class AppState {
         'voitureMigratedOnce': voitureMigratedOnce,
         'blocks': blocks.map((e) => e.toJson()).toList(),
         'disabledBlocksByYmd': disabledBlocksByYmd,
+        'earnedBadges': earnedBadges.map((e) => e.toJson()).toList(),
       };
 
   static AppState from(Map j) {
@@ -949,6 +1016,9 @@ class AppState {
       voitureMigratedOnce: (j['voitureMigratedOnce'] as bool?) ?? false,
       blocks: _list(j['blocks'], (e) => DayBlock.from(e)),
       disabledBlocksByYmd: _mapSL(j['disabledBlocksByYmd']),
+      earnedBadges: _list(j['earnedBadges'], (e) => EarnedBadge.tryFrom(e))
+          .whereType<EarnedBadge>()
+          .toList(),
     );
   }
 

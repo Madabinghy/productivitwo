@@ -1619,6 +1619,16 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   Future<void> _saveAndRefresh() async {
     if (_state == null) return;
 
+    // Vérification badges
+    final newBadges = logic.checkAndAwardBadges();
+    if (newBadges.isNotEmpty && mounted) {
+      final meta = badgeMeta(newBadges.last.id);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        duration: const Duration(seconds: 4),
+        content: Text('${meta.emoji} Badge débloqué : ${meta.label}'),
+      ));
+    }
+
     // ✅ Debounce sauvegarde (regroupe les onChange rapides)
     _saveDebounce?.cancel();
     _saveDebounce = Timer(const Duration(milliseconds: 500), () {
@@ -2254,6 +2264,54 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                           ?.copyWith(fontWeight: FontWeight.w700),
                     ),
                   ),
+                  Builder(builder: (ctx) {
+                    const globalIds = [
+                      BadgeId.scoreFirst100,
+                      BadgeId.score7dAt80,
+                      BadgeId.score30dAt80,
+                      BadgeId.actions10,
+                      BadgeId.actions50,
+                      BadgeId.actions100,
+                    ];
+                    final earned = logic.state.earnedBadges
+                        .where((b) => globalIds.contains(b.id))
+                        .map((b) => b.id)
+                        .toSet();
+                    if (earned.isEmpty) return const SizedBox.shrink();
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Divider(height: 20),
+                        Text(
+                          'Badges',
+                          style: theme.textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: globalIds
+                              .where(earned.contains)
+                              .map<Widget>((id) {
+                                final m = badgeMeta(id);
+                                return Tooltip(
+                                  message: m.description,
+                                  child: Chip(
+                                    label: Text('${m.emoji} ${m.label}'),
+                                    materialTapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    visualDensity: VisualDensity.compact,
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 4),
+                                  ),
+                                );
+                              })
+                              .toList(),
+                        ),
+                      ],
+                    );
+                  }),
                 ],
               ),
             ),
