@@ -1583,6 +1583,7 @@ class _AppRootState extends State<AppRoot>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) async {
+    if (_state == null) return; // pas encore initialisé
     if (state == AppLifecycleState.resumed) {
       // évite de scanner trop souvent (ex: toutes les 6h)
       if (DateTime.now().difference(_lastGlobalScan) >
