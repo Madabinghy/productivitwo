@@ -1656,8 +1656,8 @@ class _AppRootState extends State<AppRoot>
               logic.effectiveHabitFreq(a) == HabitFreq.daily)
           .length;
       await NotificationService.scheduleDailyReminder(
-        hour: 9,
-        minute: 0,
+        hour: logic.state.notifHour,
+        minute: logic.state.notifMinute,
         routineCount: routineCount,
       );
     }());
@@ -3351,6 +3351,66 @@ class _AppRootState extends State<AppRoot>
                     );
                   }),
                   const SizedBox(height: 4),
+                  const Divider(height: 1),
+                  // ── Réglage rappel ────────────────────────────────────
+                  InkWell(
+                    onTap: () async {
+                      final st = _state!;
+                      final picked = await showTimePicker(
+                        context: context,
+                        initialTime: TimeOfDay(
+                            hour: st.notifHour, minute: st.notifMinute),
+                        helpText: 'Heure du rappel quotidien',
+                      );
+                      if (picked == null || !mounted) return;
+                      setState(() {
+                        st.notifHour = picked.hour;
+                        st.notifMinute = picked.minute;
+                      });
+                      logic.onChange();
+                      final routineCount = logic.state.activities
+                          .where((a) =>
+                              a.isHabit &&
+                              logic.effectiveHabitFreq(a) == HabitFreq.daily)
+                          .length;
+                      await NotificationService.scheduleDailyReminder(
+                        hour: picked.hour,
+                        minute: picked.minute,
+                        routineCount: routineCount,
+                      );
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                      child: Row(
+                        children: [
+                          Icon(Icons.notifications_outlined,
+                              size: 16,
+                              color: cs.onSurface.withOpacity(.45)),
+                          const SizedBox(width: 10),
+                          Text(
+                            'Rappel quotidien',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: cs.onSurface.withOpacity(.6),
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            '${_state!.notifHour.toString().padLeft(2, '0')}:${_state!.notifMinute.toString().padLeft(2, '0')}',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: cs.primary,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Icon(Icons.chevron_right,
+                              size: 16,
+                              color: cs.onSurface.withOpacity(.3)),
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
               );
             },
