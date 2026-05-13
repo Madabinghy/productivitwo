@@ -337,12 +337,14 @@ class StatsView extends StatefulWidget {
   final AppLogic logic;
   final AppState state;
   final String? selectedDomainId;
+  final ScrollController? scrollController;
 
   const StatsView({
     super.key,
     required this.logic,
     required this.state,
     required this.selectedDomainId,
+    this.scrollController,
   });
 
   @override
@@ -438,6 +440,7 @@ class _StatsViewState extends State<StatsView> {
 
         Expanded(
           child: ListView(
+            controller: widget.scrollController,
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
             children: [
               const Text('Temps (heures / jour)',
@@ -2837,6 +2840,7 @@ class _AppRootState extends State<AppRoot>
                     logic: logic,
                     state: _state!,
                     selectedDomainId: null,
+                    scrollController: controller,
                   ),
                 ),
               ),
