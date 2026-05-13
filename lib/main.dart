@@ -1326,6 +1326,9 @@ class _Last24hSessionsSheet extends StatelessWidget {
         .toList()
       ..sort((Session a, Session b) => b.startAt.compareTo(a.startAt));
 
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.only(
@@ -1339,13 +1342,21 @@ class _Last24hSessionsSheet extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Expanded(
+                Icon(Icons.access_time_rounded, color: cs.primary),
+                const SizedBox(width: 8),
+                Expanded(
                   child: Text(
-                    "Dernières 24h",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                    'Dernières 24h',
+                    style: theme.textTheme.titleLarge
+                        ?.copyWith(fontWeight: FontWeight.w800),
                   ),
                 ),
-                Text("${sessions.length}"),
+                if (sessions.isNotEmpty)
+                  Text(
+                    '${sessions.length} session${sessions.length > 1 ? 's' : ''}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                        color: cs.onSurface.withValues(alpha: .6)),
+                  ),
               ],
             ),
             const SizedBox(height: 8),
@@ -2156,6 +2167,121 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       );
     }
 
+    void _showDailyScoreSheet(BuildContext context, int done, int total) {
+      final today = yyyymmdd(DateTime.now());
+      final actions = logic.state.dayPlan
+          .where((it) =>
+              it.yyyymmdd == today &&
+              it.kind == PlanKind.action &&
+              !it.archived)
+          .toList();
+      final actionsDone = actions.where((it) => it.done).length;
+      final actionsTotal = actions.length;
+      final routineSummary = logic.routineProgressSummaryForCurrentPeriod();
+      final pct = total == 0 ? 0 : (done / total * 100).round();
+
+      showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (ctx) {
+          final theme = Theme.of(ctx);
+          final cs = theme.colorScheme;
+          final ringColor = pct >= 100
+              ? cs.primary
+              : Color.lerp(cs.error, cs.primary, (pct / 100).clamp(0.0, 1.0))!;
+
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: CircularProgressIndicator(
+                          value: total == 0 ? 0 : done / total,
+                          strokeWidth: 5,
+                          backgroundColor: cs.onSurface.withValues(alpha: .12),
+                          color: ringColor,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '$pct%',
+                            style: theme.textTheme.headlineMedium?.copyWith(
+                              fontWeight: FontWeight.w900,
+                              color: pct >= 100 ? cs.primary : null,
+                            ),
+                          ),
+                          Text(
+                            "Journée d'aujourd'hui",
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: cs.onSurface.withValues(alpha: .6),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (pct >= 100) ...[
+                        const Spacer(),
+                        const Text('🎉', style: TextStyle(fontSize: 32)),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.check_box_outlined),
+                    title: const Text('Actions'),
+                    trailing: Text(
+                      '$actionsDone / $actionsTotal',
+                      style: theme.textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.emoji_events_rounded),
+                    title: const Text('Routines'),
+                    trailing: Text(
+                      '${routineSummary.reached} / ${routineSummary.total}',
+                      style: theme.textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    }
+
+    Widget _buildDailyScoreChip(BuildContext context) {
+      final today = yyyymmdd(DateTime.now());
+      final actions = logic.state.dayPlan
+          .where((it) =>
+              it.yyyymmdd == today &&
+              it.kind == PlanKind.action &&
+              !it.archived)
+          .toList();
+      final actionsDone = actions.where((it) => it.done).length;
+      final routineSummary = logic.routineProgressSummaryForCurrentPeriod();
+      final done = actionsDone + routineSummary.reached;
+      final total = actions.length + routineSummary.total;
+      if (total == 0) return const SizedBox.shrink();
+      return DailyScoreChip(
+        done: done,
+        total: total,
+        onTap: () => _showDailyScoreSheet(context, done, total),
+      );
+    }
+
     Widget _buildRoutineChip(BuildContext context) {
       final summary = logic.routineProgressSummaryForCurrentPeriod();
       if (summary.total == 0) return const SizedBox.shrink();
@@ -2184,19 +2310,35 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               valueListenable: _tick,
               builder: (context, _, __) {
                 final bins24 = logic.minutesByHourLast24(DateTime.now());
-
-                return GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _openLast24hSessionsSheet(context, logic),
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                    child: MiniHourBars24h(bins: bins24),
+                final cs = Theme.of(context).colorScheme;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () => _openLast24hSessionsSheet(context, logic),
+                      borderRadius: BorderRadius.circular(999),
+                      child: Ink(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: cs.surfaceContainerHighest
+                              .withValues(alpha: .55),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                              color:
+                                  cs.outlineVariant.withValues(alpha: .55)),
+                        ),
+                        child: MiniHourBars24h(bins: bins24),
+                      ),
+                    ),
                   ),
                 );
               },
             ),
             const Spacer(),
+            _buildDailyScoreChip(context),
+            const SizedBox(width: 6),
             _buildRoutineChip(context),
             const SizedBox(width: 10),
             GestureDetector(
@@ -4775,31 +4917,94 @@ class AppBarProductivityBars extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       showDragHandle: true,
-      builder: (_) {
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        final cs = theme.colorScheme;
+
         Widget row(String label, int avgMin, int totalMin) {
           final totalH = totalMin ~/ 60;
           final totalM = totalMin % 60;
-          return ListTile(
-            title: Text(label),
-            subtitle: Text("${_fmtHhMmPerDay(avgMin)} · ${_fmtPct(avgMin)}"),
-            trailing: Text("${totalH}h${totalM.toString().padLeft(2, '0')}"),
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(label,
+                          style: theme.textTheme.bodyMedium
+                              ?.copyWith(fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 4),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: LinearProgressIndicator(
+                          value: (avgMin / 1440.0).clamp(0.0, 1.0),
+                          minHeight: 5,
+                          backgroundColor:
+                              cs.onSurface.withValues(alpha: .10),
+                          color: cs.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      _fmtHhMmPerDay(avgMin),
+                      style: theme.textTheme.bodyMedium
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    Text(
+                      "${totalH}h${totalM.toString().padLeft(2, '0')} total",
+                      style: theme.textTheme.bodySmall?.copyWith(
+                          color: cs.onSurface.withValues(alpha: .55)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           );
         }
 
         return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const ListTile(
-                title: Text("Productivité absolue"),
-                subtitle:
-                    Text("Moyenne par jour, base 24h · total sur la période"),
-              ),
-              row("7 jours", m7, t7),
-              row("30 jours", m30, t30),
-              row("90 jours", m90, t90),
-              const SizedBox(height: 8),
-            ],
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.bar_chart_rounded, color: cs.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Productivité',
+                        style: theme.textTheme.titleLarge
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ],
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 2, bottom: 16),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Temps actif moyen par jour · base 24h',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                          color: cs.onSurface.withValues(alpha: .6)),
+                    ),
+                  ),
+                ),
+                row('90 jours', m90, t90),
+                row('30 jours', m30, t30),
+                row('7 jours', m7, t7),
+              ],
+            ),
           ),
         );
       },
@@ -4808,25 +5013,37 @@ class AppBarProductivityBars extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // moyenne minutes/jour
     final m7 = logic.avgMinutesPerDayInclToday(7);
     final m30 = logic.avgMinutesPerDayInclToday(30);
     final m90 = logic.avgMinutesPerDayInclToday(90);
+    final cs = Theme.of(context).colorScheme;
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(12),
-      onTap: () => _openSheet(context),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _bar(context, m90 / 1440.0),
-            const SizedBox(height: 4),
-            _bar(context, m30 / 1440.0),
-            const SizedBox(height: 4),
-            _bar(context, m7 / 1440.0),
-          ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _openSheet(context),
+          borderRadius: BorderRadius.circular(999),
+          child: Ink(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withValues(alpha: .55),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                  color: cs.outlineVariant.withValues(alpha: .55)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _bar(context, m90 / 1440.0),
+                const SizedBox(height: 3),
+                _bar(context, m30 / 1440.0),
+                const SizedBox(height: 3),
+                _bar(context, m7 / 1440.0),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -4893,6 +5110,77 @@ class MiniHourBars24h extends StatelessWidget {
             ),
           );
         }),
+      ),
+    );
+  }
+}
+
+class DailyScoreChip extends StatelessWidget {
+  final int done;
+  final int total;
+  final VoidCallback? onTap;
+
+  const DailyScoreChip({
+    super.key,
+    required this.done,
+    required this.total,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (total == 0) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final score = done / total;
+    final pct = (score * 100).round();
+
+    final ringColor = score >= 1.0
+        ? cs.primary
+        : Color.lerp(cs.error, cs.primary, score.clamp(0.0, 1.0))!;
+
+    final bg = cs.surfaceContainerHighest.withValues(alpha: .55);
+    final border = cs.outlineVariant.withValues(alpha: .55);
+    final textStyle = theme.textTheme.labelMedium?.copyWith(
+      fontWeight: FontWeight.w800,
+      letterSpacing: .1,
+      color: score >= 1.0 ? cs.primary : null,
+    );
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(999),
+          child: Ink(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            decoration: BoxDecoration(
+              color: bg,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: border),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    value: score,
+                    strokeWidth: 2.5,
+                    backgroundColor: cs.onSurface.withValues(alpha: .15),
+                    color: ringColor,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text('$pct%', style: textStyle),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
