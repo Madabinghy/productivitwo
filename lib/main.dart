@@ -5719,75 +5719,138 @@ class _WeekScoreChart extends StatelessWidget {
   });
 
   static const _labels = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+  static const _maxH = 46.0;
+  static const _labelH = 18.0; // SizedBox(4) + Text(~14)
 
   @override
   Widget build(BuildContext context) {
+    // Position du seuil depuis le bas du Stack
+    final lineBottom = _labelH + target * _maxH;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: SizedBox(
         height: 68,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: List.generate(7, (i) {
-            final score = scores[i];
-            final isFuture = score < 0;
-            final isToday = i == todayIndex;
-            final ratio = isFuture ? 0.0 : score.clamp(0.0, 1.0);
+        child: Stack(
+          children: [
+            // ── Barres ───────────────────────────────────────────────
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: List.generate(7, (i) {
+                final score = scores[i];
+                final isFuture = score < 0;
+                final isToday = i == todayIndex;
+                final ratio = isFuture ? 0.0 : score.clamp(0.0, 1.0);
 
-            final Color barColor;
-            if (isFuture) {
-              barColor = cs.onSurface.withOpacity(.07);
-            } else if (score == 0) {
-              barColor = cs.onSurface.withOpacity(.10);
-            } else if (score >= target) {
-              barColor = cs.primary;
-            } else {
-              barColor = cs.primary.withOpacity(.45);
-            }
+                final Color barColor;
+                if (isFuture) {
+                  barColor = cs.onSurface.withOpacity(.07);
+                } else if (score == 0) {
+                  barColor = cs.onSurface.withOpacity(.10);
+                } else if (score >= target) {
+                  barColor = cs.primary;
+                } else {
+                  barColor = cs.primary.withOpacity(.45);
+                }
 
-            const maxH = 46.0;
-            final barH = isFuture ? 3.0 : (ratio * maxH < 4.0 ? 4.0 : ratio * maxH);
+                final barH = isFuture
+                    ? 3.0
+                    : (ratio * _maxH < 4.0 ? 4.0 : ratio * _maxH);
 
-            return Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2.5),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    SizedBox(
-                      height: maxH,
-                      child: Align(
-                        alignment: Alignment.bottomCenter,
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeOut,
-                          height: barH,
-                          decoration: BoxDecoration(
-                            color: barColor,
-                            borderRadius: BorderRadius.circular(4),
+                return Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2.5),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        SizedBox(
+                          height: _maxH,
+                          child: Align(
+                            alignment: Alignment.bottomCenter,
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeOut,
+                              height: barH,
+                              decoration: BoxDecoration(
+                                color: barColor,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            ),
                           ),
                         ),
-                      ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _labels[i],
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: isToday
+                                ? FontWeight.w800
+                                : FontWeight.w500,
+                            color: isToday
+                                ? cs.primary
+                                : cs.onSurface.withOpacity(.35),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _labels[i],
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight:
-                            isToday ? FontWeight.w800 : FontWeight.w500,
-                        color: isToday
-                            ? cs.primary
-                            : cs.onSurface.withOpacity(.35),
-                      ),
+                  ),
+                );
+              }),
+            ),
+
+            // ── Ligne de seuil ────────────────────────────────────────
+            Positioned(
+              bottom: lineBottom,
+              left: 0,
+              right: 0,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: CustomPaint(
+                      painter: _DashedLinePainter(
+                          color: cs.primary.withOpacity(.35)),
+                      child: const SizedBox(height: 1),
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${(target * 100).round()}%',
+                    style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                      color: cs.primary.withOpacity(.5),
+                    ),
+                  ),
+                ],
               ),
-            );
-          }),
+            ),
+          ],
         ),
       ),
     );
   }
+}
+
+class _DashedLinePainter extends CustomPainter {
+  final Color color;
+  const _DashedLinePainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke;
+    const dashW = 4.0;
+    const gapW = 3.0;
+    double x = 0;
+    while (x < size.width) {
+      canvas.drawLine(Offset(x, 0), Offset(x + dashW, 0), paint);
+      x += dashW + gapW;
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedLinePainter old) => old.color != color;
 }
