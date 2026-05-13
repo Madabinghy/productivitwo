@@ -1478,7 +1478,8 @@ class AppRoot extends StatefulWidget {
   State<AppRoot> createState() => _AppRootState();
 }
 
-class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
+class _AppRootState extends State<AppRoot>
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   final store = FileStore();
   DateTime _lastGlobalScan = DateTime.fromMillisecondsSinceEpoch(0);
   AppState? _state;
@@ -1499,6 +1500,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
   late final ValueNotifier<int> _tick; // seconds
   late final ConfettiController _confettiController;
+  late final AnimationController _tabFadeController;
+  late final Animation<double> _tabFade;
 
   @override
   void initState() {
@@ -1508,6 +1511,12 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     _tick = ValueNotifier<int>(0);
     _confettiController =
         ConfettiController(duration: const Duration(seconds: 2));
+    _tabFadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 180),
+      value: 1.0,
+    );
+    _tabFade = CurvedAnimation(parent: _tabFadeController, curve: Curves.easeIn);
 
     _startMinuteHeartbeat();
     _init();
@@ -1538,6 +1547,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     _heartbeat?.cancel();
     _tick.dispose();
     _confettiController.dispose();
+    _tabFadeController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -1823,7 +1833,9 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
     final filteredTodo = sections.todo.where(passesEffective).toList();
 
-    return IndexedStack(
+    return FadeTransition(
+      opacity: _tabFade,
+      child: IndexedStack(
       index: _tabIndex(_tab),
       children: [
         _buildDashboardBody(context),
@@ -1860,6 +1872,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         WeeklyView(logic: logic, state: st),
         StatsView(logic: logic, state: st, selectedDomainId: null),
       ],
+      ),
     );
   }
 
@@ -2861,19 +2874,34 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _tabIndex(_tab),
-        onTap: (i) => setState(() => _tab = _tabFromIndex(i)),
+        onTap: (i) {
+          _tabFadeController.forward(from: 0);
+          setState(() => _tab = _tabFromIndex(i));
+        },
         type: BottomNavigationBarType.fixed,
+        selectedFontSize: 11,
+        unselectedFontSize: 11,
         items: const [
           BottomNavigationBarItem(
-              icon: Icon(Icons.dashboard), label: 'Dashboard'),
+              icon: Icon(Icons.dashboard_outlined),
+              activeIcon: Icon(Icons.dashboard),
+              label: 'Accueil'),
           BottomNavigationBarItem(
-              icon: Icon(Icons.checklist), label: 'À faire'),
+              icon: Icon(Icons.checklist_outlined),
+              activeIcon: Icon(Icons.checklist),
+              label: 'À faire'),
           BottomNavigationBarItem(
-              icon: Icon(Icons.play_arrow), label: 'Maintenant'),
+              icon: Icon(Icons.play_circle_outline),
+              activeIcon: Icon(Icons.play_circle),
+              label: 'Maintenant'),
           BottomNavigationBarItem(
-              icon: Icon(Icons.calendar_view_week), label: 'Semaine'),
+              icon: Icon(Icons.calendar_view_week_outlined),
+              activeIcon: Icon(Icons.calendar_view_week),
+              label: 'Semaine'),
           BottomNavigationBarItem(
-              icon: Icon(Icons.show_chart), label: 'Stats'),
+              icon: Icon(Icons.bar_chart_outlined),
+              activeIcon: Icon(Icons.bar_chart),
+              label: 'Stats'),
         ],
       ),
 
