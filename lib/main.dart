@@ -2188,6 +2188,10 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       final actionsDone = actions.where((it) => it.done).length;
       final actionsTotal = actions.length;
       final routineSummary = logic.routineProgressSummaryForCurrentPeriod();
+      // Total historique actions complétées (tous les jours)
+      final totalHistoricalDone = logic.state.dayPlan
+          .where((it) => it.kind == PlanKind.action && it.done)
+          .length;
       final pct = total == 0 ? 0 : (done / total * 100).round();
 
       showModalBottomSheet<void>(
@@ -2264,54 +2268,126 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                           ?.copyWith(fontWeight: FontWeight.w700),
                     ),
                   ),
-                  Builder(builder: (ctx) {
-                    const globalIds = [
+                  const Divider(height: 24),
+                  Text(
+                    'Paliers',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: cs.onSurface.withValues(alpha: .5),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  // --- Actions ---
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      MapEntry(10, BadgeId.actions10),
+                      MapEntry(50, BadgeId.actions50),
+                      MapEntry(100, BadgeId.actions100),
+                    ].map<Widget>((e) {
+                      final threshold = e.key;
+                      final id = e.value;
+                      final isEarned = logic.state.earnedBadges
+                          .any((b) => b.id == id);
+                      final meta = badgeMeta(id);
+                      if (isEarned) {
+                        return Chip(
+                          backgroundColor: cs.primaryContainer,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                          padding:
+                              const EdgeInsets.symmetric(horizontal: 4),
+                          label: Text(
+                            '${meta.emoji} ${meta.label}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                              color: cs.onPrimaryContainer,
+                            ),
+                          ),
+                        );
+                      }
+                      final progress =
+                          totalHistoricalDone.clamp(0, threshold);
+                      return Chip(
+                        backgroundColor:
+                            cs.surfaceContainerHighest.withValues(alpha: .35),
+                        side: BorderSide(
+                            color: cs.outlineVariant.withValues(alpha: .4)),
+                        materialTapTargetSize:
+                            MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                        padding:
+                            const EdgeInsets.symmetric(horizontal: 4),
+                        label: Text(
+                          '${meta.emoji} $progress / $threshold',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                            color: cs.onSurface.withValues(alpha: .45),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 8),
+                  // --- Score ---
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
                       BadgeId.scoreFirst100,
                       BadgeId.score7dAt80,
                       BadgeId.score30dAt80,
-                      BadgeId.actions10,
-                      BadgeId.actions50,
-                      BadgeId.actions100,
-                    ];
-                    final earned = logic.state.earnedBadges
-                        .where((b) => globalIds.contains(b.id))
-                        .map((b) => b.id)
-                        .toSet();
-                    if (earned.isEmpty) return const SizedBox.shrink();
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Divider(height: 20),
-                        Text(
-                          'Badges',
-                          style: theme.textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w700),
+                    ].map<Widget>((id) {
+                      final isEarned = logic.state.earnedBadges
+                          .any((b) => b.id == id);
+                      final meta = badgeMeta(id);
+                      if (isEarned) {
+                        return Chip(
+                          backgroundColor: cs.primaryContainer,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                          padding:
+                              const EdgeInsets.symmetric(horizontal: 4),
+                          label: Text(
+                            '${meta.emoji} ${meta.label}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                              color: cs.onPrimaryContainer,
+                            ),
+                          ),
+                        );
+                      }
+                      // Progression : pour scoreFirst100, montrer le % du jour
+                      final hint = id == BadgeId.scoreFirst100
+                          ? '$pct / 100%'
+                          : meta.label;
+                      return Chip(
+                        backgroundColor:
+                            cs.surfaceContainerHighest.withValues(alpha: .35),
+                        side: BorderSide(
+                            color: cs.outlineVariant.withValues(alpha: .4)),
+                        materialTapTargetSize:
+                            MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                        padding:
+                            const EdgeInsets.symmetric(horizontal: 4),
+                        label: Text(
+                          '${meta.emoji} $hint',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                            color: cs.onSurface.withValues(alpha: .45),
+                          ),
                         ),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: globalIds
-                              .where(earned.contains)
-                              .map<Widget>((id) {
-                                final m = badgeMeta(id);
-                                return Tooltip(
-                                  message: m.description,
-                                  child: Chip(
-                                    label: Text('${m.emoji} ${m.label}'),
-                                    materialTapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                    visualDensity: VisualDensity.compact,
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 4),
-                                  ),
-                                );
-                              })
-                              .toList(),
-                        ),
-                      ],
-                    );
-                  }),
+                      );
+                    }).toList(),
+                  ),
                 ],
               ),
             ),
