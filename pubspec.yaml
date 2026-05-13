@@ -20,6 +20,9 @@ dependencies:
   collection: ^1.18.0
   confetti: ^0.7.0
   firebase_core: ^2.0.0
+  flutter_local_notifications: ^18.0.0
+  timezone: ^0.9.4
+  flutter_timezone: ^1.0.7
 
 
 dev_dependencies:

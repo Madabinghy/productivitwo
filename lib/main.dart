@@ -24,6 +24,7 @@ import 'package:confetti/confetti.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/storage.dart';
+import 'package:productivitwo_v1/notifications.dart';
 import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
 
@@ -671,6 +672,7 @@ void main() async {
   if (Platform.isAndroid) {
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   }
+  await NotificationService.init();
   runApp(const ProductivitwoApp());
 }
 
@@ -1644,6 +1646,21 @@ class _AppRootState extends State<AppRoot>
     logic.rolloverUndoneOncePerDay();
     logic.ensureDailyHabitsPlanned();
     normalizeToPlanActivityId();
+
+    // Notifications : demande permission + planifie rappel quotidien 9h
+    unawaited(() async {
+      await NotificationService.requestPermissions();
+      final routineCount = logic.state.activities
+          .where((a) =>
+              a.isHabit &&
+              logic.effectiveHabitFreq(a) == HabitFreq.daily)
+          .length;
+      await NotificationService.scheduleDailyReminder(
+        hour: 9,
+        minute: 0,
+        routineCount: routineCount,
+      );
+    }());
 
     // ... le reste inchangé
     final changes = await logic.reviewGoals();
