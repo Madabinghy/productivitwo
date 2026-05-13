@@ -3267,7 +3267,7 @@ class _NowTabState extends State<NowTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ✅ ton header routine (tu peux réutiliser _nowCard si tu veux)
+          // Header routine avec indicateur de streak
           Row(
             children: [
               IconButton(
@@ -3279,10 +3279,41 @@ class _NowTabState extends State<NowTab> {
                   });
                 },
               ),
-              Text(domName,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w900, fontSize: 18)),
-              const SizedBox(width: 6),
+              Expanded(
+                child: Row(
+                  children: [
+                    Text(domName,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w900, fontSize: 18)),
+                    Builder(builder: (context) {
+                      final streak =
+                          widget.logic.habitCurrentStreak(habitId);
+                      if (streak < 3) return const SizedBox.shrink();
+                      return Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.withOpacity(.15),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                                color: Colors.orange.withOpacity(.4)),
+                          ),
+                          child: Text(
+                            '🔥 ${streak}j',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.orange,
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ),
               IconButton(
                 tooltip: "À demain",
                 icon: const Icon(Icons.arrow_forward),
