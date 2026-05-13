@@ -282,8 +282,13 @@ class _WeeklyViewState extends State<WeeklyView> {
                                     cs: cs,
                                     onToggle: () {
                                       HapticFeedback.lightImpact();
-                                      setState(() => it.done = !it.done);
-                                      widget.logic.onChange();
+                                      if (it.toPlan == true && !it.done) {
+                                        widget.logic.archiveAction(it);
+                                        setState(() {});
+                                      } else {
+                                        setState(() => it.done = !it.done);
+                                        widget.logic.onChange();
+                                      }
                                     },
                                   ),
                                 )),
