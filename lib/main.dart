@@ -18,6 +18,7 @@ import 'package:productivitwo_v1/widgets/goals_view.dart';
 import 'package:productivitwo_v1/widgets/day_block_sheet.dart';
 import 'package:productivitwo_v1/widgets/new_action_sheet.dart';
 import 'package:productivitwo_v1/widgets/new_routine_sheet.dart';
+import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/storage.dart';
@@ -2074,8 +2075,17 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                     ...under.map(
                       (e) => ListTile(
                         onTap: () {
-                          Navigator.pop(ctx);
-                          _openRoutineInNowTab(e.activity);
+                          showModalBottomSheet(
+                            context: context,
+                            showDragHandle: true,
+                            isScrollControlled: true,
+                            builder: (_) => RoutineDetailSheet(
+                              logic: logic,
+                              st: logic.state,
+                              habitId: e.activity.id,
+                              day: DateTime.now(),
+                            ),
+                          );
                         },
                         leading: const Icon(Icons.radio_button_unchecked),
                         title: Text(e.label),
@@ -2104,6 +2114,19 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                     const SizedBox(height: 8),
                     ...over.map(
                       (e) => ListTile(
+                        onTap: () {
+                          showModalBottomSheet(
+                            context: context,
+                            showDragHandle: true,
+                            isScrollControlled: true,
+                            builder: (_) => RoutineDetailSheet(
+                              logic: logic,
+                              st: logic.state,
+                              habitId: e.activity.id,
+                              day: DateTime.now(),
+                            ),
+                          );
+                        },
                         leading: const Icon(
                           Icons.check_circle,
                           color: Colors.green,
