@@ -3271,7 +3271,8 @@ class _AppRootState extends State<AppRoot>
                     final current = weekData.current;
                     final previous = weekData.previous;
                     final diff = current - previous;
-                    final hasPrev = previous > 0;
+                    final currentPct = (current * 100).round();
+                    final previousPct = (previous * 100).round();
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -3287,7 +3288,7 @@ class _AppRootState extends State<AppRoot>
                           child: Row(
                             children: [
                               Text(
-                                'Cette semaine',
+                                'Cette semaine : $currentPct%',
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
@@ -3295,35 +3296,33 @@ class _AppRootState extends State<AppRoot>
                                 ),
                               ),
                               const Spacer(),
-                              if (hasPrev) ...[
-                                Text(
-                                  'Sem. précédente : ${(previous * 100).round()}%',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: cs.onSurface.withOpacity(.4),
-                                  ),
+                              Text(
+                                'Sem. préc. : $previousPct%',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: cs.onSurface.withOpacity(.4),
                                 ),
-                                const SizedBox(width: 6),
-                                Icon(
-                                  diff >= 0
-                                      ? Icons.arrow_upward_rounded
-                                      : Icons.arrow_downward_rounded,
-                                  size: 13,
+                              ),
+                              const SizedBox(width: 5),
+                              Icon(
+                                diff >= 0
+                                    ? Icons.arrow_upward_rounded
+                                    : Icons.arrow_downward_rounded,
+                                size: 13,
+                                color: diff >= 0
+                                    ? cs.primary
+                                    : cs.error.withOpacity(.7),
+                              ),
+                              Text(
+                                '${diff >= 0 ? '+' : ''}${(diff * 100).round()}%',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
                                   color: diff >= 0
                                       ? cs.primary
                                       : cs.error.withOpacity(.7),
                                 ),
-                                Text(
-                                  '${diff >= 0 ? '+' : ''}${(diff * 100).round()}%',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    color: diff >= 0
-                                        ? cs.primary
-                                        : cs.error.withOpacity(.7),
-                                  ),
-                                ),
-                              ],
+                              ),
                             ],
                           ),
                         ),
