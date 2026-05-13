@@ -1769,10 +1769,23 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
           logic: logic,
           state: _state!,
           onGoNow: (habitId) {
-            logic.forceNowHabit(habitId); // ce que tu as déjà
+            logic.forceNowHabit(habitId);
             setState(() => _tab = _Tab.now);
           },
           onGoNowTab: () => setState(() => _tab = _Tab.now),
+          onOpenRoutineDetail: (habitId) {
+            showModalBottomSheet(
+              context: context,
+              showDragHandle: true,
+              isScrollControlled: true,
+              builder: (_) => RoutineDetailSheet(
+                logic: logic,
+                st: logic.state,
+                habitId: habitId,
+                day: DateTime.now(),
+              ),
+            );
+          },
         ),
         StatsView(logic: logic, state: st, selectedDomainId: null),
       ],

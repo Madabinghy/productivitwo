@@ -861,6 +861,7 @@ class AppState {
 
   // Gamification
   List<EarnedBadge> earnedBadges;
+  List<String> skippedChallengeDates; // yyyymmdd où le défi a été passé
 
   AppState({
     required this.domains,
@@ -883,6 +884,7 @@ class AppState {
     List<DayBlock>? blocks,
     Map<String, List<String>>? disabledBlocksByYmd,
     List<EarnedBadge>? earnedBadges,
+    List<String>? skippedChallengeDates,
     // ✅ NOUVEAU
     Map<String, List<String>>? nowSkippedByYmd,
     Map<String, List<String>>? nowDoneByYmd,
@@ -910,7 +912,8 @@ class AppState {
         filters = filters ?? FilterState(),
         blocks = blocks ?? <DayBlock>[],
         disabledBlocksByYmd = disabledBlocksByYmd ?? <String, List<String>>{},
-        earnedBadges = earnedBadges ?? <EarnedBadge>[];
+        earnedBadges = earnedBadges ?? <EarnedBadge>[],
+        skippedChallengeDates = skippedChallengeDates ?? <String>[];
 
   Map<String, dynamic> toJson() => {
         'domains': domains.map((e) => e.toJson()).toList(),
@@ -947,6 +950,7 @@ class AppState {
         'blocks': blocks.map((e) => e.toJson()).toList(),
         'disabledBlocksByYmd': disabledBlocksByYmd,
         'earnedBadges': earnedBadges.map((e) => e.toJson()).toList(),
+        'skippedChallengeDates': skippedChallengeDates,
       };
 
   static AppState from(Map j) {
@@ -1019,6 +1023,8 @@ class AppState {
       earnedBadges: _list(j['earnedBadges'], (e) => EarnedBadge.tryFrom(e))
           .whereType<EarnedBadge>()
           .toList(),
+      skippedChallengeDates:
+          (j['skippedChallengeDates'] as List?)?.cast<String>() ?? <String>[],
     );
   }
 

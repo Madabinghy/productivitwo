@@ -18,12 +18,14 @@ class TodayView extends StatefulWidget {
   final AppState state;
   final void Function(String habitId)? onGoNow;
   final VoidCallback? onGoNowTab; // ✅ juste switch d'onglet
+  final void Function(String habitId)? onOpenRoutineDetail;
   const TodayView({
     super.key,
     required this.logic,
     required this.state,
     this.onGoNow,
     this.onGoNowTab,
+    this.onOpenRoutineDetail,
   });
 
   @override
@@ -1703,6 +1705,104 @@ class _TodayViewState extends State<TodayView> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
                 children: [
+          // Défi du jour
+          if (isTodayTab) ...[
+            Builder(builder: (context) {
+              final challenge = widget.logic.dailyChallengeHabit(ymd);
+              if (challenge == null) return const SizedBox.shrink();
+
+              final cs = Theme.of(context).colorScheme;
+              final today = DateTime.now();
+              final todayDate = DateTime(today.year, today.month, today.day);
+              final sevenDaysAgo = todayDate.subtract(const Duration(days: 7));
+              final quota = widget.logic.dayQuotaFor(challenge);
+              final done7 = widget.logic.habitSumForRange(
+                  challenge.id, sevenDaysAgo, todayDate);
+              final ratio7 = (done7 / (quota * 7)).clamp(0.0, 1.0);
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: () => widget.onOpenRoutineDetail?.call(challenge.id),
+                  child: Ink(
+                    decoration: BoxDecoration(
+                      color: cs.primaryContainer.withValues(alpha: .45),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                          color: cs.primary.withValues(alpha: .3)),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                '⚡ Défi du jour',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: cs.primary,
+                                  letterSpacing: .5,
+                                ),
+                              ),
+                              const Spacer(),
+                              TextButton(
+                                style: TextButton.styleFrom(
+                                  padding: EdgeInsets.zero,
+                                  minimumSize: Size.zero,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  foregroundColor:
+                                      cs.onSurface.withValues(alpha: .45),
+                                  textStyle: const TextStyle(fontSize: 12),
+                                ),
+                                onPressed: () {
+                                  widget.logic.skipChallengeForToday(ymd);
+                                  setState(() {});
+                                },
+                                child: const Text('Passer'),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            challenge.name,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(3),
+                            child: LinearProgressIndicator(
+                              value: ratio7,
+                              minHeight: 5,
+                              backgroundColor:
+                                  cs.onSurface.withValues(alpha: .10),
+                              color: ratio7 < 0.5 ? cs.error : cs.primary,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${(ratio7 * 100).round()}% sur 7 jours',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: cs.onSurface.withValues(alpha: .55),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ],
+
           // Blocs journaliers
           if (isTodayTab) ...[
             Row(

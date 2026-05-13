@@ -3390,6 +3390,46 @@ class AppLogic {
     return (f == HabitFreq.daily) ? t : 1; // hebdo/mensuel = 1/jour
   }
 
+  /// Routine quotidienne avec la pire tendance sur 7j, non encore atteinte aujourd'hui.
+  /// Retourne null si toutes sont à jour, si le défi a été passé aujourd'hui,
+  /// ou s'il n'y a aucune routine quotidienne.
+  Activity? dailyChallengeHabit(String todayYmd) {
+    if (state.skippedChallengeDates.contains(todayYmd)) return null;
+
+    final todayDate = DateTime(
+      int.parse(todayYmd.substring(0, 4)),
+      int.parse(todayYmd.substring(4, 6)),
+      int.parse(todayYmd.substring(6, 8)),
+    );
+    final sevenDaysAgo = todayDate.subtract(const Duration(days: 7));
+
+    Activity? worst;
+    double worstRatio = double.infinity;
+
+    for (final act in state.activities.where((a) => a.isHabit)) {
+      if (effectiveHabitFreq(act) != HabitFreq.daily) continue;
+      final quota = dayQuotaFor(act);
+      if (quota <= 0) continue;
+      if (habitValueOn(act.id, todayDate) >= quota) continue; // déjà fait
+
+      final done7 = habitSumForRange(act.id, sevenDaysAgo, todayDate);
+      final ratio = done7 / (quota * 7);
+      if (ratio < worstRatio) {
+        worstRatio = ratio;
+        worst = act;
+      }
+    }
+
+    return worst;
+  }
+
+  void skipChallengeForToday(String todayYmd) {
+    if (!state.skippedChallengeDates.contains(todayYmd)) {
+      state.skippedChallengeDates.add(todayYmd);
+      onChange();
+    }
+  }
+
   // Score journalier pour un jour passé (daily habits uniquement).
   double _dailyScoreFor(DateTime day) {
     final ymd = yyyymmdd(day);
