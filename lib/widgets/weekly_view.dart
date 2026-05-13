@@ -54,9 +54,18 @@ class _WeeklyViewState extends State<WeeklyView> {
       .where((it) =>
           it.yyyymmdd == ymd &&
           it.kind == PlanKind.action &&
-          !it.archived)
+          !it.archived &&
+          !it.done)
       .toList()
     ..sort((a, b) => a.order.compareTo(b.order));
+
+  List<DayPlanItem> _doneActionsFor(String ymd) => widget.logic.state.dayPlan
+      .where((it) =>
+          it.yyyymmdd == ymd &&
+          it.kind == PlanKind.action &&
+          !it.archived &&
+          it.done)
+      .toList();
 
   List<Activity> _dailyRoutines() => widget.logic.state.activities
       .where((a) =>
@@ -138,17 +147,17 @@ class _WeeklyViewState extends State<WeeklyView> {
                   final isFuture = day.isAfter(today);
                   final isExpanded = _expanded.contains(ymd);
 
-                  final actions = _actionsFor(ymd);
+                  final actions = _actionsFor(ymd);       // non-faites
+                  final doneActions = _doneActionsFor(ymd); // faites
                   // Routines : passé et aujourd'hui seulement
                   final routineItems = isFuture ? <Activity>[] : dailyRoutines;
 
-                  final actionsDone = actions.where((a) => a.done).length;
                   final routinesDone = routineItems.where((r) {
                     final v = widget.logic.habitValueOn(r.id, day);
                     return v >= widget.logic.effectiveHabitTarget(r);
                   }).length;
-                  final done = actionsDone + routinesDone;
-                  final total = actions.length + routineItems.length;
+                  final done = doneActions.length + routinesDone;
+                  final total = actions.length + doneActions.length + routineItems.length;
 
                   return Card(
                     margin: const EdgeInsets.only(bottom: 8),
@@ -257,7 +266,7 @@ class _WeeklyViewState extends State<WeeklyView> {
                         // Contenu déplié
                         if (isExpanded) ...[
                           const Divider(height: 1, indent: 14, endIndent: 14),
-                          if (actions.isEmpty && routineItems.isEmpty)
+                          if (actions.isEmpty && routineItems.isEmpty && doneActions.isEmpty)
                             Padding(
                               padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
                               child: Row(
@@ -285,48 +294,90 @@ class _WeeklyViewState extends State<WeeklyView> {
                             )
                           else ...[
                             // ── Actions ──────────────────────────────────
-                            if (actions.isNotEmpty) ...[
-                              ...actions.map((it) => Dismissible(
-                                    key: ValueKey('week:${it.id}'),
-                                    direction: DismissDirection.endToStart,
-                                    background: Container(
-                                      alignment: Alignment.centerRight,
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 16),
-                                      color: Colors.red.withOpacity(.15),
-                                      child: const Icon(Icons.delete,
-                                          color: Colors.red),
-                                    ),
-                                    onDismissed: (_) {
+                            if (actions.isNotEmpty || doneActions.isNotEmpty) ...[
+                              ...actions.map((it) {
+                                final dColor = domainColor(
+                                  (it.domainId ?? '').isNotEmpty
+                                      ? it.domainId
+                                      : widget.logic.state.activities
+                                          .firstWhereOrNull((a) => a.id == it.activityId)
+                                          ?.domainId,
+                                  widget.logic.state.domains,
+                                );
+                                return Dismissible(
+                                  key: ValueKey('week:${it.id}'),
+                                  direction: DismissDirection.horizontal,
+                                  // Swipe gauche→droite : cocher
+                                  background: Container(
+                                    alignment: Alignment.centerLeft,
+                                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                                    color: Colors.green.withOpacity(.15),
+                                    child: const Icon(Icons.check_circle_outline,
+                                        color: Colors.green),
+                                  ),
+                                  // Swipe droite→gauche : supprimer
+                                  secondaryBackground: Container(
+                                    alignment: Alignment.centerRight,
+                                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                                    color: Colors.red.withOpacity(.15),
+                                    child: const Icon(Icons.delete, color: Colors.red),
+                                  ),
+                                  onDismissed: (direction) {
+                                    HapticFeedback.lightImpact();
+                                    if (direction == DismissDirection.startToEnd) {
+                                      // Cocher
+                                      if (it.toPlan == true) {
+                                        widget.logic.archiveAction(it);
+                                      } else {
+                                        it.done = true;
+                                        widget.logic.onChange();
+                                      }
+                                    } else {
+                                      // Supprimer
                                       widget.logic.state.dayPlan
                                           .removeWhere((e) => e.id == it.id);
                                       widget.logic.onChange();
-                                      setState(() {});
+                                    }
+                                    setState(() {});
+                                  },
+                                  child: _ActionTile(
+                                    action: it,
+                                    isPast: isPast,
+                                    cs: cs,
+                                    domainColor: dColor,
+                                    onToggle: () {
+                                      HapticFeedback.lightImpact();
+                                      if (it.toPlan == true && !it.done) {
+                                        widget.logic.archiveAction(it);
+                                        setState(() {});
+                                      } else {
+                                        setState(() => it.done = !it.done);
+                                        widget.logic.onChange();
+                                      }
                                     },
-                                    child: _ActionTile(
-                                      action: it,
-                                      isPast: isPast,
-                                      cs: cs,
-                                      domainColor: domainColor(
-                                        (it.domainId ?? '').isNotEmpty
-                                            ? it.domainId
-                                            : widget.logic.state.activities
-                                                .firstWhereOrNull((a) => a.id == it.activityId)
-                                                ?.domainId,
-                                        widget.logic.state.domains,
+                                  ),
+                                );
+                              }),
+                              // Indicateur actions faites
+                              if (doneActions.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.check_circle,
+                                          size: 13, color: cs.primary.withOpacity(.5)),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        '${doneActions.length} faite${doneActions.length > 1 ? 's' : ''}',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: cs.onSurface.withOpacity(.4),
+                                          fontStyle: FontStyle.italic,
+                                        ),
                                       ),
-                                      onToggle: () {
-                                        HapticFeedback.lightImpact();
-                                        if (it.toPlan == true && !it.done) {
-                                          widget.logic.archiveAction(it);
-                                          setState(() {});
-                                        } else {
-                                          setState(() => it.done = !it.done);
-                                          widget.logic.onChange();
-                                        }
-                                      },
-                                    ),
-                                  )),
+                                    ],
+                                  ),
+                                ),
                             ],
 
                             // ── Routines (accordéon) ──────────────────────
