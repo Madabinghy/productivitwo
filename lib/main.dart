@@ -1776,9 +1776,9 @@ class _AppRootState extends State<AppRoot>
     switch (t) {
       case _Tab.dashboard:
         return 0;
-      case _Tab.now:
-        return 1;
       case _Tab.today:
+        return 1;
+      case _Tab.now:
         return 2;
       case _Tab.week:
         return 3;
@@ -1860,14 +1860,6 @@ class _AppRootState extends State<AppRoot>
       index: _tabIndex(_tab),
       children: [
         _buildDashboardBody(context),
-        NowTab(
-          logic: logic,
-          st: st,
-          items: filteredTodo,
-          day: DateTime.now(),
-          buildRowsGrouped: logic.buildRowsGrouped,
-          onGoTodo: () => setState(() => _tab = _Tab.today),
-        ),
         TodayView(
           logic: logic,
           state: _state!,
@@ -1889,6 +1881,14 @@ class _AppRootState extends State<AppRoot>
               ),
             );
           },
+        ),
+        NowTab(
+          logic: logic,
+          st: st,
+          items: filteredTodo,
+          day: DateTime.now(),
+          buildRowsGrouped: logic.buildRowsGrouped,
+          onGoTodo: () => setState(() => _tab = _Tab.today),
         ),
         WeeklyView(logic: logic, state: st),
       ],
