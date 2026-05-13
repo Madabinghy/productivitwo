@@ -131,23 +131,30 @@ class TinyRatioBars extends StatelessWidget {
 
     if (values.isEmpty) return const SizedBox.shrink();
 
+    final trackColor = cs.onSurface.withValues(alpha: .12);
+
     return SizedBox(
       height: height,
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           for (final v in values)
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 1),
-                child: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: Container(
-                    height: height * v.clamp(0.0, 1.0),
-                    decoration: BoxDecoration(
-                      color: cs.primary.withValues(alpha: .75),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
+                padding: const EdgeInsets.symmetric(horizontal: 0.5),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: Column(
+                    children: [
+                      Expanded(
+                        flex: ((1 - v.clamp(0.0, 1.0)) * 1000).round(),
+                        child: Container(color: trackColor),
+                      ),
+                      Expanded(
+                        flex: (v.clamp(0.0, 1.0) * 1000).round().clamp(1, 1000),
+                        child: Container(color: cs.primary),
+                      ),
+                    ],
                   ),
                 ),
               ),
