@@ -19,6 +19,7 @@ class WeeklyView extends StatefulWidget {
 class _WeeklyViewState extends State<WeeklyView> {
   late DateTime _weekStart;
   late Set<String> _expanded;
+  late Set<String> _routinesExpanded;
 
   @override
   void initState() {
@@ -27,6 +28,7 @@ class _WeeklyViewState extends State<WeeklyView> {
     final today = DateTime(now.year, now.month, now.day);
     _weekStart = today.subtract(Duration(days: today.weekday - 1));
     _expanded = {yyyymmdd(today)};
+    _routinesExpanded = {yyyymmdd(today)};
   }
 
   static const _dayNames = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
@@ -282,8 +284,6 @@ class _WeeklyViewState extends State<WeeklyView> {
                           else ...[
                             // ── Actions ──────────────────────────────────
                             if (actions.isNotEmpty) ...[
-                              if (routineItems.isNotEmpty)
-                                _SectionLabel(label: 'Actions', cs: cs),
                               ...actions.map((it) => Dismissible(
                                     key: ValueKey('week:${it.id}'),
                                     direction: DismissDirection.endToStart,
@@ -319,46 +319,114 @@ class _WeeklyViewState extends State<WeeklyView> {
                                   )),
                             ],
 
-                            // ── Routines ─────────────────────────────────
+                            // ── Routines (accordéon) ──────────────────────
                             if (routineItems.isNotEmpty) ...[
                               if (actions.isNotEmpty)
                                 const Divider(
                                     height: 1, indent: 14, endIndent: 14),
-                              _SectionLabel(label: 'Routines', cs: cs),
-                              ...routineItems.map((r) {
-                                final value =
-                                    widget.logic.habitValueOn(r.id, day);
-                                final target =
-                                    widget.logic.effectiveHabitTarget(r);
-                                return _RoutineTile(
-                                  routine: r,
-                                  value: value,
-                                  target: target,
-                                  isToday: isToday,
-                                  cs: cs,
-                                  onIncrement: isToday
-                                      ? () {
-                                          HapticFeedback.lightImpact();
-                                          widget.logic.incHabitWithAssocEvent(
-                                              r.id, 1, day);
-                                          widget.logic.onChange();
-                                          setState(() {});
-                                        }
-                                      : null,
-                                  onDecrement:
-                                      (isToday && value > 0)
-                                          ? () {
-                                              HapticFeedback.lightImpact();
-                                              widget.logic
-                                                  .incHabitWithAssocEvent(
-                                                      r.id, -1, day);
-                                              widget.logic.onChange();
-                                              setState(() {});
-                                            }
-                                          : null,
-                                );
-                              }),
-                              const SizedBox(height: 4),
+                              // Header accordéon
+                              InkWell(
+                                onTap: () => setState(() {
+                                  if (_routinesExpanded.contains(ymd)) {
+                                    _routinesExpanded.remove(ymd);
+                                  } else {
+                                    _routinesExpanded.add(ymd);
+                                  }
+                                }),
+                                child: Padding(
+                                  padding:
+                                      const EdgeInsets.fromLTRB(14, 8, 10, 8),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.repeat,
+                                          size: 13,
+                                          color:
+                                              cs.onSurface.withOpacity(.35)),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'Routines',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                          color: cs.onSurface.withOpacity(.4),
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 5, vertical: 1),
+                                        decoration: BoxDecoration(
+                                          color: routinesDone ==
+                                                      routineItems.length &&
+                                                  routineItems.isNotEmpty
+                                              ? cs.primary.withOpacity(.12)
+                                              : cs.onSurface.withOpacity(.07),
+                                          borderRadius:
+                                              BorderRadius.circular(999),
+                                        ),
+                                        child: Text(
+                                          '$routinesDone/${routineItems.length}',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w700,
+                                            color: routinesDone ==
+                                                        routineItems.length &&
+                                                    routineItems.isNotEmpty
+                                                ? cs.primary
+                                                : cs.onSurface.withOpacity(.4),
+                                          ),
+                                        ),
+                                      ),
+                                      const Spacer(),
+                                      Icon(
+                                        _routinesExpanded.contains(ymd)
+                                            ? Icons.expand_less
+                                            : Icons.expand_more,
+                                        size: 16,
+                                        color: cs.onSurface.withOpacity(.3),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              // Contenu déplié
+                              if (_routinesExpanded.contains(ymd)) ...[
+                                ...routineItems.map((r) {
+                                  final value =
+                                      widget.logic.habitValueOn(r.id, day);
+                                  final target =
+                                      widget.logic.effectiveHabitTarget(r);
+                                  return _RoutineTile(
+                                    routine: r,
+                                    value: value,
+                                    target: target,
+                                    isToday: isToday,
+                                    cs: cs,
+                                    onIncrement: isToday
+                                        ? () {
+                                            HapticFeedback.lightImpact();
+                                            widget.logic
+                                                .incHabitWithAssocEvent(
+                                                    r.id, 1, day);
+                                            widget.logic.onChange();
+                                            setState(() {});
+                                          }
+                                        : null,
+                                    onDecrement: (isToday && value > 0)
+                                        ? () {
+                                            HapticFeedback.lightImpact();
+                                            widget.logic
+                                                .incHabitWithAssocEvent(
+                                                    r.id, -1, day);
+                                            widget.logic.onChange();
+                                            setState(() {});
+                                          }
+                                        : null,
+                                  );
+                                }),
+                                const SizedBox(height: 4),
+                              ],
                             ],
                           ],
                         ],
@@ -371,31 +439,6 @@ class _WeeklyViewState extends State<WeeklyView> {
           ],
         );
       },
-    );
-  }
-}
-
-// ── Séparateur de section ─────────────────────────────────────────────────────
-
-class _SectionLabel extends StatelessWidget {
-  final String label;
-  final ColorScheme cs;
-
-  const _SectionLabel({required this.label, required this.cs});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 2),
-      child: Text(
-        label.toUpperCase(),
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          color: cs.onSurface.withOpacity(.35),
-          letterSpacing: 0.8,
-        ),
-      ),
     );
   }
 }
