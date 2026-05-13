@@ -2023,7 +2023,7 @@ class _AppRootState extends State<AppRoot>
   }
 
   bool _shouldShowFab() {
-    return _tab == _Tab.today;
+    return _tab == _Tab.today || _tab == _Tab.dashboard;
   }
 
   Widget _buildFab() {
