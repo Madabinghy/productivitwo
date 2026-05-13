@@ -1212,7 +1212,7 @@ class _TodayViewState extends State<TodayView> {
                   child: Text(
                     "Inbox (${inbox.length})",
                     style: const TextStyle(
-                        fontWeight: FontWeight.w800, fontSize: 16),
+                        fontWeight: FontWeight.w700, fontSize: 15),
                   ),
                 ),
                 Icon(
@@ -1449,7 +1449,7 @@ class _TodayViewState extends State<TodayView> {
                     child: Text(
                       "Plus tard (${snoozed.length})",
                       style: const TextStyle(
-                          fontWeight: FontWeight.w800, fontSize: 16),
+                          fontWeight: FontWeight.w700, fontSize: 15),
                     ),
                   ),
                   Icon(_showSnoozed ? Icons.expand_less : Icons.expand_more,
@@ -1728,6 +1728,12 @@ class _TodayViewState extends State<TodayView> {
                   challenge.id, sevenDaysAgo, todayDate);
               final ratio7 = (done7 / (quota * 7)).clamp(0.0, 1.0);
 
+              final streak = widget.logic.habitCurrentStreak(challenge.id);
+              final domainName = widget.state.domains
+                  .where((d) => d.id == challenge.domainId)
+                  .map((d) => d.name)
+                  .firstOrNull;
+
               return Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: InkWell(
@@ -1735,10 +1741,17 @@ class _TodayViewState extends State<TodayView> {
                   onTap: () => widget.onOpenRoutineDetail?.call(challenge.id),
                   child: Ink(
                     decoration: BoxDecoration(
-                      color: cs.primaryContainer.withValues(alpha: .45),
+                      gradient: LinearGradient(
+                        colors: [
+                          cs.primaryContainer.withValues(alpha: .55),
+                          cs.primaryContainer.withValues(alpha: .25),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                          color: cs.primary.withValues(alpha: .3)),
+                          color: cs.primary.withValues(alpha: .25)),
                     ),
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
@@ -1747,13 +1760,21 @@ class _TodayViewState extends State<TodayView> {
                         children: [
                           Row(
                             children: [
-                              Text(
-                                '⚡ Défi du jour',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: cs.primary,
-                                  letterSpacing: .5,
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: cs.primary.withValues(alpha: .15),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  '⚡ Défi du jour',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: cs.primary,
+                                    letterSpacing: .4,
+                                  ),
                                 ),
                               ),
                               const Spacer(),
@@ -1764,7 +1785,7 @@ class _TodayViewState extends State<TodayView> {
                                   tapTargetSize:
                                       MaterialTapTargetSize.shrinkWrap,
                                   foregroundColor:
-                                      cs.onSurface.withValues(alpha: .45),
+                                      cs.onSurface.withValues(alpha: .4),
                                   textStyle: const TextStyle(fontSize: 12),
                                 ),
                                 onPressed: () {
@@ -1775,15 +1796,58 @@ class _TodayViewState extends State<TodayView> {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            challenge.name,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
                           const SizedBox(height: 8),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (domainName != null)
+                                      Text(
+                                        domainName.toUpperCase(),
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w700,
+                                          color: cs.primary
+                                              .withValues(alpha: .6),
+                                          letterSpacing: .8,
+                                        ),
+                                      ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      challenge.name,
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (streak >= 3)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: Colors.orange.withOpacity(.15),
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(
+                                        color: Colors.orange.withOpacity(.3)),
+                                  ),
+                                  child: Text(
+                                    '🔥 ${streak}j',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.orange,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
                           ClipRRect(
                             borderRadius: BorderRadius.circular(3),
                             child: LinearProgressIndicator(
@@ -1799,7 +1863,7 @@ class _TodayViewState extends State<TodayView> {
                             '${(ratio7 * 100).round()}% sur 7 jours',
                             style: TextStyle(
                               fontSize: 11,
-                              color: cs.onSurface.withValues(alpha: .55),
+                              color: cs.onSurface.withValues(alpha: .5),
                             ),
                           ),
                         ],
@@ -1818,7 +1882,7 @@ class _TodayViewState extends State<TodayView> {
                 const Expanded(
                   child: Text(
                     'Blocs',
-                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
                   ),
                 ),
                 TextButton(
@@ -1870,7 +1934,7 @@ class _TodayViewState extends State<TodayView> {
               const Expanded(
                 child: Text(
                   "Actions",
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
                 ),
               ),
               if (isTodayTab && sortedBlocks.isNotEmpty)
@@ -1954,7 +2018,7 @@ class _TodayViewState extends State<TodayView> {
               children: [
                 const Text(
                   "Ce soir",
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
                 ),
                 const SizedBox(width: 8),
                 Text(
@@ -3815,7 +3879,7 @@ class _NowTabState extends State<NowTab> {
               child: Text(
                 "Checklist${hasItems ? " ($doneCount/$total)" : ""}",
                 style:
-                    const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                    const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
               ),
             ),
 
