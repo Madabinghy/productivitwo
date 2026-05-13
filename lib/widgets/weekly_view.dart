@@ -538,18 +538,53 @@ class _RoutineTile extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              routine.name,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: reached
-                    ? cs.onSurface.withOpacity(.4)
-                    : missed
-                        ? cs.onSurface.withOpacity(.3)
-                        : cs.onSurface.withOpacity(.85),
-                decoration: reached ? TextDecoration.lineThrough : null,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  routine.name,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: reached
+                        ? cs.onSurface.withOpacity(.4)
+                        : missed
+                            ? cs.onSurface.withOpacity(.3)
+                            : cs.onSurface.withOpacity(.85),
+                    decoration: reached ? TextDecoration.lineThrough : null,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                LayoutBuilder(
+                  builder: (_, constraints) {
+                    final ratio = target > 0
+                        ? (value / target).clamp(0.0, 1.0)
+                        : 0.0;
+                    final fillColor = reached
+                        ? cs.primary
+                        : value > 0
+                            ? cs.primary.withOpacity(.45)
+                            : cs.onSurface.withOpacity(.1);
+                    return ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: SizedBox(
+                        height: 3,
+                        width: constraints.maxWidth,
+                        child: Stack(children: [
+                          Container(
+                            color: cs.onSurface.withOpacity(.08),
+                          ),
+                          FractionallySizedBox(
+                            widthFactor: ratio,
+                            child: Container(color: fillColor),
+                          ),
+                        ]),
+                      ),
+                    );
+                  },
+                ),
+              ],
             ),
           ),
           if (isToday) ...[
