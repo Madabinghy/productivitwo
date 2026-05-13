@@ -347,8 +347,9 @@ Future<AppState> loadOrInitCleaner() async {
 
     // ========== Activités (time) ==========
     final soinAct        = timeAct(sante.id, 'Soins');
-    final cuisineAct     = timeAct(sante.id, 'Cuisine');
+    final cuisineAct     = timeAct(sante.id, 'Cuisiner');
     final nettoyerAct    = timeAct(environnement.id, 'Nettoyer');
+    final vaisselleAct   = timeAct(environnement.id, 'Vaisselle');
     final lessiveAct     = timeAct(environnement.id, 'Lessive');
     final exterieurAct   = timeAct(environnement.id, 'Extérieur');
     final voitureAct     = timeAct(environnement.id, 'Voiture');
@@ -367,6 +368,7 @@ Future<AppState> loadOrInitCleaner() async {
 
       // Environnement / Maison
       nettoyerAct,
+      vaisselleAct,
       timeAct(environnement.id, 'Ranger'),
       lessiveAct,
       exterieurAct,
@@ -410,7 +412,7 @@ Future<AppState> loadOrInitCleaner() async {
         sante.id,
         "Boire de l'eau",
         target: 10,
-        linkedActivityId: cuisineAct.id,
+        linkedActivityId: soinAct.id,
       ),
       dailyCountHabit(
         sante.id,
@@ -432,7 +434,7 @@ Future<AppState> loadOrInitCleaner() async {
       ),
 
       // --- MAISON ---
-      habit(environnement.id, 'Faire la vaisselle', freq: HabitFreq.daily, linkedActivityId: nettoyerAct.id),
+      habit(environnement.id, 'Faire la vaisselle', freq: HabitFreq.daily, linkedActivityId: vaisselleAct.id),
       habit(environnement.id, "Passer l'aspirateur", freq: HabitFreq.weekly, linkedActivityId: nettoyerAct.id),
       weeklyCountHabit(
         environnement.id,
