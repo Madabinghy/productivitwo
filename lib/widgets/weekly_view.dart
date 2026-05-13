@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use
 
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
@@ -306,7 +307,14 @@ class _WeeklyViewState extends State<WeeklyView> {
                                       action: it,
                                       isPast: isPast,
                                       cs: cs,
-                                      domainColor: domainColor(it.domainId, widget.logic.state.domains),
+                                      domainColor: domainColor(
+                                        (it.domainId ?? '').isNotEmpty
+                                            ? it.domainId
+                                            : widget.logic.state.activities
+                                                .firstWhereOrNull((a) => a.id == it.activityId)
+                                                ?.domainId,
+                                        widget.logic.state.domains,
+                                      ),
                                       onToggle: () {
                                         HapticFeedback.lightImpact();
                                         if (it.toPlan == true && !it.done) {

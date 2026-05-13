@@ -2426,7 +2426,14 @@ class _TodayViewState extends State<TodayView> {
       final dim = it.done;
       final cs = Theme.of(context).colorScheme;
       final subtitle = _actionSubtitle(it);
-      final dColor = domainColor(it.domainId, widget.state.domains);
+      // Fallback : domainId de l'activité liée si l'item n'en a pas
+      String? effectiveDomainId = it.domainId;
+      if ((effectiveDomainId ?? '').isEmpty && (it.activityId ?? '').isNotEmpty) {
+        effectiveDomainId = widget.state.activities
+            .firstWhereOrNull((a) => a.id == it.activityId)
+            ?.domainId;
+      }
+      final dColor = domainColor(effectiveDomainId, widget.state.domains);
 
       return Card(
         margin: const EdgeInsets.only(bottom: 6),
