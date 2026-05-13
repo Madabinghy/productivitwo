@@ -3435,6 +3435,50 @@ class AppLogic {
   }
 
   // Score journalier pour un jour passé (daily habits uniquement).
+  /// Score moyen sur une semaine (lundi → until, excluant les jours vides).
+  double _weekScore(DateTime monday, {DateTime? until}) {
+    final end = until ?? DateTime.now();
+    final endDay = DateTime(end.year, end.month, end.day);
+    double sum = 0;
+    int count = 0;
+    for (int i = 0; i < 7; i++) {
+      final d = monday.add(Duration(days: i));
+      if (d.isAfter(endDay)) break;
+      final ymd = yyyymmdd(d);
+      final hasActions = state.dayPlan.any((it) =>
+          it.yyyymmdd == ymd && it.kind == PlanKind.action && !it.archived);
+      final hasRoutines = state.activities.any((a) =>
+          a.isHabit &&
+          effectiveHabitFreq(a) == HabitFreq.daily &&
+          dayQuotaFor(a) > 0);
+      if (!hasActions && !hasRoutines) continue;
+      sum += _dailyScoreFor(d);
+      count++;
+    }
+    return count == 0 ? 0.0 : sum / count;
+  }
+
+  /// Score semaine courante, semaine précédente, et scores journaliers lun-dim.
+  /// Les jours futurs ont la valeur -1 dans days7.
+  ({double current, double previous, List<double> days7}) weeklyScoreData() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final monday = today.subtract(Duration(days: today.weekday - 1));
+    final prevMonday = monday.subtract(const Duration(days: 7));
+
+    final current = _weekScore(monday);
+    final previous =
+        _weekScore(prevMonday, until: prevMonday.add(const Duration(days: 6)));
+
+    final days7 = List.generate(7, (i) {
+      final d = monday.add(Duration(days: i));
+      if (d.isAfter(today)) return -1.0;
+      return _dailyScoreFor(d);
+    });
+
+    return (current: current, previous: previous, days7: days7);
+  }
+
   double _dailyScoreFor(DateTime day) {
     final ymd = yyyymmdd(day);
     final d = DateTime(day.year, day.month, day.day);

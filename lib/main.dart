@@ -2325,6 +2325,103 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                       ],
                     ],
                   ),
+                  // Section score hebdomadaire
+                  Builder(builder: (ctx) {
+                    final w = logic.weeklyScoreData();
+                    final weekPct = (w.current * 100).round();
+                    final prevPct = (w.previous * 100).round();
+                    final bars = w.days7
+                        .map((v) => v < 0 ? 0.0 : v.clamp(0.0, 1.0))
+                        .toList();
+                    final trend = w.previous > 0
+                        ? w.current - w.previous
+                        : null;
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Divider(height: 24),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Semaine',
+                                  style: theme.textTheme.labelMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    color: cs.onSurface.withValues(alpha: .5),
+                                  ),
+                                ),
+                                Text(
+                                  '$weekPct%',
+                                  style: theme.textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: SizedBox(
+                                height: 32,
+                                child: TinyRatioBars(values: bars, height: 32),
+                              ),
+                            ),
+                            if (w.previous > 0) ...[
+                              const SizedBox(width: 12),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    'Sem. passée',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: cs.onSurface.withValues(alpha: .5),
+                                    ),
+                                  ),
+                                  Text(
+                                    '$prevPct%',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13),
+                                  ),
+                                  if (trend != null)
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          trend >= 0
+                                              ? Icons.trending_up
+                                              : Icons.trending_down,
+                                          size: 14,
+                                          color: trend >= 0
+                                              ? Colors.green
+                                              : cs.error,
+                                        ),
+                                        const SizedBox(width: 2),
+                                        Text(
+                                          '${trend >= 0 ? '+' : ''}${(trend * 100).round()}%',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: trend >= 0
+                                                ? Colors.green
+                                                : cs.error,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                ],
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
+                    );
+                  }),
+
                   const SizedBox(height: 24),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
