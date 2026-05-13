@@ -826,6 +826,7 @@ class _TodayViewState extends State<TodayView> {
           : "Renvoyé à aujourd'hui";
       ScaffoldMessenger.of(context).clearSnackBars();
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        duration: const Duration(seconds: 4),
         content: Text(msg),
         action: forward
             ? SnackBarAction(
