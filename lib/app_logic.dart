@@ -751,7 +751,11 @@ class AppLogic {
       if (it.kind == PlanKind.action) {
         if (it.toPlan) {
           courses.add(it);
-        } else if (it.status == ActionStatus.inbox) {
+        } else if (it.status == ActionStatus.inbox &&
+            (it.activityId ?? '').isEmpty &&
+            (it.domainId ?? '').isEmpty) {
+          // Inbox = vraiment sans activité ni domaine.
+          // Si une activité ou un domaine est assigné, l'action va dans todo.
           inbox.add(it);
         } else {
           todo.add(it);
@@ -4556,6 +4560,9 @@ extension TodayLogic on AppLogic {
 
   String? effectiveBlockId(DayPlanItem it) {
     if ((it.blockId ?? '').isNotEmpty) return it.blockId;
+    // La lookup activité → bloc s'applique uniquement aux habits/routines,
+    // pas aux actions (une action garde son propre bloc ou aucun).
+    if (it.kind == PlanKind.action) return null;
     final actId = (it.refId ?? it.activityId ?? '').trim();
     if (actId.isEmpty) return null;
     for (final b in state.blocks) {

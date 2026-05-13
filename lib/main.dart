@@ -1744,7 +1744,11 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       if (manualActive) return logic.passesFilters(it);
 
       if (runningId != null) {
+        // Items liés à l'activité en cours → toujours visibles
         if (itAct != null && itAct.isNotEmpty) return itAct == runningId;
+        // Actions sans activité et sans bloc → toujours visibles dans Maintenant
+        if (it.kind == PlanKind.action &&
+            (logic.effectiveBlockId(it) ?? '').isEmpty) return true;
         return isInbox(it);
       }
 

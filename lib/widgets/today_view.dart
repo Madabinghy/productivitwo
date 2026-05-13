@@ -2596,6 +2596,8 @@ class _TodayViewState extends State<TodayView> {
         if (res.newActivityId != null) {
           it.activityId = res.newActivityId;
           it.domainId = res.newDomainId ?? it.domainId;
+          // Inbox → active quand une activité est assignée
+          if (it.status == ActionStatus.inbox) it.status = ActionStatus.active;
         }
         if (res.markDone == true) it.done = true;
       });
@@ -3084,6 +3086,7 @@ class _NowTabState extends State<NowTab> {
 
   String? _skippedYmd;
   String? _activeBlockId; // bloc actif en mode séquence
+  bool _userChoseBlock = false; // true = l'utilisateur a sélectionné manuellement
 
   List<String> checklistForHabit(String habitName) {
     switch (habitName.toLowerCase()) {
@@ -4507,7 +4510,9 @@ class _NowTabState extends State<NowTab> {
             showCheckmark: false,
             onSelected: (_) {
               setState(() {
+                _userChoseBlock = true;
                 _activeBlockId = isActive ? null : b.id;
+                if (isActive) _userChoseBlock = false; // désélection = retour auto
               });
             },
           );
@@ -4570,12 +4575,22 @@ class _NowTabState extends State<NowTab> {
         final sortedBlocks = [...logic.state.blocks]
           ..sort((a, b) => a.order.compareTo(b.order));
 
-        // Auto-détection uniquement si aucun bloc actif :
-        // timer en cours → bloc lié en priorité, sinon prochain bloc incomplet
-        if (_activeBlockId == null && sortedBlocks.isNotEmpty) {
-          final fromTimer = logic.blockForRunningActivity(ymd);
-          final next = fromTimer ?? logic.nextIncompleteBlock(ymd);
-          if (next != null) _activeBlockId = next.id;
+        // Auto-détection du bloc actif (ignorée si l'utilisateur a fait un choix manuel).
+        if (!_userChoseBlock && sortedBlocks.isNotEmpty) {
+          final hasUnblockedActions = widget.items.any((it) =>
+              it.kind == PlanKind.action &&
+              !it.done &&
+              (logic.effectiveBlockId(it) ?? '').isEmpty);
+
+          if (hasUnblockedActions) {
+            // Des items sans bloc existent → mode libre
+            _activeBlockId = null;
+          } else if (_activeBlockId == null) {
+            // Aucun item sans bloc → auto-sélectionner un bloc
+            final fromTimer = logic.blockForRunningActivity(ymd);
+            final next = fromTimer ?? logic.nextIncompleteBlock(ymd);
+            if (next != null) _activeBlockId = next.id;
+          }
         }
 
         // Vérifie que le bloc actif existe encore et n'est pas désactivé
