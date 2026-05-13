@@ -3263,6 +3263,16 @@ class _AppRootState extends State<AppRoot>
                       ),
                     ),
                   ),
+                  const SizedBox(height: 16),
+                  const Divider(height: 1),
+                  const SizedBox(height: 8),
+                  _WeekScoreChart(
+                    scores: logic.weeklyScoreData().days7,
+                    target: logic.state.weeklyScoreTarget / 100.0,
+                    todayIndex: now.weekday - 1,
+                    cs: cs,
+                  ),
+                  const SizedBox(height: 4),
                 ],
               );
             },
@@ -5687,6 +5697,95 @@ class DailyScoreChip extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Graphe score 7 jours ──────────────────────────────────────────────────────
+
+class _WeekScoreChart extends StatelessWidget {
+  final List<double> scores; // 7 valeurs, -1 = jour futur
+  final double target;       // seuil cible (0.0–1.0)
+  final int todayIndex;      // 0 = lundi … 6 = dimanche
+  final ColorScheme cs;
+
+  const _WeekScoreChart({
+    required this.scores,
+    required this.target,
+    required this.todayIndex,
+    required this.cs,
+  });
+
+  static const _labels = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: SizedBox(
+        height: 68,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: List.generate(7, (i) {
+            final score = scores[i];
+            final isFuture = score < 0;
+            final isToday = i == todayIndex;
+            final ratio = isFuture ? 0.0 : score.clamp(0.0, 1.0);
+
+            final Color barColor;
+            if (isFuture) {
+              barColor = cs.onSurface.withOpacity(.07);
+            } else if (score == 0) {
+              barColor = cs.onSurface.withOpacity(.10);
+            } else if (score >= target) {
+              barColor = cs.primary;
+            } else {
+              barColor = cs.primary.withOpacity(.45);
+            }
+
+            const maxH = 46.0;
+            final barH = isFuture ? 3.0 : (ratio * maxH < 4.0 ? 4.0 : ratio * maxH);
+
+            return Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2.5),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    SizedBox(
+                      height: maxH,
+                      child: Align(
+                        alignment: Alignment.bottomCenter,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeOut,
+                          height: barH,
+                          decoration: BoxDecoration(
+                            color: barColor,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _labels[i],
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight:
+                            isToday ? FontWeight.w800 : FontWeight.w500,
+                        color: isToday
+                            ? cs.primary
+                            : cs.onSurface.withOpacity(.35),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
         ),
       ),
     );
