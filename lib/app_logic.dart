@@ -4196,7 +4196,7 @@ extension TodayLogic on AppLogic {
     );
 
     it.toPlan = true;
-    it.archived = false;
+    it.archived = true; // archivé par défaut : visible dans la section Courses uniquement quand activée
     it.done = false;
 
     it.habitId = habitId;

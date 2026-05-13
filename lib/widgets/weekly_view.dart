@@ -251,14 +251,30 @@ class _WeeklyViewState extends State<WeeklyView> {
                               ),
                             )
                           else
-                            ...actions.map((it) => _ActionTile(
-                                  action: it,
-                                  isPast: isPast,
-                                  cs: cs,
-                                  onToggle: () {
-                                    setState(() => it.done = !it.done);
+                            ...actions.map((it) => Dismissible(
+                                  key: ValueKey('week:${it.id}'),
+                                  direction: DismissDirection.endToStart,
+                                  background: Container(
+                                    alignment: Alignment.centerRight,
+                                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                                    color: Colors.red.withOpacity(.15),
+                                    child: const Icon(Icons.delete, color: Colors.red),
+                                  ),
+                                  onDismissed: (_) {
+                                    widget.logic.state.dayPlan
+                                        .removeWhere((e) => e.id == it.id);
                                     widget.logic.onChange();
+                                    setState(() {});
                                   },
+                                  child: _ActionTile(
+                                    action: it,
+                                    isPast: isPast,
+                                    cs: cs,
+                                    onToggle: () {
+                                      setState(() => it.done = !it.done);
+                                      widget.logic.onChange();
+                                    },
+                                  ),
                                 )),
                         ],
                       ],

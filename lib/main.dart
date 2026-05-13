@@ -2282,7 +2282,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         context: context,
         showDragHandle: true,
         isScrollControlled: true,
-        builder: (ctx) {
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setSheetState) {
           final theme = Theme.of(ctx);
           final cs = theme.colorScheme;
           final ringColor = pct >= 100
@@ -2415,6 +2416,43 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                     final trend = w.previous > 0
                         ? w.current - w.previous
                         : null;
+                    final target = logic.state.weeklyScoreTarget;
+                    final onTrack = weekPct >= target;
+                    final close = weekPct >= (target * 0.85).round();
+                    final statusEmoji = onTrack ? '🟢' : (close ? '🟡' : '🔴');
+                    final statusLabel = onTrack
+                        ? 'Objectif atteint !'
+                        : close
+                            ? 'En route'
+                            : 'En retard';
+
+                    Future<void> pickTarget() async {
+                      const presets = [60, 70, 75, 80, 90, 100];
+                      final picked = await showDialog<int>(
+                        context: ctx,
+                        builder: (d) => SimpleDialog(
+                          title: const Text('Objectif hebdomadaire'),
+                          children: presets
+                              .map((p) => SimpleDialogOption(
+                                    onPressed: () => Navigator.pop(d, p),
+                                    child: Text(
+                                      '$p%',
+                                      style: TextStyle(
+                                        fontWeight: p == target
+                                            ? FontWeight.w800
+                                            : FontWeight.w400,
+                                        color: p == target ? cs.primary : null,
+                                      ),
+                                    ),
+                                  ))
+                              .toList(),
+                        ),
+                      );
+                      if (picked == null) return;
+                      logic.state.weeklyScoreTarget = picked;
+                      logic.onChange();
+                      setSheetState(() {});
+                    }
 
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2496,6 +2534,40 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                               ),
                             ],
                           ],
+                        ),
+                        const SizedBox(height: 10),
+                        // Objectif hebdomadaire
+                        GestureDetector(
+                          onTap: pickTarget,
+                          child: Row(
+                            children: [
+                              Text(
+                                '$statusEmoji  Objectif $target%',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: cs.onSurface.withValues(alpha: .7),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                '· $statusLabel',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: onTrack
+                                      ? Colors.green
+                                      : close
+                                          ? Colors.orange
+                                          : cs.error,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const Spacer(),
+                              Icon(Icons.edit,
+                                  size: 14,
+                                  color: cs.onSurface.withValues(alpha: .3)),
+                            ],
+                          ),
                         ),
                       ],
                     );
@@ -2646,7 +2718,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               ),
             ),
           );
-        },
+          },
+        ),
       );
     }
 

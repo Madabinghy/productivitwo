@@ -861,7 +861,8 @@ class AppState {
 
   // Gamification
   List<EarnedBadge> earnedBadges;
-  List<String> skippedChallengeDates; // yyyymmdd où le défi a été passé
+  List<String> skippedChallengeDates;
+  int weeklyScoreTarget; // % objectif hebdomadaire (0-100) // yyyymmdd où le défi a été passé
 
   AppState({
     required this.domains,
@@ -885,6 +886,7 @@ class AppState {
     Map<String, List<String>>? disabledBlocksByYmd,
     List<EarnedBadge>? earnedBadges,
     List<String>? skippedChallengeDates,
+    this.weeklyScoreTarget = 80,
     // ✅ NOUVEAU
     Map<String, List<String>>? nowSkippedByYmd,
     Map<String, List<String>>? nowDoneByYmd,
@@ -951,6 +953,7 @@ class AppState {
         'disabledBlocksByYmd': disabledBlocksByYmd,
         'earnedBadges': earnedBadges.map((e) => e.toJson()).toList(),
         'skippedChallengeDates': skippedChallengeDates,
+        'weeklyScoreTarget': weeklyScoreTarget,
       };
 
   static AppState from(Map j) {
@@ -1025,6 +1028,7 @@ class AppState {
           .toList(),
       skippedChallengeDates:
           (j['skippedChallengeDates'] as List?)?.cast<String>() ?? <String>[],
+      weeklyScoreTarget: (j['weeklyScoreTarget'] as int?) ?? 80,
     );
   }
 
