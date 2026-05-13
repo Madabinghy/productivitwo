@@ -6,6 +6,24 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/new_action_sheet.dart';
 
+const _kDomainPalette = [
+  Color(0xFF4CAF50), // vert
+  Color(0xFF2196F3), // bleu
+  Color(0xFFFF9800), // orange
+  Color(0xFF9C27B0), // violet
+  Color(0xFFE91E63), // rose
+  Color(0xFF00BCD4), // cyan
+  Color(0xFFFF5722), // orange profond
+  Color(0xFF3F51B5), // indigo
+];
+
+Color? _domainColor(String? domainId, List<Domain> domains) {
+  if (domainId == null || domainId.isEmpty) return null;
+  final idx = domains.indexWhere((d) => d.id == domainId);
+  if (idx < 0) return null;
+  return _kDomainPalette[idx % _kDomainPalette.length];
+}
+
 class WeeklyView extends StatefulWidget {
   final AppLogic logic;
   final AppState state;
@@ -305,6 +323,7 @@ class _WeeklyViewState extends State<WeeklyView> {
                                       action: it,
                                       isPast: isPast,
                                       cs: cs,
+                                      domainColor: _domainColor(it.domainId, widget.logic.state.domains),
                                       onToggle: () {
                                         HapticFeedback.lightImpact();
                                         if (it.toPlan == true && !it.done) {
@@ -403,6 +422,7 @@ class _WeeklyViewState extends State<WeeklyView> {
                                     target: target,
                                     isToday: isToday,
                                     cs: cs,
+                                    domainColor: _domainColor(r.domainId, widget.logic.state.domains),
                                     onIncrement: isToday
                                         ? () {
                                             HapticFeedback.lightImpact();
@@ -450,12 +470,14 @@ class _ActionTile extends StatelessWidget {
   final bool isPast;
   final ColorScheme cs;
   final VoidCallback onToggle;
+  final Color? domainColor;
 
   const _ActionTile({
     required this.action,
     required this.isPast,
     required this.cs,
     required this.onToggle,
+    this.domainColor,
   });
 
   @override
@@ -467,6 +489,20 @@ class _ActionTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         child: Row(
           children: [
+            // Indicateur domaine
+            if (domainColor != null) ...[
+              Container(
+                width: 4,
+                height: 14,
+                decoration: BoxDecoration(
+                  color: dim
+                      ? domainColor!.withOpacity(.3)
+                      : domainColor!.withOpacity(isPast ? .4 : .85),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
             Icon(
               dim ? Icons.check_circle : Icons.radio_button_unchecked,
               size: 18,
@@ -507,6 +543,7 @@ class _RoutineTile extends StatelessWidget {
   final ColorScheme cs;
   final VoidCallback? onIncrement;
   final VoidCallback? onDecrement;
+  final Color? domainColor;
 
   const _RoutineTile({
     required this.routine,
@@ -516,6 +553,7 @@ class _RoutineTile extends StatelessWidget {
     required this.cs,
     this.onIncrement,
     this.onDecrement,
+    this.domainColor,
   });
 
   @override
@@ -527,6 +565,22 @@ class _RoutineTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       child: Row(
         children: [
+          // Indicateur domaine
+          if (domainColor != null) ...[
+            Container(
+              width: 4,
+              height: 14,
+              decoration: BoxDecoration(
+                color: reached
+                    ? domainColor!.withOpacity(.3)
+                    : missed
+                        ? domainColor!.withOpacity(.2)
+                        : domainColor!.withOpacity(.75),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
           Icon(
             reached ? Icons.check_circle : Icons.repeat,
             size: 16,
