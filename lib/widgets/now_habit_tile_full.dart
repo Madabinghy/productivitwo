@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/main.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/domain_colors.dart';
 
 class NowHabitTileFull extends StatelessWidget {
   final AppLogic logic;
@@ -97,6 +98,8 @@ class NowHabitTileFull extends StatelessWidget {
       monthTarget: logic.monthTargetFrom(act),
     );
 
+    final dColor = domainColor(act.domainId, st.domains);
+
     return InkWell(
       onTap: onTap,
       onLongPress: onLongPress,
@@ -118,10 +121,13 @@ class NowHabitTileFull extends StatelessWidget {
                   return MiniRingThick(
                     progress: p,
                     strokeWidth: 7,
+                    color: dColor,
                     center: Text(
                       "${(target * 100).round()}%",
-                      style: const TextStyle(
-                          fontSize: 12, fontWeight: FontWeight.w800),
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: dColor),
                     ),
                   );
                 },
@@ -151,6 +157,7 @@ class NowHabitTileFull extends StatelessWidget {
                         values: series30,
                         maxValue: histMax,
                         highlightLast: true,
+                        color: dColor,
                       ),
                     ),
                   ),

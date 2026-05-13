@@ -5084,22 +5084,25 @@ class MiniHistogram30d extends StatelessWidget {
     required this.values,
     this.maxValue,
     this.highlightLast = true,
+    this.color,
   });
 
   final List<double> values;
   final double? maxValue;
   final bool highlightLast;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final barColor = color ?? cs.primary.withOpacity(0.9);
     return CustomPaint(
       painter: _MiniHistogramPainter(
         values: values,
         maxValue: maxValue,
-        color: cs.primary.withOpacity(0.9),
+        color: barColor.withOpacity(0.7),
         baseColor: cs.onSurface.withOpacity(0.12),
-        highlightColor: cs.secondary.withOpacity(0.95),
+        highlightColor: barColor,
         highlightLast: highlightLast,
       ),
       size: Size.infinite,

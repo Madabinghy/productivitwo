@@ -37,20 +37,23 @@ class MiniRingThick extends StatelessWidget {
     required this.progress,
     required this.center,
     this.strokeWidth = 7,
+    this.color,
   });
 
   final double progress; // 0..1
   final Widget center;
   final double strokeWidth;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
+    final fg = color ?? Theme.of(context).colorScheme.primary.withOpacity(0.95);
     return CustomPaint(
       painter: _RingPainter(
         progress: progress.clamp(0.0, 1.0),
         strokeWidth: strokeWidth,
         bg: Theme.of(context).colorScheme.onSurface.withOpacity(0.10),
-        fg: Theme.of(context).colorScheme.primary.withOpacity(0.95),
+        fg: fg,
       ),
       child: Center(child: center),
     );
