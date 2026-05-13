@@ -49,6 +49,9 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
     final checkItems = logic.checklistForHabit(habitId);
     final doneSet = logic.checklistDoneSet(habitId, today);
 
+    final currentStreak = logic.habitCurrentStreak(habitId);
+    final bestStreak = logic.habitBestStreak(habitId);
+
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 
@@ -82,6 +85,44 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
               ringToken: _ringToken,
               onRingBump: () => setState(() => _ringToken++),
             ),
+
+            if (currentStreak > 0 || bestStreak > 1) ...[
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  if (currentStreak > 0) ...[
+                    Text(
+                      '🔥',
+                      style: TextStyle(fontSize: 18),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '$currentStreak jour${currentStreak > 1 ? 's' : ''}',
+                      style: theme.textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      "d'affilée",
+                      style: TextStyle(
+                        color: cs.onSurface.withOpacity(.6),
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                  const Spacer(),
+                  if (bestStreak > 1)
+                    Text(
+                      'Record : $bestStreak j',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurface.withOpacity(.45),
+                      ),
+                    ),
+                ],
+              ),
+            ],
 
             const SizedBox(height: 12),
 

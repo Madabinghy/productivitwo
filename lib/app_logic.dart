@@ -3390,6 +3390,78 @@ class AppLogic {
     return (f == HabitFreq.daily) ? t : 1; // hebdo/mensuel = 1/jour
   }
 
+  /// Nombre de jours consécutifs où le quota est atteint (en partant d'aujourd'hui ou d'hier).
+  /// Retourne 0 pour les routines hebdo/mensuelles.
+  int habitCurrentStreak(String habitId) {
+    final act = state.activities.firstWhereOrNull((a) => a.id == habitId);
+    if (act == null || effectiveHabitFreq(act) != HabitFreq.daily) return 0;
+
+    final quota = dayQuotaFor(act);
+    if (quota <= 0) return 0;
+
+    final now = DateTime.now();
+    DateTime d = DateTime(now.year, now.month, now.day);
+
+    if (habitValueOn(habitId, d) < quota) {
+      d = d.subtract(const Duration(days: 1));
+    }
+
+    int streak = 0;
+    while (streak < 3650) {
+      if (habitValueOn(habitId, d) >= quota) {
+        streak++;
+        d = d.subtract(const Duration(days: 1));
+      } else {
+        break;
+      }
+    }
+    return streak;
+  }
+
+  /// Meilleur streak jamais atteint (jours consécutifs avec quota atteint).
+  /// Retourne 0 pour les routines hebdo/mensuelles.
+  int habitBestStreak(String habitId) {
+    final act = state.activities.firstWhereOrNull((a) => a.id == habitId);
+    if (act == null || effectiveHabitFreq(act) != HabitFreq.daily) return 0;
+
+    final quota = dayQuotaFor(act);
+    if (quota <= 0) return 0;
+
+    final ymds = state.habitProgress
+        .where((h) => h.activityId == habitId)
+        .map((h) => h.yyyymmdd)
+        .toSet()
+        .toList()
+      ..sort();
+
+    if (ymds.isEmpty) return 0;
+
+    int best = 0;
+    int current = 0;
+    DateTime? prev;
+
+    for (final ymd in ymds) {
+      final day = DateTime(
+        int.parse(ymd.substring(0, 4)),
+        int.parse(ymd.substring(4, 6)),
+        int.parse(ymd.substring(6, 8)),
+      );
+      if (habitValueOn(habitId, day) >= quota) {
+        if (prev != null && day.difference(prev).inDays == 1) {
+          current++;
+        } else {
+          current = 1;
+        }
+        if (current > best) best = current;
+      } else {
+        current = 0;
+      }
+      prev = day;
+    }
+
+    return best;
+  }
+
 // Cible semaine (affichage)
   int weekTargetFrom(Activity a) {
     final f = a.habitFreq ?? HabitFreq.monthly;
