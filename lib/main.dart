@@ -3434,6 +3434,7 @@ class _AppRootState extends State<AppRoot>
             },
           ),
         ),
+        _buildNextGoalCard(context),
         Expanded(
           child: ValueListenableBuilder<int>(
             valueListenable: _tick,
@@ -3444,6 +3445,137 @@ class _AppRootState extends State<AppRoot>
           ),
         )
       ],
+    );
+  }
+
+  Widget _buildNextGoalCard(BuildContext context) {
+    final activeGoals = logic.state.goals
+        .where((g) => g.status == 'active' && g.nextAction != null)
+        .toList()
+      ..sort((a, b) {
+        if (a.dueDate != null && b.dueDate != null) {
+          return a.dueDate!.compareTo(b.dueDate!);
+        }
+        if (a.dueDate != null) return -1;
+        if (b.dueDate != null) return 1;
+        return a.createdAt.compareTo(b.createdAt);
+      });
+
+    if (activeGoals.isEmpty) return const SizedBox.shrink();
+
+    final goal = activeGoals.first;
+    final nextAction = goal.nextAction!;
+    final domain = logic.state.domains
+        .firstWhereOrNull((d) => d.id == goal.domainId);
+    final dColor = domainColor(goal.domainId, logic.state.domains);
+    final progress = goal.stepsTotal > 0
+        ? goal.stepsDone / goal.stepsTotal
+        : 0.0;
+    final cs = Theme.of(context).colorScheme;
+
+    return SectionCard(
+      padding: EdgeInsets.zero,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => setState(() => _tab = _Tab.today),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (dColor != null)
+                  Container(width: 4, color: dColor),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Header
+                        Row(
+                          children: [
+                            Icon(Icons.flag_rounded,
+                                size: 13,
+                                color: dColor ?? cs.primary),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Prochain objectif${domain != null ? '  ·  ${domain.name}' : ''}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: cs.onSurface.withOpacity(.4),
+                                letterSpacing: 0.4,
+                              ),
+                            ),
+                            const Spacer(),
+                            if (goal.stepsTotal > 0)
+                              Text(
+                                '${goal.stepsDone}/${goal.stepsTotal}',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: dColor?.withOpacity(.7) ??
+                                      cs.primary.withOpacity(.7),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        // Titre objectif
+                        Text(
+                          goal.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        if (goal.stepsTotal > 0) ...[
+                          const SizedBox(height: 6),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(999),
+                            child: LinearProgressIndicator(
+                              value: progress,
+                              minHeight: 4,
+                              backgroundColor:
+                                  (dColor ?? cs.primary).withOpacity(.12),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                  dColor ?? cs.primary),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                        // Prochaine action
+                        Row(
+                          children: [
+                            Icon(Icons.arrow_right_rounded,
+                                size: 16,
+                                color: cs.onSurface.withOpacity(.4)),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                nextAction.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: cs.onSurface.withOpacity(.7),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
