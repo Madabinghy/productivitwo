@@ -235,16 +235,25 @@ class _WeeklyViewState extends State<WeeklyView> {
                           const Divider(height: 1, indent: 14, endIndent: 14),
                           if (actions.isEmpty)
                             Padding(
-                              padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+                              padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
                               child: Row(
                                 children: [
+                                  Icon(
+                                    isPast
+                                        ? Icons.history
+                                        : Icons.calendar_today_outlined,
+                                    size: 14,
+                                    color: cs.onSurface.withOpacity(.25),
+                                  ),
+                                  const SizedBox(width: 8),
                                   Text(
                                     isPast
                                         ? 'Rien de fait ce jour-là'
-                                        : 'Rien de prévu',
+                                        : 'Rien de prévu — tape + pour ajouter',
                                     style: TextStyle(
-                                      fontSize: 13,
-                                      color: cs.onSurface.withOpacity(.4),
+                                      fontSize: 12,
+                                      color: cs.onSurface.withOpacity(.35),
+                                      fontStyle: FontStyle.italic,
                                     ),
                                   ),
                                 ],

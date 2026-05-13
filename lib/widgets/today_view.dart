@@ -1881,11 +1881,30 @@ class _TodayViewState extends State<TodayView> {
           if (_showAll) ...[
             const SizedBox(height: 8),
             if (todo.isEmpty)
-              Text(
-                "Aucune action pour l'instant.",
-                style: TextStyle(
-                  color:
-                      Theme.of(context).colorScheme.onSurface.withOpacity(.7),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Row(
+                  children: [
+                    Icon(Icons.check_circle_outline,
+                        size: 18,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withOpacity(.3)),
+                    const SizedBox(width: 10),
+                    Text(
+                      isTodayTab
+                          ? "Rien à faire pour aujourd'hui."
+                          : "Rien de prévu pour demain.",
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withOpacity(.5),
+                      ),
+                    ),
+                  ],
                 ),
               )
             else
@@ -4558,32 +4577,48 @@ class _NowTabState extends State<NowTab> {
 
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.check_circle_outline,
-                size: 56, color: cs.primary),
-            const SizedBox(height: 16),
-            const Text(
-              'Bloc terminé !',
-              style:
-                  TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: cs.primaryContainer.withOpacity(.5),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.check_rounded, size: 40, color: cs.primary),
             ),
             const SizedBox(height: 20),
+            const Text(
+              'Bloc terminé !',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Bien joué, continue sur ta lancée.',
+              style: TextStyle(
+                  fontSize: 14, color: cs.onSurface.withOpacity(.55)),
+            ),
+            const SizedBox(height: 28),
             if (nextBlock != null)
               FilledButton.icon(
-                icon: const Icon(Icons.arrow_forward),
+                icon: const Icon(Icons.arrow_forward, size: 18),
                 label: Text(
                     '${nextBlock.emoji != null ? "${nextBlock.emoji} " : ""}${nextBlock.name}'),
-                onPressed: () =>
-                    setState(() => _activeBlockId = nextBlock.id),
+                onPressed: () {
+                  _userChoseBlock = true;
+                  setState(() => _activeBlockId = nextBlock.id);
+                },
               ),
             const SizedBox(height: 8),
             TextButton(
-              onPressed: () =>
-                  setState(() => _activeBlockId = null),
-              child: const Text('Vue sans bloc'),
+              onPressed: () => setState(() {
+                _activeBlockId = null;
+                _userChoseBlock = false;
+              }),
+              child: const Text('Vue libre'),
             ),
           ],
         ),
@@ -4900,21 +4935,37 @@ class _NowTabState extends State<NowTab> {
   } */
 
   Widget _allDoneView(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text("✨ Tout est fait",
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 10),
+            Text('✨', style: const TextStyle(fontSize: 56)),
+            const SizedBox(height: 16),
+            const Text(
+              'Tout est fait',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 8),
             Text(
-              "Tu peux lancer une activité ou ajouter une routine dans l'onglet À faire.",
+              'Lance une activité ou ajoute une routine\ndans l\'onglet À faire.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color:
-                    Theme.of(context).colorScheme.onSurface.withOpacity(0.75),
+                fontSize: 14,
+                height: 1.5,
+                color: cs.onSurface.withOpacity(0.55),
+              ),
+            ),
+            const SizedBox(height: 24),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.arrow_forward, size: 16),
+              label: const Text('Aller à À faire'),
+              onPressed: () => widget.onGoTodo?.call(),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: cs.primary,
+                side: BorderSide(color: cs.primary.withOpacity(.4)),
               ),
             ),
           ],
