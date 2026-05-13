@@ -19,6 +19,7 @@ import 'package:productivitwo_v1/widgets/day_block_sheet.dart';
 import 'package:productivitwo_v1/widgets/new_action_sheet.dart';
 import 'package:productivitwo_v1/widgets/new_routine_sheet.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
+import 'package:confetti/confetti.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/storage.dart';
@@ -1496,6 +1497,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   bool _saving = false;
 
   late final ValueNotifier<int> _tick; // seconds
+  late final ConfettiController _confettiController;
 
   @override
   void initState() {
@@ -1503,6 +1505,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
 
     _tick = ValueNotifier<int>(0);
+    _confettiController =
+        ConfettiController(duration: const Duration(seconds: 2));
 
     _startMinuteHeartbeat();
     _init();
@@ -1532,6 +1536,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   void dispose() {
     _heartbeat?.cancel();
     _tick.dispose();
+    _confettiController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -1658,14 +1663,31 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   Future<void> _saveAndRefresh() async {
     if (_state == null) return;
 
-    // Vérification badges
+    // Vérification badges + célébration
     final newBadges = logic.checkAndAwardBadges();
     if (newBadges.isNotEmpty && mounted) {
       final meta = badgeMeta(newBadges.last.id);
+      _confettiController.play();
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         duration: const Duration(seconds: 4),
         content: Text('${meta.emoji} Badge débloqué : ${meta.label}'),
       ));
+    } else if (mounted) {
+      // Célébration score 100% (même si badge déjà acquis)
+      final today = yyyymmdd(DateTime.now());
+      final acts = logic.state.dayPlan
+          .where((it) =>
+              it.yyyymmdd == today &&
+              it.kind == PlanKind.action &&
+              !it.archived)
+          .toList();
+      final actsDone = acts.where((it) => it.done).length;
+      final rs = logic.routineProgressSummaryForCurrentPeriod();
+      final done = actsDone + rs.reached;
+      final total = acts.length + rs.total;
+      if (total > 0 && done >= total) {
+        _confettiController.play();
+      }
     }
 
     // ✅ Debounce sauvegarde (regroupe les onChange rapides)
@@ -2483,7 +2505,9 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     }
 
     // 2) App prête -> Scaffold complet
-    return Scaffold(
+    return Stack(
+      children: [
+        Scaffold(
       appBar: AppBar(
         titleSpacing: 5,
         title: Row(
@@ -2603,6 +2627,28 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       ),
 
       floatingActionButton: _shouldShowFab() ? _buildFab() : null,
+        ),
+        // Confetti par-dessus tout
+        Align(
+          alignment: Alignment.topCenter,
+          child: ConfettiWidget(
+            confettiController: _confettiController,
+            blastDirectionality: BlastDirectionality.explosive,
+            numberOfParticles: 30,
+            gravity: 0.2,
+            emissionFrequency: 0.05,
+            maxBlastForce: 20,
+            minBlastForce: 8,
+            colors: const [
+              Color(0xFF6FFFE9),
+              Color(0xFF5BC0F8),
+              Color(0xFFFFD700),
+              Color(0xFFFF6B6B),
+              Color(0xFF9B59B6),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
