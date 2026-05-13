@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/main.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -183,6 +184,7 @@ class NowHabitTileFull extends StatelessWidget {
                       onRingBump?.call();
                       logic.incHabit(habitId, 1, today);
                       logic.onChange();
+                      HapticFeedback.lightImpact();
                     },
                   ),
                   const SizedBox(height: 10),
@@ -192,6 +194,7 @@ class NowHabitTileFull extends StatelessWidget {
                       onRingBump?.call();
                       logic.incHabit(habitId, -1, today);
                       logic.onChange();
+                      HapticFeedback.lightImpact();
                     },
                   ),
                 ],

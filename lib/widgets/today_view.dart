@@ -287,9 +287,16 @@ class _TodayViewState extends State<TodayView> {
 
       void inc(int delta) {
         if (habitId == null) return;
+        final wasNotDone = done < quota;
         logic.incHabit(habitId, delta, today);
         logic.onChange();
         setState(() {});
+        final nowDone = logic.habitValueOn(habitId, today) >= quota;
+        if (wasNotDone && nowDone) {
+          HapticFeedback.mediumImpact(); // quota atteint
+        } else {
+          HapticFeedback.lightImpact(); // simple incrément
+        }
       }
 
       return Padding(
@@ -368,6 +375,7 @@ class _TodayViewState extends State<TodayView> {
         it.done = !it.done;
         logic.onChange();
         setState(() {});
+        HapticFeedback.lightImpact();
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -2364,6 +2372,7 @@ class _TodayViewState extends State<TodayView> {
                 shape: const CircleBorder(),
                 onChanged: (v) {
                   final done = v ?? false;
+                  HapticFeedback.lightImpact();
                   if (done && it.toPlan == true) {
                     widget.logic.archiveAction(it);
                     setState(() {});

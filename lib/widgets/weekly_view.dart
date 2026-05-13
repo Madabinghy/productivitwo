@@ -1,6 +1,7 @@
 // ignore_for_file: deprecated_member_use
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/new_action_sheet.dart';
@@ -280,6 +281,7 @@ class _WeeklyViewState extends State<WeeklyView> {
                                     isPast: isPast,
                                     cs: cs,
                                     onToggle: () {
+                                      HapticFeedback.lightImpact();
                                       setState(() => it.done = !it.done);
                                       widget.logic.onChange();
                                     },
