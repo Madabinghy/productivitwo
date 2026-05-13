@@ -4,25 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/widgets/new_action_sheet.dart';
-
-const _kDomainPalette = [
-  Color(0xFF4CAF50), // vert
-  Color(0xFF2196F3), // bleu
-  Color(0xFFFF9800), // orange
-  Color(0xFF9C27B0), // violet
-  Color(0xFFE91E63), // rose
-  Color(0xFF00BCD4), // cyan
-  Color(0xFFFF5722), // orange profond
-  Color(0xFF3F51B5), // indigo
-];
-
-Color? _domainColor(String? domainId, List<Domain> domains) {
-  if (domainId == null || domainId.isEmpty) return null;
-  final idx = domains.indexWhere((d) => d.id == domainId);
-  if (idx < 0) return null;
-  return _kDomainPalette[idx % _kDomainPalette.length];
-}
 
 class WeeklyView extends StatefulWidget {
   final AppLogic logic;
@@ -323,7 +306,7 @@ class _WeeklyViewState extends State<WeeklyView> {
                                       action: it,
                                       isPast: isPast,
                                       cs: cs,
-                                      domainColor: _domainColor(it.domainId, widget.logic.state.domains),
+                                      domainColor: domainColor(it.domainId, widget.logic.state.domains),
                                       onToggle: () {
                                         HapticFeedback.lightImpact();
                                         if (it.toPlan == true && !it.done) {
@@ -422,7 +405,7 @@ class _WeeklyViewState extends State<WeeklyView> {
                                     target: target,
                                     isToday: isToday,
                                     cs: cs,
-                                    domainColor: _domainColor(r.domainId, widget.logic.state.domains),
+                                    domainColor: domainColor(r.domainId, widget.logic.state.domains),
                                     onIncrement: isToday
                                         ? () {
                                             HapticFeedback.lightImpact();

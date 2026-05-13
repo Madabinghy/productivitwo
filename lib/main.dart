@@ -25,6 +25,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/storage.dart';
 import 'package:productivitwo_v1/notifications.dart';
+import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
 
@@ -3533,12 +3534,28 @@ class _AppRootState extends State<AppRoot>
               ? 'Objectifs'
               : 'Objectifs · $goalCount actif${goalCount > 1 ? 's' : ''}';
 
+          final dColor = domainColor(d.id, _state!.domains);
           return SectionCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(d.name,
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                Row(
+                  children: [
+                    if (dColor != null) ...[
+                      Container(
+                        width: 4,
+                        height: 18,
+                        decoration: BoxDecoration(
+                          color: dColor,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    Text(d.name,
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                  ],
+                ),
                 const SizedBox(height: 8),
                 Column(
                   children: [
