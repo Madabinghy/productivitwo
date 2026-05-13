@@ -2714,7 +2714,11 @@ class _TodayViewState extends State<TodayView> {
         if (res.unlink == true) it.activityId = null;
         if (res.newActivityId != null) {
           it.activityId = res.newActivityId;
-          it.domainId = res.newDomainId ?? it.domainId;
+          it.domainId = res.newDomainId ??
+              widget.state.activities
+                  .firstWhereOrNull((a) => a.id == res.newActivityId)
+                  ?.domainId ??
+              it.domainId;
           // Inbox → active quand une activité est assignée
           if (it.status == ActionStatus.inbox) it.status = ActionStatus.active;
         }

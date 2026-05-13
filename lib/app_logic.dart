@@ -4243,13 +4243,21 @@ extension TodayLogic on AppLogic {
             ? (plan.first.order - 1)
             : (plan.last.order + 1));
 
+    // Propagation automatique : domainId depuis l'activité si non fourni
+    String? effectiveDomainId = domainId;
+    if ((effectiveDomainId ?? '').isEmpty && (activityId ?? '').isNotEmpty) {
+      effectiveDomainId = state.activities
+          .firstWhereOrNull((a) => a.id == activityId)
+          ?.domainId;
+    }
+
     state.dayPlan.add(DayPlanItem(
         id: _uuid.v4(),
         kind: PlanKind.action,
         title: title,
         yyyymmdd: key,
         order: ord,
-        domainId: domainId,
+        domainId: effectiveDomainId,
         activityId: activityId,
         habitId: habitId,
         blockId: (blockId ?? '').isEmpty ? null : blockId,
