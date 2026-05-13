@@ -3205,18 +3205,21 @@ class _AppRootState extends State<AppRoot>
     // Les valeurs “live” (temps today jusqu’à now, halo, label, etc.)
     // seront calculées dans ValueListenableBuilder via _compute... (voir plus bas)
 
-    return Column(
-      children: [
+    return ValueListenableBuilder<int>(
+      valueListenable: _tick,
+      builder: (context, _, __) {
+        final now = DateTime.now();
+        final g = _computeGlobalTimeGauges(now);
+        final h = _computeGlobalHabitsGauge(now);
+        final obj = _computeGoalsGauge();
+        final cs = Theme.of(context).colorScheme;
+
+        return ListView(
+          children: [
         SectionCard(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: ValueListenableBuilder<int>(
-            valueListenable: _tick,
-            builder: (context, _, __) {
-              final now = DateTime.now();
-              final g = _computeGlobalTimeGauges(now);
-              final h = _computeGlobalHabitsGauge(now);
-              final obj = _computeGoalsGauge();
-              final cs = Theme.of(context).colorScheme;
+          child: Builder(
+            builder: (context) {
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -3435,16 +3438,10 @@ class _AppRootState extends State<AppRoot>
           ),
         ),
         _buildNextGoalCard(context),
-        Expanded(
-          child: ValueListenableBuilder<int>(
-            valueListenable: _tick,
-            builder: (context, _, __) {
-              final now = DateTime.now();
-              return _buildDomainListLive(context, now);
-            },
-          ),
-        )
+        ..._buildDomainListLive(context, now),
       ],
+        );
+      },
     );
   }
 
@@ -3579,7 +3576,7 @@ class _AppRootState extends State<AppRoot>
     );
   }
 
-  Widget _buildDomainListLive(BuildContext context, DateTime now) {
+  List<Widget> _buildDomainListLive(BuildContext context, DateTime now) {
     final today0 = DateTime(now.year, now.month, now.day);
     final tomorrow = today0.add(const Duration(days: 1));
 
@@ -3627,8 +3624,7 @@ class _AppRootState extends State<AppRoot>
       return (h / done90HoursAll).clamp(0.0, 1.0);
     }
 
-    return ListView(
-      children: [
+    return [
         ...sortedDomains.map((d) {
           // ---- ROUTINES domain (binaire : atteinte ou non)
           final routinesReached = routineReachedByDomain[d.id] ?? 0;
@@ -3748,8 +3744,7 @@ class _AppRootState extends State<AppRoot>
           );
         }),
         const SizedBox(height: 60),
-      ],
-    );
+    ];
   }
 
   // Snap helper (gauge)
