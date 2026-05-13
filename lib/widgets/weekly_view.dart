@@ -19,7 +19,7 @@ class WeeklyView extends StatefulWidget {
 class _WeeklyViewState extends State<WeeklyView> {
   late DateTime _weekStart;
   late Set<String> _expanded;
-  late Set<String> _routinesExpanded;
+  Set<String> _routinesExpanded = {};
 
   @override
   void initState() {
