@@ -3266,12 +3266,70 @@ class _AppRootState extends State<AppRoot>
                   const SizedBox(height: 16),
                   const Divider(height: 1),
                   const SizedBox(height: 8),
-                  _WeekScoreChart(
-                    scores: logic.weeklyScoreData().days7,
-                    target: logic.state.weeklyScoreTarget / 100.0,
-                    todayIndex: now.weekday - 1,
-                    cs: cs,
-                  ),
+                  Builder(builder: (_) {
+                    final weekData = logic.weeklyScoreData();
+                    final current = weekData.current;
+                    final previous = weekData.previous;
+                    final diff = current - previous;
+                    final hasPrev = previous > 0;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _WeekScoreChart(
+                          scores: weekData.days7,
+                          target: logic.state.weeklyScoreTarget / 100.0,
+                          todayIndex: now.weekday - 1,
+                          cs: cs,
+                        ),
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Row(
+                            children: [
+                              Text(
+                                'Cette semaine',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: cs.onSurface.withOpacity(.5),
+                                ),
+                              ),
+                              const Spacer(),
+                              if (hasPrev) ...[
+                                Text(
+                                  'Sem. précédente : ${(previous * 100).round()}%',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: cs.onSurface.withOpacity(.4),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Icon(
+                                  diff >= 0
+                                      ? Icons.arrow_upward_rounded
+                                      : Icons.arrow_downward_rounded,
+                                  size: 13,
+                                  color: diff >= 0
+                                      ? cs.primary
+                                      : cs.error.withOpacity(.7),
+                                ),
+                                Text(
+                                  '${diff >= 0 ? '+' : ''}${(diff * 100).round()}%',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: diff >= 0
+                                        ? cs.primary
+                                        : cs.error.withOpacity(.7),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  }),
                   const SizedBox(height: 4),
                 ],
               );
