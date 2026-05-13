@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
+
 import 'package:productivitwo_v1/models.dart';
 import 'package:collection/collection.dart';
 import 'package:productivitwo_v1/widgets/assign_activity_sheet.dart';
@@ -3405,6 +3406,17 @@ class _NowTabState extends State<NowTab> {
               Expanded(
                 child: Row(
                   children: [
+                    if (domainColor(it.domainId, widget.st.domains) != null) ...[
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: domainColor(it.domainId, widget.st.domains),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
                     Text(domName,
                         style: const TextStyle(
                             fontWeight: FontWeight.w900, fontSize: 18)),
@@ -3673,16 +3685,31 @@ class _NowTabState extends State<NowTab> {
                   },
                 ),
                 Expanded(
-                  child: Text(
-                    domainName.toUpperCase(),
-                    style: TextStyle(
-                      letterSpacing: 1.2,
-                      fontWeight: FontWeight.w800,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .primary
-                          .withOpacity(0.9),
-                    ),
+                  child: Row(
+                    children: [
+                      if (domainColor(it.domainId, widget.st.domains) != null) ...[
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: domainColor(it.domainId, widget.st.domains),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      Text(
+                        domainName.toUpperCase(),
+                        style: TextStyle(
+                          letterSpacing: 1.2,
+                          fontWeight: FontWeight.w800,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .primary
+                              .withOpacity(0.9),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 IconButton(
