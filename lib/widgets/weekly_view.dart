@@ -54,6 +54,13 @@ class _WeeklyViewState extends State<WeeklyView> {
       .toList()
     ..sort((a, b) => a.order.compareTo(b.order));
 
+  List<Activity> _dailyRoutines() => widget.logic.state.activities
+      .where((a) =>
+          a.isHabit &&
+          widget.logic.effectiveHabitFreq(a) == HabitFreq.daily)
+      .toList()
+    ..sort((a, b) => a.name.compareTo(b.name));
+
   Future<void> _addAction(BuildContext context, String ymd) async {
     final result = await showNewActionSheet(context, logic: widget.logic);
     if (result == null) return;
@@ -79,6 +86,8 @@ class _WeeklyViewState extends State<WeeklyView> {
     return ValueListenableBuilder<int>(
       valueListenable: widget.logic.rev,
       builder: (context, _, __) {
+        final dailyRoutines = _dailyRoutines();
+
         return Column(
           children: [
             // ── En-tête navigation semaine ──────────────────────────────
@@ -122,10 +131,20 @@ class _WeeklyViewState extends State<WeeklyView> {
                   final ymd = yyyymmdd(day);
                   final isToday = ymd == todayYmd;
                   final isPast = day.isBefore(today);
+                  final isFuture = day.isAfter(today);
                   final isExpanded = _expanded.contains(ymd);
+
                   final actions = _actionsFor(ymd);
-                  final done = actions.where((a) => a.done).length;
-                  final total = actions.length;
+                  // Routines : passé et aujourd'hui seulement
+                  final routineItems = isFuture ? <Activity>[] : dailyRoutines;
+
+                  final actionsDone = actions.where((a) => a.done).length;
+                  final routinesDone = routineItems.where((r) {
+                    final v = widget.logic.habitValueOn(r.id, day);
+                    return v >= widget.logic.effectiveHabitTarget(r);
+                  }).length;
+                  final done = actionsDone + routinesDone;
+                  final total = actions.length + routineItems.length;
 
                   return Card(
                     margin: const EdgeInsets.only(bottom: 8),
@@ -234,7 +253,7 @@ class _WeeklyViewState extends State<WeeklyView> {
                         // Contenu déplié
                         if (isExpanded) ...[
                           const Divider(height: 1, indent: 14, endIndent: 14),
-                          if (actions.isEmpty)
+                          if (actions.isEmpty && routineItems.isEmpty)
                             Padding(
                               padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
                               child: Row(
@@ -260,38 +279,88 @@ class _WeeklyViewState extends State<WeeklyView> {
                                 ],
                               ),
                             )
-                          else
-                            ...actions.map((it) => Dismissible(
-                                  key: ValueKey('week:${it.id}'),
-                                  direction: DismissDirection.endToStart,
-                                  background: Container(
-                                    alignment: Alignment.centerRight,
-                                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                                    color: Colors.red.withOpacity(.15),
-                                    child: const Icon(Icons.delete, color: Colors.red),
-                                  ),
-                                  onDismissed: (_) {
-                                    widget.logic.state.dayPlan
-                                        .removeWhere((e) => e.id == it.id);
-                                    widget.logic.onChange();
-                                    setState(() {});
-                                  },
-                                  child: _ActionTile(
-                                    action: it,
-                                    isPast: isPast,
-                                    cs: cs,
-                                    onToggle: () {
-                                      HapticFeedback.lightImpact();
-                                      if (it.toPlan == true && !it.done) {
-                                        widget.logic.archiveAction(it);
-                                        setState(() {});
-                                      } else {
-                                        setState(() => it.done = !it.done);
-                                        widget.logic.onChange();
-                                      }
+                          else ...[
+                            // ── Actions ──────────────────────────────────
+                            if (actions.isNotEmpty) ...[
+                              if (routineItems.isNotEmpty)
+                                _SectionLabel(label: 'Actions', cs: cs),
+                              ...actions.map((it) => Dismissible(
+                                    key: ValueKey('week:${it.id}'),
+                                    direction: DismissDirection.endToStart,
+                                    background: Container(
+                                      alignment: Alignment.centerRight,
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 16),
+                                      color: Colors.red.withOpacity(.15),
+                                      child: const Icon(Icons.delete,
+                                          color: Colors.red),
+                                    ),
+                                    onDismissed: (_) {
+                                      widget.logic.state.dayPlan
+                                          .removeWhere((e) => e.id == it.id);
+                                      widget.logic.onChange();
+                                      setState(() {});
                                     },
-                                  ),
-                                )),
+                                    child: _ActionTile(
+                                      action: it,
+                                      isPast: isPast,
+                                      cs: cs,
+                                      onToggle: () {
+                                        HapticFeedback.lightImpact();
+                                        if (it.toPlan == true && !it.done) {
+                                          widget.logic.archiveAction(it);
+                                          setState(() {});
+                                        } else {
+                                          setState(() => it.done = !it.done);
+                                          widget.logic.onChange();
+                                        }
+                                      },
+                                    ),
+                                  )),
+                            ],
+
+                            // ── Routines ─────────────────────────────────
+                            if (routineItems.isNotEmpty) ...[
+                              if (actions.isNotEmpty)
+                                const Divider(
+                                    height: 1, indent: 14, endIndent: 14),
+                              _SectionLabel(label: 'Routines', cs: cs),
+                              ...routineItems.map((r) {
+                                final value =
+                                    widget.logic.habitValueOn(r.id, day);
+                                final target =
+                                    widget.logic.effectiveHabitTarget(r);
+                                return _RoutineTile(
+                                  routine: r,
+                                  value: value,
+                                  target: target,
+                                  isToday: isToday,
+                                  cs: cs,
+                                  onIncrement: isToday
+                                      ? () {
+                                          HapticFeedback.lightImpact();
+                                          widget.logic.incHabitWithAssocEvent(
+                                              r.id, 1, day);
+                                          widget.logic.onChange();
+                                          setState(() {});
+                                        }
+                                      : null,
+                                  onDecrement:
+                                      (isToday && value > 0)
+                                          ? () {
+                                              HapticFeedback.lightImpact();
+                                              widget.logic
+                                                  .incHabitWithAssocEvent(
+                                                      r.id, -1, day);
+                                              widget.logic.onChange();
+                                              setState(() {});
+                                            }
+                                          : null,
+                                );
+                              }),
+                              const SizedBox(height: 4),
+                            ],
+                          ],
                         ],
                       ],
                     ),
@@ -305,6 +374,33 @@ class _WeeklyViewState extends State<WeeklyView> {
     );
   }
 }
+
+// ── Séparateur de section ─────────────────────────────────────────────────────
+
+class _SectionLabel extends StatelessWidget {
+  final String label;
+  final ColorScheme cs;
+
+  const _SectionLabel({required this.label, required this.cs});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 2),
+      child: Text(
+        label.toUpperCase(),
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: cs.onSurface.withOpacity(.35),
+          letterSpacing: 0.8,
+        ),
+      ),
+    );
+  }
+}
+
+// ── Tuile action ──────────────────────────────────────────────────────────────
 
 class _ActionTile extends StatelessWidget {
   final DayPlanItem action;
@@ -353,6 +449,133 @@ class _ActionTile extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ── Tuile routine ─────────────────────────────────────────────────────────────
+
+class _RoutineTile extends StatelessWidget {
+  final Activity routine;
+  final int value;
+  final int target;
+  final bool isToday;
+  final ColorScheme cs;
+  final VoidCallback? onIncrement;
+  final VoidCallback? onDecrement;
+
+  const _RoutineTile({
+    required this.routine,
+    required this.value,
+    required this.target,
+    required this.isToday,
+    required this.cs,
+    this.onIncrement,
+    this.onDecrement,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final reached = value >= target;
+    final missed = value == 0 && !isToday;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      child: Row(
+        children: [
+          Icon(
+            reached ? Icons.check_circle : Icons.repeat,
+            size: 16,
+            color: reached
+                ? cs.primary
+                : missed
+                    ? cs.onSurface.withOpacity(.2)
+                    : cs.onSurface.withOpacity(.4),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              routine.name,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: reached
+                    ? cs.onSurface.withOpacity(.4)
+                    : missed
+                        ? cs.onSurface.withOpacity(.3)
+                        : cs.onSurface.withOpacity(.85),
+                decoration: reached ? TextDecoration.lineThrough : null,
+              ),
+            ),
+          ),
+          if (isToday) ...[
+            // Bouton − (visible seulement si value > 0)
+            if (value > 0)
+              GestureDetector(
+                onTap: onDecrement,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Icon(Icons.remove,
+                      size: 16, color: cs.onSurface.withOpacity(.35)),
+                ),
+              )
+            else
+              const SizedBox(width: 24),
+            // Compteur
+            SizedBox(
+              width: 36,
+              child: Text(
+                target == 1
+                    ? (reached ? '✓' : '—')
+                    : '$value/$target',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: reached
+                      ? cs.primary
+                      : cs.onSurface.withOpacity(.5),
+                ),
+              ),
+            ),
+            // Bouton +
+            GestureDetector(
+              onTap: onIncrement,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Icon(Icons.add,
+                    size: 16, color: cs.onSurface.withOpacity(.5)),
+              ),
+            ),
+          ] else ...[
+            // Chip lecture seule
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: reached
+                    ? cs.primary.withOpacity(.12)
+                    : cs.onSurface.withOpacity(.06),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                missed
+                    ? '—'
+                    : target == 1
+                        ? (reached ? '✓' : '$value/$target')
+                        : '$value/$target',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: reached
+                      ? cs.primary
+                      : cs.onSurface.withOpacity(.4),
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
