@@ -22,6 +22,7 @@ class _WeeklyViewState extends State<WeeklyView> {
   late DateTime _weekStart;
   late Set<String> _expanded;
   Set<String> _routinesExpanded = {};
+  Set<String> _doneExpanded = {};
 
   @override
   void initState() {
@@ -358,26 +359,81 @@ class _WeeklyViewState extends State<WeeklyView> {
                                   ),
                                 );
                               }),
-                              // Indicateur actions faites
-                              if (doneActions.isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.check_circle,
-                                          size: 13, color: cs.primary.withOpacity(.5)),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        '${doneActions.length} faite${doneActions.length > 1 ? 's' : ''}',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: cs.onSurface.withOpacity(.4),
-                                          fontStyle: FontStyle.italic,
+                              // ── Faites (accordéon) ───────────────────────
+                              if (doneActions.isNotEmpty) ...[
+                                if (actions.isNotEmpty)
+                                  const Divider(height: 1, indent: 14, endIndent: 14),
+                                InkWell(
+                                  onTap: () => setState(() {
+                                    if (_doneExpanded.contains(ymd)) {
+                                      _doneExpanded.remove(ymd);
+                                    } else {
+                                      _doneExpanded.add(ymd);
+                                    }
+                                  }),
+                                  child: Padding(
+                                    padding: const EdgeInsets.fromLTRB(14, 8, 10, 8),
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.check_circle,
+                                            size: 13,
+                                            color: cs.primary.withOpacity(.5)),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          'Faites',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            color: cs.onSurface.withOpacity(.4),
+                                            letterSpacing: 0.5,
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 5, vertical: 1),
+                                          decoration: BoxDecoration(
+                                            color: cs.primary.withOpacity(.12),
+                                            borderRadius: BorderRadius.circular(999),
+                                          ),
+                                          child: Text(
+                                            '${doneActions.length}',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w700,
+                                              color: cs.primary,
+                                            ),
+                                          ),
+                                        ),
+                                        const Spacer(),
+                                        Icon(
+                                          _doneExpanded.contains(ymd)
+                                              ? Icons.expand_less
+                                              : Icons.expand_more,
+                                          size: 16,
+                                          color: cs.onSurface.withOpacity(.3),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
+                                if (_doneExpanded.contains(ymd))
+                                  ...doneActions.map((it) => _ActionTile(
+                                        action: it,
+                                        isPast: true, // lecture seule
+                                        cs: cs,
+                                        domainColor: domainColor(
+                                          (it.domainId ?? '').isNotEmpty
+                                              ? it.domainId
+                                              : widget.logic.state.activities
+                                                  .firstWhereOrNull(
+                                                      (a) => a.id == it.activityId)
+                                                  ?.domainId,
+                                          widget.logic.state.domains,
+                                        ),
+                                        onToggle: () {},
+                                      )),
+                              ],
                             ],
 
                             // ── Routines (accordéon) ──────────────────────
