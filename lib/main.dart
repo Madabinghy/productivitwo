@@ -2824,16 +2824,19 @@ class _AppRootState extends State<AppRoot>
             IconButton(
               icon: const Icon(Icons.bar_chart_outlined),
               tooltip: 'Statistiques',
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => Scaffold(
-                    appBar: AppBar(title: const Text('Statistiques')),
-                    body: StatsView(
-                      logic: logic,
-                      state: _state!,
-                      selectedDomainId: null,
-                    ),
+              onPressed: () => showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                showDragHandle: true,
+                builder: (_) => DraggableScrollableSheet(
+                  expand: false,
+                  initialChildSize: 0.92,
+                  minChildSize: 0.5,
+                  maxChildSize: 0.95,
+                  builder: (_, controller) => StatsView(
+                    logic: logic,
+                    state: _state!,
+                    selectedDomainId: null,
                   ),
                 ),
               ),
