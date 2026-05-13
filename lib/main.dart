@@ -3604,7 +3604,7 @@ class _AppRootState extends State<AppRoot>
                       icon: Icons.repeat,
                       label: 'Routines · $routinesLabelD',
                       progress: routinesProgress,
-                      color: _colorForProgress(routinesProgress, context),
+                      color: dColor ?? _colorForProgress(routinesProgress, context),
                       onTap: () => _showDomainDetail(
                           d, startCal, endCal, days,
                           focus: 'habit'),
@@ -4977,6 +4977,7 @@ class _AppRootState extends State<AppRoot>
             return HabitTileFull(
               habit: a,
               logic: logic,
+              domains: logic.state.domains,
               ringTarget: ringRatio,
               ringToken: token,
               onRingBump: () => _triggerRingAnimFor(a.id, setSB),

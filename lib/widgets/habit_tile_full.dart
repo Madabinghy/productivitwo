@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/main.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/domain_colors.dart';
 
 class HabitTileFull extends StatelessWidget {
   final Activity habit;
@@ -25,6 +26,8 @@ class HabitTileFull extends StatelessWidget {
   final VoidCallback onInc;
   final VoidCallback onDec;
 
+  final List<Domain>? domains; // pour dériver la couleur de domaine
+
   const HabitTileFull({
     super.key,
     required this.habit,
@@ -39,11 +42,15 @@ class HabitTileFull extends StatelessWidget {
     required this.onLongPress,
     required this.onInc,
     required this.onDec,
+    this.domains,
   });
 
   @override
   Widget build(BuildContext context) {
     final target = ringTarget.clamp(0.0, 1.0);
+    final dColor = domains != null
+        ? domainColor(habit.domainId, domains!)
+        : null;
 
     return InkWell(
       onLongPress: onLongPress,
@@ -66,11 +73,13 @@ class HabitTileFull extends StatelessWidget {
                   return MiniRingThick(
                     progress: p,
                     strokeWidth: 7,
+                    color: dColor,
                     center: Text(
                       "${(target * 100).round()}%",
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w800,
+                        color: dColor,
                       ),
                     ),
                   );
@@ -104,6 +113,7 @@ class HabitTileFull extends StatelessWidget {
                         values: series30,
                         maxValue: histMax,
                         highlightLast: true,
+                        color: dColor,
                       ),
                     ),
                   ),
