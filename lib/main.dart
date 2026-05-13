@@ -5762,10 +5762,10 @@ class DailyScoreChip extends StatelessWidget {
 
 // ── Graphe score 7 jours ──────────────────────────────────────────────────────
 
-class _WeekScoreChart extends StatelessWidget {
-  final List<double> scores; // 7 valeurs, -1 = jour futur
-  final double target;       // seuil cible (0.0–1.0)
-  final int todayIndex;      // 0 = lundi … 6 = dimanche
+class _WeekScoreChart extends StatefulWidget {
+  final List<double> scores;
+  final double target;
+  final int todayIndex;
   final ColorScheme cs;
 
   const _WeekScoreChart({
@@ -5775,28 +5775,37 @@ class _WeekScoreChart extends StatelessWidget {
     required this.cs,
   });
 
+  @override
+  State<_WeekScoreChart> createState() => _WeekScoreChartState();
+}
+
+class _WeekScoreChartState extends State<_WeekScoreChart> {
+  int? _selected;
+
   static const _labels = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
   static const _maxH = 46.0;
-  static const _labelH = 18.0; // SizedBox(4) + Text(~14)
+  static const _labelH = 18.0;
+  static const _chipH = 18.0;
 
   @override
   Widget build(BuildContext context) {
-    // Position du seuil depuis le bas du Stack
-    final lineBottom = _labelH + target * _maxH;
+    final cs = widget.cs;
+    final lineBottom = _labelH + widget.target * _maxH;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: SizedBox(
-        height: 68,
+        height: _chipH + 2 + _maxH + _labelH, // 84
         child: Stack(
           children: [
             // ── Barres ───────────────────────────────────────────────
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: List.generate(7, (i) {
-                final score = scores[i];
+                final score = widget.scores[i];
                 final isFuture = score < 0;
-                final isToday = i == todayIndex;
+                final isToday = i == widget.todayIndex;
+                final isSelected = _selected == i;
                 final ratio = isFuture ? 0.0 : score.clamp(0.0, 1.0);
 
                 final Color barColor;
@@ -5804,7 +5813,7 @@ class _WeekScoreChart extends StatelessWidget {
                   barColor = cs.onSurface.withOpacity(.07);
                 } else if (score == 0) {
                   barColor = cs.onSurface.withOpacity(.10);
-                } else if (score >= target) {
+                } else if (score >= widget.target) {
                   barColor = cs.primary;
                 } else {
                   barColor = cs.primary.withOpacity(.45);
@@ -5815,40 +5824,83 @@ class _WeekScoreChart extends StatelessWidget {
                     : (ratio * _maxH < 4.0 ? 4.0 : ratio * _maxH);
 
                 return Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 2.5),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        SizedBox(
-                          height: _maxH,
-                          child: Align(
-                            alignment: Alignment.bottomCenter,
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 300),
-                              curve: Curves.easeOut,
-                              height: barH,
-                              decoration: BoxDecoration(
-                                color: barColor,
-                                borderRadius: BorderRadius.circular(4),
+                  child: GestureDetector(
+                    onTap: isFuture
+                        ? null
+                        : () => setState(() {
+                              _selected = isSelected ? null : i;
+                            }),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2.5),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          // Chip score (zone toujours réservée)
+                          SizedBox(
+                            height: _chipH,
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 180),
+                              child: isSelected && !isFuture
+                                  ? Center(
+                                      key: ValueKey('chip_$i'),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 5, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: cs.primary,
+                                          borderRadius:
+                                              BorderRadius.circular(999),
+                                        ),
+                                        child: Text(
+                                          '${(score * 100).round()}%',
+                                          style: TextStyle(
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.w800,
+                                            color: cs.onPrimary,
+                                          ),
+                                        ),
+                                      ),
+                                    )
+                                  : const SizedBox.shrink(),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          // Barre
+                          SizedBox(
+                            height: _maxH,
+                            child: Align(
+                              alignment: Alignment.bottomCenter,
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 250),
+                                curve: Curves.easeOut,
+                                height: barH,
+                                decoration: BoxDecoration(
+                                  color: barColor,
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: isSelected
+                                      ? Border.all(
+                                          color: cs.primary, width: 1.5)
+                                      : null,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _labels[i],
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: isToday
-                                ? FontWeight.w800
-                                : FontWeight.w500,
-                            color: isToday
-                                ? cs.primary
-                                : cs.onSurface.withOpacity(.35),
+                          const SizedBox(height: 4),
+                          // Label jour
+                          Text(
+                            _labels[i],
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: (isToday || isSelected)
+                                  ? FontWeight.w800
+                                  : FontWeight.w500,
+                              color: (isToday || isSelected)
+                                  ? cs.primary
+                                  : cs.onSurface.withOpacity(.35),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 );
@@ -5872,7 +5924,7 @@ class _WeekScoreChart extends StatelessWidget {
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    '${(target * 100).round()}%',
+                    '${(widget.target * 100).round()}%',
                     style: TextStyle(
                       fontSize: 9,
                       fontWeight: FontWeight.w700,
