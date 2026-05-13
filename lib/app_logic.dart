@@ -3434,6 +3434,57 @@ class AppLogic {
     }
   }
 
+  // ─── Niveau global ────────────────────────────────────────────────────────
+
+  static const _levelThresholds = [0, 30, 80, 200, 450, 800, 1500, 2500, 4000, 7000];
+  static const _levelTitles = [
+    'Débutant', 'Curieux', 'Régulier', 'Déterminé', 'Discipliné',
+    'Expert', 'Champion', 'Maître', 'Légende', 'Élite',
+  ];
+
+  int _xpForBadge(BadgeId id) {
+    switch (id) {
+      case BadgeId.streak3:      return 10;
+      case BadgeId.streak7:      return 25;
+      case BadgeId.streak21:     return 75;
+      case BadgeId.streak66:     return 200;
+      case BadgeId.streak100:    return 500;
+      case BadgeId.scoreFirst100:return 30;
+      case BadgeId.score7dAt80:  return 50;
+      case BadgeId.score30dAt80: return 150;
+      case BadgeId.actions10:    return 15;
+      case BadgeId.actions50:    return 50;
+      case BadgeId.actions100:   return 100;
+    }
+  }
+
+  /// XP total, niveau (1-10), titre, XP du palier courant, XP du palier suivant.
+  ({int xp, int level, String title, int xpCurrent, int xpNext}) userLevelData() {
+    final xp = state.earnedBadges.fold(0, (sum, b) => sum + _xpForBadge(b.id));
+
+    int level = 1;
+    for (int i = _levelThresholds.length - 1; i >= 0; i--) {
+      if (xp >= _levelThresholds[i]) {
+        level = i + 1;
+        break;
+      }
+    }
+
+    final isMax = level >= _levelThresholds.length;
+    final xpCurrent = _levelThresholds[level - 1];
+    final xpNext = isMax ? xp : _levelThresholds[level];
+
+    return (
+      xp: xp,
+      level: level,
+      title: _levelTitles[level - 1],
+      xpCurrent: xpCurrent,
+      xpNext: xpNext,
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+
   // Score journalier pour un jour passé (daily habits uniquement).
   /// Score moyen sur une semaine (lundi → until, excluant les jours vides).
   double _weekScore(DateTime monday, {DateTime? until}) {

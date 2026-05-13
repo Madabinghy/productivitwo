@@ -2275,6 +2275,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       showModalBottomSheet<void>(
         context: context,
         showDragHandle: true,
+        isScrollControlled: true,
         builder: (ctx) {
           final theme = Theme.of(ctx);
           final cs = theme.colorScheme;
@@ -2283,7 +2284,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               : Color.lerp(cs.error, cs.primary, (pct / 100).clamp(0.0, 1.0))!;
 
           return SafeArea(
-            child: Padding(
+            child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -2325,6 +2326,78 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
                       ],
                     ],
                   ),
+                  // Section niveau global
+                  Builder(builder: (ctx) {
+                    final lv = logic.userLevelData();
+                    final isMax = lv.level >= 10;
+                    final progress = isMax
+                        ? 1.0
+                        : (lv.xp - lv.xpCurrent) /
+                            (lv.xpNext - lv.xpCurrent).clamp(1, 99999);
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Divider(height: 24),
+                        Row(
+                          children: [
+                            Text(
+                              '🏅',
+                              style: const TextStyle(fontSize: 22),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Text(
+                                        'Niveau ${lv.level}',
+                                        style: theme.textTheme.titleMedium
+                                            ?.copyWith(
+                                                fontWeight: FontWeight.w900),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        lv.title,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: cs.primary,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(3),
+                                    child: LinearProgressIndicator(
+                                      value: progress.clamp(0.0, 1.0),
+                                      minHeight: 6,
+                                      backgroundColor:
+                                          cs.onSurface.withValues(alpha: .10),
+                                      color: cs.primary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    isMax
+                                        ? '${lv.xp} XP — niveau max !'
+                                        : '${lv.xp} / ${lv.xpNext} XP',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: cs.onSurface.withValues(alpha: .5),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    );
+                  }),
+
                   // Section score hebdomadaire
                   Builder(builder: (ctx) {
                     final w = logic.weeklyScoreData();
