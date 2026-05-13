@@ -19,6 +19,7 @@ import 'package:productivitwo_v1/widgets/day_block_sheet.dart';
 import 'package:productivitwo_v1/widgets/new_action_sheet.dart';
 import 'package:productivitwo_v1/widgets/new_routine_sheet.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
+import 'package:productivitwo_v1/widgets/weekly_view.dart';
 import 'package:confetti/confetti.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -26,7 +27,7 @@ import 'package:productivitwo_v1/storage.dart';
 import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
 
-enum _Tab { dashboard, now, today, stats }
+enum _Tab { dashboard, now, today, week, stats }
 
 class MiniRingThick extends StatelessWidget {
   const MiniRingThick({
@@ -1746,8 +1747,10 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         return 1;
       case _Tab.today:
         return 2;
-      case _Tab.stats:
+      case _Tab.week:
         return 3;
+      case _Tab.stats:
+        return 4;
     }
   }
 
@@ -1759,6 +1762,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         return _Tab.today;
       case 2:
         return _Tab.now;
+      case 3:
+        return _Tab.week;
       default:
         return _Tab.stats;
     }
@@ -1852,6 +1857,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
             );
           },
         ),
+        WeeklyView(logic: logic, state: st),
         StatsView(logic: logic, state: st, selectedDomainId: null),
       ],
     );
@@ -2791,6 +2797,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
               icon: Icon(Icons.checklist), label: 'À faire'),
           BottomNavigationBarItem(
               icon: Icon(Icons.play_arrow), label: 'Maintenant'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.calendar_view_week), label: 'Semaine'),
           BottomNavigationBarItem(
               icon: Icon(Icons.show_chart), label: 'Stats'),
         ],
