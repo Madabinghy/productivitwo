@@ -689,20 +689,43 @@ class ProductivitwoApp extends StatelessWidget {
       ],
       debugShowCheckedModeBanner: false,
       title: 'Productivitwo',
-      theme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: Colors.teal, // ← change la teinte ici
-        brightness: Brightness.light,
-      ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: Colors.teal,
-        brightness: Brightness.dark,
-      ),
+      theme: _buildTheme(Brightness.light),
+      darkTheme: _buildTheme(Brightness.dark),
       themeMode: ThemeMode.system, // clair/sombre selon l’iPhone
       home: const AppRoot(),
     );
   }
+}
+
+ThemeData _buildTheme(Brightness brightness) {
+  final base = ThemeData(
+    useMaterial3: true,
+    colorSchemeSeed: Colors.teal,
+    brightness: brightness,
+  );
+  final cs = base.colorScheme;
+  return base.copyWith(
+    cardTheme: CardThemeData(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 8),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: cs.outlineVariant.withOpacity(.35)),
+      ),
+    ),
+    chipTheme: ChipThemeData(
+      shape: const StadiumBorder(),
+      labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+    ),
+    listTileTheme: const ListTileThemeData(
+      contentPadding: EdgeInsets.symmetric(horizontal: 16),
+    ),
+    dividerTheme: DividerThemeData(
+      color: cs.outlineVariant.withOpacity(.4),
+      thickness: 1,
+      space: 1,
+    ),
+  );
 }
 
 enum TimeScope { day, week, month }

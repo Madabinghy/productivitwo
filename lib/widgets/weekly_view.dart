@@ -127,7 +127,7 @@ class _WeeklyViewState extends State<WeeklyView> {
                   final total = actions.length;
 
                   return Card(
-                    margin: const EdgeInsets.only(bottom: 6),
+                    margin: const EdgeInsets.only(bottom: 8),
                     color: isToday
                         ? cs.primaryContainer.withOpacity(.25)
                         : null,
