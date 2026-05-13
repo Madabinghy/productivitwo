@@ -11,8 +11,14 @@ import 'package:productivitwo_v1/widgets/new_action_sheet.dart';
 class WeeklyView extends StatefulWidget {
   final AppLogic logic;
   final AppState state;
+  final String? highlightYmd;
 
-  const WeeklyView({super.key, required this.logic, required this.state});
+  const WeeklyView({
+    super.key,
+    required this.logic,
+    required this.state,
+    this.highlightYmd,
+  });
 
   @override
   State<WeeklyView> createState() => _WeeklyViewState();
@@ -32,6 +38,23 @@ class _WeeklyViewState extends State<WeeklyView> {
     _weekStart = today.subtract(Duration(days: today.weekday - 1));
     _expanded = {yyyymmdd(today)};
     _routinesExpanded = {yyyymmdd(today)};
+  }
+
+  @override
+  void didUpdateWidget(WeeklyView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final ymd = widget.highlightYmd;
+    if (ymd != null && ymd != oldWidget.highlightYmd) {
+      final year = int.parse(ymd.substring(0, 4));
+      final month = int.parse(ymd.substring(4, 6));
+      final day = int.parse(ymd.substring(6, 8));
+      final d = DateTime(year, month, day);
+      final monday = d.subtract(Duration(days: d.weekday - 1));
+      setState(() {
+        _weekStart = monday;
+        _expanded.add(ymd);
+      });
+    }
   }
 
   static const _dayNames = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];

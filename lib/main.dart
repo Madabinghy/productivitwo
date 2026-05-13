@@ -1517,6 +1517,7 @@ class _AppRootState extends State<AppRoot>
   TimeScope scope = TimeScope.day;
   Timer? _heartbeat;
   _Tab _tab = _Tab.dashboard;
+  String? _weekHighlightYmd; // jour à mettre en avant dans la vue semaine
 // affiché une seule fois tant que l’app reste ouverte
 
   // Champs d’état pour les badges
@@ -1912,7 +1913,7 @@ class _AppRootState extends State<AppRoot>
           buildRowsGrouped: logic.buildRowsGrouped,
           onGoTodo: () => setState(() => _tab = _Tab.today),
         ),
-        WeeklyView(logic: logic, state: st),
+        WeeklyView(logic: logic, state: st, highlightYmd: _weekHighlightYmd),
       ],
       ),
     );
@@ -3304,6 +3305,18 @@ class _AppRootState extends State<AppRoot>
                           target: logic.state.weeklyScoreTarget / 100.0,
                           todayIndex: now.weekday - 1,
                           cs: cs,
+                          onDayTap: (i) {
+                            final monday = now.subtract(
+                                Duration(days: now.weekday - 1));
+                            final tappedDay = DateTime(
+                              monday.year, monday.month,
+                              monday.day + i,
+                            );
+                            setState(() {
+                              _weekHighlightYmd = yyyymmdd(tappedDay);
+                              _tab = _Tab.week;
+                            });
+                          },
                         ),
                         const SizedBox(height: 8),
                         Padding(
@@ -5866,12 +5879,14 @@ class _WeekScoreChart extends StatefulWidget {
   final double target;
   final int todayIndex;
   final ColorScheme cs;
+  final void Function(int dayIndex)? onDayTap;
 
   const _WeekScoreChart({
     required this.scores,
     required this.target,
     required this.todayIndex,
     required this.cs,
+    this.onDayTap,
   });
 
   @override
@@ -5926,9 +5941,12 @@ class _WeekScoreChartState extends State<_WeekScoreChart> {
                   child: GestureDetector(
                     onTap: isFuture
                         ? null
-                        : () => setState(() {
+                        : () {
+                            setState(() {
                               _selected = isSelected ? null : i;
-                            }),
+                            });
+                            widget.onDayTap?.call(i);
+                          },
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 2.5),
                       child: Column(
