@@ -2769,14 +2769,35 @@ class _TodayViewState extends State<TodayView> {
 
           return Dismissible(
             key: ValueKey("dismiss:${it.id}"),
-            direction: DismissDirection.endToStart,
+            direction: DismissDirection.horizontal,
+            // Swipe gauche→droite : cocher
             background: Container(
+              alignment: Alignment.centerLeft,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              color: Colors.green.withOpacity(0.15),
+              child: const Icon(Icons.check_circle_outline, color: Colors.green),
+            ),
+            // Swipe droite→gauche : supprimer
+            secondaryBackground: Container(
               alignment: Alignment.centerRight,
               padding: const EdgeInsets.symmetric(horizontal: 20),
               color: Colors.red.withOpacity(0.15),
               child: const Icon(Icons.delete, color: Colors.red),
             ),
-            onDismissed: (_) => _deleteActionWithUndo(it),
+            onDismissed: (direction) {
+              if (direction == DismissDirection.startToEnd) {
+                HapticFeedback.lightImpact();
+                if (it.toPlan == true) {
+                  widget.logic.archiveAction(it);
+                } else {
+                  it.done = true;
+                  widget.logic.onChange();
+                }
+                setState(() {});
+              } else {
+                _deleteActionWithUndo(it);
+              }
+            },
             child: card,
           );
         }
