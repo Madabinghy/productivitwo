@@ -2232,91 +2232,63 @@ class _TodayViewState extends State<TodayView> {
     Widget _actionCardLikeHabit(DayPlanItem it) {
       final dim = it.done;
       final cs = Theme.of(context).colorScheme;
+      final subtitle = _actionSubtitle(it);
 
       return Card(
-        margin: const EdgeInsets.only(bottom: 8),
+        margin: const EdgeInsets.only(bottom: 6),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          child: Row(
             children: [
-              // ✅ LIGNE 1 : OUTILS (flèches) — AUCUN TITRE ICI
-              Row(
-                children: [
-                  if (showDrag) ...[
-                    dragHandle(),
-                    const SizedBox(width: 6),
-                  ],
-                  // Flèche haut / bas / demain / etc
-                  _actionControlsRow(it), // <-- ton row d'icônes
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.close, size: 18),
-                    visualDensity: VisualDensity.compact,
-                    padding: EdgeInsets.zero,
-                    constraints:
-                        const BoxConstraints.tightFor(width: 32, height: 32),
-                    onPressed: () {
-                      setState(() {
-                        widget.state.dayPlan.removeWhere((e) => e.id == it.id);
-                        widget.logic.onChange();
-                      });
-                    },
-                  ),
-                ],
+              Checkbox(
+                value: it.done,
+                shape: const CircleBorder(),
+                onChanged: (v) {
+                  final done = v ?? false;
+                  if (done && it.toPlan == true) {
+                    widget.logic.archiveAction(it);
+                    setState(() {});
+                    return;
+                  }
+                  setState(() => it.done = done);
+                  widget.logic.onChange();
+                },
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
               ),
-
-              const SizedBox(height: 8),
-
-              // ✅ LIGNE 2 : TITRE (plein largeur)
-              Text(
-                it.title,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16,
-                  color: dim
-                      ? cs.onSurface.withOpacity(.55)
-                      : cs.onSurface.withOpacity(.92),
-                  decoration: dim ? TextDecoration.lineThrough : null,
-                ),
-              ),
-
-              const SizedBox(height: 6),
-
-              // ✅ LIGNE 3 : Sous-texte + checkbox (ou autres)
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Text(
-                      _actionSubtitle(it),
-                      maxLines: 1,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      it.title,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
-                        color: cs.onSurface.withOpacity(.65),
+                        fontSize: 14,
+                        color: dim
+                            ? cs.onSurface.withOpacity(.45)
+                            : cs.onSurface,
+                        decoration: dim ? TextDecoration.lineThrough : null,
                       ),
                     ),
-                  ),
-                  Checkbox(
-                    value: it.done,
-                    onChanged: (v) {
-                      final done = v ?? false;
-                      if (done && it.toPlan == true) {
-                        widget.logic.archiveAction(it);
-                        setState(() {});
-                        return;
-                      }
-                      setState(() => it.done = done);
-                      widget.logic.onChange();
-                    },
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ],
+                    if (subtitle != 'Inbox') ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: cs.onSurface.withOpacity(.50),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
+              if (showDrag) dragHandle(),
             ],
           ),
         ),
@@ -2451,6 +2423,29 @@ class _TodayViewState extends State<TodayView> {
                           ),
                       ],
                     ),
+                  ),
+                ],
+
+                if (!isVirtual) ...[
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      Icons.arrow_forward,
+                      size: 18,
+                      color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                    ),
+                    title: Text(isTodayTab ? 'Déplacer à demain' : 'Déplacer à après-demain'),
+                    onTap: () {
+                      final now = DateTime.now();
+                      final today = DateTime(now.year, now.month, now.day);
+                      final dest = isTodayTab
+                          ? yyyymmdd(today.add(const Duration(days: 1)))
+                          : yyyymmdd(today.add(const Duration(days: 2)));
+                      widget.logic.moveItemToDayById(it.id, dest);
+                      widget.logic.onChange();
+                      setState(() {});
+                      Navigator.pop(ctx);
+                    },
                   ),
                 ],
 
