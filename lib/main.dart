@@ -27,7 +27,7 @@ import 'package:productivitwo_v1/storage.dart';
 import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
 
-enum _Tab { dashboard, now, today, week, stats }
+enum _Tab { dashboard, now, today, week }
 
 class MiniRingThick extends StatelessWidget {
   const MiniRingThick({
@@ -1782,8 +1782,6 @@ class _AppRootState extends State<AppRoot>
         return 2;
       case _Tab.week:
         return 3;
-      case _Tab.stats:
-        return 4;
     }
   }
 
@@ -1798,7 +1796,7 @@ class _AppRootState extends State<AppRoot>
       case 3:
         return _Tab.week;
       default:
-        return _Tab.stats;
+        return _Tab.dashboard;
     }
   }
 
@@ -1893,7 +1891,6 @@ class _AppRootState extends State<AppRoot>
           },
         ),
         WeeklyView(logic: logic, state: st),
-        StatsView(logic: logic, state: st, selectedDomainId: null),
       ],
       ),
     );
@@ -2004,16 +2001,7 @@ class _AppRootState extends State<AppRoot>
   }
 
   bool _shouldShowFab() {
-    switch (_tab) {
-      case _Tab.today:
-        return true;
-      case _Tab.now:
-        return false;
-      case _Tab.stats:
-        return false;
-      default:
-        return false;
-    }
+    return _tab == _Tab.today;
   }
 
   Widget _buildFab() {
@@ -2833,6 +2821,23 @@ class _AppRootState extends State<AppRoot>
             const SizedBox(width: 6),
             _buildRoutineChip(context),
             const SizedBox(width: 10),
+            IconButton(
+              icon: const Icon(Icons.bar_chart_outlined),
+              tooltip: 'Statistiques',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => Scaffold(
+                    appBar: AppBar(title: const Text('Statistiques')),
+                    body: StatsView(
+                      logic: logic,
+                      state: _state!,
+                      selectedDomainId: null,
+                    ),
+                  ),
+                ),
+              ),
+            ),
             GestureDetector(
               onTap: () => _openFiltersSheet(context),
               onLongPress: () {
@@ -2921,10 +2926,6 @@ class _AppRootState extends State<AppRoot>
               icon: Icon(Icons.calendar_view_week_outlined),
               activeIcon: Icon(Icons.calendar_view_week),
               label: 'Semaine'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.bar_chart_outlined),
-              activeIcon: Icon(Icons.bar_chart),
-              label: 'Stats'),
         ],
       ),
 
