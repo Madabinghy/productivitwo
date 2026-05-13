@@ -3439,8 +3439,10 @@ class _NowTabState extends State<NowTab> {
                       const SizedBox(width: 8),
                     ],
                     Text(domName,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w900, fontSize: 18)),
+                        style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 18,
+                            color: domainColor(it.domainId, widget.st.domains))),
                     Builder(builder: (context) {
                       final streak =
                           widget.logic.habitCurrentStreak(habitId);
@@ -3686,13 +3688,25 @@ class _NowTabState extends State<NowTab> {
     final ymd =
         yyyymmdd(DateTime.now()); // ou la date affichée si tu passes day
 
+    final dColor = domainColor(it.domainId, widget.st.domains);
+    final headerColor = dColor ?? Theme.of(context).colorScheme.primary;
+
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min, // 🔑 évite l'overflow
+      clipBehavior: Clip.antiAlias,
+      child: IntrinsicHeight(
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Bande colorée domaine
+            if (dColor != null)
+              Container(width: 5, color: dColor),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
             // ───── HEADER ─────
             Row(
               children: [
@@ -3706,31 +3720,13 @@ class _NowTabState extends State<NowTab> {
                   },
                 ),
                 Expanded(
-                  child: Row(
-                    children: [
-                      if (domainColor(it.domainId, widget.st.domains) != null) ...[
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: domainColor(it.domainId, widget.st.domains),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                      ],
-                      Text(
-                        domainName.toUpperCase(),
-                        style: TextStyle(
-                          letterSpacing: 1.2,
-                          fontWeight: FontWeight.w800,
-                          color: Theme.of(context)
-                              .colorScheme
-                              .primary
-                              .withOpacity(0.9),
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    domainName.toUpperCase(),
+                    style: TextStyle(
+                      letterSpacing: 1.2,
+                      fontWeight: FontWeight.w800,
+                      color: headerColor.withOpacity(0.9),
+                    ),
                   ),
                 ),
                 IconButton(
@@ -3887,6 +3883,10 @@ class _NowTabState extends State<NowTab> {
 
             // ───── SNOOZE BLOCK (SCROLLABLE) ─────
             Flexible(child: _checklistBlock(context, it)),
+          ],
+        ),
+              ),
+            ),
           ],
         ),
       ),
