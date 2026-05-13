@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:collection/collection.dart';
 import 'package:productivitwo_v1/widgets/assign_activity_sheet.dart';
@@ -2425,63 +2426,81 @@ class _TodayViewState extends State<TodayView> {
       final dim = it.done;
       final cs = Theme.of(context).colorScheme;
       final subtitle = _actionSubtitle(it);
+      final dColor = domainColor(it.domainId, widget.state.domains);
 
       return Card(
         margin: const EdgeInsets.only(bottom: 6),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        clipBehavior: Clip.antiAlias,
+        child: IntrinsicHeight(
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Checkbox(
-                value: it.done,
-                shape: const CircleBorder(),
-                onChanged: (v) {
-                  final done = v ?? false;
-                  HapticFeedback.lightImpact();
-                  if (done && it.toPlan == true) {
-                    widget.logic.archiveAction(it);
-                    setState(() {});
-                    return;
-                  }
-                  setState(() => it.done = done);
-                  widget.logic.onChange();
-                },
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                visualDensity: VisualDensity.compact,
-              ),
+              // Bande colorée domaine
+              if (dColor != null)
+                Container(
+                  width: 4,
+                  color: dim ? dColor.withOpacity(.3) : dColor,
+                ),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      it.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                        color: dim
-                            ? cs.onSurface.withOpacity(.45)
-                            : cs.onSurface,
-                        decoration: dim ? TextDecoration.lineThrough : null,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: Row(
+                    children: [
+                      Checkbox(
+                        value: it.done,
+                        shape: const CircleBorder(),
+                        onChanged: (v) {
+                          final done = v ?? false;
+                          HapticFeedback.lightImpact();
+                          if (done && it.toPlan == true) {
+                            widget.logic.archiveAction(it);
+                            setState(() {});
+                            return;
+                          }
+                          setState(() => it.done = done);
+                          widget.logic.onChange();
+                        },
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
                       ),
-                    ),
-                    if (subtitle != 'Inbox') ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: cs.onSurface.withOpacity(.50),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              it.title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                                color: dim
+                                    ? cs.onSurface.withOpacity(.45)
+                                    : cs.onSurface,
+                                decoration:
+                                    dim ? TextDecoration.lineThrough : null,
+                              ),
+                            ),
+                            if (subtitle != 'Inbox') ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                subtitle,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: cs.onSurface.withOpacity(.50),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
+                      if (showDrag) dragHandle(),
                     ],
-                  ],
+                  ),
                 ),
               ),
-              if (showDrag) dragHandle(),
             ],
           ),
         ),
