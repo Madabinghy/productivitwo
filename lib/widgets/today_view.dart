@@ -1254,7 +1254,7 @@ class _TodayViewState extends State<TodayView> {
     widget.logic.onChange();
 
     messenger.clearSnackBars();
-    messenger.showSnackBar(
+    final controller = messenger.showSnackBar(
       SnackBar(
         duration: const Duration(seconds: 4),
         content: Text(
@@ -1274,6 +1274,10 @@ class _TodayViewState extends State<TodayView> {
         ),
       ),
     );
+    // Fermeture forcée après 4 s pour contourner un éventuel bug de timer.
+    Future.delayed(const Duration(seconds: 4), () {
+      if (mounted) controller.close();
+    });
   }
 
   @override
