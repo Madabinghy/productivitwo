@@ -279,6 +279,7 @@ class _TodayViewState extends State<TodayView> {
     Key? key,
     bool showDrag = false,
     int indexForDrag = 0,
+    VoidCallback? onAfterToggle,
   }) {
     final cs = Theme.of(context).colorScheme;
     final logic = widget.logic;
@@ -312,6 +313,7 @@ class _TodayViewState extends State<TodayView> {
         final nowDone = logic.habitValueOn(habitId, today) >= quota;
         if (wasNotDone && nowDone) {
           HapticFeedback.mediumImpact(); // quota atteint
+          onAfterToggle?.call();
         } else {
           HapticFeedback.lightImpact(); // simple incrément
         }
@@ -397,6 +399,16 @@ class _TodayViewState extends State<TodayView> {
         logic.onChange();
         setState(() {});
         HapticFeedback.lightImpact();
+        if (it.done) onAfterToggle?.call();
+      },
+      onLongPress: () {
+        it.blockId = null;
+        logic.onChange();
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Action retirée du bloc'),
+          duration: Duration(seconds: 2),
+        ));
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -633,6 +645,11 @@ class _TodayViewState extends State<TodayView> {
                   key: ValueKey('block:${block.id}:${items[i].id}'),
                   showDrag: true,
                   indexForDrag: i,
+                  onAfterToggle: () {
+                    if (items.every(_itemIsDone)) {
+                      setState(() => _collapsedBlockIds.add(block.id));
+                    }
+                  },
                 ),
               ),
           ],
@@ -1761,9 +1778,40 @@ class _TodayViewState extends State<TodayView> {
           if (isTodayTab) ...[
             Builder(builder: (context) {
               final challenge = widget.logic.dailyChallengeHabit(ymd);
-              if (challenge == null) return const SizedBox.shrink();
-
               final cs = Theme.of(context).colorScheme;
+              if (challenge == null) {
+                if (!widget.logic.state.skippedChallengeDates.contains(ymd)) {
+                  return const SizedBox.shrink();
+                }
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Row(
+                    children: [
+                      Icon(Icons.bolt, size: 14,
+                          color: cs.onSurface.withOpacity(.4)),
+                      const SizedBox(width: 6),
+                      Text('Défi du jour ignoré',
+                          style: TextStyle(
+                              fontSize: 13,
+                              color: cs.onSurface.withOpacity(.4))),
+                      const Spacer(),
+                      TextButton(
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          textStyle: const TextStyle(fontSize: 12),
+                        ),
+                        onPressed: () {
+                          widget.logic.unskipChallengeForToday(ymd);
+                          setState(() {});
+                        },
+                        child: const Text('Réactiver'),
+                      ),
+                    ],
+                  ),
+                );
+              }
               final today = DateTime.now();
               final todayDate = DateTime(today.year, today.month, today.day);
               final sevenDaysAgo = todayDate.subtract(const Duration(days: 7));

@@ -3515,7 +3515,11 @@ class _AppRootState extends State<AppRoot>
       padding: EdgeInsets.zero,
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () => setState(() => _tab = _Tab.today),
+        onTap: () {
+          final now = DateTime.now();
+          final (startCal, endCal, days) = _rangeForScope(now);
+          _showDomainDetail(domain, startCal, endCal, days, focus: 'goal');
+        },
         child: ClipRRect(
           borderRadius: BorderRadius.circular(16),
           child: IntrinsicHeight(

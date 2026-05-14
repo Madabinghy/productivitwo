@@ -3434,6 +3434,10 @@ class AppLogic {
     }
   }
 
+  void unskipChallengeForToday(String todayYmd) {
+    if (state.skippedChallengeDates.remove(todayYmd)) onChange();
+  }
+
   // ─── Niveau global ────────────────────────────────────────────────────────
 
   static const _levelThresholds = [0, 30, 80, 200, 450, 800, 1500, 2500, 4000, 7000];
