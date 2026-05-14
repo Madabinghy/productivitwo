@@ -279,6 +279,11 @@ class NotificationService {
     }
   }
 
+  static Future<void> cancelById(int id) async {
+    if (!_supported) return;
+    await _plugin.cancel(id);
+  }
+
   static Future<void> cancelAll() async {
     if (!_supported) return;
     await _plugin.cancelAll();

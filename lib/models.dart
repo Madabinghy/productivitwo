@@ -882,14 +882,19 @@ class AppState {
   int weeklyScoreTarget; // % objectif hebdomadaire (0-100) // yyyymmdd où le défi a été passé
   int notifHour;           // rappel quotidien (défaut 9h)
   int notifMinute;
+  bool notifEnabled;
   int reviewNotifHour;     // résumé fin de journée (défaut 21h)
   int reviewNotifMinute;
+  bool reviewNotifEnabled;
   int streakNotifHour;     // streak en danger (défaut 20h)
   int streakNotifMinute;
+  bool streakNotifEnabled;
   int challengeNotifHour;  // défi du jour (défaut 16h)
   int challengeNotifMinute;
+  bool challengeNotifEnabled;
   int midDayNotifHour;     // score mi-journée (défaut 13h)
   int midDayNotifMinute;
+  bool midDayNotifEnabled;
   bool domainIdBackfilledOnce;
 
   AppState({
@@ -917,14 +922,19 @@ class AppState {
     this.weeklyScoreTarget = 80,
     this.notifHour = 9,
     this.notifMinute = 0,
+    this.notifEnabled = true,
     this.reviewNotifHour = 21,
     this.reviewNotifMinute = 0,
+    this.reviewNotifEnabled = true,
     this.streakNotifHour = 20,
     this.streakNotifMinute = 0,
+    this.streakNotifEnabled = true,
     this.challengeNotifHour = 16,
     this.challengeNotifMinute = 0,
+    this.challengeNotifEnabled = true,
     this.midDayNotifHour = 13,
     this.midDayNotifMinute = 0,
+    this.midDayNotifEnabled = true,
     this.domainIdBackfilledOnce = false,
     // ✅ NOUVEAU
     Map<String, List<String>>? nowSkippedByYmd,
@@ -995,14 +1005,19 @@ class AppState {
         'weeklyScoreTarget': weeklyScoreTarget,
         'notifHour': notifHour,
         'notifMinute': notifMinute,
+        'notifEnabled': notifEnabled,
         'reviewNotifHour': reviewNotifHour,
         'reviewNotifMinute': reviewNotifMinute,
+        'reviewNotifEnabled': reviewNotifEnabled,
         'streakNotifHour': streakNotifHour,
         'streakNotifMinute': streakNotifMinute,
+        'streakNotifEnabled': streakNotifEnabled,
         'challengeNotifHour': challengeNotifHour,
         'challengeNotifMinute': challengeNotifMinute,
+        'challengeNotifEnabled': challengeNotifEnabled,
         'midDayNotifHour': midDayNotifHour,
         'midDayNotifMinute': midDayNotifMinute,
+        'midDayNotifEnabled': midDayNotifEnabled,
         'domainIdBackfilledOnce': domainIdBackfilledOnce,
       };
 
@@ -1081,14 +1096,19 @@ class AppState {
       weeklyScoreTarget: (j['weeklyScoreTarget'] as int?) ?? 80,
       notifHour: (j['notifHour'] as int?) ?? 9,
       notifMinute: (j['notifMinute'] as int?) ?? 0,
+      notifEnabled: (j['notifEnabled'] as bool?) ?? true,
       reviewNotifHour: (j['reviewNotifHour'] as int?) ?? 21,
       reviewNotifMinute: (j['reviewNotifMinute'] as int?) ?? 0,
+      reviewNotifEnabled: (j['reviewNotifEnabled'] as bool?) ?? true,
       streakNotifHour: (j['streakNotifHour'] as int?) ?? 20,
       streakNotifMinute: (j['streakNotifMinute'] as int?) ?? 0,
+      streakNotifEnabled: (j['streakNotifEnabled'] as bool?) ?? true,
       challengeNotifHour: (j['challengeNotifHour'] as int?) ?? 16,
       challengeNotifMinute: (j['challengeNotifMinute'] as int?) ?? 0,
+      challengeNotifEnabled: (j['challengeNotifEnabled'] as bool?) ?? true,
       midDayNotifHour: (j['midDayNotifHour'] as int?) ?? 13,
       midDayNotifMinute: (j['midDayNotifMinute'] as int?) ?? 0,
+      midDayNotifEnabled: (j['midDayNotifEnabled'] as bool?) ?? true,
       domainIdBackfilledOnce: (j['domainIdBackfilledOnce'] as bool?) ?? false,
     );
   }

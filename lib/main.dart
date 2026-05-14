@@ -1662,29 +1662,19 @@ class _AppRootState extends State<AppRoot>
               a.isHabit &&
               logic.effectiveHabitFreq(a) == HabitFreq.daily)
           .length;
-      await NotificationService.scheduleDailyReminder(
-        hour: logic.state.notifHour,
-        minute: logic.state.notifMinute,
-        routineCount: routineCount,
-      );
-      await NotificationService.scheduleDailyReview(
-        hour: logic.state.reviewNotifHour,
-        minute: logic.state.reviewNotifMinute,
-      );
-      await NotificationService.scheduleStreakReminder(
-        hour: logic.state.streakNotifHour,
-        minute: logic.state.streakNotifMinute,
-        routineNames: logic.streakAtRiskNames(),
-      );
-      await NotificationService.scheduleChallengeReminder(
-        hour: logic.state.challengeNotifHour,
-        minute: logic.state.challengeNotifMinute,
-      );
-      await NotificationService.scheduleMidDayScore(
-        hour: logic.state.midDayNotifHour,
-        minute: logic.state.midDayNotifMinute,
-      );
-      final blocksWithTime = logic.state.blocks
+      final st = logic.state;
+      if (st.notifEnabled) await NotificationService.scheduleDailyReminder(
+        hour: st.notifHour, minute: st.notifMinute, routineCount: routineCount);
+      if (st.reviewNotifEnabled) await NotificationService.scheduleDailyReview(
+        hour: st.reviewNotifHour, minute: st.reviewNotifMinute);
+      if (st.streakNotifEnabled) await NotificationService.scheduleStreakReminder(
+        hour: st.streakNotifHour, minute: st.streakNotifMinute,
+        routineNames: logic.streakAtRiskNames());
+      if (st.challengeNotifEnabled) await NotificationService.scheduleChallengeReminder(
+        hour: st.challengeNotifHour, minute: st.challengeNotifMinute);
+      if (st.midDayNotifEnabled) await NotificationService.scheduleMidDayScore(
+        hour: st.midDayNotifHour, minute: st.midDayNotifMinute);
+      final blocksWithTime = st.blocks
           .where((b) => b.startHour != null)
           .map((b) => (
                 id: b.id,
@@ -3442,179 +3432,113 @@ class _AppRootState extends State<AppRoot>
                   }),
                   const SizedBox(height: 4),
                   const Divider(height: 1),
-                  // ── Réglage rappel ────────────────────────────────────
-                  InkWell(
-                    onTap: () async {
-                      final st = _state!;
-                      final picked = await showTimePicker(
-                        context: context,
-                        initialTime: TimeOfDay(
-                            hour: st.notifHour, minute: st.notifMinute),
-                        helpText: 'Heure du rappel quotidien',
-                      );
-                      if (picked == null || !mounted) return;
-                      setState(() {
-                        st.notifHour = picked.hour;
-                        st.notifMinute = picked.minute;
-                      });
+                  _notifSettingRow(context, cs,
+                    icon: Icons.notifications_outlined,
+                    label: 'Rappel quotidien',
+                    hour: _state!.notifHour,
+                    minute: _state!.notifMinute,
+                    enabled: _state!.notifEnabled,
+                    onToggled: (v) async {
+                      setState(() => _state!.notifEnabled = v);
                       logic.onChange();
-                      final routineCount = logic.state.activities
-                          .where((a) =>
-                              a.isHabit &&
-                              logic.effectiveHabitFreq(a) == HabitFreq.daily)
-                          .length;
+                      if (!v) {
+                        await NotificationService.cancelById(1);
+                      } else {
+                        final count = logic.state.activities.where((a) =>
+                            a.isHabit && logic.effectiveHabitFreq(a) == HabitFreq.daily).length;
+                        await NotificationService.scheduleDailyReminder(
+                            hour: _state!.notifHour, minute: _state!.notifMinute, routineCount: count);
+                      }
+                    },
+                    onPicked: (picked) async {
+                      setState(() { _state!.notifHour = picked.hour; _state!.notifMinute = picked.minute; });
+                      logic.onChange();
+                      final count = logic.state.activities.where((a) =>
+                          a.isHabit && logic.effectiveHabitFreq(a) == HabitFreq.daily).length;
                       await NotificationService.scheduleDailyReminder(
-                        hour: picked.hour,
-                        minute: picked.minute,
-                        routineCount: routineCount,
-                      );
+                          hour: picked.hour, minute: picked.minute, routineCount: count);
                     },
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-                      child: Row(
-                        children: [
-                          Icon(Icons.notifications_outlined,
-                              size: 16,
-                              color: cs.onSurface.withOpacity(.45)),
-                          const SizedBox(width: 10),
-                          Text(
-                            'Rappel quotidien',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: cs.onSurface.withOpacity(.6),
-                            ),
-                          ),
-                          const Spacer(),
-                          Text(
-                            '${_state!.notifHour.toString().padLeft(2, '0')}:${_state!.notifMinute.toString().padLeft(2, '0')}',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: cs.primary,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Icon(Icons.chevron_right,
-                              size: 16,
-                              color: cs.onSurface.withOpacity(.3)),
-                        ],
-                      ),
-                    ),
                   ),
                   const Divider(height: 1),
-                  // ── Réglage résumé de fin de journée ────────────────────
-                  InkWell(
-                    onTap: () async {
-                      final st = _state!;
-                      final picked = await showTimePicker(
-                        context: context,
-                        initialTime: TimeOfDay(
-                            hour: st.reviewNotifHour,
-                            minute: st.reviewNotifMinute),
-                        helpText: 'Heure du résumé de fin de journée',
-                      );
-                      if (picked == null || !mounted) return;
-                      setState(() {
-                        st.reviewNotifHour = picked.hour;
-                        st.reviewNotifMinute = picked.minute;
-                      });
+                  _notifSettingRow(context, cs,
+                    icon: Icons.summarize_outlined,
+                    label: 'Résumé du jour',
+                    hour: _state!.reviewNotifHour,
+                    minute: _state!.reviewNotifMinute,
+                    enabled: _state!.reviewNotifEnabled,
+                    onToggled: (v) async {
+                      setState(() => _state!.reviewNotifEnabled = v);
                       logic.onChange();
-                      await NotificationService.scheduleDailyReview(
-                        hour: picked.hour,
-                        minute: picked.minute,
-                      );
+                      if (!v) await NotificationService.cancelById(2);
+                      else await NotificationService.scheduleDailyReview(
+                          hour: _state!.reviewNotifHour, minute: _state!.reviewNotifMinute);
                     },
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-                      child: Row(
-                        children: [
-                          Icon(Icons.summarize_outlined,
-                              size: 16,
-                              color: cs.onSurface.withOpacity(.45)),
-                          const SizedBox(width: 10),
-                          Text(
-                            'Résumé du jour',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: cs.onSurface.withOpacity(.6),
-                            ),
-                          ),
-                          const Spacer(),
-                          Text(
-                            '${_state!.reviewNotifHour.toString().padLeft(2, '0')}:${_state!.reviewNotifMinute.toString().padLeft(2, '0')}',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: cs.primary,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Icon(Icons.chevron_right,
-                              size: 16,
-                              color: cs.onSurface.withOpacity(.3)),
-                        ],
-                      ),
-                    ),
+                    onPicked: (picked) async {
+                      setState(() { _state!.reviewNotifHour = picked.hour; _state!.reviewNotifMinute = picked.minute; });
+                      logic.onChange();
+                      await NotificationService.scheduleDailyReview(hour: picked.hour, minute: picked.minute);
+                    },
                   ),
                   const Divider(height: 1),
-                  // ── Streak en danger ──────────────────────────────────────
-                  _notifSettingRow(
-                    context, cs,
+                  _notifSettingRow(context, cs,
                     icon: Icons.local_fire_department_outlined,
                     label: 'Streak en danger',
                     hour: _state!.streakNotifHour,
                     minute: _state!.streakNotifMinute,
+                    enabled: _state!.streakNotifEnabled,
+                    onToggled: (v) async {
+                      setState(() => _state!.streakNotifEnabled = v);
+                      logic.onChange();
+                      if (!v) await NotificationService.cancelById(3);
+                      else await NotificationService.scheduleStreakReminder(
+                          hour: _state!.streakNotifHour, minute: _state!.streakNotifMinute,
+                          routineNames: logic.streakAtRiskNames());
+                    },
                     onPicked: (picked) async {
-                      setState(() {
-                        _state!.streakNotifHour = picked.hour;
-                        _state!.streakNotifMinute = picked.minute;
-                      });
+                      setState(() { _state!.streakNotifHour = picked.hour; _state!.streakNotifMinute = picked.minute; });
                       logic.onChange();
                       await NotificationService.scheduleStreakReminder(
-                        hour: picked.hour,
-                        minute: picked.minute,
-                        routineNames: logic.streakAtRiskNames(),
-                      );
+                          hour: picked.hour, minute: picked.minute, routineNames: logic.streakAtRiskNames());
                     },
                   ),
                   const Divider(height: 1),
-                  // ── Défi du jour ──────────────────────────────────────────
-                  _notifSettingRow(
-                    context, cs,
+                  _notifSettingRow(context, cs,
                     icon: Icons.bolt_outlined,
                     label: 'Défi du jour',
                     hour: _state!.challengeNotifHour,
                     minute: _state!.challengeNotifMinute,
-                    onPicked: (picked) async {
-                      setState(() {
-                        _state!.challengeNotifHour = picked.hour;
-                        _state!.challengeNotifMinute = picked.minute;
-                      });
+                    enabled: _state!.challengeNotifEnabled,
+                    onToggled: (v) async {
+                      setState(() => _state!.challengeNotifEnabled = v);
                       logic.onChange();
-                      await NotificationService.scheduleChallengeReminder(
-                        hour: picked.hour,
-                        minute: picked.minute,
-                      );
+                      if (!v) await NotificationService.cancelById(4);
+                      else await NotificationService.scheduleChallengeReminder(
+                          hour: _state!.challengeNotifHour, minute: _state!.challengeNotifMinute);
+                    },
+                    onPicked: (picked) async {
+                      setState(() { _state!.challengeNotifHour = picked.hour; _state!.challengeNotifMinute = picked.minute; });
+                      logic.onChange();
+                      await NotificationService.scheduleChallengeReminder(hour: picked.hour, minute: picked.minute);
                     },
                   ),
                   const Divider(height: 1),
-                  // ── Score mi-journée ──────────────────────────────────────
-                  _notifSettingRow(
-                    context, cs,
+                  _notifSettingRow(context, cs,
                     icon: Icons.wb_sunny_outlined,
                     label: 'Score mi-journée',
                     hour: _state!.midDayNotifHour,
                     minute: _state!.midDayNotifMinute,
-                    onPicked: (picked) async {
-                      setState(() {
-                        _state!.midDayNotifHour = picked.hour;
-                        _state!.midDayNotifMinute = picked.minute;
-                      });
+                    enabled: _state!.midDayNotifEnabled,
+                    onToggled: (v) async {
+                      setState(() => _state!.midDayNotifEnabled = v);
                       logic.onChange();
-                      await NotificationService.scheduleMidDayScore(
-                        hour: picked.hour,
-                        minute: picked.minute,
-                      );
+                      if (!v) await NotificationService.cancelById(5);
+                      else await NotificationService.scheduleMidDayScore(
+                          hour: _state!.midDayNotifHour, minute: _state!.midDayNotifMinute);
+                    },
+                    onPicked: (picked) async {
+                      setState(() { _state!.midDayNotifHour = picked.hour; _state!.midDayNotifMinute = picked.minute; });
+                      logic.onChange();
+                      await NotificationService.scheduleMidDayScore(hour: picked.hour, minute: picked.minute);
                     },
                   ),
                 ],
@@ -3638,41 +3562,53 @@ class _AppRootState extends State<AppRoot>
     required String label,
     required int hour,
     required int minute,
+    required bool enabled,
     required Future<void> Function(TimeOfDay) onPicked,
+    required Future<void> Function(bool) onToggled,
   }) {
-    return InkWell(
-      onTap: () async {
-        final picked = await showTimePicker(
-          context: context,
-          initialTime: TimeOfDay(hour: hour, minute: minute),
-          helpText: label,
-        );
-        if (picked == null || !mounted) return;
-        await onPicked(picked);
-      },
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-        child: Row(
-          children: [
-            Icon(icon, size: 16, color: cs.onSurface.withOpacity(.45)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(label,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
+      child: Row(
+        children: [
+          Icon(icon,
+              size: 16,
+              color: cs.onSurface.withOpacity(enabled ? .55 : .25)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(label,
+                style: TextStyle(
+                    fontSize: 13,
+                    color: cs.onSurface.withOpacity(enabled ? .7 : .35))),
+          ),
+          if (enabled)
+            InkWell(
+              borderRadius: BorderRadius.circular(6),
+              onTap: () async {
+                final picked = await showTimePicker(
+                  context: context,
+                  initialTime: TimeOfDay(hour: hour, minute: minute),
+                  helpText: label,
+                );
+                if (picked == null || !mounted) return;
+                await onPicked(picked);
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                child: Text(
+                  '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}',
                   style: TextStyle(
-                      fontSize: 13, color: cs.onSurface.withOpacity(.6))),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: cs.primary),
+                ),
+              ),
             ),
-            Text(
-              '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}',
-              style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: cs.primary),
-            ),
-            const SizedBox(width: 6),
-            Icon(Icons.chevron_right,
-                size: 16, color: cs.onSurface.withOpacity(.3)),
-          ],
-        ),
+          Switch(
+            value: enabled,
+            onChanged: (v) => onToggled(v),
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+        ],
       ),
     );
   }
