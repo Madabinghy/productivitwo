@@ -1615,7 +1615,7 @@ class _AppRootState extends State<AppRoot>
 
     // Ouvre le bon sheet quand l'utilisateur tape une notification
     NotificationService.onNotificationTap = (id) {
-      final ctx = _navigatorKey.currentContext;
+      final ctx = _navigatorKey.currentState?.overlay?.context;
       if (ctx == null) return;
       switch (id) {
         case 2: // Résumé du jour

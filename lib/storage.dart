@@ -57,21 +57,28 @@ void _migrateCoursesArchived(AppState st) {
 /// Remet en réserve les courses qui ont été sorties du pool (toPlan=false)
 /// suite au bug du rollover du 14 mai 2026.
 void _migrateRestoreCourses(AppState st) {
-  if (st.coursesRestoredOnce) return;
+  if (st.coursesRestoredV2) return;
+  // Fallback sur le nom si le rôle n'a pas été migré (données anciennes).
   final shopAct = st.activities.firstWhereOrNull(
-      (a) => !a.isHabit && a.role == ActivityRole.shopping);
+          (a) => !a.isHabit && a.role == ActivityRole.shopping) ??
+      st.activities.firstWhereOrNull(
+          (a) => !a.isHabit && a.name.trim().toLowerCase() == 'courses');
   if (shopAct != null) {
+    // Pose aussi le bon rôle pour que shoppingActivity() le trouve.
+    if (shopAct.role != ActivityRole.shopping) {
+      shopAct.role = ActivityRole.shopping;
+    }
     for (final item in st.dayPlan) {
       if (item.kind != PlanKind.action) continue;
       if (item.activityId != shopAct.id) continue;
       if (item.toPlan == true) continue; // déjà correct
-      // Restaure en réserve
       item.toPlan = true;
       item.archived = true;
       item.done = false;
     }
   }
   st.coursesRestoredOnce = true;
+  st.coursesRestoredV2 = true;
 }
 
 void _migrateLinkedActivities(AppState st) {
