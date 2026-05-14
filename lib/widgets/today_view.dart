@@ -273,10 +273,25 @@ class _TodayViewState extends State<TodayView> {
   }
 
   // Retourne l'id du bloc sélectionné, '' pour désassigner, null si annulé
-  Widget _blockItemTile(BuildContext context, DayPlanItem it) {
+  Widget _blockItemTile(
+    BuildContext context,
+    DayPlanItem it, {
+    Key? key,
+    bool showDrag = false,
+    int indexForDrag = 0,
+  }) {
     final cs = Theme.of(context).colorScheme;
     final logic = widget.logic;
     final today = DateTime.now();
+
+    Widget dragHandle() => ReorderableDragStartListener(
+          index: indexForDrag,
+          child: Padding(
+            padding: const EdgeInsets.only(left: 8),
+            child: Icon(Icons.drag_handle,
+                size: 18, color: cs.onSurface.withOpacity(0.25)),
+          ),
+        );
 
     if (it.kind == PlanKind.habit) {
       final habitId = it.refId ?? it.habitId;
@@ -303,6 +318,7 @@ class _TodayViewState extends State<TodayView> {
       }
 
       return Padding(
+        key: key,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Row(
           children: [
@@ -366,6 +382,7 @@ class _TodayViewState extends State<TodayView> {
                 ),
               ),
             ],
+            if (showDrag) dragHandle(),
           ],
         ),
       );
@@ -374,6 +391,7 @@ class _TodayViewState extends State<TodayView> {
     // Action simple
     final isDone = it.done;
     return InkWell(
+      key: key,
       onTap: () {
         it.done = !it.done;
         logic.onChange();
@@ -401,6 +419,7 @@ class _TodayViewState extends State<TodayView> {
                 ),
               ),
             ),
+            if (showDrag) dragHandle(),
           ],
         ),
       ),
@@ -585,13 +604,35 @@ class _TodayViewState extends State<TodayView> {
           ),
           if (!isCollapsed && !isDisabled) ...[
             const Divider(height: 1),
-            ...items.map((it) => _blockItemTile(context, it)),
             if (items.isEmpty)
               Padding(
                 padding: const EdgeInsets.all(12),
                 child: Text(
                   'Aucun item dans ce bloc pour aujourd\'hui.',
                   style: TextStyle(color: cs.onSurface.withOpacity(0.55)),
+                ),
+              )
+            else
+              ReorderableListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: items.length,
+                onReorder: (oldIndex, newIndex) {
+                  setState(() {
+                    widget.logic.reorderTodayBucket(
+                      yyyymmdd: ymd,
+                      bucketVisible: items,
+                      oldIndex: oldIndex,
+                      newIndex: newIndex,
+                    );
+                  });
+                },
+                itemBuilder: (ctx, i) => _blockItemTile(
+                  ctx,
+                  items[i],
+                  key: ValueKey('block:${block.id}:${items[i].id}'),
+                  showDrag: true,
+                  indexForDrag: i,
                 ),
               ),
           ],
