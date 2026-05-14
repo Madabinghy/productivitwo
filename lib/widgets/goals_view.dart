@@ -775,6 +775,7 @@ class GoalDetailSheetState extends State<GoalDetailSheet>
           ReorderableListView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
+            buildDefaultDragHandles: false,
             itemCount: pending.length,
             onReorder: (oldIdx, newIdx) {
               // Trouver les vrais index dans goal.actions
@@ -796,6 +797,7 @@ class GoalDetailSheetState extends State<GoalDetailSheet>
                 key: ValueKey(a.id),
                 action: a,
                 isFirst: isFirst,
+                dragIndex: i,
                 alreadyInToday: st.dayPlan
                     .any((it) => it.goalActionId == a.id),
                 onToggle: (val) {
@@ -1070,6 +1072,7 @@ class _ActionTile extends StatelessWidget {
   final Future<void> Function() onAddToToday;
   final VoidCallback onRemoveFromToday;
   final VoidCallback onDelete;
+  final int dragIndex;
 
   const _ActionTile({
     super.key,
@@ -1080,6 +1083,7 @@ class _ActionTile extends StatelessWidget {
     required this.onAddToToday,
     required this.onRemoveFromToday,
     required this.onDelete,
+    this.dragIndex = 0,
   });
 
   @override
@@ -1120,7 +1124,7 @@ class _ActionTile extends StatelessWidget {
           onPressed: onDelete,
         ),
         ReorderableDragStartListener(
-          index: 0,
+          index: dragIndex,
           child: Icon(Icons.drag_handle,
               size: 18, color: Colors.grey.shade400),
         ),
