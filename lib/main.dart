@@ -3539,8 +3539,8 @@ class _AppRootState extends State<AppRoot>
           ),
         ),
         _buildNextGoalCard(context),
-        _buildDayReviewButton(context),
         ..._buildDomainListLive(context, now),
+        _buildDayReviewButton(context),
       ],
         );
       },
@@ -3550,7 +3550,7 @@ class _AppRootState extends State<AppRoot>
   Widget _buildDayReviewButton(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
       child: OutlinedButton.icon(
         icon: const Icon(Icons.bar_chart_rounded, size: 18),
         label: const Text('Résumé du jour'),
