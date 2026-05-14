@@ -3,6 +3,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/models.dart' show yyyymmdd;
 import 'package:productivitwo_v1/widgets/new_action_sheet.dart';
+import 'package:productivitwo_v1/widgets/tomorrow_plan_sheet.dart';
 
 Future<void> showDayReviewSheet(
   BuildContext context, {
@@ -222,25 +223,17 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
           // ── Demain ────────────────────────────────────────────────────────
           _sectionHeader(cs, icon: Icons.calendar_today_outlined, title: 'Demain'),
           const SizedBox(height: 8),
-          if (tomorrowActions.isNotEmpty) ...[
+          if (tomorrowActions.isNotEmpty)
             ...tomorrowActions.map((it) =>
-                _actionRow(cs, it.title, done: false, muted: true)),
-            const SizedBox(height: 8),
-          ] else
+                _actionRow(cs, it.title, done: false, muted: true))
+          else
             _emptyHint(cs, 'Rien de planifié pour demain.'),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.add, size: 16),
-            label: const Text('Ajouter une action pour demain'),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            icon: const Icon(Icons.edit_calendar_outlined, size: 16),
+            label: const Text('Planifier demain'),
             onPressed: () async {
-              final result = await showNewActionSheet(context,
-                  logic: logic);
-              if (result == null) return;
-              await logic.addPlanAction(
-                ymd: tomorrowYmd,
-                title: result.title,
-                activityId: result.activityId,
-                domainId: result.domainId,
-              );
+              await showTomorrowPlanSheet(context, logic: logic);
               setState(() {});
             },
           ),
