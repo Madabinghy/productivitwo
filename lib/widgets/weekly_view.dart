@@ -570,7 +570,7 @@ class _WeeklyViewState extends State<WeeklyView> {
                                         widget.logic.habitValueOn(r.id, day);
                                     final target =
                                         widget.logic.effectiveHabitTarget(r);
-                                    return ReorderableDragStartListener(
+                                    return ReorderableDelayedDragStartListener(
                                       key: ValueKey(r.id),
                                       index: idx,
                                       child: _RoutineTile(

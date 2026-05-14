@@ -1351,6 +1351,129 @@ class _TodayViewState extends State<TodayView> {
   }
 
   bool _showInbox = false; // plié par défaut
+  bool _showRoutinesSection = true;
+
+  Widget _routinesSection(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final routines = widget.logic.state.activities
+        .where((a) =>
+            a.isHabit &&
+            widget.logic.effectiveHabitFreq(a) == HabitFreq.daily)
+        .toList()
+      ..sort((a, b) => a.order.compareTo(b.order));
+
+    if (routines.isEmpty) return const SizedBox.shrink();
+
+    final today = DateTime.now();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Expanded(
+              child: Text('Routines',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+            ),
+            TextButton(
+              onPressed: () =>
+                  setState(() => _showRoutinesSection = !_showRoutinesSection),
+              child: Text(_showRoutinesSection ? 'Masquer' : 'Voir tout'),
+            ),
+          ],
+        ),
+        if (_showRoutinesSection) ...[
+          const SizedBox(height: 4),
+          ReorderableListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            buildDefaultDragHandles: false,
+            itemCount: routines.length,
+            onReorder: (oldIndex, newIndex) {
+              setState(() {
+                widget.logic.reorderDailyRoutines(oldIndex, newIndex);
+              });
+            },
+            itemBuilder: (ctx, i) {
+              final r = routines[i];
+              final value = widget.logic.habitValueOn(r.id, today);
+              final target = widget.logic.effectiveHabitTarget(r);
+              final reached = target > 0 && value >= target;
+              final domColor =
+                  domainColor(r.domainId, widget.logic.state.domains);
+
+              return ListTile(
+                key: ValueKey('routine-reorder:${r.id}'),
+                dense: true,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                leading: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (domColor != null)
+                      Container(
+                        width: 4,
+                        height: 14,
+                        decoration: BoxDecoration(
+                          color: reached
+                              ? domColor.withOpacity(.3)
+                              : domColor.withOpacity(.75),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    const SizedBox(width: 8),
+                    Icon(
+                      reached ? Icons.check_circle : Icons.repeat,
+                      size: 18,
+                      color: reached
+                          ? cs.primary
+                          : cs.onSurface.withOpacity(.4),
+                    ),
+                  ],
+                ),
+                title: Text(
+                  r.name,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: reached
+                        ? cs.onSurface.withOpacity(.4)
+                        : cs.onSurface.withOpacity(.85),
+                    decoration: reached ? TextDecoration.lineThrough : null,
+                  ),
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      target == 1
+                          ? (reached ? '✓' : '—')
+                          : '$value/$target',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: reached
+                            ? cs.primary
+                            : cs.onSurface.withOpacity(.45),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ReorderableDragStartListener(
+                      index: i,
+                      child: Icon(Icons.drag_handle,
+                          size: 20,
+                          color: cs.onSurface.withOpacity(.3)),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 8),
+        ],
+      ],
+    );
+  }
 
   Widget _inboxSection({
     required List<DayPlanItem> inbox,
@@ -2121,6 +2244,7 @@ class _TodayViewState extends State<TodayView> {
             autoExpanded: autoExpanded,
             shoppingAct: shoppingAct,
           ),
+          if (isTodayTab) _routinesSection(context),
           Row(
             children: [
               const Expanded(
