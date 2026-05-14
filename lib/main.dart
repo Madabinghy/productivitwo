@@ -2066,6 +2066,130 @@ class _AppRootState extends State<AppRoot>
 
   // ---------- UI ----------
 
+  Future<void> _showLaunchActivitySheet(BuildContext context) async {
+    final activities = logic.state.activities
+        .where((a) => !a.isHabit && a.role != ActivityRole.shopping)
+        .toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+
+    if (activities.isEmpty) return;
+
+    final domainById = {for (final d in logic.state.domains) d.id: d};
+
+    // Grouper par domaine
+    final Map<String, List<Activity>> byDomain = {};
+    for (final a in activities) {
+      (byDomain[a.domainId] ??= []).add(a);
+    }
+    final domainOrder = logic.state.domains.map((d) => d.id).toList()
+      ..add(''); // domaines orphelins en dernier
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        final running = logic.runningActivity();
+
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.55,
+          minChildSize: 0.35,
+          maxChildSize: 0.9,
+          builder: (ctx, scrollCtrl) => Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text('Lancer une activité',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w800, fontSize: 18)),
+                    ),
+                    if (running != null)
+                      TextButton.icon(
+                        icon: const Icon(Icons.stop, size: 16),
+                        label: const Text('Arrêter'),
+                        style: TextButton.styleFrom(
+                            foregroundColor: cs.error,
+                            visualDensity: VisualDensity.compact),
+                        onPressed: () {
+                          logic.stopActive();
+                          setState(() {});
+                          Navigator.pop(ctx);
+                        },
+                      ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: ListView(
+                  controller: scrollCtrl,
+                  children: [
+                    for (final domId in domainOrder)
+                      if (byDomain.containsKey(domId)) ...[
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
+                          child: Text(
+                            domainById[domId]?.name ?? 'Sans domaine',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.6,
+                              color: cs.onSurface.withOpacity(.45),
+                            ),
+                          ),
+                        ),
+                        for (final a in byDomain[domId]!)
+                          ListTile(
+                            dense: true,
+                            leading: CircleAvatar(
+                              radius: 16,
+                              backgroundColor: domainColor(domId, logic.state.domains)
+                                      ?.withOpacity(.15) ??
+                                  cs.surfaceContainerHighest,
+                              child: Icon(
+                                running?.id == a.id
+                                    ? Icons.stop_rounded
+                                    : Icons.play_arrow_rounded,
+                                size: 18,
+                                color: running?.id == a.id
+                                    ? cs.error
+                                    : domainColor(domId, logic.state.domains) ??
+                                        cs.primary,
+                              ),
+                            ),
+                            title: Text(a.name,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: running?.id == a.id ? cs.error : null,
+                                )),
+                            onTap: () {
+                              if (running?.id == a.id) {
+                                logic.stopActive();
+                              } else {
+                                logic.start(a.id);
+                                setState(() => _tab = _Tab.now);
+                              }
+                              setState(() {});
+                              Navigator.pop(ctx);
+                            },
+                          ),
+                      ],
+                    const SizedBox(height: 16),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Future<String?> _askText(BuildContext ctx, String title, {String? initial}) async {
     final ctrl = TextEditingController(text: initial);
     if (initial != null) ctrl.selection = TextSelection(baseOffset: 0, extentOffset: initial.length);
@@ -2171,7 +2295,7 @@ class _AppRootState extends State<AppRoot>
   }
 
   bool _shouldShowFab() {
-    return _tab == _Tab.today || _tab == _Tab.dashboard;
+    return _tab == _Tab.today || _tab == _Tab.dashboard || _tab == _Tab.week;
   }
 
   Widget _buildFab() {
@@ -2190,9 +2314,10 @@ class _AppRootState extends State<AppRoot>
           },
           child: const Icon(Icons.repeat),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
         FloatingActionButton(
           heroTag: "fab_now_action",
+          mini: true,
           tooltip: "Nouvelle action",
           onPressed: () async {
             await _createActionFromNow(context);
@@ -2200,6 +2325,13 @@ class _AppRootState extends State<AppRoot>
             setState(() {});
           },
           child: const Icon(Icons.add),
+        ),
+        const SizedBox(height: 12),
+        FloatingActionButton(
+          heroTag: "fab_launch_activity",
+          tooltip: "Lancer une activité",
+          onPressed: () => _showLaunchActivitySheet(context),
+          child: const Icon(Icons.play_arrow_rounded),
         ),
       ],
     );
@@ -3113,8 +3245,6 @@ class _AppRootState extends State<AppRoot>
         ],
       ), */
 
-// FAB uniquement sur Dashboard (ou adapte si tu veux aussi sur Today)
-      //floatingActionButton: _tab == _Tab.dashboard ? _buildFocusFab() : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
 
       bottomNavigationBar: BottomNavigationBar(
