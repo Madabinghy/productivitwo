@@ -428,6 +428,7 @@ class GoalCard extends StatelessWidget {
   final AppLogic? logic;
   final bool showDrag;
   final int dragIndex;
+  final VoidCallback? onPin;
 
   const GoalCard({
     super.key,
@@ -438,6 +439,7 @@ class GoalCard extends StatelessWidget {
     this.logic,
     this.showDrag = false,
     this.dragIndex = 0,
+    this.onPin,
   });
 
   @override
@@ -507,6 +509,20 @@ class GoalCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (onPin != null)
+                    GestureDetector(
+                      onTap: onPin,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: Icon(
+                          goal.pinned ? Icons.push_pin : Icons.push_pin_outlined,
+                          size: 16,
+                          color: goal.pinned
+                              ? Theme.of(context).colorScheme.primary
+                              : Colors.grey.shade400,
+                        ),
+                      ),
+                    ),
                   if (total > 0)
                     Text(
                       '$done/$total',

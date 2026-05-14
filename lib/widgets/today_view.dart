@@ -255,6 +255,7 @@ class _TodayViewState extends State<TodayView> {
                   logic: widget.logic,
                   showDrag: true,
                   dragIndex: i,
+                  onPin: () { widget.logic.toggleGoalPin(goal.id); setState(() {}); },
                   onTap: () => _openGoalDetail(context, goal),
                   onArchive: () async {
                     final confirm = await showDialog<bool>(

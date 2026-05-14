@@ -3705,19 +3705,18 @@ class _AppRootState extends State<AppRoot>
   Widget _buildNextGoalCard(BuildContext context) {
     final activeGoals = logic.state.goals
         .where((g) => g.status == 'active' && g.nextAction != null)
-        .toList()
-      ..sort((a, b) {
-        if (a.dueDate != null && b.dueDate != null) {
-          return a.dueDate!.compareTo(b.dueDate!);
-        }
-        if (a.dueDate != null) return -1;
-        if (b.dueDate != null) return 1;
-        return a.createdAt.compareTo(b.createdAt);
-      });
+        .toList();
 
     if (activeGoals.isEmpty) return const SizedBox.shrink();
 
-    final goal = activeGoals.first;
+    // Priorité : épinglé → le plus avancé en progression
+    final pinned = activeGoals.where((g) => g.pinned).firstOrNull;
+    final goal = pinned ??
+        (activeGoals..sort((a, b) {
+          final pa = a.stepsTotal > 0 ? a.stepsDone / a.stepsTotal : 0.0;
+          final pb = b.stepsTotal > 0 ? b.stepsDone / b.stepsTotal : 0.0;
+          return pb.compareTo(pa); // plus avancé en premier
+        })).first;
     final nextAction = goal.nextAction!;
     final domain = logic.state.domains
         .firstWhereOrNull((d) => d.id == goal.domainId);
@@ -3758,7 +3757,7 @@ class _AppRootState extends State<AppRoot>
                                 color: dColor ?? cs.primary),
                             const SizedBox(width: 6),
                             Text(
-                              'Prochain objectif${domain != null ? '  ·  ${domain.name}' : ''}',
+                              '${goal.pinned ? '📌 ' : ''}Prochain objectif${domain != null ? '  ·  ${domain.name}' : ''}',
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w700,
@@ -5620,6 +5619,7 @@ class _AppRootState extends State<AppRoot>
                           logic: logic,
                           showDrag: true,
                           dragIndex: i,
+                          onPin: () { logic.toggleGoalPin(g.id); setSB(() {}); },
                           onTap: () => openGoalDetail(g),
                           onArchive: () async {
                             final confirm = await showDialog<bool>(

@@ -1506,6 +1506,18 @@ class AppLogic {
     onChange();
   }
 
+  void toggleGoalPin(String goalId) {
+    final g = state.goals.firstWhere((x) => x.id == goalId);
+    // Un seul goal épinglé à la fois
+    if (!g.pinned) {
+      for (final other in state.goals) {
+        other.pinned = false;
+      }
+    }
+    g.pinned = !g.pinned;
+    onChange();
+  }
+
   void archiveGoal(String goalId) {
     final g = state.goals.firstWhere((x) => x.id == goalId);
     g.status = 'archived';

@@ -380,6 +380,7 @@ class Goal {
   DateTime? dueDate;
   List<GoalAction> actions;
   int order;
+  bool pinned;
 
   Goal({
     String? id,
@@ -394,6 +395,7 @@ class Goal {
     this.dueDate,
     List<GoalAction>? actions,
     this.order = 0,
+    this.pinned = false,
   })  : id = id ?? _uuid.v4(),
         createdAt = createdAt ?? DateTime.now(),
         linkedHabitIds = linkedHabitIds ?? [],
@@ -418,6 +420,7 @@ class Goal {
         'dueDate': dueDate?.toIso8601String(),
         'actions': actions.map((a) => a.toJson()).toList(),
         'order': order,
+        'pinned': pinned,
       };
 
   static Goal from(Map j) {
@@ -457,6 +460,7 @@ class Goal {
       dueDate: j['dueDate'] != null ? DateTime.parse(j['dueDate']) : null,
       actions: actions,
       order: (j['order'] as num?)?.toInt() ?? 0,
+      pinned: j['pinned'] as bool? ?? false,
     );
   }
 }
