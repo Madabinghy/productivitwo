@@ -370,7 +370,7 @@ class _StatsViewState extends State<StatsView> {
   void initState() {
     super.initState();
     widget.logic
-        .rolloverUndone(); // 👈 Ramène les non-faits d’hier vers aujourd’hui
+        .rolloverUndone(); // 👈 Ramène les non-faits d'hier vers aujourd'hui
     statsDomainId = widget.selectedDomainId; // point de départ UNIQUEMENT
   }
 
@@ -473,7 +473,7 @@ class _StatsViewState extends State<StatsView> {
                               SizedBox(height: 4), // ← marge supplémentaire
                             ],
                           ),
-                          axisNameSize: 24, // espace pour le titre de l’axe Y
+                          axisNameSize: 24, // espace pour le titre de l'axe Y
                           sideTitles: SideTitles(
                             showTitles: true,
                             reservedSize:
@@ -764,7 +764,7 @@ class ProductivitwoApp extends StatelessWidget {
       title: 'Productivitwo',
       theme: _buildTheme(Brightness.light),
       darkTheme: _buildTheme(Brightness.dark),
-      themeMode: ThemeMode.system, // clair/sombre selon l’iPhone
+      themeMode: ThemeMode.system, // clair/sombre selon l'iPhone
       home: const AppRoot(),
     );
   }
@@ -1028,7 +1028,7 @@ class _EditSessionSheetState extends State<_EditSessionSheet> {
 class RunningChipAppBar extends StatefulWidget {
   final AppState? state;
   final AppLogic logic;
-  final VoidCallback? onTap; // ex: aller sur l’onglet Maintenant
+  final VoidCallback? onTap; // ex: aller sur l'onglet Maintenant
 
   const RunningChipAppBar({
     super.key,
@@ -1293,7 +1293,7 @@ class _RunningBannerGlobalState extends State<RunningBannerGlobal> {
   @override
   void didUpdateWidget(covariant RunningBannerGlobal oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _ensureTicking(); // démarre/stoppe selon présence d’une session
+    _ensureTicking(); // démarre/stoppe selon présence d'une session
   }
 
   void _ensureTicking() {
@@ -1585,11 +1585,11 @@ class _AppRootState extends State<AppRoot>
   Timer? _heartbeat;
   _Tab _tab = _Tab.dashboard;
   String? _weekHighlightYmd; // jour à mettre en avant dans la vue semaine
-// affiché une seule fois tant que l’app reste ouverte
+// affiché une seule fois tant que l'app reste ouverte
 
-  // Champs d’état pour les badges
+  // Champs d'état pour les badges
   Map<String, int> _domainAutoDeltas =
-      {}; // agrégat des deltas d’activités par domaine
+      {}; // agrégat des deltas d'activités par domaine
 
   Timer? _saveDebounce;
   bool _saveQueued = false;
@@ -1681,7 +1681,7 @@ class _AppRootState extends State<AppRoot>
         if (bumps > 0 && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-                content: Text("$bumps objectif(s) ajusté(s) d’après les 30j"),
+                content: Text("$bumps objectif(s) ajusté(s) d'après les 30j"),
                 duration: const Duration(seconds: 2)),
           );
           await store.save(_state!);
@@ -1719,7 +1719,7 @@ class _AppRootState extends State<AppRoot>
         if (bumps > 0 && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-                content: Text("$bumps objectif(s) ajusté(s) d’après les 30j"),
+                content: Text("$bumps objectif(s) ajusté(s) d'après les 30j"),
                 duration: const Duration(seconds: 2)),
           );
           await store.save(_state!);
@@ -1944,7 +1944,7 @@ class _AppRootState extends State<AppRoot>
     return "${hh}h ${mm}m";
   }
 
-// 1) Helpers d’index <-> enum
+// 1) Helpers d'index <-> enum
   int _tabIndex(_Tab t) {
     switch (t) {
       case _Tab.dashboard:
@@ -3313,7 +3313,7 @@ class _AppRootState extends State<AppRoot>
       isScrollControlled: true,
       showDragHandle: true,
       builder: (_) => FiltersSheet(
-        st: _state!, // ou widget.logic.state si c’est ta source
+        st: _state!, // ou widget.logic.state si c'est ta source
         logic: logic,
         onChanged: () {
           setState(() {}); // refresh écran après changement filtres
@@ -3524,7 +3524,7 @@ class _AppRootState extends State<AppRoot>
     // Helpers habits calendaire (tu peux les laisser ici)
 
     // ⚠️ IMPORTANT :
-    // Les valeurs “live” (temps today jusqu’à now, halo, label, etc.)
+    // Les valeurs “live” (temps today jusqu'à now, halo, label, etc.)
     // seront calculées dans ValueListenableBuilder via _compute... (voir plus bas)
 
     return ValueListenableBuilder<int>(
@@ -4305,7 +4305,7 @@ class _AppRootState extends State<AppRoot>
     final today0 = DateTime(now.year, now.month, now.day);
     final tomorrow = today0.add(const Duration(days: 1));
 
-    // Fenêtres “incluant aujourd’hui”
+    // Fenêtres “incluant aujourd'hui”
     final start7Inc = today0.subtract(const Duration(days: 6));
     final end7Inc = tomorrow;
 
@@ -4522,12 +4522,12 @@ class _AppRootState extends State<AppRoot>
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    "Objectif automatique : 1 / mois (s’ajuste tout seul chaque jour).",
+                    "Objectif automatique : 1 / mois (s'ajuste tout seul chaque jour).",
                     style: TextStyle(fontSize: 12),
                   ),
                 ] else ...[
                   const Text(
-                    "Objectif automatique : 1 minute (s’ajuste tout seul chaque jour).",
+                    "Objectif automatique : 1 minute (s'ajuste tout seul chaque jour).",
                     style: TextStyle(fontSize: 12),
                   ),
                 ],
@@ -4634,7 +4634,7 @@ class _AppRootState extends State<AppRoot>
   }
 
   Future<void> _renameActivity(Activity a) async {
-    final s = await _askText(context, "Renommer l’activité", initial: a.name);
+    final s = await _askText(context, "Renommer l'activité", initial: a.name);
     if (s == null) return;
     final name = s.trim();
     if (name.isEmpty) return;
@@ -4666,8 +4666,8 @@ class _AppRootState extends State<AppRoot>
                 leading: const Icon(Icons.snooze),
                 title: Text(
                   logic.isActivitySnoozed(a.id, DateTime.now())
-                      ? "Réafficher l’activité"
-                      : "Cacher l’activité",
+                      ? "Réafficher l'activité"
+                      : "Cacher l'activité",
                 ),
                 onTap: () {
                   logic.toggleActivitySnooze(a.id);
@@ -4691,125 +4691,232 @@ class _AppRootState extends State<AppRoot>
     final bool? changed = await showModalBottomSheet<bool>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (ctx) {
         Future<void> hideUntil(DateTime until) async {
           logic.snoozeActivityUntil(a.id, until);
-          Navigator.pop(ctx, true); // ✅ changed
+          Navigator.pop(ctx, true);
         }
 
+        final cs = Theme.of(ctx).colorScheme;
+        final domain = logic.state.domains
+            .firstWhereOrNull((d) => d.id == a.domainId);
+        final dColor = domainColor(a.domainId, logic.state.domains);
+
+        // Stats temps
+        final today = DateTime(now.year, now.month, now.day);
+        final weekStart = today.subtract(Duration(days: today.weekday - 1));
+        final monthStart = DateTime(now.year, now.month, 1);
+        final durDay = logic.totalForRangeByActivity(a.id, today, now);
+        final durWeek = logic.totalForRangeByActivity(a.id, weekStart, now);
+        final durMonth = logic.totalForRangeByActivity(a.id, monthStart, now);
+
+        String fmtDur(Duration d) {
+          if (d.inMinutes == 0) return '—';
+          if (d.inHours == 0) return '${d.inMinutes}min';
+          final m = d.inMinutes % 60;
+          return m == 0 ? '${d.inHours}h' : '${d.inHours}h${m.toString().padLeft(2, '0')}';
+        }
+
+        // Heatmap 12 semaines (1 ligne = cette activité)
+        const cellSize = 12.0;
+        const gap = 2.0;
+        const weeks = 12;
+        final firstDay = today.subtract(const Duration(days: 83));
+        final offsetToMonday = (firstDay.weekday - 1) % 7;
+        final startMonday = firstDay.subtract(Duration(days: offsetToMonday));
+
+        // Précalcul des minutes par jour pour cette activité
+        final Map<String, int> minsByYmd = {};
+        for (final s in logic.state.sessions.where((s) => s.activityId == a.id)) {
+          final sEnd = s.endAt ?? now;
+          if (s.startAt.isAfter(now) || sEnd.isBefore(startMonday)) continue;
+          var cursor = DateTime(s.startAt.year, s.startAt.month, s.startAt.day);
+          while (!cursor.isAfter(today)) {
+            final dayEnd = cursor.add(const Duration(days: 1));
+            final segStart = cursor.isBefore(s.startAt) ? s.startAt : cursor;
+            final segEnd = dayEnd.isAfter(sEnd) ? sEnd : dayEnd;
+            final mins = segEnd.difference(segStart).inMinutes;
+            if (mins > 0) {
+              final ymd = '${cursor.year}${cursor.month.toString().padLeft(2, '0')}${cursor.day.toString().padLeft(2, '0')}';
+              minsByYmd[ymd] = (minsByYmd[ymd] ?? 0) + mins;
+            }
+            cursor = dayEnd;
+          }
+        }
+        final maxMins = minsByYmd.values.fold(1, (m, v) => v > m ? v : m);
+
         return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                title: InkWell(
-                  onTap: () {
-                    String draft = a.name;
-                    showModalBottomSheet<void>(
-                      context: context,
-                      isScrollControlled: true,
-                      showDragHandle: true,
-                      builder: (ctx2) => SafeArea(
-                        child: SingleChildScrollView(
-                          padding: EdgeInsets.only(
-                            left: 16, right: 16, top: 12,
-                            bottom: MediaQuery.of(ctx2).viewInsets.bottom + 16,
-                          ),
-                          child: StatefulBuilder(
-                            builder: (ctx2, setLocal) => Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text("Renommer l'activité",
-                                    style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w800)),
-                                const SizedBox(height: 12),
-                                TextFormField(
-                                  initialValue: a.name,
-                                  autofocus: true,
-                                  textCapitalization:
-                                      TextCapitalization.sentences,
-                                  decoration: const InputDecoration(
-                                      hintText: "Nom de l'activité"),
-                                  onChanged: (v) =>
-                                      setLocal(() => draft = v),
-                                  onFieldSubmitted: (_) {
-                                    final v = draft.trim();
-                                    if (v.isNotEmpty) {
-                                      setState(() => a.name = v);
-                                      logic.onChange();
-                                    }
-                                    Navigator.pop(ctx2);
-                                    Navigator.pop(ctx, true);
-                                  },
-                                ),
-                                const SizedBox(height: 16),
-                                Row(children: [
-                                  Expanded(
-                                    child: OutlinedButton(
-                                      onPressed: () => Navigator.pop(ctx2),
-                                      child: const Text("Annuler"),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: FilledButton(
-                                      onPressed: () {
-                                        final v = draft.trim();
-                                        if (v.isNotEmpty) {
-                                          setState(() => a.name = v);
-                                          logic.onChange();
-                                        }
-                                        Navigator.pop(ctx2);
-                                        Navigator.pop(ctx, true);
-                                      },
-                                      child: const Text("Enregistrer"),
-                                    ),
-                                  ),
-                                ]),
-                              ],
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // ── Header ──────────────────────────────────────────────────
+                Container(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          if (dColor != null)
+                            Container(
+                              width: 10,
+                              height: 10,
+                              margin: const EdgeInsets.only(right: 8),
+                              decoration: BoxDecoration(
+                                color: dColor,
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                            ),
+                          Expanded(
+                            child: Text(
+                              a.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 20,
+                              ),
                             ),
                           ),
-                        ),
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined, size: 18),
+                            onPressed: () async {
+                              final s = await _askText(ctx, "Renommer", initial: a.name);
+                              if (s == null || s.trim().isEmpty) return;
+                              setState(() => a.name = s.trim());
+                              logic.onChange();
+                              Navigator.pop(ctx, true);
+                            },
+                          ),
+                        ],
                       ),
-                    );
-                  },
-                  child: Text(
-                    a.name,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 16,
-                      decoration: TextDecoration.underline,
-                    ),
+                      if (domain != null)
+                        Text(
+                          domain.name,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: dColor ?? cs.onSurface.withOpacity(.5),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.calendar_today_outlined),
-                title: const Text("Demain"),
-                onTap: () =>
-                    hideUntil(_endOfDay(now.add(const Duration(days: 1)))),
-              ),
-              ListTile(
-                leading: const Icon(Icons.calendar_view_week_outlined),
-                title: const Text("Dans 3 jours"),
-                onTap: () =>
-                    hideUntil(_endOfDay(now.add(const Duration(days: 3)))),
-              ),
-              ListTile(
-                leading: const Icon(Icons.event_repeat_outlined),
-                title: const Text("Dans 7 jours"),
-                onTap: () =>
-                    hideUntil(_endOfDay(now.add(const Duration(days: 7)))),
-              ),
-              ListTile(
-                leading: const Icon(Icons.edit_calendar_outlined),
-                title: const Text("Choisir une date…"),
-                onTap: () async {
-                  // ✅ Variante clean: on choisit la date DANS le sheet,
-                  // puis on pop(true) quand c’est appliqué.
+
+                // ── Stats ────────────────────────────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                  child: Row(
+                    children: [
+                      _statChip('Aujourd\'hui', fmtDur(durDay), cs),
+                      const SizedBox(width: 8),
+                      _statChip('Cette semaine', fmtDur(durWeek), cs),
+                      const SizedBox(width: 8),
+                      _statChip('Ce mois', fmtDur(durMonth), cs),
+                    ],
+                  ),
+                ),
+
+                // ── Heatmap 12 semaines ───────────────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('12 semaines',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: cs.onSurface.withOpacity(.4),
+                          )),
+                      const SizedBox(height: 8),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: List.generate(weeks, (col) => Padding(
+                            padding: const EdgeInsets.only(right: gap),
+                            child: Column(
+                              children: List.generate(7, (row) {
+                                final d = startMonday.add(Duration(days: col * 7 + row));
+                                if (d.isAfter(today)) {
+                                  return SizedBox(height: cellSize + gap, width: cellSize);
+                                }
+                                final ymd = '${d.year}${d.month.toString().padLeft(2, '0')}${d.day.toString().padLeft(2, '0')}';
+                                final mins = minsByYmd[ymd] ?? 0;
+                                final intensity = mins == 0 ? 0.0 : (mins / maxMins).clamp(0.15, 1.0);
+                                final color = mins == 0
+                                    ? cs.onSurface.withOpacity(.08)
+                                    : (dColor ?? cs.primary).withOpacity(intensity);
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: gap),
+                                  child: Container(
+                                    width: cellSize,
+                                    height: cellSize,
+                                    decoration: BoxDecoration(
+                                      color: color,
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                  ),
+                                );
+                              }),
+                            ),
+                          )),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const Divider(height: 1),
+
+                // ── Lancer ───────────────────────────────────────────────────
+                ListTile(
+                  leading: Icon(Icons.play_arrow_rounded, color: dColor ?? cs.primary),
+                  title: const Text('Lancer', style: TextStyle(fontWeight: FontWeight.w600)),
+                  onTap: () {
+                    logic.start(a.id);
+                    Navigator.pop(ctx, true);
+                    setState(() => _tab = _Tab.now);
+                  },
+                ),
+
+                const Divider(height: 1),
+
+                // ── Masquer jusqu'à ───────────────────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                  child: Text('Masquer jusqu\'à',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: cs.onSurface.withOpacity(.4),
+                        letterSpacing: 0.5,
+                      )),
+                ),
+                ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.calendar_today_outlined),
+                  title: const Text("Demain"),
+                  onTap: () => hideUntil(_endOfDay(now.add(const Duration(days: 1)))),
+                ),
+                ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.calendar_view_week_outlined),
+                  title: const Text("Dans 3 jours"),
+                  onTap: () => hideUntil(_endOfDay(now.add(const Duration(days: 3)))),
+                ),
+                ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.event_repeat_outlined),
+                  title: const Text("Dans 7 jours"),
+                  onTap: () => hideUntil(_endOfDay(now.add(const Duration(days: 7)))),
+                ),
+                ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.edit_calendar_outlined),
+                  title: const Text("Choisir une date…"),
+                  onTap: () async {
                   final picked = await showDatePicker(
                     context: ctx,
                     initialDate: DateTime.now().add(const Duration(days: 1)),
@@ -4822,21 +4929,46 @@ class _AppRootState extends State<AppRoot>
               ),
               const Divider(height: 1),
               ListTile(
+                dense: true,
                 leading: const Icon(Icons.restore),
                 title: const Text("Annuler le masquage"),
                 onTap: () {
                   logic.clearSnooze(a.id);
-                  Navigator.pop(ctx, true); // ✅ changed
+                  Navigator.pop(ctx, true);
                 },
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 16),
             ],
           ),
-        );
+        ),
+      );
       },
     );
 
     return changed == true;
+  }
+
+  Widget _statChip(String label, String value, ColorScheme cs) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withOpacity(.5),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Column(
+          children: [
+            Text(value,
+                style: const TextStyle(
+                    fontWeight: FontWeight.w800, fontSize: 15)),
+            const SizedBox(height: 2),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 10, color: cs.onSurface.withOpacity(.5))),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<bool?> _showDomainDetail(
@@ -4860,7 +4992,7 @@ class _AppRootState extends State<AppRoot>
       setSB(() {
         _lockNow();
         _ringAnimTokenByHabit[habitId] =
-            (_ringAnimTokenByHabit[habitId] ?? 0) + 1; // ✅ tick d’anim
+            (_ringAnimTokenByHabit[habitId] ?? 0) + 1; // ✅ tick d'anim
       });
     }
 
@@ -4981,7 +5113,7 @@ class _AppRootState extends State<AppRoot>
             final targetCtrl = TextEditingController(text: '$target');
             final targetNode = FocusNode();
 
-            // petit helper pour afficher l’unité / libellé
+            // petit helper pour afficher l'unité / libellé
             String unitSuffix() {
               final unit = (habit.unit ?? '').trim();
               return unit.isEmpty ? '' : ' $unit';
@@ -5010,7 +5142,7 @@ class _AppRootState extends State<AppRoot>
                     if (manual) {
                       target = (parsed == null || parsed < 1) ? 1 : parsed;
                     }
-                    // Écrit dans l’objet
+                    // Écrit dans l'objet
                     habit.manualTarget = manual;
                     habit.habitFreq = manual
                         ? freq
@@ -5139,7 +5271,7 @@ class _AppRootState extends State<AppRoot>
                                   border: const OutlineInputBorder(),
                                 ),
                                 onChanged: (_) {
-                                  // ne rien faire, on parse à l’enregistrement
+                                  // ne rien faire, on parse à l'enregistrement
                                 },
                                 onTapOutside: (_) => targetNode.unfocus(),
                               ),
@@ -5301,7 +5433,7 @@ class _AppRootState extends State<AppRoot>
                                   manual = v;
                                   if (manual) {
                                     auto =
-                                        false; // manuel > auto (évite l’ambiguïté)
+                                        false; // manuel > auto (évite l'ambiguïté)
                                   }
                                 });
                               },
@@ -5429,7 +5561,7 @@ class _AppRootState extends State<AppRoot>
                 if (changed) {
                   setSB(() {
                     _lockActive =
-                        false; // ✅ évite que le lock garde l’ordre/sections figées
+                        false; // ✅ évite que le lock garde l'ordre/sections figées
                   });
                 }
               },
@@ -5654,14 +5786,7 @@ class _AppRootState extends State<AppRoot>
                   ),
                 ],
               ),
-              trailing: FilledButton.icon(
-                onPressed: () {
-                  logic.start(a.id);
-                  Navigator.pop(ctx, true);
-                },
-                icon: const Icon(Icons.play_arrow),
-                label: const Text("Go"),
-              ),
+              trailing: null,
             );
           }
 
@@ -5676,7 +5801,7 @@ class _AppRootState extends State<AppRoot>
           }) {
             switch (freq) {
               case HabitFreq.daily:
-                return "Aujourd’hui : $dayDone / $dayQuota";
+                return "Aujourd'hui : $dayDone / $dayQuota";
               case HabitFreq.weekly:
                 return "7 j : $weekDone / $weekTarget";
               case HabitFreq.monthly:
@@ -5716,7 +5841,7 @@ class _AppRootState extends State<AppRoot>
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                         content:
-                            Text("Impossible de reporter l’activité en cours"),
+                            Text("Impossible de reporter l'activité en cours"),
                       ),
                     );
                     return false;
@@ -6342,7 +6467,7 @@ class ChallengeActivityChip extends StatelessWidget {
 
         return Tooltip(
           message: running
-              ? "Quitter le challenge (l’activité continue)"
+              ? "Quitter le challenge (l'activité continue)"
               : "Démarrer un challenge de ${duration.inMinutes} min",
           waitDuration: const Duration(milliseconds: 400),
           showDuration: const Duration(seconds: 2),
