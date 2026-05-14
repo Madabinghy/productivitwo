@@ -393,7 +393,7 @@ class _WeeklyViewState extends State<WeeklyView> {
                                         }
                                         setState(() {});
                                       },
-                                      child: ReorderableDragStartListener(
+                                      child: ReorderableDelayedDragStartListener(
                                         index: idx,
                                         child: _ActionTile(
                                           action: it,

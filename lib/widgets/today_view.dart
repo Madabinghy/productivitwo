@@ -2820,8 +2820,8 @@ class _TodayViewState extends State<TodayView> {
                             setState(() {});
                             return;
                           }
-                          setState(() => it.done = done);
-                          widget.logic.onChange();
+                          widget.logic.completePlanItem(it, done);
+                          setState(() {});
                         },
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         visualDensity: VisualDensity.compact,

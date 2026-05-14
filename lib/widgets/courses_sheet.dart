@@ -100,6 +100,89 @@ class _CoursesSheetState extends State<_CoursesSheet> {
                     style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
                   ),
                 ),
+                IconButton(
+                  icon: const Icon(Icons.add),
+                  tooltip: 'Ajouter un article',
+                  onPressed: () async {
+                    final ctrl = TextEditingController();
+                    final habits = st.activities
+                        .where((a) => a.isHabit)
+                        .toList()
+                      ..sort((a, b) => a.name.compareTo(b.name));
+                    String? selectedHabitId;
+
+                    final result = await showDialog<({String title, String? habitId})>(
+                      context: context,
+                      builder: (ctx) => StatefulBuilder(
+                        builder: (ctx, setD) => AlertDialog(
+                          title: const Text('Ajouter un article'),
+                          content: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              TextField(
+                                controller: ctrl,
+                                autofocus: true,
+                                textCapitalization: TextCapitalization.sentences,
+                                decoration: const InputDecoration(hintText: 'Nom de l\'article'),
+                                onSubmitted: (_) {
+                                  final t = ctrl.text.trim();
+                                  if (t.isNotEmpty) Navigator.pop(ctx, (title: t, habitId: selectedHabitId));
+                                },
+                              ),
+                              const SizedBox(height: 12),
+                              DropdownButtonFormField<String?>(
+                                value: selectedHabitId,
+                                isExpanded: true,
+                                decoration: const InputDecoration(
+                                  labelText: 'Routine (optionnel)',
+                                  isDense: true,
+                                ),
+                                items: [
+                                  const DropdownMenuItem<String?>(
+                                    value: null,
+                                    child: Text('Sans routine'),
+                                  ),
+                                  ...habits.map((h) => DropdownMenuItem<String?>(
+                                    value: h.id,
+                                    child: Text(h.name, overflow: TextOverflow.ellipsis),
+                                  )),
+                                ],
+                                onChanged: (v) => setD(() => selectedHabitId = v),
+                              ),
+                            ],
+                          ),
+                          actions: [
+                            TextButton(
+                                onPressed: () => Navigator.pop(ctx),
+                                child: const Text('Annuler')),
+                            FilledButton(
+                                onPressed: () {
+                                  final t = ctrl.text.trim();
+                                  if (t.isNotEmpty) Navigator.pop(ctx, (title: t, habitId: selectedHabitId));
+                                },
+                                child: const Text('Ajouter')),
+                          ],
+                        ),
+                      ),
+                    );
+                    if (result == null) return;
+                    final now = DateTime.now();
+                    final ymd = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+                    await logic.addToPlanAction(
+                      ymd: ymd,
+                      title: result.title,
+                      habitId: result.habitId,
+                    );
+                    // Activer directement (pas en réserve)
+                    final item = logic.state.dayPlan.lastWhere(
+                      (a) => a.toPlan == true,
+                      orElse: () => logic.state.dayPlan.last,
+                    );
+                    item.archived = false;
+                    logic.onChange();
+                    setState(() {});
+                  },
+                ),
                 if (reserve.isNotEmpty)
                   TextButton(
                     style: TextButton.styleFrom(
