@@ -4718,8 +4718,9 @@ extension TodayLogic on AppLogic {
       DateTime(t.year, t.month, t.day).subtract(const Duration(days: 1)),
     );
 
-    final carry =
-        state.dayPlan.where((e) => e.yyyymmdd == yesterday && !e.done).toList();
+    final carry = state.dayPlan
+        .where((e) => e.yyyymmdd == yesterday && !e.done && e.archived != true)
+        .toList();
     if (carry.isEmpty) return;
 
     var order = planFor(today).length;
