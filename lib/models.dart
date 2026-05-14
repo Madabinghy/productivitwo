@@ -936,6 +936,7 @@ class AppState {
 
   List<ActivityLog> activityLogs;
   bool coursesArchivedOnce;
+  bool coursesRestoredOnce;
   bool linkedActivitiesMigratedOnce;
   bool voitureMigratedOnce;
 
@@ -1015,6 +1016,7 @@ class AppState {
     this.coursesArchivedOnce = false,
     this.linkedActivitiesMigratedOnce = false,
     this.voitureMigratedOnce = false,
+    this.coursesRestoredOnce = false,
   })  : snoozedUntil = snoozedUntil ?? <String, String>{},
         goals = goals ?? <Goal>[],
         inbox = inbox ?? <InboxItem>[],
@@ -1068,6 +1070,7 @@ class AppState {
         'activityLogs': activityLogs.map((e) => e.toJson()).toList(),
         'filters': filters.toJson(),
         'coursesArchivedOnce': coursesArchivedOnce,
+        'coursesRestoredOnce': coursesRestoredOnce,
         'linkedActivitiesMigratedOnce': linkedActivitiesMigratedOnce,
         'voitureMigratedOnce': voitureMigratedOnce,
         'blocks': blocks.map((e) => e.toJson()).toList(),
@@ -1158,6 +1161,7 @@ class AppState {
       habitChecklistDone: _mapSMapListInt(j['habitChecklistDone']),
       filters: FilterState.from(j['filters']),
       coursesArchivedOnce: (j['coursesArchivedOnce'] as bool?) ?? false,
+      coursesRestoredOnce: (j['coursesRestoredOnce'] as bool?) ?? false,
       linkedActivitiesMigratedOnce: (j['linkedActivitiesMigratedOnce'] as bool?) ?? false,
       voitureMigratedOnce: (j['voitureMigratedOnce'] as bool?) ?? false,
       blocks: _list(j['blocks'], (e) => DayBlock.from(e)),

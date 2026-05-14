@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -51,6 +52,26 @@ void _migrateCoursesArchived(AppState st) {
     item.done = false;
   }
   st.coursesArchivedOnce = true;
+}
+
+/// Remet en réserve les courses qui ont été sorties du pool (toPlan=false)
+/// suite au bug du rollover du 14 mai 2026.
+void _migrateRestoreCourses(AppState st) {
+  if (st.coursesRestoredOnce) return;
+  final shopAct = st.activities.firstWhereOrNull(
+      (a) => !a.isHabit && a.role == ActivityRole.shopping);
+  if (shopAct != null) {
+    for (final item in st.dayPlan) {
+      if (item.kind != PlanKind.action) continue;
+      if (item.activityId != shopAct.id) continue;
+      if (item.toPlan == true) continue; // déjà correct
+      // Restaure en réserve
+      item.toPlan = true;
+      item.archived = true;
+      item.done = false;
+    }
+  }
+  st.coursesRestoredOnce = true;
 }
 
 void _migrateLinkedActivities(AppState st) {
@@ -189,6 +210,7 @@ Future<AppState> loadOrInitCleaner() async {
     if (main != null) {
       _migrateDomainIdBackfill(main);
       _migrateCoursesArchived(main);
+      _migrateRestoreCourses(main);
       _migrateLinkedActivities(main);
       _migrateVoitureActivity(main);
       _cleanChecklists(main);
@@ -260,6 +282,7 @@ Future<AppState> loadOrInitCleaner() async {
         final b = tryDecode(await bak.readAsString());
         if (b != null) {
           _migrateCoursesArchived(b);
+          _migrateRestoreCourses(b);
           _migrateLinkedActivities(b);
           _migrateVoitureActivity(b);
           await save(b);

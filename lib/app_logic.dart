@@ -3003,8 +3003,12 @@ class AppLogic {
 
   void archiveAction(DayPlanItem it) {
     it.archived = true;
-    it.toPlan = false; // sort de "À prévoir"
-    it.done = false; // ✅ clé : sort de “Faits”
+    it.done = false;
+    // Les courses (toPlan=true) retournent en réserve — on préserve toPlan=true
+    // pour qu'elles restent dans le pool et réapparaissent dans le CoursesSheet.
+    if (it.toPlan != true) {
+      it.toPlan = false;
+    }
     onChange();
   }
 
