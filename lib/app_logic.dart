@@ -4456,6 +4456,7 @@ extension TodayLogic on AppLogic {
     String? activityId,
     String? habitId,
     String? blockId,
+    String? goalId,
   }) async {
     final key = ymd;
 
@@ -4477,6 +4478,18 @@ extension TodayLogic on AppLogic {
           ?.domainId;
     }
 
+    String? goalActionId;
+    if ((goalId ?? '').isNotEmpty) {
+      final goal = state.goals.firstWhereOrNull((g) => g.id == goalId);
+      if (goal != null) {
+        final ga = GoalAction(title: title.trim());
+        goal.actions.add(ga);
+        goalActionId = ga.id;
+        effectiveDomainId ??= goal.domainId;
+        activityId ??= goal.activityId;
+      }
+    }
+
     state.dayPlan.add(DayPlanItem(
         id: _uuid.v4(),
         kind: PlanKind.action,
@@ -4487,7 +4500,8 @@ extension TodayLogic on AppLogic {
         activityId: activityId,
         habitId: habitId,
         blockId: (blockId ?? '').isEmpty ? null : blockId,
-        status: ActionStatus.inbox));
+        goalActionId: goalActionId,
+        status: goalActionId != null ? null : ActionStatus.inbox));
 
     onChange();
   }

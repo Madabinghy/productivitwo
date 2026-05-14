@@ -1626,6 +1626,12 @@ class _AppRootState extends State<AppRoot>
           showDayReviewSheet(ctx, logic: logic);
       }
     };
+
+    // Traite un tap bufferisé (race condition background) et le cas "app terminée".
+    NotificationService.drainPending();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      NotificationService.handleLaunchNotification();
+    });
   }
 
   void _startMinuteHeartbeat() {
@@ -2080,6 +2086,7 @@ class _AppRootState extends State<AppRoot>
       domainId: result.domainId,
       activityId: result.activityId,
       blockId: result.blockId,
+      goalId: result.goalId,
     );
 
     logic.onChange();

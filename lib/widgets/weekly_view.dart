@@ -107,6 +107,7 @@ class _WeeklyViewState extends State<WeeklyView> {
       domainId: result.domainId,
       activityId: result.activityId,
       blockId: result.blockId,
+      goalId: result.goalId,
     );
     widget.logic.onChange();
     if (mounted) setState(() {});

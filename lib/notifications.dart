@@ -13,6 +13,9 @@ class NotificationService {
   /// L'int est l'ID de la notification (ex: 2 = résumé du jour).
   static void Function(int notificationId)? onNotificationTap;
 
+  // Bufferise l'ID si le callback n'est pas encore assigné (race condition background).
+  static int? _pendingId;
+
   static const _channelId = 'routines_daily';
   static const _notifId = 1;
   static const _reviewChannelId = 'review_daily';
@@ -49,7 +52,12 @@ class NotificationService {
         macOS: darwinSettings,
       ),
       onDidReceiveNotificationResponse: (response) {
-        onNotificationTap?.call(response.id ?? 0);
+        final id = response.id ?? 0;
+        if (onNotificationTap != null) {
+          onNotificationTap!.call(id);
+        } else {
+          _pendingId = id;
+        }
       },
     );
     _initialized = true;
@@ -283,6 +291,25 @@ class NotificationService {
             UILocalNotificationDateInterpretation.absoluteTime,
         matchDateTimeComponents: DateTimeComponents.time,
       );
+    }
+  }
+
+  /// À appeler juste après avoir assigné [onNotificationTap] pour traiter
+  /// un éventuel tap bufferisé (race condition app en background).
+  static void drainPending() {
+    final id = _pendingId;
+    _pendingId = null;
+    if (id != null) onNotificationTap?.call(id);
+  }
+
+  /// À appeler après le premier frame pour gérer le cas "app terminée lancée
+  /// depuis une notification" (getNotificationAppLaunchDetails).
+  static Future<void> handleLaunchNotification() async {
+    if (!_supported || !_initialized) return;
+    final details = await _plugin.getNotificationAppLaunchDetails();
+    if (details?.didNotificationLaunchApp == true) {
+      final id = details!.notificationResponse?.id ?? 0;
+      onNotificationTap?.call(id);
     }
   }
 
