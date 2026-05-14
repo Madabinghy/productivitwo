@@ -85,18 +85,26 @@ class _DayBlocksSheetState extends State<_DayBlocksSheet> {
     final result = await _showBlockDialog(context);
     if (result == null) return;
     logic.createBlock(result.$1, emoji: result.$2);
+    if (result.$3 != null) {
+      final b = logic.state.blocks.last;
+      logic.updateBlock(b.id,
+          startHour: result.$3!.hour, startMinute: result.$3!.minute);
+    }
     setState(() {});
   }
 
   Future<void> _editBlock(DayBlock block) async {
-    final result =
-        await _showBlockDialog(context, name: block.name, emoji: block.emoji);
+    final result = await _showBlockDialog(context,
+        name: block.name, emoji: block.emoji, block: block);
     if (result == null) return;
     logic.updateBlock(
       block.id,
       name: result.$1,
       emoji: result.$2,
       clearEmoji: result.$2 == null,
+      startHour: result.$3?.hour,
+      startMinute: result.$3?.minute,
+      clearStartTime: result.$3 == null,
     );
     setState(() {});
   }
@@ -335,17 +343,23 @@ class _BlockActivitiesSheetState extends State<_BlockActivitiesSheet> {
 }
 
 // Dialogue création/édition d'un bloc
-Future<(String, String?)?> _showBlockDialog(
+// Retourne (nom, emoji, startTime?) — startTime null = pas de rappel
+Future<(String, String?, TimeOfDay?)?> _showBlockDialog(
   BuildContext context, {
   String? name,
   String? emoji,
+  DayBlock? block,
 }) async {
   final nameCtrl = TextEditingController(text: name ?? '');
   final emojiCtrl = TextEditingController(text: emoji ?? '');
+  TimeOfDay? startTime = block?.startHour != null
+      ? TimeOfDay(hour: block!.startHour!, minute: block.startMinute ?? 0)
+      : null;
 
-  return showDialog<(String, String?)>(
+  return showDialog<(String, String?, TimeOfDay?)>(
     context: context,
-    builder: (ctx) => AlertDialog(
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setS) => AlertDialog(
       title: Text(name == null ? 'Nouveau bloc' : 'Modifier le bloc'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -370,18 +384,53 @@ Future<(String, String?)?> _showBlockDialog(
               Expanded(
                 child: TextField(
                   controller: nameCtrl,
-                  autofocus: true,
+                  autofocus: name == null,
                   decoration: const InputDecoration(labelText: 'Nom du bloc'),
                   textCapitalization: TextCapitalization.sentences,
-                  onSubmitted: (_) {
-                    final n = nameCtrl.text.trim();
-                    if (n.isEmpty) return;
-                    final e = emojiCtrl.text.trim();
-                    Navigator.pop(ctx, (n, e.isEmpty ? null : e));
-                  },
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 12),
+          // Heure de début (optionnelle)
+          InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () async {
+              final picked = await showTimePicker(
+                context: ctx,
+                initialTime: startTime ?? const TimeOfDay(hour: 9, minute: 0),
+                helpText: 'Heure de début du bloc',
+              );
+              if (picked != null) setS(() => startTime = picked);
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.alarm, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      startTime != null
+                          ? 'Rappel à ${startTime!.hour.toString().padLeft(2, '0')}:${startTime!.minute.toString().padLeft(2, '0')}'
+                          : 'Ajouter un rappel (optionnel)',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: startTime != null
+                            ? Theme.of(ctx).colorScheme.primary
+                            : Theme.of(ctx).colorScheme.onSurface.withOpacity(.5),
+                      ),
+                    ),
+                  ),
+                  if (startTime != null)
+                    GestureDetector(
+                      onTap: () => setS(() => startTime = null),
+                      child: Icon(Icons.close, size: 16,
+                          color: Theme.of(ctx).colorScheme.onSurface.withOpacity(.4)),
+                    ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -394,11 +443,12 @@ Future<(String, String?)?> _showBlockDialog(
             final n = nameCtrl.text.trim();
             if (n.isEmpty) return;
             final e = emojiCtrl.text.trim();
-            Navigator.pop(ctx, (n, e.isEmpty ? null : e));
+            Navigator.pop(ctx, (n, e.isEmpty ? null : e, startTime));
           },
           child: const Text('OK'),
         ),
       ],
+    ),
     ),
   );
 }

@@ -1671,6 +1671,29 @@ class _AppRootState extends State<AppRoot>
         hour: logic.state.reviewNotifHour,
         minute: logic.state.reviewNotifMinute,
       );
+      await NotificationService.scheduleStreakReminder(
+        hour: logic.state.streakNotifHour,
+        minute: logic.state.streakNotifMinute,
+        routineNames: logic.streakAtRiskNames(),
+      );
+      await NotificationService.scheduleChallengeReminder(
+        hour: logic.state.challengeNotifHour,
+        minute: logic.state.challengeNotifMinute,
+      );
+      await NotificationService.scheduleMidDayScore(
+        hour: logic.state.midDayNotifHour,
+        minute: logic.state.midDayNotifMinute,
+      );
+      final blocksWithTime = logic.state.blocks
+          .where((b) => b.startHour != null)
+          .map((b) => (
+                id: b.id,
+                label: '${b.emoji != null ? "${b.emoji} " : ""}${b.name}',
+                hour: b.startHour!,
+                minute: b.startMinute ?? 0,
+              ))
+          .toList();
+      await NotificationService.scheduleBlockReminders(blocks: blocksWithTime);
     }());
 
     // ... le reste inchangé
@@ -3533,6 +3556,67 @@ class _AppRootState extends State<AppRoot>
                       ),
                     ),
                   ),
+                  const Divider(height: 1),
+                  // ── Streak en danger ──────────────────────────────────────
+                  _notifSettingRow(
+                    context, cs,
+                    icon: Icons.local_fire_department_outlined,
+                    label: 'Streak en danger',
+                    hour: _state!.streakNotifHour,
+                    minute: _state!.streakNotifMinute,
+                    onPicked: (picked) async {
+                      setState(() {
+                        _state!.streakNotifHour = picked.hour;
+                        _state!.streakNotifMinute = picked.minute;
+                      });
+                      logic.onChange();
+                      await NotificationService.scheduleStreakReminder(
+                        hour: picked.hour,
+                        minute: picked.minute,
+                        routineNames: logic.streakAtRiskNames(),
+                      );
+                    },
+                  ),
+                  const Divider(height: 1),
+                  // ── Défi du jour ──────────────────────────────────────────
+                  _notifSettingRow(
+                    context, cs,
+                    icon: Icons.bolt_outlined,
+                    label: 'Défi du jour',
+                    hour: _state!.challengeNotifHour,
+                    minute: _state!.challengeNotifMinute,
+                    onPicked: (picked) async {
+                      setState(() {
+                        _state!.challengeNotifHour = picked.hour;
+                        _state!.challengeNotifMinute = picked.minute;
+                      });
+                      logic.onChange();
+                      await NotificationService.scheduleChallengeReminder(
+                        hour: picked.hour,
+                        minute: picked.minute,
+                      );
+                    },
+                  ),
+                  const Divider(height: 1),
+                  // ── Score mi-journée ──────────────────────────────────────
+                  _notifSettingRow(
+                    context, cs,
+                    icon: Icons.wb_sunny_outlined,
+                    label: 'Score mi-journée',
+                    hour: _state!.midDayNotifHour,
+                    minute: _state!.midDayNotifMinute,
+                    onPicked: (picked) async {
+                      setState(() {
+                        _state!.midDayNotifHour = picked.hour;
+                        _state!.midDayNotifMinute = picked.minute;
+                      });
+                      logic.onChange();
+                      await NotificationService.scheduleMidDayScore(
+                        hour: picked.hour,
+                        minute: picked.minute,
+                      );
+                    },
+                  ),
                 ],
               );
             },
@@ -3544,6 +3628,52 @@ class _AppRootState extends State<AppRoot>
       ],
         );
       },
+    );
+  }
+
+  Widget _notifSettingRow(
+    BuildContext context,
+    ColorScheme cs, {
+    required IconData icon,
+    required String label,
+    required int hour,
+    required int minute,
+    required Future<void> Function(TimeOfDay) onPicked,
+  }) {
+    return InkWell(
+      onTap: () async {
+        final picked = await showTimePicker(
+          context: context,
+          initialTime: TimeOfDay(hour: hour, minute: minute),
+          helpText: label,
+        );
+        if (picked == null || !mounted) return;
+        await onPicked(picked);
+      },
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+        child: Row(
+          children: [
+            Icon(icon, size: 16, color: cs.onSurface.withOpacity(.45)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(label,
+                  style: TextStyle(
+                      fontSize: 13, color: cs.onSurface.withOpacity(.6))),
+            ),
+            Text(
+              '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: cs.primary),
+            ),
+            const SizedBox(width: 6),
+            Icon(Icons.chevron_right,
+                size: 16, color: cs.onSurface.withOpacity(.3)),
+          ],
+        ),
+      ),
     );
   }
 

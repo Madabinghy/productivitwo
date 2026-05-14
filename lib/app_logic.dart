@@ -3460,6 +3460,19 @@ class AppLogic {
     }
   }
 
+  /// Routines quotidiennes avec streak ≥ 3 non encore validées aujourd'hui.
+  List<String> streakAtRiskNames() {
+    final today = DateTime.now();
+    return state.activities
+        .where((a) =>
+            a.isHabit &&
+            effectiveHabitFreq(a) == HabitFreq.daily &&
+            habitCurrentStreak(a.id) >= 3 &&
+            !habitReached(a))
+        .map((a) => a.name)
+        .toList();
+  }
+
   void unskipChallengeForToday(String todayYmd) {
     if (state.skippedChallengeDates.remove(todayYmd)) onChange();
   }
@@ -4805,7 +4818,13 @@ extension TodayLogic on AppLogic {
     onChange();
   }
 
-  void updateBlock(String blockId, {String? name, String? emoji, bool clearEmoji = false}) {
+  void updateBlock(String blockId,
+      {String? name,
+      String? emoji,
+      bool clearEmoji = false,
+      int? startHour,
+      int? startMinute,
+      bool clearStartTime = false}) {
     final b = state.blocks.firstWhereOrNull((b) => b.id == blockId);
     if (b == null) return;
     if (name != null) b.name = name;
@@ -4813,6 +4832,13 @@ extension TodayLogic on AppLogic {
       b.emoji = null;
     } else if (emoji != null) {
       b.emoji = emoji;
+    }
+    if (clearStartTime) {
+      b.startHour = null;
+      b.startMinute = null;
+    } else if (startHour != null) {
+      b.startHour = startHour;
+      b.startMinute = startMinute ?? 0;
     }
     onChange();
   }

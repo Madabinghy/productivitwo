@@ -196,7 +196,9 @@ class DayBlock {
   String name;
   String? emoji;
   int order;
-  List<String> activityIds; // routines (refId) toujours assignées à ce bloc
+  List<String> activityIds;
+  int? startHour;   // heure de début du bloc (null = pas de rappel)
+  int? startMinute;
 
   DayBlock({
     String? id,
@@ -204,6 +206,8 @@ class DayBlock {
     this.emoji,
     this.order = 0,
     List<String>? activityIds,
+    this.startHour,
+    this.startMinute,
   })  : id = id ?? _uuid.v4(),
         activityIds = activityIds ?? [];
 
@@ -213,6 +217,8 @@ class DayBlock {
         'emoji': emoji,
         'order': order,
         'activityIds': activityIds,
+        'startHour': startHour,
+        'startMinute': startMinute,
       };
 
   static DayBlock from(Map j) => DayBlock(
@@ -222,6 +228,8 @@ class DayBlock {
         order: (j['order'] as num?)?.toInt() ?? 0,
         activityIds:
             (j['activityIds'] as List?)?.cast<String>() ?? <String>[],
+        startHour: j['startHour'] as int?,
+        startMinute: j['startMinute'] as int?,
       );
 }
 
@@ -872,10 +880,16 @@ class AppState {
   List<EarnedBadge> earnedBadges;
   List<String> skippedChallengeDates;
   int weeklyScoreTarget; // % objectif hebdomadaire (0-100) // yyyymmdd où le défi a été passé
-  int notifHour;        // heure du rappel quotidien (défaut 9)
-  int notifMinute;      // minute du rappel quotidien (défaut 0)
-  int reviewNotifHour;  // heure du résumé de fin de journée (défaut 21)
+  int notifHour;           // rappel quotidien (défaut 9h)
+  int notifMinute;
+  int reviewNotifHour;     // résumé fin de journée (défaut 21h)
   int reviewNotifMinute;
+  int streakNotifHour;     // streak en danger (défaut 20h)
+  int streakNotifMinute;
+  int challengeNotifHour;  // défi du jour (défaut 16h)
+  int challengeNotifMinute;
+  int midDayNotifHour;     // score mi-journée (défaut 13h)
+  int midDayNotifMinute;
   bool domainIdBackfilledOnce;
 
   AppState({
@@ -905,6 +919,12 @@ class AppState {
     this.notifMinute = 0,
     this.reviewNotifHour = 21,
     this.reviewNotifMinute = 0,
+    this.streakNotifHour = 20,
+    this.streakNotifMinute = 0,
+    this.challengeNotifHour = 16,
+    this.challengeNotifMinute = 0,
+    this.midDayNotifHour = 13,
+    this.midDayNotifMinute = 0,
     this.domainIdBackfilledOnce = false,
     // ✅ NOUVEAU
     Map<String, List<String>>? nowSkippedByYmd,
@@ -977,6 +997,12 @@ class AppState {
         'notifMinute': notifMinute,
         'reviewNotifHour': reviewNotifHour,
         'reviewNotifMinute': reviewNotifMinute,
+        'streakNotifHour': streakNotifHour,
+        'streakNotifMinute': streakNotifMinute,
+        'challengeNotifHour': challengeNotifHour,
+        'challengeNotifMinute': challengeNotifMinute,
+        'midDayNotifHour': midDayNotifHour,
+        'midDayNotifMinute': midDayNotifMinute,
         'domainIdBackfilledOnce': domainIdBackfilledOnce,
       };
 
@@ -1057,6 +1083,12 @@ class AppState {
       notifMinute: (j['notifMinute'] as int?) ?? 0,
       reviewNotifHour: (j['reviewNotifHour'] as int?) ?? 21,
       reviewNotifMinute: (j['reviewNotifMinute'] as int?) ?? 0,
+      streakNotifHour: (j['streakNotifHour'] as int?) ?? 20,
+      streakNotifMinute: (j['streakNotifMinute'] as int?) ?? 0,
+      challengeNotifHour: (j['challengeNotifHour'] as int?) ?? 16,
+      challengeNotifMinute: (j['challengeNotifMinute'] as int?) ?? 0,
+      midDayNotifHour: (j['midDayNotifHour'] as int?) ?? 13,
+      midDayNotifMinute: (j['midDayNotifMinute'] as int?) ?? 0,
       domainIdBackfilledOnce: (j['domainIdBackfilledOnce'] as bool?) ?? false,
     );
   }
