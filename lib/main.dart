@@ -1563,9 +1563,14 @@ class _AppRootState extends State<AppRoot>
     NotificationService.onNotificationTap = (id) {
       final ctx = _navigatorKey.currentContext;
       if (ctx == null) return;
-      if (id == 2) {
-        // Résumé du jour
-        showDayReviewSheet(ctx, logic: logic);
+      switch (id) {
+        case 2: // Résumé du jour
+          showDayReviewSheet(ctx, logic: logic);
+        case 3: // Streak en danger → onglet À faire
+        case 4: // Défi du jour → onglet À faire
+          setState(() => _tab = _Tab.today);
+        case 5: // Score mi-journée → résumé du jour
+          showDayReviewSheet(ctx, logic: logic);
       }
     };
   }
