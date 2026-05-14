@@ -3322,6 +3322,16 @@ class _NowTabState extends State<NowTab> {
   String? _activeBlockId; // bloc actif en mode séquence
   bool _userChoseBlock = false; // true = l'utilisateur a sélectionné manuellement
 
+  bool _isPlanItemDone(DayPlanItem it) {
+    if (it.kind == PlanKind.habit) {
+      final habitId = (it.refId ?? it.habitId ?? '').trim();
+      if (habitId.isEmpty) return it.done;
+      final act = widget.st.activities.firstWhereOrNull((a) => a.id == habitId);
+      return act != null ? widget.logic.habitReached(act) : it.done;
+    }
+    return it.done;
+  }
+
   List<String> checklistForHabit(String habitName) {
     switch (habitName.toLowerCase()) {
       case 'Prendre un bain de mer':
@@ -4937,7 +4947,7 @@ class _NowTabState extends State<NowTab> {
               .toList();
 
           final blockItems = allBlockItems
-              .where((it) => !it.done && !_skippedIds.contains(it.id))
+              .where((it) => !_isPlanItemDone(it) && !_skippedIds.contains(it.id))
               .toList();
 
           if (blockItems.isEmpty) {
@@ -4945,7 +4955,7 @@ class _NowTabState extends State<NowTab> {
           } else {
             final chosen = blockItems.first;
             final doneInBlock =
-                allBlockItems.where((it) => it.done).length;
+                allBlockItems.where((it) => _isPlanItemDone(it)).length;
             final totalInBlock = allBlockItems.length;
             final activeBlock = logic.state.blocks
                 .firstWhere((b) => b.id == _activeBlockId);

@@ -4690,7 +4690,15 @@ extension TodayLogic on AppLogic {
   bool isBlockComplete(String blockId, String ymd) {
     final items = blockItemsForDay(blockId, ymd);
     if (items.isEmpty) return true;
-    return items.every((it) => it.done);
+    return items.every((it) {
+      if (it.kind == PlanKind.habit) {
+        final habitId = it.refId ?? it.habitId;
+        if (habitId == null) return it.done;
+        final act = state.activities.firstWhereOrNull((a) => a.id == habitId);
+        return act != null ? habitReached(act) : it.done;
+      }
+      return it.done;
+    });
   }
 
   bool isBlockDisabledForDay(String blockId, String ymd) {
