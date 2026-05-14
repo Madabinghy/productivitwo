@@ -12,6 +12,7 @@ import 'package:collection/collection.dart';
 import 'package:productivitwo_v1/widgets/assign_activity_sheet.dart';
 import 'package:productivitwo_v1/widgets/day_block_sheet.dart';
 import 'package:productivitwo_v1/widgets/goals_view.dart';
+import 'package:productivitwo_v1/widgets/recurring_actions_sheet.dart';
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
 import 'package:productivitwo_v1/widgets/now_habit_tile_full.dart';
 import 'package:productivitwo_v1/widgets/tiny_bar.dart';
@@ -2056,6 +2057,13 @@ class _TodayViewState extends State<TodayView> {
                   icon: const Icon(Icons.tune, size: 16),
                   label: const Text('Blocs'),
                   onPressed: () => showDayBlocksSheet(context, logic: widget.logic).then((_) => setState(() {})),
+                ),
+              if (isTodayTab && widget.logic.state.recurringActions.isNotEmpty)
+                TextButton.icon(
+                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                  icon: const Icon(Icons.repeat, size: 16),
+                  label: const Text('Récurrentes'),
+                  onPressed: () => showRecurringActionsSheet(context, logic: widget.logic).then((_) => setState(() {})),
                 ),
               TextButton(
                 onPressed: () => setState(() => _showAll = !_showAll),
