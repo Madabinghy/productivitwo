@@ -367,8 +367,7 @@ class _WeeklyViewState extends State<WeeklyView> {
                                           if (it.toPlan == true) {
                                             widget.logic.archiveAction(it);
                                           } else {
-                                            it.done = true;
-                                            widget.logic.onChange();
+                                            widget.logic.completePlanItem(it, true);
                                           }
                                         } else {
                                           widget.logic.state.dayPlan
@@ -390,8 +389,8 @@ class _WeeklyViewState extends State<WeeklyView> {
                                               widget.logic.archiveAction(it);
                                               setState(() {});
                                             } else {
-                                              setState(() => it.done = !it.done);
-                                              widget.logic.onChange();
+                                              widget.logic.completePlanItem(it, !it.done);
+                                              setState(() {});
                                             }
                                           },
                                         ),
@@ -472,8 +471,8 @@ class _WeeklyViewState extends State<WeeklyView> {
                                           widget.logic.state.domains,
                                         ),
                                         onToggle: () {
-                                          setState(() => it.done = false);
-                                          widget.logic.onChange();
+                                          widget.logic.completePlanItem(it, false);
+                                          setState(() {});
                                         },
                                       )),
                               ],

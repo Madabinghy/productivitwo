@@ -1411,6 +1411,20 @@ class AppLogic {
     onChange();
   }
 
+  /// Coche/décoche un DayPlanItem et synchronise la GoalAction liée si besoin.
+  void completePlanItem(DayPlanItem it, bool done) {
+    it.done = done;
+    if (it.goalActionId != null) {
+      final goal = state.goals.firstWhereOrNull(
+          (g) => g.actions.any((a) => a.id == it.goalActionId));
+      if (goal != null) {
+        toggleGoalAction(goal.id, it.goalActionId!, done);
+        return; // toggleGoalAction appelle onChange
+      }
+    }
+    onChange();
+  }
+
   void toggleGoalAction(String goalId, String actionId, bool done) {
     final g = state.goals.firstWhere((x) => x.id == goalId);
     final idx = g.actions.indexWhere((a) => a.id == actionId);
