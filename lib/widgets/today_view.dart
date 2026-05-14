@@ -687,7 +687,66 @@ class _TodayViewState extends State<TodayView> {
     required bool autoExpanded,
     required Activity? shoppingAct,
   }) {
-    if (courses.isEmpty) return const SizedBox.shrink();
+    final reserveCount = widget.st.dayPlan
+        .where((a) =>
+            a.kind == PlanKind.action &&
+            a.toPlan == true &&
+            a.archived == true &&
+            !a.done)
+        .length;
+
+    if (courses.isEmpty && reserveCount == 0) return const SizedBox.shrink();
+
+    // Pas de courses actives mais des articles en réserve → chip compact
+    if (courses.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: InkWell(
+          onTap: () => showCoursesSheet(context, logic: widget.logic),
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              border: Border.all(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .outline
+                      .withOpacity(.3)),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.shopping_cart_outlined,
+                    size: 18,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withOpacity(.5)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Courses — $reserveCount article${reserveCount > 1 ? 's' : ''} en réserve',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(.6),
+                    ),
+                  ),
+                ),
+                Icon(Icons.chevron_right,
+                    size: 18,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withOpacity(.4)),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     final expanded = autoExpanded || _showCourses;
 
