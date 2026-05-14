@@ -319,69 +319,86 @@ class _WeeklyViewState extends State<WeeklyView> {
                           else ...[
                             // ── Actions ──────────────────────────────────
                             if (actions.isNotEmpty || doneActions.isNotEmpty) ...[
-                              ...actions.map((it) {
-                                final dColor = domainColor(
-                                  (it.domainId ?? '').isNotEmpty
-                                      ? it.domainId
-                                      : widget.logic.state.activities
-                                          .firstWhereOrNull((a) => a.id == it.activityId)
-                                          ?.domainId,
-                                  widget.logic.state.domains,
-                                );
-                                return Dismissible(
-                                  key: ValueKey('week:${it.id}'),
-                                  direction: DismissDirection.horizontal,
-                                  // Swipe gauche→droite : cocher
-                                  background: Container(
-                                    alignment: Alignment.centerLeft,
-                                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                                    color: Colors.green.withOpacity(.15),
-                                    child: const Icon(Icons.check_circle_outline,
-                                        color: Colors.green),
-                                  ),
-                                  // Swipe droite→gauche : supprimer
-                                  secondaryBackground: Container(
-                                    alignment: Alignment.centerRight,
-                                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                                    color: Colors.red.withOpacity(.15),
-                                    child: const Icon(Icons.delete, color: Colors.red),
-                                  ),
-                                  onDismissed: (direction) {
-                                    HapticFeedback.lightImpact();
-                                    if (direction == DismissDirection.startToEnd) {
-                                      // Cocher
-                                      if (it.toPlan == true) {
-                                        widget.logic.archiveAction(it);
-                                      } else {
-                                        it.done = true;
-                                        widget.logic.onChange();
-                                      }
-                                    } else {
-                                      // Supprimer
-                                      widget.logic.state.dayPlan
-                                          .removeWhere((e) => e.id == it.id);
-                                      widget.logic.onChange();
-                                    }
-                                    setState(() {});
+                              if (actions.isNotEmpty)
+                                ReorderableListView.builder(
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  buildDefaultDragHandles: false,
+                                  itemCount: actions.length,
+                                  onReorder: (oldIndex, newIndex) {
+                                    setState(() {
+                                      widget.logic.reorderTodayBucket(
+                                        yyyymmdd: ymd,
+                                        bucketVisible: actions,
+                                        oldIndex: oldIndex,
+                                        newIndex: newIndex,
+                                      );
+                                    });
                                   },
-                                  child: _ActionTile(
-                                    action: it,
-                                    isPast: isPast,
-                                    cs: cs,
-                                    domainColor: dColor,
-                                    onToggle: () {
-                                      HapticFeedback.lightImpact();
-                                      if (it.toPlan == true && !it.done) {
-                                        widget.logic.archiveAction(it);
+                                  itemBuilder: (ctx, idx) {
+                                    final it = actions[idx];
+                                    final dColor = domainColor(
+                                      (it.domainId ?? '').isNotEmpty
+                                          ? it.domainId
+                                          : widget.logic.state.activities
+                                              .firstWhereOrNull((a) => a.id == it.activityId)
+                                              ?.domainId,
+                                      widget.logic.state.domains,
+                                    );
+                                    return Dismissible(
+                                      key: ValueKey('week:${it.id}'),
+                                      direction: DismissDirection.horizontal,
+                                      background: Container(
+                                        alignment: Alignment.centerLeft,
+                                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                                        color: Colors.green.withOpacity(.15),
+                                        child: const Icon(Icons.check_circle_outline,
+                                            color: Colors.green),
+                                      ),
+                                      secondaryBackground: Container(
+                                        alignment: Alignment.centerRight,
+                                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                                        color: Colors.red.withOpacity(.15),
+                                        child: const Icon(Icons.delete, color: Colors.red),
+                                      ),
+                                      onDismissed: (direction) {
+                                        HapticFeedback.lightImpact();
+                                        if (direction == DismissDirection.startToEnd) {
+                                          if (it.toPlan == true) {
+                                            widget.logic.archiveAction(it);
+                                          } else {
+                                            it.done = true;
+                                            widget.logic.onChange();
+                                          }
+                                        } else {
+                                          widget.logic.state.dayPlan
+                                              .removeWhere((e) => e.id == it.id);
+                                          widget.logic.onChange();
+                                        }
                                         setState(() {});
-                                      } else {
-                                        setState(() => it.done = !it.done);
-                                        widget.logic.onChange();
-                                      }
-                                    },
-                                  ),
-                                );
-                              }),
+                                      },
+                                      child: ReorderableDragStartListener(
+                                        index: idx,
+                                        child: _ActionTile(
+                                          action: it,
+                                          isPast: isPast,
+                                          cs: cs,
+                                          domainColor: dColor,
+                                          onToggle: () {
+                                            HapticFeedback.lightImpact();
+                                            if (it.toPlan == true && !it.done) {
+                                              widget.logic.archiveAction(it);
+                                              setState(() {});
+                                            } else {
+                                              setState(() => it.done = !it.done);
+                                              widget.logic.onChange();
+                                            }
+                                          },
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
                               // ── Faites (accordéon) ───────────────────────
                               if (doneActions.isNotEmpty) ...[
                                 if (actions.isNotEmpty)
