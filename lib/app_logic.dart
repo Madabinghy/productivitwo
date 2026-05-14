@@ -95,6 +95,10 @@ class AppLogic {
   String? nowHabitId; // habitId actuellement affichée dans Maintenant (routine)
   String? _checkYmd; // pour reset journalier
 
+  /// Positionner à true avant une suppression pour éviter que le badge
+  /// "journée parfaite" se déclenche sur un score artificiellement à 100%.
+  bool skipBadgeCheck = false;
+
   String? _avg7CacheDayKey;
   double? _avg7CacheValue;
 
@@ -1513,6 +1517,16 @@ class AppLogic {
     state.domains.add(d);
     onChange();
     return d;
+  }
+
+  void deleteDomain(Domain domain) {
+    state.domains.removeWhere((d) => d.id == domain.id);
+    for (int i = 0; i < state.activities.length; i++) {
+      if (state.activities[i].domainId == domain.id) {
+        state.activities[i] = state.activities[i].copyWith(domainId: '');
+      }
+    }
+    onChange();
   }
 
   Activity createHabit({
@@ -3814,13 +3828,14 @@ class AppLogic {
     if (totalDone >= 50) award(BadgeId.actions50);
     if (totalDone >= 100) award(BadgeId.actions100);
 
-    // --- Score journalier ---
+    // --- Score journalier (courses exclues) ---
     final todayYmd = yyyymmdd(now);
     final todayActions = state.dayPlan
         .where((it) =>
             it.yyyymmdd == todayYmd &&
             it.kind == PlanKind.action &&
-            !it.archived)
+            !it.archived &&
+            it.toPlan != true)
         .toList();
     final todayActionsDone = todayActions.where((it) => it.done).length;
     final routineSummary = routineProgressSummaryForCurrentPeriod();

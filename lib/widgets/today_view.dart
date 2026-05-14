@@ -1251,6 +1251,7 @@ class _TodayViewState extends State<TodayView> {
     setState(() {
       widget.logic.state.dayPlan.removeAt(idx);
     });
+    widget.logic.skipBadgeCheck = true;
     widget.logic.onChange();
 
     messenger.clearSnackBars();
@@ -2398,7 +2399,7 @@ class _TodayViewState extends State<TodayView> {
             ),
             if (_showDone) ...[
               ...doneActions.map((it) {
-                final viewedDay = DateTime.now();
+                final cs = Theme.of(context).colorScheme;
                 return Dismissible(
                   key: ValueKey("done:${it.id}"),
                   direction: DismissDirection.endToStart,
@@ -2409,11 +2410,35 @@ class _TodayViewState extends State<TodayView> {
                     child: const Icon(Icons.delete, color: Colors.red),
                   ),
                   onDismissed: (_) => _deleteActionWithUndo(it),
-                  child: _actionCardContent(
-                    it,
-                    viewedDay: viewedDay,
-                    ymdViewed: ymd,
-                    isTodayTab: isTodayTab,
+                  child: InkWell(
+                    onTap: () {
+                      widget.logic.completePlanItem(it, false);
+                      setState(() {});
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          Icon(Icons.check_circle,
+                              size: 18, color: cs.primary.withOpacity(.6)),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              it.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: cs.onSurface.withOpacity(.45),
+                                decoration: TextDecoration.lineThrough,
+                                decorationColor: cs.onSurface.withOpacity(.35),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 );
               }),
@@ -2861,7 +2886,7 @@ class _TodayViewState extends State<TodayView> {
                     IconButton(
                       tooltip: "Renommer",
                       onPressed: () async {
-                        final txt = await _askText(ctx, "Renommer l'action");
+                        final txt = await _askText(ctx, "Renommer l'action", initial: it.title);
                         if (txt == null) return;
                         final t = txt.trim();
                         if (t.isEmpty) return;
@@ -3153,6 +3178,26 @@ class _TodayViewState extends State<TodayView> {
                   if (!mounted) return;
                   setState(() {});
                 },
+            onLongPress: it.done
+                ? null
+                : () {
+                    HapticFeedback.mediumImpact();
+                    widget.logic.moveItemToTomorrow(ymdViewed, it);
+                    setState(() {});
+                    ScaffoldMessenger.of(context).clearSnackBars();
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text(isTodayTab
+                          ? 'Déplacé à demain'
+                          : 'Déplacé à après-demain'),
+                      action: SnackBarAction(
+                        label: 'Annuler',
+                        onPressed: () {
+                          widget.logic.moveItemToDayById(it.id, ymdViewed);
+                          setState(() {});
+                        },
+                      ),
+                    ));
+                  },
             child: _actionCardLikeHabit(it),
           );
 
@@ -3353,10 +3398,30 @@ class _TodayViewState extends State<TodayView> {
                       // Si tu as laissé applyDirectly=true (par défaut), tu n'as RIEN d'autre à faire.
                       // Sinon, applique ici.
                     },
-                    onLongPress: () async {
-                      // si tu veux ouvrir le sheet d'édition complet
-                      // openHabitEditSheet(...) ou ton editor
-                    },
+                    onLongPress: it.done
+                        ? null
+                        : () async {
+                            HapticFeedback.mediumImpact();
+                            await widget.logic.sendToTomorrow(it);
+                            if (!mounted) return;
+                            setState(() {});
+                            ScaffoldMessenger.of(context).clearSnackBars();
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                              content: Text(isTodayTab
+                                  ? 'Routine déplacée à demain'
+                                  : 'Routine déplacée à après-demain'),
+                              action: isVirtual
+                                  ? null
+                                  : SnackBarAction(
+                                      label: 'Annuler',
+                                      onPressed: () {
+                                        widget.logic
+                                            .moveItemToDayById(it.id, ymdViewed);
+                                        setState(() {});
+                                      },
+                                    ),
+                            ));
+                          },
                   ),
 
                   const SizedBox(height: 6),
@@ -3368,8 +3433,9 @@ class _TodayViewState extends State<TodayView> {
     }
   }
 
-  Future<String?> _askText(BuildContext ctx, String title) async {
-    final ctrl = TextEditingController();
+  Future<String?> _askText(BuildContext ctx, String title, {String? initial}) async {
+    final ctrl = TextEditingController(text: initial);
+    if (initial != null) ctrl.selection = TextSelection(baseOffset: 0, extentOffset: initial.length);
     return await showDialog<String>(
       context: ctx,
       builder: (_) => AlertDialog(
@@ -4917,9 +4983,22 @@ class _NowTabState extends State<NowTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              "À prévoir",
-              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+            Row(
+              children: [
+                const Text(
+                  "À prévoir",
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                ),
+                const SizedBox(width: 6),
+                GestureDetector(
+                  onTap: () => showCoursesSheet(context, logic: widget.logic),
+                  child: Icon(
+                    Icons.shopping_cart_outlined,
+                    size: 16,
+                    color: Theme.of(context).colorScheme.primary.withOpacity(0.7),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 6),
             if (actions.isEmpty)

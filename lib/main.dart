@@ -1862,8 +1862,10 @@ class _AppRootState extends State<AppRoot>
   Future<void> _saveAndRefresh() async {
     if (_state == null) return;
 
-    // Vérification badges + célébration
-    final newBadges = logic.checkAndAwardBadges();
+    // Vérification badges + célébration (pas après une suppression)
+    final skipBadge = logic.skipBadgeCheck;
+    logic.skipBadgeCheck = false;
+    final newBadges = skipBadge ? <EarnedBadge>[] : logic.checkAndAwardBadges();
     if (newBadges.isNotEmpty && mounted) {
       final meta = badgeMeta(newBadges.last.id);
       _confettiController.play();
@@ -1878,7 +1880,8 @@ class _AppRootState extends State<AppRoot>
           .where((it) =>
               it.yyyymmdd == today &&
               it.kind == PlanKind.action &&
-              !it.archived)
+              !it.archived &&
+              it.toPlan != true)
           .toList();
       final actsDone = acts.where((it) => it.done).length;
       final rs = logic.routineProgressSummaryForCurrentPeriod();
@@ -2063,8 +2066,9 @@ class _AppRootState extends State<AppRoot>
 
   // ---------- UI ----------
 
-  Future<String?> _askText(BuildContext ctx, String title) async {
-    final ctrl = TextEditingController();
+  Future<String?> _askText(BuildContext ctx, String title, {String? initial}) async {
+    final ctrl = TextEditingController(text: initial);
+    if (initial != null) ctrl.selection = TextSelection(baseOffset: 0, extentOffset: initial.length);
     return await showDialog<String>(
       context: ctx,
       builder: (_) => AlertDialog(
@@ -2457,7 +2461,8 @@ class _AppRootState extends State<AppRoot>
           .where((it) =>
               it.yyyymmdd == today &&
               it.kind == PlanKind.action &&
-              !it.archived)
+              !it.archived &&
+              it.toPlan != true)
           .toList();
       final actionsDone = actions.where((it) => it.done).length;
       final actionsTotal = actions.length;
@@ -2960,7 +2965,8 @@ class _AppRootState extends State<AppRoot>
           .where((it) =>
               it.yyyymmdd == today &&
               it.kind == PlanKind.action &&
-              !it.archived)
+              !it.archived &&
+              it.toPlan != true)
           .toList();
       final actionsDone = actions.where((it) => it.done).length;
       final routineSummary = logic.routineProgressSummaryForCurrentPeriod();
@@ -3794,10 +3800,49 @@ class _AppRootState extends State<AppRoot>
                       return ListTile(
                         title: Text(d.name,
                             style: const TextStyle(fontWeight: FontWeight.w600)),
-                        trailing: IconButton(
-                          icon: Icon(Icons.edit_outlined,
-                              size: 18, color: cs.onSurface.withOpacity(.45)),
-                          onPressed: () => rename(d),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: Icon(Icons.edit_outlined,
+                                  size: 18, color: cs.onSurface.withOpacity(.45)),
+                              onPressed: () => rename(d),
+                            ),
+                            IconButton(
+                              icon: Icon(Icons.delete_outline,
+                                  size: 18, color: cs.error.withOpacity(.7)),
+                              onPressed: () async {
+                                final actCount = logic.state.activities
+                                    .where((a) => a.domainId == d.id)
+                                    .length;
+                                final confirm = await showDialog<bool>(
+                                  context: ctx,
+                                  builder: (dctx) => AlertDialog(
+                                    title: const Text('Supprimer le domaine'),
+                                    content: Text(actCount > 0
+                                        ? 'Supprimer "${d.name}" ? Les $actCount activité(s) liée(s) seront détachées.'
+                                        : 'Supprimer "${d.name}" ?'),
+                                    actions: [
+                                      TextButton(
+                                          onPressed: () =>
+                                              Navigator.pop(dctx, false),
+                                          child: const Text('Annuler')),
+                                      FilledButton(
+                                          style: FilledButton.styleFrom(
+                                              backgroundColor: cs.error),
+                                          onPressed: () =>
+                                              Navigator.pop(dctx, true),
+                                          child: const Text('Supprimer')),
+                                    ],
+                                  ),
+                                );
+                                if (confirm != true) return;
+                                logic.deleteDomain(d);
+                                setS(() {});
+                                setState(() {});
+                              },
+                            ),
+                          ],
                         ),
                       );
                     },
@@ -4451,7 +4496,7 @@ class _AppRootState extends State<AppRoot>
   }
 
   Future<void> _renameActivity(Activity a) async {
-    final s = await _askText(context, "Renommer l’activité");
+    final s = await _askText(context, "Renommer l’activité", initial: a.name);
     if (s == null) return;
     final name = s.trim();
     if (name.isEmpty) return;

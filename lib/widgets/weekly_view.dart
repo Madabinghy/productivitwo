@@ -75,12 +75,26 @@ class _WeeklyViewState extends State<WeeklyView> {
     return '${_weekStart.day} ${_monthNames[_weekStart.month]} – ${end.day} ${_monthNames[end.month]}';
   }
 
+  bool _isActivitySnoozedOn(String? activityId, String ymd) {
+    if (activityId == null || activityId.isEmpty) return false;
+    final until = widget.logic.snoozedUntilOf(activityId);
+    if (until == null) return false;
+    final dayStart = DateTime(
+      int.parse(ymd.substring(0, 4)),
+      int.parse(ymd.substring(4, 6)),
+      int.parse(ymd.substring(6, 8)),
+    );
+    return until.isAfter(dayStart);
+  }
+
   List<DayPlanItem> _actionsFor(String ymd) => widget.logic.state.dayPlan
       .where((it) =>
           it.yyyymmdd == ymd &&
           it.kind == PlanKind.action &&
           !it.archived &&
-          !it.done)
+          !it.done &&
+          it.toPlan != true &&
+          !_isActivitySnoozedOn(it.activityId, ymd))
       .toList()
     ..sort((a, b) => a.order.compareTo(b.order));
 
@@ -89,7 +103,8 @@ class _WeeklyViewState extends State<WeeklyView> {
           it.yyyymmdd == ymd &&
           it.kind == PlanKind.action &&
           !it.archived &&
-          it.done)
+          it.done &&
+          it.toPlan != true)
       .toList();
 
   List<Activity> _dailyRoutines() => widget.logic.state.activities
@@ -395,6 +410,11 @@ class _WeeklyViewState extends State<WeeklyView> {
                                               setState(() {});
                                             }
                                           },
+                                          onLongPress: () {
+                                            HapticFeedback.mediumImpact();
+                                            widget.logic.moveItemToTomorrow(it.yyyymmdd, it);
+                                            setState(() {});
+                                          },
                                         ),
                                       ),
                                     );
@@ -642,6 +662,7 @@ class _ActionTile extends StatelessWidget {
   final bool isPast;
   final ColorScheme cs;
   final VoidCallback onToggle;
+  final VoidCallback? onLongPress;
   final Color? domainColor;
 
   const _ActionTile({
@@ -649,6 +670,7 @@ class _ActionTile extends StatelessWidget {
     required this.isPast,
     required this.cs,
     required this.onToggle,
+    this.onLongPress,
     this.domainColor,
   });
 
@@ -657,6 +679,7 @@ class _ActionTile extends StatelessWidget {
     final dim = action.done;
     return InkWell(
       onTap: isPast ? null : onToggle,
+      onLongPress: isPast ? null : onLongPress,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         child: Row(
