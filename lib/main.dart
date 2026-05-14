@@ -3548,6 +3548,32 @@ class _AppRootState extends State<AppRoot>
         SectionCard(
           child: ProductivityStatsCard(logic: logic),
         ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 16, 0),
+          child: Row(
+            children: [
+              Text(
+                'Domaines',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(.4),
+                  letterSpacing: .5,
+                ),
+              ),
+              const Spacer(),
+              TextButton.icon(
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  foregroundColor: Theme.of(context).colorScheme.primary,
+                ),
+                icon: const Icon(Icons.tune, size: 14),
+                label: const Text('Gérer', style: TextStyle(fontSize: 12)),
+                onPressed: () => _showDomainsSheet(context),
+              ),
+            ],
+          ),
+        ),
         ..._buildDomainListLive(context, now),
         _buildDayReviewButton(context),
         _buildNotificationsButton(context),
@@ -3611,6 +3637,129 @@ class _AppRootState extends State<AppRoot>
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
         ],
+      ),
+    );
+  }
+
+  void _showDomainsSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setS) {
+          final cs = Theme.of(ctx).colorScheme;
+          final domains = logic.state.domains;
+
+          Future<void> rename(Domain d) async {
+            final ctrl = TextEditingController(text: d.name);
+            final result = await showDialog<String>(
+              context: ctx,
+              builder: (dctx) => AlertDialog(
+                title: const Text('Renommer le domaine'),
+                content: TextField(
+                  controller: ctrl,
+                  autofocus: true,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(labelText: 'Nom'),
+                  onSubmitted: (_) => Navigator.pop(dctx, ctrl.text.trim()),
+                ),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(dctx),
+                      child: const Text('Annuler')),
+                  FilledButton(
+                      onPressed: () => Navigator.pop(dctx, ctrl.text.trim()),
+                      child: const Text('OK')),
+                ],
+              ),
+            );
+            if (result == null || result.isEmpty) return;
+            d.name = result;
+            logic.onChange();
+            setS(() {});
+            setState(() {});
+          }
+
+          Future<void> addDomain() async {
+            final ctrl = TextEditingController();
+            final result = await showDialog<String>(
+              context: ctx,
+              builder: (dctx) => AlertDialog(
+                title: const Text('Nouveau domaine'),
+                content: TextField(
+                  controller: ctrl,
+                  autofocus: true,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(labelText: 'Nom'),
+                  onSubmitted: (_) => Navigator.pop(dctx, ctrl.text.trim()),
+                ),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(dctx),
+                      child: const Text('Annuler')),
+                  FilledButton(
+                      onPressed: () => Navigator.pop(dctx, ctrl.text.trim()),
+                      child: const Text('Créer')),
+                ],
+              ),
+            );
+            if (result == null || result.isEmpty) return;
+            logic.createDomain(result);
+            setS(() {});
+            setState(() {});
+          }
+
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 12, 12),
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Text('Domaines',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w800, fontSize: 18)),
+                        ),
+                        FilledButton.icon(
+                          icon: const Icon(Icons.add, size: 16),
+                          label: const Text('Ajouter'),
+                          style: FilledButton.styleFrom(
+                              visualDensity: VisualDensity.compact),
+                          onPressed: addDomain,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: domains.length,
+                    separatorBuilder: (_, __) =>
+                        const Divider(height: 1, indent: 16),
+                    itemBuilder: (ctx, i) {
+                      final d = domains[i];
+                      return ListTile(
+                        title: Text(d.name,
+                            style: const TextStyle(fontWeight: FontWeight.w600)),
+                        trailing: IconButton(
+                          icon: Icon(Icons.edit_outlined,
+                              size: 18, color: cs.onSurface.withOpacity(.45)),
+                          onPressed: () => rename(d),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
