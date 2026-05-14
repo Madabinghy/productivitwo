@@ -2395,7 +2395,43 @@ class _AppRootState extends State<AppRoot>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Divider(height: 24),
-                        Row(
+                        GestureDetector(
+                          onTap: () => showDialog(
+                            context: ctx,
+                            builder: (_) => AlertDialog(
+                              title: const Text('Comment gagner de l\'XP ?'),
+                              content: const Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('🔥  Streaks de routines',
+                                      style: TextStyle(fontWeight: FontWeight.w700)),
+                                  SizedBox(height: 4),
+                                  Text('3 jours → 10 XP\n7 jours → 25 XP\n21 jours → 75 XP\n66 jours → 200 XP\n100 jours → 500 XP',
+                                      style: TextStyle(fontSize: 13)),
+                                  SizedBox(height: 12),
+                                  Text('✅  Actions complétées',
+                                      style: TextStyle(fontWeight: FontWeight.w700)),
+                                  SizedBox(height: 4),
+                                  Text('10 actions → 15 XP\n50 actions → 50 XP\n100 actions → 100 XP',
+                                      style: TextStyle(fontSize: 13)),
+                                  SizedBox(height: 12),
+                                  Text('🎯  Score journalier',
+                                      style: TextStyle(fontWeight: FontWeight.w700)),
+                                  SizedBox(height: 4),
+                                  Text('Score parfait → 30 XP\n7 jours à 80 %+ → 50 XP\n30 jours à 80 %+ → 150 XP',
+                                      style: TextStyle(fontSize: 13)),
+                                ],
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(_),
+                                  child: const Text('OK'),
+                                ),
+                              ],
+                            ),
+                          ),
+                          child: Row(
                           children: [
                             Text(
                               '🏅',
@@ -2423,6 +2459,10 @@ class _AppRootState extends State<AppRoot>
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
+                                      const SizedBox(width: 4),
+                                      Icon(Icons.info_outline,
+                                          size: 14,
+                                          color: cs.onSurface.withValues(alpha: .35)),
                                     ],
                                   ),
                                   const SizedBox(height: 6),
@@ -2450,6 +2490,7 @@ class _AppRootState extends State<AppRoot>
                               ),
                             ),
                           ],
+                        ),
                         ),
                       ],
                     );
