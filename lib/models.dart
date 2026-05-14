@@ -464,6 +464,8 @@ class Activity {
 
   final String? linkedActivityId;
 
+  int order;
+
   Activity({
     String? id,
     required this.domainId,
@@ -479,6 +481,7 @@ class Activity {
     DateTime? createdAt,
     this.lastTuneAt,
     this.linkedActivityId,
+    this.order = 0,
   })  : id = id ?? _uuid.v4(), // <-- sans const ici
         createdAt = createdAt ?? DateTime.now();
 
@@ -508,6 +511,7 @@ class Activity {
         'linkedActivityId':linkedActivityId,
         'createdAt': createdAt.toIso8601String(),
         'lastTuneAt': lastTuneAt?.toIso8601String(),
+        'order': order,
       };
 
   /// Migration douce :
@@ -551,6 +555,7 @@ class Activity {
           : DateTime.now(),
       lastTuneAt:
           j['lastTuneAt'] != null ? DateTime.parse(j['lastTuneAt']) : null,
+      order: (j['order'] as num?)?.toInt() ?? 0,
     );
   }
 

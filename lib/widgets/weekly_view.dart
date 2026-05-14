@@ -96,7 +96,7 @@ class _WeeklyViewState extends State<WeeklyView> {
           a.isHabit &&
           widget.logic.effectiveHabitFreq(a) == HabitFreq.daily)
       .toList()
-    ..sort((a, b) => a.name.compareTo(b.name));
+    ..sort((a, b) => a.order.compareTo(b.order));
 
   Future<void> _addAction(BuildContext context, String ymd) async {
     final result = await showNewActionSheet(context, logic: widget.logic);
@@ -552,40 +552,57 @@ class _WeeklyViewState extends State<WeeklyView> {
                               ),
                               // Contenu déplié
                               if (_routinesExpanded.contains(ymd)) ...[
-                                ...routineItems.map((r) {
-                                  final value =
-                                      widget.logic.habitValueOn(r.id, day);
-                                  final target =
-                                      widget.logic.effectiveHabitTarget(r);
-                                  return _RoutineTile(
-                                    routine: r,
-                                    value: value,
-                                    target: target,
-                                    isToday: isToday,
-                                    cs: cs,
-                                    domainColor: domainColor(r.domainId, widget.logic.state.domains),
-                                    onIncrement: isToday
-                                        ? () {
-                                            HapticFeedback.lightImpact();
-                                            widget.logic
-                                                .incHabitWithAssocEvent(
-                                                    r.id, 1, day);
-                                            widget.logic.onChange();
-                                            setState(() {});
-                                          }
-                                        : null,
-                                    onDecrement: (isToday && value > 0)
-                                        ? () {
-                                            HapticFeedback.lightImpact();
-                                            widget.logic
-                                                .incHabitWithAssocEvent(
-                                                    r.id, -1, day);
-                                            widget.logic.onChange();
-                                            setState(() {});
-                                          }
-                                        : null,
-                                  );
-                                }),
+                                ReorderableListView.builder(
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  buildDefaultDragHandles: false,
+                                  itemCount: routineItems.length,
+                                  onReorder: (oldIndex, newIndex) {
+                                    setState(() {
+                                      widget.logic.reorderDailyRoutines(
+                                          oldIndex, newIndex);
+                                    });
+                                  },
+                                  itemBuilder: (ctx, idx) {
+                                    final r = routineItems[idx];
+                                    final value =
+                                        widget.logic.habitValueOn(r.id, day);
+                                    final target =
+                                        widget.logic.effectiveHabitTarget(r);
+                                    return ReorderableDragStartListener(
+                                      key: ValueKey(r.id),
+                                      index: idx,
+                                      child: _RoutineTile(
+                                        routine: r,
+                                        value: value,
+                                        target: target,
+                                        isToday: isToday,
+                                        cs: cs,
+                                        domainColor: domainColor(r.domainId, widget.logic.state.domains),
+                                        onIncrement: isToday
+                                            ? () {
+                                                HapticFeedback.lightImpact();
+                                                widget.logic
+                                                    .incHabitWithAssocEvent(
+                                                        r.id, 1, day);
+                                                widget.logic.onChange();
+                                                setState(() {});
+                                              }
+                                            : null,
+                                        onDecrement: (isToday && value > 0)
+                                            ? () {
+                                                HapticFeedback.lightImpact();
+                                                widget.logic
+                                                    .incHabitWithAssocEvent(
+                                                        r.id, -1, day);
+                                                widget.logic.onChange();
+                                                setState(() {});
+                                              }
+                                            : null,
+                                      ),
+                                    );
+                                  },
+                                ),
                                 const SizedBox(height: 4),
                               ],
                             ],

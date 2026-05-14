@@ -1498,6 +1498,18 @@ class AppLogic {
     onChange();
   }
 
+  void reorderDailyRoutines(int oldIndex, int newIndex) {
+    final habits = state.activities
+        .where((a) => a.isHabit && effectiveHabitFreq(a) == HabitFreq.daily)
+        .toList()
+      ..sort((a, b) => a.order.compareTo(b.order));
+    if (newIndex > oldIndex) newIndex--;
+    final moved = habits.removeAt(oldIndex);
+    habits.insert(newIndex, moved);
+    for (int i = 0; i < habits.length; i++) habits[i].order = i;
+    onChange();
+  }
+
   void reorderGoals(String? domainId, int oldIndex, int newIndex) {
     final goals = state.goals
         .where((g) =>
