@@ -16,6 +16,7 @@ import 'package:productivitwo_v1/widgets/recurring_actions_sheet.dart';
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
 import 'package:productivitwo_v1/widgets/now_habit_tile_full.dart';
 import 'package:productivitwo_v1/widgets/tiny_bar.dart';
+import 'package:productivitwo_v1/widgets/courses_sheet.dart';
 
 class TodayView extends StatefulWidget {
   final AppLogic logic;
@@ -744,6 +745,19 @@ class _TodayViewState extends State<TodayView> {
                         fontWeight: FontWeight.w800,
                         fontSize: 16,
                       ),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => showCoursesSheet(context,
+                        logic: widget.logic),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Icon(Icons.edit_note_outlined,
+                          size: 20,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withOpacity(.5)),
                     ),
                   ),
                   Icon(

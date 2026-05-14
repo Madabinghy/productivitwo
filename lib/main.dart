@@ -23,6 +23,7 @@ import 'package:productivitwo_v1/widgets/weekly_view.dart';
 import 'package:productivitwo_v1/widgets/day_review_sheet.dart';
 import 'package:productivitwo_v1/widgets/productivity_stats_card.dart';
 import 'package:productivitwo_v1/widgets/onboarding_screen.dart';
+import 'package:productivitwo_v1/widgets/courses_sheet.dart';
 import 'package:confetti/confetti.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -3555,6 +3556,40 @@ class _AppRootState extends State<AppRoot>
         SectionCard(
           child: ProductivityStatsCard(logic: logic),
         ),
+        Builder(builder: (context) {
+          final reserveCount = logic.state.dayPlan
+              .where((a) =>
+                  a.kind == PlanKind.action &&
+                  a.toPlan == true &&
+                  a.archived == true &&
+                  !a.done)
+              .length;
+          final activeCount = logic.state.dayPlan
+              .where((a) =>
+                  a.kind == PlanKind.action &&
+                  a.toPlan == true &&
+                  a.archived != true &&
+                  !a.done)
+              .length;
+          if (reserveCount == 0 && activeCount == 0) {
+            return const SizedBox.shrink();
+          }
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+            child: Card(
+              child: ListTile(
+                leading: const Icon(Icons.shopping_cart_outlined),
+                title: const Text('Courses',
+                    style: TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: Text(activeCount > 0
+                    ? '$activeCount en liste · $reserveCount en réserve'
+                    : '$reserveCount article${reserveCount > 1 ? 's' : ''} en réserve'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => showCoursesSheet(context, logic: logic),
+              ),
+            ),
+          );
+        }),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 4, 16, 0),
           child: Row(
