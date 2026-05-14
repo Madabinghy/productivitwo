@@ -64,10 +64,6 @@ void _migrateRestoreCourses(AppState st) {
       st.activities.firstWhereOrNull(
           (a) => !a.isHabit && a.name.trim().toLowerCase() == 'courses');
   if (shopAct != null) {
-    // Pose aussi le bon rôle pour que shoppingActivity() le trouve.
-    if (shopAct.role != ActivityRole.shopping) {
-      shopAct.role = ActivityRole.shopping;
-    }
     for (final item in st.dayPlan) {
       if (item.kind != PlanKind.action) continue;
       if (item.activityId != shopAct.id) continue;
