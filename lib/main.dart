@@ -3395,7 +3395,7 @@ class _AppRootState extends State<AppRoot>
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
                       GaugeRing(
-                        label: 'Temps',
+                        label: 'Activités',
                         progress: g.todayProgress,
                         centerText: g.centerText,
                         subText: g.subText,
@@ -4211,7 +4211,7 @@ class _AppRootState extends State<AppRoot>
                     const SizedBox(height: 6),
                     _buildProgressRow(
                       icon: Icons.timer_outlined,
-                      label: 'Temps · $timeLabel',
+                      label: 'Activités · $timeLabel',
                       progress: bigProgressTime,
                       color: _colorForProgress(bigProgressTime, context),
                       onTap: () async {
