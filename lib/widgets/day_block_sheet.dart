@@ -189,6 +189,7 @@ class _DayBlocksSheetState extends State<_DayBlocksSheet> {
                 : ReorderableListView.builder(
                     scrollController: sc,
                     padding: const EdgeInsets.only(bottom: 32),
+                    buildDefaultDragHandles: false,
                     itemCount: blocks.length,
                     onReorder: (oldIndex, newIndex) {
                       logic.reorderBlocks(oldIndex, newIndex);

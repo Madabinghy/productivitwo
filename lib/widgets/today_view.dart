@@ -649,6 +649,7 @@ class _TodayViewState extends State<TodayView> {
               ReorderableListView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
+                buildDefaultDragHandles: false,
                 itemCount: items.length,
                 onReorder: (oldIndex, newIndex) {
                   setState(() {
@@ -2096,6 +2097,7 @@ class _TodayViewState extends State<TodayView> {
               ReorderableListView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
+                buildDefaultDragHandles: false,
                 itemCount: todo.length,
                 onReorder: (oldIndex, newIndex) {
                   setState(() {
