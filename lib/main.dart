@@ -628,40 +628,92 @@ class _StatsViewState extends State<StatsView> {
               ),
             const SizedBox(height: 40),
             Center(
-              child: TextButton(
-                style: TextButton.styleFrom(
-                  foregroundColor: Theme.of(context)
-                      .colorScheme
-                      .onSurface
-                      .withValues(alpha: .35),
-                ),
-                onPressed: () async {
-                  final confirm = await showDialog<bool>(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      title: const Text('Réinitialiser les données ?'),
-                      content: const Text(
-                          'Toutes les données seront supprimées. Cette action est irréversible.'),
-                      actions: [
-                        TextButton(
-                            onPressed: () => Navigator.pop(ctx, false),
-                            child: const Text('Annuler')),
-                        FilledButton(
-                            style: FilledButton.styleFrom(
-                              backgroundColor:
-                                  Theme.of(ctx).colorScheme.error,
-                            ),
-                            onPressed: () => Navigator.pop(ctx, true),
-                            child: const Text('Réinitialiser')),
-                      ],
+              child: Column(
+                children: [
+                  // ── Soft reset : garde domaines/routines/objectifs ─────────
+                  TextButton(
+                    style: TextButton.styleFrom(
+                      foregroundColor: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: .45),
                     ),
-                  );
-                  if (confirm == true) {
-                    await FileStore().wipe();
-                    exit(0);
-                  }
-                },
-                child: const Text('Réinitialiser les données'),
+                    onPressed: () async {
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Réinitialiser le suivi ?'),
+                          content: const Text(
+                              'Les actions planifiées, logs, badges et coches des habitudes seront effacés.\n\nTes domaines, routines, objectifs et blocs sont conservés.'),
+                          actions: [
+                            TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('Annuler')),
+                            FilledButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                child: const Text('Réinitialiser le suivi')),
+                          ],
+                        ),
+                      );
+                      if (confirm == true && mounted) {
+                        final st = widget.logic.state;
+                        st.dayPlan.clear();
+                        st.activityLogs.clear();
+                        st.habitHits.clear();
+                        st.habitChecklistDone.clear();
+                        st.habitProgress.clear();
+                        st.earnedBadges.clear();
+                        st.skippedChallengeDates.clear();
+                        st.sessions.clear();
+                        st.inbox.clear();
+                        st.nowSkippedByYmd.clear();
+                        st.nowDoneByYmd.clear();
+                        st.disabledBlocksByYmd.clear();
+                        st.focusTodayIds.clear();
+                        st.snoozedUntil.clear();
+                        widget.logic.onChange();
+                        if (mounted) Navigator.pop(context);
+                      }
+                    },
+                    child: const Text('Réinitialiser le suivi'),
+                  ),
+                  // ── Full reset ─────────────────────────────────────────────
+                  TextButton(
+                    style: TextButton.styleFrom(
+                      foregroundColor: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: .35),
+                    ),
+                    onPressed: () async {
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Tout réinitialiser ?'),
+                          content: const Text(
+                              'Toutes les données seront supprimées. Cette action est irréversible.'),
+                          actions: [
+                            TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('Annuler')),
+                            FilledButton(
+                                style: FilledButton.styleFrom(
+                                  backgroundColor:
+                                      Theme.of(ctx).colorScheme.error,
+                                ),
+                                onPressed: () => Navigator.pop(ctx, true),
+                                child: const Text('Tout réinitialiser')),
+                          ],
+                        ),
+                      );
+                      if (confirm == true) {
+                        await FileStore().wipe();
+                        exit(0);
+                      }
+                    },
+                    child: const Text('Tout réinitialiser'),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 60),
