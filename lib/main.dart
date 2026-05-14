@@ -1628,11 +1628,10 @@ class _AppRootState extends State<AppRoot>
       }
     };
 
-    // Traite un tap bufferisé (race condition background) et le cas "app terminée".
+    // Traite un tap bufferisé (race condition background).
+    // handleLaunchNotification() est appelé à la fin de _init(), après que
+    // logic soit initialisé, pour éviter un LateInitializationError.
     NotificationService.drainPending();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      NotificationService.handleLaunchNotification();
-    });
   }
 
   void _startMinuteHeartbeat() {
@@ -1819,6 +1818,12 @@ class _AppRootState extends State<AppRoot>
                 (_domainAutoDeltas[dom.id] ?? 0) + ch.deltaMin;
           }
         }
+      });
+
+      // Gestion "app terminée lancée depuis une notification" — appelé ici
+      // car logic est maintenant initialisé.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) NotificationService.handleLaunchNotification();
       });
 
       Future.delayed(const Duration(minutes: 10), () {
