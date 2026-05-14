@@ -600,19 +600,13 @@ class _WeeklyViewState extends State<WeeklyView> {
                                         isToday: isToday,
                                         cs: cs,
                                         domainColor: domainColor(r.domainId, widget.logic.state.domains),
-                                        onTap: isToday
-                                            ? () => showModalBottomSheet(
-                                                  context: context,
-                                                  showDragHandle: true,
-                                                  isScrollControlled: true,
-                                                  builder: (_) => RoutineDetailSheet(
-                                                    logic: widget.logic,
-                                                    st: widget.logic.state,
-                                                    habitId: r.id,
-                                                    day: DateTime.now(),
-                                                  ),
-                                                )
-                                            : null,
+                                        onTap: () => showRoutineSheet(
+                                              context,
+                                              logic: widget.logic,
+                                              habitId: r.id,
+                                              day: DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day),
+                                              onSaved: () => setState(() {}),
+                                            ),
                                         onIncrement: isToday
                                             ? () {
                                                 HapticFeedback.lightImpact();

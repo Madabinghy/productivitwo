@@ -13,7 +13,7 @@ import 'package:productivitwo_v1/widgets/assign_activity_sheet.dart';
 import 'package:productivitwo_v1/widgets/day_block_sheet.dart';
 import 'package:productivitwo_v1/widgets/goals_view.dart';
 import 'package:productivitwo_v1/widgets/recurring_actions_sheet.dart';
-import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
+import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
 import 'package:productivitwo_v1/widgets/now_habit_tile_full.dart';
 import 'package:productivitwo_v1/widgets/tiny_bar.dart';
 import 'package:productivitwo_v1/widgets/courses_sheet.dart';
@@ -1408,6 +1408,22 @@ class _TodayViewState extends State<TodayView> {
                 dense: true,
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                onTap: () async {
+                  await showRoutineSheet(
+                    context,
+                    logic: widget.logic,
+                    habitId: r.id,
+                    day: today,
+                    onRename: (refresh) async {
+                      await _renameRoutine(r);
+                      refresh();
+                    },
+                    onSaved: () {
+                      widget.logic.onChange();
+                      setState(() {});
+                    },
+                  );
+                },
                 leading: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -3380,23 +3396,20 @@ class _TodayViewState extends State<TodayView> {
                     habitId: habitId,
                     day: viewedDay, // ✅ ton jour affiché
                     onTap: () async {
-                      final res = await showHabitSettingsSheet(
+                      await showRoutineSheet(
                         context,
-                        act: act,
+                        logic: widget.logic,
+                        habitId: habitId,
+                        day: viewedDay,
                         onRename: (refresh) async {
                           await _renameRoutine(act);
                           refresh();
                         },
                         onSaved: () {
                           widget.logic.onChange();
-                          setState(() {}); // ✅ refresh TodayView
+                          setState(() {});
                         },
                       );
-
-                      if (res == null) return;
-
-                      // Si tu as laissé applyDirectly=true (par défaut), tu n'as RIEN d'autre à faire.
-                      // Sinon, applique ici.
                     },
                     onLongPress: it.done
                         ? null
@@ -3972,26 +3985,20 @@ class _NowTabState extends State<NowTab> {
             habitId: habitId,
             day: widget.day,
             onTap: () async {
-              final res = await showHabitSettingsSheet(
+              await showRoutineSheet(
                 context,
-                act: act,
+                logic: widget.logic,
+                habitId: habitId,
+                day: widget.day,
                 onRename: (refresh) async {
                   await _renameRoutine(act);
                   refresh();
                 },
                 onSaved: () {
                   widget.logic.onChange();
-                  setState(() {}); // ✅ refresh TodayView
+                  setState(() {});
                 },
               );
-
-              if (res == null) return;
-
-              // Si tu as laissé applyDirectly=true (par défaut), tu n'as RIEN d'autre à faire.
-              // Sinon, applique ici.
-            },
-            onLongPress: () {
-              // openHabitEditSheet etc.
             },
           ),
 

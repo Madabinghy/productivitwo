@@ -1297,19 +1297,15 @@ class AppLogic {
       } catch (_) {}
     }
 
-    // 2) Auto-tune des routines (si dispo dans ta base)
+    // 2) Migration : toutes les routines passent en mode manuel
     int bumps = 0;
     try {
       for (final a in state.activities.where((x) => x.isHabit)) {
-        // version "immédiate" si tu l'as:
-        try {
-          autoTuneHabitImmediate(this, a);
-        } catch (_) {}
-        // version tolérante:
-        try {
-          autoTuneHabit(this, a, now: t);
-        } catch (_) {}
-        // si tu veux compter les changements, incrémente 'bumps' ici
+        if (!a.manualTarget) {
+          a.manualTarget = true;
+          a.autoTune = false;
+          bumps++;
+        }
       }
     } catch (_) {
       // no-op si pas encore implémenté
@@ -1917,10 +1913,6 @@ class AppLogic {
       }
     }
 
-    // --- auto-tune 30j seulement si AUTO et pas manuel ---
-    if (!act.manualTarget && act.autoTune) {
-      autoTuneHabitFrom30d(this, act);
-    }
 
     onChange();
     return assocEvent;
@@ -2076,12 +2068,6 @@ class AppLogic {
         removeFromDay(yyyymmdd(currentDay), PlanKind.habit, activityId);
       }
     } */
-
-    // auto-tune (safe)
-    //_autoTuneHabitSafe(act);
-
-    // auto-tune basé 30 jours (sans cooldown)
-    autoTuneHabitFrom30d(this, act);
 
     // Un seul persist à la fin
     onChange();
@@ -2773,10 +2759,6 @@ class AppLogic {
       _autoTuneHabitSafe(a, now: t); // finetune avec cooldown
     } */
 
-    for (final a in state.activities.where((x) => x.isHabit)) {
-      if (a.manualTarget == true) continue;
-      autoTuneHabitFrom30d(this, a);
-    }
 
     //state.lastGoalsReview = t;
     onChange();

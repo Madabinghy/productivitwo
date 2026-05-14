@@ -5970,16 +5970,18 @@ class _AppRootState extends State<AppRoot>
                 monthTarget: logic.monthTargetFrom(a),
               ),
               onTap: () async {
-                await showHabitSettingsSheet(
+                await showRoutineSheet(
                   context,
-                  act: a,
+                  logic: logic,
+                  habitId: a.id,
+                  day: DateTime.now(),
                   onRename: (refresh) async {
                     await _renameRoutine(a);
-                    refresh(); // update titre dans le sheet
+                    refresh();
                   },
                   onSaved: () {
                     logic.onChange();
-                    setSB(() {}); // ✅ rebuild du dashboard sheet
+                    setSB(() {});
                   },
                 );
               },
