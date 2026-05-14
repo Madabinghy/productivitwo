@@ -1578,12 +1578,12 @@ class AppLogic {
 
   void deleteRecurringAction(String id) {
     state.recurringActions.removeWhere((a) => a.id == id);
-    // Supprime les occurrences futures non cochées
+    // Supprime les occurrences futures non cochées (pas aujourd'hui)
     final todayYmd = yyyymmdd(DateTime.now());
     state.dayPlan.removeWhere((it) =>
         it.recurringActionId == id &&
         !it.done &&
-        it.yyyymmdd.compareTo(todayYmd) >= 0);
+        it.yyyymmdd.compareTo(todayYmd) > 0);
     onChange();
   }
 
