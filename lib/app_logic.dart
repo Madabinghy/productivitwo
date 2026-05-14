@@ -3660,6 +3660,52 @@ class AppLogic {
     return (current: current, previous: previous, days7: days7);
   }
 
+  /// Score moyen par jour de la semaine sur les N dernières semaines.
+  /// Index 0 = lundi, 6 = dimanche. -1 si pas de données.
+  List<double> weekdayAverageScores({int weeks = 12}) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final byWeekday = List.generate(7, (_) => <double>[]);
+
+    for (int i = 0; i < weeks * 7; i++) {
+      final d = today.subtract(Duration(days: i));
+      if (d.isAfter(today)) continue;
+      final ymd = yyyymmdd(d);
+      final plan = planFor(ymd);
+      final hasRoutines = state.activities.any(
+          (a) => a.isHabit && effectiveHabitFreq(a) == HabitFreq.daily);
+      if (plan.isEmpty && !hasRoutines) continue;
+      byWeekday[d.weekday - 1].add(_dailyScoreFor(d));
+    }
+
+    return byWeekday.map((scores) {
+      if (scores.isEmpty) return -1.0;
+      return scores.reduce((a, b) => a + b) / scores.length;
+    }).toList();
+  }
+
+  /// Scores journaliers des N derniers jours pour la heatmap.
+  List<({String ymd, double score, bool hasData})> recentDailyScores(
+      {int days = 84}) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final hasRoutines = state.activities
+        .any((a) => a.isHabit && effectiveHabitFreq(a) == HabitFreq.daily);
+
+    return List.generate(days, (i) {
+      final d = today.subtract(Duration(days: days - 1 - i));
+      final ymd = yyyymmdd(d);
+      final plan = planFor(ymd);
+      final hasData = plan.isNotEmpty || hasRoutines;
+      final isFuture = d.isAfter(today);
+      return (
+        ymd: ymd,
+        score: isFuture ? 0.0 : _dailyScoreFor(d),
+        hasData: hasData && !isFuture,
+      );
+    });
+  }
+
   double dailyScore(String ymd) {
     final parts = [
       int.parse(ymd.substring(0, 4)),

@@ -21,6 +21,7 @@ import 'package:productivitwo_v1/widgets/new_routine_sheet.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
 import 'package:productivitwo_v1/widgets/weekly_view.dart';
 import 'package:productivitwo_v1/widgets/day_review_sheet.dart';
+import 'package:productivitwo_v1/widgets/productivity_stats_card.dart';
 import 'package:confetti/confetti.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -3458,6 +3459,9 @@ class _AppRootState extends State<AppRoot>
           ),
         ),
         _buildNextGoalCard(context),
+        SectionCard(
+          child: ProductivityStatsCard(logic: logic),
+        ),
         ..._buildDomainListLive(context, now),
         _buildDayReviewButton(context),
         _buildNotificationsButton(context),
