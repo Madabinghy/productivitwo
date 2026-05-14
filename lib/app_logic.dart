@@ -3560,6 +3560,15 @@ class AppLogic {
     return (current: current, previous: previous, days7: days7);
   }
 
+  double dailyScore(String ymd) {
+    final parts = [
+      int.parse(ymd.substring(0, 4)),
+      int.parse(ymd.substring(4, 6)),
+      int.parse(ymd.substring(6, 8)),
+    ];
+    return _dailyScoreFor(DateTime(parts[0], parts[1], parts[2]));
+  }
+
   double _dailyScoreFor(DateTime day) {
     final ymd = yyyymmdd(day);
     final d = DateTime(day.year, day.month, day.day);

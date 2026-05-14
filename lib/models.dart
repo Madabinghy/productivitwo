@@ -872,8 +872,10 @@ class AppState {
   List<EarnedBadge> earnedBadges;
   List<String> skippedChallengeDates;
   int weeklyScoreTarget; // % objectif hebdomadaire (0-100) // yyyymmdd où le défi a été passé
-  int notifHour;   // heure du rappel quotidien (défaut 9)
-  int notifMinute; // minute du rappel quotidien (défaut 0)
+  int notifHour;        // heure du rappel quotidien (défaut 9)
+  int notifMinute;      // minute du rappel quotidien (défaut 0)
+  int reviewNotifHour;  // heure du résumé de fin de journée (défaut 21)
+  int reviewNotifMinute;
   bool domainIdBackfilledOnce;
 
   AppState({
@@ -901,6 +903,8 @@ class AppState {
     this.weeklyScoreTarget = 80,
     this.notifHour = 9,
     this.notifMinute = 0,
+    this.reviewNotifHour = 21,
+    this.reviewNotifMinute = 0,
     this.domainIdBackfilledOnce = false,
     // ✅ NOUVEAU
     Map<String, List<String>>? nowSkippedByYmd,
@@ -971,6 +975,8 @@ class AppState {
         'weeklyScoreTarget': weeklyScoreTarget,
         'notifHour': notifHour,
         'notifMinute': notifMinute,
+        'reviewNotifHour': reviewNotifHour,
+        'reviewNotifMinute': reviewNotifMinute,
         'domainIdBackfilledOnce': domainIdBackfilledOnce,
       };
 
@@ -1049,6 +1055,8 @@ class AppState {
       weeklyScoreTarget: (j['weeklyScoreTarget'] as int?) ?? 80,
       notifHour: (j['notifHour'] as int?) ?? 9,
       notifMinute: (j['notifMinute'] as int?) ?? 0,
+      reviewNotifHour: (j['reviewNotifHour'] as int?) ?? 21,
+      reviewNotifMinute: (j['reviewNotifMinute'] as int?) ?? 0,
       domainIdBackfilledOnce: (j['domainIdBackfilledOnce'] as bool?) ?? false,
     );
   }

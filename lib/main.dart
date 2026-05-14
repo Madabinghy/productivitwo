@@ -20,6 +20,7 @@ import 'package:productivitwo_v1/widgets/new_action_sheet.dart';
 import 'package:productivitwo_v1/widgets/new_routine_sheet.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
 import 'package:productivitwo_v1/widgets/weekly_view.dart';
+import 'package:productivitwo_v1/widgets/day_review_sheet.dart';
 import 'package:confetti/confetti.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -1665,6 +1666,10 @@ class _AppRootState extends State<AppRoot>
         hour: logic.state.notifHour,
         minute: logic.state.notifMinute,
         routineCount: routineCount,
+      );
+      await NotificationService.scheduleDailyReview(
+        hour: logic.state.reviewNotifHour,
+        minute: logic.state.reviewNotifMinute,
       );
     }());
 
@@ -3473,16 +3478,89 @@ class _AppRootState extends State<AppRoot>
                       ),
                     ),
                   ),
+                  const Divider(height: 1),
+                  // ── Réglage résumé de fin de journée ────────────────────
+                  InkWell(
+                    onTap: () async {
+                      final st = _state!;
+                      final picked = await showTimePicker(
+                        context: context,
+                        initialTime: TimeOfDay(
+                            hour: st.reviewNotifHour,
+                            minute: st.reviewNotifMinute),
+                        helpText: 'Heure du résumé de fin de journée',
+                      );
+                      if (picked == null || !mounted) return;
+                      setState(() {
+                        st.reviewNotifHour = picked.hour;
+                        st.reviewNotifMinute = picked.minute;
+                      });
+                      logic.onChange();
+                      await NotificationService.scheduleDailyReview(
+                        hour: picked.hour,
+                        minute: picked.minute,
+                      );
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                      child: Row(
+                        children: [
+                          Icon(Icons.summarize_outlined,
+                              size: 16,
+                              color: cs.onSurface.withOpacity(.45)),
+                          const SizedBox(width: 10),
+                          Text(
+                            'Résumé du jour',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: cs.onSurface.withOpacity(.6),
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            '${_state!.reviewNotifHour.toString().padLeft(2, '0')}:${_state!.reviewNotifMinute.toString().padLeft(2, '0')}',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: cs.primary,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Icon(Icons.chevron_right,
+                              size: 16,
+                              color: cs.onSurface.withOpacity(.3)),
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
               );
             },
           ),
         ),
         _buildNextGoalCard(context),
+        _buildDayReviewButton(context),
         ..._buildDomainListLive(context, now),
       ],
         );
       },
+    );
+  }
+
+  Widget _buildDayReviewButton(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: OutlinedButton.icon(
+        icon: const Icon(Icons.bar_chart_rounded, size: 18),
+        label: const Text('Résumé du jour'),
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size.fromHeight(44),
+          side: BorderSide(color: cs.primary.withOpacity(.4)),
+          foregroundColor: cs.primary,
+        ),
+        onPressed: () => showDayReviewSheet(context, logic: logic),
+      ),
     );
   }
 

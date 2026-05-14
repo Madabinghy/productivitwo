@@ -11,6 +11,8 @@ class NotificationService {
 
   static const _channelId = 'routines_daily';
   static const _notifId = 1;
+  static const _reviewChannelId = 'review_daily';
+  static const _reviewNotifId = 2;
 
   static bool get _supported => Platform.isAndroid || Platform.isIOS;
 
@@ -96,6 +98,37 @@ class NotificationService {
       next = next.add(const Duration(days: 1));
     }
     return next;
+  }
+
+  static Future<void> scheduleDailyReview({
+    int hour = 21,
+    int minute = 0,
+  }) async {
+    if (!_supported) return;
+    if (!_initialized) await init();
+
+    await _plugin.cancel(_reviewNotifId);
+
+    await _plugin.zonedSchedule(
+      _reviewNotifId,
+      'Productivitwo — Résumé du jour',
+      'Regarde ce que tu as accompli aujourd\'hui 📊',
+      _nextOccurrence(hour, minute),
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          _reviewChannelId,
+          'Résumé quotidien',
+          channelDescription: 'Rappel de fin de journée pour le résumé',
+          importance: Importance.defaultImportance,
+          priority: Priority.defaultPriority,
+        ),
+        iOS: DarwinNotificationDetails(),
+      ),
+      androidScheduleMode: AndroidScheduleMode.inexact,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+      matchDateTimeComponents: DateTimeComponents.time,
+    );
   }
 
   static Future<void> cancelAll() async {
