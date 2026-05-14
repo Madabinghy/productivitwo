@@ -919,6 +919,7 @@ class AppState {
 
   List<String> focusTodayIds;
   bool sortTodayByDashboard;
+  bool onboardingDone;
 
   // ✅ Habits context (associations)
   List<HabitHit> habitHits;
@@ -976,6 +977,7 @@ class AppState {
     List<DayPlanItem>? dayPlan,
     List<String>? focusTodayIds,
     this.sortTodayByDashboard = false,
+    this.onboardingDone = false,
     this.lastRolloverYmd,
     this.lastCarryYmd,
     this.lastPrepYmd,
@@ -1052,6 +1054,7 @@ class AppState {
 
         'focusTodayIds': focusTodayIds,
         'sortTodayByDashboard': sortTodayByDashboard,
+        'onboardingDone': onboardingDone,
 
         // ✅ persist
         'habitHits': habitHits.map((e) => e.toJson()).toList(),
@@ -1146,6 +1149,7 @@ class AppState {
       focusTodayIds:
           (j['focusTodayIds'] as List?)?.cast<String>() ?? <String>[],
       sortTodayByDashboard: (j['sortTodayByDashboard'] as bool?) ?? false,
+      onboardingDone: (j['onboardingDone'] as bool?) ?? false,
       habitHits: _list(j['habitHits'], (e) => HabitHit.from(e)),
       habitPinnedActivity: _mapSS(j['habitPinnedActivity']),
       nowSkippedByYmd: _mapSL(j['nowSkippedByYmd']),

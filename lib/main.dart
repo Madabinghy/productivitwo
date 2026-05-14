@@ -22,6 +22,7 @@ import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
 import 'package:productivitwo_v1/widgets/weekly_view.dart';
 import 'package:productivitwo_v1/widgets/day_review_sheet.dart';
 import 'package:productivitwo_v1/widgets/productivity_stats_card.dart';
+import 'package:productivitwo_v1/widgets/onboarding_screen.dart';
 import 'package:confetti/confetti.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -1714,11 +1715,39 @@ class _AppRootState extends State<AppRoot>
         }
       }();
 
-      if (_state!.domains.isEmpty) {
+      // Migration : utilisateurs existants avec des données → onboarding déjà fait
+      if (!_state!.onboardingDone && _state!.domains.isNotEmpty) {
+        _state!.onboardingDone = true;
+      }
+
+      if (_state!.domains.isEmpty && _state!.onboardingDone) {
         _state!.domains.add(Domain(name: 'Général'));
       }
-      selectedDomainId ??= _state!.domains.first.id;
+      if (_state!.domains.isNotEmpty) {
+        selectedDomainId ??= _state!.domains.first.id;
+      }
     });
+
+    // Affiche l'onboarding pour les nouveaux utilisateurs
+    if (!_state!.onboardingDone) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Navigator.of(context).push(MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => OnboardingScreen(
+            logic: logic,
+            onDone: () {
+              Navigator.of(context).pop();
+              setState(() {
+                selectedDomainId = _state!.domains.isNotEmpty
+                    ? _state!.domains.first.id
+                    : null;
+              });
+            },
+          ),
+        ));
+      });
+    }
 
     // ✅ ICI (point unique au démarrage)
     logic.rolloverUndoneOncePerDay();

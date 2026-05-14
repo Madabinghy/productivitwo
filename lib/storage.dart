@@ -272,7 +272,13 @@ Future<AppState> loadOrInitCleaner() async {
       return st;
     }
 
-    final st = _seedMinimal();
+    // Nouvelle installation → état vide pour l'onboarding
+    final st = AppState(
+      domains: [],
+      activities: [],
+      sessions: [],
+      habitProgress: [],
+    );
     await save(st);
     return st;
   }

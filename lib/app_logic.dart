@@ -1506,6 +1506,35 @@ class AppLogic {
     onChange();
   }
 
+  // ─── Helpers onboarding ───────────────────────────────────────────────────
+
+  Domain createDomain(String name) {
+    final d = Domain(name: name);
+    state.domains.add(d);
+    onChange();
+    return d;
+  }
+
+  Activity createHabit({
+    required String domainId,
+    required String name,
+    required HabitFreq freq,
+    int target = 1,
+  }) {
+    final a = Activity(
+      domainId: domainId,
+      name: name,
+      type: 'habit',
+      habitFreq: freq,
+      habitTarget: target,
+      manualTarget: true,
+      autoTune: false,
+    );
+    state.activities.add(a);
+    onChange();
+    return a;
+  }
+
   void toggleGoalPin(String goalId) {
     final g = state.goals.firstWhere((x) => x.id == goalId);
     // Un seul goal épinglé à la fois
