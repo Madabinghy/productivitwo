@@ -63,7 +63,8 @@ class DayPlanItem {
   DateTime? snoozeUntil;
   ActionStatus status;
   DateTime createdAt;
-  String? blockId; // bloc journalier auquel cet item est assigné
+  String? blockId;
+  String? recurringActionId; // id de RecurringAction si généré automatiquement
 
   // ✅ NEW
   List<ChecklistItem> checklist;
@@ -89,6 +90,7 @@ class DayPlanItem {
     this.snoozeUntil,
     ActionStatus? status,
     this.blockId,
+    this.recurringActionId,
 
     // ✅ NEW
     List<ChecklistItem>? checklist,
@@ -119,6 +121,7 @@ class DayPlanItem {
         'status': status.name,
         'createdAt': createdAt.toIso8601String(),
         'blockId': blockId,
+        'recurringActionId': recurringActionId,
 
         // ✅ CHECKLIST
         'checklist': checklist.map((c) => c.toJson()).toList(),
@@ -171,6 +174,7 @@ class DayPlanItem {
           ? DateTime.tryParse(j['createdAt']) ?? DateTime.now()
           : null,
       blockId: j['blockId'] as String?,
+      recurringActionId: j['recurringActionId'] as String?,
       checklist: (j['checklist'] as List?)
               ?.map((c) => ChecklistItem.from(c))
               .toList() ??
@@ -189,6 +193,64 @@ class DayPlanItem {
     }
     return defaultValue;
   }
+}
+
+enum RecurrenceType { daily, specificDays }
+
+class RecurringAction {
+  final String id;
+  String title;
+  String? domainId;
+  String? activityId;
+  String? blockId;
+  RecurrenceType type;
+  List<int> weekdays; // 1=Lun..7=Dim, utilisé pour specificDays
+  bool active;
+  final DateTime createdAt;
+
+  RecurringAction({
+    String? id,
+    required this.title,
+    this.domainId,
+    this.activityId,
+    this.blockId,
+    this.type = RecurrenceType.daily,
+    List<int>? weekdays,
+    this.active = true,
+    DateTime? createdAt,
+  })  : id = id ?? _uuid.v4(),
+        weekdays = weekdays ?? [],
+        createdAt = createdAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'domainId': domainId,
+        'activityId': activityId,
+        'blockId': blockId,
+        'type': type.name,
+        'weekdays': weekdays,
+        'active': active,
+        'createdAt': createdAt.toIso8601String(),
+      };
+
+  static RecurringAction from(Map j) => RecurringAction(
+        id: j['id'],
+        title: j['title'] ?? '',
+        domainId: j['domainId'],
+        activityId: j['activityId'],
+        blockId: j['blockId'],
+        type: RecurrenceType.values.firstWhere(
+          (t) => t.name == j['type'],
+          orElse: () => RecurrenceType.daily,
+        ),
+        weekdays:
+            (j['weekdays'] as List?)?.map((e) => e as int).toList() ?? [],
+        active: j['active'] as bool? ?? true,
+        createdAt: j['createdAt'] != null
+            ? DateTime.tryParse(j['createdAt']) ?? DateTime.now()
+            : null,
+      );
 }
 
 class DayBlock {
@@ -874,6 +936,7 @@ class AppState {
 
   // Blocs journaliers
   List<DayBlock> blocks;
+  List<RecurringAction> recurringActions;
   Map<String, List<String>> disabledBlocksByYmd; // ymd -> [blockIds désactivés]
 
   // Gamification
@@ -916,6 +979,7 @@ class AppState {
     Map<String, String>? habitPinnedActivity,
     Map<String, List<String>>? habitChecklistByHabitId,
     List<DayBlock>? blocks,
+    List<RecurringAction>? recurringActions,
     Map<String, List<String>>? disabledBlocksByYmd,
     List<EarnedBadge>? earnedBadges,
     List<String>? skippedChallengeDates,
@@ -962,6 +1026,7 @@ class AppState {
         activityLogs = activityLogs ?? <ActivityLog>[],
         filters = filters ?? FilterState(),
         blocks = blocks ?? <DayBlock>[],
+        recurringActions = recurringActions ?? <RecurringAction>[],
         disabledBlocksByYmd = disabledBlocksByYmd ?? <String, List<String>>{},
         earnedBadges = earnedBadges ?? <EarnedBadge>[],
         skippedChallengeDates = skippedChallengeDates ?? <String>[];
@@ -999,6 +1064,7 @@ class AppState {
         'linkedActivitiesMigratedOnce': linkedActivitiesMigratedOnce,
         'voitureMigratedOnce': voitureMigratedOnce,
         'blocks': blocks.map((e) => e.toJson()).toList(),
+        'recurringActions': recurringActions.map((e) => e.toJson()).toList(),
         'disabledBlocksByYmd': disabledBlocksByYmd,
         'earnedBadges': earnedBadges.map((e) => e.toJson()).toList(),
         'skippedChallengeDates': skippedChallengeDates,
@@ -1087,6 +1153,7 @@ class AppState {
       linkedActivitiesMigratedOnce: (j['linkedActivitiesMigratedOnce'] as bool?) ?? false,
       voitureMigratedOnce: (j['voitureMigratedOnce'] as bool?) ?? false,
       blocks: _list(j['blocks'], (e) => DayBlock.from(e)),
+      recurringActions: _list(j['recurringActions'], (e) => RecurringAction.from(e)),
       disabledBlocksByYmd: _mapSL(j['disabledBlocksByYmd']),
       earnedBadges: _list(j['earnedBadges'], (e) => EarnedBadge.tryFrom(e))
           .whereType<EarnedBadge>()

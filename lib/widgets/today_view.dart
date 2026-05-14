@@ -2850,16 +2850,27 @@ class _TodayViewState extends State<TodayView> {
     }
 
     Widget buildTitle(String title, {bool struck = false, bool dim = false}) {
-      return Text(
+      final isRecurring = it.recurringActionId != null;
+      final text = Text(
         title,
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontWeight: FontWeight.w700,
-          fontSize: 18,
+          fontSize: 17,
           decoration: struck ? TextDecoration.lineThrough : null,
           color: dim ? Colors.white.withValues(alpha: 0.55) : null,
         ),
+      );
+      if (!isRecurring) return text;
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(child: text),
+          const SizedBox(width: 6),
+          Icon(Icons.repeat, size: 14,
+              color: Colors.white.withValues(alpha: dim ? 0.3 : 0.5)),
+        ],
       );
     }
 

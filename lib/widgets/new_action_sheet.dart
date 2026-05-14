@@ -46,6 +46,10 @@ class _NewActionSheetState extends State<_NewActionSheet> {
   String? _blockId;
   String? _goalId;
 
+  // Récurrence
+  RecurrenceType? _recurrenceType; // null = pas de récurrence
+  final List<int> _weekdays = []; // 1=Lun..7=Dim
+
   AppLogic get logic => widget.logic;
   AppState get st => logic.state;
 
@@ -90,6 +94,27 @@ class _NewActionSheetState extends State<_NewActionSheet> {
   void _submit() {
     final title = _titleCtrl.text.trim();
     if (title.isEmpty) return;
+
+    if (_recurrenceType != null) {
+      // Crée l'action récurrente et génère les occurrences pour les 8 prochains jours
+      widget.logic.createRecurringAction(
+        title: title,
+        domainId: _domainId,
+        activityId: _activityId,
+        blockId: _blockId,
+        type: _recurrenceType!,
+        weekdays: List.from(_weekdays),
+      );
+      final today = DateTime.now();
+      for (int i = 0; i < 8; i++) {
+        final d = today.add(Duration(days: i));
+        widget.logic.ensureRecurringActionsForDay(
+          '${d.year}${d.month.toString().padLeft(2, '0')}${d.day.toString().padLeft(2, '0')}',
+        );
+      }
+      Navigator.pop(context, null);
+      return;
+    }
 
     Navigator.pop(
       context,
@@ -250,6 +275,25 @@ class _NewActionSheetState extends State<_NewActionSheet> {
           ],
 
           const SizedBox(height: 8),
+
+          // ── Récurrence ────────────────────────────────────────────────
+          _RecurrenceRow(
+            type: _recurrenceType,
+            weekdays: _weekdays,
+            onTypeChanged: (t) => setState(() {
+              _recurrenceType = t;
+              _weekdays.clear();
+            }),
+            onWeekdayToggled: (day) => setState(() {
+              if (_weekdays.contains(day)) {
+                _weekdays.remove(day);
+              } else {
+                _weekdays.add(day);
+              }
+            }),
+          ),
+          const SizedBox(height: 8),
+
           FilledButton(
             onPressed: _titleCtrl.text.trim().isEmpty ? null : _submit,
             child: const Text('Ajouter'),
@@ -375,6 +419,124 @@ class _PickerRow extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ── Widget récurrence ─────────────────────────────────────────────────────────
+
+class _RecurrenceRow extends StatelessWidget {
+  final RecurrenceType? type;
+  final List<int> weekdays;
+  final void Function(RecurrenceType?) onTypeChanged;
+  final void Function(int) onWeekdayToggled;
+
+  const _RecurrenceRow({
+    required this.type,
+    required this.weekdays,
+    required this.onTypeChanged,
+    required this.onWeekdayToggled,
+  });
+
+  static const _dayLabels = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Toggle + type
+        Row(
+          children: [
+            Icon(Icons.repeat,
+                size: 18, color: cs.onSurface.withOpacity(.5)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                type == null
+                    ? 'Répéter'
+                    : type == RecurrenceType.daily
+                        ? 'Chaque jour'
+                        : 'Jours spécifiques',
+                style: TextStyle(
+                  color: type != null
+                      ? cs.primary
+                      : cs.onSurface.withOpacity(.5),
+                  fontWeight:
+                      type != null ? FontWeight.w600 : FontWeight.normal,
+                ),
+              ),
+            ),
+            if (type != null)
+              TextButton(
+                style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero),
+                onPressed: () => onTypeChanged(null),
+                child: const Text('Retirer'),
+              ),
+            if (type == null) ...[
+              TextButton(
+                style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8)),
+                onPressed: () => onTypeChanged(RecurrenceType.daily),
+                child: const Text('Chaque jour'),
+              ),
+              TextButton(
+                style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8)),
+                onPressed: () =>
+                    onTypeChanged(RecurrenceType.specificDays),
+                child: const Text('Jours…'),
+              ),
+            ],
+          ],
+        ),
+
+        // Sélecteur de jours
+        if (type == RecurrenceType.specificDays) ...[
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: List.generate(7, (i) {
+              final day = i + 1;
+              final selected = weekdays.contains(day);
+              return GestureDetector(
+                onTap: () => onWeekdayToggled(day),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? cs.primary
+                        : cs.primary.withOpacity(.08),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Center(
+                    child: Text(
+                      _dayLabels[i],
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: selected
+                            ? cs.onPrimary
+                            : cs.primary.withOpacity(.7),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ],
+      ],
     );
   }
 }

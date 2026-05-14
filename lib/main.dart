@@ -1684,6 +1684,15 @@ class _AppRootState extends State<AppRoot>
               ))
           .toList();
       await NotificationService.scheduleBlockReminders(blocks: blocksWithTime);
+
+      // Injecte les actions récurrentes pour aujourd'hui + 7 prochains jours
+      final now2 = DateTime.now();
+      for (int i = 0; i < 8; i++) {
+        final d = now2.add(Duration(days: i));
+        logic.ensureRecurringActionsForDay(
+          '${d.year}${d.month.toString().padLeft(2, '0')}${d.day.toString().padLeft(2, '0')}',
+        );
+      }
     }());
 
     // ... le reste inchangé
