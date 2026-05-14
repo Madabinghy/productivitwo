@@ -672,6 +672,8 @@ class _StatsViewState extends State<StatsView> {
   }
 }
 
+final _navigatorKey = GlobalKey<NavigatorState>();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (Platform.isAndroid) {
@@ -686,6 +688,7 @@ class ProductivitwoApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _navigatorKey,
       locale: const Locale('fr', 'FR'),
 
       supportedLocales: const [
@@ -1554,6 +1557,16 @@ class _AppRootState extends State<AppRoot>
 
     _startMinuteHeartbeat();
     _init();
+
+    // Ouvre le bon sheet quand l'utilisateur tape une notification
+    NotificationService.onNotificationTap = (id) {
+      final ctx = _navigatorKey.currentContext;
+      if (ctx == null) return;
+      if (id == 2) {
+        // Résumé du jour
+        showDayReviewSheet(ctx, logic: logic);
+      }
+    };
   }
 
   void _startMinuteHeartbeat() {

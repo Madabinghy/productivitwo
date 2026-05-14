@@ -9,6 +9,10 @@ class NotificationService {
   static final _plugin = FlutterLocalNotificationsPlugin();
   static bool _initialized = false;
 
+  /// Appelé quand l'utilisateur tape sur une notification.
+  /// L'int est l'ID de la notification (ex: 2 = résumé du jour).
+  static void Function(int notificationId)? onNotificationTap;
+
   static const _channelId = 'routines_daily';
   static const _notifId = 1;
   static const _reviewChannelId = 'review_daily';
@@ -39,11 +43,14 @@ class NotificationService {
     const darwinSettings = DarwinInitializationSettings();
 
     await _plugin.initialize(
-      const InitializationSettings(
+      InitializationSettings(
         android: androidSettings,
         iOS: darwinSettings,
         macOS: darwinSettings,
       ),
+      onDidReceiveNotificationResponse: (response) {
+        onNotificationTap?.call(response.id ?? 0);
+      },
     );
     _initialized = true;
   }
