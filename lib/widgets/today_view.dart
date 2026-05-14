@@ -3908,12 +3908,28 @@ class _NowTabState extends State<NowTab> {
             const SizedBox(height: 10),
 
             // ───── TITRE ─────
-            Text(
-              it.title,
-              style: const TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-              ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Text(
+                    it.title,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                if (it.recurringActionId != null) ...[
+                  const SizedBox(width: 8),
+                  Icon(Icons.repeat,
+                      size: 14,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(.4)),
+                ],
+              ],
             ),
 
             const SizedBox(height: 16),
