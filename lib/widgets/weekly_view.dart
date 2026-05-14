@@ -443,7 +443,7 @@ class _WeeklyViewState extends State<WeeklyView> {
                                 if (_doneExpanded.contains(ymd))
                                   ...doneActions.map((it) => _ActionTile(
                                         action: it,
-                                        isPast: true, // lecture seule
+                                        isPast: isPast,
                                         cs: cs,
                                         domainColor: domainColor(
                                           (it.domainId ?? '').isNotEmpty
@@ -454,7 +454,10 @@ class _WeeklyViewState extends State<WeeklyView> {
                                                   ?.domainId,
                                           widget.logic.state.domains,
                                         ),
-                                        onToggle: () {},
+                                        onToggle: () {
+                                          setState(() => it.done = false);
+                                          widget.logic.onChange();
+                                        },
                                       )),
                               ],
                             ],

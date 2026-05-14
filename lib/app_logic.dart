@@ -1498,6 +1498,20 @@ class AppLogic {
     onChange();
   }
 
+  void reorderGoals(String? domainId, int oldIndex, int newIndex) {
+    final goals = state.goals
+        .where((g) =>
+            g.status == 'active' &&
+            (domainId == null || g.domainId == domainId))
+        .toList()
+      ..sort((a, b) => a.order.compareTo(b.order));
+    if (newIndex > oldIndex) newIndex--;
+    final moved = goals.removeAt(oldIndex);
+    goals.insert(newIndex, moved);
+    for (int i = 0; i < goals.length; i++) goals[i].order = i;
+    onChange();
+  }
+
 // Sommes d'habitudes par domaine (range de dates)
   Map<String, int> habitTotalsByDomain(DateTime start, DateTime end) {
     // Si on regarde "aujourd'hui" (ou ~1 jour), on aligne sur 24h glissantes

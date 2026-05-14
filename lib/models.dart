@@ -309,6 +309,7 @@ class Goal {
   DateTime? doneAt;
   DateTime? dueDate;
   List<GoalAction> actions;
+  int order;
 
   Goal({
     String? id,
@@ -322,6 +323,7 @@ class Goal {
     this.doneAt,
     this.dueDate,
     List<GoalAction>? actions,
+    this.order = 0,
   })  : id = id ?? _uuid.v4(),
         createdAt = createdAt ?? DateTime.now(),
         linkedHabitIds = linkedHabitIds ?? [],
@@ -345,6 +347,7 @@ class Goal {
         'doneAt': doneAt?.toIso8601String(),
         'dueDate': dueDate?.toIso8601String(),
         'actions': actions.map((a) => a.toJson()).toList(),
+        'order': order,
       };
 
   static Goal from(Map j) {
@@ -383,6 +386,7 @@ class Goal {
       doneAt: j['doneAt'] != null ? DateTime.parse(j['doneAt']) : null,
       dueDate: j['dueDate'] != null ? DateTime.parse(j['dueDate']) : null,
       actions: actions,
+      order: (j['order'] as num?)?.toInt() ?? 0,
     );
   }
 }

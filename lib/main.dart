@@ -5293,7 +5293,8 @@ class _AppRootState extends State<AppRoot>
                 .where((g) =>
                     g.status == 'active' &&
                     (domainId == null || g.domainId == domainId))
-                .toList();
+                .toList()
+              ..sort((a, b) => a.order.compareTo(b.order));
 
             void openGoalDetail(Goal g) {
               showModalBottomSheet(
@@ -5385,12 +5386,18 @@ class _AppRootState extends State<AppRoot>
                       ],
                     ),
                   )
-                : ListView(
-                    controller: scrollCtrl,
+                : ReorderableListView.builder(
+                    scrollController: scrollCtrl,
                     padding: const EdgeInsets.only(bottom: 100),
-                    children: [
-                      for (final g in activeGoals)
-                        GoalCard(
+                    itemCount: activeGoals.length,
+                    onReorder: (oldIndex, newIndex) {
+                      logic.reorderGoals(domainId, oldIndex, newIndex);
+                      setSB(() {});
+                    },
+                    itemBuilder: (ctx, i) {
+                      final g = activeGoals[i];
+                      return GoalCard(
+                          key: ValueKey(g.id),
                           goal: g,
                           muted: false,
                           logic: logic,
@@ -5415,9 +5422,8 @@ class _AppRootState extends State<AppRoot>
                               logic.archiveGoal(g.id);
                               setSB(() {});
                             }
-                          },
-                        ),
-                    ],
+                          });
+                    },
                   );
 
             final goalBody = Padding(
