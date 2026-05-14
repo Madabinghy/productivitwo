@@ -32,6 +32,7 @@ import 'package:productivitwo_v1/notifications.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:productivitwo_v1/widgets/time_report_card.dart';
 
 enum _Tab { dashboard, now, today, week }
 
@@ -628,6 +629,10 @@ class _StatsViewState extends State<StatsView> {
                   ),
                 ),
               ),
+            const SizedBox(height: 40),
+            const Divider(),
+            const SizedBox(height: 16),
+            TimeReportCard(logic: widget.logic, days: days),
             const SizedBox(height: 40),
             Center(
               child: Column(
@@ -3696,6 +3701,9 @@ class _AppRootState extends State<AppRoot>
         _buildNextGoalCard(context),
         SectionCard(
           child: ProductivityStatsCard(logic: logic),
+        ),
+        SectionCard(
+          child: TimeReportCard(logic: logic, days: 30),
         ),
         Builder(builder: (context) {
           final reserveCount = logic.state.dayPlan

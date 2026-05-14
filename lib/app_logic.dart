@@ -1760,6 +1760,44 @@ class AppLogic {
     return map;
   }
 
+  /// Retourne {domainId: {ymd: minutes}} en un seul pass sur les sessions.
+  Map<String, Map<String, int>> timeMinutesPerDomainPerDay(
+      DateTime start, DateTime end) {
+    final activityDomain = {
+      for (final a in state.activities) a.id: a.domainId
+    };
+    final result = <String, Map<String, int>>{};
+
+    for (final s in state.sessions) {
+      final sEnd = s.endAt ?? DateTime.now();
+      if (s.startAt.isAfter(end) || sEnd.isBefore(start)) continue;
+
+      final domainId = activityDomain[s.activityId] ?? '';
+      if (domainId.isEmpty) continue;
+
+      final clampedStart = s.startAt.isBefore(start) ? start : s.startAt;
+      final clampedEnd = sEnd.isAfter(end) ? end : sEnd;
+      if (!clampedEnd.isAfter(clampedStart)) continue;
+
+      // Distribue les minutes jour par jour si la session chevauche minuit
+      var cursor = DateTime(clampedStart.year, clampedStart.month, clampedStart.day);
+      while (!cursor.isAfter(clampedEnd)) {
+        final dayEnd = cursor.add(const Duration(days: 1));
+        final segStart = cursor.isBefore(clampedStart) ? clampedStart : cursor;
+        final segEnd = dayEnd.isAfter(clampedEnd) ? clampedEnd : dayEnd;
+        final mins = segEnd.difference(segStart).inMinutes;
+        if (mins > 0) {
+          final ymd =
+              '${cursor.year}${cursor.month.toString().padLeft(2, '0')}${cursor.day.toString().padLeft(2, '0')}';
+          (result[domainId] ??= {})[ymd] =
+              ((result[domainId]!)[ymd] ?? 0) + mins;
+        }
+        cursor = dayEnd;
+      }
+    }
+    return result;
+  }
+
   String habitSubText({
     required HabitFreq freq,
     required int dayDone,
