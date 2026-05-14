@@ -416,8 +416,7 @@ class _TodayViewState extends State<TodayView> {
     return InkWell(
       key: key,
       onTap: () {
-        it.done = !it.done;
-        logic.onChange();
+        logic.completePlanItem(it, !it.done);
         setState(() {});
         HapticFeedback.lightImpact();
         if (it.done) onAfterToggle?.call();
@@ -2873,11 +2872,10 @@ class _TodayViewState extends State<TodayView> {
                   .firstWhereOrNull((a) => a.id == res.newActivityId)
                   ?.domainId ??
               it.domainId;
-          // Inbox → active quand une activité est assignée
           if (it.status == ActionStatus.inbox) it.status = ActionStatus.active;
         }
-        if (res.markDone == true) it.done = true;
       });
+      if (res.markDone == true) widget.logic.completePlanItem(it, true);
 
       if (res.delete == true) {
         widget.state.dayPlan.removeWhere((e) => e.id == it.id);
@@ -2978,8 +2976,7 @@ class _TodayViewState extends State<TodayView> {
                 if (it.toPlan == true) {
                   widget.logic.archiveAction(it);
                 } else {
-                  it.done = true;
-                  widget.logic.onChange();
+                  widget.logic.completePlanItem(it, true);
                 }
                 setState(() {});
               } else {
@@ -4071,11 +4068,8 @@ class _NowTabState extends State<NowTab> {
                   child: IconButton(
                     tooltip: "Fait",
                     onPressed: () {
-                      setState(() {
-                        it.done = true;
-                        it.isNowFocus = false;
-                      });
-                      widget.logic.onChange();
+                      widget.logic.completePlanItem(it, true);
+                      setState(() => it.isNowFocus = false);
                     },
                     style: IconButton.styleFrom(
                       backgroundColor:
