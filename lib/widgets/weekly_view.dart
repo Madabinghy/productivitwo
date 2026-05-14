@@ -7,6 +7,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/widgets/new_action_sheet.dart';
+import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
 
 class WeeklyView extends StatefulWidget {
   final AppLogic logic;
@@ -579,6 +580,19 @@ class _WeeklyViewState extends State<WeeklyView> {
                                         isToday: isToday,
                                         cs: cs,
                                         domainColor: domainColor(r.domainId, widget.logic.state.domains),
+                                        onTap: isToday
+                                            ? () => showModalBottomSheet(
+                                                  context: context,
+                                                  showDragHandle: true,
+                                                  isScrollControlled: true,
+                                                  builder: (_) => RoutineDetailSheet(
+                                                    logic: widget.logic,
+                                                    st: widget.logic.state,
+                                                    habitId: r.id,
+                                                    day: DateTime.now(),
+                                                  ),
+                                                )
+                                            : null,
                                         onIncrement: isToday
                                             ? () {
                                                 HapticFeedback.lightImpact();
@@ -701,6 +715,7 @@ class _RoutineTile extends StatelessWidget {
   final ColorScheme cs;
   final VoidCallback? onIncrement;
   final VoidCallback? onDecrement;
+  final VoidCallback? onTap;
   final Color? domainColor;
 
   const _RoutineTile({
@@ -711,6 +726,7 @@ class _RoutineTile extends StatelessWidget {
     required this.cs,
     this.onIncrement,
     this.onDecrement,
+    this.onTap,
     this.domainColor,
   });
 
@@ -719,7 +735,10 @@ class _RoutineTile extends StatelessWidget {
     final reached = value >= target;
     final missed = value == 0 && !isToday;
 
-    return Padding(
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       child: Row(
         children: [
@@ -866,6 +885,7 @@ class _RoutineTile extends StatelessWidget {
             ),
           ],
         ],
+      ),
       ),
     );
   }
