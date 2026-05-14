@@ -3045,7 +3045,9 @@ class _TodayViewState extends State<TodayView> {
               color: Colors.red.withOpacity(0.15),
               child: const Icon(Icons.delete, color: Colors.red),
             ),
-            onDismissed: (direction) {
+            // confirmDismiss évite que onDismissed re-fire si l'item
+            // reste dans le tree après complétion (startToEnd).
+            confirmDismiss: (direction) async {
               if (direction == DismissDirection.startToEnd) {
                 HapticFeedback.lightImpact();
                 if (it.toPlan == true) {
@@ -3054,10 +3056,11 @@ class _TodayViewState extends State<TodayView> {
                   widget.logic.completePlanItem(it, true);
                 }
                 setState(() {});
-              } else {
-                _deleteActionWithUndo(it);
+                return false; // Dismissible ne retire pas le widget
               }
+              return true; // suppression : on laisse Dismissible retirer
             },
+            onDismissed: (_) => _deleteActionWithUndo(it),
             child: card,
           );
         }
