@@ -2052,13 +2052,6 @@ class _TodayViewState extends State<TodayView> {
                   style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
                 ),
               ),
-              if (isTodayTab && sortedBlocks.isNotEmpty)
-                TextButton.icon(
-                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                  icon: const Icon(Icons.tune, size: 16),
-                  label: const Text('Blocs'),
-                  onPressed: () => showDayBlocksSheet(context, logic: widget.logic).then((_) => setState(() {})),
-                ),
               if (isTodayTab && widget.logic.state.recurringActions.isNotEmpty)
                 TextButton.icon(
                   style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
