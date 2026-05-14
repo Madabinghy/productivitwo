@@ -1500,7 +1500,7 @@ class AppLogic {
 
   // ─── Actions récurrentes ──────────────────────────────────────────────────
 
-  void createRecurringAction({
+  RecurringAction createRecurringAction({
     required String title,
     String? domainId,
     String? activityId,
@@ -1518,6 +1518,7 @@ class AppLogic {
     );
     state.recurringActions.add(ra);
     onChange();
+    return ra;
   }
 
   void deleteRecurringAction(String id) {
