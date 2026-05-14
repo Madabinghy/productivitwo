@@ -159,7 +159,8 @@ class _TodayViewState extends State<TodayView> {
     final runningDomainId = running?.domainId;
 
     // Objectifs actifs filtrés par domaine
-    var activeGoals = st.goals.where((g) => g.status == 'active').toList();
+    var activeGoals = st.goals.where((g) => g.status == 'active').toList()
+      ..sort((a, b) => a.order.compareTo(b.order));
     if (filters.domainIds.isNotEmpty) {
       activeGoals = activeGoals.where((g) => filters.domainIds.contains(g.domainId)).toList();
     }
@@ -231,34 +232,54 @@ class _TodayViewState extends State<TodayView> {
               ],
             ),
           ),
-          for (final goal in activeGoals.where((g) => g.domainId == domain.id))
-            GoalCard(
-              goal: goal,
-              muted: false,
-              logic: widget.logic,
-              onTap: () => _openGoalDetail(context, goal),
-              onArchive: () async {
-                final confirm = await showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('Archiver ?'),
-                    content: Text('Archiver "${goal.title}" ?'),
-                    actions: [
-                      TextButton(
-                          onPressed: () => Navigator.pop(ctx, false),
-                          child: const Text('Annuler')),
-                      FilledButton(
-                          onPressed: () => Navigator.pop(ctx, true),
-                          child: const Text('Archiver')),
-                    ],
-                  ),
-                );
-                if (confirm == true) {
-                  logic.archiveGoal(goal.id);
-                  setState(() {});
-                }
+          Builder(builder: (ctx) {
+            final domainGoals = activeGoals
+                .where((g) => g.domainId == domain.id)
+                .toList();
+            return ReorderableListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              buildDefaultDragHandles: false,
+              itemCount: domainGoals.length,
+              onReorder: (oldIndex, newIndex) {
+                logic.reorderGoals(domain.id, oldIndex, newIndex);
+                setState(() {});
               },
-            ),
+              itemBuilder: (ctx, i) {
+                final goal = domainGoals[i];
+                return GoalCard(
+                  key: ValueKey(goal.id),
+                  goal: goal,
+                  muted: false,
+                  logic: widget.logic,
+                  showDrag: true,
+                  dragIndex: i,
+                  onTap: () => _openGoalDetail(context, goal),
+                  onArchive: () async {
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Archiver ?'),
+                        content: Text('Archiver "${goal.title}" ?'),
+                        actions: [
+                          TextButton(
+                              onPressed: () => Navigator.pop(ctx, false),
+                              child: const Text('Annuler')),
+                          FilledButton(
+                              onPressed: () => Navigator.pop(ctx, true),
+                              child: const Text('Archiver')),
+                        ],
+                      ),
+                    );
+                    if (confirm == true) {
+                      logic.archiveGoal(goal.id);
+                      setState(() {});
+                    }
+                  },
+                );
+              },
+            );
+          }),
         ],
         const Divider(height: 32),
         Center(

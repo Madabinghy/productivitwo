@@ -426,6 +426,8 @@ class GoalCard extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onArchive;
   final AppLogic? logic;
+  final bool showDrag;
+  final int dragIndex;
 
   const GoalCard({
     super.key,
@@ -434,6 +436,8 @@ class GoalCard extends StatelessWidget {
     required this.onTap,
     required this.onArchive,
     this.logic,
+    this.showDrag = false,
+    this.dragIndex = 0,
   });
 
   @override
@@ -466,9 +470,27 @@ class GoalCard extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          child: Column(
+          padding: EdgeInsets.only(
+            left: showDrag ? 4 : 16,
+            right: 16,
+            top: 10,
+            bottom: 10,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              if (showDrag)
+                ReorderableDragStartListener(
+                  index: dragIndex,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Icon(Icons.drag_handle,
+                        size: 18,
+                        color: Colors.grey.shade400),
+                  ),
+                ),
+              Expanded(
+                child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
@@ -544,6 +566,9 @@ class GoalCard extends StatelessWidget {
                 const SizedBox(height: 6),
                 _RoutineChipsRow(goal: goal, logic: logic!),
               ],
+            ],
+          ),
+                ),
             ],
           ),
         ),

@@ -5389,6 +5389,7 @@ class _AppRootState extends State<AppRoot>
                 : ReorderableListView.builder(
                     scrollController: scrollCtrl,
                     padding: const EdgeInsets.only(bottom: 100),
+                    buildDefaultDragHandles: false,
                     itemCount: activeGoals.length,
                     onReorder: (oldIndex, newIndex) {
                       logic.reorderGoals(domainId, oldIndex, newIndex);
@@ -5401,6 +5402,8 @@ class _AppRootState extends State<AppRoot>
                           goal: g,
                           muted: false,
                           logic: logic,
+                          showDrag: true,
+                          dragIndex: i,
                           onTap: () => openGoalDetail(g),
                           onArchive: () async {
                             final confirm = await showDialog<bool>(
