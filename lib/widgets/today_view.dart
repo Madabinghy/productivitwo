@@ -3815,20 +3815,18 @@ class _NowTabState extends State<NowTab> {
 
     return Card(
       clipBehavior: Clip.antiAlias,
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Bande colorée domaine
-            if (dColor != null)
-              Container(width: 5, color: dColor),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
+      child: Container(
+        decoration: dColor != null
+            ? BoxDecoration(
+                border: Border(
+                    left: BorderSide(color: dColor, width: 5)))
+            : null,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
             // ───── HEADER ─────
             Row(
               children: [
@@ -4007,9 +4005,6 @@ class _NowTabState extends State<NowTab> {
             Flexible(child: _checklistBlock(context, it)),
           ],
         ),
-              ),
-            ),
-          ],
         ),
       ),
     );
