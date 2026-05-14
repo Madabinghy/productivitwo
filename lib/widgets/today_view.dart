@@ -687,7 +687,7 @@ class _TodayViewState extends State<TodayView> {
     required bool autoExpanded,
     required Activity? shoppingAct,
   }) {
-    final reserveCount = widget.st.dayPlan
+    final reserveCount = widget.state.dayPlan
         .where((a) =>
             a.kind == PlanKind.action &&
             a.toPlan == true &&
