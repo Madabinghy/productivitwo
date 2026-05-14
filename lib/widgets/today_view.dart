@@ -3900,8 +3900,8 @@ class _NowTabState extends State<NowTab> {
             Text(
               it.title,
               style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
               ),
             ),
 
