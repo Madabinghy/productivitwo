@@ -4137,44 +4137,49 @@ class _NowTabState extends State<NowTab> {
                     return ListTile(
                       key: k,
                       dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      leading: ReorderableDragStartListener(
-                        index: i,
-                        child: const Icon(Icons.drag_handle),
+                      contentPadding:
+                          const EdgeInsets.only(left: 0, right: 4),
+                      leading: Checkbox(
+                        value: c.done,
+                        onChanged: (v) {
+                          setState(() => c.done = v ?? false);
+                          widget.logic.onChange();
+                        },
+                        materialTapTargetSize:
+                            MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
                       ),
                       title: Text(
                         c.title,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontWeight: FontWeight.w700,
                           decoration:
                               c.done ? TextDecoration.lineThrough : null,
                           color: c.done
-                              ? cs.onSurface.withOpacity(.55)
+                              ? cs.onSurface.withOpacity(.45)
                               : cs.onSurface.withOpacity(.92),
                         ),
                       ),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Checkbox(
-                            value: c.done,
-                            onChanged: (v) {
-                              setState(() => c.done = v ?? false);
-                              widget.logic.onChange();
-                            },
-                            materialTapTargetSize:
-                                MaterialTapTargetSize.shrinkWrap,
-                            visualDensity: VisualDensity.compact,
+                          ReorderableDragStartListener(
+                            index: i,
+                            child: Icon(Icons.drag_handle,
+                                size: 18,
+                                color: cs.onSurface.withOpacity(.3)),
                           ),
                           IconButton(
                             tooltip: "Supprimer",
+                            visualDensity: VisualDensity.compact,
                             onPressed: () {
                               setState(() => it.checklist.removeAt(i));
                               widget.logic.onChange();
                             },
-                            icon: const Icon(Icons.delete_outline),
+                            icon: Icon(Icons.delete_outline,
+                                size: 18,
+                                color: cs.onSurface.withOpacity(.4)),
                           ),
                         ],
                       ),
@@ -4278,74 +4283,73 @@ class _NowTabState extends State<NowTab> {
       return ok == true;
     }
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    final cs = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    "Checklist • ${scopeLabel()}",
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w800, fontSize: 14),
-                  ),
-                ),
-                if (doneSet.isNotEmpty)
-                  TextButton(
-                    onPressed: () async {
-                      final ok = await _confirmReset();
-                      if (!ok) return;
-                      widget.logic.clearChecklistForPeriod(habitId, widget.day);
-                      setState(() {});
-                    },
-                    child: const Text("Réinitialiser"),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            if (items.isNotEmpty) ...[
-              TinyBar(
-                ratio: ratio,
-                labelLeft: "${scopeLabel()} : $checkedCount / $total",
-                padding: const EdgeInsets.only(top: 6, bottom: 6),
+            Expanded(
+              child: Text(
+                "Checklist${total > 0 ? " ($checkedCount/$total)" : ""} • ${scopeLabel()}",
+                style: const TextStyle(
+                    fontWeight: FontWeight.w700, fontSize: 15),
               ),
-            ],
-            if (items.isEmpty)
-              Text(
-                "Aucun item. Appuie sur + pour en ajouter.",
-                style: TextStyle(
-                  color:
-                      Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-                ),
-              )
-            else
-              for (int i = 0; i < items.length; i++)
-                _checklistRow(
-                  habitId: habitId,
-                  index: i,
-                  label: items[i],
-                  doneSet: doneSet,
-                ),
-            const SizedBox(height: 6),
-            Align(
-              alignment: Alignment.centerRight,
-              child: IconButton(
-                tooltip: "Ajouter un item",
+            ),
+            if (doneSet.isNotEmpty)
+              TextButton(
+                style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 8)),
                 onPressed: () async {
-                  final txt = await _promptText(title: "Ajouter un item");
-                  if (txt == null || txt.trim().isEmpty) return;
-                  widget.logic.addChecklistItem(habitId, txt.trim());
+                  final ok = await _confirmReset();
+                  if (!ok) return;
+                  widget.logic.clearChecklistForPeriod(habitId, widget.day);
                   setState(() {});
                 },
-                icon: const Icon(Icons.add),
+                child: const Text("Réinitialiser"),
               ),
+            IconButton(
+              tooltip: "Ajouter un item",
+              visualDensity: VisualDensity.compact,
+              onPressed: () async {
+                final txt = await _promptText(title: "Ajouter un item");
+                if (txt == null || txt.trim().isEmpty) return;
+                widget.logic.addChecklistItem(habitId, txt.trim());
+                setState(() {});
+              },
+              icon: const Icon(Icons.add),
             ),
           ],
         ),
-      ),
+        if (total > 0) ...[
+          const SizedBox(height: 4),
+          TinyBar(
+            ratio: ratio,
+            labelLeft: "$checkedCount / $total",
+            padding: const EdgeInsets.only(bottom: 4),
+          ),
+        ],
+        const SizedBox(height: 4),
+        if (items.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Text(
+              "Aucun item.",
+              style:
+                  TextStyle(color: cs.onSurface.withOpacity(.5), fontSize: 13),
+            ),
+          )
+        else
+          for (int i = 0; i < items.length; i++)
+            _checklistRow(
+              habitId: habitId,
+              index: i,
+              label: items[i],
+              doneSet: doneSet,
+            ),
+      ],
     );
   }
 
@@ -4356,42 +4360,59 @@ class _NowTabState extends State<NowTab> {
     required Set<int> doneSet,
   }) {
     final isChecked = doneSet.contains(index);
+    final cs = Theme.of(context).colorScheme;
 
-    return Row(
-      children: [
-        Checkbox(
-          value: isChecked,
-          onChanged: (_) {
-            widget.logic.toggleChecklistItem(habitId, widget.day, index);
-            setState(() {});
-          },
+    return ListTile(
+      dense: true,
+      contentPadding: const EdgeInsets.only(left: 0, right: 4),
+      leading: Checkbox(
+        value: isChecked,
+        onChanged: (_) {
+          widget.logic.toggleChecklistItem(habitId, widget.day, index);
+          setState(() {});
+        },
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+      ),
+      title: Text(
+        label,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          decoration: isChecked ? TextDecoration.lineThrough : null,
+          color: isChecked
+              ? cs.onSurface.withOpacity(.45)
+              : cs.onSurface.withOpacity(.92),
         ),
-        Expanded(
-          child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis),
-        ),
-        IconButton(
-          tooltip: "Renommer",
-          onPressed: () async {
-            final txt = await _promptText(title: "Renommer", initial: label);
-            if (txt == null || txt.isEmpty) return;
-
-            // Renommer ne change PAS l'index -> les coches restent OK
-            widget.logic.renameChecklistItem(habitId, index, txt);
-            setState(() {});
-          },
-          icon: const Icon(Icons.edit),
-        ),
-        IconButton(
-          tooltip: "Supprimer",
-          onPressed: () {
-            // ⚠️ suppression d'item = décalage d'index -> il faut réaligner les coches
-            widget.logic
-                .removeChecklistItemAndFixDone(habitId, widget.day, index);
-            setState(() {});
-          },
-          icon: const Icon(Icons.delete_outline),
-        ),
-      ],
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            tooltip: "Renommer",
+            visualDensity: VisualDensity.compact,
+            onPressed: () async {
+              final txt =
+                  await _promptText(title: "Renommer", initial: label);
+              if (txt == null || txt.isEmpty) return;
+              widget.logic.renameChecklistItem(habitId, index, txt);
+              setState(() {});
+            },
+            icon: Icon(Icons.edit, size: 18, color: cs.onSurface.withOpacity(.4)),
+          ),
+          IconButton(
+            tooltip: "Supprimer",
+            visualDensity: VisualDensity.compact,
+            onPressed: () {
+              widget.logic
+                  .removeChecklistItemAndFixDone(habitId, widget.day, index);
+              setState(() {});
+            },
+            icon: Icon(Icons.delete_outline,
+                size: 18, color: cs.onSurface.withOpacity(.4)),
+          ),
+        ],
+      ),
     );
   }
 
