@@ -1731,6 +1731,36 @@ class _AppRootState extends State<AppRoot>
         _state!.onboardingDone = true;
       }
 
+      // Blocs par défaut si l'utilisateur n'en a pas encore
+      if (_state!.blocks.isEmpty) {
+        const defaultBlocks = [
+          'Miracle Morning',
+          'Matinée',
+          'Midi',
+          'Après-midi',
+          'Soir',
+          'Routine Soir',
+        ];
+        for (var i = 0; i < defaultBlocks.length; i++) {
+          _state!.blocks.add(DayBlock(
+            name: defaultBlocks[i],
+            order: i,
+          ));
+        }
+      }
+
+      // Migration : garantit que toutes les routines déjà dans des blocs
+      // ont un DayPlanItem pour aujourd'hui (sinon blockItemsForDay ne les trouve pas).
+      final todayYmd = yyyymmdd(DateTime.now());
+      for (final b in _state!.blocks) {
+        for (final actId in b.activityIds) {
+          final a = _state!.activities.firstWhereOrNull((x) => x.id == actId);
+          if (a != null && a.isHabit) {
+            logic.ensureHabitPlannedForDay(todayYmd, actId);
+          }
+        }
+      }
+
       if (_state!.domains.isEmpty && _state!.onboardingDone) {
         _state!.domains.add(Domain(name: 'Général'));
       }
@@ -2036,6 +2066,7 @@ class _AppRootState extends State<AppRoot>
         TodayView(
           logic: logic,
           state: _state!,
+          isVisible: _tab == _Tab.today,
           onGoNow: (habitId) {
             logic.forceNowHabit(habitId);
             setState(() => _tab = _Tab.now);

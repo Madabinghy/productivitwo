@@ -21,6 +21,7 @@ import 'package:productivitwo_v1/widgets/courses_sheet.dart';
 class TodayView extends StatefulWidget {
   final AppLogic logic;
   final AppState state;
+  final bool isVisible;
   final void Function(String habitId)? onGoNow;
   final VoidCallback? onGoNowTab; // ✅ juste switch d'onglet
   final void Function(String habitId)? onOpenRoutineDetail;
@@ -28,6 +29,7 @@ class TodayView extends StatefulWidget {
     super.key,
     required this.logic,
     required this.state,
+    this.isVisible = true,
     this.onGoNow,
     this.onGoNowTab,
     this.onOpenRoutineDetail,
@@ -1282,8 +1284,24 @@ class _TodayViewState extends State<TodayView> {
   }
 
   @override
+  void didUpdateWidget(TodayView old) {
+    super.didUpdateWidget(old);
+    // Chaque fois qu'on revient sur l'onglet, on replie tous les blocs
+    if (widget.isVisible && !old.isVisible) {
+      _collapsedBlockIds
+        ..clear()
+        ..addAll(widget.logic.state.blocks.map((b) => b.id));
+    }
+  }
+
+  @override
   void initState() {
     super.initState();
+
+    // Blocs repliés par défaut au premier chargement
+    for (final b in widget.logic.state.blocks) {
+      _collapsedBlockIds.add(b.id);
+    }
 
     // 1) housekeeping après build
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1359,7 +1377,8 @@ class _TodayViewState extends State<TodayView> {
     final routines = widget.logic.state.activities
         .where((a) =>
             a.isHabit &&
-            widget.logic.effectiveHabitFreq(a) == HabitFreq.daily)
+            widget.logic.effectiveHabitFreq(a) == HabitFreq.daily &&
+            !widget.logic.state.blocks.any((b) => b.activityIds.contains(a.id)))
         .toList()
       ..sort((a, b) => a.order.compareTo(b.order));
 
@@ -2648,10 +2667,9 @@ class _TodayViewState extends State<TodayView> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     }
 
-    // ❌ pour les virtuels : pas de déplacement “entre jours”
+    // Déplacement inter-jours réservé aux actions one-shot, pas aux routines
     Widget moveDayArrowsIfAny() {
-      final canMove =
-          !isVirtual && ((it.kind == PlanKind.action) || (it.refId != null));
+      final canMove = !isVirtual && (it.kind == PlanKind.action);
       if (!canMove) return const SizedBox.shrink();
 
       // viewed = today ou tomorrow selon onglet
@@ -3411,30 +3429,7 @@ class _TodayViewState extends State<TodayView> {
                         },
                       );
                     },
-                    onLongPress: it.done
-                        ? null
-                        : () async {
-                            HapticFeedback.mediumImpact();
-                            await widget.logic.sendToTomorrow(it);
-                            if (!mounted) return;
-                            setState(() {});
-                            ScaffoldMessenger.of(context).clearSnackBars();
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                              content: Text(isTodayTab
-                                  ? 'Routine déplacée à demain'
-                                  : 'Routine déplacée à après-demain'),
-                              action: isVirtual
-                                  ? null
-                                  : SnackBarAction(
-                                      label: 'Annuler',
-                                      onPressed: () {
-                                        widget.logic
-                                            .moveItemToDayById(it.id, ymdViewed);
-                                        setState(() {});
-                                      },
-                                    ),
-                            ));
-                          },
+                    onLongPress: null,
                   ),
 
                   const SizedBox(height: 6),
@@ -3952,28 +3947,6 @@ class _NowTabState extends State<NowTab> {
                   ],
                 ),
               ),
-              IconButton(
-                tooltip: "À demain",
-                icon: const Icon(Icons.arrow_forward),
-                onPressed: () {
-                  widget.logic.moveItemToTomorrow(ymd, it);
-                  _skippedIds.add(it.id);
-                  setState(() {});
-                  ScaffoldMessenger.of(context).clearSnackBars();
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                    content: const Text('Déplacé à demain'),
-                    action: SnackBarAction(
-                      label: 'Annuler',
-                      onPressed: () {
-                        widget.logic.moveItemToDayById(it.id, ymd);
-                        _skippedIds.remove(it.id);
-                        widget.logic.onChange();
-                        setState(() {});
-                      },
-                    ),
-                  ));
-                },
-              ),
             ],
           ),
           const SizedBox(height: 10),
@@ -4200,28 +4173,6 @@ class _NowTabState extends State<NowTab> {
                       color: headerColor.withOpacity(0.9),
                     ),
                   ),
-                ),
-                IconButton(
-                  tooltip: "À demain",
-                  icon: const Icon(Icons.arrow_forward),
-                  onPressed: () {
-                    widget.logic.moveItemToTomorrow(ymd, it);
-                    _skippedIds.add(it.id);
-                    setState(() {});
-                    ScaffoldMessenger.of(context).clearSnackBars();
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: const Text('Déplacé à demain'),
-                      action: SnackBarAction(
-                        label: 'Annuler',
-                        onPressed: () {
-                          widget.logic.moveItemToDayById(it.id, ymd);
-                          _skippedIds.remove(it.id);
-                          widget.logic.onChange();
-                          setState(() {});
-                        },
-                      ),
-                    ));
-                  },
                 ),
 /*                 if (_skippedIds.isNotEmpty)
                   TextButton(

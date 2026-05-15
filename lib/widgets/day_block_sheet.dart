@@ -300,19 +300,18 @@ class _BlockActivitiesSheetState extends State<_BlockActivitiesSheet> {
                     itemBuilder: (context, i) {
                       final a = habits[i];
 
-                      // Vérifie si cette routine est dans un autre bloc
-                      final otherBlock = logic.state.blocks.firstWhereOrNull(
-                        (b) =>
-                            b.id != block.id && b.activityIds.contains(a.id),
-                      );
                       final inThisBlock = block.activityIds.contains(a.id);
+                      final otherBlocks = logic.state.blocks
+                          .where((b) =>
+                              b.id != block.id && b.activityIds.contains(a.id))
+                          .toList();
 
                       return CheckboxListTile(
                         value: inThisBlock,
                         title: Text(a.name),
-                        subtitle: otherBlock != null && !inThisBlock
+                        subtitle: otherBlocks.isNotEmpty
                             ? Text(
-                                'Déjà dans : ${otherBlock.emoji ?? ""}${otherBlock.name}',
+                                'Aussi dans : ${otherBlocks.map((b) => '${b.emoji ?? ""}${b.name}').join(', ')}',
                                 style: TextStyle(
                                     fontSize: 11,
                                     color: cs.onSurface.withOpacity(0.6)),
@@ -321,11 +320,6 @@ class _BlockActivitiesSheetState extends State<_BlockActivitiesSheet> {
                         onChanged: (v) {
                           setState(() {
                             if (v == true) {
-                              // Retirer de l'autre bloc si présent
-                              if (otherBlock != null) {
-                                logic.removeActivityFromBlock(
-                                    otherBlock.id, a.id);
-                              }
                               logic.addActivityToBlock(block.id, a.id);
                             } else {
                               logic.removeActivityFromBlock(block.id, a.id);

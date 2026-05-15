@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -74,6 +75,40 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         name: routineTitle,
         freq: _routineFreq,
       );
+    }
+
+    // Pré-configurer "Boire de l'eau" dans tous les blocs comme exemple concret
+    // de routine multi-blocs. L'utilisateur voit directement le concept en action.
+    if (logic.state.domains.isNotEmpty && logic.state.blocks.isNotEmpty) {
+      final santeId =
+          logic.state.domains.firstWhereOrNull((d) => d.name == 'Santé')?.id ??
+              logic.state.domains.first.id;
+
+      final hydratation = Activity(
+        domainId: santeId,
+        name: 'Hydratation',
+        type: 'time',
+        goalMin: 1,
+      );
+      logic.state.activities.add(hydratation);
+
+      final eau = Activity(
+        domainId: santeId,
+        name: "Boire de l'eau",
+        type: 'habit',
+        habitFreq: HabitFreq.daily,
+        habitTarget: 8,
+        manualTarget: true,
+        autoTune: false,
+        linkedActivityId: hydratation.id,
+      );
+      logic.state.activities.add(eau);
+
+      for (final b in logic.state.blocks) {
+        if (!b.activityIds.contains(eau.id)) b.activityIds.add(eau.id);
+      }
+
+      logic.ensureHabitPlannedForDay(yyyymmdd(DateTime.now()), eau.id);
     }
 
     logic.state.onboardingDone = true;

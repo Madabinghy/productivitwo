@@ -4954,11 +4954,24 @@ extension TodayLogic on AppLogic {
     return null;
   }
 
+  // Retourne TOUS les blocs auxquels appartient cet item (une routine peut
+  // être dans plusieurs blocs).
+  List<String> effectiveBlockIds(DayPlanItem it) {
+    if ((it.blockId ?? '').isNotEmpty) return [it.blockId!];
+    if (it.kind == PlanKind.action) return [];
+    final actId = (it.refId ?? it.activityId ?? '').trim();
+    if (actId.isEmpty) return [];
+    return state.blocks
+        .where((b) => b.activityIds.contains(actId))
+        .map((b) => b.id)
+        .toList();
+  }
+
   List<DayPlanItem> blockItemsForDay(String blockId, String ymd) {
     return state.dayPlan.where((it) {
       if (it.yyyymmdd != ymd) return false;
       if (it.archived) return false;
-      return effectiveBlockId(it) == blockId;
+      return effectiveBlockIds(it).contains(blockId);
     }).toList()
       ..sort((a, b) => a.order.compareTo(b.order));
   }
@@ -5086,6 +5099,12 @@ extension TodayLogic on AppLogic {
     final b = state.blocks.firstWhereOrNull((b) => b.id == blockId);
     if (b == null) return;
     if (!b.activityIds.contains(activityId)) b.activityIds.add(activityId);
+    // Garantit qu'un DayPlanItem existe pour aujourd'hui, sinon blockItemsForDay
+    // ne peut pas retrouver la routine dans le plan du jour.
+    final a = state.activities.firstWhereOrNull((x) => x.id == activityId);
+    if (a != null && a.isHabit) {
+      ensureHabitPlannedForDay(yyyymmdd(DateTime.now()), activityId);
+    }
     onChange();
   }
 

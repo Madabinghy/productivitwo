@@ -391,7 +391,8 @@ Future<AppState> loadOrInitCleaner() async {
         );
 
     // ========== Activités (time) ==========
-    final soinAct        = timeAct(sante.id, 'Soins');
+    final soinAct           = timeAct(sante.id, 'Soins');
+    final hydratationAct    = timeAct(sante.id, 'Hydratation');
     final cuisineAct     = timeAct(sante.id, 'Cuisiner');
     final nettoyerAct    = timeAct(environnement.id, 'Nettoyer');
     final vaisselleAct   = timeAct(environnement.id, 'Vaisselle');
@@ -427,6 +428,7 @@ Future<AppState> loadOrInitCleaner() async {
 
       // Santé
       soinAct,
+      hydratationAct,
       cuisineAct,
       timeAct(sante.id, 'Sommeil'),
 
@@ -456,8 +458,8 @@ Future<AppState> loadOrInitCleaner() async {
       dailyCountHabit(
         sante.id,
         "Boire de l'eau",
-        target: 10,
-        linkedActivityId: soinAct.id,
+        target: 8,
+        linkedActivityId: hydratationAct.id,
       ),
       dailyCountHabit(
         sante.id,
@@ -870,6 +872,40 @@ Future<AppState> loadOrInitCleaner() async {
       toPlan(title: 'Ampoules', habit: hRevue),
     ];
 
+    // ========== Blocs par défaut ==========
+    // "Boire de l'eau" est placée dans tous les blocs comme exemple concret
+    // pour montrer à l'utilisateur qu'une routine peut traverser toute la journée.
+    final seedBlocks = <DayBlock>[];
+    const blockNames = [
+      'Miracle Morning',
+      'Matinée',
+      'Midi',
+      'Après-midi',
+      'Soir',
+      'Routine Soir',
+    ];
+    for (var i = 0; i < blockNames.length; i++) {
+      seedBlocks.add(DayBlock(
+        name: blockNames[i],
+        order: i,
+        activityIds: [hEau.id],
+      ));
+    }
+
+    // DayPlanItem pour que "Boire de l'eau" apparaisse dans les blocs dès aujourd'hui
+    dayPlan.add(DayPlanItem(
+      id: _newId(),
+      kind: PlanKind.habit,
+      refId: hEau.id,
+      domainId: hEau.domainId,
+      title: hEau.name,
+      yyyymmdd: yyyymmdd(today),
+      done: false,
+      doneCount: 0,
+      allDay: true,
+      order: 0,
+    ));
+
     return AppState(
       domains: [
         sante,
@@ -892,6 +928,7 @@ Future<AppState> loadOrInitCleaner() async {
       sortTodayByDashboard: false,
       habitHits: [],
       habitPinnedActivity: {},
+      blocks: seedBlocks,
 
       // ✅ checklists seedées
       habitChecklistByHabitId: habitChecklistByHabitId,
