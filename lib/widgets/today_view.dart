@@ -345,11 +345,24 @@ class _TodayViewState extends State<TodayView> {
         }
       }
 
+      final domColor = domainColor(act?.domainId, logic.state.domains);
+
       return Padding(
         key: key,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Row(
           children: [
+            if (domColor != null) ...[
+              Container(
+                width: 3,
+                height: 18,
+                decoration: BoxDecoration(
+                  color: isDone ? domColor.withOpacity(0.3) : domColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 10),
+            ],
             // Coche simple si quota = 1, sinon icône d'état
             GestureDetector(
               onTap: () => inc(isDone ? -1 : 1),

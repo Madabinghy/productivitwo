@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
+import 'package:productivitwo_v1/widgets/day_block_sheet.dart';
 import 'package:productivitwo_v1/widgets/new_action_sheet.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
 
@@ -56,6 +57,156 @@ class _WeeklyViewState extends State<WeeklyView> {
         _expanded.add(ymd);
       });
     }
+  }
+
+  Future<void> _openActionSheet(
+      BuildContext context, DayPlanItem it, String ymd) async {
+    final logic = widget.logic;
+    final cs = Theme.of(context).colorScheme;
+    final titleCtrl = TextEditingController(text: it.title);
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 16, right: 16, top: 4,
+            bottom: 16 + MediaQuery.of(ctx).viewInsets.bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Renommer
+              TextField(
+                controller: titleCtrl,
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                decoration: const InputDecoration(border: InputBorder.none),
+                onSubmitted: (v) {
+                  final t = v.trim();
+                  if (t.isNotEmpty) {
+                    it.title = t;
+                    logic.onChange();
+                  }
+                  Navigator.pop(ctx);
+                },
+              ),
+              const Divider(height: 8),
+
+              // Déplacer au jour suivant
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.arrow_forward),
+                title: const Text('Jour suivant'),
+                onTap: () {
+                  final next = DateTime(
+                    int.parse(ymd.substring(0, 4)),
+                    int.parse(ymd.substring(4, 6)),
+                    int.parse(ymd.substring(6, 8)),
+                  ).add(const Duration(days: 1));
+                  logic.moveItemToDayById(it.id, yyyymmdd(next));
+                  logic.onChange();
+                  setState(() {});
+                  Navigator.pop(ctx);
+                },
+              ),
+
+              // Déplacer au jour précédent
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.arrow_back),
+                title: const Text('Jour précédent'),
+                onTap: () {
+                  final prev = DateTime(
+                    int.parse(ymd.substring(0, 4)),
+                    int.parse(ymd.substring(4, 6)),
+                    int.parse(ymd.substring(6, 8)),
+                  ).subtract(const Duration(days: 1));
+                  logic.moveItemToDayById(it.id, yyyymmdd(prev));
+                  logic.onChange();
+                  setState(() {});
+                  Navigator.pop(ctx);
+                },
+              ),
+
+              // Assigner à un bloc
+              if (logic.state.blocks.isNotEmpty)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.category_outlined),
+                  title: const Text('Bloc'),
+                  subtitle: Text(() {
+                    final bid = logic.effectiveBlockId(it);
+                    if (bid == null) return 'Aucun';
+                    final b = logic.state.blocks.firstWhereOrNull((b) => b.id == bid);
+                    return b?.name ?? 'Aucun';
+                  }()),
+                  onTap: () async {
+                    final picked = await showBlockPickerSheet(ctx,
+                        logic: logic, currentBlockId: it.blockId);
+                    if (picked == null) return;
+                    logic.assignActionToBlock(it.id, picked.isEmpty ? null : picked);
+                    setState(() {});
+                    if (ctx.mounted) Navigator.pop(ctx);
+                  },
+                ),
+
+              // Changer l'activité/domaine
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.swap_horiz),
+                title: const Text('Activité'),
+                subtitle: Text(() {
+                  final a = logic.state.activities
+                      .firstWhereOrNull((a) => a.id == it.activityId);
+                  return a?.name ?? 'Aucune';
+                }()),
+                onTap: () async {
+                  final picked = await showModalBottomSheet<Activity>(
+                    context: ctx,
+                    showDragHandle: true,
+                    isScrollControlled: true,
+                    builder: (_) => _ActivityPickerSheet(logic: logic),
+                  );
+                  if (picked == null) return;
+                  it.activityId = picked.id;
+                  it.domainId = picked.domainId;
+                  logic.onChange();
+                  setState(() {});
+                  if (ctx.mounted) Navigator.pop(ctx);
+                },
+              ),
+
+              const Divider(height: 16),
+
+              // Supprimer
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.delete_outline, color: cs.error),
+                title: Text('Supprimer', style: TextStyle(color: cs.error)),
+                onTap: () {
+                  logic.state.dayPlan.removeWhere((e) => e.id == it.id);
+                  logic.onChange();
+                  setState(() {});
+                  Navigator.pop(ctx);
+                },
+              ),
+            ],
+          ),
+        );
+      }),
+    );
+
+    // Applique le renommage si l'utilisateur a modifié sans valider
+    final newTitle = titleCtrl.text.trim();
+    if (newTitle.isNotEmpty && newTitle != it.title) {
+      it.title = newTitle;
+      logic.onChange();
+    }
+    titleCtrl.dispose();
+    setState(() {});
   }
 
   static const _dayNames = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
@@ -410,11 +561,9 @@ class _WeeklyViewState extends State<WeeklyView> {
                                               setState(() {});
                                             }
                                           },
-                                          onLongPress: () {
-                                            HapticFeedback.mediumImpact();
-                                            widget.logic.moveItemToTomorrow(it.yyyymmdd, it);
-                                            setState(() {});
-                                          },
+                                          onTap: isPast
+                                              ? null
+                                              : () => _openActionSheet(context, it, ymd),
                                         ),
                                       ),
                                     );
@@ -656,7 +805,7 @@ class _ActionTile extends StatelessWidget {
   final bool isPast;
   final ColorScheme cs;
   final VoidCallback onToggle;
-  final VoidCallback? onLongPress;
+  final VoidCallback? onTap;
   final Color? domainColor;
 
   const _ActionTile({
@@ -664,7 +813,7 @@ class _ActionTile extends StatelessWidget {
     required this.isPast,
     required this.cs,
     required this.onToggle,
-    this.onLongPress,
+    this.onTap,
     this.domainColor,
   });
 
@@ -672,8 +821,7 @@ class _ActionTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final dim = action.done;
     return InkWell(
-      onTap: isPast ? null : onToggle,
-      onLongPress: isPast ? null : onLongPress,
+      onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         child: Row(
@@ -692,14 +840,18 @@ class _ActionTile extends StatelessWidget {
               ),
               const SizedBox(width: 8),
             ],
-            Icon(
-              dim ? Icons.check_circle : Icons.radio_button_unchecked,
-              size: 18,
-              color: dim
-                  ? cs.primary
-                  : isPast
-                      ? cs.onSurface.withOpacity(.25)
-                      : cs.onSurface.withOpacity(.35),
+            // Tap sur l'icône = toggle fait
+            GestureDetector(
+              onTap: isPast ? null : onToggle,
+              child: Icon(
+                dim ? Icons.check_circle : Icons.radio_button_unchecked,
+                size: 18,
+                color: dim
+                    ? cs.primary
+                    : isPast
+                        ? cs.onSurface.withOpacity(.25)
+                        : cs.onSurface.withOpacity(.35),
+              ),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -903,6 +1055,41 @@ class _RoutineTile extends StatelessWidget {
           ],
         ],
       ),
+      ),
+    );
+  }
+}
+
+// ── Picker activité ───────────────────────────────────────────────────────────
+
+class _ActivityPickerSheet extends StatelessWidget {
+  final AppLogic logic;
+  const _ActivityPickerSheet({required this.logic});
+
+  @override
+  Widget build(BuildContext context) {
+    final activities = logic.state.activities
+        .where((a) => !a.isHabit)
+        .toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.5,
+      maxChildSize: 0.9,
+      builder: (ctx, sc) => ListView.builder(
+        controller: sc,
+        itemCount: activities.length,
+        itemBuilder: (_, i) {
+          final a = activities[i];
+          final domain = logic.state.domains
+              .firstWhereOrNull((d) => d.id == a.domainId);
+          return ListTile(
+            title: Text(a.name),
+            subtitle: domain != null ? Text(domain.name) : null,
+            onTap: () => Navigator.pop(context, a),
+          );
+        },
       ),
     );
   }
