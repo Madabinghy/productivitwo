@@ -46,3 +46,8 @@ app.*.map.json
 
 # Keystore signing config (contains passwords)
 android/key.properties
+
+# Firebase — clés client à ne pas exposer publiquement
+google-services.json
+ios/Runner/GoogleService-Info.plist
+lib/firebase_options.dart
