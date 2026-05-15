@@ -124,12 +124,13 @@ class TimeReportCard extends StatelessWidget {
                 builder: (_) => AlertDialog(
                   title: const Text('Comment lire ce graphique ?'),
                   content: const Text(
-                    'Chaque cellule représente un jour. '
-                    'L\'intensité de la couleur est relative : '
-                    'ton jour le plus actif est toujours à pleine couleur, '
-                    'et les autres jours se positionnent en proportion.\n\n'
-                    'Au fil du temps, l\'échelle s\'affine automatiquement '
-                    'pour refléter tes habitudes réelles.',
+                    'Chaque cellule représente un jour d\'activité pour un domaine.\n\n'
+                    '5h ou plus dans la journée = couleur pleine. '
+                    'En-dessous, l\'intensité est proportionnelle : '
+                    '2h30 ≈ 50%, 1h ≈ 20%.\n\n'
+                    'Cette référence fixe permet de voir tous les domaines, '
+                    'même les moins actifs, sans qu\'ils soient écrasés '
+                    'par ceux où tu passes le plus de temps.',
                   ),
                   actions: [
                     TextButton(
