@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
+import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
 
 class RoutineFreqCard extends StatelessWidget {
   final AppLogic logic;
@@ -186,12 +187,24 @@ class _FreqRow extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             for (final item in data.items) ...[
-              _RoutineDetailRow(
-                item: item,
-                logic: logic,
-                cs: cs,
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => showRoutineSheet(
+                  ctx,
+                  logic: logic,
+                  habitId: item.activity.id,
+                  day: DateTime.now(),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: _RoutineDetailRow(
+                    item: item,
+                    logic: logic,
+                    cs: cs,
+                  ),
+                ),
               ),
-              const SizedBox(height: 10),
+              const Divider(height: 1),
             ],
           ],
         ),
