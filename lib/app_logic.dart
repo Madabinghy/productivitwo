@@ -4951,6 +4951,56 @@ extension TodayLogic on AppLogic {
     return bins;
   }
 
+  // Retourne le domainId dominant (le plus de minutes) pour chacune des 24 heures.
+  // null = aucune session dans cette heure.
+  List<String?> domainByHourLast24(DateTime now) {
+    final t = now;
+    DateTime floorToHour(DateTime d) =>
+        DateTime(d.year, d.month, d.day, d.hour);
+
+    final currentHour = floorToHour(t);
+    final base = currentHour.subtract(const Duration(hours: 23));
+    final windowEnd = currentHour.add(const Duration(hours: 1));
+
+    final activityDomain = {
+      for (final a in state.activities) a.id: a.domainId
+    };
+
+    // Par heure : domainId → minutes
+    final bins = List<Map<String, int>>.generate(24, (_) => {});
+
+    for (final s in state.sessions) {
+      final domainId = activityDomain[s.activityId] ?? '';
+      if (domainId.isEmpty) continue;
+
+      final start = s.startAt;
+      final end = s.endAt ?? t;
+      final s0 = start.isAfter(base) ? start : base;
+      final s1 = end.isBefore(windowEnd) ? end : windowEnd;
+      if (!s0.isBefore(s1)) continue;
+
+      var cur = s0;
+      while (cur.isBefore(s1)) {
+        final hStart = floorToHour(cur);
+        final hEnd = hStart.add(const Duration(hours: 1));
+        final chunkEnd = s1.isBefore(hEnd) ? s1 : hEnd;
+        final minutes = chunkEnd.difference(cur).inMinutes;
+        if (minutes > 0) {
+          final idx = hStart.difference(base).inHours;
+          if (idx >= 0 && idx < 24) {
+            bins[idx][domainId] = (bins[idx][domainId] ?? 0) + minutes;
+          }
+        }
+        cur = chunkEnd;
+      }
+    }
+
+    return bins.map((map) {
+      if (map.isEmpty) return null;
+      return map.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
+    }).toList();
+  }
+
   // ── Blocs journaliers ──────────────────────────────────────────────────────
 
   String? effectiveBlockId(DayPlanItem it) {

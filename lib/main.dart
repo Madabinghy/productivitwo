@@ -3197,7 +3197,14 @@ class _AppRootState extends State<AppRoot>
             ValueListenableBuilder<int>(
               valueListenable: _tick,
               builder: (context, _, __) {
-                final bins24 = logic.minutesByHourLast24(DateTime.now());
+                final now = DateTime.now();
+                final bins24 = logic.minutesByHourLast24(now);
+                final domainIds = logic.domainByHourLast24(now);
+                final domColors = domainIds
+                    .map((id) => id == null
+                        ? null
+                        : domainColor(id, logic.state.domains))
+                    .toList();
                 final cs = Theme.of(context).colorScheme;
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8),
@@ -3217,7 +3224,8 @@ class _AppRootState extends State<AppRoot>
                               color:
                                   cs.outlineVariant.withValues(alpha: .55)),
                         ),
-                        child: MiniHourBars24h(bins: bins24),
+                        child: MiniHourBars24h(
+                            bins: bins24, domainColors: domColors),
                       ),
                     ),
                   ),
@@ -6872,6 +6880,7 @@ class AppBarProductivityBars extends StatelessWidget {
 
 class MiniHourBars24h extends StatelessWidget {
   final List<int> bins; // 24 valeurs (0..60)
+  final List<Color?>? domainColors; // couleur dominante par heure (optionnel)
   final double height;
   final double width;
   final double gap;
@@ -6879,6 +6888,7 @@ class MiniHourBars24h extends StatelessWidget {
   const MiniHourBars24h({
     super.key,
     required this.bins,
+    this.domainColors,
     this.height = 18,
     this.width = 54,
     this.gap = 1.0,
@@ -6887,10 +6897,7 @@ class MiniHourBars24h extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-
-    // couleurs: cyan (réalisé) + rouge (reste)
-    final doneColor = cs.primary; // cyan/teal
-    final restColor = Colors.black.withOpacity(0.45);
+    final restColor = cs.onSurface.withOpacity(0.12);
 
     return SizedBox(
       width: width,
@@ -6902,6 +6909,9 @@ class MiniHourBars24h extends StatelessWidget {
           final mins = (i < bins.length) ? bins[i].clamp(0, 60) : 0;
           final doneFrac = mins / 60.0;
           final restFrac = 1.0 - doneFrac;
+          final barColor = (domainColors != null && i < domainColors!.length)
+              ? (domainColors![i] ?? cs.primary)
+              : cs.primary;
 
           return Expanded(
             child: Padding(
@@ -6910,18 +6920,16 @@ class MiniHourBars24h extends StatelessWidget {
                 borderRadius: BorderRadius.circular(2),
                 child: Column(
                   children: [
-                    // haut = reste (rouge)
                     Expanded(
                       flex: (restFrac * 1000).round().clamp(0, 1000),
                       child: Container(color: restColor),
                     ),
-                    // bas = réalisé (cyan)
                     Expanded(
                       flex: (doneFrac * 1000).round().clamp(0, 1000),
                       child: Container(
                         color: isCurrentHour
-                            ? doneColor.withOpacity(1)
-                            : doneColor.withOpacity(0.7),
+                            ? barColor
+                            : barColor.withOpacity(0.75),
                       ),
                     ),
                   ],
