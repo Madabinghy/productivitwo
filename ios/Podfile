@@ -58,7 +58,7 @@ post_install do |installer|
       end
     end
 
-    if target.name == 'gRPC-C++'
+    if ['gRPC-C++', 'gRPC-Core', 'abseil'].include?(target.name)
       target.build_configurations.each do |config|
         config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
       end
