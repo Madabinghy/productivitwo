@@ -65,6 +65,7 @@ class DayPlanItem {
   DateTime createdAt;
   String? blockId;
   String? recurringActionId; // id de RecurringAction si généré automatiquement
+  String? originalYmd; // date où l'action a été planifiée pour la première fois
 
   // ✅ NEW
   List<ChecklistItem> checklist;
@@ -91,6 +92,7 @@ class DayPlanItem {
     ActionStatus? status,
     this.blockId,
     this.recurringActionId,
+    this.originalYmd,
 
     // ✅ NEW
     List<ChecklistItem>? checklist,
@@ -122,6 +124,7 @@ class DayPlanItem {
         'createdAt': createdAt.toIso8601String(),
         'blockId': blockId,
         'recurringActionId': recurringActionId,
+        'originalYmd': originalYmd,
 
         // ✅ CHECKLIST
         'checklist': checklist.map((c) => c.toJson()).toList(),
@@ -175,6 +178,7 @@ class DayPlanItem {
           : null,
       blockId: j['blockId'] as String?,
       recurringActionId: j['recurringActionId'] as String?,
+      originalYmd: j['originalYmd'] as String?,
       checklist: (j['checklist'] as List?)
               ?.map((c) => ChecklistItem.from(c))
               .toList() ??

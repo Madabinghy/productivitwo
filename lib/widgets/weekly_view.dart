@@ -258,6 +258,18 @@ class _WeeklyViewState extends State<WeeklyView> {
           it.toPlan != true)
       .toList();
 
+  // Actions reportées : originalYmd == ce jour mais yyyymmdd != ce jour (pas encore faites)
+  List<DayPlanItem> _deferredActionsFrom(String ymd) =>
+      widget.logic.state.dayPlan
+          .where((it) =>
+              it.originalYmd == ymd &&
+              it.yyyymmdd != ymd &&
+              it.kind == PlanKind.action &&
+              !it.archived &&
+              !it.done &&
+              it.toPlan != true)
+          .toList();
+
   List<Activity> _dailyRoutines() => widget.logic.state.activities
       .where((a) =>
           a.isHabit &&
@@ -340,6 +352,7 @@ class _WeeklyViewState extends State<WeeklyView> {
                   final isExpanded = _expanded.contains(ymd);
 
                   final actions = _actionsFor(ymd);       // non-faites
+                  final deferred = isPast ? _deferredActionsFrom(ymd) : <DayPlanItem>[];
                   final doneActions = _doneActionsFor(ymd); // faites
                   // Routines : passé et aujourd'hui seulement
                   final routineItems = isFuture ? <Activity>[] : dailyRoutines;
@@ -647,6 +660,49 @@ class _WeeklyViewState extends State<WeeklyView> {
                                         },
                                       )),
                               ],
+                            ],
+
+                            // ── Reportées ─────────────────────────────────
+                            if (deferred.isNotEmpty) ...[
+                              const Divider(height: 1, indent: 14, endIndent: 14),
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.history,
+                                        size: 13,
+                                        color: cs.onSurface.withOpacity(.4)),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'Reportées (${deferred.length})',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: cs.onSurface.withOpacity(.4),
+                                        letterSpacing: .4,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              ...deferred.map((it) => Opacity(
+                                    opacity: .55,
+                                    child: _ActionTile(
+                                      action: it,
+                                      isPast: true,
+                                      cs: cs,
+                                      domainColor: domainColor(
+                                        (it.domainId ?? '').isNotEmpty
+                                            ? it.domainId
+                                            : widget.logic.state.activities
+                                                .firstWhereOrNull(
+                                                    (a) => a.id == it.activityId)
+                                                ?.domainId,
+                                        widget.logic.state.domains,
+                                      ),
+                                      onToggle: () {},
+                                    ),
+                                  )),
                             ],
 
                             // ── Routines (accordéon) ──────────────────────

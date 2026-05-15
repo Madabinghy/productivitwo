@@ -3814,9 +3814,12 @@ class AppLogic {
   double _dailyScoreFor(DateTime day) {
     final ymd = yyyymmdd(day);
     final d = DateTime(day.year, day.month, day.day);
+    // Attribue chaque action à son jour d'origine (originalYmd si elle a été reportée)
     final actions = state.dayPlan
         .where((it) =>
-            it.yyyymmdd == ymd && it.kind == PlanKind.action && !it.archived)
+            (it.originalYmd ?? it.yyyymmdd) == ymd &&
+            it.kind == PlanKind.action &&
+            !it.archived)
         .toList();
     final actionsDone = actions.where((it) => it.done).length;
     int routinesDone = 0, routinesTotal = 0;
@@ -4788,15 +4791,15 @@ extension TodayLogic on AppLogic {
       DateTime(t.year, t.month, t.day).subtract(const Duration(days: 1)),
     );
 
-    final carry = state.dayPlan
+    final undone = state.dayPlan
         .where((e) => e.yyyymmdd == yesterday && !e.done && e.archived != true)
         .toList();
-    if (carry.isEmpty) return;
+    if (undone.isEmpty) return;
 
     var order = planFor(today).length;
 
-    for (final e in carry) {
-      // ✅ si déjà présent aujourd'hui, ne pas dupliquer
+    for (final e in undone) {
+      // Déjà présent aujourd'hui → ne pas dupliquer
       final alreadyThere = state.dayPlan.any((x) {
         if (x.yyyymmdd != today) return false;
         if (x.kind != e.kind) return false;
@@ -4807,24 +4810,16 @@ extension TodayLogic on AppLogic {
       });
       if (alreadyThere) continue;
 
-      state.dayPlan.add(DayPlanItem(
-        id: const Uuid().v4(),
-        kind: e.kind,
-        refId: e.refId,
-        domainId: e.domainId, // ✅ NEW (si champ ajouté)
-        title: e.title,
-        toPlan: e.toPlan,
-        activityId: e.activityId,
-        habitId: e.habitId,
-        yyyymmdd: today,
-        done: false,
-        doneCount: 0, // ✅ (ou e.doneCount si tu préfères)
-        allDay: e.allDay,
-        order: order++, // compteur propre
-      ));
+      // Déplacement en place : on conserve l'ID et on mémorise la date d'origine
+      e.originalYmd ??= e.yyyymmdd; // première fois = date d'hier
+      e.yyyymmdd = today;
+      e.order = order++;
     }
 
-    state.dayPlan.removeWhere((e) => e.yyyymmdd == yesterday);
+    // Les items FAITS restent sur leur jour d'origine pour le calcul de score.
+    // On nettoie seulement les habits (qui sont gérés via habitValueOn).
+    state.dayPlan.removeWhere(
+        (e) => e.yyyymmdd == yesterday && e.kind == PlanKind.habit);
     onChange();
   }
 
