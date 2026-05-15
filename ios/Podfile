@@ -39,5 +39,29 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+
+    # Fix BoringSSL-GRPC compilation sur Xcode Cloud / CI
+    if target.name == 'BoringSSL-GRPC'
+      # 1) Supprime les flags non supportés par le compilateur iOS
+      target.source_build_phase.files.each do |file|
+        if file.settings && file.settings['COMPILER_FLAGS']
+          flags = file.settings['COMPILER_FLAGS'].split
+          flags.reject! { |flag| flag == '-GCC_WARN_INHIBIT_ALL_WARNINGS' }
+          flags.reject! { |flag| flag == '-G' }
+          file.settings['COMPILER_FLAGS'] = flags.join(' ')
+        end
+      end
+      # 2) Force C++17 (requis par les versions récentes de BoringSSL)
+      target.build_configurations.each do |config|
+        config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
+        config.build_settings['GCC_WARN_INHIBIT_ALL_WARNINGS'] = 'YES'
+      end
+    end
+
+    if target.name == 'gRPC-C++'
+      target.build_configurations.each do |config|
+        config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
+      end
+    end
   end
 end
