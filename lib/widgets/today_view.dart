@@ -48,6 +48,7 @@ class _TodayViewState extends State<TodayView> {
   Timer? _runWatch;
   String? _lastRunningId;
   bool _showAll = true;
+  bool _bypassRunningFilter = false;
   bool _showCourses = false; // repli/dépli manuel
   bool _showSnoozed = false;
   bool _showTomorrow = false;
@@ -1329,6 +1330,8 @@ class _TodayViewState extends State<TodayView> {
       final cur = widget.logic.runningActivity()?.id;
       if (cur != _lastRunningId) {
         _lastRunningId = cur;
+        // Nouvelle activité lancée → rétablit le filtre automatiquement
+        if (cur != null) _bypassRunningFilter = false;
         if (mounted) setState(() {});
       }
     });
@@ -1946,7 +1949,7 @@ class _TodayViewState extends State<TodayView> {
       if (manualFiltersActive) return _passesFilters(it);
 
       // 2) sinon, si activité en cours => ne montrer que cette activité + inbox
-      if (runningId != null) {
+      if (runningId != null && !_bypassRunningFilter) {
         if (itAct != null && itAct.isNotEmpty) return itAct == runningId;
         return isInbox(it);
       }
@@ -1986,7 +1989,7 @@ class _TodayViewState extends State<TodayView> {
       var items = widget.logic.blockItemsForDay(b.id, ymd);
       // Si une activité est en cours, on filtre les items du bloc
       // pour n'afficher que ceux qui lui sont liés
-      if (runningId != null) {
+      if (runningId != null && !_bypassRunningFilter) {
         items = items.where((it) {
           final actId = effectiveActivityId(it);
           return actId == runningId;
@@ -2046,6 +2049,51 @@ class _TodayViewState extends State<TodayView> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
                 children: [
+          // Bandeau "activité en cours" avec toggle filtre
+          Builder(builder: (ctx) {
+            final runningNow = widget.logic.runningActivity();
+            final name = runningNow?.name ?? '';
+            if (runningNow == null || name.isEmpty) return const SizedBox.shrink();
+            final cs = Theme.of(ctx).colorScheme;
+            return Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: cs.primaryContainer.withOpacity(.35),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.timer_outlined, size: 15, color: cs.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      name,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: cs.primary,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  TextButton(
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      textStyle: const TextStyle(fontSize: 12),
+                      foregroundColor: cs.primary,
+                    ),
+                    onPressed: () =>
+                        setState(() => _bypassRunningFilter = !_bypassRunningFilter),
+                    child: Text(_bypassRunningFilter ? 'Filtrer' : 'Tout afficher'),
+                  ),
+                ],
+              ),
+            );
+          }),
+
           // Défi du jour
           if (isTodayTab) ...[
             Builder(builder: (context) {
