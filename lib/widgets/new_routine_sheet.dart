@@ -10,6 +10,7 @@ class NewRoutineResult {
   final String? linkedActivityId;
   final String? blockId;
   final int? iconCode;
+  final HabitFreq freq;
 
   const NewRoutineResult({
     required this.name,
@@ -17,6 +18,7 @@ class NewRoutineResult {
     this.linkedActivityId,
     this.blockId,
     this.iconCode,
+    this.freq = HabitFreq.daily,
   });
 }
 
@@ -46,6 +48,7 @@ class _NewRoutineSheetState extends State<_NewRoutineSheet> {
   String? _linkedActivityId;
   String? _blockId;
   int? _iconCode;
+  HabitFreq _freq = HabitFreq.daily;
 
   AppLogic get logic => widget.logic;
   AppState get st => logic.state;
@@ -85,6 +88,7 @@ class _NewRoutineSheetState extends State<_NewRoutineSheet> {
         linkedActivityId: _linkedActivityId,
         blockId: _blockId,
         iconCode: _iconCode,
+        freq: _freq,
       ),
     );
   }
@@ -135,6 +139,31 @@ class _NewRoutineSheetState extends State<_NewRoutineSheet> {
             ),
             onChanged: (_) => setState(() {}),
             onSubmitted: (_) => _submit(),
+          ),
+          const SizedBox(height: 12),
+
+          // Fréquence
+          Row(
+            children: [
+              Icon(Icons.repeat, size: 18,
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(.5)),
+              const SizedBox(width: 12),
+              const Text('Fréquence', style: TextStyle(fontSize: 14)),
+              const Spacer(),
+              SegmentedButton<HabitFreq>(
+                style: ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                segments: const [
+                  ButtonSegment(value: HabitFreq.daily, label: Text('/ jour')),
+                  ButtonSegment(value: HabitFreq.weekly, label: Text('/ sem.')),
+                  ButtonSegment(value: HabitFreq.monthly, label: Text('/ mois')),
+                ],
+                selected: {_freq},
+                onSelectionChanged: (s) => setState(() => _freq = s.first),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
 

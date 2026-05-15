@@ -2325,7 +2325,7 @@ class _AppRootState extends State<AppRoot>
       domainId: result.domainId,
       name: result.name,
       type: 'habit',
-      habitFreq: HabitFreq.monthly,
+      habitFreq: result.freq,
       habitTarget: 1,
       autoTune: true,
       linkedActivityId: result.linkedActivityId,
