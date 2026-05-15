@@ -6,6 +6,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
+import 'package:productivitwo_v1/widgets/icon_picker_sheet.dart';
 import 'package:productivitwo_v1/widgets/now_habit_tile_full.dart';
 
 /// Ouvre le sheet unifié pour une routine (progression + réglages).
@@ -164,6 +165,27 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                         ),
                     ],
                   ),
+                ),
+                IconButton(
+                  icon: act.iconCode != null
+                      ? Icon(
+                          IconData(act.iconCode!, fontFamily: 'MaterialIcons'),
+                          size: 18,
+                          color: Theme.of(context).colorScheme.primary,
+                        )
+                      : const Icon(Icons.emoji_emotions_outlined, size: 18),
+                  tooltip: 'Choisir une icône',
+                  onPressed: () async {
+                    final picked = await showIconPickerSheet(
+                      context,
+                      current: act.iconCode,
+                    );
+                    if (picked == null) return;
+                    setState(() {
+                      act.iconCode = picked == -1 ? null : picked;
+                    });
+                    widget.logic.onChange();
+                  },
                 ),
                 IconButton(
                   icon: const Icon(Icons.edit_outlined, size: 18),

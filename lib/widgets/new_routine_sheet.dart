@@ -2,18 +2,21 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/widgets/icon_picker_sheet.dart';
 
 class NewRoutineResult {
   final String name;
   final String domainId;
   final String? linkedActivityId;
   final String? blockId;
+  final int? iconCode;
 
   const NewRoutineResult({
     required this.name,
     required this.domainId,
     this.linkedActivityId,
     this.blockId,
+    this.iconCode,
   });
 }
 
@@ -42,6 +45,7 @@ class _NewRoutineSheetState extends State<_NewRoutineSheet> {
   String? _domainId;
   String? _linkedActivityId;
   String? _blockId;
+  int? _iconCode;
 
   AppLogic get logic => widget.logic;
   AppState get st => logic.state;
@@ -80,6 +84,7 @@ class _NewRoutineSheetState extends State<_NewRoutineSheet> {
         domainId: _domainId!,
         linkedActivityId: _linkedActivityId,
         blockId: _blockId,
+        iconCode: _iconCode,
       ),
     );
   }
@@ -197,6 +202,20 @@ class _NewRoutineSheetState extends State<_NewRoutineSheet> {
             const SizedBox(height: 8),
           ],
 
+          // Icône (optionnelle)
+          _PickerRow(
+            icon: _iconCode != null
+                ? IconData(_iconCode!, fontFamily: 'MaterialIcons')
+                : Icons.emoji_emotions_outlined,
+            label: 'Icône',
+            value: _iconCode != null ? 'Choisie' : null,
+            onTap: () async {
+              final picked =
+                  await showIconPickerSheet(context, current: _iconCode);
+              if (picked == null) return;
+              setState(() => _iconCode = picked == -1 ? null : picked);
+            },
+          ),
           const SizedBox(height: 8),
           FilledButton(
             onPressed: canSubmit ? _submit : null,

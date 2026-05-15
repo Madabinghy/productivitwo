@@ -364,6 +364,16 @@ class _TodayViewState extends State<TodayView> {
               ),
               const SizedBox(width: 10),
             ],
+            if (act?.iconCode != null) ...[
+              Icon(
+                IconData(act!.iconCode!, fontFamily: 'MaterialIcons'),
+                size: 18,
+                color: isDone
+                    ? cs.primary.withOpacity(0.3)
+                    : cs.primary.withOpacity(0.7),
+              ),
+              const SizedBox(width: 8),
+            ],
             // Coche simple si quota = 1, sinon icône d'état
             GestureDetector(
               onTap: () => inc(isDone ? -1 : 1),
@@ -1475,11 +1485,18 @@ class _TodayViewState extends State<TodayView> {
                       ),
                     const SizedBox(width: 8),
                     Icon(
-                      reached ? Icons.check_circle : Icons.repeat,
+                      reached
+                          ? Icons.check_circle
+                          : (r.iconCode != null
+                              ? IconData(r.iconCode!,
+                                  fontFamily: 'MaterialIcons')
+                              : Icons.repeat),
                       size: 18,
                       color: reached
                           ? cs.primary
-                          : cs.onSurface.withOpacity(.4),
+                          : (r.iconCode != null
+                              ? cs.primary.withOpacity(.7)
+                              : cs.onSurface.withOpacity(.4)),
                     ),
                   ],
                 ),

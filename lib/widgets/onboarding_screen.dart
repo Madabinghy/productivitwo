@@ -94,13 +94,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
       final eau = Activity(
         domainId: santeId,
-        name: "💧 Boire de l'eau",
+        name: "Boire de l'eau",
         type: 'habit',
         habitFreq: HabitFreq.daily,
         habitTarget: 8,
         manualTarget: true,
         autoTune: false,
         linkedActivityId: hydratation.id,
+        iconCode: 0xf0695, // Icons.water_drop_outlined
       );
       logic.state.activities.add(eau);
 

@@ -540,6 +540,10 @@ class Activity {
 
   int order;
 
+  /// Code point d'une icône Material Icons (optionnel).
+  /// Rendu via Icon(IconData(iconCode!, fontFamily: 'MaterialIcons')).
+  int? iconCode;
+
   Activity({
     String? id,
     required this.domainId,
@@ -556,6 +560,7 @@ class Activity {
     this.lastTuneAt,
     this.linkedActivityId,
     this.order = 0,
+    this.iconCode,
   })  : id = id ?? _uuid.v4(), // <-- sans const ici
         createdAt = createdAt ?? DateTime.now();
 
@@ -586,6 +591,7 @@ class Activity {
         'createdAt': createdAt.toIso8601String(),
         'lastTuneAt': lastTuneAt?.toIso8601String(),
         'order': order,
+        'iconCode': iconCode,
       };
 
   /// Migration douce :
@@ -630,6 +636,7 @@ class Activity {
       lastTuneAt:
           j['lastTuneAt'] != null ? DateTime.parse(j['lastTuneAt']) : null,
       order: (j['order'] as num?)?.toInt() ?? 0,
+      iconCode: (j['iconCode'] as num?)?.toInt(),
     );
   }
 

@@ -378,6 +378,7 @@ Future<AppState> loadOrInitCleaner() async {
       String name, {
       required int target,
       String? linkedActivityId,
+      int? iconCode,
     }) =>
         Activity(
           domainId: domainId,
@@ -388,6 +389,7 @@ Future<AppState> loadOrInitCleaner() async {
           manualTarget: true,
           autoTune: false,
           linkedActivityId: linkedActivityId,
+          iconCode: iconCode,
         );
 
     // ========== Activités (time) ==========
@@ -457,9 +459,10 @@ Future<AppState> loadOrInitCleaner() async {
       habit(sante.id, 'Hygiène hebdomadaire', freq: HabitFreq.weekly, linkedActivityId: soinAct.id),
       dailyCountHabit(
         sante.id,
-        "💧 Boire de l'eau",
+        "Boire de l'eau",
         target: 8,
         linkedActivityId: hydratationAct.id,
+        iconCode: 0xf0695, // Icons.water_drop_outlined
       ),
       dailyCountHabit(
         sante.id,

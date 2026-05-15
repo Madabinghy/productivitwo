@@ -1762,6 +1762,14 @@ class _AppRootState extends State<AppRoot>
         }
       }
 
+      // Migration : assigne l'icône water_drop aux routines "Boire de l'eau" existantes
+      for (final a in _state!.activities) {
+        if (a.iconCode == null &&
+            (a.name == "Boire de l'eau" || a.name == "💧 Boire de l'eau")) {
+          a.iconCode = 0xf0695; // Icons.water_drop_outlined
+        }
+      }
+
       if (_state!.domains.isEmpty && _state!.onboardingDone) {
         _state!.domains.add(Domain(name: 'Général'));
       }
@@ -2304,6 +2312,7 @@ class _AppRootState extends State<AppRoot>
       habitTarget: 1,
       autoTune: true,
       linkedActivityId: result.linkedActivityId,
+      iconCode: result.iconCode,
     );
 
     logic.state.activities.add(a);
