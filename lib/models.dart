@@ -474,12 +474,14 @@ class Domain {
   String id, name;
   int? goalMinDay; // minutes/jour, null => auto (somme des activités time)
   bool autoGoal; // true => objectif = somme des activités time
+  int? colorValue; // Color.value choisi par l'utilisateur (null = palette auto)
 
   Domain({
     String? id,
     required this.name,
     this.goalMinDay,
     this.autoGoal = true,
+    this.colorValue,
   }) : id = id ?? _uuid.v4();
 
   Map<String, dynamic> toJson() => {
@@ -487,6 +489,7 @@ class Domain {
         'name': name,
         'goalMinDay': goalMinDay,
         'autoGoal': autoGoal,
+        'colorValue': colorValue,
       };
 
   static Domain from(Map j) => Domain(
@@ -494,6 +497,7 @@ class Domain {
         name: j['name'],
         goalMinDay: j['goalMinDay'],
         autoGoal: j['autoGoal'] ?? true,
+        colorValue: j['colorValue'] as int?,
       );
 }
 

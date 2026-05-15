@@ -4037,7 +4037,67 @@ class _AppRootState extends State<AppRoot>
                         const Divider(height: 1, indent: 16),
                     itemBuilder: (ctx, i) {
                       final d = domains[i];
+                      final dColor = domainColor(d.id, domains)
+                          ?? kDomainPalette[i % kDomainPalette.length];
                       return ListTile(
+                        leading: GestureDetector(
+                          onTap: () async {
+                            final picked = await showDialog<Color>(
+                              context: ctx,
+                              builder: (dctx) => AlertDialog(
+                                title: const Text('Couleur du domaine'),
+                                content: Wrap(
+                                  spacing: 10,
+                                  runSpacing: 10,
+                                  children: kColorPickerOptions.map((c) =>
+                                    GestureDetector(
+                                      onTap: () => Navigator.pop(dctx, c),
+                                      child: Container(
+                                        width: 36,
+                                        height: 36,
+                                        decoration: BoxDecoration(
+                                          color: c,
+                                          shape: BoxShape.circle,
+                                          border: d.colorValue == c.value
+                                              ? Border.all(
+                                                  color: cs.primary, width: 3)
+                                              : Border.all(
+                                                  color: Colors.transparent),
+                                        ),
+                                      ),
+                                    ),
+                                  ).toList(),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(dctx),
+                                    child: const Text('Annuler'),
+                                  ),
+                                  if (d.colorValue != null)
+                                    TextButton(
+                                      onPressed: () {
+                                        d.colorValue = null;
+                                        logic.onChange();
+                                        setS(() {});
+                                        setState(() {});
+                                        Navigator.pop(dctx);
+                                      },
+                                      child: const Text('Réinitialiser'),
+                                    ),
+                                ],
+                              ),
+                            );
+                            if (picked == null) return;
+                            d.colorValue = picked.value;
+                            logic.onChange();
+                            setS(() {});
+                            setState(() {});
+                          },
+                          child: CircleAvatar(
+                            radius: 12,
+                            backgroundColor: dColor,
+                          ),
+                        ),
                         title: Text(d.name,
                             style: const TextStyle(fontWeight: FontWeight.w600)),
                         trailing: Row(
