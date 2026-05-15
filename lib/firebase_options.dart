@@ -17,19 +17,13 @@ import 'package:flutter/foundation.dart'
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
-      throw UnsupportedError(
-        'DefaultFirebaseOptions have not been configured for web - '
-        'you can reconfigure this by running the FlutterFire CLI again.',
-      );
+      return web;
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
         return android;
       case TargetPlatform.iOS:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for ios - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return ios;
       case TargetPlatform.macOS:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for macos - '
@@ -59,4 +53,23 @@ class DefaultFirebaseOptions {
     projectId: 'productivitwo-app',
     storageBucket: 'productivitwo-app.firebasestorage.app',
   );
+
+  static const FirebaseOptions web = FirebaseOptions(
+    apiKey: 'AIzaSyCZendUmvo0BWckPd-TOEkKfbptodLHCvE',
+    appId: '1:752644759129:web:871009d70bcc1053411b48',
+    messagingSenderId: '752644759129',
+    projectId: 'productivitwo-app',
+    authDomain: 'productivitwo-app.firebaseapp.com',
+    storageBucket: 'productivitwo-app.firebasestorage.app',
+  );
+
+  static const FirebaseOptions ios = FirebaseOptions(
+    apiKey: 'AIzaSyCQJBgZj1ocI9nTlskrpk__9g7KWD5oqvU',
+    appId: '1:752644759129:ios:a108b3fc11c5e72c411b48',
+    messagingSenderId: '752644759129',
+    projectId: 'productivitwo-app',
+    storageBucket: 'productivitwo-app.firebasestorage.app',
+    iosBundleId: 'com.madabinghy.productivitwo',
+  );
+
 }

@@ -35,6 +35,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:productivitwo_v1/widgets/time_report_card.dart';
 import 'package:productivitwo_v1/widgets/routine_freq_card.dart';
 import 'package:productivitwo_v1/widgets/changelog_sheet.dart';
+import 'package:productivitwo_v1/firestore_sync.dart';
 
 enum _Tab { dashboard, now, today, week }
 
@@ -1586,6 +1587,7 @@ class AppRoot extends StatefulWidget {
 class _AppRootState extends State<AppRoot>
     with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   final store = FileStore();
+  final _sync = FirestoreSync();
   DateTime _lastGlobalScan = DateTime.fromMillisecondsSinceEpoch(0);
   AppState? _state;
   late AppLogic logic;
@@ -1717,7 +1719,19 @@ class _AppRootState extends State<AppRoot>
   }
 
   Future<void> _init() async {
-    final s = await store.loadOrInit();
+    // Auth anonyme — crée un userId stable même sans compte
+    await _sync.signInAnonymously();
+
+    // Tente de charger depuis Firestore (source de vérité si dispo)
+    // Sinon fallback sur le fichier local
+    final remote = await _sync.pull();
+    final s = remote ?? await store.loadOrInit();
+
+    // Si on a des données locales mais pas encore de Firestore → migration one-shot
+    if (remote == null) {
+      final local = await store.loadOrInit();
+      _sync.pushAll(local).catchError((_) {}); // upload en arrière-plan
+    }
 
     setState(() {
       _state = s;
@@ -1900,6 +1914,8 @@ class _AppRootState extends State<AppRoot>
     _saving = true;
     try {
       await store.save(_state!);
+      // Sync Firestore en parallèle — n'est pas awaited pour ne pas bloquer l'UI
+      _sync.pushDeltas(_state!).catchError((_) {}); // silencieux si offline
     } catch (e) {
     } finally {
       _saving = false;
