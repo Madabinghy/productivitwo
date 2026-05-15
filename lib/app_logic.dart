@@ -1696,10 +1696,27 @@ class AppLogic {
     ended.endAt = DateTime.now();
     onChange();
 
-    // boost auto (time)
     maybeAutoAdjustActivity(ended.activityId);
 
     return ended;
+  }
+
+  // Arrête la session et retourne (session, activityName, deltaMin)
+  // si l'objectif a été ajusté à la hausse.
+  Future<(Session?, String?, int?)> stopActiveWithAdjustment() async {
+    final run = state.sessions.where((s) => s.endAt == null).toList();
+    if (run.isEmpty) return (null, null, null);
+
+    final ended = run.last;
+    ended.endAt = DateTime.now();
+    onChange();
+
+    final delta = await maybeAutoAdjustActivity(ended.activityId);
+    final name = state.activities
+        .firstWhereOrNull((a) => a.id == ended.activityId)
+        ?.name;
+
+    return (ended, name, delta);
   }
 
   Duration totalForDay(DateTime day, {String? domainId}) {

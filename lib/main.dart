@@ -1254,9 +1254,16 @@ class _RunningActivityBannerState extends State<RunningActivityBanner>
             ),
             const SizedBox(width: 12),
             GestureDetector(
-              onTap: () {
-                widget.logic.stopActive();
+              onTap: () async {
+                final (_, name, delta) =
+                    await widget.logic.stopActiveWithAdjustment();
                 setState(() {});
+                if (delta != null && delta > 0 && name != null && mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text('Objectif ajusté : $name +${delta}min'),
+                    duration: const Duration(seconds: 3),
+                  ));
+                }
               },
               child: Icon(Icons.stop_rounded,
                   size: 20, color: cs.onPrimaryContainer),
@@ -1682,7 +1689,7 @@ class _AppRootState extends State<AppRoot>
         if (bumps > 0 && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-                content: Text("$bumps objectif(s) ajusté(s) d'après les 30j"),
+                content: Text("$bumps routine(s) passée(s) en mode manuel"),
                 duration: const Duration(seconds: 2)),
           );
           await store.save(_state!);
@@ -1720,7 +1727,7 @@ class _AppRootState extends State<AppRoot>
         if (bumps > 0 && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-                content: Text("$bumps objectif(s) ajusté(s) d'après les 30j"),
+                content: Text("$bumps routine(s) passée(s) en mode manuel"),
                 duration: const Duration(seconds: 2)),
           );
           await store.save(_state!);
@@ -2160,10 +2167,19 @@ class _AppRootState extends State<AppRoot>
                         style: TextButton.styleFrom(
                             foregroundColor: cs.error,
                             visualDensity: VisualDensity.compact),
-                        onPressed: () {
-                          logic.stopActive();
+                        onPressed: () async {
+                          final (_, name, delta) =
+                              await logic.stopActiveWithAdjustment();
                           setState(() {});
-                          Navigator.pop(ctx);
+                          if (ctx.mounted) Navigator.pop(ctx);
+                          if (delta != null && delta > 0 && name != null &&
+                              mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                              content:
+                                  Text('Objectif ajusté : $name +${delta}min'),
+                              duration: const Duration(seconds: 3),
+                            ));
+                          }
                         },
                       ),
                   ],
