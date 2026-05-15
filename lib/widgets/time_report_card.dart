@@ -61,25 +61,29 @@ class TimeReportCard extends StatelessWidget {
         .fold(0.0, (a, b) => a > b ? a : b);
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // ── Titre ──────────────────────────────────────────────────────────
-        Text(
-          'Répartition du temps',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 14,
-            color: cs.onSurface.withOpacity(.6),
+        // ── Titre + Donut centrés ──────────────────────────────────────────
+        Center(
+          child: Text(
+            'Répartition du temps',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+              color: cs.onSurface.withOpacity(.6),
+            ),
           ),
         ),
         const SizedBox(height: 16),
 
         // ── Donut + légende ────────────────────────────────────────────────
-        _DonutSection(
-          domains: domains,
-          totals: totals,
-          grandTotal: grandTotal,
-          cs: cs,
+        Center(
+          child: _DonutSection(
+            domains: domains,
+            totals: totals,
+            grandTotal: grandTotal,
+            cs: cs,
+          ),
         ),
         const SizedBox(height: 28),
 
@@ -104,7 +108,7 @@ class TimeReportCard extends StatelessWidget {
 
         // ── Heatmap par domaine ────────────────────────────────────────────
         Text(
-          'Heatmap par domaine',
+          'Temps par domaine',
           style: TextStyle(
             fontWeight: FontWeight.w700,
             fontSize: 14,
@@ -378,11 +382,38 @@ class _WeeklyBarsSection extends StatelessWidget {
 
 // ── Heatmap par domaine ────────────────────────────────────────────────────────
 
-class _DomainHeatmapSection extends StatelessWidget {
+class _DomainHeatmapSection extends StatefulWidget {
   final AppLogic logic;
   final ColorScheme cs;
 
   const _DomainHeatmapSection({required this.logic, required this.cs});
+
+  @override
+  State<_DomainHeatmapSection> createState() => _DomainHeatmapSectionState();
+}
+
+class _DomainHeatmapSectionState extends State<_DomainHeatmapSection> {
+  final _scrollCtrl = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    // Démarre au bout à droite pour voir les semaines récentes en premier
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollCtrl.hasClients) {
+        _scrollCtrl.jumpTo(_scrollCtrl.position.maxScrollExtent);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
+  AppLogic get logic => widget.logic;
+  ColorScheme get cs => widget.cs;
 
   @override
   Widget build(BuildContext context) {
@@ -433,19 +464,21 @@ class _DomainHeatmapSection extends StatelessWidget {
     }
 
     return SingleChildScrollView(
+      controller: _scrollCtrl,
       scrollDirection: Axis.horizontal,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // En-tête mois
+          // En-tête mois — left = label gauche (90) + gap (4)
           Padding(
-            padding: const EdgeInsets.only(left: 60),
+            padding: const EdgeInsets.only(left: 94),
             child: Row(
               children: List.generate(weeks, (col) {
                 final ws = startMonday.add(Duration(days: col * 7));
                 final showLabel = col == 0 || ws.day <= 7;
+                // Largeur réelle d'une colonne : 7 cellules × (cellSize + margin_right:2) + gap
                 return SizedBox(
-                  width: cellSize + gap,
+                  width: 7 * (cellSize + 2) + gap,
                   child: showLabel
                       ? Text(
                           _monthAbbr(ws.month),
@@ -465,13 +498,12 @@ class _DomainHeatmapSection extends StatelessWidget {
             if (di > 0) const SizedBox(height: gap),
             Row(
               children: [
-                // Label domaine
+                // Label gauche : largeur fixe pour aligner les colonnes
                 SizedBox(
-                  width: 56,
+                  width: 90,
                   child: Text(
                     activeDomains[di].name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    softWrap: false,
                     style: TextStyle(
                       fontSize: 10,
                       color: cs.onSurface.withOpacity(.6),
@@ -502,9 +534,20 @@ class _DomainHeatmapSection extends StatelessWidget {
                           final color = mins == 0
                               ? cs.onSurface.withOpacity(.07)
                               : domColor.withOpacity(intensity);
-                          return Tooltip(
-                            message:
-                                '${activeDomains[di].name} · ${fmtDate(d)}\n${fmtMin(mins)}',
+                          return GestureDetector(
+                            onTap: mins == 0
+                                ? null
+                                : () {
+                                    final msg =
+                                        '${activeDomains[di].name}  ${fmtDate(d)} — ${fmtMin(mins)}';
+                                    ScaffoldMessenger.of(context)
+                                      ..clearSnackBars()
+                                      ..showSnackBar(SnackBar(
+                                        content: Text(msg),
+                                        duration:
+                                            const Duration(seconds: 2),
+                                      ));
+                                  },
                             child: Container(
                               width: cellSize,
                               height: cellSize,
@@ -519,6 +562,15 @@ class _DomainHeatmapSection extends StatelessWidget {
                       ),
                     );
                   }),
+                ),
+                // Label domaine à droite (visible quand scroll à droite)
+                const SizedBox(width: 6),
+                Text(
+                  activeDomains[di].name,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: cs.onSurface.withOpacity(.6),
+                  ),
                 ),
               ],
             ),
