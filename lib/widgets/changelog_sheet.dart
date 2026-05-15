@@ -8,6 +8,12 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('1.7', '15 mai 2026', [
+    (Icons.grid_view_outlined, 'Heatmap : référence fixe 5h, tous les domaines visibles'),
+    (Icons.folder_outlined, 'Activités : déplacer vers un autre domaine'),
+    (Icons.trending_up_outlined, 'Notification "Objectif ajusté : +Xmin" à l\'arrêt d\'une activité'),
+    (Icons.more_vert, 'AppBar allégée : stats, filtres et nouveautés dans le menu ⋮'),
+  ]),
   _Entry('1.6', '15 mai 2026', [
     (Icons.layers_outlined, 'Routines multi-blocs : une même routine peut apparaître dans plusieurs blocs'),
     (Icons.water_drop_outlined, '"Boire de l\'eau" pré-configurée dans tous les blocs à l\'installation'),
