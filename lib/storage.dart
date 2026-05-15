@@ -457,7 +457,7 @@ Future<AppState> loadOrInitCleaner() async {
       habit(sante.id, 'Hygiène hebdomadaire', freq: HabitFreq.weekly, linkedActivityId: soinAct.id),
       dailyCountHabit(
         sante.id,
-        "Boire de l'eau",
+        "💧 Boire de l'eau",
         target: 8,
         linkedActivityId: hydratationAct.id,
       ),
