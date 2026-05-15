@@ -8,6 +8,12 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('1.8', '15 mai 2026', [
+    (Icons.bar_chart_outlined, 'Barres 24h colorées par domaine dans l\'AppBar'),
+    (Icons.repeat_outlined, 'Dashboard : widget Routines avec 3 barres par fréquence'),
+    (Icons.tune, 'Création de routine : choix de la fréquence et de la cible'),
+    (Icons.history, 'Actions reportées tracées en vue Semaine + score historique plus juste'),
+  ]),
   _Entry('1.7', '15 mai 2026', [
     (Icons.grid_view_outlined, 'Heatmap : référence fixe 5h, tous les domaines visibles'),
     (Icons.folder_outlined, 'Activités : déplacer vers un autre domaine'),
