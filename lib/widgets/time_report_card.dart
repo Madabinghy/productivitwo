@@ -465,13 +465,11 @@ class _DomainHeatmapSectionState extends State<_DomainHeatmapSection> {
     final minutesMap = logic.timeMinutesPerDomainPerDay(start, end);
     final domains = logic.state.domains;
 
-    // Max global pour normaliser les intensités (comparaison entre domaines)
-    int globalMax = 1;
-    for (final dayMap in minutesMap.values) {
-      for (final m in dayMap.values) {
-        if (m > globalMax) globalMax = m;
-      }
-    }
+    // Référence fixe : 5h = pleine couleur, en-dessous = proportionnel.
+    // Permet de voir les domaines peu actifs (Environnement, Skills…)
+    // sans qu'ils soient écrasés par les domaines dominants (Santé, Business).
+    // Les jours > 5h sont clampés à couleur max.
+    const referenceMinutes = 5 * 60; // 300 min
 
     // Filtre les domaines qui ont au moins une session
     final activeDomains =
@@ -560,7 +558,7 @@ class _DomainHeatmapSectionState extends State<_DomainHeatmapSection> {
                           final mins =
                               minutesMap[activeDomains[di].id]?[ymd] ?? 0;
                           final intensity =
-                              mins == 0 ? 0.0 : (mins / globalMax).clamp(0.12, 1.0);
+                              mins == 0 ? 0.0 : (mins / referenceMinutes).clamp(0.12, 1.0);
                           final domColor =
                               kDomainPalette[di % kDomainPalette.length];
                           final color = mins == 0
