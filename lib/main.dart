@@ -3209,56 +3209,71 @@ class _AppRootState extends State<AppRoot>
             ),
             const Spacer(),
             _buildDailyScoreChip(context),
-            const SizedBox(width: 6),
-            _buildRoutineChip(context),
-            const SizedBox(width: 10),
-            IconButton(
-              icon: const Icon(Icons.bar_chart_outlined),
-              tooltip: 'Statistiques',
-              onPressed: () => showModalBottomSheet(
-                context: context,
-                isScrollControlled: true,
-                showDragHandle: true,
-                builder: (_) => DraggableScrollableSheet(
-                  expand: false,
-                  initialChildSize: 0.92,
-                  minChildSize: 0.5,
-                  maxChildSize: 0.95,
-                  builder: (_, controller) => StatsView(
-                    logic: logic,
-                    state: _state!,
-                    selectedDomainId: null,
-                    scrollController: controller,
-                  ),
-                ),
-              ),
-            ),
-            GestureDetector(
-              onTap: () => _openFiltersSheet(context),
-              onLongPress: () {
-                HapticFeedback.heavyImpact();
-
-                setState(() {
-                  logic.state.filters.enabled = !logic.state.filters.enabled;
-                });
-
-                logic.onChange();
-              },
-              child: Icon(
-                Icons.tune,
-                color: filtersOn
-                    ? Theme.of(context).colorScheme.primary
-                    : Theme.of(context).iconTheme.color,
-              ),
-            ),
+            const SizedBox(width: 4),
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert),
               tooltip: 'Plus',
               onSelected: (v) {
-                if (v == 'changelog') showChangelogSheet(context);
+                if (v == 'stats') {
+                  showModalBottomSheet(
+                    context: context,
+                    isScrollControlled: true,
+                    showDragHandle: true,
+                    builder: (_) => DraggableScrollableSheet(
+                      expand: false,
+                      initialChildSize: 0.92,
+                      minChildSize: 0.5,
+                      maxChildSize: 0.95,
+                      builder: (_, controller) => StatsView(
+                        logic: logic,
+                        state: _state!,
+                        selectedDomainId: null,
+                        scrollController: controller,
+                      ),
+                    ),
+                  );
+                } else if (v == 'filters') {
+                  _openFiltersSheet(context);
+                } else if (v == 'changelog') {
+                  showChangelogSheet(context);
+                }
               },
-              itemBuilder: (_) => const [
+              itemBuilder: (_) => [
+                const PopupMenuItem(
+                  value: 'stats',
+                  child: Row(
+                    children: [
+                      Icon(Icons.bar_chart_outlined, size: 18),
+                      SizedBox(width: 12),
+                      Text('Statistiques'),
+                    ],
+                  ),
+                ),
                 PopupMenuItem(
+                  value: 'filters',
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.tune,
+                        size: 18,
+                        color: filtersOn
+                            ? Theme.of(context).colorScheme.primary
+                            : null,
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        'Filtres',
+                        style: filtersOn
+                            ? TextStyle(
+                                color: Theme.of(context).colorScheme.primary,
+                                fontWeight: FontWeight.w600,
+                              )
+                            : null,
+                      ),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
                   value: 'changelog',
                   child: Row(
                     children: [
