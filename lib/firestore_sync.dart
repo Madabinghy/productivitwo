@@ -18,8 +18,9 @@ import 'package:productivitwo_v1/models.dart';
 ///   users/{uid}/blocks        (collection)
 ///   users/{uid}/badges        (collection)
 class FirestoreSync {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  // Lazy — accédés seulement après Firebase.initializeApp()
+  FirebaseFirestore get _db => FirebaseFirestore.instance;
+  FirebaseAuth get _auth => FirebaseAuth.instance;
 
   String? get uid => _auth.currentUser?.uid;
 
