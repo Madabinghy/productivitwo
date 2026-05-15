@@ -2,6 +2,8 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart'
+    show freqLabel;
 import 'package:productivitwo_v1/widgets/icon_picker_sheet.dart';
 
 class NewRoutineResult {
@@ -11,6 +13,7 @@ class NewRoutineResult {
   final String? blockId;
   final int? iconCode;
   final HabitFreq freq;
+  final int target;
 
   const NewRoutineResult({
     required this.name,
@@ -19,6 +22,7 @@ class NewRoutineResult {
     this.blockId,
     this.iconCode,
     this.freq = HabitFreq.daily,
+    this.target = 1,
   });
 }
 
@@ -49,6 +53,7 @@ class _NewRoutineSheetState extends State<_NewRoutineSheet> {
   String? _blockId;
   int? _iconCode;
   HabitFreq _freq = HabitFreq.daily;
+  int _target = 1;
 
   AppLogic get logic => widget.logic;
   AppState get st => logic.state;
@@ -89,6 +94,7 @@ class _NewRoutineSheetState extends State<_NewRoutineSheet> {
         blockId: _blockId,
         iconCode: _iconCode,
         freq: _freq,
+        target: _target,
       ),
     );
   }
@@ -145,27 +151,50 @@ class _NewRoutineSheetState extends State<_NewRoutineSheet> {
           // Fréquence
           Row(
             children: [
-              Icon(Icons.repeat, size: 18,
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(.5)),
-              const SizedBox(width: 12),
-              const Text('Fréquence', style: TextStyle(fontSize: 14)),
+              const Text('Fréquence',
+                  style: TextStyle(fontWeight: FontWeight.w600)),
               const Spacer(),
-              SegmentedButton<HabitFreq>(
-                style: ButtonStyle(
-                  visualDensity: VisualDensity.compact,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                segments: const [
-                  ButtonSegment(value: HabitFreq.daily, label: Text('/ jour')),
-                  ButtonSegment(value: HabitFreq.weekly, label: Text('/ sem.')),
-                  ButtonSegment(value: HabitFreq.monthly, label: Text('/ mois')),
-                ],
-                selected: {_freq},
-                onSelectionChanged: (s) => setState(() => _freq = s.first),
+              DropdownButton<HabitFreq>(
+                value: _freq,
+                items: HabitFreq.values
+                    .map((f) => DropdownMenuItem(
+                          value: f,
+                          child: Text(freqLabel(f)),
+                        ))
+                    .toList(),
+                onChanged: (v) {
+                  if (v == null) return;
+                  setState(() => _freq = v);
+                },
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 4),
+
+          // Cible
+          Row(
+            children: [
+              const Text('Cible',
+                  style: TextStyle(fontWeight: FontWeight.w600)),
+              const Spacer(),
+              IconButton(
+                onPressed: () =>
+                    setState(() => _target = (_target - 1).clamp(1, 999)),
+                icon: const Icon(Icons.remove_circle_outline),
+                visualDensity: VisualDensity.compact,
+              ),
+              Text('$_target',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w800, fontSize: 16)),
+              IconButton(
+                onPressed: () =>
+                    setState(() => _target = (_target + 1).clamp(1, 999)),
+                icon: const Icon(Icons.add_circle_outline),
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
 
           // Domaine (obligatoire)
           _PickerRow(
