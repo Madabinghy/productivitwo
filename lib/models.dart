@@ -506,7 +506,7 @@ enum ActivityRole {
 class Activity {
   // Identité / base
   final String id;
-  final String domainId;
+  String domainId;
   String name;
   final ActivityRole role;
 

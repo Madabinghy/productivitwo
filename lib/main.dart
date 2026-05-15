@@ -4973,6 +4973,53 @@ class _AppRootState extends State<AppRoot>
 
                 const Divider(height: 1),
 
+                // ── Changer de domaine ────────────────────────────────────────
+                ListTile(
+                  leading: Icon(Icons.folder_outlined,
+                      color: dColor ?? cs.onSurface.withOpacity(.6)),
+                  title: const Text('Changer de domaine',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: domain != null ? Text(domain.name) : null,
+                  onTap: () async {
+                    final domains = logic.state.domains;
+                    final picked = await showModalBottomSheet<String>(
+                      context: ctx,
+                      showDragHandle: true,
+                      builder: (_) => ListView(
+                        shrinkWrap: true,
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.fromLTRB(16, 8, 16, 8),
+                            child: Text('Choisir un domaine',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w700, fontSize: 16)),
+                          ),
+                          for (final d in domains)
+                            ListTile(
+                              leading: CircleAvatar(
+                                radius: 8,
+                                backgroundColor:
+                                    domainColor(d.id, domains) ?? cs.primary,
+                              ),
+                              title: Text(d.name),
+                              trailing: d.id == a.domainId
+                                  ? Icon(Icons.check, color: cs.primary)
+                                  : null,
+                              onTap: () => Navigator.pop(_, d.id),
+                            ),
+                          const SizedBox(height: 16),
+                        ],
+                      ),
+                    );
+                    if (picked == null || picked == a.domainId) return;
+                    setState(() => a.domainId = picked);
+                    logic.onChange();
+                    Navigator.pop(ctx, true);
+                  },
+                ),
+
+                const Divider(height: 1),
+
                 // ── Masquer jusqu'à ───────────────────────────────────────────
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
