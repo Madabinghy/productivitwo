@@ -8,6 +8,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('1.9', '15 mai 2026', [
+    (Icons.color_lens_outlined, 'Couleur personnalisée par domaine'),
+    (Icons.cloud_outlined, 'Sync Firestore : données sauvegardées et synchronisées automatiquement'),
+  ]),
   _Entry('1.8', '15 mai 2026', [
     (Icons.bar_chart_outlined, 'Barres 24h colorées par domaine dans l\'AppBar'),
     (Icons.repeat_outlined, 'Dashboard : widget Routines avec 3 barres par fréquence'),
