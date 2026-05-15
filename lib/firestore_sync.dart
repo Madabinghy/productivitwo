@@ -1,32 +1,21 @@
-import 'dart:async';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:productivitwo_v1/models.dart';
 
-/// Service de synchronisation Firestore.
-/// Chaque collection AppState correspond à une sous-collection Firestore.
+/// Synchronisation via Firebase Realtime Database.
+/// Structure : users/{uid}/appstate  (JSON complet de AppState)
 ///
-/// Structure :
-///   users/{uid}/meta          (doc) — onboardingDone, settings, etc.
-///   users/{uid}/domains       (collection)
-///   users/{uid}/activities    (collection)
-///   users/{uid}/sessions      (collection)
-///   users/{uid}/habitProgress (collection)
-///   users/{uid}/habitHits     (collection)
-///   users/{uid}/dayPlan       (collection)
-///   users/{uid}/goals         (collection)
-///   users/{uid}/blocks        (collection)
-///   users/{uid}/badges        (collection)
+/// Avantages vs Firestore :
+/// - Pas de gRPC / BoringSSL → pas de problème de compilation en CI
+/// - AppState déjà sérialisé en JSON localement → zero refactoring
+/// - Parfait pour un seul utilisateur avec sync complète
 class FirestoreSync {
-  // Lazy — accédés seulement après Firebase.initializeApp()
-  FirebaseFirestore get _db => FirebaseFirestore.instance;
   FirebaseAuth get _auth => FirebaseAuth.instance;
+  FirebaseDatabase get _db => FirebaseDatabase.instance;
 
   String? get uid => _auth.currentUser?.uid;
-
-  DocumentReference _meta() => _db.doc('users/$uid/data/meta');
-  CollectionReference _col(String name) =>
-      _db.collection('users/$uid/$name');
+  DatabaseReference get _stateRef => _db.ref('users/$uid/appstate');
 
   // ── Auth ────────────────────────────────────────────────────────────────────
 
@@ -36,135 +25,69 @@ class FirestoreSync {
     return cred.user!.uid;
   }
 
-  // ── Push (local → Firestore) ────────────────────────────────────────────────
+  // ── Push (local → Firebase) ─────────────────────────────────────────────────
 
-  Future<void> pushAll(AppState st) async {
+  Future<void> pushAll(AppState st) => _push(st);
+  Future<void> pushDeltas(AppState st) => _push(st);
+
+  Future<void> _push(AppState st) async {
     if (uid == null) return;
-    final batch = _db.batch();
-
-    // Meta / settings
-    batch.set(_meta(), _encodeMeta(st), SetOptions(merge: true));
-
-    // Collections
-    await _pushCollection(st.domains.map((e) => e.toJson()).toList(), 'domains');
-    await _pushCollection(st.activities.map((e) => e.toJson()).toList(), 'activities');
-    await _pushCollection(st.sessions.map((e) => e.toJson()).toList(), 'sessions');
-    await _pushCollection(st.habitProgress.map((e) => e.toJson()).toList(), 'habitProgress');
-    await _pushCollection(st.habitHits.map((e) => e.toJson()).toList(), 'habitHits');
-    await _pushCollection(st.dayPlan.map((e) => e.toJson()).toList(), 'dayPlan');
-    await _pushCollection(st.goals.map((e) => e.toJson()).toList(), 'goals');
-    await _pushCollection(st.blocks.map((e) => e.toJson()).toList(), 'blocks');
-    await _pushCollection(st.earnedBadges.map((e) => e.toJson()).toList(), 'badges');
-
-    await batch.commit();
-  }
-
-  Future<void> _pushCollection(
-      List<Map<String, dynamic>> items, String name) async {
-    final col = _col(name);
-    final batch = _db.batch();
-    // Supprime les docs obsolètes (ids qui n'existent plus localement)
-    final existing = await col.get();
-    final localIds = items.map((e) => e['id'] as String).toSet();
-    for (final doc in existing.docs) {
-      if (!localIds.contains(doc.id)) batch.delete(doc.reference);
+    try {
+      final json = st.toJson();
+      // Realtime Database n'accepte pas les valeurs null dans les maps
+      final cleaned = _removeNulls(json);
+      await _stateRef.set(cleaned);
+    } catch (_) {
+      // Silencieux si offline — Firebase queue la mise à jour automatiquement
     }
-    for (final item in items) {
-      final id = item['id'] as String;
-      batch.set(col.doc(id), item);
-    }
-    await batch.commit();
   }
 
-  // ── Delta push (une seule collection) ──────────────────────────────────────
-  // Appelé à chaque onChange() pour ne pousser que ce qui a changé.
-
-  Future<void> pushDeltas(AppState st) async {
-    if (uid == null) return;
-    // Pour simplifier, on fait un push complet mais en parallèle
-    // (Firestore ne facture que les docs effectivement écrits)
-    await Future.wait([
-      _pushCollection(st.domains.map((e) => e.toJson()).toList(), 'domains'),
-      _pushCollection(st.activities.map((e) => e.toJson()).toList(), 'activities'),
-      _pushCollection(st.sessions.map((e) => e.toJson()).toList(), 'sessions'),
-      _pushCollection(st.habitProgress.map((e) => e.toJson()).toList(), 'habitProgress'),
-      _pushCollection(st.habitHits.map((e) => e.toJson()).toList(), 'habitHits'),
-      _pushCollection(st.dayPlan.map((e) => e.toJson()).toList(), 'dayPlan'),
-      _pushCollection(st.goals.map((e) => e.toJson()).toList(), 'goals'),
-      _pushCollection(st.blocks.map((e) => e.toJson()).toList(), 'blocks'),
-      _pushCollection(st.earnedBadges.map((e) => e.toJson()).toList(), 'badges'),
-      _meta().set(_encodeMeta(st), SetOptions(merge: true)),
-    ]);
-  }
-
-  // ── Pull (Firestore → local) ────────────────────────────────────────────────
+  // ── Pull (Firebase → local) ─────────────────────────────────────────────────
 
   Future<AppState?> pull() async {
     if (uid == null) return null;
-
     try {
-      final results = await Future.wait([
-        _meta().get(),
-        _col('domains').get(),
-        _col('activities').get(),
-        _col('sessions').get(),
-        _col('habitProgress').get(),
-        _col('habitHits').get(),
-        _col('dayPlan').get(),
-        _col('goals').get(),
-        _col('blocks').get(),
-        _col('badges').get(),
-      ]);
-
-      final metaDoc = results[0] as DocumentSnapshot;
-      if (!metaDoc.exists) return null; // premier lancement, pas encore de data
-
-      final meta = metaDoc.data() as Map<String, dynamic>;
-
-      List<Map<String, dynamic>> docs(int idx) =>
-          (results[idx] as QuerySnapshot)
-              .docs
-              .map((d) => d.data() as Map<String, dynamic>)
-              .toList();
-
-      return AppState(
-        domains: docs(1).map(Domain.from).toList(),
-        activities: docs(2).map(Activity.from).toList(),
-        sessions: docs(3).map(Session.from).toList(),
-        habitProgress: docs(4).map(HabitProgress.from).toList(),
-        habitHits: docs(5).map(HabitHit.from).toList(),
-        dayPlan: docs(6).map(DayPlanItem.from).toList(),
-        goals: docs(7).map(Goal.from).toList(),
-        blocks: docs(8).map(DayBlock.from).toList(),
-        earnedBadges: docs(9)
-            .map(EarnedBadge.tryFrom)
-            .whereType<EarnedBadge>()
-            .toList(),
-        onboardingDone: meta['onboardingDone'] ?? false,
-        weeklyScoreTarget: meta['weeklyScoreTarget'] ?? 80,
-        notifHour: meta['notifHour'] ?? 9,
-        notifMinute: meta['notifMinute'] ?? 0,
-        notifEnabled: meta['notifEnabled'] ?? true,
-        reviewNotifHour: meta['reviewNotifHour'] ?? 21,
-        reviewNotifMinute: meta['reviewNotifMinute'] ?? 0,
-        reviewNotifEnabled: meta['reviewNotifEnabled'] ?? true,
-      );
-    } catch (e) {
-      return null; // fallback sur données locales si Firestore inaccessible
+      final snapshot = await _stateRef.get();
+      if (!snapshot.exists || snapshot.value == null) return null;
+      final raw = snapshot.value;
+      // Realtime Database retourne des Maps<Object?, Object?> — on convertit
+      final json = _toStringKeyedMap(raw);
+      return AppState.from(json);
+    } catch (_) {
+      return null;
     }
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
-  Map<String, dynamic> _encodeMeta(AppState st) => {
-        'onboardingDone': st.onboardingDone,
-        'weeklyScoreTarget': st.weeklyScoreTarget,
-        'notifHour': st.notifHour,
-        'notifMinute': st.notifMinute,
-        'notifEnabled': st.notifEnabled,
-        'reviewNotifHour': st.reviewNotifHour,
-        'reviewNotifMinute': st.reviewNotifMinute,
-        'reviewNotifEnabled': st.reviewNotifEnabled,
-        'lastSync': FieldValue.serverTimestamp(),
-      };
+  // Supprime les valeurs null récursivement (non supportées par RTDB)
+  dynamic _removeNulls(dynamic value) {
+    if (value == null) return null;
+    if (value is Map) {
+      final result = <String, dynamic>{};
+      value.forEach((k, v) {
+        final cleaned = _removeNulls(v);
+        if (cleaned != null) result[k.toString()] = cleaned;
+      });
+      return result;
+    }
+    if (value is List) {
+      return value.map(_removeNulls).where((e) => e != null).toList();
+    }
+    return value;
+  }
+
+  // Convertit les Map<Object?, Object?> de RTDB en Map<String, dynamic>
+  dynamic _toStringKeyedMap(dynamic value) {
+    if (value is Map) {
+      return Map<String, dynamic>.fromEntries(
+        value.entries.map((e) =>
+            MapEntry(e.key.toString(), _toStringKeyedMap(e.value))),
+      );
+    }
+    if (value is List) {
+      return value.map(_toStringKeyedMap).toList();
+    }
+    return value;
+  }
 }

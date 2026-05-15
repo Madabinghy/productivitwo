@@ -60,6 +60,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '752644759129',
     projectId: 'productivitwo-app',
     authDomain: 'productivitwo-app.firebaseapp.com',
+    databaseURL: 'https://productivitwo-app-default-rtdb.europe-west1.firebasedatabase.app',
     storageBucket: 'productivitwo-app.firebasestorage.app',
   );
 
@@ -68,6 +69,7 @@ class DefaultFirebaseOptions {
     appId: '1:752644759129:ios:a108b3fc11c5e72c411b48',
     messagingSenderId: '752644759129',
     projectId: 'productivitwo-app',
+    databaseURL: 'https://productivitwo-app-default-rtdb.europe-west1.firebasedatabase.app',
     storageBucket: 'productivitwo-app.firebasestorage.app',
     iosBundleId: 'com.madabinghy.productivitwo',
   );
