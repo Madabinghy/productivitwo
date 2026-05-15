@@ -107,13 +107,45 @@ class TimeReportCard extends StatelessWidget {
         const SizedBox(height: 28),
 
         // ── Heatmap par domaine ────────────────────────────────────────────
-        Text(
-          'Temps par domaine',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 14,
-            color: cs.onSurface.withOpacity(.6),
-          ),
+        Row(
+          children: [
+            Text(
+              'Temps par domaine',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+                color: cs.onSurface.withOpacity(.6),
+              ),
+            ),
+            const SizedBox(width: 4),
+            GestureDetector(
+              onTap: () => showDialog<void>(
+                context: context,
+                builder: (_) => AlertDialog(
+                  title: const Text('Comment lire ce graphique ?'),
+                  content: const Text(
+                    'Chaque cellule représente un jour. '
+                    'L\'intensité de la couleur est relative : '
+                    'ton jour le plus actif est toujours à pleine couleur, '
+                    'et les autres jours se positionnent en proportion.\n\n'
+                    'Au fil du temps, l\'échelle s\'affine automatiquement '
+                    'pour refléter tes habitudes réelles.',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(_),
+                      child: const Text('OK'),
+                    ),
+                  ],
+                ),
+              ),
+              child: Icon(
+                Icons.info_outline,
+                size: 16,
+                color: cs.onSurface.withOpacity(.35),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
         _DomainHeatmapSection(logic: logic, cs: cs),
