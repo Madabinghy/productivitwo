@@ -33,6 +33,7 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:productivitwo_v1/widgets/time_report_card.dart';
+import 'package:productivitwo_v1/widgets/routine_freq_card.dart';
 import 'package:productivitwo_v1/widgets/changelog_sheet.dart';
 
 enum _Tab { dashboard, now, today, week }
@@ -3791,6 +3792,9 @@ class _AppRootState extends State<AppRoot>
         _buildNextGoalCard(context),
         SectionCard(
           child: ProductivityStatsCard(logic: logic),
+        ),
+        SectionCard(
+          child: RoutineFreqCard(logic: logic),
         ),
         SectionCard(
           child: TimeReportCard(logic: logic, days: 30),
