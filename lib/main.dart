@@ -739,7 +739,11 @@ final _navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  // Firebase configuré pour iOS et Android uniquement pour l'instant
+  if (!Platform.isMacOS && !Platform.isWindows && !Platform.isLinux) {
+    await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform);
+  }
   await NotificationService.init();
   runApp(const ProductivitwoApp());
 }
@@ -1717,16 +1721,21 @@ class _AppRootState extends State<AppRoot>
   }
 
   Future<void> _init() async {
-    // Auth anonyme — crée un userId stable même sans compte
-    await _sync.signInAnonymously();
+    // Sync Firestore uniquement sur les plateformes configurées (iOS, Android)
+    final firestoreEnabled =
+        !Platform.isMacOS && !Platform.isWindows && !Platform.isLinux;
+
+    if (firestoreEnabled) {
+      await _sync.signInAnonymously();
+    }
 
     // Tente de charger depuis Firestore (source de vérité si dispo)
     // Sinon fallback sur le fichier local
-    final remote = await _sync.pull();
+    final remote = firestoreEnabled ? await _sync.pull() : null;
     final s = remote ?? await store.loadOrInit();
 
     // Si on a des données locales mais pas encore de Firestore → migration one-shot
-    if (remote == null) {
+    if (firestoreEnabled && remote == null) {
       final local = await store.loadOrInit();
       _sync.pushAll(local).catchError((_) {}); // upload en arrière-plan
     }
@@ -1912,8 +1921,10 @@ class _AppRootState extends State<AppRoot>
     _saving = true;
     try {
       await store.save(_state!);
-      // Sync Firestore en parallèle — n'est pas awaited pour ne pas bloquer l'UI
-      _sync.pushDeltas(_state!).catchError((_) {}); // silencieux si offline
+      // Sync Firestore uniquement sur iOS/Android
+      if (!Platform.isMacOS && !Platform.isWindows && !Platform.isLinux) {
+        _sync.pushDeltas(_state!).catchError((_) {});
+      }
     } catch (e) {
     } finally {
       _saving = false;
