@@ -33,6 +33,7 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:productivitwo_v1/widgets/time_report_card.dart';
+import 'package:productivitwo_v1/widgets/changelog_sheet.dart';
 
 enum _Tab { dashboard, now, today, week }
 
@@ -3241,7 +3242,25 @@ class _AppRootState extends State<AppRoot>
                     : Theme.of(context).iconTheme.color,
               ),
             ),
-            const SizedBox(width: 2),
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert),
+              tooltip: 'Plus',
+              onSelected: (v) {
+                if (v == 'changelog') showChangelogSheet(context);
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'changelog',
+                  child: Row(
+                    children: [
+                      Icon(Icons.new_releases_outlined, size: 18),
+                      SizedBox(width: 12),
+                      Text('Nouveautés'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),
