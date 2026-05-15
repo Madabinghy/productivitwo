@@ -39,11 +39,14 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
-    # Force iOS 13 minimum sur tous les pods (évite les erreurs d'API iOS 10/11)
     target.build_configurations.each do |config|
+      # Force iOS 13 minimum sur tous les pods
       if config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f < 13.0
         config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
       end
+      # Autorise les includes non-modulaires dans les framework modules
+      # (nécessaire pour les plugins Firebase qui importent Firebase/Firebase.h)
+      config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
     end
 
     # Fix BoringSSL-GRPC compilation sur Xcode Cloud / CI
