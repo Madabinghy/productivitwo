@@ -423,9 +423,9 @@ class _DomainHeatmapSectionState extends State<_DomainHeatmapSection> {
 
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final firstDay = today.subtract(const Duration(days: 83));
-    final offsetToMonday = (firstDay.weekday - 1) % 7;
-    final startMonday = firstDay.subtract(Duration(days: offsetToMonday));
+    // Lundi de la semaine en cours → dernière colonne toujours visible
+    final thisMonday = today.subtract(Duration(days: today.weekday - 1));
+    final startMonday = thisMonday.subtract(Duration(days: (weeks - 1) * 7));
 
     final start = startMonday;
     final end = today.add(const Duration(days: 1));
