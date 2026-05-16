@@ -1,115 +1,327 @@
-import 'package:collection/collection.dart';
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
+
+// ── Modèles de suggestions ────────────────────────────────────────────────────
+
+class _ActivitySug {
+  final String name;
+  final IconData icon;
+  const _ActivitySug(this.name, this.icon);
+}
+
+class _RoutineSug {
+  final String name;
+  final IconData icon;
+  final HabitFreq defaultFreq;
+  final String? linkedActivity;
+  final int habitTarget;
+  const _RoutineSug(
+    this.name,
+    this.icon, {
+    this.defaultFreq = HabitFreq.daily,
+    this.linkedActivity,
+    this.habitTarget = 1,
+  });
+}
+
+class _DomainSug {
+  final List<_ActivitySug> activities;
+  final List<_RoutineSug> routines;
+  const _DomainSug({required this.activities, required this.routines});
+}
+
+// ── Catalogue ─────────────────────────────────────────────────────────────────
+
+final _catalogue = <String, _DomainSug>{
+  'Santé': _DomainSug(
+    activities: [
+      _ActivitySug('Méditation', Icons.self_improvement_outlined),
+      _ActivitySug('Hydratation', Icons.water_drop_outlined),
+      _ActivitySug('Nutrition', Icons.restaurant_outlined),
+      _ActivitySug('Sommeil', Icons.bedtime_outlined),
+    ],
+    routines: [
+      _RoutineSug('Méditer', Icons.self_improvement_outlined, linkedActivity: 'Méditation'),
+      _RoutineSug("Boire de l'eau", Icons.water_drop_outlined, habitTarget: 8, linkedActivity: 'Hydratation'),
+      _RoutineSug('Vitamines', Icons.medication_outlined),
+      _RoutineSug('Peser mon poids', Icons.monitor_weight_outlined, defaultFreq: HabitFreq.weekly),
+    ],
+  ),
+  'Sport': _DomainSug(
+    activities: [
+      _ActivitySug('Musculation', Icons.fitness_center_outlined),
+      _ActivitySug('Running', Icons.directions_run_outlined),
+      _ActivitySug('Yoga', Icons.accessibility_new_outlined),
+      _ActivitySug('Natation', Icons.pool_outlined),
+    ],
+    routines: [
+      _RoutineSug('Séance de sport', Icons.fitness_center_outlined, linkedActivity: 'Musculation'),
+      _RoutineSug('Course à pied', Icons.directions_run_outlined, linkedActivity: 'Running'),
+      _RoutineSug('Yoga', Icons.accessibility_new_outlined, linkedActivity: 'Yoga'),
+      _RoutineSug('Étirements', Icons.sports_gymnastics),
+    ],
+  ),
+  'Business': _DomainSug(
+    activities: [
+      _ActivitySug('Prospection', Icons.call_outlined),
+      _ActivitySug('Création de contenu', Icons.edit_outlined),
+      _ActivitySug('Admin', Icons.article_outlined),
+      _ActivitySug('Stratégie', Icons.trending_up_outlined),
+    ],
+    routines: [
+      _RoutineSug('Revue journalière', Icons.analytics_outlined),
+      _RoutineSug('Prospecter', Icons.call_outlined, linkedActivity: 'Prospection'),
+      _RoutineSug('Créer du contenu', Icons.edit_outlined, linkedActivity: 'Création de contenu'),
+      _RoutineSug("Gérer l'admin", Icons.article_outlined, defaultFreq: HabitFreq.weekly, linkedActivity: 'Admin'),
+    ],
+  ),
+  'Organisation': _DomainSug(
+    activities: [
+      _ActivitySug('Planification', Icons.calendar_today_outlined),
+      _ActivitySug('Gestion des tâches', Icons.checklist),
+      _ActivitySug('Inbox', Icons.mail_outline),
+    ],
+    routines: [
+      _RoutineSug('Planifier ma journée', Icons.calendar_today_outlined, linkedActivity: 'Planification'),
+      _RoutineSug('Vider mon inbox', Icons.mail_outline, linkedActivity: 'Inbox'),
+      _RoutineSug('Journaling', Icons.edit_note_outlined),
+      _RoutineSug('Revue hebdo', Icons.date_range_outlined, defaultFreq: HabitFreq.weekly),
+    ],
+  ),
+  'Finances': _DomainSug(
+    activities: [
+      _ActivitySug('Budget', Icons.calculate_outlined),
+      _ActivitySug('Investissement', Icons.trending_up_outlined),
+    ],
+    routines: [
+      _RoutineSug('Vérifier mon budget', Icons.calculate_outlined, linkedActivity: 'Budget'),
+      _RoutineSug('Épargner', Icons.savings, defaultFreq: HabitFreq.monthly),
+      _RoutineSug('Tracker mes dépenses', Icons.receipt_long),
+    ],
+  ),
+  'Famille': _DomainSug(
+    activities: [
+      _ActivitySug('Temps famille', Icons.people_outline),
+      _ActivitySug('Appels proches', Icons.call_outlined),
+    ],
+    routines: [
+      _RoutineSug('Appeler ma famille', Icons.call_outlined, defaultFreq: HabitFreq.weekly, linkedActivity: 'Appels proches'),
+      _RoutineSug('Moment de qualité', Icons.favorite_outline, linkedActivity: 'Temps famille'),
+    ],
+  ),
+  'Spiritualité': _DomainSug(
+    activities: [
+      _ActivitySug('Prière', Icons.church_outlined),
+      _ActivitySug('Lecture spirituelle', Icons.menu_book_outlined),
+      _ActivitySug('Méditation profonde', Icons.self_improvement_outlined),
+    ],
+    routines: [
+      _RoutineSug('Prier', Icons.church_outlined, linkedActivity: 'Prière'),
+      _RoutineSug('Lire', Icons.menu_book_outlined, linkedActivity: 'Lecture spirituelle'),
+      _RoutineSug('Gratitude', Icons.volunteer_activism_outlined),
+    ],
+  ),
+  'Créativité': _DomainSug(
+    activities: [
+      _ActivitySug('Dessin', Icons.draw_outlined),
+      _ActivitySug('Écriture', Icons.edit_note_outlined),
+      _ActivitySug('Musique', Icons.music_note),
+      _ActivitySug('Photo / Vidéo', Icons.photo_camera_outlined),
+    ],
+    routines: [
+      _RoutineSug('Dessiner', Icons.draw_outlined, linkedActivity: 'Dessin'),
+      _RoutineSug('Écrire', Icons.edit_note_outlined, linkedActivity: 'Écriture'),
+      _RoutineSug('Jouer de la musique', Icons.music_note, linkedActivity: 'Musique'),
+      _RoutineSug('Photographier', Icons.photo_camera_outlined, linkedActivity: 'Photo / Vidéo'),
+    ],
+  ),
+  'Apprentissage': _DomainSug(
+    activities: [
+      _ActivitySug('Lecture', Icons.menu_book_outlined),
+      _ActivitySug('Formation en ligne', Icons.school_outlined),
+      _ActivitySug('Pratique de langue', Icons.translate),
+      _ActivitySug('Podcast', Icons.headphones_outlined),
+    ],
+    routines: [
+      _RoutineSug('Lire 30 min', Icons.menu_book_outlined, linkedActivity: 'Lecture'),
+      _RoutineSug('Suivre une formation', Icons.school_outlined, linkedActivity: 'Formation en ligne'),
+      _RoutineSug('Pratiquer ma langue', Icons.translate, linkedActivity: 'Pratique de langue'),
+      _RoutineSug('Écouter un podcast', Icons.headphones_outlined, linkedActivity: 'Podcast'),
+    ],
+  ),
+  'Social': _DomainSug(
+    activities: [
+      _ActivitySug('Réseau', Icons.handshake_outlined),
+      _ActivitySug('Sorties', Icons.groups_outlined),
+    ],
+    routines: [
+      _RoutineSug("Contacter quelqu'un", Icons.chat_bubble_outline, linkedActivity: 'Réseau'),
+      _RoutineSug('Sortir avec des amis', Icons.groups_outlined, defaultFreq: HabitFreq.weekly, linkedActivity: 'Sorties'),
+    ],
+  ),
+  'Environnement': _DomainSug(
+    activities: [
+      _ActivitySug('Ménage', Icons.cleaning_services_outlined),
+      _ActivitySug('Lessive', Icons.local_laundry_service_outlined),
+      _ActivitySug('Vaisselle', Icons.kitchen_outlined),
+      _ActivitySug('Voiture', Icons.directions_car_outlined),
+      _ActivitySug('Rénovation', Icons.handyman_outlined),
+    ],
+    routines: [
+      _RoutineSug('Faire la vaisselle', Icons.kitchen_outlined, linkedActivity: 'Vaisselle'),
+      _RoutineSug('Passer l\'aspirateur', Icons.cleaning_services_outlined, defaultFreq: HabitFreq.weekly, linkedActivity: 'Ménage'),
+      _RoutineSug('Faire la lessive', Icons.local_laundry_service_outlined, defaultFreq: HabitFreq.weekly, linkedActivity: 'Lessive'),
+      _RoutineSug('Laver la voiture', Icons.directions_car_outlined, defaultFreq: HabitFreq.monthly, linkedActivity: 'Voiture'),
+      _RoutineSug('Ranger', Icons.chair_outlined),
+    ],
+  ),
+  'Bien-être': _DomainSug(
+    activities: [
+      _ActivitySug('Relaxation', Icons.spa_outlined),
+      _ActivitySug('Journaling', Icons.edit_note_outlined),
+    ],
+    routines: [
+      _RoutineSug('Se relaxer', Icons.spa_outlined, linkedActivity: 'Relaxation'),
+      _RoutineSug('Journaling', Icons.edit_note_outlined, linkedActivity: 'Journaling'),
+      _RoutineSug('Douche froide', Icons.shower_outlined),
+    ],
+  ),
+};
+
+// ─── Fréquence label ─────────────────────────────────────────────────────────
+String _freqLabel(HabitFreq f) => switch (f) {
+      HabitFreq.daily => 'Quotidienne',
+      HabitFreq.weekly => 'Hebdo',
+      HabitFreq.monthly => 'Mensuelle',
+    };
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OnboardingScreen
+// ═══════════════════════════════════════════════════════════════════════════════
 
 class OnboardingScreen extends StatefulWidget {
   final AppLogic logic;
   final VoidCallback onDone;
 
-  const OnboardingScreen({
-    super.key,
-    required this.logic,
-    required this.onDone,
-  });
+  const OnboardingScreen({super.key, required this.logic, required this.onDone});
 
   @override
   State<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
+  static const _totalPages = 5;
+
   final _pageCtrl = PageController();
   int _page = 0;
 
-  // ── Domaines ──────────────────────────────────────────────────────────────
-  static const _domainSuggestions = [
-    ('Santé', '❤️'),
-    ('Sport', '💪'),
-    ('Business', '💼'),
-    ('Organisation', '📋'),
-    ('Finances', '💰'),
-    ('Famille', '👨‍👩‍👧'),
-    ('Spiritualité', '🙏'),
-    ('Créativité', '🎨'),
-    ('Apprentissage', '📚'),
-    ('Social', '🤝'),
-    ('Environnement', '🌿'),
-    ('Bien-être', '🧘'),
-  ];
-
+  // Sélections
   final Set<String> _selectedDomains = {};
-  final _customDomainCtrl = TextEditingController();
-
-  // ── Routine ───────────────────────────────────────────────────────────────
-  final _routineCtrl = TextEditingController();
-  HabitFreq _routineFreq = HabitFreq.daily;
+  // activityName → (suggestion, domainName)
+  final Map<String, ({_ActivitySug sug, String domain})> _selectedActivities = {};
+  // routineName → (suggestion, domainName, freq)
+  final Map<String, ({_RoutineSug sug, String domain, HabitFreq freq})> _selectedRoutines = {};
 
   @override
   void dispose() {
     _pageCtrl.dispose();
-    _customDomainCtrl.dispose();
-    _routineCtrl.dispose();
     super.dispose();
   }
 
   void _goTo(int page) {
     _pageCtrl.animateToPage(page,
-        duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+        duration: const Duration(milliseconds: 350), curve: Curves.easeInOut);
     setState(() => _page = page);
+  }
+
+  void _toggleActivity(String domain, _ActivitySug sug) {
+    setState(() {
+      if (_selectedActivities.containsKey(sug.name)) {
+        _selectedActivities.remove(sug.name);
+        // Délie les routines qui pointent vers cette activité
+        for (final key in _selectedRoutines.keys.toList()) {
+          if (_selectedRoutines[key]!.sug.linkedActivity == sug.name) {
+            final r = _selectedRoutines.remove(key)!;
+            _selectedRoutines[key] = (sug: r.sug, domain: r.domain, freq: r.freq);
+          }
+        }
+      } else {
+        _selectedActivities[sug.name] = (sug: sug, domain: domain);
+      }
+    });
+  }
+
+  void _toggleRoutine(String domain, _RoutineSug sug) {
+    setState(() {
+      if (_selectedRoutines.containsKey(sug.name)) {
+        _selectedRoutines.remove(sug.name);
+      } else {
+        _selectedRoutines[sug.name] = (sug: sug, domain: domain, freq: sug.defaultFreq);
+      }
+    });
+  }
+
+  void _setRoutineFreq(String name, HabitFreq freq) {
+    final r = _selectedRoutines[name];
+    if (r == null) return;
+    setState(() => _selectedRoutines[name] = (sug: r.sug, domain: r.domain, freq: freq));
   }
 
   void _finish() {
     final logic = widget.logic;
 
-    // Créer les domaines sélectionnés
+    // 1. Domaines
     for (final name in _selectedDomains) {
-      logic.createDomain(name);
+      logic.state.domains.add(Domain(name: name));
     }
+    final domainIds = {for (final d in logic.state.domains) d.name: d.id};
 
-    // Créer la routine si remplie
-    final routineTitle = _routineCtrl.text.trim();
-    if (routineTitle.isNotEmpty && logic.state.domains.isNotEmpty) {
-      final domainId = logic.state.domains.first.id;
-      logic.createHabit(
+    // 2. Activités (time trackers)
+    final createdActivities = <String, Activity>{};
+    for (final entry in _selectedActivities.entries) {
+      final sug = entry.value.sug;
+      final domainId = domainIds[entry.value.domain] ?? logic.state.domains.firstOrNull?.id ?? '';
+      final act = Activity(
         domainId: domainId,
-        name: routineTitle,
-        freq: _routineFreq,
+        name: sug.name,
+        type: 'time',
+        goalMin: 30,
+        iconCode: sug.icon.codePoint,
       );
+      logic.state.activities.add(act);
+      createdActivities[sug.name] = act;
     }
 
-    // Pré-configurer "Boire de l'eau" dans tous les blocs comme exemple concret
-    // de routine multi-blocs. L'utilisateur voit directement le concept en action.
-    if (logic.state.domains.isNotEmpty && logic.state.blocks.isNotEmpty) {
-      final santeId =
-          logic.state.domains.firstWhereOrNull((d) => d.name == 'Santé')?.id ??
-              logic.state.domains.first.id;
-
-      final hydratation = Activity(
-        domainId: santeId,
-        name: 'Hydratation',
-        type: 'time',
-        goalMin: 1,
-      );
-      logic.state.activities.add(hydratation);
-
-      final eau = Activity(
-        domainId: santeId,
-        name: "Boire de l'eau",
+    // 3. Routines (habits)
+    for (final entry in _selectedRoutines.entries) {
+      final sug = entry.value.sug;
+      final freq = entry.value.freq;
+      final domainId = domainIds[entry.value.domain] ?? logic.state.domains.firstOrNull?.id ?? '';
+      final linkedAct = sug.linkedActivity != null ? createdActivities[sug.linkedActivity] : null;
+      final habit = Activity(
+        domainId: domainId,
+        name: sug.name,
         type: 'habit',
-        habitFreq: HabitFreq.daily,
-        habitTarget: 8,
+        habitFreq: freq,
+        habitTarget: sug.habitTarget,
         manualTarget: true,
         autoTune: false,
-        linkedActivityId: hydratation.id,
-        iconCode: 0xf0695, // Icons.water_drop_outlined
+        iconCode: sug.icon.codePoint,
+        linkedActivityId: linkedAct?.id,
       );
-      logic.state.activities.add(eau);
+      logic.state.activities.add(habit);
+      logic.ensureHabitPlannedForDay(yyyymmdd(DateTime.now()), habit.id);
+    }
 
-      for (final b in logic.state.blocks) {
-        if (!b.activityIds.contains(eau.id)) b.activityIds.add(eau.id);
+    // 4. Blocs par défaut si absents
+    if (logic.state.blocks.isEmpty) {
+      const names = ['Miracle Morning', 'Matinée', 'Midi', 'Après-midi', 'Soir', 'Routine Soir'];
+      for (var i = 0; i < names.length; i++) {
+        logic.state.blocks.add(DayBlock(name: names[i], order: i));
       }
-
-      logic.ensureHabitPlannedForDay(yyyymmdd(DateTime.now()), eau.id);
     }
 
     logic.state.onboardingDone = true;
@@ -126,20 +338,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Progress dots
+            // ── Indicateur de progression ──────────────────────────────
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16),
+              padding: const EdgeInsets.symmetric(vertical: 20),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(3, (i) => AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  width: _page == i ? 20 : 8,
-                  height: 8,
+                children: List.generate(_totalPages, (i) => AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  width: _page == i ? 22 : 7,
+                  height: 7,
                   decoration: BoxDecoration(
-                    color: _page == i
-                        ? cs.primary
-                        : cs.onSurface.withOpacity(.2),
+                    color: _page == i ? cs.primary : cs.onSurface.withOpacity(.18),
                     borderRadius: BorderRadius.circular(4),
                   ),
                 )),
@@ -151,12 +361,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 controller: _pageCtrl,
                 physics: const NeverScrollableScrollPhysics(),
                 children: [
+                  // Page 1 — Bienvenue
                   _WelcomePage(cs: cs, onNext: () => _goTo(1)),
+
+                  // Page 2 — Domaines
                   _DomainsPage(
                     cs: cs,
-                    suggestions: _domainSuggestions,
                     selected: _selectedDomains,
-                    customCtrl: _customDomainCtrl,
                     onToggle: (name) => setState(() {
                       if (_selectedDomains.contains(name)) {
                         _selectedDomains.remove(name);
@@ -164,21 +375,35 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         _selectedDomains.add(name);
                       }
                     }),
-                    onAddCustom: () {
-                      final v = _customDomainCtrl.text.trim();
-                      if (v.isNotEmpty) {
-                        setState(() => _selectedDomains.add(v));
-                        _customDomainCtrl.clear();
-                      }
-                    },
                     onNext: () => _goTo(2),
-                    canContinue: _selectedDomains.isNotEmpty,
                   ),
-                  _RoutinePage(
+
+                  // Page 3 — Activités
+                  _ActivitiesPage(
                     cs: cs,
-                    ctrl: _routineCtrl,
-                    freq: _routineFreq,
-                    onFreqChanged: (f) => setState(() => _routineFreq = f),
+                    selectedDomains: _selectedDomains,
+                    selectedActivities: _selectedActivities,
+                    onToggle: _toggleActivity,
+                    onNext: () => _goTo(3),
+                  ),
+
+                  // Page 4 — Routines
+                  _RoutinesPage(
+                    cs: cs,
+                    selectedDomains: _selectedDomains,
+                    selectedActivities: _selectedActivities,
+                    selectedRoutines: _selectedRoutines,
+                    onToggle: _toggleRoutine,
+                    onFreqChange: _setRoutineFreq,
+                    onNext: () => _goTo(4),
+                  ),
+
+                  // Page 5 — Récap
+                  _SummaryPage(
+                    cs: cs,
+                    selectedDomains: _selectedDomains,
+                    selectedActivities: _selectedActivities,
+                    selectedRoutines: _selectedRoutines,
                     onFinish: _finish,
                   ),
                 ],
@@ -191,7 +416,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 }
 
-// ── Page 1 : Bienvenue ────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// Page 1 — Bienvenue
+// ═══════════════════════════════════════════════════════════════════════════════
 
 class _WelcomePage extends StatelessWidget {
   final ColorScheme cs;
@@ -201,44 +428,40 @@ class _WelcomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(32, 24, 32, 32),
+      padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
       child: Column(
         children: [
           const Spacer(),
-          Text('🎯',
-              style: const TextStyle(fontSize: 72)),
-          const SizedBox(height: 24),
+          Container(
+            width: 96,
+            height: 96,
+            decoration: BoxDecoration(
+              color: cs.primaryContainer,
+              borderRadius: BorderRadius.circular(28),
+            ),
+            child: Icon(Icons.rocket_launch_outlined, size: 48, color: cs.primary),
+          ),
+          const SizedBox(height: 28),
           Text(
             'Productivitwo',
-            style: TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.w900,
-              color: cs.primary,
-            ),
+            style: TextStyle(fontSize: 34, fontWeight: FontWeight.w900, color: cs.primary),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           Text(
             'Transforme tes intentions en actions.\nSuis tes routines, avance sur tes objectifs,\ndeviens la version que tu veux être.',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 16,
-              height: 1.6,
-              color: cs.onSurface.withOpacity(.65),
-            ),
+            style: TextStyle(fontSize: 16, height: 1.65, color: cs.onSurface.withOpacity(.6)),
           ),
           const Spacer(),
           FilledButton(
             onPressed: onNext,
-            style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(52)),
-            child: const Text('Commencer',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+            child: const Text('Commencer', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Text(
             'Configuration rapide · 2 minutes',
-            style: TextStyle(
-                fontSize: 12, color: cs.onSurface.withOpacity(.35)),
+            style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.35)),
           ),
         ],
       ),
@@ -246,169 +469,80 @@ class _WelcomePage extends StatelessWidget {
   }
 }
 
-// ── Page 2 : Domaines ─────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// Page 2 — Domaines
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const _domainList = [
+  ('Santé', Icons.favorite_outline),
+  ('Sport', Icons.fitness_center_outlined),
+  ('Business', Icons.business_center_outlined),
+  ('Organisation', Icons.calendar_today_outlined),
+  ('Finances', Icons.calculate_outlined),
+  ('Famille', Icons.people_outline),
+  ('Spiritualité', Icons.church_outlined),
+  ('Créativité', Icons.brush_outlined),
+  ('Apprentissage', Icons.school_outlined),
+  ('Social', Icons.handshake_outlined),
+  ('Environnement', Icons.home_outlined),
+  ('Bien-être', Icons.spa_outlined),
+];
 
 class _DomainsPage extends StatelessWidget {
   final ColorScheme cs;
-  final List<(String, String)> suggestions;
   final Set<String> selected;
-  final TextEditingController customCtrl;
   final void Function(String) onToggle;
-  final VoidCallback onAddCustom;
   final VoidCallback onNext;
-  final bool canContinue;
 
   const _DomainsPage({
     required this.cs,
-    required this.suggestions,
     required this.selected,
-    required this.customCtrl,
     required this.onToggle,
-    required this.onAddCustom,
     required this.onNext,
-    required this.canContinue,
   });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Tes domaines de vie',
-              style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                  color: cs.onSurface)),
-          const SizedBox(height: 6),
-          Text(
-            'Choisis les sphères sur lesquelles tu veux progresser.',
-            style: TextStyle(
-                fontSize: 14, color: cs.onSurface.withOpacity(.5)),
+          _PageHeader(
+            cs: cs,
+            title: 'Tes domaines de vie',
+            subtitle: 'Sélectionne les sphères sur lesquelles tu veux progresser.',
           ),
           const SizedBox(height: 20),
           Expanded(
             child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: suggestions.map((s) {
-                      final name = s.$1;
-                      final emoji = s.$2;
-                      final isSelected = selected.contains(name);
-                      return GestureDetector(
-                        onTap: () => onToggle(name),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 150),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? cs.primary
-                                : cs.primary.withOpacity(.08),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(emoji,
-                                  style: const TextStyle(fontSize: 16)),
-                              const SizedBox(width: 6),
-                              Text(
-                                name,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: isSelected
-                                      ? cs.onPrimary
-                                      : cs.primary.withOpacity(.8),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-
-                  // Domaine custom
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: customCtrl,
-                          decoration: InputDecoration(
-                            hintText: 'Ajouter un domaine…',
-                            hintStyle: TextStyle(
-                                color: cs.onSurface.withOpacity(.35)),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: BorderSide(
-                                  color: cs.onSurface.withOpacity(.2)),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: BorderSide(
-                                  color: cs.onSurface.withOpacity(.15)),
-                            ),
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 10),
-                          ),
-                          onSubmitted: (_) => onAddCustom(),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      FilledButton(
-                        onPressed: onAddCustom,
-                        style: FilledButton.styleFrom(
-                            minimumSize: const Size(44, 44),
-                            padding: EdgeInsets.zero),
-                        child: const Icon(Icons.add),
-                      ),
-                    ],
-                  ),
-
-                  // Domaines custom sélectionnés
-                  if (selected.any((s) =>
-                      !suggestions.any((sug) => sug.$1 == s))) ...[
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      children: selected
-                          .where((s) =>
-                              !suggestions.any((sug) => sug.$1 == s))
-                          .map((s) => Chip(
-                                label: Text(s),
-                                onDeleted: () => onToggle(s),
-                                backgroundColor:
-                                    cs.primary.withOpacity(.1),
-                                labelStyle: TextStyle(color: cs.primary),
-                                side: BorderSide.none,
-                              ))
-                          .toList(),
-                    ),
-                  ],
-                ],
+              child: Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: _domainList.map((item) {
+                  final name = item.$1;
+                  final icon = item.$2;
+                  final isSelected = selected.contains(name);
+                  return _SelectableChip(
+                    cs: cs,
+                    label: name,
+                    icon: icon,
+                    selected: isSelected,
+                    onTap: () => onToggle(name),
+                  );
+                }).toList(),
               ),
             ),
           ),
           const SizedBox(height: 16),
           FilledButton(
-            onPressed: canContinue ? onNext : null,
-            style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(52)),
+            onPressed: selected.isNotEmpty ? onNext : null,
+            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
             child: Text(
-              canContinue
+              selected.isNotEmpty
                   ? 'Continuer (${selected.length} domaine${selected.length > 1 ? 's' : ''})'
                   : 'Sélectionne au moins un domaine',
-              style:
-                  const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
             ),
           ),
         ],
@@ -417,152 +551,581 @@ class _DomainsPage extends StatelessWidget {
   }
 }
 
-// ── Page 3 : Première routine ──────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// Page 3 — Activités
+// ═══════════════════════════════════════════════════════════════════════════════
 
-class _RoutinePage extends StatelessWidget {
+class _ActivitiesPage extends StatelessWidget {
   final ColorScheme cs;
-  final TextEditingController ctrl;
-  final HabitFreq freq;
-  final void Function(HabitFreq) onFreqChanged;
-  final VoidCallback onFinish;
+  final Set<String> selectedDomains;
+  final Map<String, ({_ActivitySug sug, String domain})> selectedActivities;
+  final void Function(String domain, _ActivitySug sug) onToggle;
+  final VoidCallback onNext;
 
-  const _RoutinePage({
+  const _ActivitiesPage({
     required this.cs,
-    required this.ctrl,
-    required this.freq,
-    required this.onFreqChanged,
-    required this.onFinish,
+    required this.selectedDomains,
+    required this.selectedActivities,
+    required this.onToggle,
+    required this.onNext,
   });
-
-  static const _suggestions = [
-    'Méditer', 'Faire du sport', 'Lire', 'Boire de l\'eau',
-    'Journaling', 'Apprendre', 'Gratitude',
-  ];
 
   @override
   Widget build(BuildContext context) {
+    final domains = _domainList.where((d) =>
+        selectedDomains.contains(d.$1) && _catalogue.containsKey(d.$1)).toList();
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Ta première routine',
-              style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                  color: cs.onSurface)),
-          const SizedBox(height: 6),
-          Text(
-            'Quelle habitude veux-tu ancrer ? Tu pourras en ajouter d\'autres après.',
-            style: TextStyle(
-                fontSize: 14, color: cs.onSurface.withOpacity(.5)),
-          ),
-          const SizedBox(height: 20),
-
-          // Suggestions rapides
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _suggestions.map((s) => GestureDetector(
-              onTap: () => ctrl.text = s,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 7),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                      color: cs.onSurface.withOpacity(.15)),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(s,
-                    style: TextStyle(
-                        fontSize: 13,
-                        color: cs.onSurface.withOpacity(.7))),
-              ),
-            )).toList(),
+          _PageHeader(
+            cs: cs,
+            title: 'Tes activités',
+            subtitle: 'Ce que tu veux tracker avec un chronomètre.',
           ),
           const SizedBox(height: 16),
-
-          // Nom
-          TextField(
-            controller: ctrl,
-            autofocus: false,
-            textCapitalization: TextCapitalization.sentences,
-            decoration: InputDecoration(
-              hintText: 'Nom de la routine…',
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10)),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide:
-                    BorderSide(color: cs.onSurface.withOpacity(.2)),
-              ),
+          Expanded(
+            child: ListView(
+              children: [
+                for (final domain in domains) ...[
+                  _SectionHeader(cs: cs, icon: domain.$2, label: domain.$1),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _catalogue[domain.$1]!.activities.map((sug) {
+                      final isSelected = selectedActivities.containsKey(sug.name);
+                      return _SelectableChip(
+                        cs: cs,
+                        label: sug.name,
+                        icon: sug.icon,
+                        selected: isSelected,
+                        onTap: () => onToggle(domain.$1, sug),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 20),
+                ],
+              ],
             ),
           ),
-          const SizedBox(height: 14),
-
-          // Fréquence
-          Text('Fréquence',
-              style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: cs.onSurface.withOpacity(.55))),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              _freqChip(context, 'Quotidienne', HabitFreq.daily),
-              const SizedBox(width: 8),
-              _freqChip(context, 'Hebdomadaire', HabitFreq.weekly),
-              const SizedBox(width: 8),
-              _freqChip(context, 'Mensuelle', HabitFreq.monthly),
-            ],
-          ),
-
-          const Spacer(),
-          FilledButton(
-            onPressed: onFinish,
-            style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(52)),
-            child: const Text("C'est parti ! 🚀",
-                style: TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w700)),
-          ),
-          const SizedBox(height: 8),
-          Center(
-            child: TextButton(
-              onPressed: onFinish,
-              child: Text('Passer cette étape',
-                  style: TextStyle(
-                      color: cs.onSurface.withOpacity(.35),
-                      fontSize: 13)),
-            ),
+          _BottomNav(
+            cs: cs,
+            primaryLabel: selectedActivities.isNotEmpty
+                ? 'Continuer (${selectedActivities.length} activité${selectedActivities.length > 1 ? 's' : ''})'
+                : 'Continuer',
+            onPrimary: onNext,
+            skipLabel: 'Passer cette étape',
+            onSkip: onNext,
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _freqChip(BuildContext context, String label, HabitFreq f) {
-    final selected = freq == f;
-    return GestureDetector(
-      onTap: () => onFreqChanged(f),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? cs.primary : cs.primary.withOpacity(.08),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color:
-                selected ? cs.onPrimary : cs.primary.withOpacity(.7),
+// ═══════════════════════════════════════════════════════════════════════════════
+// Page 4 — Routines
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _RoutinesPage extends StatelessWidget {
+  final ColorScheme cs;
+  final Set<String> selectedDomains;
+  final Map<String, ({_ActivitySug sug, String domain})> selectedActivities;
+  final Map<String, ({_RoutineSug sug, String domain, HabitFreq freq})> selectedRoutines;
+  final void Function(String domain, _RoutineSug sug) onToggle;
+  final void Function(String name, HabitFreq freq) onFreqChange;
+  final VoidCallback onNext;
+
+  const _RoutinesPage({
+    required this.cs,
+    required this.selectedDomains,
+    required this.selectedActivities,
+    required this.selectedRoutines,
+    required this.onToggle,
+    required this.onFreqChange,
+    required this.onNext,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final domains = _domainList.where((d) =>
+        selectedDomains.contains(d.$1) && _catalogue.containsKey(d.$1)).toList();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _PageHeader(
+            cs: cs,
+            title: 'Tes routines',
+            subtitle: 'Des habitudes à cocher au quotidien.',
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: ListView(
+              children: [
+                for (final domain in domains) ...[
+                  _SectionHeader(cs: cs, icon: domain.$2, label: domain.$1),
+                  const SizedBox(height: 8),
+                  for (final sug in _catalogue[domain.$1]!.routines) ...[
+                    _RoutineTile(
+                      cs: cs,
+                      sug: sug,
+                      selected: selectedRoutines.containsKey(sug.name),
+                      currentFreq: selectedRoutines[sug.name]?.freq ?? sug.defaultFreq,
+                      activityLinked: sug.linkedActivity != null &&
+                          selectedActivities.containsKey(sug.linkedActivity),
+                      onTap: () => onToggle(domain.$1, sug),
+                      onFreqChange: (f) => onFreqChange(sug.name, f),
+                    ),
+                    const SizedBox(height: 6),
+                  ],
+                  const SizedBox(height: 14),
+                ],
+              ],
+            ),
+          ),
+          _BottomNav(
+            cs: cs,
+            primaryLabel: selectedRoutines.isNotEmpty
+                ? 'Continuer (${selectedRoutines.length} routine${selectedRoutines.length > 1 ? 's' : ''})'
+                : 'Continuer',
+            onPrimary: onNext,
+            skipLabel: 'Passer cette étape',
+            onSkip: onNext,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Page 5 — Récapitulatif
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _SummaryPage extends StatelessWidget {
+  final ColorScheme cs;
+  final Set<String> selectedDomains;
+  final Map<String, ({_ActivitySug sug, String domain})> selectedActivities;
+  final Map<String, ({_RoutineSug sug, String domain, HabitFreq freq})> selectedRoutines;
+  final VoidCallback onFinish;
+
+  const _SummaryPage({
+    required this.cs,
+    required this.selectedDomains,
+    required this.selectedActivities,
+    required this.selectedRoutines,
+    required this.onFinish,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasContent = selectedActivities.isNotEmpty || selectedRoutines.isNotEmpty;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _PageHeader(
+            cs: cs,
+            title: 'Tout est prêt !',
+            subtitle: hasContent
+                ? 'Voici ce qui sera créé dans ton espace.'
+                : 'Tu peux tout configurer depuis l\'app.',
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: ListView(
+              children: [
+                // Domaines
+                _SummarySection(
+                  cs: cs,
+                  title: 'Domaines',
+                  items: _domainList
+                      .where((d) => selectedDomains.contains(d.$1))
+                      .map((d) => (icon: d.$2, label: d.$1, sub: null))
+                      .toList(),
+                ),
+
+                // Activités
+                if (selectedActivities.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  _SummarySection(
+                    cs: cs,
+                    title: 'Activités (timer)',
+                    items: selectedActivities.values
+                        .map((e) => (icon: e.sug.icon, label: e.sug.name, sub: e.domain))
+                        .toList(),
+                  ),
+                ],
+
+                // Routines
+                if (selectedRoutines.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  _SummarySection(
+                    cs: cs,
+                    title: 'Routines',
+                    items: selectedRoutines.values.map((e) {
+                      final linked = e.sug.linkedActivity != null &&
+                          selectedActivities.containsKey(e.sug.linkedActivity);
+                      final sub = [
+                        _freqLabel(e.freq),
+                        if (linked) '⏱ ${e.sug.linkedActivity}',
+                      ].join(' · ');
+                      return (icon: e.sug.icon, label: e.sug.name, sub: sub);
+                    }).toList(),
+                  ),
+                ],
+
+                const SizedBox(height: 24),
+              ],
+            ),
+          ),
+          FilledButton(
+            onPressed: onFinish,
+            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+            child: const Text("C'est parti ! 🚀",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Widgets helpers
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _PageHeader extends StatelessWidget {
+  final ColorScheme cs;
+  final String title;
+  final String subtitle;
+  const _PageHeader({required this.cs, required this.title, required this.subtitle});
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title,
+              style: TextStyle(
+                  fontSize: 24, fontWeight: FontWeight.w800, color: cs.onSurface)),
+          const SizedBox(height: 6),
+          Text(subtitle,
+              style: TextStyle(fontSize: 14, color: cs.onSurface.withOpacity(.5))),
+        ],
+      );
+}
+
+class _SectionHeader extends StatelessWidget {
+  final ColorScheme cs;
+  final IconData icon;
+  final String label;
+  const _SectionHeader({required this.cs, required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) => Row(
+        children: [
+          Icon(icon, size: 15, color: cs.primary),
+          const SizedBox(width: 6),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: cs.primary)),
+        ],
+      );
+}
+
+class _SelectableChip extends StatelessWidget {
+  final ColorScheme cs;
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _SelectableChip({
+    required this.cs,
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+          decoration: BoxDecoration(
+            color: selected ? cs.primary : cs.primary.withOpacity(.07),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 16,
+                  color: selected ? cs.onPrimary : cs.primary.withOpacity(.8)),
+              const SizedBox(width: 6),
+              Text(label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: selected ? cs.onPrimary : cs.primary.withOpacity(.8),
+                  )),
+            ],
           ),
         ),
+      );
+}
+
+class _RoutineTile extends StatelessWidget {
+  final ColorScheme cs;
+  final _RoutineSug sug;
+  final bool selected;
+  final HabitFreq currentFreq;
+  final bool activityLinked;
+  final VoidCallback onTap;
+  final void Function(HabitFreq) onFreqChange;
+
+  const _RoutineTile({
+    required this.cs,
+    required this.sug,
+    required this.selected,
+    required this.currentFreq,
+    required this.activityLinked,
+    required this.onTap,
+    required this.onFreqChange,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        decoration: BoxDecoration(
+          color: selected ? cs.primaryContainer.withOpacity(.5) : cs.surfaceContainerHighest.withOpacity(.4),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? cs.primary.withOpacity(.35) : cs.onSurface.withOpacity(.08),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              child: Row(
+                children: [
+                  Icon(sug.icon, size: 20,
+                      color: selected ? cs.primary : cs.onSurface.withOpacity(.45)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(sug.name,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: selected ? cs.onSurface : cs.onSurface.withOpacity(.7),
+                        )),
+                  ),
+                  if (activityLinked)
+                    Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: cs.secondaryContainer,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.timer_outlined, size: 10, color: cs.secondary),
+                          const SizedBox(width: 3),
+                          Text(sug.linkedActivity!,
+                              style: TextStyle(fontSize: 10, color: cs.secondary, fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                  Icon(
+                    selected ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                    size: 20,
+                    color: selected ? cs.primary : cs.onSurface.withOpacity(.25),
+                  ),
+                ],
+              ),
+            ),
+
+            // Sélecteur de fréquence (animé)
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeInOut,
+              child: selected
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                      child: Row(
+                        children: [
+                          for (final f in HabitFreq.values) ...[
+                            if (f != HabitFreq.values.first) const SizedBox(width: 6),
+                            _FreqChip(
+                              cs: cs,
+                              label: _freqLabel(f),
+                              selected: currentFreq == f,
+                              onTap: () => onFreqChange(f),
+                            ),
+                          ],
+                        ],
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+}
+
+class _FreqChip extends StatelessWidget {
+  final ColorScheme cs;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _FreqChip({
+    required this.cs,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: selected ? cs.primary : cs.onSurface.withOpacity(.07),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: selected ? cs.onPrimary : cs.onSurface.withOpacity(.55),
+              )),
+        ),
+      );
+}
+
+class _BottomNav extends StatelessWidget {
+  final ColorScheme cs;
+  final String primaryLabel;
+  final VoidCallback onPrimary;
+  final String skipLabel;
+  final VoidCallback onSkip;
+
+  const _BottomNav({
+    required this.cs,
+    required this.primaryLabel,
+    required this.onPrimary,
+    required this.skipLabel,
+    required this.onSkip,
+  });
+
+  @override
+  Widget build(BuildContext context) => Column(
+        children: [
+          FilledButton(
+            onPressed: onPrimary,
+            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+            child: Text(primaryLabel,
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          ),
+          const SizedBox(height: 4),
+          TextButton(
+            onPressed: onSkip,
+            child: Text(skipLabel,
+                style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(.35))),
+          ),
+        ],
+      );
+}
+
+class _SummarySection extends StatelessWidget {
+  final ColorScheme cs;
+  final String title;
+  final List<({IconData icon, String label, String? sub})> items;
+
+  const _SummarySection({
+    required this.cs,
+    required this.title,
+    required this.items,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title.toUpperCase(),
+            style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.8,
+                color: cs.onSurface.withOpacity(.4))),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest.withOpacity(.4),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            children: items.asMap().entries.map((entry) {
+              final i = entry.key;
+              final item = entry.value;
+              return Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    child: Row(
+                      children: [
+                        Icon(item.icon, size: 18, color: cs.primary),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(item.label,
+                                  style: TextStyle(
+                                      fontSize: 14, fontWeight: FontWeight.w600, color: cs.onSurface)),
+                              if (item.sub != null)
+                                Text(item.sub!,
+                                    style: TextStyle(
+                                        fontSize: 12, color: cs.onSurface.withOpacity(.45))),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (i < items.length - 1)
+                    Divider(height: 1, indent: 42, color: cs.onSurface.withOpacity(.07)),
+                ],
+              );
+            }).toList(),
+          ),
+        ),
+      ],
     );
   }
 }

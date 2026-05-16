@@ -39,6 +39,8 @@ import 'package:productivitwo_v1/widgets/changelog_sheet.dart';
 import 'package:productivitwo_v1/widgets/privacy_policy_screen.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/dev_logger.dart';
+import 'package:productivitwo_v1/pro_manager.dart';
+import 'package:productivitwo_v1/widgets/paywall_sheet.dart';
 
 enum _Tab { dashboard, now, today, week }
 
@@ -638,7 +640,10 @@ class _StatsViewState extends State<StatsView> {
             const SizedBox(height: 40),
             const Divider(),
             const SizedBox(height: 16),
-            TimeReportCard(logic: widget.logic, days: days),
+            ProGate(
+              featureName: 'Rapport de temps',
+              child: TimeReportCard(logic: widget.logic, days: days),
+            ),
             const SizedBox(height: 40),
             Center(
               child: Column(
@@ -742,6 +747,7 @@ final _navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await ProManager.init();
   // Firebase configuré pour iOS et Android uniquement
   if (!kIsWeb && !Platform.isMacOS && !Platform.isWindows && !Platform.isLinux) {
     try {
@@ -1752,8 +1758,9 @@ class _AppRootState extends State<AppRoot>
   }
 
   Future<void> _init() async {
-    // Sync Firestore uniquement sur les plateformes configurées (iOS, Android)
+    // Sync Firestore uniquement pour les abonnés Pro sur iOS/Android
     final firestoreEnabled =
+        ProManager.isPro &&
         !kIsWeb && !Platform.isMacOS && !Platform.isWindows && !Platform.isLinux;
 
     AppState? remote;
@@ -1974,8 +1981,8 @@ class _AppRootState extends State<AppRoot>
     _saving = true;
     try {
       await store.save(_state!);
-      // Sync Firestore uniquement sur iOS/Android
-      if (!kIsWeb && !Platform.isMacOS && !Platform.isWindows && !Platform.isLinux) {
+      // Sync Firestore uniquement pour les abonnés Pro sur iOS/Android
+      if (ProManager.isPro && !kIsWeb && !Platform.isMacOS && !Platform.isWindows && !Platform.isLinux) {
         _sync.pushDeltas(_state!).catchError((_) {});
       }
     } catch (e) {
@@ -3312,22 +3319,44 @@ class _AppRootState extends State<AppRoot>
             ),
             const Spacer(),
             _buildDailyScoreChip(context),
-            // Indicateur sync Firebase — long press → console dev
-            if (_syncStatus.isNotEmpty)
-              GestureDetector(
-                onLongPress: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const DevConsoleScreen()),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Tooltip(
-                    message: _syncStatus == '☁️'
-                        ? 'Sync Firestore OK\n(appui long = console dev)'
-                        : 'Mode local\n(appui long = console dev)',
-                    child: Text(_syncStatus, style: const TextStyle(fontSize: 14)),
+            // Indicateur sync / Pro
+            ValueListenableBuilder<bool>(
+              valueListenable: ProManager.notifier,
+              builder: (context, isPro, _) {
+                if (!isPro) {
+                  return GestureDetector(
+                    onTap: () async {
+                      final unlocked = await showPaywallSheet(context);
+                      if (unlocked) setState(() {});
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Tooltip(
+                        message: 'Passer à Pro — sync cloud & stats avancées',
+                        child: Icon(Icons.lock_outlined,
+                            size: 18,
+                            color: Theme.of(context).colorScheme.onSurface.withOpacity(.35)),
+                      ),
+                    ),
+                  );
+                }
+                if (_syncStatus.isEmpty) return const SizedBox.shrink();
+                return GestureDetector(
+                  onLongPress: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const DevConsoleScreen()),
                   ),
-                ),
-              ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Tooltip(
+                      message: _syncStatus == '☁️'
+                          ? 'Sync Firestore OK\n(appui long = console dev)'
+                          : 'Mode local\n(appui long = console dev)',
+                      child: Text(_syncStatus, style: const TextStyle(fontSize: 14)),
+                    ),
+                  ),
+                );
+              },
+            ),
             const SizedBox(width: 4),
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert),
@@ -3969,13 +3998,19 @@ class _AppRootState extends State<AppRoot>
         ),
         _buildNextGoalCard(context),
         SectionCard(
-          child: ProductivityStatsCard(logic: logic),
+          child: ProGate(
+            featureName: 'Statistiques avancées',
+            child: ProductivityStatsCard(logic: logic),
+          ),
         ),
         SectionCard(
           child: RoutineFreqCard(logic: logic),
         ),
         SectionCard(
-          child: TimeReportCard(logic: logic, days: 30),
+          child: ProGate(
+            featureName: 'Rapport de temps',
+            child: TimeReportCard(logic: logic, days: 30),
+          ),
         ),
         Builder(builder: (context) {
           final reserveCount = logic.state.dayPlan

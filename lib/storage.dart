@@ -263,7 +263,12 @@ Future<AppState> loadOrInitCleaner() async {
         final st = tryDecode(raw);
         if (st != null) return st;
       }
-      final st = _seedMinimal();
+      final st = AppState(
+        domains: [],
+        activities: [],
+        sessions: [],
+        habitProgress: [],
+      );
       await save(st);
       return st;
     }
