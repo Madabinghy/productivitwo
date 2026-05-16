@@ -740,12 +740,21 @@ final _navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Firebase configuré pour iOS et Android uniquement pour l'instant
+  // Firebase configuré pour iOS et Android uniquement
   if (!Platform.isMacOS && !Platform.isWindows && !Platform.isLinux) {
-    await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform);
+    try {
+      await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform);
+      devLog.log('Firebase.initializeApp OK', tag: 'MAIN');
+    } catch (e) {
+      devLog.error('Firebase.initializeApp FAIL', tag: 'MAIN', error: e);
+    }
   }
-  await NotificationService.init();
+  try {
+    await NotificationService.init();
+  } catch (e) {
+    devLog.error('NotificationService.init FAIL', tag: 'MAIN', error: e);
+  }
   runApp(const ProductivitwoApp());
 }
 
@@ -1631,7 +1640,23 @@ class _AppRootState extends State<AppRoot>
     _tabFade = CurvedAnimation(parent: _tabFadeController, curve: Curves.easeIn);
 
     _startMinuteHeartbeat();
-    _init();
+    // Timeout global 15s sur _init() — l'app s'ouvre toujours en local si ça bloque
+    _init().timeout(
+      const Duration(seconds: 15),
+      onTimeout: () async {
+        devLog.error('_init() timeout global 15s — fallback local', tag: 'MAIN');
+        if (_state == null) {
+          final s = await store.loadOrInit();
+          if (mounted) setState(() {
+            _state = s;
+            logic = AppLogic(_state!, _saveAndRefresh);
+            _syncStatus = '⚠️';
+          });
+        }
+      },
+    ).catchError((e) {
+      devLog.error('_init() exception non catchée', tag: 'MAIN', error: e);
+    });
 
     // Ouvre le bon sheet quand l'utilisateur tape une notification
     NotificationService.onNotificationTap = (id) {
