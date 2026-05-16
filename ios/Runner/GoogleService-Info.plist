@@ -26,5 +26,7 @@
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
 	<string>1:752644759129:ios:a108b3fc11c5e72c411b48</string>
+	<key>DATABASE_URL</key>
+	<string>https://productivitwo-app-default-rtdb.europe-west1.firebasedatabase.app</string>
 </dict>
 </plist>
