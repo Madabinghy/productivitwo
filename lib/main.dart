@@ -5053,13 +5053,24 @@ class _AppRootState extends State<AppRoot>
         // Heatmap 12 semaines (1 ligne = cette activité)
         const cellSize = 12.0;
         const gap = 2.0;
-        const weeks = 12;
         final firstDay = today.subtract(const Duration(days: 83));
         final offsetToMonday = (firstDay.weekday - 1) % 7;
         final startMonday = firstDay.subtract(Duration(days: offsetToMonday));
+        final weeks = (today.difference(startMonday).inDays / 7).ceil();
 
-        // Précalcul des minutes par jour pour cette activité
-        final Map<String, int> minsByYmd = {};
+        // Précalcul des complétions par jour pour cette activité (dayPlan + sessions timer)
+        final Map<String, int> countByYmd = {};
+        // 1) Items activityTime cochés dans le day plan (refId == a.id)
+        final startMondayYmd = '${startMonday.year}${startMonday.month.toString().padLeft(2, '0')}${startMonday.day.toString().padLeft(2, '0')}';
+        for (final item in logic.state.dayPlan.where((it) =>
+            it.kind == PlanKind.activityTime &&
+            it.refId == a.id &&
+            it.done &&
+            !it.archived &&
+            it.yyyymmdd.compareTo(startMondayYmd) >= 0)) {
+          countByYmd[item.yyyymmdd] = (countByYmd[item.yyyymmdd] ?? 0) + 1;
+        }
+        // 2) Sessions timer (en minutes, normalisées sur 30 min = 1 unité)
         for (final s in logic.state.sessions.where((s) => s.activityId == a.id)) {
           final sEnd = s.endAt ?? now;
           if (s.startAt.isAfter(now) || sEnd.isBefore(startMonday)) continue;
@@ -5071,12 +5082,12 @@ class _AppRootState extends State<AppRoot>
             final mins = segEnd.difference(segStart).inMinutes;
             if (mins > 0) {
               final ymd = '${cursor.year}${cursor.month.toString().padLeft(2, '0')}${cursor.day.toString().padLeft(2, '0')}';
-              minsByYmd[ymd] = (minsByYmd[ymd] ?? 0) + mins;
+              countByYmd[ymd] = (countByYmd[ymd] ?? 0) + (mins / 30).ceil();
             }
             cursor = dayEnd;
           }
         }
-        final maxMins = minsByYmd.values.fold(1, (m, v) => v > m ? v : m);
+        final maxCount = countByYmd.values.fold(1, (m, v) => v > m ? v : m);
 
         return SafeArea(
           child: SingleChildScrollView(
@@ -5175,11 +5186,13 @@ class _AppRootState extends State<AppRoot>
                                   return SizedBox(height: cellSize + gap, width: cellSize);
                                 }
                                 final ymd = '${d.year}${d.month.toString().padLeft(2, '0')}${d.day.toString().padLeft(2, '0')}';
-                                final mins = minsByYmd[ymd] ?? 0;
-                                final intensity = mins == 0 ? 0.0 : (mins / maxMins).clamp(0.15, 1.0);
-                                final color = mins == 0
-                                    ? cs.onSurface.withOpacity(.08)
-                                    : (dColor ?? cs.primary).withOpacity(intensity);
+                                final count = countByYmd[ymd] ?? 0;
+                                final intensity = count == 0 ? 0.0 : (count / maxCount).clamp(0.15, 1.0);
+                                final emptyColor = cs.onSurface.withOpacity(.10);
+                                final fullColor = dColor ?? cs.primary;
+                                final color = count == 0
+                                    ? emptyColor
+                                    : Color.lerp(emptyColor, fullColor, intensity)!;
                                 return Padding(
                                   padding: const EdgeInsets.only(bottom: gap),
                                   child: Container(
