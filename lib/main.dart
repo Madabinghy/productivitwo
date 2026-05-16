@@ -1725,19 +1725,26 @@ class _AppRootState extends State<AppRoot>
     final firestoreEnabled =
         !Platform.isMacOS && !Platform.isWindows && !Platform.isLinux;
 
+    AppState? remote;
     if (firestoreEnabled) {
-      await _sync.signInAnonymously();
+      try {
+        await _sync.signInAnonymously();
+        remote = await _sync.pull().timeout(
+          const Duration(seconds: 10),
+          onTimeout: () => null,
+        );
+      } catch (_) {
+        // Firebase indisponible → on continue avec les données locales
+      }
     }
 
-    // Tente de charger depuis Firestore (source de vérité si dispo)
-    // Sinon fallback sur le fichier local
-    final remote = firestoreEnabled ? await _sync.pull() : null;
+    // Fallback garanti sur le fichier local
     final s = remote ?? await store.loadOrInit();
 
-    // Si on a des données locales mais pas encore de Firestore → migration one-shot
+    // Migration one-shot si pas encore de données Firestore
     if (firestoreEnabled && remote == null) {
-      final local = await store.loadOrInit();
-      _sync.pushAll(local).catchError((_) {}); // upload en arrière-plan
+      store.loadOrInit().then((local) =>
+          _sync.pushAll(local).catchError((_) {}));
     }
 
     setState(() {
