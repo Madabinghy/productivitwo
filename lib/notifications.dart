@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
@@ -28,7 +29,7 @@ class NotificationService {
   static const _midDayNotifId = 5;
   // IDs 10–29 réservés aux rappels de blocs
 
-  static bool get _supported => Platform.isAndroid || Platform.isIOS;
+  static bool get _supported => !kIsWeb && (Platform.isAndroid || Platform.isIOS);
 
   static Future<void> init() async {
     if (_initialized || !_supported) return;

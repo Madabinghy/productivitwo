@@ -1,6 +1,7 @@
 // ignore_for_file: deprecated_member_use
 
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:collection/collection.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -742,7 +743,7 @@ final _navigatorKey = GlobalKey<NavigatorState>();
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Firebase configuré pour iOS et Android uniquement
-  if (!Platform.isMacOS && !Platform.isWindows && !Platform.isLinux) {
+  if (!kIsWeb && !Platform.isMacOS && !Platform.isWindows && !Platform.isLinux) {
     try {
       if (Firebase.apps.isEmpty) {
         await Firebase.initializeApp(
@@ -1753,7 +1754,7 @@ class _AppRootState extends State<AppRoot>
   Future<void> _init() async {
     // Sync Firestore uniquement sur les plateformes configurées (iOS, Android)
     final firestoreEnabled =
-        !Platform.isMacOS && !Platform.isWindows && !Platform.isLinux;
+        !kIsWeb && !Platform.isMacOS && !Platform.isWindows && !Platform.isLinux;
 
     AppState? remote;
     if (firestoreEnabled) {
@@ -1974,7 +1975,7 @@ class _AppRootState extends State<AppRoot>
     try {
       await store.save(_state!);
       // Sync Firestore uniquement sur iOS/Android
-      if (!Platform.isMacOS && !Platform.isWindows && !Platform.isLinux) {
+      if (!kIsWeb && !Platform.isMacOS && !Platform.isWindows && !Platform.isLinux) {
         _sync.pushDeltas(_state!).catchError((_) {});
       }
     } catch (e) {
