@@ -36,8 +36,6 @@ $static_pods = %w[
   gRPC-C++
   gRPC-Core
   abseil
-  FirebaseFirestoreInternal
-  FirebaseFirestore
   leveldb-library
   nanopb
 ]
