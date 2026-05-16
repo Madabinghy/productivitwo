@@ -743,8 +743,10 @@ void main() async {
   // Firebase configuré pour iOS et Android uniquement
   if (!Platform.isMacOS && !Platform.isWindows && !Platform.isLinux) {
     try {
-      await Firebase.initializeApp(
-          options: DefaultFirebaseOptions.currentPlatform);
+      if (Firebase.apps.isEmpty) {
+        await Firebase.initializeApp(
+            options: DefaultFirebaseOptions.currentPlatform);
+      }
       devLog.log('Firebase.initializeApp OK', tag: 'MAIN');
     } catch (e) {
       devLog.error('Firebase.initializeApp FAIL', tag: 'MAIN', error: e);
