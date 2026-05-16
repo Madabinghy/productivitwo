@@ -36,6 +36,7 @@ import 'package:productivitwo_v1/widgets/time_report_card.dart';
 import 'package:productivitwo_v1/widgets/routine_freq_card.dart';
 import 'package:productivitwo_v1/widgets/changelog_sheet.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
+import 'package:productivitwo_v1/dev_logger.dart';
 
 enum _Tab { dashboard, now, today, week }
 
@@ -1590,6 +1591,7 @@ class _AppRootState extends State<AppRoot>
     with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   final store = FileStore();
   final _sync = FirestoreSync();
+  String _syncStatus = ''; // '' = en cours, '☁️' = OK, '⚠️' = local
   DateTime _lastGlobalScan = DateTime.fromMillisecondsSinceEpoch(0);
   AppState? _state;
   late AppLogic logic;
@@ -1728,13 +1730,27 @@ class _AppRootState extends State<AppRoot>
     AppState? remote;
     if (firestoreEnabled) {
       try {
+        devLog.log('Auth anonyme…', tag: 'FIREBASE');
         await _sync.signInAnonymously();
+        devLog.log('uid: ${_sync.uid}', tag: 'FIREBASE');
+        devLog.log('Pull Firestore…', tag: 'FIREBASE');
         remote = await _sync.pull().timeout(
           const Duration(seconds: 10),
-          onTimeout: () => null,
+          onTimeout: () {
+            devLog.error('Timeout 10s', tag: 'FIREBASE');
+            return null;
+          },
         );
-      } catch (_) {
-        // Firebase indisponible → on continue avec les données locales
+        if (remote != null) {
+          devLog.log('Pull OK — données Firestore chargées', tag: 'FIREBASE');
+          setState(() => _syncStatus = '☁️');
+        } else {
+          devLog.log('Aucune donnée Firestore → fallback local', tag: 'FIREBASE');
+          setState(() => _syncStatus = '⚠️');
+        }
+      } catch (e) {
+        devLog.error('Erreur Firebase', tag: 'FIREBASE', error: e);
+        setState(() => _syncStatus = '⚠️');
       }
     }
 
@@ -1744,7 +1760,8 @@ class _AppRootState extends State<AppRoot>
     // Migration one-shot si pas encore de données Firestore
     if (firestoreEnabled && remote == null) {
       store.loadOrInit().then((local) =>
-          _sync.pushAll(local).catchError((_) {}));
+          _sync.pushAll(local).catchError((e) =>
+              devLog.error('Push migration échoué', tag: 'FIREBASE', error: e)));
     }
 
     setState(() {
@@ -3266,6 +3283,22 @@ class _AppRootState extends State<AppRoot>
             ),
             const Spacer(),
             _buildDailyScoreChip(context),
+            // Indicateur sync Firebase — long press → console dev
+            if (_syncStatus.isNotEmpty)
+              GestureDetector(
+                onLongPress: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const DevConsoleScreen()),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Tooltip(
+                    message: _syncStatus == '☁️'
+                        ? 'Sync Firestore OK\n(appui long = console dev)'
+                        : 'Mode local\n(appui long = console dev)',
+                    child: Text(_syncStatus, style: const TextStyle(fontSize: 14)),
+                  ),
+                ),
+              ),
             const SizedBox(width: 4),
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert),
@@ -3293,6 +3326,10 @@ class _AppRootState extends State<AppRoot>
                   _openFiltersSheet(context);
                 } else if (v == 'changelog') {
                   showChangelogSheet(context);
+                } else if (v == 'dev') {
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const DevConsoleScreen(),
+                  ));
                 }
               },
               itemBuilder: (_) => [
@@ -3337,6 +3374,16 @@ class _AppRootState extends State<AppRoot>
                       Icon(Icons.new_releases_outlined, size: 18),
                       SizedBox(width: 12),
                       Text('Nouveautés'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'dev',
+                  child: Row(
+                    children: [
+                      Icon(Icons.bug_report_outlined, size: 18),
+                      SizedBox(width: 12),
+                      Text('Console dev'),
                     ],
                   ),
                 ),
