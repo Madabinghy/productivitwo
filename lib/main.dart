@@ -35,6 +35,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:productivitwo_v1/widgets/time_report_card.dart';
 import 'package:productivitwo_v1/widgets/routine_freq_card.dart';
 import 'package:productivitwo_v1/widgets/changelog_sheet.dart';
+import 'package:productivitwo_v1/widgets/privacy_policy_screen.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/dev_logger.dart';
 
@@ -3330,7 +3331,7 @@ class _AppRootState extends State<AppRoot>
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert),
               tooltip: 'Plus',
-              onSelected: (v) {
+              onSelected: (v) async {
                 if (v == 'stats') {
                   showModalBottomSheet(
                     context: context,
@@ -3353,6 +3354,46 @@ class _AppRootState extends State<AppRoot>
                   _openFiltersSheet(context);
                 } else if (v == 'changelog') {
                   showChangelogSheet(context);
+                } else if (v == 'privacy') {
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const PrivacyPolicyScreen(),
+                  ));
+                } else if (v == 'delete_account') {
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Supprimer mon compte'),
+                      content: const Text(
+                        'Toutes vos données seront supprimées définitivement '
+                        '(activités, routines, sessions, objectifs).\n\n'
+                        'Cette action est irréversible.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('Annuler'),
+                        ),
+                        FilledButton(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Theme.of(context).colorScheme.error,
+                          ),
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('Supprimer définitivement'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirm == true) {
+                    await _sync.deleteAccount();
+                    await store.wipe();
+                    if (mounted) {
+                      setState(() {
+                        _state = null;
+                        _syncStatus = '';
+                      });
+                      _init();
+                    }
+                  }
                 } else if (v == 'dev') {
                   Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => const DevConsoleScreen(),
@@ -3401,6 +3442,28 @@ class _AppRootState extends State<AppRoot>
                       Icon(Icons.new_releases_outlined, size: 18),
                       SizedBox(width: 12),
                       Text('Nouveautés'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'privacy',
+                  child: Row(
+                    children: [
+                      Icon(Icons.privacy_tip_outlined, size: 18),
+                      SizedBox(width: 12),
+                      Text('Confidentialité'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'delete_account',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete_forever_outlined, size: 18,
+                          color: Colors.red),
+                      SizedBox(width: 12),
+                      Text('Supprimer mon compte',
+                          style: TextStyle(color: Colors.red)),
                     ],
                   ),
                 ),

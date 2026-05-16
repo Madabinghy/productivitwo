@@ -115,6 +115,25 @@ class FirestoreSync {
     }
   }
 
+  // ── Suppression de compte ───────────────────────────────────────────────────
+
+  Future<void> deleteAccount() async {
+    if (uid == null) return;
+    // 1) Supprime toutes les données Firestore
+    for (final col in [
+      'domains', 'activities', 'sessions', 'habitProgress',
+      'habitHits', 'dayPlan', 'goals', 'blocks', 'badges'
+    ]) {
+      final docs = await _col(col).get();
+      final batch = _db.batch();
+      for (final d in docs.docs) batch.delete(d.reference);
+      await batch.commit();
+    }
+    await _meta().delete();
+    // 2) Supprime le compte Firebase Auth
+    await _auth.currentUser?.delete();
+  }
+
   Map<String, dynamic> _encodeMeta(AppState st) => {
         'onboardingDone': st.onboardingDone,
         'weeklyScoreTarget': st.weeklyScoreTarget,
