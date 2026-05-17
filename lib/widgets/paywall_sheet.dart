@@ -2,6 +2,7 @@
 
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:productivitwo_v1/pro_manager.dart';
 
 // ── Entry point ───────────────────────────────────────────────────────────────
@@ -27,6 +28,7 @@ class _PaywallSheet extends StatefulWidget {
 class _PaywallSheetState extends State<_PaywallSheet> {
   bool _yearly = true;
   bool _loading = false;
+  Offerings? _offerings;
 
   static const _benefits = [
     (Icons.cloud_outlined, 'Synchronisation cloud',
@@ -39,21 +41,66 @@ class _PaywallSheetState extends State<_PaywallSheet> {
         'Accès prioritaire à chaque mise à jour'),
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    _loadOfferings();
+  }
+
+  Future<void> _loadOfferings() async {
+    try {
+      final offerings = await Purchases.getOfferings();
+      if (mounted) setState(() => _offerings = offerings);
+    } catch (_) {
+      // Pas de connexion ou clé API non configurée — les prix affichés restent statiques
+    }
+  }
+
+  Package? get _selectedPackage {
+    final current = _offerings?.current;
+    if (current == null) return null;
+    return _yearly ? current.annual : current.monthly;
+  }
+
+  String _priceLabel() {
+    final pkg = _selectedPackage;
+    if (pkg != null) return pkg.storeProduct.priceString;
+    return _yearly ? '29,99 €' : '4,99 €';
+  }
+
   Future<void> _subscribe() async {
+    final pkg = _selectedPackage;
+    if (pkg == null) return;
     setState(() => _loading = true);
-    // TODO: intégrer RevenueCat / StoreKit 2
-    // Exemple RevenueCat :
-    //   final offerings = await Purchases.getOfferings();
-    //   final package = _yearly ? offerings.current?.annual : offerings.current?.monthly;
-    //   await Purchases.purchasePackage(package!);
-    await ProManager.activate();
-    if (mounted) Navigator.pop(context, true);
+    try {
+      await ProManager.purchase(pkg);
+      if (mounted) Navigator.pop(context, true);
+    } on PurchasesErrorCode catch (e) {
+      setState(() => _loading = false);
+      if (!mounted) return;
+      if (e != PurchasesErrorCode.purchaseCancelledError) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur : ${e.name}')),
+        );
+      }
+    } catch (_) {
+      setState(() => _loading = false);
+    }
   }
 
   Future<void> _restore() async {
-    // TODO: Purchases.restorePurchases()
-    await ProManager.activate();
-    if (mounted) Navigator.pop(context, true);
+    setState(() => _loading = true);
+    try {
+      await ProManager.restore();
+      if (mounted) Navigator.pop(context, true);
+    } catch (_) {
+      setState(() => _loading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Aucun achat à restaurer')),
+        );
+      }
+    }
   }
 
   @override
@@ -157,7 +204,7 @@ class _PaywallSheetState extends State<_PaywallSheet> {
 
               // CTA
               FilledButton(
-                onPressed: _loading ? null : _subscribe,
+                onPressed: (_loading || _selectedPackage == null) ? null : _subscribe,
                 style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
                 child: _loading
                     ? const SizedBox(
@@ -166,8 +213,8 @@ class _PaywallSheetState extends State<_PaywallSheet> {
                         child: CircularProgressIndicator(strokeWidth: 2))
                     : Text(
                         _yearly
-                            ? 'Commencer l\'essai gratuit 7 jours'
-                            : 'S\'abonner pour 4,99 € / mois',
+                            ? 'Essai gratuit 7 jours — puis ${_priceLabel()} / an'
+                            : 'S\'abonner pour ${_priceLabel()} / mois',
                         style: const TextStyle(
                             fontSize: 15, fontWeight: FontWeight.w700)),
               ),
