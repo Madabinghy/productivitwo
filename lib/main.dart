@@ -2443,10 +2443,20 @@ class _AppRootState extends State<AppRoot>
   }
 
   bool _shouldShowFab() {
-    return _tab == _Tab.today || _tab == _Tab.dashboard || _tab == _Tab.week;
+    return _tab == _Tab.today || _tab == _Tab.dashboard || _tab == _Tab.week ||
+        _tab == _Tab.now;
   }
 
   Widget _buildFab() {
+    final playFab = FloatingActionButton(
+      heroTag: "fab_launch_activity",
+      tooltip: "Lancer une activité",
+      onPressed: () => _showLaunchActivitySheet(context),
+      child: const Icon(Icons.play_arrow_rounded),
+    );
+
+    if (_tab == _Tab.now) return playFab;
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.end,
@@ -2475,12 +2485,7 @@ class _AppRootState extends State<AppRoot>
           child: const Icon(Icons.add),
         ),
         const SizedBox(height: 12),
-        FloatingActionButton(
-          heroTag: "fab_launch_activity",
-          tooltip: "Lancer une activité",
-          onPressed: () => _showLaunchActivitySheet(context),
-          child: const Icon(Icons.play_arrow_rounded),
-        ),
+        playFab,
       ],
     );
   }

@@ -2,6 +2,7 @@
 
 import 'dart:async';
 
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
@@ -3776,6 +3777,22 @@ class _NowTabState extends State<NowTab> {
   String? _activeBlockId; // bloc actif en mode séquence
   bool _userChoseBlock = false; // true = l'utilisateur a sélectionné manuellement
 
+  Timer? _donutRefreshTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _donutRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _donutRefreshTimer?.cancel();
+    super.dispose();
+  }
+
   bool _isPlanItemDone(DayPlanItem it) {
     if (it.kind == PlanKind.habit) {
       final habitId = (it.refId ?? it.habitId ?? '').trim();
@@ -5272,9 +5289,9 @@ class _NowTabState extends State<NowTab> {
     final nextBlock = widget.logic.nextIncompleteBlock(ymd);
     final cs = Theme.of(context).colorScheme;
 
-    return Center(
+    return SingleChildScrollView(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.fromLTRB(32, 32, 32, 120),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -5541,6 +5558,13 @@ class _NowTabState extends State<NowTab> {
           }
         }
 
+        final now = DateTime.now();
+        final todayStart = DateTime(now.year, now.month, now.day);
+        final donutTotals = logic.timeTotalsByDomain(todayStart, now);
+        final donutGrandTotal =
+            donutTotals.values.fold(Duration.zero, (s, d) => s + d);
+        final cs = Theme.of(context).colorScheme;
+
         return Column(
           children: [
             if (sortedBlocks.isNotEmpty) ...[
@@ -5549,6 +5573,18 @@ class _NowTabState extends State<NowTab> {
               const SizedBox(height: 4),
             ],
             Expanded(child: content),
+            if (donutGrandTotal.inMinutes > 0) ...[
+              Divider(height: 1, color: cs.onSurface.withOpacity(.08)),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                child: _TodayDomainDonut(
+                  domains: logic.state.domains,
+                  totals: donutTotals,
+                  grandTotal: donutGrandTotal,
+                  cs: cs,
+                ),
+              ),
+            ],
           ],
         );
       },
@@ -5806,6 +5842,112 @@ class _RecurrenceRowInline extends StatelessWidget {
             }),
           ),
         ],
+      ],
+    );
+  }
+}
+
+// ── Donut répartition temps du jour ──────────────────────────────────────────
+
+class _TodayDomainDonut extends StatelessWidget {
+  final List<Domain> domains;
+  final Map<String, Duration> totals;
+  final Duration grandTotal;
+  final ColorScheme cs;
+
+  const _TodayDomainDonut({
+    required this.domains,
+    required this.totals,
+    required this.grandTotal,
+    required this.cs,
+  });
+
+  String _fmt(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes % 60;
+    if (h == 0) return '${m}min';
+    if (m == 0) return '${h}h';
+    return '${h}h${m.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sections = <PieChartSectionData>[];
+    final legendItems = <({Color color, String label, String value})>[];
+
+    for (int i = 0; i < domains.length; i++) {
+      final d = domains[i];
+      final dur = totals[d.id] ?? Duration.zero;
+      if (dur.inMinutes == 0) continue;
+      final ratio = dur.inMinutes / grandTotal.inMinutes;
+      final color = domainColor(d.id, domains) ??
+          kDomainPalette[i % kDomainPalette.length];
+
+      sections.add(PieChartSectionData(
+        value: dur.inMinutes.toDouble(),
+        color: color,
+        radius: 36,
+        title: ratio > 0.09 ? '${(ratio * 100).round()}%' : '',
+        titleStyle: const TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: Colors.white,
+        ),
+      ));
+      legendItems.add((color: color, label: d.name, value: _fmt(dur)));
+    }
+
+    if (sections.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      children: [
+        SizedBox(
+          width: 120,
+          height: 120,
+          child: PieChart(
+            PieChartData(
+              sections: sections,
+              centerSpaceRadius: 32,
+              sectionsSpace: 2,
+              borderData: FlBorderData(show: false),
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Wrap(
+          spacing: 12,
+          runSpacing: 6,
+          alignment: WrapAlignment.center,
+          children: legendItems
+              .map((item) => Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: item.color,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(item.label,
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: cs.onSurface.withOpacity(.75))),
+                      const SizedBox(width: 4),
+                      Text(
+                        item.value,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: cs.onSurface.withOpacity(.55),
+                        ),
+                      ),
+                    ],
+                  ))
+              .toList(),
+        ),
       ],
     );
   }
