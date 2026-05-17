@@ -7,7 +7,9 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Productivitwo V1 Starter</string>
+	<string>Productivitwo</string>
+	<key>NSUserNotificationsUsageDescription</key>
+	<string>Productivitwo vous envoie des rappels pour vos blocs et routines de la journée.</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
