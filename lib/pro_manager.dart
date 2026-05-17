@@ -11,7 +11,7 @@ import 'package:purchases_flutter/purchases_flutter.dart';
 //      - Abonnement annuel   → kProductAnnual   (ex: com.madabinghy.productivitwo.pro_annual)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const kRevenueCatApiKey = 'REVENUECAT_IOS_API_KEY'; // appl_xxxx...
+const kRevenueCatApiKey = 'appl_mPnLsGNfqBUGiVIOqRuCbRzlOYk';
 const kEntitlementPro = 'pro';
 const kProductMonthly = 'productivitwo_pro_monthly';
 const kProductAnnual = 'productivitwo_pro_annual';
