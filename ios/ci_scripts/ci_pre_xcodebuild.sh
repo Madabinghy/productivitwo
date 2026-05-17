@@ -3,7 +3,7 @@
 set -e
 
 echo "=== Installing Flutter ==="
-git clone https://github.com/flutter/flutter.git --depth 1 -b stable "$HOME/flutter"
+git clone https://github.com/flutter/flutter.git --depth 1 -b 3.35.6 "$HOME/flutter"
 export PATH="$PATH:$HOME/flutter/bin"
 
 echo "=== Flutter version ==="
