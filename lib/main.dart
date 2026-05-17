@@ -2443,8 +2443,7 @@ class _AppRootState extends State<AppRoot>
   }
 
   bool _shouldShowFab() {
-    return _tab == _Tab.today || _tab == _Tab.dashboard || _tab == _Tab.week ||
-        _tab == _Tab.now;
+    return _tab == _Tab.today || _tab == _Tab.dashboard || _tab == _Tab.week;
   }
 
   Widget _buildFab() {
