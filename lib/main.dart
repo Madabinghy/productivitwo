@@ -5172,10 +5172,9 @@ class _AppRootState extends State<AppRoot>
         // Heatmap 12 semaines (1 ligne = cette activité)
         const cellSize = 12.0;
         const gap = 2.0;
-        final firstDay = today.subtract(const Duration(days: 83));
-        final offsetToMonday = (firstDay.weekday - 1) % 7;
-        final startMonday = firstDay.subtract(Duration(days: offsetToMonday));
-        final weeks = (today.difference(startMonday).inDays / 7).ceil();
+        final thisMonday = today.subtract(Duration(days: today.weekday - 1));
+        final startMonday = thisMonday.subtract(const Duration(days: 77));
+        const weeks = 12;
 
         // Précalcul des complétions par jour pour cette activité (dayPlan + sessions timer)
         final Map<String, int> countByYmd = {};
