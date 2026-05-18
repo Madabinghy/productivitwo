@@ -40,6 +40,7 @@ import 'package:productivitwo_v1/widgets/privacy_policy_screen.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/dev_logger.dart';
 import 'package:productivitwo_v1/pro_manager.dart';
+import 'package:uuid/uuid.dart';
 import 'package:productivitwo_v1/widgets/paywall_sheet.dart';
 
 enum _Tab { dashboard, now, today, week }
@@ -2443,6 +2444,77 @@ class _AppRootState extends State<AppRoot>
     );
   }
 
+  Future<void> _loadDemoData() async {
+    final st = logic.state;
+    final now = DateTime.now();
+    final today = yyyymmdd(now);
+
+    // ── Domaines ──────────────────────────────────────────────────────────────
+    final dSante = Domain(name: 'Santé');
+    final dSport = Domain(name: 'Sport');
+    final dBusiness = Domain(name: 'Business');
+    st.domains.addAll([dSante, dSport, dBusiness]);
+
+    // ── Activités ─────────────────────────────────────────────────────────────
+    final aMeditation = Activity(domainId: dSante.id, name: 'Méditation', goalMin: 20, order: 0);
+    final aMusculation = Activity(domainId: dSport.id, name: 'Musculation', goalMin: 60, order: 0);
+    final aRunning = Activity(domainId: dSport.id, name: 'Running', goalMin: 30, order: 1);
+    final aDeepWork = Activity(domainId: dBusiness.id, name: 'Deep Work', goalMin: 120, order: 0);
+    st.activities.addAll([aMeditation, aMusculation, aRunning, aDeepWork]);
+
+    // ── Sessions du jour (pour peupler le donut + stats) ─────────────────────
+    st.sessions.addAll([
+      Session(activityId: aMeditation.id,
+          startAt: DateTime(now.year, now.month, now.day, 7, 0),
+          endAt:   DateTime(now.year, now.month, now.day, 7, 22)),
+      Session(activityId: aMusculation.id,
+          startAt: DateTime(now.year, now.month, now.day, 8, 0),
+          endAt:   DateTime(now.year, now.month, now.day, 9, 5)),
+      Session(activityId: aDeepWork.id,
+          startAt: DateTime(now.year, now.month, now.day, 9, 30),
+          endAt:   DateTime(now.year, now.month, now.day, 11, 15)),
+      Session(activityId: aRunning.id,
+          startAt: DateTime(now.year, now.month, now.day, 12, 0),
+          endAt:   DateTime(now.year, now.month, now.day, 12, 28)),
+    ]);
+
+    // ── Bloc + actions du jour ────────────────────────────────────────────────
+    final bloc = DayBlock(name: 'Bloc matin', emoji: '🌅', order: 0);
+    st.blocks.add(bloc);
+
+    st.dayPlan.addAll([
+      DayPlanItem(
+        id: const Uuid().v4(), kind: PlanKind.action,
+        title: 'Préparer la journée', yyyymmdd: today,
+        done: true, order: 0, blockId: bloc.id, domainId: dBusiness.id,
+      ),
+      DayPlanItem(
+        id: const Uuid().v4(), kind: PlanKind.action,
+        title: 'Répondre aux emails', yyyymmdd: today,
+        done: true, order: 1, blockId: bloc.id, domainId: dBusiness.id,
+      ),
+      DayPlanItem(
+        id: const Uuid().v4(), kind: PlanKind.action,
+        title: 'Travailler sur le projet principal', yyyymmdd: today,
+        done: false, order: 2, blockId: bloc.id, domainId: dBusiness.id,
+      ),
+      DayPlanItem(
+        id: const Uuid().v4(), kind: PlanKind.action,
+        title: 'Revue de la journée', yyyymmdd: today,
+        done: false, order: 3, blockId: bloc.id, domainId: dBusiness.id,
+      ),
+    ]);
+
+    logic.onChange();
+    if (mounted) setState(() {});
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Données de démo chargées ✓')),
+      );
+    }
+  }
+
   bool _shouldShowFab() {
     return _tab == _Tab.today || _tab == _Tab.dashboard || _tab == _Tab.week;
   }
@@ -3393,6 +3465,8 @@ class _AppRootState extends State<AppRoot>
                   Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => const PrivacyPolicyScreen(),
                   ));
+                } else if (v == 'demo_data') {
+                  await _loadDemoData();
                 } else if (v == 'delete_account') {
                   final confirm = await showDialog<bool>(
                     context: context,
@@ -3488,6 +3562,16 @@ class _AppRootState extends State<AppRoot>
                       Icon(Icons.privacy_tip_outlined, size: 18),
                       SizedBox(width: 12),
                       Text('Confidentialité'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'demo_data',
+                  child: Row(
+                    children: [
+                      Icon(Icons.auto_awesome_outlined, size: 18),
+                      SizedBox(width: 12),
+                      Text('Charger des données de démo'),
                     ],
                   ),
                 ),
