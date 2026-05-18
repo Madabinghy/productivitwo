@@ -3421,6 +3421,13 @@ class _AppRootState extends State<AppRoot>
                   Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => const PrivacyPolicyScreen(),
                   ));
+                } else if (v == 'reset_rc') {
+                  await ProManager.logoutUser();
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('[DEBUG] RevenueCat reset — relance l\'app')),
+                    );
+                  }
                 } else if (v == 'demo_data') {
                   await _loadDemoData();
                 } else if (v == 'delete_account') {
@@ -3515,6 +3522,17 @@ class _AppRootState extends State<AppRoot>
                       Icon(Icons.privacy_tip_outlined, size: 18),
                       SizedBox(width: 12),
                       Text('Confidentialité'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'reset_rc',
+                  child: Row(
+                    children: [
+                      Icon(Icons.refresh, size: 18, color: Colors.orange),
+                      SizedBox(width: 12),
+                      Text('[DEBUG] Reset RevenueCat',
+                          style: TextStyle(color: Colors.orange)),
                     ],
                   ),
                 ),
