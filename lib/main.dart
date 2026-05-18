@@ -726,6 +726,7 @@ class _StatsViewState extends State<StatsView> {
                       );
                       if (confirm == true) {
                         await FileStore().wipe();
+                        await ProManager.deactivate();
                         exit(0);
                       }
                     },
@@ -3420,6 +3421,7 @@ class _AppRootState extends State<AppRoot>
                   if (confirm == true) {
                     await _sync.deleteAccount();
                     await store.wipe();
+                    await ProManager.deactivate();
                     if (mounted) {
                       setState(() {
                         _state = null;
@@ -4009,12 +4011,6 @@ class _AppRootState extends State<AppRoot>
         ),
         SectionCard(
           child: RoutineFreqCard(logic: logic),
-        ),
-        SectionCard(
-          child: ProGate(
-            featureName: 'Rapport de temps',
-            child: TimeReportCard(logic: logic, days: 30),
-          ),
         ),
         Builder(builder: (context) {
           final reserveCount = logic.state.dayPlan

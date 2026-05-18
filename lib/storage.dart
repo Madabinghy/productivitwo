@@ -16,17 +16,15 @@ class FileStore {
     return File('${dir.path}/$_fileName');
   }
 
-  // NEW: supprime le fichier de données
   Future<void> wipe() async {
+    final prefs = await SharedPreferences.getInstance();
     if (kIsWeb) {
-      final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_kWebKey);
-      return;
+    } else {
+      final f = await _file();
+      if (await f.exists()) await f.delete();
     }
-    final f = await _file();
-    if (await f.exists()) {
-      await f.delete();
-    }
+    await prefs.clear();
   }
 
 
