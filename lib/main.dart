@@ -3421,6 +3421,22 @@ class _AppRootState extends State<AppRoot>
                   Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => const PrivacyPolicyScreen(),
                   ));
+                } else if (v == 'catalogue') {
+                  await showModalBottomSheet(
+                    context: context,
+                    isScrollControlled: true,
+                    showDragHandle: true,
+                    builder: (_) => DraggableScrollableSheet(
+                      expand: false,
+                      initialChildSize: 0.92,
+                      minChildSize: 0.5,
+                      maxChildSize: 0.95,
+                      builder: (_, controller) => CatalogueSheet(
+                        logic: logic,
+                        onChanged: () => setState(() {}),
+                      ),
+                    ),
+                  );
                 } else if (v == 'demo_data') {
                   await _loadDemoData();
                 } else if (v == 'delete_account') {
@@ -3515,6 +3531,16 @@ class _AppRootState extends State<AppRoot>
                       Icon(Icons.privacy_tip_outlined, size: 18),
                       SizedBox(width: 12),
                       Text('Confidentialité'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'catalogue',
+                  child: Row(
+                    children: [
+                      Icon(Icons.library_add_outlined, size: 18),
+                      SizedBox(width: 12),
+                      Text('Parcourir le catalogue'),
                     ],
                   ),
                 ),

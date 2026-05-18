@@ -1129,3 +1129,365 @@ class _SummarySection extends StatelessWidget {
     );
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CatalogueSheet — Ajouter des éléments du catalogue post-onboarding
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class CatalogueSheet extends StatefulWidget {
+  final AppLogic logic;
+  final VoidCallback onChanged;
+  const CatalogueSheet({super.key, required this.logic, required this.onChanged});
+
+  @override
+  State<CatalogueSheet> createState() => _CatalogueSheetState();
+}
+
+class _CatalogueSheetState extends State<CatalogueSheet> {
+  final _pageCtrl = PageController();
+  int _page = 0;
+
+  final Set<String> _newDomains = {};
+  final Map<String, ({_ActivitySug sug, String domain})> _newActivities = {};
+  final Map<String, ({_RoutineSug sug, String domain, HabitFreq freq})> _newRoutines = {};
+
+  Set<String> get _existingDomainNames =>
+      widget.logic.state.domains.map((d) => d.name).toSet();
+
+  Set<String> get _activeDomains => _existingDomainNames.union(_newDomains);
+
+  bool _activityExists(String name) =>
+      widget.logic.state.activities.any((a) => a.name == name && a.type == 'time');
+
+  bool _routineExists(String name) =>
+      widget.logic.state.activities.any((a) => a.name == name && a.type == 'habit');
+
+  void _goTo(int p) {
+    _pageCtrl.animateToPage(p, duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+    setState(() => _page = p);
+  }
+
+  void _finish() {
+    final logic = widget.logic;
+    final state = logic.state;
+    final hasNew = _newDomains.isNotEmpty || _newActivities.isNotEmpty || _newRoutines.isNotEmpty;
+
+    for (final name in _newDomains) state.domains.add(Domain(name: name));
+    final domainIds = {for (final d in state.domains) d.name: d.id};
+
+    final allTimeActivities = <String, Activity>{
+      for (final a in state.activities.where((a) => a.type == 'time')) a.name: a,
+    };
+
+    for (final entry in _newActivities.entries) {
+      final sug = entry.value.sug;
+      final act = Activity(
+        domainId: domainIds[entry.value.domain] ?? state.domains.firstOrNull?.id ?? '',
+        name: sug.name, type: 'time', goalMin: 30, iconCode: sug.icon.codePoint,
+      );
+      state.activities.add(act);
+      allTimeActivities[sug.name] = act;
+    }
+
+    for (final entry in _newRoutines.entries) {
+      final sug = entry.value.sug;
+      final linkedAct = sug.linkedActivity != null ? allTimeActivities[sug.linkedActivity] : null;
+      final habit = Activity(
+        domainId: domainIds[entry.value.domain] ?? state.domains.firstOrNull?.id ?? '',
+        name: sug.name, type: 'habit',
+        habitFreq: entry.value.freq, habitTarget: sug.habitTarget,
+        manualTarget: true, autoTune: false, iconCode: sug.icon.codePoint,
+        linkedActivityId: linkedAct?.id,
+      );
+      state.activities.add(habit);
+      logic.ensureHabitPlannedForDay(yyyymmdd(DateTime.now()), habit.id);
+    }
+
+    if (hasNew) {
+      logic.onChange();
+      widget.onChanged();
+    }
+    if (mounted) Navigator.pop(context);
+  }
+
+  @override
+  void dispose() {
+    _pageCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final titles = ['Domaines', 'Activités', 'Routines'];
+    final totalNew = _newDomains.length + _newActivities.length + _newRoutines.length;
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+          child: Row(children: [
+            Expanded(
+              child: Text(titles[_page],
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: cs.onSurface)),
+            ),
+            Row(children: List.generate(3, (i) => AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              width: _page == i ? 18 : 6, height: 6,
+              decoration: BoxDecoration(
+                color: _page == i ? cs.primary : cs.onSurface.withOpacity(.15),
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ))),
+          ]),
+        ),
+        Expanded(
+          child: PageView(
+            controller: _pageCtrl,
+            physics: const NeverScrollableScrollPhysics(),
+            children: [
+              _buildDomainsPage(cs),
+              _buildActivitiesPage(cs),
+              _buildRoutinesPage(cs, totalNew),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDomainsPage(ColorScheme cs) {
+    final existing = _existingDomainNames;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Grisés = déjà actifs', style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(.45))),
+          const SizedBox(height: 16),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Wrap(
+                spacing: 10, runSpacing: 10,
+                children: _domainList.map((item) {
+                  final name = item.$1;
+                  final isExisting = existing.contains(name);
+                  final isNewSel = _newDomains.contains(name);
+                  return _CatalogChip(
+                    cs: cs, label: name, icon: item.$2,
+                    selected: isExisting || isNewSel,
+                    disabled: isExisting,
+                    onTap: isExisting ? null : () => setState(() {
+                      if (_newDomains.contains(name)) {
+                        _newDomains.remove(name);
+                        _newActivities.removeWhere((_, v) => v.domain == name);
+                        _newRoutines.removeWhere((_, v) => v.domain == name);
+                      } else {
+                        _newDomains.add(name);
+                      }
+                    }),
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          FilledButton(
+            onPressed: () => _goTo(1),
+            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+            child: const Text('Continuer', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActivitiesPage(ColorScheme cs) {
+    final domains = _domainList
+        .where((d) => _activeDomains.contains(d.$1) && _catalogue.containsKey(d.$1))
+        .toList();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Grisées = déjà ajoutées', style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(.45))),
+          const SizedBox(height: 12),
+          Expanded(
+            child: ListView(
+              children: [
+                for (final domain in domains) ...[
+                  _SectionHeader(cs: cs, icon: domain.$2, label: domain.$1),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8, runSpacing: 8,
+                    children: _catalogue[domain.$1]!.activities.map((sug) {
+                      final exists = _activityExists(sug.name);
+                      final newSel = _newActivities.containsKey(sug.name);
+                      return _CatalogChip(
+                        cs: cs, label: sug.name, icon: sug.icon,
+                        selected: exists || newSel, disabled: exists,
+                        onTap: exists ? null : () => setState(() {
+                          if (newSel) _newActivities.remove(sug.name);
+                          else _newActivities[sug.name] = (sug: sug, domain: domain.$1);
+                        }),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 20),
+                ],
+              ],
+            ),
+          ),
+          _BottomNav(
+            cs: cs,
+            primaryLabel: _newActivities.isNotEmpty
+                ? 'Continuer (${_newActivities.length} nouvelle${_newActivities.length > 1 ? 's' : ''})'
+                : 'Continuer',
+            onPrimary: () => _goTo(2),
+            skipLabel: 'Passer',
+            onSkip: () => _goTo(2),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRoutinesPage(ColorScheme cs, int totalNew) {
+    final domains = _domainList
+        .where((d) => _activeDomains.contains(d.$1) && _catalogue.containsKey(d.$1))
+        .toList();
+    final allTimeActivities = {
+      for (final a in widget.logic.state.activities.where((a) => a.type == 'time')) a.name: true,
+      for (final e in _newActivities.entries) e.key: true,
+    };
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Grisées = déjà ajoutées', style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(.45))),
+          const SizedBox(height: 12),
+          Expanded(
+            child: ListView(
+              children: [
+                for (final domain in domains) ...[
+                  _SectionHeader(cs: cs, icon: domain.$2, label: domain.$1),
+                  const SizedBox(height: 8),
+                  for (final sug in _catalogue[domain.$1]!.routines) ...[
+                    _buildRoutineTile(cs, sug, domain.$1, allTimeActivities),
+                    const SizedBox(height: 6),
+                  ],
+                  const SizedBox(height: 14),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          FilledButton(
+            onPressed: _finish,
+            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+            child: Text(
+              totalNew > 0
+                  ? 'Ajouter ($totalNew élément${totalNew > 1 ? 's' : ''})'
+                  : 'Fermer',
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRoutineTile(
+    ColorScheme cs, _RoutineSug sug, String domain, Map<String, bool> allActivities,
+  ) {
+    final exists = _routineExists(sug.name);
+    final newSel = _newRoutines.containsKey(sug.name);
+    final currentFreq = _newRoutines[sug.name]?.freq ?? sug.defaultFreq;
+    final activityLinked = sug.linkedActivity != null && allActivities.containsKey(sug.linkedActivity);
+
+    if (exists) {
+      return Opacity(
+        opacity: 0.45,
+        child: Container(
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest.withOpacity(.4),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          child: Row(
+            children: [
+              Icon(sug.icon, size: 20, color: cs.onSurface.withOpacity(.45)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(sug.name,
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: cs.onSurface)),
+              ),
+              Icon(Icons.check_circle_rounded, size: 20, color: cs.primary),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return _RoutineTile(
+      cs: cs, sug: sug, selected: newSel,
+      currentFreq: currentFreq, activityLinked: activityLinked,
+      onTap: () => setState(() {
+        if (newSel) _newRoutines.remove(sug.name);
+        else _newRoutines[sug.name] = (sug: sug, domain: domain, freq: sug.defaultFreq);
+      }),
+      onFreqChange: (f) {
+        final r = _newRoutines[sug.name];
+        if (r != null) setState(() => _newRoutines[sug.name] = (sug: r.sug, domain: r.domain, freq: f));
+      },
+    );
+  }
+}
+
+class _CatalogChip extends StatelessWidget {
+  final ColorScheme cs;
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final bool disabled;
+  final VoidCallback? onTap;
+
+  const _CatalogChip({
+    required this.cs, required this.label, required this.icon,
+    required this.selected, required this.disabled, required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Opacity(
+        opacity: disabled ? 0.45 : 1.0,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+          decoration: BoxDecoration(
+            color: selected ? cs.primary : cs.primary.withOpacity(.07),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 16,
+                  color: selected ? cs.onPrimary : cs.primary.withOpacity(.8)),
+              const SizedBox(width: 6),
+              Text(label,
+                  style: TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w600,
+                    color: selected ? cs.onPrimary : cs.primary.withOpacity(.8),
+                  )),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
