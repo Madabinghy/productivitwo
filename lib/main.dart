@@ -38,11 +38,12 @@ import 'package:productivitwo_v1/widgets/routine_freq_card.dart';
 import 'package:productivitwo_v1/widgets/changelog_sheet.dart';
 import 'package:productivitwo_v1/widgets/privacy_policy_screen.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:productivitwo_v1/dev_logger.dart';
 import 'package:productivitwo_v1/pro_manager.dart';
 import 'package:uuid/uuid.dart';
 import 'package:productivitwo_v1/widgets/paywall_sheet.dart';
+import 'package:productivitwo_v1/widgets/apple_sign_in_button.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 enum _Tab { dashboard, now, today, week }
 
@@ -358,6 +359,8 @@ class StatsView extends StatefulWidget {
   final AppState state;
   final String? selectedDomainId;
   final ScrollController? scrollController;
+  final FirestoreSync? sync;
+  final VoidCallback? onDataChanged;
 
   const StatsView({
     super.key,
@@ -365,6 +368,8 @@ class StatsView extends StatefulWidget {
     required this.state,
     required this.selectedDomainId,
     this.scrollController,
+    this.sync,
+    this.onDataChanged,
   });
 
   @override
@@ -647,6 +652,16 @@ class _StatsViewState extends State<StatsView> {
               child: TimeReportCard(logic: widget.logic, days: days),
             ),
             const SizedBox(height: 40),
+            if (widget.sync != null) ...[
+              const Divider(),
+              const SizedBox(height: 8),
+              AppleSignInTile(
+                sync: widget.sync!,
+                state: widget.state,
+                onDataChanged: widget.onDataChanged ?? () {},
+              ),
+              const SizedBox(height: 8),
+            ],
             const SizedBox(height: 60),
             ],
           ),
@@ -1542,6 +1557,9 @@ class _AppRootState extends State<AppRoot>
   bool _saveQueued = false;
   bool _saving = false;
 
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+  bool _wasOffline = false;
+
   late final ValueNotifier<int> _tick; // seconds
   late final ConfettiController _confettiController;
   late final AnimationController _tabFadeController;
@@ -1563,6 +1581,7 @@ class _AppRootState extends State<AppRoot>
     _tabFade = CurvedAnimation(parent: _tabFadeController, curve: Curves.easeIn);
 
     _startMinuteHeartbeat();
+    _startConnectivityListener();
     // Timeout global 15s sur _init() — l'app s'ouvre toujours en local si ça bloque
     _init().timeout(
       const Duration(seconds: 15),
@@ -1625,11 +1644,27 @@ class _AppRootState extends State<AppRoot>
   @override
   void dispose() {
     _heartbeat?.cancel();
+    _connectivitySub?.cancel();
     _tick.dispose();
     _confettiController.dispose();
     _tabFadeController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  void _startConnectivityListener() {
+    _connectivitySub = Connectivity()
+        .onConnectivityChanged
+        .listen((results) {
+      final isOffline = results.every((r) => r == ConnectivityResult.none);
+      if (_wasOffline && !isOffline && _state != null && !_sync.isAnonymous) {
+        // Retour en ligne → on re-sync
+        _sync.pushDeltas(_state!).catchError((_) {});
+        setState(() => _syncStatus = '☁️');
+      }
+      if (isOffline) setState(() => _syncStatus = '⚠️');
+      _wasOffline = isOffline;
+    });
   }
 
   @override
@@ -1639,6 +1674,7 @@ class _AppRootState extends State<AppRoot>
       // évite de scanner trop souvent (ex: toutes les 6h)
       if (DateTime.now().difference(_lastGlobalScan) >
           const Duration(hours: 6)) {
+        logic.skipBadgeCheck = true; // pas de confetti sur le scan de reprise
         final bumps = await logic.scanAllActivities();
         _lastGlobalScan = DateTime.now();
         if (bumps > 0 && mounted) {
@@ -1671,16 +1707,13 @@ class _AppRootState extends State<AppRoot>
   }
 
   Future<void> _init() async {
-    // Sync Firestore uniquement pour les abonnés Pro sur iOS/Android
-    final firestoreEnabled =
-        ProManager.isPro &&
-        !kIsWeb && !Platform.isMacOS && !Platform.isWindows && !Platform.isLinux;
+    // Sync Firestore uniquement si l'user est connecté avec Apple (pas anonyme)
+    final onMobile = !kIsWeb && !Platform.isMacOS && !Platform.isWindows && !Platform.isLinux;
+    final firestoreEnabled = onMobile && !_sync.isAnonymous;
 
     AppState? remote;
     if (firestoreEnabled) {
       try {
-        devLog.log('Auth anonyme…', tag: 'FIREBASE');
-        await _sync.signInAnonymously();
         devLog.log('uid: ${_sync.uid}', tag: 'FIREBASE');
         devLog.log('Pull Firestore…', tag: 'FIREBASE');
         remote = await _sync.pull().timeout(
@@ -1703,14 +1736,21 @@ class _AppRootState extends State<AppRoot>
       }
     }
 
-    // Fallback garanti sur le fichier local
-    final s = remote ?? await store.loadOrInit();
+    // Merge remote + local pour éviter les conflits inter-appareils
+    final local = await store.loadOrInit();
+    final s = (firestoreEnabled && remote != null)
+        ? FirestoreSync.merge(local, remote)
+        : local;
 
-    // Migration one-shot si pas encore de données Firestore
+    // Si on a mergé, on re-push le résultat pour que Firestore soit à jour
+    if (firestoreEnabled && remote != null) {
+      _sync.pushAll(s).catchError((e) =>
+          devLog.error('Push merge échoué', tag: 'FIREBASE', error: e));
+    }
+    // Migration one-shot : première fois qu'on a un compte mais pas de données remote
     if (firestoreEnabled && remote == null) {
-      store.loadOrInit().then((local) =>
-          _sync.pushAll(local).catchError((e) =>
-              devLog.error('Push migration échoué', tag: 'FIREBASE', error: e)));
+      _sync.pushAll(local).catchError((e) =>
+          devLog.error('Push migration échoué', tag: 'FIREBASE', error: e));
     }
 
     setState(() {
@@ -1894,8 +1934,8 @@ class _AppRootState extends State<AppRoot>
     _saving = true;
     try {
       await store.save(_state!);
-      // Sync Firestore uniquement pour les abonnés Pro sur iOS/Android
-      if (ProManager.isPro && !kIsWeb && !Platform.isMacOS && !Platform.isWindows && !Platform.isLinux) {
+      // Sync Firestore uniquement si connecté avec Apple
+      if (!_sync.isAnonymous && !kIsWeb && !Platform.isMacOS && !Platform.isWindows && !Platform.isLinux) {
         _sync.pushDeltas(_state!).catchError((_) {});
       }
     } catch (e) {
@@ -3365,6 +3405,11 @@ class _AppRootState extends State<AppRoot>
                         state: _state!,
                         selectedDomainId: null,
                         scrollController: controller,
+                        sync: _sync,
+                        onDataChanged: () {
+                          Navigator.pop(context);
+                          _init();
+                        },
                       ),
                     ),
                   );
@@ -3404,8 +3449,10 @@ class _AppRootState extends State<AppRoot>
                     ),
                   );
                   if (confirm == true) {
-                    await _sync.deleteAccount();
-                    await FirebaseFirestore.instance.clearPersistence();
+                    // Si connecté avec Apple : supprimer les données Firestore + déconnecter
+                    if (!_sync.isAnonymous) {
+                      try { await _sync.deleteAccount(); } catch (_) {}
+                    }
                     await store.wipe();
                     await ProManager.deactivate();
                     exit(0);

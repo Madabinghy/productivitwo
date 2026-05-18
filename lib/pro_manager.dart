@@ -56,4 +56,21 @@ class ProManager {
   static Future<void> deactivate() async {
     notifier.value = false;
   }
+
+  // Appeler après Sign in with Apple pour lier les achats au compte
+  static Future<void> loginUser(String uid) async {
+    try {
+      final info = await Purchases.logIn(uid);
+      notifier.value =
+          info.customerInfo.entitlements.active.containsKey(kEntitlementPro);
+    } catch (_) {}
+  }
+
+  // Appeler après déconnexion
+  static Future<void> logoutUser() async {
+    try {
+      await Purchases.logOut();
+    } catch (_) {}
+    await _syncStatus();
+  }
 }

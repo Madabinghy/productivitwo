@@ -1,5 +1,9 @@
+import 'dart:convert';
+import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:productivitwo_v1/models.dart';
 
 /// Synchronisation Firestore.
@@ -16,10 +20,64 @@ class FirestoreSync {
 
   // ── Auth ────────────────────────────────────────────────────────────────────
 
+  bool get isAnonymous => _auth.currentUser?.isAnonymous ?? true;
+  String? get appleEmail => _auth.currentUser?.email;
+
   Future<String> signInAnonymously() async {
     if (_auth.currentUser != null) return _auth.currentUser!.uid;
     final cred = await _auth.signInAnonymously();
     return cred.user!.uid;
+  }
+
+  // Retourne true si c'est une nouvelle connexion (compte créé),
+  // false si c'est une reconnexion (données Firestore existantes à télécharger).
+  Future<({bool isNew, String uid})> signInWithApple() async {
+    final rawNonce = _generateNonce();
+    final nonce = _sha256(rawNonce);
+
+    final appleCredential = await SignInWithApple.getAppleIDCredential(
+      scopes: [AppleIDAuthorizationScopes.email],
+      nonce: nonce,
+    );
+
+    final oauthCredential = OAuthProvider('apple.com').credential(
+      idToken: appleCredential.identityToken,
+      rawNonce: rawNonce,
+    );
+
+    // Si l'user est anonyme, on tente de lier le compte Apple au compte anonyme.
+    // Si le compte Apple existe déjà (autre device), Firebase lève une erreur
+    // credential-already-in-use → on sign in directement avec Apple.
+    try {
+      final user = _auth.currentUser;
+      if (user != null && user.isAnonymous) {
+        await user.linkWithCredential(oauthCredential);
+        return (isNew: true, uid: user.uid);
+      }
+    } on FirebaseAuthException catch (e) {
+      if (e.code != 'credential-already-in-use') rethrow;
+      // Compte Apple existant → on se connecte directement
+    }
+
+    final cred = await _auth.signInWithCredential(oauthCredential);
+    final isNew = cred.additionalUserInfo?.isNewUser ?? false;
+    return (isNew: isNew, uid: cred.user!.uid);
+  }
+
+  Future<void> signOut() async {
+    await _auth.signOut();
+    await _auth.signInAnonymously();
+  }
+
+  static String _generateNonce([int length = 32]) {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._';
+    final rng = Random.secure();
+    return List.generate(length, (_) => chars[rng.nextInt(chars.length)]).join();
+  }
+
+  static String _sha256(String input) {
+    final bytes = utf8.encode(input);
+    return sha256.convert(bytes).toString();
   }
 
   // ── Push ────────────────────────────────────────────────────────────────────
@@ -113,6 +171,69 @@ class FirestoreSync {
     } catch (_) {
       return null;
     }
+  }
+
+  // ── Merge local + remote ───────────────────────────────────────────────────
+  // Stratégie : union par ID pour toutes les collections.
+  // En cas de conflit sur le même ID, on préfère l'état le plus "avancé"
+  // (done=true pour dayPlan, valeur max pour habitProgress).
+  // Les métadonnées scalaires (préférences) viennent du device local.
+  static AppState merge(AppState local, AppState remote) {
+    // Helpers
+    Map<String, T> byId<T>(List<T> items, String Function(T) id) =>
+        {for (final i in items) id(i): i};
+
+    // Union simple : remote en base, local écrase par ID
+    List<T> union<T>(List<T> localList, List<T> remoteList, String Function(T) id) {
+      final map = byId(remoteList, id);
+      for (final item in localList) map[id(item)] = item;
+      return map.values.toList();
+    }
+
+    // dayPlan : préférer done=true si conflit sur le même ID
+    final remotePlan = byId(remote.dayPlan, (i) => i.id);
+    final mergedPlan = byId(local.dayPlan, (i) => i.id);
+    for (final entry in remotePlan.entries) {
+      final local = mergedPlan[entry.key];
+      if (local == null) {
+        mergedPlan[entry.key] = entry.value;
+      } else if (!local.done && entry.value.done) {
+        mergedPlan[entry.key] = entry.value;
+      }
+    }
+
+    // habitProgress : garder la valeur max par habitId
+    final remoteHp = byId(remote.habitProgress, (h) => h.habitId);
+    final mergedHp = byId(local.habitProgress, (h) => h.habitId);
+    for (final entry in remoteHp.entries) {
+      final loc = mergedHp[entry.key];
+      if (loc == null || entry.value.value > loc.value) {
+        mergedHp[entry.key] = entry.value;
+      }
+    }
+
+    return AppState(
+      // Collections additives : union par ID
+      domains:       union(local.domains,       remote.domains,       (d) => d.id),
+      activities:    union(local.activities,    remote.activities,    (a) => a.id),
+      sessions:      union(local.sessions,      remote.sessions,      (s) => s.id),
+      habitHits:     union(local.habitHits,     remote.habitHits,     (h) => h.id),
+      goals:         union(local.goals,         remote.goals,         (g) => g.id),
+      blocks:        union(local.blocks,        remote.blocks,        (b) => b.id),
+      earnedBadges:  union(local.earnedBadges,  remote.earnedBadges,  (b) => b.id),
+      // Merge spécifique
+      dayPlan:       mergedPlan.values.toList(),
+      habitProgress: mergedHp.values.toList(),
+      // Méta scalaire : valeurs locales (préférences de l'appareil actif)
+      onboardingDone:        local.onboardingDone,
+      weeklyScoreTarget:     local.weeklyScoreTarget,
+      notifHour:             local.notifHour,
+      notifMinute:           local.notifMinute,
+      notifEnabled:          local.notifEnabled,
+      reviewNotifHour:       local.reviewNotifHour,
+      reviewNotifMinute:     local.reviewNotifMinute,
+      reviewNotifEnabled:    local.reviewNotifEnabled,
+    );
   }
 
   // ── Suppression de compte ───────────────────────────────────────────────────
