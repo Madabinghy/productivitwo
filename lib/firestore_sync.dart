@@ -202,9 +202,9 @@ class FirestoreSync {
       }
     }
 
-    // habitProgress : garder la valeur max par habitId
-    final remoteHp = byId(remote.habitProgress, (h) => h.habitId);
-    final mergedHp = byId(local.habitProgress, (h) => h.habitId);
+    // habitProgress : garder la valeur max par activityId
+    final remoteHp = byId(remote.habitProgress, (h) => h.activityId);
+    final mergedHp = byId(local.habitProgress, (h) => h.activityId);
     for (final entry in remoteHp.entries) {
       final loc = mergedHp[entry.key];
       if (loc == null || entry.value.value > loc.value) {
@@ -220,7 +220,7 @@ class FirestoreSync {
       habitHits:     union(local.habitHits,     remote.habitHits,     (h) => h.id),
       goals:         union(local.goals,         remote.goals,         (g) => g.id),
       blocks:        union(local.blocks,        remote.blocks,        (b) => b.id),
-      earnedBadges:  union(local.earnedBadges,  remote.earnedBadges,  (b) => b.id),
+      earnedBadges:  union(local.earnedBadges,  remote.earnedBadges,  (b) => b.id.name),
       // Merge spécifique
       dayPlan:       mergedPlan.values.toList(),
       habitProgress: mergedHp.values.toList(),
