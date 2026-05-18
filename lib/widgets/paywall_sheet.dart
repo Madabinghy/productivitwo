@@ -31,14 +31,14 @@ class _PaywallSheetState extends State<_PaywallSheet> {
   Offerings? _offerings;
 
   static const _benefits = [
-    (Icons.cloud_outlined, 'Synchronisation cloud',
-        'Backup automatique et accès multi-appareils'),
     (Icons.bar_chart_outlined, 'Statistiques avancées',
         'Heatmap 12 semaines, rapports de temps détaillés'),
     (Icons.history_outlined, 'Historique illimité',
         'Toutes tes données conservées indéfiniment'),
     (Icons.new_releases_outlined, 'Nouvelles fonctionnalités',
         'Accès prioritaire à chaque mise à jour'),
+    (Icons.support_agent_outlined, 'Support prioritaire',
+        'Accès direct pour toute question ou retour'),
   ];
 
   @override
