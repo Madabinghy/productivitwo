@@ -5205,7 +5205,7 @@ class _AppRootState extends State<AppRoot>
             cursor = dayEnd;
           }
         }
-        final maxCount = countByYmd.values.fold(1, (m, v) => v > m ? v : m);
+        const referenceCount = 10; // 5h = couleur max (30 min = 1 unité)
 
         return SafeArea(
           child: SingleChildScrollView(
@@ -5305,7 +5305,7 @@ class _AppRootState extends State<AppRoot>
                                 }
                                 final ymd = '${d.year}${d.month.toString().padLeft(2, '0')}${d.day.toString().padLeft(2, '0')}';
                                 final count = countByYmd[ymd] ?? 0;
-                                final intensity = count == 0 ? 0.0 : (count / maxCount).clamp(0.15, 1.0);
+                                final intensity = count == 0 ? 0.0 : (count / referenceCount).clamp(0.15, 1.0);
                                 final emptyColor = cs.onSurface.withOpacity(.10);
                                 final fullColor = dColor ?? cs.primary;
                                 final color = count == 0
