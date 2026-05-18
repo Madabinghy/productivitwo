@@ -52,4 +52,8 @@ class ProManager {
     _setActive(info);
     return info;
   }
+
+  static Future<void> deactivate() async {
+    notifier.value = false;
+  }
 }
