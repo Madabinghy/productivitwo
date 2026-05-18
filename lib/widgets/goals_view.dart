@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/day_block_sheet.dart';
+import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:intl/intl.dart';
 
 class GoalsView extends StatefulWidget {
@@ -444,14 +445,17 @@ class GoalCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDone =
-        goal.status == 'done' || goal.status == 'archived';
-    final theme = Theme.of(context);
+    final cs = Theme.of(context).colorScheme;
+    final isDone = goal.status == 'done' || goal.status == 'archived';
     final total = goal.stepsTotal;
     final done = goal.stepsDone;
-    final progress =
-        total > 0 ? (done / total).clamp(0.0, 1.0) : null;
+    final progress = total > 0 ? (done / total).clamp(0.0, 1.0) : null;
     final next = goal.nextAction;
+    final accent = (logic != null
+            ? domainColor(goal.domainId, logic!.state.domains)
+            : null) ??
+        cs.primary;
+    final effectiveAccent = muted ? cs.onSurface.withOpacity(.25) : accent;
 
     return Dismissible(
       key: ValueKey(goal.id),
@@ -466,126 +470,145 @@ class GoalCard extends StatelessWidget {
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
         color: Colors.orange.shade100,
-        child:
-            const Icon(Icons.archive_outlined, color: Colors.orange),
+        child: const Icon(Icons.archive_outlined, color: Colors.orange),
       ),
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: EdgeInsets.only(
-            left: showDrag ? 4 : 16,
-            right: 16,
-            top: 10,
-            bottom: 10,
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              if (showDrag)
-                ReorderableDragStartListener(
-                  index: dragIndex,
-                  child: Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: Icon(Icons.drag_handle,
-                        size: 18,
-                        color: Colors.grey.shade400),
-                  ),
-                ),
-              Expanded(
-                child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      goal.title,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                        decoration:
-                            isDone ? TextDecoration.lineThrough : null,
-                        color: muted ? Colors.grey : null,
-                      ),
-                    ),
-                  ),
-                  if (onPin != null)
-                    GestureDetector(
-                      onTap: onPin,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: Icon(
-                          goal.pinned ? Icons.push_pin : Icons.push_pin_outlined,
-                          size: 16,
-                          color: goal.pinned
-                              ? Theme.of(context).colorScheme.primary
-                              : Colors.grey.shade400,
-                        ),
-                      ),
-                    ),
-                  if (total > 0)
-                    Text(
-                      '$done/$total',
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey.shade500),
-                    ),
-                  const SizedBox(width: 4),
-                  Icon(Icons.chevron_right,
-                      size: 18, color: Colors.grey.shade400),
-                ],
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(showDrag ? 4 : 12, 4, 12, 4),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            decoration: BoxDecoration(
+              color: muted
+                  ? cs.surfaceContainerHighest.withOpacity(.25)
+                  : cs.surfaceContainerHighest.withOpacity(.55),
+              borderRadius: BorderRadius.circular(12),
+              border: Border(
+                left: BorderSide(color: effectiveAccent, width: 3),
               ),
-              if (progress != null) ...[
-                const SizedBox(height: 5),
-                LinearProgressIndicator(
-                  value: progress,
-                  minHeight: 3,
-                  borderRadius: BorderRadius.circular(2),
-                  backgroundColor: Colors.grey.shade200,
-                  color: theme.colorScheme.primary,
-                ),
-              ],
-              if (next != null) ...[
-                const SizedBox(height: 5),
-                Row(
-                  children: [
-                    Icon(Icons.arrow_right,
-                        size: 16,
-                        color: theme.colorScheme.secondary),
-                    const SizedBox(width: 2),
-                    Expanded(
-                      child: Text(
-                        next.title,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: muted
-                              ? Colors.grey
-                              : theme.colorScheme.secondary,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+            ),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                if (showDrag)
+                  ReorderableDragStartListener(
+                    index: dragIndex,
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Icon(Icons.drag_handle,
+                          size: 18, color: cs.onSurface.withOpacity(.3)),
                     ),
-                  ],
-                ),
-              ] else if (!isDone && total == 0) ...[
-                const SizedBox(height: 4),
-                Text(
-                  'Ajouter des actions…',
-                  style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade400,
-                      fontStyle: FontStyle.italic),
+                  ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              goal.title,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                decoration: isDone
+                                    ? TextDecoration.lineThrough
+                                    : null,
+                                color: muted
+                                    ? cs.onSurface.withOpacity(.4)
+                                    : cs.onSurface,
+                              ),
+                            ),
+                          ),
+                          if (onPin != null)
+                            GestureDetector(
+                              onTap: onPin,
+                              child: Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 4),
+                                child: Icon(
+                                  goal.pinned
+                                      ? Icons.push_pin
+                                      : Icons.push_pin_outlined,
+                                  size: 15,
+                                  color: goal.pinned
+                                      ? effectiveAccent
+                                      : cs.onSurface.withOpacity(.3),
+                                ),
+                              ),
+                            ),
+                          if (progress != null) ...[
+                            Text(
+                              '${(progress * 100).round()}%',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: effectiveAccent,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                          ],
+                          Icon(Icons.chevron_right,
+                              size: 16,
+                              color: cs.onSurface.withOpacity(.25)),
+                        ],
+                      ),
+                      if (progress != null) ...[
+                        const SizedBox(height: 7),
+                        LinearProgressIndicator(
+                          value: progress,
+                          minHeight: 4,
+                          borderRadius: BorderRadius.circular(3),
+                          backgroundColor: cs.onSurface.withOpacity(.08),
+                          color: effectiveAccent,
+                        ),
+                      ],
+                      if (next != null) ...[
+                        const SizedBox(height: 7),
+                        Row(
+                          children: [
+                            Icon(Icons.subdirectory_arrow_right,
+                                size: 13,
+                                color: cs.onSurface.withOpacity(.4)),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                next.title,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: muted
+                                      ? cs.onSurface.withOpacity(.3)
+                                      : cs.onSurface.withOpacity(.65),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ] else if (!isDone && total == 0) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Ajouter des actions…',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: cs.onSurface.withOpacity(.3),
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
+                      if (logic != null &&
+                          goal.linkedHabitIds.isNotEmpty &&
+                          !isDone) ...[
+                        const SizedBox(height: 6),
+                        _RoutineChipsRow(goal: goal, logic: logic!),
+                      ],
+                    ],
+                  ),
                 ),
               ],
-              if (logic != null && goal.linkedHabitIds.isNotEmpty && !isDone) ...[
-                const SizedBox(height: 6),
-                _RoutineChipsRow(goal: goal, logic: logic!),
-              ],
-            ],
-          ),
-                ),
-            ],
+            ),
           ),
         ),
       ),

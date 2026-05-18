@@ -8,6 +8,13 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('2.0', '18 mai 2026', [
+    (Icons.flag_outlined, 'Objectifs : carte colorée par domaine, barre de progression et % visibles'),
+    (Icons.library_add_outlined, 'Catalogue post-onboarding : ajouter domaines, activités et routines à tout moment'),
+    (Icons.mail_outline, '"Suggérer une feature" dans le menu'),
+    (Icons.grid_view_outlined, 'Heatmap activité : bug corrigé les lundis, référence fixe 5h'),
+    (Icons.apple, 'Connexion Apple : sauvegarde et restauration sur plusieurs appareils'),
+  ]),
   _Entry('1.9', '15 mai 2026', [
     (Icons.color_lens_outlined, 'Couleur personnalisée par domaine'),
     (Icons.cloud_outlined, 'Sync Firestore : données sauvegardées et synchronisées automatiquement'),
