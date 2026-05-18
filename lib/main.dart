@@ -1,6 +1,7 @@
 // ignore_for_file: deprecated_member_use
 
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:collection/collection.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -676,7 +677,10 @@ final _navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await ProManager.init();
+  // RevenueCat non supporté sur web/desktop
+  if (!kIsWeb && !Platform.isMacOS && !Platform.isWindows && !Platform.isLinux) {
+    await ProManager.init();
+  }
   // Firebase configuré pour iOS et Android uniquement
   if (!kIsWeb && !Platform.isMacOS && !Platform.isWindows && !Platform.isLinux) {
     try {
@@ -2414,7 +2418,8 @@ class _AppRootState extends State<AppRoot>
     final aDeepWork = Activity(domainId: dBusiness.id, name: 'Deep Work', goalMin: 120, order: 0);
     st.activities.addAll([aMeditation, aMusculation, aRunning, aDeepWork]);
 
-    // ── Sessions du jour (pour peupler le donut + stats) ─────────────────────
+    // ── Sessions : aujourd'hui + 12 semaines d'historique ────────────────────
+    // Aujourd'hui
     st.sessions.addAll([
       Session(activityId: aMeditation.id,
           startAt: DateTime(now.year, now.month, now.day, 7, 0),
@@ -2429,6 +2434,38 @@ class _AppRootState extends State<AppRoot>
           startAt: DateTime(now.year, now.month, now.day, 12, 0),
           endAt:   DateTime(now.year, now.month, now.day, 12, 28)),
     ]);
+    // Historique 12 semaines (seed fixe pour reproductibilité)
+    final rng = Random(42);
+    final todayDt = DateTime(now.year, now.month, now.day);
+    for (int daysAgo = 83; daysAgo >= 1; daysAgo--) {
+      final day = todayDt.subtract(Duration(days: daysAgo));
+      final isWeekend = day.weekday >= 6;
+      DateTime t(int h, int m) => DateTime(day.year, day.month, day.day, h, m);
+      // Méditation : 75% des jours
+      if (rng.nextDouble() < 0.75) {
+        final dur = 15 + rng.nextInt(20);
+        st.sessions.add(Session(activityId: aMeditation.id,
+            startAt: t(7, 0), endAt: t(7, 0).add(Duration(minutes: dur))));
+      }
+      // Musculation : lundi / mercredi / vendredi à 70%
+      if ([1, 3, 5].contains(day.weekday) && rng.nextDouble() < 0.70) {
+        final dur = 45 + rng.nextInt(30);
+        st.sessions.add(Session(activityId: aMusculation.id,
+            startAt: t(8, 0), endAt: t(8, 0).add(Duration(minutes: dur))));
+      }
+      // Running : mardi / samedi à 65%
+      if ([2, 6].contains(day.weekday) && rng.nextDouble() < 0.65) {
+        final dur = 25 + rng.nextInt(20);
+        st.sessions.add(Session(activityId: aRunning.id,
+            startAt: t(12, 0), endAt: t(12, 0).add(Duration(minutes: dur))));
+      }
+      // Deep Work : jours de semaine à 72%
+      if (!isWeekend && rng.nextDouble() < 0.72) {
+        final dur = 90 + rng.nextInt(90);
+        st.sessions.add(Session(activityId: aDeepWork.id,
+            startAt: t(9, 30), endAt: t(9, 30).add(Duration(minutes: dur))));
+      }
+    }
 
     // ── Bloc + actions du jour ────────────────────────────────────────────────
     final bloc = DayBlock(name: 'Bloc matin', emoji: '🌅', order: 0);
@@ -3422,6 +3459,34 @@ class _AppRootState extends State<AppRoot>
                   Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => const PrivacyPolicyScreen(),
                   ));
+                } else if (v == 'apple_account') {
+                  showModalBottomSheet(
+                    context: context,
+                    showDragHandle: true,
+                    builder: (_) => Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Compte',
+                              style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  color: Theme.of(context).colorScheme.onSurface)),
+                          const SizedBox(height: 12),
+                          AppleSignInTile(
+                            sync: _sync,
+                            state: _state!,
+                            onDataChanged: () {
+                              Navigator.pop(context);
+                              _init();
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
                 } else if (v == 'feedback') {
                   final uri = Uri(
                     scheme: 'mailto',
@@ -3542,6 +3607,16 @@ class _AppRootState extends State<AppRoot>
                       Icon(Icons.privacy_tip_outlined, size: 18),
                       SizedBox(width: 12),
                       Text('Confidentialité'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'apple_account',
+                  child: Row(
+                    children: [
+                      Icon(Icons.apple, size: 18),
+                      SizedBox(width: 12),
+                      Text('Compte Apple'),
                     ],
                   ),
                 ),
@@ -5205,7 +5280,9 @@ class _AppRootState extends State<AppRoot>
             cursor = dayEnd;
           }
         }
-        const referenceCount = 10; // 5h = couleur max (30 min = 1 unité)
+        // Référence = min(max de l'activité, 5h) — évite les heatmaps pâles pour les activités courtes
+        final maxActivity = countByYmd.values.fold(0, (m, v) => v > m ? v : m);
+        final referenceCount = maxActivity.clamp(1, 10); // 1 unité min, 10 = 5h max
 
         return SafeArea(
           child: SingleChildScrollView(
@@ -5275,6 +5352,48 @@ class _AppRootState extends State<AppRoot>
                       _statChip('Cette semaine', fmtDur(durWeek), cs),
                       const SizedBox(width: 8),
                       _statChip('Ce mois', fmtDur(durMonth), cs),
+                    ],
+                  ),
+                ),
+
+                // ── Graphe moyenne mobile ─────────────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Moyenne mobile',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: cs.onSurface.withOpacity(.4),
+                          )),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 56,
+                        child: () {
+                          final start = today.subtract(const Duration(days: 59));
+                          final end = today.add(const Duration(days: 1));
+                          final mbd = timeByDayForActivity(
+                            sessions: _state!.sessions,
+                            activityId: a.id,
+                            start: start,
+                            end: end,
+                            now: now,
+                          );
+                          final s7 = movingAvgHoursSeries(
+                              minutesByDay: mbd, today: now, windowDays: 7, points: 30);
+                          final s30 = movingAvgHoursSeries(
+                              minutesByDay: mbd, today: now, windowDays: 30, points: 30);
+                          final goalH = (logic.timeSliding(a.id, 7).targetMin / 7.0) / 60.0;
+                          return MiniAvgLineChart(
+                            series7: s7,
+                            series30: s30,
+                            goalHoursPerDay: goalH,
+                            color: dColor,
+                          );
+                        }(),
+                      ),
                     ],
                   ),
                 ),
@@ -6209,14 +6328,9 @@ class _AppRootState extends State<AppRoot>
 
           Widget _buildTimeTile(Activity a) {
             final now = DateTime.now();
-
-            // ratios existants (garde ton ring 90j)
             final s7 = logic.timeSliding(a.id, 7);
-
-            // Données journalières sur ~60 jours (pour tracer 30 points + fenêtre 30j)
             final start = dayKey(now).subtract(const Duration(days: 59));
             final end = dayKey(now).add(const Duration(days: 1));
-
             final minutesByDay = timeByDayForActivity(
               sessions: _state!.sessions,
               activityId: a.id,
@@ -6224,26 +6338,101 @@ class _AppRootState extends State<AppRoot>
               end: end,
               now: now,
             );
-
-            final series7 = movingAvgHoursSeries(
-              minutesByDay: minutesByDay,
-              today: now,
-              windowDays: 7,
-              points: 30,
-            );
-
-            final series30 = movingAvgHoursSeries(
-              minutesByDay: minutesByDay,
-              today: now,
-              windowDays: 30,
-              points: 30,
-            );
-
             final goalHoursPerDay = (s7.targetMin / 7.0) / 60.0;
-
             final avg7 = avgHoursNow(
                 minutesByDay: minutesByDay, today: now, windowDays: 7);
             final cs = Theme.of(context).colorScheme;
+            final accentColor = domainColor(a.domainId, _state!.domains) ?? cs.primary;
+
+            // Bande heatmap 12 semaines (Pro uniquement)
+            Widget chartWidget;
+            // Graphe (Basic + Pro)
+            final series7 = movingAvgHoursSeries(
+                minutesByDay: minutesByDay, today: now, windowDays: 7, points: 30);
+            final series30 = movingAvgHoursSeries(
+                minutesByDay: minutesByDay, today: now, windowDays: 30, points: 30);
+            final lineChart = MiniAvgLineChart(
+              series7: series7, series30: series30,
+              goalHoursPerDay: goalHoursPerDay,
+              color: accentColor,
+            );
+
+            final showHeatmap = ProManager.isPro;
+            if (showHeatmap) {
+              // Heatmap 7×12 (Pro)
+              const cellSize = 9.0;
+              const gap = 1.5;
+              final today = dayKey(now);
+              final thisMonday = today.subtract(Duration(days: today.weekday - 1));
+              final startMonday = thisMonday.subtract(const Duration(days: 77));
+              final Map<String, int> countByYmd = {};
+              final startMondayYmd = '${startMonday.year}${startMonday.month.toString().padLeft(2, '0')}${startMonday.day.toString().padLeft(2, '0')}';
+              for (final item in _state!.dayPlan.where((it) =>
+                  it.kind == PlanKind.activityTime && it.refId == a.id &&
+                  it.done && !it.archived &&
+                  it.yyyymmdd.compareTo(startMondayYmd) >= 0)) {
+                countByYmd[item.yyyymmdd] = (countByYmd[item.yyyymmdd] ?? 0) + 1;
+              }
+              for (final s in _state!.sessions.where((s) => s.activityId == a.id)) {
+                final sEnd = s.endAt ?? now;
+                if (s.startAt.isAfter(now) || sEnd.isBefore(startMonday)) continue;
+                var cursor = DateTime(s.startAt.year, s.startAt.month, s.startAt.day);
+                while (!cursor.isAfter(today)) {
+                  final dayEnd = cursor.add(const Duration(days: 1));
+                  final segStart = cursor.isBefore(s.startAt) ? s.startAt : cursor;
+                  final segEnd = dayEnd.isAfter(sEnd) ? sEnd : dayEnd;
+                  final mins = segEnd.difference(segStart).inMinutes;
+                  if (mins > 0) {
+                    final ymd = '${cursor.year}${cursor.month.toString().padLeft(2, '0')}${cursor.day.toString().padLeft(2, '0')}';
+                    countByYmd[ymd] = (countByYmd[ymd] ?? 0) + (mins / 30).ceil();
+                  }
+                  cursor = dayEnd;
+                }
+              }
+              final maxCount = countByYmd.values.fold(1, (m, v) => v > m ? v : m);
+              final reference = maxCount.clamp(1, 10);
+              final heatmap = Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: List.generate(12, (col) => Padding(
+                  padding: const EdgeInsets.only(right: gap),
+                  child: Column(
+                    children: List.generate(7, (row) {
+                      final d = startMonday.add(Duration(days: col * 7 + row));
+                      if (d.isAfter(today)) {
+                        return SizedBox(height: cellSize + gap, width: cellSize);
+                      }
+                      final ymd = '${d.year}${d.month.toString().padLeft(2, '0')}${d.day.toString().padLeft(2, '0')}';
+                      final count = countByYmd[ymd] ?? 0;
+                      final intensity = count == 0 ? 0.0 : (count / reference).clamp(0.12, 1.0);
+                      final emptyColor = cs.onSurface.withOpacity(.10);
+                      final color = count == 0
+                          ? emptyColor
+                          : Color.lerp(emptyColor, accentColor, intensity)!;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: gap),
+                        child: Container(
+                          width: cellSize, height: cellSize,
+                          decoration: BoxDecoration(
+                            color: color,
+                            borderRadius: BorderRadius.circular(1.5),
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                )),
+              );
+              chartWidget = Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(child: SizedBox(height: 34, child: lineChart)),
+                  const SizedBox(width: 10),
+                  heatmap,
+                ],
+              );
+            } else {
+              chartWidget = lineChart;
+            }
 
             return ListTile(
               contentPadding:
@@ -6261,8 +6450,7 @@ class _AppRootState extends State<AppRoot>
                       suffix: "",
                       textColor: cs.onSurface.withOpacity(0.75),
                       bgOpacity: 0.03,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 1),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
                     ),
                     const SizedBox(height: 2),
                     DigitalAvgText(
@@ -6271,8 +6459,7 @@ class _AppRootState extends State<AppRoot>
                       suffix: "",
                       textColor: cs.primary.withOpacity(0.95),
                       bgOpacity: 0.05,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 1),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
                     ),
                   ],
                 ),
@@ -6282,17 +6469,12 @@ class _AppRootState extends State<AppRoot>
                 children: [
                   Text(
                     a.name,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 16),
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
                   ),
                   const SizedBox(height: 6),
                   SizedBox(
-                    height: 34,
-                    child: MiniAvgLineChart(
-                      series7: series7,
-                      series30: series30,
-                      goalHoursPerDay: goalHoursPerDay,
-                    ),
+                    height: showHeatmap ? 75 : 34,
+                    child: Align(alignment: Alignment.centerLeft, child: chartWidget),
                   ),
                 ],
               ),

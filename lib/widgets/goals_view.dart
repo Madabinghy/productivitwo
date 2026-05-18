@@ -3,6 +3,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/day_block_sheet.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
+import 'package:productivitwo_v1/widgets/new_goal_sheet.dart';
 import 'package:intl/intl.dart';
 
 class GoalsView extends StatefulWidget {
@@ -162,72 +163,14 @@ class _GoalsViewState extends State<GoalsView> {
   }
 
   Future<void> _addGoalDialog(BuildContext context) async {
-    String? selectedDomainId =
-        st.domains.isNotEmpty ? st.domains.first.id : null;
-    final titleCtrl = TextEditingController();
-    final actionCtrl = TextEditingController();
-
-    await showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setS) => AlertDialog(
-          title: const Text('Nouvel objectif'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DropdownButtonFormField<String>(
-                  value: selectedDomainId,
-                  decoration:
-                      const InputDecoration(labelText: 'Domaine'),
-                  items: st.domains
-                      .map((d) => DropdownMenuItem(
-                            value: d.id,
-                            child: Text(d.name),
-                          ))
-                      .toList(),
-                  onChanged: (v) => setS(() => selectedDomainId = v),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: titleCtrl,
-                  autofocus: true,
-                  decoration:
-                      const InputDecoration(labelText: 'Objectif'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: actionCtrl,
-                  decoration: const InputDecoration(
-                      labelText: 'Première action (optionnel)'),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Annuler')),
-            FilledButton(
-              onPressed: () {
-                final title = titleCtrl.text.trim();
-                if (title.isEmpty || selectedDomainId == null) return;
-                logic.createGoal(
-                  domainId: selectedDomainId!,
-                  title: title,
-                  firstAction: actionCtrl.text.trim().isEmpty
-                      ? null
-                      : actionCtrl.text.trim(),
-                );
-                setState(() {});
-                Navigator.pop(ctx);
-              },
-              child: const Text('Ajouter'),
-            ),
-          ],
-        ),
-      ),
+    final result = await showNewGoalSheet(context, logic: logic);
+    if (result == null) return;
+    logic.createGoal(
+      domainId: result.domainId,
+      title: result.title,
+      firstAction: result.firstAction,
     );
+    setState(() {});
   }
 
   Future<void> _confirmArchive(BuildContext context, Goal goal) async {
@@ -344,55 +287,18 @@ class _DomainGoalsSheetState extends State<DomainGoalsSheet> {
   }
 
   Future<void> _addGoalDialog(BuildContext context) async {
-    final titleCtrl = TextEditingController();
-    final actionCtrl = TextEditingController();
-
-    await showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Nouvel objectif · ${domain.name}'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: titleCtrl,
-                autofocus: true,
-                decoration:
-                    const InputDecoration(labelText: 'Objectif'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: actionCtrl,
-                decoration: const InputDecoration(
-                    labelText: 'Première action (optionnel)'),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Annuler')),
-          FilledButton(
-            onPressed: () {
-              final title = titleCtrl.text.trim();
-              if (title.isEmpty) return;
-              logic.createGoal(
-                domainId: domain.id,
-                title: title,
-                firstAction: actionCtrl.text.trim().isEmpty
-                    ? null
-                    : actionCtrl.text.trim(),
-              );
-              setState(() {});
-              Navigator.pop(ctx);
-            },
-            child: const Text('Ajouter'),
-          ),
-        ],
-      ),
+    final result = await showNewGoalSheet(
+      context,
+      logic: logic,
+      initialDomainId: domain.id,
     );
+    if (result == null) return;
+    logic.createGoal(
+      domainId: result.domainId,
+      title: result.title,
+      firstAction: result.firstAction,
+    );
+    setState(() {});
   }
 
   Future<void> _confirmArchive(BuildContext context, Goal goal) async {

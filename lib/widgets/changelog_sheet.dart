@@ -8,6 +8,14 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('2.1', '18 mai 2026', [
+    (Icons.show_chart, 'Pro : heatmap 12 semaines + graphe couleur domaine dans la liste des activités'),
+    (Icons.bar_chart, 'Fiche activité : graphe moyenne mobile ajouté au-dessus de la heatmap'),
+    (Icons.rocket_launch_outlined, 'Onboarding : packs prêts-à-l\'emploi (Sport & Santé, Entrepreneur, Développement personnel)'),
+    (Icons.apple, 'Compte Apple accessible directement depuis le menu'),
+    (Icons.flag_outlined, 'Création d\'objectif : nouveau sheet fluide (même style que les actions)'),
+    (Icons.grid_view_outlined, 'Heatmap activité : référence adaptée au max de l\'activité (min 5h)'),
+  ]),
   _Entry('2.0', '18 mai 2026', [
     (Icons.flag_outlined, 'Objectifs : carte colorée par domaine, barre de progression et % visibles'),
     (Icons.library_add_outlined, 'Catalogue post-onboarding : ajouter domaines, activités et routines à tout moment'),

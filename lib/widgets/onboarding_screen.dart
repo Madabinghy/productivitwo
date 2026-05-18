@@ -191,6 +191,52 @@ final _catalogue = <String, _DomainSug>{
   ),
 };
 
+// ── Packs prédéfinis ─────────────────────────────────────────────────────────
+
+class _PackDef {
+  final String emoji;
+  final String name;
+  final String description;
+  final List<String> domains;
+  final List<String> activities;
+  final List<String> routines;
+  const _PackDef({
+    required this.emoji,
+    required this.name,
+    required this.description,
+    required this.domains,
+    required this.activities,
+    required this.routines,
+  });
+}
+
+const _packs = [
+  _PackDef(
+    emoji: '💪',
+    name: 'Sport & Santé',
+    description: 'Entraînement, nutrition et récupération',
+    domains: ['Sport', 'Santé'],
+    activities: ['Musculation', 'Running', 'Méditation', 'Hydratation', 'Sommeil'],
+    routines: ['Séance de sport', 'Course à pied', 'Méditer', "Boire de l'eau", 'Vitamines', 'Peser mon poids'],
+  ),
+  _PackDef(
+    emoji: '🚀',
+    name: 'Entrepreneur',
+    description: 'Deep work, prospection et organisation',
+    domains: ['Business', 'Organisation', 'Finances'],
+    activities: ['Prospection', 'Création de contenu', 'Stratégie', 'Planification', 'Budget'],
+    routines: ['Revue journalière', 'Prospecter', 'Créer du contenu', 'Planifier ma journée', 'Vider mon inbox', 'Revue hebdo', 'Vérifier mon budget'],
+  ),
+  _PackDef(
+    emoji: '🌱',
+    name: 'Développement personnel',
+    description: 'Lecture, bien-être et apprentissage',
+    domains: ['Apprentissage', 'Bien-être', 'Organisation'],
+    activities: ['Lecture', 'Formation en ligne', 'Relaxation', 'Journaling', 'Planification'],
+    routines: ['Lire 30 min', 'Suivre une formation', 'Journaling', 'Se relaxer', 'Planifier ma journée', 'Douche froide', 'Gratitude'],
+  ),
+];
+
 // ─── Fréquence label ─────────────────────────────────────────────────────────
 String _freqLabel(HabitFreq f) => switch (f) {
       HabitFreq.daily => 'Quotidienne',
@@ -235,6 +281,27 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _pageCtrl.animateToPage(page,
         duration: const Duration(milliseconds: 350), curve: Curves.easeInOut);
     setState(() => _page = page);
+  }
+
+  void _applyPack(_PackDef pack) {
+    setState(() {
+      for (final domainName in pack.domains) {
+        _selectedDomains.add(domainName);
+      }
+      for (final entry in _catalogue.entries) {
+        for (final sug in entry.value.activities) {
+          if (pack.activities.contains(sug.name)) {
+            _selectedActivities[sug.name] = (sug: sug, domain: entry.key);
+          }
+        }
+        for (final sug in entry.value.routines) {
+          if (pack.routines.contains(sug.name)) {
+            _selectedRoutines[sug.name] = (sug: sug, domain: entry.key, freq: sug.defaultFreq);
+          }
+        }
+      }
+    });
+    _goTo(4); // directement au résumé
   }
 
   void _toggleActivity(String domain, _ActivitySug sug) {
@@ -362,7 +429,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 physics: const NeverScrollableScrollPhysics(),
                 children: [
                   // Page 1 — Bienvenue
-                  _WelcomePage(cs: cs, onNext: () => _goTo(1)),
+                  _WelcomePage(
+                    cs: cs,
+                    onNext: () => _goTo(1),
+                    onSelectPack: _applyPack,
+                  ),
 
                   // Page 2 — Domaines
                   _DomainsPage(
@@ -423,47 +494,123 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 class _WelcomePage extends StatelessWidget {
   final ColorScheme cs;
   final VoidCallback onNext;
-  const _WelcomePage({required this.cs, required this.onNext});
+  final void Function(_PackDef) onSelectPack;
+  const _WelcomePage({
+    required this.cs,
+    required this.onNext,
+    required this.onSelectPack,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(28, 0, 28, 32),
       child: Column(
         children: [
-          const Spacer(),
+          const SizedBox(height: 12),
           Container(
-            width: 96,
-            height: 96,
+            width: 80,
+            height: 80,
             decoration: BoxDecoration(
               color: cs.primaryContainer,
-              borderRadius: BorderRadius.circular(28),
+              borderRadius: BorderRadius.circular(24),
             ),
-            child: Icon(Icons.rocket_launch_outlined, size: 48, color: cs.primary),
+            child: Icon(Icons.rocket_launch_outlined, size: 40, color: cs.primary),
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 20),
           Text(
             'Productivitwo',
-            style: TextStyle(fontSize: 34, fontWeight: FontWeight.w900, color: cs.primary),
+            style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: cs.primary),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 8),
           Text(
-            'Transforme tes intentions en actions.\nSuis tes routines, avance sur tes objectifs,\ndeviens la version que tu veux être.',
+            'Transforme tes intentions en actions.',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 16, height: 1.65, color: cs.onSurface.withOpacity(.6)),
+            style: TextStyle(fontSize: 15, color: cs.onSurface.withOpacity(.55)),
           ),
-          const Spacer(),
-          FilledButton(
-            onPressed: onNext,
-            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-            child: const Text('Commencer', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 28),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'DÉMARRAGE RAPIDE',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.0,
+                color: cs.onSurface.withOpacity(.4),
+              ),
+            ),
           ),
           const SizedBox(height: 10),
-          Text(
-            'Configuration rapide · 2 minutes',
-            style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.35)),
+          for (final pack in _packs) ...[
+            _PackCard(cs: cs, pack: pack, onTap: () => onSelectPack(pack)),
+            const SizedBox(height: 8),
+          ],
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(child: Divider(color: cs.onSurface.withOpacity(.12))),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Text('ou', style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(.35))),
+              ),
+              Expanded(child: Divider(color: cs.onSurface.withOpacity(.12))),
+            ],
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton(
+            onPressed: onNext,
+            style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+            child: const Text('Configurer moi-même', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PackCard extends StatelessWidget {
+  final ColorScheme cs;
+  final _PackDef pack;
+  final VoidCallback onTap;
+  const _PackCard({required this.cs, required this.pack, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        decoration: BoxDecoration(
+          color: cs.primaryContainer.withOpacity(.45),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: cs.primary.withOpacity(.15)),
+        ),
+        child: Row(
+          children: [
+            Text(pack.emoji, style: const TextStyle(fontSize: 26)),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(pack.name,
+                      style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: cs.onSurface)),
+                  const SizedBox(height: 2),
+                  Text(pack.description,
+                      style: TextStyle(
+                          fontSize: 13,
+                          color: cs.onSurface.withOpacity(.55))),
+                ],
+              ),
+            ),
+            Icon(Icons.arrow_forward_ios_rounded,
+                size: 14, color: cs.onSurface.withOpacity(.3)),
+          ],
+        ),
       ),
     );
   }

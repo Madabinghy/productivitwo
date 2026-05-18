@@ -172,22 +172,25 @@ class MiniAvgLineChart extends StatelessWidget {
     super.key,
     required this.series7,
     required this.series30,
-    this.goalHoursPerDay, // 👈 repère
+    this.goalHoursPerDay,
+    this.color,
   });
 
   final List<double> series7;
   final List<double> series30;
   final double? goalHoursPerDay;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final line = color ?? cs.primary;
     return CustomPaint(
       painter: _MiniAvgLinePainter(
         series7: series7,
         series30: series30,
         goalHoursPerDay: goalHoursPerDay,
-        line7: cs.primary.withOpacity(0.95),
+        line7: line.withOpacity(0.95),
         line30: cs.onSurface.withOpacity(0.22),
         grid: cs.onSurface.withOpacity(0.10),
         goalLine: cs.onSurface.withOpacity(0.22),
