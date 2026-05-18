@@ -44,6 +44,7 @@ import 'package:uuid/uuid.dart';
 import 'package:productivitwo_v1/widgets/paywall_sheet.dart';
 import 'package:productivitwo_v1/widgets/apple_sign_in_button.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 enum _Tab { dashboard, now, today, week }
 
@@ -3421,6 +3422,16 @@ class _AppRootState extends State<AppRoot>
                   Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => const PrivacyPolicyScreen(),
                   ));
+                } else if (v == 'feedback') {
+                  final uri = Uri(
+                    scheme: 'mailto',
+                    path: 'emeric.edmond@gmail.com',
+                    queryParameters: {
+                      'subject': '[Productivitwo] Suggestion',
+                      'body': 'Bonjour,\n\nVoici ma suggestion :\n\n',
+                    },
+                  );
+                  launchUrl(uri);
                 } else if (v == 'catalogue') {
                   await showModalBottomSheet(
                     context: context,
@@ -3531,6 +3542,16 @@ class _AppRootState extends State<AppRoot>
                       Icon(Icons.privacy_tip_outlined, size: 18),
                       SizedBox(width: 12),
                       Text('Confidentialité'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'feedback',
+                  child: Row(
+                    children: [
+                      Icon(Icons.mail_outline, size: 18),
+                      SizedBox(width: 12),
+                      Text('Suggérer une feature'),
                     ],
                   ),
                 ),
