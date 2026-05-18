@@ -38,6 +38,7 @@ import 'package:productivitwo_v1/widgets/routine_freq_card.dart';
 import 'package:productivitwo_v1/widgets/changelog_sheet.dart';
 import 'package:productivitwo_v1/widgets/privacy_policy_screen.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:productivitwo_v1/dev_logger.dart';
 import 'package:productivitwo_v1/pro_manager.dart';
 import 'package:uuid/uuid.dart';
