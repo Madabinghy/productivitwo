@@ -29,6 +29,12 @@ def keystoreProperties = new Properties()
 def keystorePropertiesFile = rootProject.file('key.properties')
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+} else {
+    // Codemagic injecte le keystore via variables d'environnement
+    keystoreProperties['storeFile']     = System.getenv('CM_KEYSTORE_PATH')
+    keystoreProperties['storePassword'] = System.getenv('CM_KEYSTORE_PASSWORD')
+    keystoreProperties['keyAlias']      = System.getenv('CM_KEY_ALIAS')
+    keystoreProperties['keyPassword']   = System.getenv('CM_KEY_PASSWORD')
 }
 
 android {
