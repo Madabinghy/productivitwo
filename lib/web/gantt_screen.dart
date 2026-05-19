@@ -470,45 +470,80 @@ class _PhaseChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final labelColor = _isDark(bgColor) || dark
+        ? Colors.white.withOpacity(0.92)
+        : _darken(bgColor);
+
     return Container(
       width: 180,
-      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: bgColor.withOpacity(0.35),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: bgColor.withOpacity(0.6), width: 1),
+        color: dark ? bgColor.withOpacity(0.10) : bgColor.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: bgColor.withOpacity(0.5), width: 1.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-              overflow: TextOverflow.ellipsis),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              Expanded(
-                child: LinearProgressIndicator(
-                  value: pct,
-                  minHeight: 3,
-                  borderRadius: BorderRadius.circular(2),
-                  backgroundColor: statusColor.withOpacity(0.12),
-                  color: statusColor,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Text('$done/$total',
-                  style: TextStyle(
-                      fontSize: 10,
-                      color: Colors.black.withOpacity(0.45))),
-            ],
+          // ── Header coloré (style phase Gantt) ─────────────────────────
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            decoration: BoxDecoration(
+              color: bgColor.withOpacity(dark ? 0.35 : 0.5),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+            ),
+            child: Text(label,
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: labelColor),
+                overflow: TextOverflow.ellipsis),
           ),
-          const SizedBox(height: 4),
-          Text(statusLabel,
-              style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: statusColor)),
+          // ── Contenu ───────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: LinearProgressIndicator(
+                        value: pct,
+                        minHeight: 4,
+                        borderRadius: BorderRadius.circular(2),
+                        backgroundColor: bgColor.withOpacity(0.2),
+                        color: bgColor,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text('$done/$total',
+                        style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: bgColor)),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Container(
+                      width: 6, height: 6,
+                      decoration: BoxDecoration(
+                          color: statusColor, shape: BoxShape.circle),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(statusLabel,
+                        style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: statusColor)),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

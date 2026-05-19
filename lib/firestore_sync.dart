@@ -64,8 +64,11 @@ class FirestoreSync {
         return (isNew: true, uid: user.uid);
       }
     } on FirebaseAuthException catch (e) {
-      if (e.code != 'credential-already-in-use') rethrow;
-      // Compte Apple existant → on se connecte directement
+      // credential-already-in-use : le compte Apple existe déjà sur un autre UID
+      // email-already-in-use : l'email Apple est déjà utilisé par un autre provider (ex: Google)
+      // Dans les deux cas → on sign in directement avec Apple
+      if (e.code != 'credential-already-in-use' &&
+          e.code != 'email-already-in-use') rethrow;
     }
 
     final cred = await _auth.signInWithCredential(oauthCredential);
