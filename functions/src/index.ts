@@ -1007,6 +1007,11 @@ async function executeGetDayPlan(uid: string, date: string): Promise<string> {
       activityId: v.activityId || null,
       status: v.status || "active",
       order: v.order || 0,
+      checklist: (v.checklist || []).map((c: Record<string, unknown>) => ({
+        id: c.id,
+        title: c.title,
+        done: c.done ?? false,
+      })),
     }))
     .sort((a, b) => a.order - b.order);
 

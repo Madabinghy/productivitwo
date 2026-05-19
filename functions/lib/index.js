@@ -815,6 +815,14 @@ async function executeGetDayPlan(uid, date) {
         activityId: v.activityId || null,
         status: v.status || "active",
         order: v.order || 0,
+        checklist: (v.checklist || []).map((c) => {
+            var _a;
+            return ({
+                id: c.id,
+                title: c.title,
+                done: (_a = c.done) !== null && _a !== void 0 ? _a : false,
+            });
+        }),
     }))
         .sort((a, b) => a.order - b.order);
     const done = items.filter((it) => it.done).length;
