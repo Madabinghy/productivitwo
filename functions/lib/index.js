@@ -83,6 +83,91 @@ exports.pushGantt = (0, https_1.onRequest)({ cors: true, invoker: "public" }, as
     }
     res.status(200).json({ success: true, projectId, strategicObjectiveId: strategicObjectiveId !== null && strategicObjectiveId !== void 0 ? strategicObjectiveId : null });
 });
+// ── MCP Prompts ───────────────────────────────────────────────────────────────
+const today = () => new Date().toISOString().split("T")[0];
+const MCP_PROMPTS = [
+    {
+        name: "programme-du-jour",
+        description: "Crée mon programme personnalisé pour aujourd'hui ou une date donnée",
+        arguments: [
+            { name: "date", description: "Date YYYY-MM-DD (défaut: aujourd'hui)", required: false },
+        ],
+    },
+    {
+        name: "bilan-semaine",
+        description: "Bilan de la semaine : réalisé, écarts, ajustements suggérés",
+        arguments: [],
+    },
+    {
+        name: "aligner-gantt",
+        description: "Aligne mon planning des prochains jours avec mes projets Gantt actifs",
+        arguments: [],
+    },
+];
+function getPromptMessages(name, args) {
+    const date = args.date || today();
+    if (name === "programme-du-jour") {
+        return [
+            {
+                role: "user",
+                content: {
+                    type: "text",
+                    text: `Crée mon programme pour le ${date}.\n\n` +
+                        `Étapes à suivre dans l'ordre :\n` +
+                        `1. Appelle get_user_context pour connaître mes objectifs et ce que j'ai fait cette semaine.\n` +
+                        `2. Appelle get_day_blocks pour connaître mes blocs de journée.\n` +
+                        `3. Appelle get_day_plan(${date}) pour voir ce qui est déjà prévu.\n` +
+                        `4. Appelle list_events (Google Calendar) pour voir mes rendez-vous.\n` +
+                        `5. Crée un programme cohérent avec plan_day :\n` +
+                        `   - Respecte mes blocs\n` +
+                        `   - Priorise les tâches Gantt en retard\n` +
+                        `   - Ajoute des créneaux "Rendez-vous avec [objectif]" pour mes goals GTD\n` +
+                        `   - Commente les actions non faites de la semaine si pertinent\n` +
+                        `6. Ajoute les créneaux importants dans Google Calendar.`,
+                },
+            },
+        ];
+    }
+    if (name === "bilan-semaine") {
+        return [
+            {
+                role: "user",
+                content: {
+                    type: "text",
+                    text: `Fais mon bilan de la semaine.\n\n` +
+                        `1. Appelle get_user_context — analyse recentActivity en détail :\n` +
+                        `   - Qu'est-ce que j'ai accompli (completedActions) ?\n` +
+                        `   - Qu'est-ce que j'avais prévu mais pas fait (pendingActions) ?\n` +
+                        `   - Quelles habitudes sont en dessous de leur cible (habitCompletion) ?\n` +
+                        `   - Quelles activités manquent de temps loggué vs objectif (timeLogged) ?\n` +
+                        `2. Appelle list_projects pour voir l'état des Gantts actifs.\n` +
+                        `3. Présente un bilan structuré : ce qui va bien, ce qui bloque, 3 actions prioritaires pour la semaine prochaine.\n` +
+                        `4. Propose des ajustements concrets (update_activity_goal si un objectif est irréaliste).`,
+                },
+            },
+        ];
+    }
+    if (name === "aligner-gantt") {
+        return [
+            {
+                role: "user",
+                content: {
+                    type: "text",
+                    text: `Aligne mon planning des prochains jours avec mes projets Gantt.\n\n` +
+                        `1. Appelle get_user_context.\n` +
+                        `2. Appelle list_projects puis get_project pour chaque projet actif.\n` +
+                        `3. Identifie les tâches Gantt :\n` +
+                        `   - En retard (endDate dépassée, status != done)\n` +
+                        `   - À venir dans les 7 prochains jours\n` +
+                        `   - Des jalons proches\n` +
+                        `4. Pour chaque tâche urgente, propose de la planifier via plan_day sur les prochains jours.\n` +
+                        `5. Si une tâche Gantt devrait générer des routines régulières, propose create_routine.`,
+                },
+            },
+        ];
+    }
+    return [];
+}
 // ── Remote MCP Handler ────────────────────────────────────────────────────────
 //
 // URL : /mcp/{uid}/{token}
@@ -91,9 +176,13 @@ exports.pushGantt = (0, https_1.onRequest)({ cors: true, invoker: "public" }, as
 // ── Outils contexte utilisateur + écriture agenda ────────────────────────────
 const GET_USER_CONTEXT_TOOL = {
     name: "get_user_context",
-    description: "Retourne le contexte complet de l'utilisateur : domaines de vie, activités " +
-        "(avec leurs objectifs quotidiens), routines actives et objectifs GTD en cours. " +
-        "Appelle cet outil en premier pour personnaliser tes suggestions.",
+    description: "APPELLE CET OUTIL EN PREMIER dans toute conversation liée à la productivité. " +
+        "Retourne : domaines de vie, activités + objectifs quotidiens, routines actives, " +
+        "objectifs GTD, ET l'activité réelle des 7 derniers jours (actions faites, actions " +
+        "non faites, taux de complétion des habitudes, temps loggué par activité). " +
+        "Analyse l'écart entre 'completedActions' et 'pendingActions' pour détecter " +
+        "les blocages récurrents. Compare 'timeLogged' aux objectifs des activités " +
+        "pour identifier les domaines sous-investis. Signale proactivement tout écart > 30%.",
     inputSchema: { type: "object", properties: {} },
 };
 const UPDATE_ACTIVITY_GOAL_TOOL = {
@@ -113,9 +202,11 @@ const UPDATE_ACTIVITY_GOAL_TOOL = {
 };
 const CREATE_ROUTINE_TOOL = {
     name: "create_routine",
-    description: "Crée une action récurrente dans Productivitwo. " +
-        "Peut être liée à une période (startDate/endDate) et à une tâche Gantt (projectTaskId). " +
-        "La routine apparaît automatiquement dans le plan quotidien de l'utilisateur.",
+    description: "Crée une action récurrente. Demande TOUJOURS confirmation avant de créer. " +
+        "Si la routine est liée à une phase Gantt, renseigne startDate/endDate pour " +
+        "qu'elle expire automatiquement en fin de phase. " +
+        "Exemple : routine 'Séance muscu' du 2026-06-01 au 2026-08-31 liée à la phase Intensification. " +
+        "Préfère les jours spécifiques (specificDays) aux routines quotidiennes sauf si vraiment pertinent.",
     inputSchema: {
         type: "object",
         required: ["title"],
@@ -158,15 +249,17 @@ const ADD_TO_DAY_PLAN_TOOL = {
 };
 const GET_DAY_BLOCKS_TOOL = {
     name: "get_day_blocks",
-    description: "Retourne les blocs de journée de l'utilisateur (Miracle Morning, Matinée, Midi…) " +
-        "avec leurs activités et horaires. Utilise cet outil avant de créer un programme du jour " +
-        "pour savoir dans quels blocs positionner les actions.",
+    description: "Retourne les blocs de journée (Miracle Morning, Matinée, Midi, Soir…) avec horaires. " +
+        "Appelle cet outil AVANT plan_day pour connaître la structure de la journée. " +
+        "Respecte toujours les blocs existants : ne place pas une tâche de concentration " +
+        "dans un bloc 'Soir' si 'Matinée' est disponible.",
     inputSchema: { type: "object", properties: {} },
 };
 const GET_DAY_PLAN_TOOL = {
     name: "get_day_plan",
-    description: "Retourne le plan du jour pour une date donnée — ce qui est déjà planifié, " +
-        "fait ou reporté. Utilise cet outil pour voir les créneaux libres avant de planifier.",
+    description: "Retourne le plan d'un jour donné (actions planifiées, faites, reportées). " +
+        "Appelle cet outil avant plan_day pour éviter les doublons et identifier " +
+        "les créneaux libres. Si le plan est déjà chargé, ne replanifie que ce qui manque.",
     inputSchema: {
         type: "object",
         required: ["date"],
@@ -177,10 +270,15 @@ const GET_DAY_PLAN_TOOL = {
 };
 const PLAN_DAY_TOOL = {
     name: "plan_day",
-    description: "Crée le programme personnalisé d'une journée en ajoutant plusieurs actions dans " +
-        "les bons blocs. C'est l'outil principal pour être l'assistant de planning de l'utilisateur. " +
-        "Positionne les actions selon les blocs disponibles, les rendez-vous du calendrier, " +
-        "et les objectifs de l'utilisateur. Peut aussi générer des titres de type 'Rendez-vous avec [objectif]'.",
+    description: "OUTIL PRINCIPAL du coach : crée le programme personnalisé d'une journée. " +
+        "Workflow obligatoire avant d'appeler cet outil : " +
+        "1) get_user_context → connaître les objectifs et le réalisé récent, " +
+        "2) get_day_blocks → connaître la structure de la journée, " +
+        "3) get_day_plan → voir ce qui est déjà prévu, " +
+        "4) list_events (Google Calendar) → voir les rendez-vous existants. " +
+        "Ensuite : place les actions urgentes en matinée, les routines dans leurs blocs, " +
+        "crée des 'Rendez-vous avec [objectif]' pour les goals GTD prioritaires, " +
+        "et intègre les tâches Gantt en retard.",
     inputSchema: {
         type: "object",
         required: ["date", "items"],
@@ -682,7 +780,7 @@ exports.getCustomToken = (0, https_1.onRequest)({ cors: true, invoker: "public" 
     res.status(200).json({ customToken });
 });
 exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, async (req, res) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
     // CORS preflight
     if (req.method === "OPTIONS") {
         res.status(204).send("");
@@ -718,13 +816,33 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                 jsonrpc: "2.0", id,
                 result: {
                     protocolVersion: "2024-11-05",
-                    capabilities: { tools: {} },
+                    capabilities: { tools: {}, prompts: {} },
                     serverInfo: { name: "productivitwo", version: "1.0.0" },
                 },
             });
         }
         else if (method === "ping") {
             responses.push({ jsonrpc: "2.0", id, result: {} });
+        }
+        else if (method === "prompts/list") {
+            responses.push({ jsonrpc: "2.0", id, result: { prompts: MCP_PROMPTS } });
+        }
+        else if (method === "prompts/get") {
+            const promptName = (_d = (_c = rpc.params) === null || _c === void 0 ? void 0 : _c.name) !== null && _d !== void 0 ? _d : "";
+            const promptArgs = (_f = (_e = rpc.params) === null || _e === void 0 ? void 0 : _e.arguments) !== null && _f !== void 0 ? _f : {};
+            const prompt = MCP_PROMPTS.find((p) => p.name === promptName);
+            if (!prompt) {
+                responses.push({ jsonrpc: "2.0", id, error: { code: -32601, message: `Prompt inconnu : ${promptName}` } });
+            }
+            else {
+                responses.push({
+                    jsonrpc: "2.0", id,
+                    result: {
+                        description: prompt.description,
+                        messages: getPromptMessages(promptName, promptArgs),
+                    },
+                });
+            }
         }
         else if (method === "tools/list") {
             responses.push({
@@ -747,8 +865,8 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
             });
         }
         else if (method === "tools/call") {
-            const toolName = (_d = (_c = rpc.params) === null || _c === void 0 ? void 0 : _c.name) !== null && _d !== void 0 ? _d : "";
-            const args = (_f = (_e = rpc.params) === null || _e === void 0 ? void 0 : _e.arguments) !== null && _f !== void 0 ? _f : {};
+            const toolName = (_h = (_g = rpc.params) === null || _g === void 0 ? void 0 : _g.name) !== null && _h !== void 0 ? _h : "";
+            const args = (_k = (_j = rpc.params) === null || _j === void 0 ? void 0 : _j.arguments) !== null && _k !== void 0 ? _k : {};
             try {
                 let text = "";
                 if (toolName === "get_day_blocks") {
@@ -758,10 +876,10 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                     text = await executeGetDayPlan(uid, args.date);
                 }
                 else if (toolName === "plan_day") {
-                    text = await executePlanDay(uid, args.date, args.items, (_g = args.clearExisting) !== null && _g !== void 0 ? _g : false);
+                    text = await executePlanDay(uid, args.date, args.items, (_l = args.clearExisting) !== null && _l !== void 0 ? _l : false);
                 }
                 else if (toolName === "delete_project") {
-                    text = await executeDeleteProject(uid, args.projectId, (_h = args.deleteObjective) !== null && _h !== void 0 ? _h : false);
+                    text = await executeDeleteProject(uid, args.projectId, (_m = args.deleteObjective) !== null && _m !== void 0 ? _m : false);
                 }
                 else if (toolName === "get_user_context") {
                     text = await executeGetUserContext(uid);
