@@ -8,6 +8,11 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('2.7', '19 mai 2026', [
+    (Icons.smart_toy_outlined, 'Claude peut supprimer activités, actions et routines du plan'),
+    (Icons.folder_outlined, 'Claude peut créer et supprimer des domaines de vie'),
+    (Icons.sync_outlined, 'Sync : suppressions faites par Claude résistantes à la synchronisation'),
+  ]),
   _Entry('2.6', '19 mai 2026', [
     (Icons.archive_outlined, 'Projets Gantt : mettre en veille et réactiver depuis le web app'),
     (Icons.add_circle_outline, 'Claude peut créer et modifier des activités directement'),

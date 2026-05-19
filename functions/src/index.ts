@@ -375,6 +375,72 @@ const CREATE_ACTIVITY_TOOL = {
   },
 };
 
+const CREATE_DOMAIN_TOOL = {
+  name: "create_domain",
+  description:
+    "Crée un nouveau domaine de vie dans Productivitwo (ex: Santé, Travail, Famille). " +
+    "Utilise get_user_context pour vérifier qu'un domaine similaire n'existe pas déjà. " +
+    "Demande confirmation avant de créer.",
+  inputSchema: {
+    type: "object",
+    required: ["name"],
+    properties: {
+      name:        { type: "string", description: "Nom du domaine (ex: Santé, Travail, Famille)" },
+      goalMinDay:  { type: "number", description: "Objectif quotidien en minutes (null = auto depuis les activités)" },
+      autoGoal:    { type: "boolean", description: "true = objectif calculé depuis les activités (défaut: true)" },
+      colorValue:  { type: "number", description: "Valeur entière Flutter Color.value (optionnel)" },
+    },
+  },
+};
+
+const DELETE_DOMAIN_TOOL = {
+  name: "delete_domain",
+  description:
+    "Supprime définitivement un domaine de vie. Irréversible — demande toujours confirmation. " +
+    "Par défaut les activités du domaine sont conservées (domainId mis à null). " +
+    "Utilise get_user_context pour obtenir le domainId.",
+  inputSchema: {
+    type: "object",
+    required: ["domainId"],
+    properties: {
+      domainId: { type: "string", description: "id du domaine (get_user_context)" },
+      deleteActivities: {
+        type: "boolean",
+        description: "Si true, supprime aussi toutes les activités du domaine (défaut: false)",
+      },
+    },
+  },
+};
+
+const DELETE_ACTION_TOOL = {
+  name: "delete_action",
+  description:
+    "Supprime une action individuelle du plan quotidien. " +
+    "Utilise get_day_plan(date) pour obtenir l'id de l'action. " +
+    "Demande confirmation si l'action est déjà faite (done=true).",
+  inputSchema: {
+    type: "object",
+    required: ["actionId"],
+    properties: {
+      actionId: { type: "string", description: "id de l'action (obtenu via get_day_plan)" },
+    },
+  },
+};
+
+const DELETE_ACTIVITY_TOOL = {
+  name: "delete_activity",
+  description:
+    "Supprime définitivement une activité. Irréversible — demande toujours confirmation. " +
+    "Utilise get_user_context pour obtenir l'activityId.",
+  inputSchema: {
+    type: "object",
+    required: ["activityId"],
+    properties: {
+      activityId: { type: "string", description: "id de l'activité (get_user_context)" },
+    },
+  },
+};
+
 const UPDATE_ACTIVITY_TOOL = {
   name: "update_activity",
   description:
@@ -1046,6 +1112,86 @@ async function executeCreateActivity(
   return `✅ Activité "${args.name}" créée (${args.type}). Elle apparaîtra dans Productivitwo à la prochaine synchronisation.`;
 }
 
+async function executeDeleteAction(uid: string, actionId: string): Promise<string> {
+  const ref = db.collection(`users/${uid}/dayPlan`).doc(actionId);
+  const snap = await ref.get();
+  if (!snap.exists) return `Action introuvable : ${actionId}`;
+  const title = snap.data()?.title ?? actionId;
+  // Archiver plutôt que supprimer pour que le merge Flutter respecte la suppression
+  await ref.update({ archived: true, status: "archived" });
+  return `✅ Action "${title}" supprimée du plan.`;
+}
+
+async function executeCreateDomain(
+  uid: string,
+  args: { name: string; goalMinDay?: number; autoGoal?: boolean; colorValue?: number }
+): Promise<string> {
+  const id = uuidv4();
+  await db.collection(`users/${uid}/domains`).doc(id).set({
+    id,
+    name: args.name,
+    goalMinDay: args.goalMinDay ?? null,
+    autoGoal: args.autoGoal ?? true,
+    colorValue: args.colorValue ?? null,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  return `✅ Domaine "${args.name}" créé (id: ${id}). Il apparaîtra dans Productivitwo à la prochaine synchronisation.`;
+}
+
+async function executeDeleteDomain(
+  uid: string,
+  domainId: string,
+  deleteActivities: boolean
+): Promise<string> {
+  const ref = db.collection(`users/${uid}/domains`).doc(domainId);
+  const snap = await ref.get();
+  if (!snap.exists) return `Domaine introuvable : ${domainId}`;
+  const name = snap.data()?.name ?? domainId;
+
+  await ref.delete();
+
+  const activitiesSnap = await db.collection(`users/${uid}/activities`)
+    .where("domainId", "==", domainId)
+    .get();
+
+  if (!activitiesSnap.empty) {
+    const batch = db.batch();
+    for (const doc of activitiesSnap.docs) {
+      if (deleteActivities) batch.delete(doc.ref);
+      else batch.update(doc.ref, { domainId: null });
+    }
+    await batch.commit();
+    if (deleteActivities) {
+      return `✅ Domaine "${name}" et ses ${activitiesSnap.size} activité(s) supprimés définitivement.`;
+    }
+    return `✅ Domaine "${name}" supprimé. ${activitiesSnap.size} activité(s) conservée(s) sans domaine.`;
+  }
+
+  return `✅ Domaine "${name}" supprimé.`;
+}
+
+async function executeDeleteActivity(uid: string, activityId: string): Promise<string> {
+  const ref = db.collection(`users/${uid}/activities`).doc(activityId);
+  const snap = await ref.get();
+  if (!snap.exists) return `Activité introuvable : ${activityId}`;
+  const name = snap.data()?.name ?? activityId;
+
+  await ref.delete();
+
+  // Délier les day plan items non faits qui référencent cette activité
+  const planSnap = await db.collection(`users/${uid}/dayPlan`)
+    .where("activityId", "==", activityId)
+    .where("done", "==", false)
+    .get();
+  if (!planSnap.empty) {
+    const batch = db.batch();
+    for (const doc of planSnap.docs) batch.update(doc.ref, { activityId: null });
+    await batch.commit();
+  }
+
+  return `✅ Activité "${name}" supprimée${planSnap.size > 0 ? ` (${planSnap.size} action(s) du plan déliée(s))` : ""}.`;
+}
+
 async function executeUpdateActivity(
   uid: string,
   activityId: string,
@@ -1132,8 +1278,9 @@ async function executeClearDayPlan(uid: string, date: string): Promise<string> {
     .where("done", "==", false)
     .get();
   if (snap.empty) return `Aucune action non faite à supprimer le ${date}.`;
+  // Archiver plutôt que supprimer pour que le merge Flutter respecte la suppression
   const batch = db.batch();
-  for (const doc of snap.docs) batch.delete(doc.ref);
+  for (const doc of snap.docs) batch.update(doc.ref, { archived: true, status: "archived" });
   await batch.commit();
   return `✅ ${snap.size} action(s) non faite(s) supprimée(s) du plan du ${date}.`;
 }
@@ -1355,6 +1502,10 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
             LINK_GOAL_TO_TASK_TOOL,
             CREATE_ACTIVITY_TOOL,
             UPDATE_ACTIVITY_TOOL,
+            DELETE_ACTIVITY_TOOL,
+            DELETE_ACTION_TOOL,
+            CREATE_DOMAIN_TOOL,
+            DELETE_DOMAIN_TOOL,
           ],
         },
       });
@@ -1413,6 +1564,18 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
           text = await executeCreateRoutine(uid, args as Parameters<typeof executeCreateRoutine>[1]);
         } else if (toolName === "add_to_day_plan") {
           text = await executeAddToDayPlan(uid, args as Parameters<typeof executeAddToDayPlan>[1]);
+        } else if (toolName === "delete_action") {
+          text = await executeDeleteAction(uid, args.actionId as string);
+        } else if (toolName === "create_domain") {
+          text = await executeCreateDomain(uid, args as Parameters<typeof executeCreateDomain>[1]);
+        } else if (toolName === "delete_domain") {
+          text = await executeDeleteDomain(
+            uid,
+            args.domainId as string,
+            (args.deleteActivities as boolean) ?? false
+          );
+        } else if (toolName === "delete_activity") {
+          text = await executeDeleteActivity(uid, args.activityId as string);
         } else {
           responses.push({ jsonrpc: "2.0", id, error: { code: -32601, message: `Outil inconnu : ${toolName}` } });
           continue;

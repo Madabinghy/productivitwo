@@ -188,14 +188,17 @@ class FirestoreSync {
       return map.values.toList();
     }
 
-    // dayPlan : préférer done=true si conflit sur le même ID
+    // dayPlan : préférer done=true ou archived=true du serveur (MCP clear/delete)
     final remotePlan = byId(remote.dayPlan, (i) => i.id);
     final mergedPlan = byId(local.dayPlan, (i) => i.id);
     for (final entry in remotePlan.entries) {
-      final local = mergedPlan[entry.key];
-      if (local == null) {
+      final loc = mergedPlan[entry.key];
+      if (loc == null) {
         mergedPlan[entry.key] = entry.value;
-      } else if (!local.done && entry.value.done) {
+      } else if (!loc.done && entry.value.done) {
+        mergedPlan[entry.key] = entry.value;
+      } else if (!loc.archived && entry.value.archived) {
+        // Le serveur a archivé cet item (ex: clear_day_plan ou delete_action via MCP)
         mergedPlan[entry.key] = entry.value;
       }
     }
@@ -216,7 +219,18 @@ class FirestoreSync {
       activities:    union(local.activities,    remote.activities,    (a) => a.id),
       sessions:      union(local.sessions,      remote.sessions,      (s) => s.id),
       habitHits:     union(local.habitHits,     remote.habitHits,     (h) => h.id),
-      goals:         union(local.goals,         remote.goals,         (g) => g.id),
+      // Goals : union, mais respecter le status "archived" venant du serveur (MCP)
+      goals: () {
+        final remoteMap = byId(remote.goals, (g) => g.id);
+        final merged = byId(local.goals, (g) => g.id);
+        for (final entry in remoteMap.entries) {
+          final loc = merged[entry.key];
+          if (loc == null || entry.value.status == 'archived') {
+            merged[entry.key] = entry.value;
+          }
+        }
+        return merged.values.toList();
+      }(),
       blocks:        union(local.blocks,        remote.blocks,        (b) => b.id),
       earnedBadges:  union(local.earnedBadges,  remote.earnedBadges,  (b) => b.id.name),
       // Merge spécifique
