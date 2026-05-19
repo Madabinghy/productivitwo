@@ -156,6 +156,60 @@ const ADD_TO_DAY_PLAN_TOOL = {
         },
     },
 };
+const GET_DAY_BLOCKS_TOOL = {
+    name: "get_day_blocks",
+    description: "Retourne les blocs de journée de l'utilisateur (Miracle Morning, Matinée, Midi…) " +
+        "avec leurs activités et horaires. Utilise cet outil avant de créer un programme du jour " +
+        "pour savoir dans quels blocs positionner les actions.",
+    inputSchema: { type: "object", properties: {} },
+};
+const GET_DAY_PLAN_TOOL = {
+    name: "get_day_plan",
+    description: "Retourne le plan du jour pour une date donnée — ce qui est déjà planifié, " +
+        "fait ou reporté. Utilise cet outil pour voir les créneaux libres avant de planifier.",
+    inputSchema: {
+        type: "object",
+        required: ["date"],
+        properties: {
+            date: { type: "string", description: "Date ISO YYYY-MM-DD" },
+        },
+    },
+};
+const PLAN_DAY_TOOL = {
+    name: "plan_day",
+    description: "Crée le programme personnalisé d'une journée en ajoutant plusieurs actions dans " +
+        "les bons blocs. C'est l'outil principal pour être l'assistant de planning de l'utilisateur. " +
+        "Positionne les actions selon les blocs disponibles, les rendez-vous du calendrier, " +
+        "et les objectifs de l'utilisateur. Peut aussi générer des titres de type 'Rendez-vous avec [objectif]'.",
+    inputSchema: {
+        type: "object",
+        required: ["date", "items"],
+        properties: {
+            date: { type: "string", description: "Date ISO YYYY-MM-DD" },
+            clearExisting: {
+                type: "boolean",
+                description: "Si true, efface le plan existant avant d'ajouter (défaut: false)",
+            },
+            items: {
+                type: "array",
+                description: "Liste des actions à planifier",
+                items: {
+                    type: "object",
+                    required: ["title"],
+                    properties: {
+                        title: { type: "string", description: "Titre de l'action ou du créneau" },
+                        blockId: { type: "string", description: "id du bloc (obtenu via get_day_blocks)" },
+                        domainId: { type: "string" },
+                        activityId: { type: "string" },
+                        projectId: { type: "string" },
+                        projectTaskId: { type: "string" },
+                        durationNote: { type: "string", description: "Note de durée visible (ex: '45 min')" },
+                    },
+                },
+            },
+        },
+    },
+};
 const DELETE_PROJECT_TOOL = {
     name: "delete_project",
     description: "Supprime définitivement un projet Gantt et son objectif stratégique associé. " +
@@ -451,6 +505,97 @@ async function executeAddToDayPlan(uid, args) {
     });
     return `✅ "${args.title}" ajouté au plan du ${args.date}.`;
 }
+async function executeGetDayBlocks(uid) {
+    const snap = await db.collection(`users/${uid}/blocks`).orderBy("order").get();
+    if (snap.empty)
+        return "Aucun bloc de journée configuré.";
+    const blocks = snap.docs.map((d) => {
+        var _a, _b;
+        const v = d.data();
+        return {
+            id: v.id,
+            name: v.name,
+            emoji: v.emoji || null,
+            order: v.order,
+            startHour: (_a = v.startHour) !== null && _a !== void 0 ? _a : null,
+            startMinute: (_b = v.startMinute) !== null && _b !== void 0 ? _b : null,
+            activityIds: v.activityIds || [],
+        };
+    });
+    return JSON.stringify({ blocks }, null, 2);
+}
+async function executeGetDayPlan(uid, date) {
+    const yyyymmdd = date.replace(/-/g, "");
+    const snap = await db.collection(`users/${uid}/dayPlan`)
+        .where("yyyymmdd", "==", yyyymmdd)
+        .get();
+    if (snap.empty)
+        return `Aucune action planifiée le ${date}.`;
+    const items = snap.docs.map((d) => {
+        const v = d.data();
+        return {
+            id: v.id,
+            title: v.title,
+            done: v.done,
+            blockId: v.blockId || null,
+            domainId: v.domainId || null,
+            activityId: v.activityId || null,
+            status: v.status || "active",
+            order: v.order || 0,
+        };
+    }).sort((a, b) => a.order - b.order);
+    const done = items.filter((it) => it.done).length;
+    return JSON.stringify({
+        date,
+        summary: `${done}/${items.length} actions faites`,
+        items,
+    }, null, 2);
+}
+async function executePlanDay(uid, date, items, clearExisting) {
+    const yyyymmdd = date.replace(/-/g, "");
+    if (clearExisting) {
+        // Supprimer les items non-faits du jour
+        const existing = await db.collection(`users/${uid}/dayPlan`)
+            .where("yyyymmdd", "==", yyyymmdd)
+            .where("done", "==", false)
+            .get();
+        const batch = db.batch();
+        for (const doc of existing.docs)
+            batch.delete(doc.ref);
+        if (!existing.empty)
+            await batch.commit();
+    }
+    const addBatch = db.batch();
+    items.forEach((item, i) => {
+        const id = (0, uuid_1.v4)();
+        const title = item.durationNote
+            ? `${item.title} (${item.durationNote})`
+            : item.title;
+        addBatch.set(db.collection(`users/${uid}/dayPlan`).doc(id), {
+            id,
+            kind: "action",
+            title,
+            yyyymmdd,
+            done: false,
+            doneCount: 0,
+            allDay: false,
+            isNowFocus: false,
+            order: 9000 + i,
+            toPlan: false,
+            archived: false,
+            status: "active",
+            createdAt: firestore_1.FieldValue.serverTimestamp(),
+            blockId: item.blockId || null,
+            domainId: item.domainId || null,
+            activityId: item.activityId || null,
+            projectId: item.projectId || null,
+            projectTaskId: item.projectTaskId || null,
+        });
+    });
+    await addBatch.commit();
+    return (`✅ Programme du ${date} créé — ${items.length} action(s) planifiée(s).\n` +
+        items.map((it, i) => `  ${i + 1}. ${it.title}${it.blockId ? ` → bloc ${it.blockId}` : ""}`).join("\n"));
+}
 async function executeDeleteProject(uid, projectId, deleteObjective) {
     var _a;
     const projectRef = db.collection(`users/${uid}/projects`).doc(projectId);
@@ -537,7 +682,7 @@ exports.getCustomToken = (0, https_1.onRequest)({ cors: true, invoker: "public" 
     res.status(200).json({ customToken });
 });
 exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, async (req, res) => {
-    var _a, _b, _c, _d, _e, _f, _g;
+    var _a, _b, _c, _d, _e, _f, _g, _h;
     // CORS preflight
     if (req.method === "OPTIONS") {
         res.status(204).send("");
@@ -587,6 +732,9 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                 result: {
                     tools: [
                         GET_USER_CONTEXT_TOOL,
+                        GET_DAY_BLOCKS_TOOL,
+                        GET_DAY_PLAN_TOOL,
+                        PLAN_DAY_TOOL,
                         LIST_PROJECTS_TOOL,
                         GET_PROJECT_TOOL,
                         PUSH_GANTT_MCP_TOOL,
@@ -603,8 +751,17 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
             const args = (_f = (_e = rpc.params) === null || _e === void 0 ? void 0 : _e.arguments) !== null && _f !== void 0 ? _f : {};
             try {
                 let text = "";
-                if (toolName === "delete_project") {
-                    text = await executeDeleteProject(uid, args.projectId, (_g = args.deleteObjective) !== null && _g !== void 0 ? _g : false);
+                if (toolName === "get_day_blocks") {
+                    text = await executeGetDayBlocks(uid);
+                }
+                else if (toolName === "get_day_plan") {
+                    text = await executeGetDayPlan(uid, args.date);
+                }
+                else if (toolName === "plan_day") {
+                    text = await executePlanDay(uid, args.date, args.items, (_g = args.clearExisting) !== null && _g !== void 0 ? _g : false);
+                }
+                else if (toolName === "delete_project") {
+                    text = await executeDeleteProject(uid, args.projectId, (_h = args.deleteObjective) !== null && _h !== void 0 ? _h : false);
                 }
                 else if (toolName === "get_user_context") {
                     text = await executeGetUserContext(uid);
