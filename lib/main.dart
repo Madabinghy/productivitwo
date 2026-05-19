@@ -3628,17 +3628,16 @@ class _AppRootState extends State<AppRoot>
                     ],
                   ),
                 ),
-                if (!_sync.isAnonymous)
-                  const PopupMenuItem(
-                    value: 'api_tokens',
-                    child: Row(
-                      children: [
-                        Icon(Icons.key_outlined, size: 18),
-                        SizedBox(width: 12),
-                        Text('Tokens API'),
-                      ],
-                    ),
+                const PopupMenuItem(
+                  value: 'api_tokens',
+                  child: Row(
+                    children: [
+                      Icon(Icons.key_outlined, size: 18),
+                      SizedBox(width: 12),
+                      Text('Tokens API'),
+                    ],
                   ),
+                ),
                 const PopupMenuItem(
                   value: 'apple_account',
                   child: Row(
