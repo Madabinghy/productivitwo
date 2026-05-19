@@ -475,15 +475,13 @@ class _TokensPanelState extends State<_TokensPanel>
     );
   }
 
+  String _mcpUrl(String token) =>
+      'https://productivitwo-app.web.app/mcp/$_uid/$token';
+
   String _mcpConfig(String token) => '''{
   "mcpServers": {
     "productivitwo": {
-      "command": "npx",
-      "args": ["-y", "productivitwo-mcp@latest"],
-      "env": {
-        "PRODUCTIVITWO_TOKEN": "$token",
-        "PRODUCTIVITWO_UID": "$_uid"
-      }
+      "url": "${_mcpUrl(token)}"
     }
   }
 }''';
@@ -563,7 +561,7 @@ class _TokensPanelState extends State<_TokensPanel>
                           const SizedBox(height: 16),
                           _Step(
                             number: '2',
-                            title: 'Copie cette config dans Claude Desktop',
+                            title: 'Copie ton URL de connexion',
                             child: activeTokens.isEmpty
                                 ? Text('Crée d\'abord un token (étape 1)',
                                     style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(0.45),
@@ -571,30 +569,63 @@ class _TokensPanelState extends State<_TokensPanel>
                                 : Column(
                                     crossAxisAlignment: CrossAxisAlignment.stretch,
                                     children: [
-                                      Text(
-                                        'Colle ça dans ton fichier ~/.claude.json '
-                                        '(ou Paramètres → MCP dans Claude Desktop) :',
-                                        style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(0.65)),
-                                      ),
-                                      const SizedBox(height: 10),
+                                      // URL principale (simple)
                                       Container(
                                         padding: const EdgeInsets.all(12),
                                         decoration: BoxDecoration(
-                                          color: cs.surfaceContainerHighest.withOpacity(0.7),
+                                          color: cs.primaryContainer.withOpacity(0.4),
                                           borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(color: cs.primary.withOpacity(0.25)),
                                         ),
-                                        child: SelectableText(
-                                          _mcpConfig(activeTokens.first.token),
-                                          style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+                                        child: Row(
+                                          children: [
+                                            Expanded(
+                                              child: SelectableText(
+                                                _mcpUrl(activeTokens.first.token),
+                                                style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+                                              ),
+                                            ),
+                                            IconButton(
+                                              icon: const Icon(Icons.copy_outlined, size: 16),
+                                              onPressed: () => _copy(_mcpUrl(activeTokens.first.token), 'URL copiée'),
+                                            ),
+                                          ],
                                         ),
                                       ),
+                                      const SizedBox(height: 10),
+                                      // Option A : Claude.ai web
+                                      _ConnectOption(
+                                        icon: Icons.language_outlined,
+                                        title: 'Claude.ai web',
+                                        description: 'Paramètres → Intégrations → Ajouter un serveur MCP → colle l\'URL',
+                                      ),
                                       const SizedBox(height: 8),
-                                      OutlinedButton.icon(
-                                        icon: const Icon(Icons.copy_outlined, size: 16),
-                                        label: const Text('Copier la config'),
-                                        onPressed: () => _copy(
-                                          _mcpConfig(activeTokens.first.token),
-                                          'Config copiée',
+                                      // Option B : Claude Desktop
+                                      _ConnectOption(
+                                        icon: Icons.desktop_mac_outlined,
+                                        title: 'Claude Desktop',
+                                        description: 'Paramètres → Développeur → Modifier la config → colle le JSON ci-dessous',
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Container(
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: BoxDecoration(
+                                          color: cs.surfaceContainerHighest.withOpacity(0.6),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Expanded(
+                                              child: SelectableText(
+                                                _mcpConfig(activeTokens.first.token),
+                                                style: const TextStyle(fontFamily: 'monospace', fontSize: 10),
+                                              ),
+                                            ),
+                                            IconButton(
+                                              icon: const Icon(Icons.copy_outlined, size: 14),
+                                              onPressed: () => _copy(_mcpConfig(activeTokens.first.token), 'Config copiée'),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                     ],
@@ -603,10 +634,10 @@ class _TokensPanelState extends State<_TokensPanel>
                           const SizedBox(height: 16),
                           _Step(
                             number: '3',
-                            title: 'Redémarre Claude Desktop',
+                            title: 'Parle à Claude',
                             child: Text(
-                              'Productivitwo apparaîtra dans tes outils MCP. '
-                              'Dis à Claude : "Crée un Gantt pour ma roadmap marketing de 3 mois".',
+                              'Dis à Claude : "Crée un Gantt pour [description de ton projet]" '
+                              'et il le poussera directement dans Productivitwo.',
                               style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(0.65), height: 1.5),
                             ),
                           ),
@@ -709,6 +740,36 @@ class _TokensPanelState extends State<_TokensPanel>
 }
 
 // ── Widget étape numérotée ────────────────────────────────────────────────────
+
+class _ConnectOption extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String description;
+  const _ConnectOption({required this.icon, required this.title, required this.description});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: cs.onSurface.withOpacity(0.5)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: RichText(
+            text: TextSpan(
+              style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.65), height: 1.4),
+              children: [
+                TextSpan(text: '$title — ', style: const TextStyle(fontWeight: FontWeight.w600)),
+                TextSpan(text: description),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
 
 class _Step extends StatelessWidget {
   final String number;
