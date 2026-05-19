@@ -353,6 +353,55 @@ const ADD_TO_DAY_PLAN_TOOL = {
   },
 };
 
+const DELETE_ROUTINE_TOOL = {
+  name: "delete_routine",
+  description:
+    "Supprime une action récurrente. Demande toujours confirmation avant d'appeler. " +
+    "Utilise get_user_context pour obtenir l'id de la routine.",
+  inputSchema: {
+    type: "object",
+    required: ["routineId"],
+    properties: {
+      routineId: { type: "string", description: "id de la routine (obtenu via get_user_context)" },
+    },
+  },
+};
+
+const DELETE_GOAL_TOOL = {
+  name: "delete_goal",
+  description:
+    "Archive ou supprime définitivement un objectif GTD. " +
+    "Préfère 'archive' (status archived) pour conserver l'historique. " +
+    "Demande confirmation avant d'appeler.",
+  inputSchema: {
+    type: "object",
+    required: ["goalId"],
+    properties: {
+      goalId: { type: "string", description: "id du goal (obtenu via get_user_context)" },
+      action: {
+        type: "string",
+        enum: ["archive", "delete"],
+        description: "'archive' = marque comme archivé (recommandé), 'delete' = suppression définitive",
+      },
+    },
+  },
+};
+
+const CLEAR_DAY_PLAN_TOOL = {
+  name: "clear_day_plan",
+  description:
+    "Supprime les actions non faites du plan d'un jour donné. " +
+    "Utile pour vider une journée avant de la replanifier. " +
+    "Ne supprime jamais les actions déjà faites (done=true).",
+  inputSchema: {
+    type: "object",
+    required: ["date"],
+    properties: {
+      date: { type: "string", description: "Date ISO YYYY-MM-DD" },
+    },
+  },
+};
+
 const GET_DAY_BLOCKS_TOOL = {
   name: "get_day_blocks",
   description:
@@ -883,6 +932,52 @@ async function executePlanDay(
   );
 }
 
+async function executeDeleteRoutine(uid: string, routineId: string): Promise<string> {
+  const ref = db.collection(`users/${uid}/recurringActions`).doc(routineId);
+  const snap = await ref.get();
+  if (!snap.exists) return `Routine introuvable : ${routineId}`;
+  const title = snap.data()?.title ?? routineId;
+  await ref.delete();
+  // Supprimer aussi les DayPlanItems générés par cette routine (non faits)
+  const planSnap = await db.collection(`users/${uid}/dayPlan`)
+    .where("recurringActionId", "==", routineId)
+    .where("done", "==", false)
+    .get();
+  if (!planSnap.empty) {
+    const batch = db.batch();
+    for (const doc of planSnap.docs) batch.delete(doc.ref);
+    await batch.commit();
+  }
+  return `✅ Routine "${title}" supprimée (${planSnap.size} occurrence(s) future(s) retirée(s) du plan).`;
+}
+
+async function executeDeleteGoal(uid: string, goalId: string, action: string): Promise<string> {
+  const ref = db.collection(`users/${uid}/goals`).doc(goalId);
+  const snap = await ref.get();
+  if (!snap.exists) return `Objectif introuvable : ${goalId}`;
+  const title = snap.data()?.title ?? goalId;
+  if (action === "delete") {
+    await ref.delete();
+    return `✅ Objectif "${title}" supprimé définitivement.`;
+  }
+  // Archive par défaut
+  await ref.update({ status: "archived" });
+  return `✅ Objectif "${title}" archivé.`;
+}
+
+async function executeClearDayPlan(uid: string, date: string): Promise<string> {
+  const yyyymmdd = date.replace(/-/g, "");
+  const snap = await db.collection(`users/${uid}/dayPlan`)
+    .where("yyyymmdd", "==", yyyymmdd)
+    .where("done", "==", false)
+    .get();
+  if (snap.empty) return `Aucune action non faite à supprimer le ${date}.`;
+  const batch = db.batch();
+  for (const doc of snap.docs) batch.delete(doc.ref);
+  await batch.commit();
+  return `✅ ${snap.size} action(s) non faite(s) supprimée(s) du plan du ${date}.`;
+}
+
 async function executeDeleteProject(
   uid: string,
   projectId: string,
@@ -1074,13 +1169,16 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
             GET_DAY_BLOCKS_TOOL,
             GET_DAY_PLAN_TOOL,
             PLAN_DAY_TOOL,
+            CLEAR_DAY_PLAN_TOOL,
             LIST_PROJECTS_TOOL,
             GET_PROJECT_TOOL,
             PUSH_GANTT_MCP_TOOL,
             DELETE_PROJECT_TOOL,
             UPDATE_ACTIVITY_GOAL_TOOL,
             CREATE_ROUTINE_TOOL,
+            DELETE_ROUTINE_TOOL,
             ADD_TO_DAY_PLAN_TOOL,
+            DELETE_GOAL_TOOL,
           ],
         },
       });
@@ -1100,6 +1198,12 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
             args.items as Parameters<typeof executePlanDay>[2],
             (args.clearExisting as boolean) ?? false
           );
+        } else if (toolName === "delete_routine") {
+          text = await executeDeleteRoutine(uid, args.routineId as string);
+        } else if (toolName === "delete_goal") {
+          text = await executeDeleteGoal(uid, args.goalId as string, (args.action as string) ?? "archive");
+        } else if (toolName === "clear_day_plan") {
+          text = await executeClearDayPlan(uid, args.date as string);
         } else if (toolName === "delete_project") {
           text = await executeDeleteProject(
             uid,
