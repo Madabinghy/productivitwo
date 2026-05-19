@@ -32,7 +32,7 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace "com.emericedmond.productivitwo"
+    namespace "com.madabinghy.productivitwo"
     compileSdk flutter.compileSdkVersion
     ndkVersion flutter.ndkVersion
 
@@ -59,7 +59,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.emericedmond.productivitwo"
+        applicationId "com.madabinghy.productivitwo"
         minSdkVersion flutter.minSdkVersion
         targetSdkVersion flutter.targetSdkVersion
         versionCode flutterVersionCode.toInteger()

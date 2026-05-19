@@ -1,18 +1,32 @@
 {
   "project_info": {
     "project_number": "752644759129",
+    "firebase_url": "https://productivitwo-app-default-rtdb.europe-west1.firebasedatabase.app",
     "project_id": "productivitwo-app",
     "storage_bucket": "productivitwo-app.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:752644759129:android:291bdc6c171092bf411b48",
+        "mobilesdk_app_id": "1:752644759129:android:d59587cd0b5d5f35411b48",
         "android_client_info": {
-          "package_name": "com.emericedmond.productivitwo"
+          "package_name": "com.madabinghy.productivitwo"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "752644759129-s1lqronde4477jv9i9j7712f6in0sfnc.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.madabinghy.productivitwo",
+            "certificate_hash": "fc44bce738296f58152d998a78f4f8da51b3653b"
+          }
+        },
+        {
+          "client_id": "752644759129-l9ikvkbt24j25581vdlsvi81nlbl3l9u.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAdBcYNODOju3Jt7Ov5OyIIcu7ug48Ocp0"
@@ -20,7 +34,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "752644759129-l9ikvkbt24j25581vdlsvi81nlbl3l9u.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "752644759129-0uh15chv5v0tdh1b6cdmtkvj50atr8gr.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.madabinghy.productivitwo"
+              }
+            }
+          ]
         }
       }
     }
