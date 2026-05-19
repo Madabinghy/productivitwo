@@ -141,13 +141,13 @@ class _WebAuthScreenState extends State<WebAuthScreen>
                 ),
                 const SizedBox(height: 20),
 
-                // Tabs
+                // Tabs — iOS en premier (cas principal)
                 TabBar(
                   controller: _tabs,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   tabs: const [
-                    Tab(text: 'Google'),
                     Tab(text: 'Compte iOS'),
+                    Tab(text: 'Nouveau compte'),
                   ],
                 ),
 
@@ -174,42 +174,7 @@ class _WebAuthScreenState extends State<WebAuthScreen>
                   child: TabBarView(
                     controller: _tabs,
                     children: [
-                      // ── Onglet Google ────────────────────────────────────
-                      Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Text(
-                              'Nouveau compte ou compte sans iOS.',
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  color: cs.onSurface.withOpacity(0.55)),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 20),
-                            FilledButton.icon(
-                              onPressed: _loading ? null : _signInWithGoogle,
-                              icon: _loading
-                                  ? SizedBox(
-                                      width: 16, height: 16,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: cs.onPrimary))
-                                  : const Icon(Icons.login_outlined, size: 18),
-                              label: Text(_loading
-                                  ? 'Connexion…'
-                                  : 'Continuer avec Google'),
-                              style: FilledButton.styleFrom(
-                                minimumSize: const Size(double.infinity, 48),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      // ── Onglet iOS ───────────────────────────────────────
+                      // ── Onglet iOS (principal) ───────────────────────────
                       Padding(
                         padding: const EdgeInsets.all(20),
                         child: Column(
@@ -263,6 +228,41 @@ class _WebAuthScreenState extends State<WebAuthScreen>
                               child: Text(_loading
                                   ? 'Connexion…'
                                   : 'Connecter mon compte iOS'),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // ── Onglet Nouveau compte (secondaire) ───────────────
+                      Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              'Tu découvres Productivitwo sur le web.\nTélécharge l\'app iOS pour l\'expérience complète.',
+                              style: TextStyle(
+                                  fontSize: 13,
+                                  color: cs.onSurface.withOpacity(0.55)),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 20),
+                            FilledButton.icon(
+                              onPressed: _loading ? null : _signInWithGoogle,
+                              icon: _loading
+                                  ? SizedBox(
+                                      width: 16, height: 16,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: cs.onPrimary))
+                                  : const Icon(Icons.login_outlined, size: 18),
+                              label: Text(_loading
+                                  ? 'Connexion…'
+                                  : 'Continuer avec Google'),
+                              style: FilledButton.styleFrom(
+                                minimumSize: const Size(double.infinity, 48),
+                              ),
                             ),
                           ],
                         ),
