@@ -24,6 +24,7 @@ class _ApiTokensScreenState extends State<ApiTokensScreen> {
   }
 
   Future<void> _load() async {
+    if (mounted) setState(() => _loading = true);
     final tokens = await widget.sync.fetchApiTokens();
     if (!mounted) return;
     setState(() {
@@ -40,7 +41,7 @@ class _ApiTokensScreenState extends State<ApiTokensScreen> {
     if (!mounted) return;
 
     await _showTokenCreatedDialog(token);
-    _load();
+    await _load();
   }
 
   Future<void> _revoke(ApiToken token) async {
