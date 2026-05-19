@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/web/gantt_screen.dart';
+import 'package:productivitwo_v1/web/help_sheet.dart';
 
 class WebHomeScreen extends StatefulWidget {
   const WebHomeScreen({super.key});
@@ -105,6 +106,7 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
                 ),
               ),
             ),
+            const HelpButton(),
             TextButton.icon(
               icon: const Icon(Icons.auto_awesome_outlined, size: 16),
               label: const Text('Connecter Claude'),
