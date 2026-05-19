@@ -40,9 +40,18 @@ class FirestoreSync {
       nonce: nonce,
     );
 
+    final idToken = appleCredential.identityToken;
+    if (idToken == null || idToken.isEmpty) {
+      throw FirebaseAuthException(
+        code: 'apple-token-null',
+        message: 'Apple n\'a pas retourné de token d\'identité. Réessaie.',
+      );
+    }
+
     final oauthCredential = OAuthProvider('apple.com').credential(
-      idToken: appleCredential.identityToken,
+      idToken: idToken,
       rawNonce: rawNonce,
+      accessToken: appleCredential.authorizationCode,
     );
 
     // Si l'user est anonyme, on tente de lier le compte Apple au compte anonyme.

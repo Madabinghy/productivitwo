@@ -5,13 +5,28 @@ import 'package:productivitwo_v1/models.dart';
 
 // ── Constantes de layout ──────────────────────────────────────────────────────
 
-const double _kLabelW = 220.0;   // largeur colonne labels
-const double _kCellW = 68.0;     // largeur d'une semaine en pixels
-const double _kRowH = 36.0;      // hauteur d'une ligne de tâche
-const double _kGroupH = 30.0;    // hauteur d'une ligne de groupe
-const double _kPhaseH = 28.0;    // hauteur du header de phase
-const double _kWeekH = 26.0;     // hauteur du header de semaines
-const double _kBarVPad = 8.0;    // padding vertical dans la barre
+const double _kLabelW = 220.0;
+const double _kCellW = 68.0;
+const double _kRowH = 36.0;
+const double _kGroupH = 30.0;
+const double _kPhaseH = 28.0;
+const double _kWeekH = 26.0;
+const double _kBarVPad = 8.0;
+
+// Couleurs de grille — vert teal subtil en sombre, gris en clair
+const _kTealGrid   = Color(0xFF1D9E75);
+const _kGridLine   = Color(0xFFE8E8E8); // placeholder remplacé au runtime
+const _kGridLineAlt = Color(0xFFF5F5F5);
+
+Color _gridColor(BuildContext ctx) {
+  final dark = Theme.of(ctx).brightness == Brightness.dark;
+  return dark ? _kTealGrid.withOpacity(0.18) : const Color(0xFFE8E8E8);
+}
+
+Color _gridColorAlt(BuildContext ctx) {
+  final dark = Theme.of(ctx).brightness == Brightness.dark;
+  return dark ? _kTealGrid.withOpacity(0.10) : const Color(0xFFF5F5F5);
+}
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
@@ -615,7 +630,10 @@ class _GanttGrid extends StatelessWidget {
           timeW: timeW,
         ),
         // ── Séparateur ────────────────────────────────────────
-        Container(height: 1, width: totalW, color: const Color(0xFFE8E8E8)),
+        Builder(builder: (ctx) => Container(
+          height: 1, width: totalW,
+          color: Theme.of(ctx).colorScheme.outlineVariant.withOpacity(0.5),
+        )),
         // ── Groupes et tâches ─────────────────────────────────
         for (final group in groups) ...[
           if (group.label.isNotEmpty)
@@ -754,9 +772,9 @@ class _WeekHeaderRow extends StatelessWidget {
                 decoration: BoxDecoration(
                   border: Border(
                     left: BorderSide(
-                        color: const Color(0xFFE8E8E8), width: 1),
+                        color: _kGridLine, width: 1),
                     bottom: BorderSide(
-                        color: const Color(0xFFE8E8E8), width: 1),
+                        color: _kGridLine, width: 1),
                   ),
                 ),
                 alignment: Alignment.center,
@@ -788,42 +806,48 @@ class _GroupRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: _kGroupH,
-      width: totalW,
-      child: Container(
-        color: const Color(0xFFF9F9F7),
-        child: Row(
-          children: [
-            SizedBox(
-              width: _kLabelW,
-              child: Padding(
-                padding: const EdgeInsets.only(left: 4, right: 8),
-                child: Text(
-                  label.toUpperCase(),
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF888888),
-                    letterSpacing: 0.8,
+    return Builder(builder: (context) {
+      final cs = Theme.of(context).colorScheme;
+      final groupBg = cs.surfaceContainerHighest.withOpacity(0.5);
+      return SizedBox(
+        height: _kGroupH,
+        width: totalW,
+        child: Container(
+          color: groupBg,
+          child: Row(
+            children: [
+              SizedBox(
+                width: _kLabelW,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 4, right: 8),
+                  child: Text(
+                    label.toUpperCase(),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurface.withOpacity(0.5),
+                      letterSpacing: 0.8,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-            ),
-            Container(
-              width: timeW,
-              height: _kGroupH,
-              decoration: const BoxDecoration(
-                color: Color(0xFFF9F9F7),
-                border: Border(
-                    bottom: BorderSide(color: Color(0xFFF0F0F0), width: 1)),
+              Container(
+                width: timeW,
+                height: _kGroupH,
+                decoration: BoxDecoration(
+                  color: groupBg,
+                  border: Border(
+                      bottom: BorderSide(
+                          color: cs.outlineVariant.withOpacity(0.4),
+                          width: 1)),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
-    );
+      );
+    });
   }
 }
 
@@ -863,7 +887,7 @@ class _TaskRow extends StatelessWidget {
               child: Container(
                 decoration: const BoxDecoration(
                   border: Border(
-                      bottom: BorderSide(color: Color(0xFFF0F0F0), width: 1)),
+                      bottom: BorderSide(color: _kGridLine, width: 1)),
                 ),
                 alignment: Alignment.centerLeft,
                 padding: const EdgeInsets.only(left: 16, right: 8),
@@ -887,10 +911,9 @@ class _TaskRow extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 12,
                           color: isDone
-                              ? const Color(0xFFAAAAAA)
-                              : const Color(0xFF1A1A1A),
-                          decoration:
-                              isDone ? TextDecoration.lineThrough : null,
+                              ? Theme.of(context).colorScheme.onSurface.withOpacity(0.35)
+                              : Theme.of(context).colorScheme.onSurface.withOpacity(0.85),
+                          decoration: isDone ? TextDecoration.lineThrough : null,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -937,7 +960,7 @@ class _TaskRow extends StatelessWidget {
         child: Container(
           decoration: const BoxDecoration(
             border: Border(
-                bottom: BorderSide(color: Color(0xFFF0F0F0), width: 1)),
+                bottom: BorderSide(color: _kGridLine, width: 1)),
           ),
         ),
       ),
@@ -948,7 +971,7 @@ class _TaskRow extends StatelessWidget {
           top: 0,
           bottom: 0,
           width: 1,
-          child: Container(color: const Color(0xFFF5F5F5)),
+          child: Container(color: _kGridLineAlt),
         );
       }),
     ];

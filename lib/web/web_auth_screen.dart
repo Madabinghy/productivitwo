@@ -194,11 +194,9 @@ class _WebAuthScreenState extends State<WebAuthScreen>
                   padding: const EdgeInsets.only(bottom: 24),
                   child: Text(
                     '© ${DateTime.now().year} Emeric Edmond · Productivitwo',
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 11,
-                      color: dark
-                          ? Colors.white.withOpacity(0.3)
-                          : Colors.white.withOpacity(0.6),
+                      color: Color(0xFF6BBFA3),
                     ),
                   ),
                 ),
@@ -227,9 +225,9 @@ class _GanttBackground extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: dark
-              ? const [Color(0xFF0D0B1F), Color(0xFF1A1040), Color(0xFF0F1E2E)]
-              : const [Color(0xFF1D9E75), Color(0xFF6B57F0), Color(0xFF3B2FA0)],
-          stops: const [0.0, 0.55, 1.0],
+              ? const [Color(0xFF071510), Color(0xFF0D2A1E), Color(0xFF0A1E30)]
+              : const [Color(0xFF0D2A1E), Color(0xFF1D9E75), Color(0xFF155F47)],
+          stops: const [0.0, 0.5, 1.0],
         ),
       ),
       child: CustomPaint(
@@ -355,7 +353,7 @@ class _BrandingHeader extends StatelessWidget {
           style: TextStyle(
             fontSize: 32,
             fontWeight: FontWeight.w800,
-            color: Colors.white,
+            color: Color(0xFFE6F7F2), // blanc teinté teal, doux sur les yeux
             letterSpacing: -0.5,
           ),
         ),
@@ -366,7 +364,7 @@ class _BrandingHeader extends StatelessWidget {
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w400,
-            color: Colors.white.withOpacity(0.7),
+            color: const Color(0xFF9FE1CB), // vert clair doux
             letterSpacing: 0.2,
           ),
         ),
