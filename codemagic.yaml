@@ -63,7 +63,7 @@ workflows:
     artifacts:
       - build/app/outputs/bundle/release/*.aab
     publishing:
-      email:
+email:
         recipients:
           - emeric.edmond@gmail.com
         notify:
