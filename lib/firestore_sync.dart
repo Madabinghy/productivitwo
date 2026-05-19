@@ -168,7 +168,9 @@ class FirestoreSync {
         reviewNotifMinute: meta['reviewNotifMinute'] ?? 0,
         reviewNotifEnabled: meta['reviewNotifEnabled'] ?? true,
       );
-    } catch (_) {
+    } catch (e, stack) {
+      // ignore: avoid_print
+      print('[FIREBASE] pull() exception: $e\n$stack');
       return null;
     }
   }
