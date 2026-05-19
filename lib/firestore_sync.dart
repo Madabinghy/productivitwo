@@ -134,9 +134,11 @@ class FirestoreSync {
       ]);
 
       final metaDoc = results[0] as DocumentSnapshot;
-      if (!metaDoc.exists) return null;
-
-      final meta = metaDoc.data() as Map<String, dynamic>;
+      // Si le meta n'existe pas encore, on continue avec des valeurs par défaut
+      // (ne pas retourner null — sinon le merge ne se fait jamais)
+      final meta = metaDoc.exists
+          ? metaDoc.data() as Map<String, dynamic>
+          : <String, dynamic>{};
 
       List<Map<String, dynamic>> docs(int idx) =>
           (results[idx] as QuerySnapshot)
