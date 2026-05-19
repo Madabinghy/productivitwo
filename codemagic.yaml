@@ -27,3 +27,10 @@ workflows:
             --build-number=1
     artifacts:
       - build/app/outputs/bundle/release/*.aab
+    publishing:
+      email:
+        recipients:
+          - emeric.edmond@gmail.com
+        notify:
+          success: true
+          failure: true
