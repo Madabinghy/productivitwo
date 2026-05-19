@@ -35,22 +35,19 @@ class _AppleSignInTileState extends State<AppleSignInTile> {
       await ProManager.loginUser(result.uid);
 
       if (!result.isNew) {
+        // Compte existant : tente de récupérer les données distantes
         final remote = await widget.sync.pull();
         if (remote != null && mounted) {
           await FileStore().save(remote);
-          widget.onDataChanged();
         }
       } else {
+        // Nouveau compte : upload les données locales
         await widget.sync.pushAll(widget.state);
       }
 
-      if (mounted) setState(() => _loading = false);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Compte Apple connecté ✓')),
-        );
-      }
+      // Toujours recharger l'app après un sign-in réussi
+      // (que pull() ait retourné des données ou non)
+      if (mounted) widget.onDataChanged();
     } catch (e) {
       if (mounted) setState(() {
         _loading = false;
