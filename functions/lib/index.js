@@ -247,6 +247,45 @@ const ADD_TO_DAY_PLAN_TOOL = {
         },
     },
 };
+const CREATE_ACTIVITY_TOOL = {
+    name: "create_activity",
+    description: "Crée une nouvelle activité dans Productivitwo. " +
+        "Utilise get_user_context pour trouver le bon domainId. " +
+        "type 'time' = suivi du temps (chrono), 'habit' = routine à comptabiliser. " +
+        "Demande confirmation avant de créer.",
+    inputSchema: {
+        type: "object",
+        required: ["name", "domainId", "type"],
+        properties: {
+            name: { type: "string", description: "Nom de l'activité" },
+            domainId: { type: "string", description: "id du domaine (get_user_context)" },
+            type: { type: "string", enum: ["time", "habit"], description: "'time' = chrono, 'habit' = compteur" },
+            goalMin: { type: "number", description: "Objectif minutes/jour (type time)" },
+            unit: { type: "string", description: "Unité pour les habitudes (ex: verres, km, pages)" },
+            habitFreq: { type: "number", description: "Fréquence : 0=daily, 1=weekly, 2=monthly" },
+            habitTarget: { type: "number", description: "Cible par période" },
+        },
+    },
+};
+const UPDATE_ACTIVITY_TOOL = {
+    name: "update_activity",
+    description: "Modifie une activité existante (nom, domaine, type, objectif, unité). " +
+        "Utilise get_user_context pour obtenir l'activityId. " +
+        "Ne modifie que les champs fournis, laisse les autres inchangés.",
+    inputSchema: {
+        type: "object",
+        required: ["activityId"],
+        properties: {
+            activityId: { type: "string", description: "id de l'activité (get_user_context)" },
+            name: { type: "string" },
+            domainId: { type: "string" },
+            goalMin: { type: "number" },
+            unit: { type: "string" },
+            habitFreq: { type: "number", description: "0=daily, 1=weekly, 2=monthly" },
+            habitTarget: { type: "number" },
+        },
+    },
+};
 const LINK_GOAL_TO_TASK_TOOL = {
     name: "link_goal_to_task",
     description: "Lie un objectif GTD (Goal) à une tâche Gantt. " +
@@ -753,6 +792,51 @@ async function executePlanDay(uid, date, items, clearExisting) {
     return (`✅ Programme du ${date} créé — ${items.length} action(s) planifiée(s).\n` +
         items.map((it, i) => `  ${i + 1}. ${it.title}${it.blockId ? ` → bloc ${it.blockId}` : ""}`).join("\n"));
 }
+async function executeCreateActivity(uid, args) {
+    var _a, _b, _c, _d;
+    const id = (0, uuid_1.v4)();
+    await db.collection(`users/${uid}/activities`).doc(id).set({
+        id,
+        name: args.name,
+        domainId: args.domainId,
+        type: args.type,
+        role: "generic",
+        goalMin: (_a = args.goalMin) !== null && _a !== void 0 ? _a : 1,
+        unit: (_b = args.unit) !== null && _b !== void 0 ? _b : null,
+        habitFreq: (_c = args.habitFreq) !== null && _c !== void 0 ? _c : null,
+        habitTarget: (_d = args.habitTarget) !== null && _d !== void 0 ? _d : null,
+        manualTarget: false,
+        autoTune: true,
+        createdAt: firestore_1.FieldValue.serverTimestamp(),
+        lastTuneAt: null,
+        order: 0,
+        iconCode: null,
+    });
+    return `✅ Activité "${args.name}" créée (${args.type}). Elle apparaîtra dans Productivitwo à la prochaine synchronisation.`;
+}
+async function executeUpdateActivity(uid, activityId, updates) {
+    var _a, _b;
+    const ref = db.collection(`users/${uid}/activities`).doc(activityId);
+    const snap = await ref.get();
+    if (!snap.exists)
+        return `Activité introuvable : ${activityId}`;
+    const currentName = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : activityId;
+    const patch = {};
+    if (updates.name !== undefined)
+        patch.name = updates.name;
+    if (updates.domainId !== undefined)
+        patch.domainId = updates.domainId;
+    if (updates.goalMin !== undefined)
+        patch.goalMin = updates.goalMin;
+    if (updates.unit !== undefined)
+        patch.unit = updates.unit;
+    if (updates.habitFreq !== undefined)
+        patch.habitFreq = updates.habitFreq;
+    if (updates.habitTarget !== undefined)
+        patch.habitTarget = updates.habitTarget;
+    await ref.update(patch);
+    return `✅ Activité "${currentName}" mise à jour.`;
+}
 async function executeLinkGoalToTask(uid, goalId, projectId, projectTaskId) {
     var _a, _b;
     const ref = db.collection(`users/${uid}/goals`).doc(goalId);
@@ -985,6 +1069,8 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                         ADD_TO_DAY_PLAN_TOOL,
                         DELETE_GOAL_TOOL,
                         LINK_GOAL_TO_TASK_TOOL,
+                        CREATE_ACTIVITY_TOOL,
+                        UPDATE_ACTIVITY_TOOL,
                     ],
                 },
             });
@@ -1002,6 +1088,12 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                 }
                 else if (toolName === "plan_day") {
                     text = await executePlanDay(uid, args.date, args.items, (_l = args.clearExisting) !== null && _l !== void 0 ? _l : false);
+                }
+                else if (toolName === "create_activity") {
+                    text = await executeCreateActivity(uid, args);
+                }
+                else if (toolName === "update_activity") {
+                    text = await executeUpdateActivity(uid, args.activityId, args);
                 }
                 else if (toolName === "link_goal_to_task") {
                     text = await executeLinkGoalToTask(uid, args.goalId, (_m = args.projectId) !== null && _m !== void 0 ? _m : null, (_o = args.projectTaskId) !== null && _o !== void 0 ? _o : null);
