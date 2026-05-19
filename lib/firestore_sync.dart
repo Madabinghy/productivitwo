@@ -214,20 +214,29 @@ class FirestoreSync {
     }
 
     return AppState(
-      // Collections additives : union par ID
-      domains:       union(local.domains,       remote.domains,       (d) => d.id),
+      // Domains : remote gagne (MCP peut soft-delete via deleted:true)
+      domains: () {
+        final remoteMap = byId(remote.domains, (d) => d.id);
+        final merged = Map.of(remoteMap);
+        for (final d in local.domains) {
+          if (!remoteMap.containsKey(d.id)) merged[d.id] = d;
+        }
+        return merged.values.toList();
+      }(),
       activities:    union(local.activities,    remote.activities,    (a) => a.id),
       sessions:      union(local.sessions,      remote.sessions,      (s) => s.id),
       habitHits:     union(local.habitHits,     remote.habitHits,     (h) => h.id),
-      // Goals : union, mais respecter le status "archived" venant du serveur (MCP)
+      // Goals : remote est la source de vérité (MCP peut archiver/supprimer)
+      // On garde en plus les goals locaux absents du remote (créés offline)
       goals: () {
         final remoteMap = byId(remote.goals, (g) => g.id);
-        final merged = byId(local.goals, (g) => g.id);
-        for (final entry in remoteMap.entries) {
-          final loc = merged[entry.key];
-          if (loc == null || entry.value.status == 'archived') {
-            merged[entry.key] = entry.value;
+        final merged = Map.of(remoteMap); // remote en base
+        for (final goal in local.goals) {
+          if (!remoteMap.containsKey(goal.id)) {
+            // Créé localement offline → on le garde
+            merged[goal.id] = goal;
           }
+          // Si présent dans les deux : remote gagne (MCP a la priorité)
         }
         return merged.values.toList();
       }(),

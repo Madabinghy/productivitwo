@@ -759,14 +759,16 @@ async function executeGetUserContext(uid: string): Promise<string> {
       .get(),
   ]);
 
-  const domains = domainsSnap.docs.map((d) => {
-    const v = d.data();
-    return { id: v.id, name: v.name };
-  });
+  const domains = domainsSnap.docs
+    .map((d) => d.data())
+    .filter((v) => !v.deleted)
+    .map((v) => ({ id: v.id, name: v.name }));
 
   const activityMap = new Map<string, string>();
-  const activities = activitiesSnap.docs.map((d) => {
-    const v = d.data();
+  const activities = activitiesSnap.docs
+    .map((d) => d.data())
+    .filter((v) => !v.deleted)
+    .map((v) => {
     activityMap.set(v.id, v.name);
     return {
       id: v.id,
@@ -1154,7 +1156,8 @@ async function executeDeleteDomain(
   if (!snap.exists) return `Domaine introuvable : ${domainId}`;
   const name = snap.data()?.name ?? domainId;
 
-  await ref.delete();
+  // Soft-delete : on garde le document avec deleted:true pour que le merge Flutter respecte la suppression
+  await ref.update({ deleted: true });
 
   const activitiesSnap = await db.collection(`users/${uid}/activities`)
     .where("domainId", "==", domainId)
@@ -1163,12 +1166,12 @@ async function executeDeleteDomain(
   if (!activitiesSnap.empty) {
     const batch = db.batch();
     for (const doc of activitiesSnap.docs) {
-      if (deleteActivities) batch.delete(doc.ref);
+      if (deleteActivities) batch.update(doc.ref, { deleted: true });
       else batch.update(doc.ref, { domainId: null });
     }
     await batch.commit();
     if (deleteActivities) {
-      return `✅ Domaine "${name}" et ses ${activitiesSnap.size} activité(s) supprimés définitivement.`;
+      return `✅ Domaine "${name}" et ses ${activitiesSnap.size} activité(s) supprimés.`;
     }
     return `✅ Domaine "${name}" supprimé. ${activitiesSnap.size} activité(s) conservée(s) sans domaine.`;
   }

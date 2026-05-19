@@ -530,9 +530,10 @@ class Goal {
 /// --- DOMAINES ---
 class Domain {
   String id, name;
-  int? goalMinDay; // minutes/jour, null => auto (somme des activités time)
-  bool autoGoal; // true => objectif = somme des activités time
-  int? colorValue; // Color.value choisi par l'utilisateur (null = palette auto)
+  int? goalMinDay;
+  bool autoGoal;
+  int? colorValue;
+  bool deleted; // true = supprimé via MCP, ignoré dans l'UI
 
   Domain({
     String? id,
@@ -540,6 +541,7 @@ class Domain {
     this.goalMinDay,
     this.autoGoal = true,
     this.colorValue,
+    this.deleted = false,
   }) : id = id ?? _uuid.v4();
 
   Map<String, dynamic> toJson() => {
@@ -548,6 +550,7 @@ class Domain {
         'goalMinDay': goalMinDay,
         'autoGoal': autoGoal,
         'colorValue': colorValue,
+        'deleted': deleted,
       };
 
   static Domain from(Map j) => Domain(
@@ -556,6 +559,7 @@ class Domain {
         goalMinDay: j['goalMinDay'],
         autoGoal: j['autoGoal'] ?? true,
         colorValue: j['colorValue'] as int?,
+        deleted: j['deleted'] as bool? ?? false,
       );
 }
 
@@ -972,7 +976,8 @@ class EarnedBadge {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class AppState {
-  List<Domain> domains;
+  List<Domain> domains; // inclut les deleted:true (filtrés par activeDomains)
+  List<Domain> get activeDomains => domains.where((d) => !d.deleted).toList();
   List<Activity> activities;
   List<Session> sessions;
   List<HabitProgress> habitProgress;

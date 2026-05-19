@@ -613,13 +613,15 @@ async function executeGetUserContext(uid) {
             .where("startAt", ">=", sevenDaysAgo.toISOString())
             .get(),
     ]);
-    const domains = domainsSnap.docs.map((d) => {
-        const v = d.data();
-        return { id: v.id, name: v.name };
-    });
+    const domains = domainsSnap.docs
+        .map((d) => d.data())
+        .filter((v) => !v.deleted)
+        .map((v) => ({ id: v.id, name: v.name }));
     const activityMap = new Map();
-    const activities = activitiesSnap.docs.map((d) => {
-        const v = d.data();
+    const activities = activitiesSnap.docs
+        .map((d) => d.data())
+        .filter((v) => !v.deleted)
+        .map((v) => {
         activityMap.set(v.id, v.name);
         return {
             id: v.id,
@@ -930,7 +932,8 @@ async function executeDeleteDomain(uid, domainId, deleteActivities) {
     if (!snap.exists)
         return `Domaine introuvable : ${domainId}`;
     const name = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : domainId;
-    await ref.delete();
+    // Soft-delete : on garde le document avec deleted:true pour que le merge Flutter respecte la suppression
+    await ref.update({ deleted: true });
     const activitiesSnap = await db.collection(`users/${uid}/activities`)
         .where("domainId", "==", domainId)
         .get();
@@ -938,13 +941,13 @@ async function executeDeleteDomain(uid, domainId, deleteActivities) {
         const batch = db.batch();
         for (const doc of activitiesSnap.docs) {
             if (deleteActivities)
-                batch.delete(doc.ref);
+                batch.update(doc.ref, { deleted: true });
             else
                 batch.update(doc.ref, { domainId: null });
         }
         await batch.commit();
         if (deleteActivities) {
-            return `✅ Domaine "${name}" et ses ${activitiesSnap.size} activité(s) supprimés définitivement.`;
+            return `✅ Domaine "${name}" et ses ${activitiesSnap.size} activité(s) supprimés.`;
         }
         return `✅ Domaine "${name}" supprimé. ${activitiesSnap.size} activité(s) conservée(s) sans domaine.`;
     }
