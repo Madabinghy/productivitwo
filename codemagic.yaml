@@ -1,13 +1,11 @@
 workflows:
   android-release:
-    name: Android Release → Google Play
+    name: Android Release → AAB
     max_build_duration: 60
     environment:
       flutter: stable
       android_signing:
         - productivitwo_keystore
-      groups:
-        - google_play
       vars:
         PACKAGE_NAME: "com.madabinghy.productivitwo"
     scripts:
@@ -17,13 +15,6 @@ workflows:
         script: |
           flutter build appbundle --release \
             --build-name=1.0.0 \
-            --build-number=$(($(google-play get-latest-build-number \
-              --package-name "$PACKAGE_NAME" \
-              --tracks=alpha,beta,internal,production) + 1))
+            --build-number=1
     artifacts:
       - build/app/outputs/bundle/release/*.aab
-    publishing:
-      google_play:
-        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
-        track: internal
-        submit_as_draft: true
