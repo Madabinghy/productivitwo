@@ -88,11 +88,29 @@ exports.pushGantt = (0, https_1.onRequest)({ cors: true, invoker: "public" }, as
 // URL : /mcp/{uid}/{token}
 // Implémente le protocole MCP JSON-RPC 2.0 (Streamable HTTP, stateless).
 // Compatible Claude Desktop et Claude.ai web (Integrations).
+const LIST_PROJECTS_TOOL = {
+    name: "list_projects",
+    description: "Liste les projets Gantt existants dans Productivitwo. " +
+        "Appelle cet outil avant de modifier un projet afin de récupérer son id.",
+    inputSchema: { type: "object", properties: {} },
+};
+const GET_PROJECT_TOOL = {
+    name: "get_project",
+    description: "Retourne le détail complet d'un projet Gantt (phases, tâches, jalons). " +
+        "Utilise cet outil pour lire un projet avant de le modifier.",
+    inputSchema: {
+        type: "object",
+        required: ["projectId"],
+        properties: {
+            projectId: { type: "string", description: "L'id du projet (obtenu via list_projects)" },
+        },
+    },
+};
 const PUSH_GANTT_MCP_TOOL = {
     name: "push_gantt",
-    description: "Crée un projet Gantt dans Productivitwo. Utilise cet outil quand " +
-        "l'utilisateur veut planifier une roadmap, une campagne ou tout projet " +
-        "avec des étapes dans le temps.",
+    description: "Crée ou met à jour un projet Gantt dans Productivitwo. " +
+        "Pour modifier un projet existant, fournis son id (obtenu via list_projects + get_project) " +
+        "avec le contenu complet mis à jour. Pour créer un nouveau projet, omets l'id.",
     inputSchema: {
         type: "object",
         required: ["project"],
@@ -161,6 +179,27 @@ async function validateToken(uid, rawToken) {
     }
     return false;
 }
+async function executeListProjects(uid) {
+    const snap = await db.collection(`users/${uid}/projects`).get();
+    if (snap.empty)
+        return "Aucun projet trouvé dans Productivitwo.";
+    const lines = snap.docs.map((doc) => {
+        const d = doc.data();
+        const taskCount = (d.tasks || []).length;
+        const start = d.startDate || "?";
+        const end = d.endDate || "?";
+        return `• [${d.id}] ${d.title} (${start} → ${end}, ${taskCount} tâche(s))`;
+    });
+    return `Projets Productivitwo (${snap.size}) :\n${lines.join("\n")}`;
+}
+async function executeGetProject(uid, projectId) {
+    const doc = await db.collection(`users/${uid}/projects`).doc(projectId).get();
+    if (!doc.exists)
+        return `Projet introuvable : ${projectId}`;
+    const d = doc.data();
+    // Retourner le JSON complet pour que Claude puisse le modifier
+    return JSON.stringify(d, null, 2);
+}
 async function executePushGantt(uid, input) {
     const { project, strategicObjective } = input;
     let strategicObjectiveId;
@@ -175,13 +214,14 @@ async function executePushGantt(uid, input) {
         await db.collection(`users/${uid}/strategic_objectives`).doc(strategicObjectiveId)
             .update({ projectIds: firestore_1.FieldValue.arrayUnion(projectId) });
     }
-    return (`✅ Projet "${project.title}" créé dans Productivitwo !\n` +
+    const isUpdate = !!project.id;
+    return (`✅ Projet "${project.title}" ${isUpdate ? "mis à jour" : "créé"} dans Productivitwo !\n` +
         `• ${(project.tasks || []).length} tâche(s) · ${(project.phases || []).length} phase(s)\n` +
         `• Voir sur : https://productivitwo-app.web.app\n` +
         `• projectId : ${projectId}`);
 }
 exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, async (req, res) => {
-    var _a, _b, _c;
+    var _a, _b, _c, _d, _e, _f;
     // CORS preflight
     if (req.method === "OPTIONS") {
         res.status(204).send("");
@@ -226,16 +266,26 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
             responses.push({ jsonrpc: "2.0", id, result: {} });
         }
         else if (method === "tools/list") {
-            responses.push({ jsonrpc: "2.0", id, result: { tools: [PUSH_GANTT_MCP_TOOL] } });
+            responses.push({ jsonrpc: "2.0", id, result: { tools: [LIST_PROJECTS_TOOL, GET_PROJECT_TOOL, PUSH_GANTT_MCP_TOOL] } });
         }
         else if (method === "tools/call") {
-            const toolName = (_c = rpc.params) === null || _c === void 0 ? void 0 : _c.name;
-            if (toolName !== "push_gantt") {
-                responses.push({ jsonrpc: "2.0", id, error: { code: -32601, message: `Outil inconnu : ${toolName}` } });
-                continue;
-            }
+            const toolName = (_d = (_c = rpc.params) === null || _c === void 0 ? void 0 : _c.name) !== null && _d !== void 0 ? _d : "";
+            const args = (_f = (_e = rpc.params) === null || _e === void 0 ? void 0 : _e.arguments) !== null && _f !== void 0 ? _f : {};
             try {
-                const text = await executePushGantt(uid, Object.assign({ uid }, rpc.params.arguments));
+                let text = "";
+                if (toolName === "list_projects") {
+                    text = await executeListProjects(uid);
+                }
+                else if (toolName === "get_project") {
+                    text = await executeGetProject(uid, args.projectId);
+                }
+                else if (toolName === "push_gantt") {
+                    text = await executePushGantt(uid, Object.assign({ uid }, args));
+                }
+                else {
+                    responses.push({ jsonrpc: "2.0", id, error: { code: -32601, message: `Outil inconnu : ${toolName}` } });
+                    continue;
+                }
                 responses.push({ jsonrpc: "2.0", id, result: { content: [{ type: "text", text }] } });
             }
             catch (e) {
