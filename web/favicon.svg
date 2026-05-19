@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Fond arrondi vert foncé -->
+  <rect width="32" height="32" rx="8" fill="#0D2A1E"/>
+
+  <!-- Barres de Gantt -->
+  <rect x="5" y="7"  width="13" height="4" rx="2" fill="#1D9E75"/>
+  <rect x="5" y="14" width="20" height="4" rx="2" fill="#27C48F"/>
+  <rect x="5" y="21" width="9"  height="4" rx="2" fill="#1D9E75"/>
+
+  <!-- Jalon (diamant) -->
+  <rect x="18" y="21" width="5" height="5" rx="1"
+        fill="#4DD8A5"
+        transform="rotate(45 20.5 23.5)"/>
+</svg>
