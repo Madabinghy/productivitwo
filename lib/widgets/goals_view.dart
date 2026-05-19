@@ -510,6 +510,24 @@ class GoalCard extends StatelessWidget {
                         const SizedBox(height: 6),
                         _RoutineChipsRow(goal: goal, logic: logic!),
                       ],
+                      if (goal.projectTaskId != null && !isDone) ...[
+                        const SizedBox(height: 5),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.account_tree_outlined,
+                                size: 11,
+                                color: effectiveAccent.withOpacity(.6)),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Lié à un projet Gantt',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: effectiveAccent.withOpacity(.6)),
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -936,6 +954,56 @@ class GoalDetailSheetState extends State<GoalDetailSheet>
               );
             }(),
           ],
+
+        // ── Projet Gantt lié ──────────────────────────────────────────
+        const SizedBox(height: 20),
+        _SectionLabel('Projet Gantt'),
+        const SizedBox(height: 8),
+        if (goal.projectTaskId == null)
+          Text(
+            'Aucune tâche Gantt liée.\n'
+            'Demande à Claude : "Lie mon objectif à une tâche de mon projet Gantt"',
+            style: TextStyle(
+                fontSize: 13,
+                color: Colors.grey.shade400,
+                fontStyle: FontStyle.italic),
+          )
+        else
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Theme.of(ctx)
+                  .colorScheme
+                  .primaryContainer
+                  .withOpacity(.25),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.account_tree_outlined,
+                    size: 16,
+                    color: Theme.of(ctx).colorScheme.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Tâche Gantt liée',
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(ctx).colorScheme.primary),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () {
+                    logic.setGoalLinkedTask(goal.id, null, null);
+                    setState(() {});
+                    widget.onChanged();
+                  },
+                  child: const Text('Délier'),
+                ),
+              ],
+            ),
+          ),
         const SizedBox(height: 40),
       ],
     );

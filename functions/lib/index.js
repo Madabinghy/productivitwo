@@ -247,6 +247,22 @@ const ADD_TO_DAY_PLAN_TOOL = {
         },
     },
 };
+const LINK_GOAL_TO_TASK_TOOL = {
+    name: "link_goal_to_task",
+    description: "Lie un objectif GTD (Goal) à une tâche Gantt. " +
+        "Le goal devient le détail opérationnel de la tâche stratégique. " +
+        "Utilise get_user_context pour les goalId et list_projects+get_project pour les taskId. " +
+        "Passe null pour délier.",
+    inputSchema: {
+        type: "object",
+        required: ["goalId"],
+        properties: {
+            goalId: { type: "string", description: "id du Goal GTD" },
+            projectId: { type: "string", description: "id du projet Gantt (null pour délier)" },
+            projectTaskId: { type: "string", description: "id de la tâche Gantt (null pour délier)" },
+        },
+    },
+};
 const DELETE_ROUTINE_TOOL = {
     name: "delete_routine",
     description: "Supprime une action récurrente. Demande toujours confirmation avant d'appeler. " +
@@ -737,6 +753,18 @@ async function executePlanDay(uid, date, items, clearExisting) {
     return (`✅ Programme du ${date} créé — ${items.length} action(s) planifiée(s).\n` +
         items.map((it, i) => `  ${i + 1}. ${it.title}${it.blockId ? ` → bloc ${it.blockId}` : ""}`).join("\n"));
 }
+async function executeLinkGoalToTask(uid, goalId, projectId, projectTaskId) {
+    var _a, _b;
+    const ref = db.collection(`users/${uid}/goals`).doc(goalId);
+    const snap = await ref.get();
+    if (!snap.exists)
+        return `Objectif introuvable : ${goalId}`;
+    const title = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.title) !== null && _b !== void 0 ? _b : goalId;
+    await ref.update({ projectId: projectId !== null && projectId !== void 0 ? projectId : null, projectTaskId: projectTaskId !== null && projectTaskId !== void 0 ? projectTaskId : null });
+    if (!projectTaskId)
+        return `✅ Objectif "${title}" délié de tout projet Gantt.`;
+    return `✅ Objectif "${title}" lié à la tâche Gantt ${projectTaskId}.`;
+}
 async function executeDeleteRoutine(uid, routineId) {
     var _a, _b;
     const ref = db.collection(`users/${uid}/recurringActions`).doc(routineId);
@@ -873,7 +901,7 @@ exports.getCustomToken = (0, https_1.onRequest)({ cors: true, invoker: "public" 
     res.status(200).json({ customToken });
 });
 exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, async (req, res) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q;
     // CORS preflight
     if (req.method === "OPTIONS") {
         res.status(204).send("");
@@ -956,6 +984,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                         DELETE_ROUTINE_TOOL,
                         ADD_TO_DAY_PLAN_TOOL,
                         DELETE_GOAL_TOOL,
+                        LINK_GOAL_TO_TASK_TOOL,
                     ],
                 },
             });
@@ -974,17 +1003,20 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                 else if (toolName === "plan_day") {
                     text = await executePlanDay(uid, args.date, args.items, (_l = args.clearExisting) !== null && _l !== void 0 ? _l : false);
                 }
+                else if (toolName === "link_goal_to_task") {
+                    text = await executeLinkGoalToTask(uid, args.goalId, (_m = args.projectId) !== null && _m !== void 0 ? _m : null, (_o = args.projectTaskId) !== null && _o !== void 0 ? _o : null);
+                }
                 else if (toolName === "delete_routine") {
                     text = await executeDeleteRoutine(uid, args.routineId);
                 }
                 else if (toolName === "delete_goal") {
-                    text = await executeDeleteGoal(uid, args.goalId, (_m = args.action) !== null && _m !== void 0 ? _m : "archive");
+                    text = await executeDeleteGoal(uid, args.goalId, (_p = args.action) !== null && _p !== void 0 ? _p : "archive");
                 }
                 else if (toolName === "clear_day_plan") {
                     text = await executeClearDayPlan(uid, args.date);
                 }
                 else if (toolName === "delete_project") {
-                    text = await executeDeleteProject(uid, args.projectId, (_o = args.deleteObjective) !== null && _o !== void 0 ? _o : false);
+                    text = await executeDeleteProject(uid, args.projectId, (_q = args.deleteObjective) !== null && _q !== void 0 ? _q : false);
                 }
                 else if (toolName === "get_user_context") {
                     text = await executeGetUserContext(uid);

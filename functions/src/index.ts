@@ -353,6 +353,24 @@ const ADD_TO_DAY_PLAN_TOOL = {
   },
 };
 
+const LINK_GOAL_TO_TASK_TOOL = {
+  name: "link_goal_to_task",
+  description:
+    "Lie un objectif GTD (Goal) à une tâche Gantt. " +
+    "Le goal devient le détail opérationnel de la tâche stratégique. " +
+    "Utilise get_user_context pour les goalId et list_projects+get_project pour les taskId. " +
+    "Passe null pour délier.",
+  inputSchema: {
+    type: "object",
+    required: ["goalId"],
+    properties: {
+      goalId:        { type: "string", description: "id du Goal GTD" },
+      projectId:     { type: "string", description: "id du projet Gantt (null pour délier)" },
+      projectTaskId: { type: "string", description: "id de la tâche Gantt (null pour délier)" },
+    },
+  },
+};
+
 const DELETE_ROUTINE_TOOL = {
   name: "delete_routine",
   description:
@@ -932,6 +950,23 @@ async function executePlanDay(
   );
 }
 
+async function executeLinkGoalToTask(
+  uid: string,
+  goalId: string,
+  projectId: string | null,
+  projectTaskId: string | null
+): Promise<string> {
+  const ref = db.collection(`users/${uid}/goals`).doc(goalId);
+  const snap = await ref.get();
+  if (!snap.exists) return `Objectif introuvable : ${goalId}`;
+  const title = snap.data()?.title ?? goalId;
+
+  await ref.update({ projectId: projectId ?? null, projectTaskId: projectTaskId ?? null });
+
+  if (!projectTaskId) return `✅ Objectif "${title}" délié de tout projet Gantt.`;
+  return `✅ Objectif "${title}" lié à la tâche Gantt ${projectTaskId}.`;
+}
+
 async function executeDeleteRoutine(uid: string, routineId: string): Promise<string> {
   const ref = db.collection(`users/${uid}/recurringActions`).doc(routineId);
   const snap = await ref.get();
@@ -1179,6 +1214,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
             DELETE_ROUTINE_TOOL,
             ADD_TO_DAY_PLAN_TOOL,
             DELETE_GOAL_TOOL,
+            LINK_GOAL_TO_TASK_TOOL,
           ],
         },
       });
@@ -1197,6 +1233,13 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
             args.date as string,
             args.items as Parameters<typeof executePlanDay>[2],
             (args.clearExisting as boolean) ?? false
+          );
+        } else if (toolName === "link_goal_to_task") {
+          text = await executeLinkGoalToTask(
+            uid,
+            args.goalId as string,
+            (args.projectId as string) ?? null,
+            (args.projectTaskId as string) ?? null
           );
         } else if (toolName === "delete_routine") {
           text = await executeDeleteRoutine(uid, args.routineId as string);

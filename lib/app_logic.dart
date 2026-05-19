@@ -1466,6 +1466,13 @@ class AppLogic {
     onChange();
   }
 
+  void setGoalLinkedTask(String goalId, String? projectId, String? projectTaskId) {
+    final g = state.goals.firstWhere((x) => x.id == goalId);
+    g.projectId = projectId;
+    g.projectTaskId = projectTaskId;
+    onChange();
+  }
+
   void toggleGoalLinkedHabit(String goalId, String habitId) {
     final g = state.goals.firstWhere((x) => x.id == goalId);
     if (g.linkedHabitIds.contains(habitId)) {

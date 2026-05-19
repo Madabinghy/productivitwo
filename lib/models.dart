@@ -434,6 +434,9 @@ class Goal {
   List<GoalAction> actions;
   int order;
   bool pinned;
+  // Lien avec un projet Gantt
+  String? projectId;
+  String? projectTaskId;
 
   Goal({
     String? id,
@@ -449,6 +452,8 @@ class Goal {
     List<GoalAction>? actions,
     this.order = 0,
     this.pinned = false,
+    this.projectId,
+    this.projectTaskId,
   })  : id = id ?? _uuid.v4(),
         createdAt = createdAt ?? DateTime.now(),
         linkedHabitIds = linkedHabitIds ?? [],
@@ -474,6 +479,8 @@ class Goal {
         'actions': actions.map((a) => a.toJson()).toList(),
         'order': order,
         'pinned': pinned,
+        'projectId': projectId,
+        'projectTaskId': projectTaskId,
       };
 
   static Goal from(Map j) {
@@ -514,6 +521,8 @@ class Goal {
       actions: actions,
       order: (j['order'] as num?)?.toInt() ?? 0,
       pinned: j['pinned'] as bool? ?? false,
+      projectId: j['projectId'] as String?,
+      projectTaskId: j['projectTaskId'] as String?,
     );
   }
 }
