@@ -53,23 +53,10 @@ class FirestoreSync {
       rawNonce: rawNonce,
     );
 
-    // Si l'user est anonyme, on tente de lier le compte Apple au compte anonyme.
-    // Si le compte Apple existe déjà (autre device), Firebase lève une erreur
-    // credential-already-in-use → on sign in directement avec Apple.
-    try {
-      final user = _auth.currentUser;
-      if (user != null && user.isAnonymous) {
-        await user.linkWithCredential(oauthCredential);
-        return (isNew: true, uid: user.uid);
-      }
-    } on FirebaseAuthException catch (e) {
-      // credential-already-in-use : le compte Apple existe déjà sur un autre UID
-      // email-already-in-use : l'email Apple est déjà utilisé par un autre provider (ex: Google)
-      // Dans les deux cas → on sign in directement avec Apple
-      if (e.code != 'credential-already-in-use' &&
-          e.code != 'email-already-in-use') rethrow;
-    }
-
+    // Connexion directe sans linkWithCredential :
+    // linkWithCredential "consomme" le token Apple même en cas d'échec,
+    // rendant tout appel suivant invalide. La migration des données locales
+    // est gérée dans apple_sign_in_button.dart via pushAll/pull.
     final cred = await _auth.signInWithCredential(oauthCredential);
     final isNew = cred.additionalUserInfo?.isNewUser ?? false;
     return (isNew: isNew, uid: cred.user!.uid);
