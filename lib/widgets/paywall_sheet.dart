@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:productivitwo_v1/pro_manager.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
@@ -227,6 +228,45 @@ class _PaywallSheetState extends State<_PaywallSheet> {
                           fontSize: 13, color: cs.onSurface.withOpacity(.4))),
                 ),
               ),
+              // ── Liens obligatoires Apple (Guideline 3.1.2c) ──────────
+              const SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  TextButton(
+                    onPressed: () => launchUrl(
+                      Uri.parse('https://productivitwo-app.web.app/privacy.html'),
+                      mode: LaunchMode.externalApplication,
+                    ),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: Text('Confidentialité',
+                        style: TextStyle(
+                            fontSize: 11, color: cs.onSurface.withOpacity(.35))),
+                  ),
+                  Text('·',
+                      style: TextStyle(
+                          fontSize: 11, color: cs.onSurface.withOpacity(.25))),
+                  TextButton(
+                    onPressed: () => launchUrl(
+                      Uri.parse('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/'),
+                      mode: LaunchMode.externalApplication,
+                    ),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: Text('Conditions d\'utilisation',
+                        style: TextStyle(
+                            fontSize: 11, color: cs.onSurface.withOpacity(.35))),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
             ],
           ),
         ),
