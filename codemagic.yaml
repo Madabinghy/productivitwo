@@ -1,8 +1,36 @@
 workflows:
+
+  # ── iOS — vérification régression (no codesign) ───────────────────────────
+  ios-check:
+    name: iOS Regression Check
+    max_build_duration: 30
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+          source: true
+    environment:
+      flutter: stable
+    scripts:
+      - name: Get dependencies
+        script: flutter pub get
+      - name: Build iOS (no codesign)
+        script: flutter build ios --release --no-codesign
+    publishing:
+      email:
+        recipients:
+          - emeric.edmond@gmail.com
+        notify:
+          success: false   # Email seulement si ça casse
+          failure: true
+
+  # ── iOS — TestFlight (manuel uniquement) ─────────────────────────────────
   ios-testflight:
     name: iOS → TestFlight
     max_build_duration: 60
-    # Déclencher manuellement uniquement (pas de triggering auto)
+    # Pas de triggering → déclenchement manuel depuis Codemagic uniquement
     environment:
       flutter: stable
       ios_signing:
@@ -11,11 +39,12 @@ workflows:
     scripts:
       - name: Get dependencies
         script: flutter pub get
-      - name: Build iOS
+      - name: Build IPA
         script: |
           flutter build ipa --release \
             --build-name=1.0.0 \
-            --build-number=$(($(app-store-connect get-latest-testflight-build-number com.madabinghy.productivitwo) + 1))
+            --build-number=$(($(app-store-connect get-latest-testflight-build-number \
+              com.madabinghy.productivitwo) + 1))
     artifacts:
       - build/ios/ipa/*.ipa
     publishing:
@@ -29,6 +58,7 @@ workflows:
           success: true
           failure: true
 
+  # ── Android — release AAB (auto sur push main) ────────────────────────────
   android-release:
     name: Android Release → AAB
     max_build_duration: 60
@@ -62,5 +92,5 @@ workflows:
         recipients:
           - emeric.edmond@gmail.com
         notify:
-          success: true
+          success: false   # Email seulement si ça casse
           failure: true
