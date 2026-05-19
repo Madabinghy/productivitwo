@@ -1,4 +1,34 @@
 workflows:
+  ios-testflight:
+    name: iOS → TestFlight
+    max_build_duration: 60
+    # Déclencher manuellement uniquement (pas de triggering auto)
+    environment:
+      flutter: stable
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.madabinghy.productivitwo
+    scripts:
+      - name: Get dependencies
+        script: flutter pub get
+      - name: Build iOS
+        script: |
+          flutter build ipa --release \
+            --build-name=1.0.0 \
+            --build-number=$(($(app-store-connect get-latest-testflight-build-number com.madabinghy.productivitwo) + 1))
+    artifacts:
+      - build/ios/ipa/*.ipa
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+      email:
+        recipients:
+          - emeric.edmond@gmail.com
+        notify:
+          success: true
+          failure: true
+
   android-release:
     name: Android Release → AAB
     max_build_duration: 60
