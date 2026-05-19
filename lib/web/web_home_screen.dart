@@ -27,14 +27,23 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
     _load();
   }
 
+  bool _hasIosData = false;
+
   Future<void> _load() async {
     try {
-      final projects = await _sync.fetchProjects();
-      final objectives = await _sync.fetchStrategicObjectives();
+      final results = await Future.wait([
+        _sync.fetchProjects(),
+        _sync.fetchStrategicObjectives(),
+        // Vérifie rapidement si l'utilisateur a des données iOS (activités)
+        _sync.fetchApiTokens(),
+      ]);
       if (!mounted) return;
+      final tokens = results[2] as List;
       setState(() {
-        _projects = projects;
-        _objectives = objectives;
+        _projects = results[0] as List<Project>;
+        _objectives = results[1] as List<StrategicObjective>;
+        // S'il a des tokens, il est déjà connecté à iOS
+        _hasIosData = tokens.isNotEmpty;
         _loading = false;
       });
     } catch (_) {
@@ -135,7 +144,7 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
     if (_projects.isEmpty) {
       return Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 400),
+          constraints: const BoxConstraints(maxWidth: 420),
           child: Padding(
             padding: const EdgeInsets.all(32),
             child: Column(
@@ -144,86 +153,112 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
                 Icon(Icons.account_tree_outlined,
                     size: 56, color: cs.onSurface.withOpacity(0.15)),
                 const SizedBox(height: 20),
-                Text('Aucun projet',
+                Text('Aucun projet Gantt',
                     style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
                         color: cs.onSurface.withOpacity(0.4))),
-                const SizedBox(height: 24),
+                const SizedBox(height: 8),
 
-                // ── Carte : déjà utilisateur iOS ? ──────────────────────
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: cs.primaryContainer.withOpacity(0.35),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                        color: cs.primary.withOpacity(0.2), width: 1),
+                if (_hasIosData) ...[
+                  // ── Connecté iOS — invite à créer avec Claude ─────────
+                  Text(
+                    'Ton compte iOS est connecté ✓\nDemande à Claude de créer ton premier Gantt.',
+                    style: TextStyle(
+                        fontSize: 14,
+                        color: cs.primary.withOpacity(0.8),
+                        height: 1.5),
+                    textAlign: TextAlign.center,
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(Icons.smartphone_outlined,
-                              size: 18, color: cs.primary),
-                          const SizedBox(width: 8),
-                          Text('Tu as Productivitwo sur iPhone ?',
-                              style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                  color: cs.primary)),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Connecte ton compte iOS pour retrouver tes activités, '
-                        'routines et objectifs, et laisser Claude les piloter.',
-                        style: TextStyle(
-                            fontSize: 13,
-                            color: cs.onSurface.withOpacity(0.65),
-                            height: 1.4),
-                      ),
-                      const SizedBox(height: 14),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.icon(
-                          icon: const Icon(Icons.link_outlined, size: 16),
-                          label: const Text('Connecter mon compte iOS'),
-                          onPressed: () => _showLinkIosDialog(context),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // ── Séparateur ───────────────────────────────────────────
-                Row(
-                  children: [
-                    Expanded(
-                        child: Divider(
-                            color: cs.onSurface.withOpacity(0.12))),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Text('ou',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: cs.onSurface.withOpacity(0.35))),
+                  const SizedBox(height: 20),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHighest.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: cs.outlineVariant.withOpacity(0.4)),
                     ),
-                    Expanded(
-                        child: Divider(
-                            color: cs.onSurface.withOpacity(0.12))),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  'Génère ton premier Gantt avec Claude',
-                  style: TextStyle(
-                      fontSize: 13, color: cs.onSurface.withOpacity(0.35)),
-                  textAlign: TextAlign.center,
-                ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Exemple de prompt Claude',
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: cs.onSurface.withOpacity(0.45),
+                                letterSpacing: 0.5)),
+                        const SizedBox(height: 8),
+                        Text(
+                          '"Crée un plan de lancement pour mon projet '
+                          'sur 3 mois avec des phases et des jalons"',
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontStyle: FontStyle.italic,
+                              color: cs.primary,
+                              height: 1.4),
+                        ),
+                      ],
+                    ),
+                  ),
+                ] else ...[
+                  // ── Pas connecté — invite à connecter iOS ─────────────
+                  const SizedBox(height: 16),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: cs.primaryContainer.withOpacity(0.35),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                          color: cs.primary.withOpacity(0.2), width: 1),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.smartphone_outlined,
+                                size: 18, color: cs.primary),
+                            const SizedBox(width: 8),
+                            Text('Tu as Productivitwo sur iPhone ?',
+                                style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: cs.primary)),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Connecte ton compte iOS pour que Claude '
+                          'accède à tes activités, routines et objectifs.',
+                          style: TextStyle(
+                              fontSize: 13,
+                              color: cs.onSurface.withOpacity(0.65),
+                              height: 1.4),
+                        ),
+                        const SizedBox(height: 14),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            icon: const Icon(Icons.link_outlined, size: 16),
+                            label: const Text('Connecter mon compte iOS'),
+                            onPressed: () => _showLinkIosDialog(context),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'ou génère ton premier Gantt avec Claude',
+                    style: TextStyle(
+                        fontSize: 13,
+                        color: cs.onSurface.withOpacity(0.35)),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
               ],
             ),
           ),
