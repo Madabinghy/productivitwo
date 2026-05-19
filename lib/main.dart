@@ -1726,9 +1726,10 @@ class _AppRootState extends State<AppRoot>
   }
 
   Future<void> _init() async {
-    // Sync Firestore uniquement si l'user est connecté avec Apple (pas anonyme)
+    // Sync Firestore pour tous les users (anonymes inclus) — l'UID anonyme
+    // est stable dans le Keychain iOS, et Claude écrit via cet UID.
     final onMobile = !kIsWeb && !Platform.isMacOS && !Platform.isWindows && !Platform.isLinux;
-    final firestoreEnabled = onMobile && !_sync.isAnonymous;
+    final firestoreEnabled = onMobile && _sync.uid != null;
 
     AppState? remote;
     if (firestoreEnabled) {
@@ -1953,8 +1954,8 @@ class _AppRootState extends State<AppRoot>
     _saving = true;
     try {
       await store.save(_state!);
-      // Sync Firestore uniquement si connecté avec Apple
-      if (!_sync.isAnonymous && !kIsWeb && !Platform.isMacOS && !Platform.isWindows && !Platform.isLinux) {
+      // Sync Firestore pour tous les users (anonymes inclus)
+      if (_sync.uid != null && !kIsWeb && !Platform.isMacOS && !Platform.isWindows && !Platform.isLinux) {
         _sync.pushDeltas(_state!).catchError((_) {});
       }
     } catch (e) {
