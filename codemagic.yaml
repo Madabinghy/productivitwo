@@ -84,7 +84,13 @@ workflows:
         script: |
           flutter build appbundle --release \
             --build-name=1.0.0 \
-            --build-number=1
+            --build-number=1 2>&1 | tee /tmp/flutter_build.log
+          BUILD_EXIT=${PIPESTATUS[0]}
+          if [ $BUILD_EXIT -ne 0 ]; then
+            echo "=== ERREURS DE BUILD ==="
+            grep -E "error:|e: |FAILED|Exception|What went wrong" /tmp/flutter_build.log | head -40
+            exit $BUILD_EXIT
+          fi
     artifacts:
       - build/app/outputs/bundle/release/*.aab
     publishing:
