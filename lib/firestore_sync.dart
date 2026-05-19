@@ -266,4 +266,82 @@ class FirestoreSync {
         'reviewNotifEnabled': st.reviewNotifEnabled,
         'lastSync': FieldValue.serverTimestamp(),
       };
+
+  // ── Projects ────────────────────────────────────────────────────────────────
+
+  Future<List<Project>> fetchProjects() async {
+    if (uid == null) return [];
+    try {
+      final snap = await _col('projects').orderBy('createdAt', descending: true).get();
+      return snap.docs
+          .map((d) => Project.from(d.data() as Map))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> saveProject(Project project) async {
+    if (uid == null) return;
+    await _col('projects').doc(project.id).set(project.toJson());
+  }
+
+  Future<void> deleteProject(String projectId) async {
+    if (uid == null) return;
+    await _col('projects').doc(projectId).delete();
+  }
+
+  // ── Strategic objectives ────────────────────────────────────────────────────
+
+  Future<List<StrategicObjective>> fetchStrategicObjectives() async {
+    if (uid == null) return [];
+    try {
+      final snap = await _col('strategic_objectives')
+          .orderBy('createdAt', descending: true)
+          .get();
+      return snap.docs
+          .map((d) => StrategicObjective.from(d.data() as Map))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> saveStrategicObjective(StrategicObjective obj) async {
+    if (uid == null) return;
+    await _col('strategic_objectives').doc(obj.id).set(obj.toJson());
+  }
+
+  Future<void> deleteStrategicObjective(String id) async {
+    if (uid == null) return;
+    await _col('strategic_objectives').doc(id).delete();
+  }
+
+  // ── API tokens ───────────────────────────────────────────────────────────────
+
+  Future<List<ApiToken>> fetchApiTokens() async {
+    if (uid == null) return [];
+    try {
+      final snap = await _col('api_tokens')
+          .orderBy('createdAt', descending: true)
+          .get();
+      return snap.docs
+          .map((d) => ApiToken.from(d.data() as Map))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Crée un token, le persiste et le retourne (valeur brute visible une seule fois).
+  Future<ApiToken> createApiToken(String label) async {
+    final token = ApiToken(label: label);
+    await _col('api_tokens').doc(token.id).set(token.toJson());
+    return token;
+  }
+
+  Future<void> revokeApiToken(String tokenId) async {
+    if (uid == null) return;
+    await _col('api_tokens').doc(tokenId).update({'active': false});
+  }
 }

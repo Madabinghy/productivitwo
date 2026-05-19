@@ -1,1 +1,35 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"productivitwo-app","appId":"1:752644759129:android:291bdc6c171092bf411b48","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"productivitwo-app","configurations":{"ios":"1:752644759129:ios:a108b3fc11c5e72c411b48","web":"1:752644759129:web:871009d70bcc1053411b48"}}},"ios":{"default":{"projectId":"productivitwo-app","appId":"1:752644759129:ios:a108b3fc11c5e72c411b48","uploadDebugSymbols":false,"fileOutput":"ios/Runner/GoogleService-Info.plist"}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "productivitwo-app",
+          "appId": "1:752644759129:android:291bdc6c171092bf411b48",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "productivitwo-app",
+          "configurations": {
+            "ios": "1:752644759129:ios:a108b3fc11c5e72c411b48",
+            "web": "1:752644759129:web:871009d70bcc1053411b48"
+          }
+        }
+      },
+      "ios": {
+        "default": {
+          "projectId": "productivitwo-app",
+          "appId": "1:752644759129:ios:a108b3fc11c5e72c411b48",
+          "uploadDebugSymbols": false,
+          "fileOutput": "ios/Runner/GoogleService-Info.plist"
+        }
+      }
+    }
+  },
+  "functions": {
+    "source": "functions",
+    "codebase": "default",
+    "ignore": ["node_modules", ".git", "lib"]
+  }
+}

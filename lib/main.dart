@@ -38,6 +38,7 @@ import 'package:productivitwo_v1/widgets/time_report_card.dart';
 import 'package:productivitwo_v1/widgets/routine_freq_card.dart';
 import 'package:productivitwo_v1/widgets/changelog_sheet.dart';
 import 'package:productivitwo_v1/widgets/privacy_policy_screen.dart';
+import 'package:productivitwo_v1/widgets/api_tokens_screen.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/dev_logger.dart';
 import 'package:productivitwo_v1/pro_manager.dart';
@@ -3459,6 +3460,10 @@ class _AppRootState extends State<AppRoot>
                   Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => const PrivacyPolicyScreen(),
                   ));
+                } else if (v == 'api_tokens') {
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => ApiTokensScreen(sync: _sync),
+                  ));
                 } else if (v == 'apple_account') {
                   showModalBottomSheet(
                     context: context,
@@ -3610,6 +3615,17 @@ class _AppRootState extends State<AppRoot>
                     ],
                   ),
                 ),
+                if (!_sync.isAnonymous)
+                  const PopupMenuItem(
+                    value: 'api_tokens',
+                    child: Row(
+                      children: [
+                        Icon(Icons.key_outlined, size: 18),
+                        SizedBox(width: 12),
+                        Text('Tokens API'),
+                      ],
+                    ),
+                  ),
                 const PopupMenuItem(
                   value: 'apple_account',
                   child: Row(

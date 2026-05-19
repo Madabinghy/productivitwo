@@ -1241,3 +1241,272 @@ class AppState {
 /// Utilitaires de date
 String yyyymmdd(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}${d.month.toString().padLeft(2, '0')}${d.day.toString().padLeft(2, '0')}';
+
+// ─── GESTION DE PROJETS (Gantt) ──────────────────────────────────────────────
+//
+// Ces modèles sont indépendants de AppState : ils sont chargés à la demande
+// (vue web Gantt, section Projets mobile) via ProjectSync, pas au démarrage.
+//
+// Hiérarchie : StrategicObjective → Project → ProjectTask
+//              ApiToken  (authentification API externe)
+
+class ProjectPhase {
+  String id;
+  String label;
+  String? color;
+  DateTime startDate;
+  DateTime endDate;
+
+  ProjectPhase({
+    String? id,
+    required this.label,
+    this.color,
+    required this.startDate,
+    required this.endDate,
+  }) : id = id ?? _uuid.v4();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'label': label,
+        'color': color,
+        'startDate': startDate.toIso8601String(),
+        'endDate': endDate.toIso8601String(),
+      };
+
+  static ProjectPhase from(Map j) => ProjectPhase(
+        id: j['id'],
+        label: j['label'] ?? '',
+        color: j['color'],
+        startDate: DateTime.parse(j['startDate']),
+        endDate: DateTime.parse(j['endDate']),
+      );
+}
+
+class ProjectTask {
+  String id;
+  String title;
+  String? phaseId;
+  String? groupLabel;
+  DateTime startDate;
+  DateTime? endDate;
+  bool isMilestone;
+  String? color;
+  String? barLabel;
+  String status; // pending | done | skipped
+  String? recurringActionId;
+
+  ProjectTask({
+    String? id,
+    required this.title,
+    this.phaseId,
+    this.groupLabel,
+    required this.startDate,
+    this.endDate,
+    this.isMilestone = false,
+    this.color,
+    this.barLabel,
+    this.status = 'pending',
+    this.recurringActionId,
+  }) : id = id ?? _uuid.v4();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'phaseId': phaseId,
+        'groupLabel': groupLabel,
+        'startDate': startDate.toIso8601String(),
+        'endDate': endDate?.toIso8601String(),
+        'isMilestone': isMilestone,
+        'color': color,
+        'barLabel': barLabel,
+        'status': status,
+        'recurringActionId': recurringActionId,
+      };
+
+  static ProjectTask from(Map j) => ProjectTask(
+        id: j['id'],
+        title: j['title'] ?? '',
+        phaseId: j['phaseId'],
+        groupLabel: j['groupLabel'],
+        startDate: DateTime.parse(j['startDate']),
+        endDate: j['endDate'] != null ? DateTime.tryParse(j['endDate']) : null,
+        isMilestone: j['isMilestone'] as bool? ?? false,
+        color: j['color'],
+        barLabel: j['barLabel'],
+        status: j['status'] ?? 'pending',
+        recurringActionId: j['recurringActionId'],
+      );
+}
+
+class Project {
+  String id;
+  String title;
+  String? description;
+  String? strategicObjectiveId;
+  String? domainId;
+  DateTime startDate;
+  DateTime? endDate;
+  String status; // draft | active | done | archived
+  List<ProjectPhase> phases;
+  List<ProjectTask> tasks;
+  String createdBy; // uid Firebase
+  String sourceType; // manual | claude_api | coach
+  DateTime createdAt;
+  DateTime? updatedAt;
+
+  Project({
+    String? id,
+    required this.title,
+    this.description,
+    this.strategicObjectiveId,
+    this.domainId,
+    required this.startDate,
+    this.endDate,
+    this.status = 'active',
+    List<ProjectPhase>? phases,
+    List<ProjectTask>? tasks,
+    required this.createdBy,
+    this.sourceType = 'manual',
+    DateTime? createdAt,
+    this.updatedAt,
+  })  : id = id ?? _uuid.v4(),
+        createdAt = createdAt ?? DateTime.now(),
+        phases = phases ?? [],
+        tasks = tasks ?? [];
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'description': description,
+        'strategicObjectiveId': strategicObjectiveId,
+        'domainId': domainId,
+        'startDate': startDate.toIso8601String(),
+        'endDate': endDate?.toIso8601String(),
+        'status': status,
+        'phases': phases.map((p) => p.toJson()).toList(),
+        'tasks': tasks.map((t) => t.toJson()).toList(),
+        'createdBy': createdBy,
+        'sourceType': sourceType,
+        'createdAt': createdAt.toIso8601String(),
+        'updatedAt': updatedAt?.toIso8601String(),
+      };
+
+  static Project from(Map j) => Project(
+        id: j['id'],
+        title: j['title'] ?? '',
+        description: j['description'],
+        strategicObjectiveId: j['strategicObjectiveId'],
+        domainId: j['domainId'],
+        startDate: DateTime.parse(j['startDate']),
+        endDate: j['endDate'] != null ? DateTime.tryParse(j['endDate']) : null,
+        status: j['status'] ?? 'active',
+        phases: (j['phases'] as List?)?.map((p) => ProjectPhase.from(p)).toList() ?? [],
+        tasks: (j['tasks'] as List?)?.map((t) => ProjectTask.from(t)).toList() ?? [],
+        createdBy: j['createdBy'] ?? '',
+        sourceType: j['sourceType'] ?? 'manual',
+        createdAt: j['createdAt'] != null
+            ? DateTime.tryParse(j['createdAt']) ?? DateTime.now()
+            : DateTime.now(),
+        updatedAt: j['updatedAt'] != null ? DateTime.tryParse(j['updatedAt']) : null,
+      );
+}
+
+class StrategicObjective {
+  String id;
+  String title;
+  String? description;
+  String? domainId;
+  String? kpiTarget; // ex: "100 payants · MRR 500€"
+  String? horizonLabel; // ex: "3 mois", "Q2 2026"
+  DateTime? startDate;
+  DateTime? endDate;
+  String status; // active | done | archived
+  List<String> projectIds;
+  DateTime createdAt;
+
+  StrategicObjective({
+    String? id,
+    required this.title,
+    this.description,
+    this.domainId,
+    this.kpiTarget,
+    this.horizonLabel,
+    this.startDate,
+    this.endDate,
+    this.status = 'active',
+    List<String>? projectIds,
+    DateTime? createdAt,
+  })  : id = id ?? _uuid.v4(),
+        createdAt = createdAt ?? DateTime.now(),
+        projectIds = projectIds ?? [];
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'description': description,
+        'domainId': domainId,
+        'kpiTarget': kpiTarget,
+        'horizonLabel': horizonLabel,
+        'startDate': startDate?.toIso8601String(),
+        'endDate': endDate?.toIso8601String(),
+        'status': status,
+        'projectIds': projectIds,
+        'createdAt': createdAt.toIso8601String(),
+      };
+
+  static StrategicObjective from(Map j) => StrategicObjective(
+        id: j['id'],
+        title: j['title'] ?? '',
+        description: j['description'],
+        domainId: j['domainId'],
+        kpiTarget: j['kpiTarget'],
+        horizonLabel: j['horizonLabel'],
+        startDate: j['startDate'] != null ? DateTime.tryParse(j['startDate']) : null,
+        endDate: j['endDate'] != null ? DateTime.tryParse(j['endDate']) : null,
+        status: j['status'] ?? 'active',
+        projectIds: (j['projectIds'] as List?)?.cast<String>() ?? [],
+        createdAt: j['createdAt'] != null
+            ? DateTime.tryParse(j['createdAt']) ?? DateTime.now()
+            : DateTime.now(),
+      );
+}
+
+class ApiToken {
+  String id;
+  String token; // valeur brute UUID, affichée une seule fois dans l'UI
+  String label; // ex: "Claude MCP", "Coach Antoine"
+  bool active;
+  DateTime createdAt;
+  DateTime? lastUsedAt;
+
+  ApiToken({
+    String? id,
+    String? token,
+    required this.label,
+    this.active = true,
+    DateTime? createdAt,
+    this.lastUsedAt,
+  })  : id = id ?? _uuid.v4(),
+        token = token ?? _uuid.v4(),
+        createdAt = createdAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'token': token,
+        'label': label,
+        'active': active,
+        'createdAt': createdAt.toIso8601String(),
+        'lastUsedAt': lastUsedAt?.toIso8601String(),
+      };
+
+  static ApiToken from(Map j) => ApiToken(
+        id: j['id'],
+        token: j['token'] ?? '',
+        label: j['label'] ?? '',
+        active: j['active'] as bool? ?? true,
+        createdAt: j['createdAt'] != null
+            ? DateTime.tryParse(j['createdAt']) ?? DateTime.now()
+            : DateTime.now(),
+        lastUsedAt: j['lastUsedAt'] != null ? DateTime.tryParse(j['lastUsedAt']) : null,
+      );
+}
