@@ -66,6 +66,8 @@ class DayPlanItem {
   String? blockId;
   String? recurringActionId; // id de RecurringAction si généré automatiquement
   String? originalYmd; // date où l'action a été planifiée pour la première fois
+  String? projectId;     // projet Gantt associé
+  String? projectTaskId; // tâche Gantt associée
 
   // ✅ NEW
   List<ChecklistItem> checklist;
@@ -93,6 +95,8 @@ class DayPlanItem {
     this.blockId,
     this.recurringActionId,
     this.originalYmd,
+    this.projectId,
+    this.projectTaskId,
 
     // ✅ NEW
     List<ChecklistItem>? checklist,
@@ -125,6 +129,8 @@ class DayPlanItem {
         'blockId': blockId,
         'recurringActionId': recurringActionId,
         'originalYmd': originalYmd,
+        'projectId': projectId,
+        'projectTaskId': projectTaskId,
 
         // ✅ CHECKLIST
         'checklist': checklist.map((c) => c.toJson()).toList(),
@@ -179,6 +185,8 @@ class DayPlanItem {
       blockId: j['blockId'] as String?,
       recurringActionId: j['recurringActionId'] as String?,
       originalYmd: j['originalYmd'] as String?,
+      projectId: j['projectId'] as String?,
+      projectTaskId: j['projectTaskId'] as String?,
       checklist: (j['checklist'] as List?)
               ?.map((c) => ChecklistItem.from(c))
               .toList() ??
@@ -212,6 +220,11 @@ class RecurringAction {
   bool active;
   final DateTime createdAt;
 
+  // Routines temporelles (liées à un projet Gantt)
+  DateTime? startDate;    // date d'activation (null = immédiatement)
+  DateTime? endDate;      // date d'expiration (null = pas de limite)
+  String? projectTaskId;  // id de la tâche Gantt associée
+
   RecurringAction({
     String? id,
     required this.title,
@@ -222,9 +235,35 @@ class RecurringAction {
     List<int>? weekdays,
     this.active = true,
     DateTime? createdAt,
+    this.startDate,
+    this.endDate,
+    this.projectTaskId,
   })  : id = id ?? _uuid.v4(),
         weekdays = weekdays ?? [],
         createdAt = createdAt ?? DateTime.now();
+
+  /// Vrai si la routine est dans sa fenêtre d'activité pour le jour donné.
+  bool isActiveOn(DateTime day) {
+    if (!active) return false;
+    final d = DateTime(day.year, day.month, day.day);
+    if (startDate != null) {
+      final s = DateTime(startDate!.year, startDate!.month, startDate!.day);
+      if (d.isBefore(s)) return false;
+    }
+    if (endDate != null) {
+      final e = DateTime(endDate!.year, endDate!.month, endDate!.day);
+      if (d.isAfter(e)) return false;
+    }
+    return true;
+  }
+
+  /// Vrai si la routine a une date de fin dépassée.
+  bool get isExpired {
+    if (endDate == null) return false;
+    final today = DateTime.now();
+    final e = DateTime(endDate!.year, endDate!.month, endDate!.day);
+    return DateTime(today.year, today.month, today.day).isAfter(e);
+  }
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -236,6 +275,9 @@ class RecurringAction {
         'weekdays': weekdays,
         'active': active,
         'createdAt': createdAt.toIso8601String(),
+        'startDate': startDate?.toIso8601String(),
+        'endDate': endDate?.toIso8601String(),
+        'projectTaskId': projectTaskId,
       };
 
   static RecurringAction from(Map j) => RecurringAction(
@@ -254,6 +296,13 @@ class RecurringAction {
         createdAt: j['createdAt'] != null
             ? DateTime.tryParse(j['createdAt']) ?? DateTime.now()
             : null,
+        startDate: j['startDate'] != null
+            ? DateTime.tryParse(j['startDate'])
+            : null,
+        endDate: j['endDate'] != null
+            ? DateTime.tryParse(j['endDate'])
+            : null,
+        projectTaskId: j['projectTaskId'] as String?,
       );
 }
 
@@ -1261,6 +1310,34 @@ DateTime? _parseDateOrNull(dynamic v) {
 
 // ─── GESTION DE PROJETS (Gantt) ──────────────────────────────────────────────
 //
+// TaskAction : action opérationnelle liée à une tâche Gantt.
+// Même structure que GoalAction, mais sémantiquement liée au projet.
+
+class TaskAction {
+  String id;
+  String title;
+  bool done;
+  DateTime? doneAt;
+
+  TaskAction({String? id, required this.title, this.done = false, this.doneAt})
+      : id = id ?? _uuid.v4();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'done': done,
+        'doneAt': doneAt?.toIso8601String(),
+      };
+
+  static TaskAction from(Map j) => TaskAction(
+        id: j['id'] ?? _uuid.v4(),
+        title: j['title'] ?? '',
+        done: j['done'] as bool? ?? (j['doneAt'] != null),
+        doneAt: j['doneAt'] != null ? DateTime.tryParse(j['doneAt']) : null,
+      );
+}
+
+//
 // Ces modèles sont indépendants de AppState : ils sont chargés à la demande
 // (vue web Gantt, section Projets mobile) via ProjectSync, pas au démarrage.
 //
@@ -1311,6 +1388,7 @@ class ProjectTask {
   String? barLabel;
   String status; // pending | done | skipped
   String? recurringActionId;
+  List<TaskAction> actions; // détail opérationnel
 
   ProjectTask({
     String? id,
@@ -1324,7 +1402,12 @@ class ProjectTask {
     this.barLabel,
     this.status = 'pending',
     this.recurringActionId,
-  }) : id = id ?? _uuid.v4();
+    List<TaskAction>? actions,
+  })  : id = id ?? _uuid.v4(),
+        actions = actions ?? [];
+
+  int get stepsDone => actions.where((a) => a.done).length;
+  int get stepsTotal => actions.length;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -1338,6 +1421,7 @@ class ProjectTask {
         'barLabel': barLabel,
         'status': status,
         'recurringActionId': recurringActionId,
+        'actions': actions.map((a) => a.toJson()).toList(),
       };
 
   static ProjectTask from(Map j) => ProjectTask(
@@ -1345,13 +1429,17 @@ class ProjectTask {
         title: j['title'] ?? '',
         phaseId: j['phaseId'],
         groupLabel: j['groupLabel'],
-        startDate: DateTime.parse(j['startDate']),
-        endDate: j['endDate'] != null ? DateTime.tryParse(j['endDate']) : null,
+        startDate: _parseDate(j['startDate']),
+        endDate: _parseDateOrNull(j['endDate']),
         isMilestone: j['isMilestone'] as bool? ?? false,
         color: j['color'],
         barLabel: j['barLabel'],
         status: j['status'] ?? 'pending',
         recurringActionId: j['recurringActionId'],
+        actions: (j['actions'] as List?)
+                ?.map((a) => TaskAction.from(a))
+                .toList() ??
+            [],
       );
 }
 

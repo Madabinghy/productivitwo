@@ -285,6 +285,14 @@ class FirestoreSync {
     await _col('projects').doc(projectId).delete();
   }
 
+  /// Met à jour uniquement le tableau de tâches d'un projet.
+  Future<void> saveProjectTasks(String projectId, List<ProjectTask> tasks) async {
+    if (uid == null) return;
+    await _col('projects').doc(projectId).update({
+      'tasks': tasks.map((t) => t.toJson()).toList(),
+    });
+  }
+
   // ── Strategic objectives ────────────────────────────────────────────────────
 
   Future<List<StrategicObjective>> fetchStrategicObjectives() async {

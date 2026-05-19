@@ -1499,6 +1499,36 @@ class AppLogic {
     onChange();
   }
 
+  void addProjectTaskActionToToday({
+    required String projectId,
+    required String taskId,
+    required String actionId,
+    required String title,
+    String? blockId,
+  }) {
+    if (state.dayPlan.any((it) => it.projectTaskId == actionId)) return;
+    final ymd = yyyymmdd(DateTime.now());
+    final maxOrder = state.dayPlan
+        .where((it) => it.yyyymmdd == ymd)
+        .fold<int>(0, (m, it) => it.order > m ? it.order : m);
+    state.dayPlan.add(DayPlanItem(
+      id: _uuid.v4(),
+      kind: PlanKind.action,
+      title: title,
+      yyyymmdd: ymd,
+      projectId: projectId,
+      projectTaskId: actionId,
+      blockId: (blockId ?? '').isEmpty ? null : blockId,
+      order: maxOrder + 1,
+    ));
+    onChange();
+  }
+
+  void removeProjectTaskActionFromToday(String actionId) {
+    state.dayPlan.removeWhere((it) => it.projectTaskId == actionId);
+    onChange();
+  }
+
   void markGoalDone(String goalId) {
     final g = state.goals.firstWhere((x) => x.id == goalId);
     g.status = 'done';
@@ -1609,7 +1639,7 @@ class AppLogic {
     final weekday = day.weekday; // 1=Lun..7=Dim
 
     bool changed = false;
-    for (final ra in state.recurringActions.where((a) => a.active)) {
+    for (final ra in state.recurringActions.where((a) => a.isActiveOn(day))) {
       if (state.dayPlan.any((it) =>
           it.recurringActionId == ra.id && it.yyyymmdd == ymd)) continue;
 

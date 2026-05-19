@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 
 // ── Constantes de layout ──────────────────────────────────────────────────────
@@ -14,9 +15,35 @@ const double _kBarVPad = 8.0;    // padding vertical dans la barre
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
-class GanttScreen extends StatelessWidget {
+class GanttScreen extends StatefulWidget {
   final Project project;
   const GanttScreen({super.key, required this.project});
+
+  @override
+  State<GanttScreen> createState() => _GanttScreenState();
+}
+
+class _GanttScreenState extends State<GanttScreen> {
+  late Project _project;
+  final _sync = FirestoreSync();
+
+  @override
+  void initState() {
+    super.initState();
+    _project = widget.project;
+  }
+
+  void _onTaskTap(ProjectTask task) {
+    showDialog(
+      context: context,
+      builder: (_) => _TaskDetailDialog(
+        project: _project,
+        task: task,
+        sync: _sync,
+        onProjectUpdated: (p) => setState(() => _project = p),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,11 +58,11 @@ class GanttScreen extends StatelessWidget {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(project.title,
+            Text(_project.title,
                 style: const TextStyle(
                     fontSize: 16, fontWeight: FontWeight.w700)),
-            if (project.description != null && project.description!.isNotEmpty)
-              Text(project.description!,
+            if (_project.description != null && _project.description!.isNotEmpty)
+              Text(_project.description!,
                   style: TextStyle(
                       fontSize: 12,
                       color: cs.onSurface.withOpacity(0.5),
@@ -48,11 +75,10 @@ class GanttScreen extends StatelessWidget {
         ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
-          child:
-              Divider(height: 1, color: cs.outlineVariant.withOpacity(0.4)),
+          child: Divider(height: 1, color: cs.outlineVariant.withOpacity(0.4)),
         ),
       ),
-      body: _GanttBody(project: project),
+      body: _GanttBody(project: _project, onTaskTap: _onTaskTap),
     );
   }
 }
@@ -86,7 +112,8 @@ class _ZoomHint extends StatelessWidget {
 
 class _GanttBody extends StatefulWidget {
   final Project project;
-  const _GanttBody({required this.project});
+  final void Function(ProjectTask)? onTaskTap;
+  const _GanttBody({required this.project, this.onTaskTap});
 
   @override
   State<_GanttBody> createState() => _GanttBodyState();
@@ -122,9 +149,10 @@ class _GanttBodyState extends State<_GanttBody> {
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: _GanttGrid(
-          project: project,
+          project: widget.project,
           projectStart: start,
           totalWeeks: weeks,
+          onTaskTap: widget.onTaskTap,
         ),
       ),
     );
@@ -137,11 +165,13 @@ class _GanttGrid extends StatelessWidget {
   final Project project;
   final DateTime projectStart;
   final int totalWeeks;
+  final void Function(ProjectTask)? onTaskTap;
 
   const _GanttGrid({
     required this.project,
     required this.projectStart,
     required this.totalWeeks,
+    this.onTaskTap,
   });
 
   double get timeW => totalWeeks * _kCellW;
@@ -180,6 +210,7 @@ class _GanttGrid extends StatelessWidget {
               projectStart: projectStart,
               totalWeeks: totalWeeks,
               timeW: timeW,
+              onTap: onTaskTap != null ? () => onTaskTap!(task) : null,
             ),
         ],
         // Padding bas
@@ -386,12 +417,14 @@ class _TaskRow extends StatelessWidget {
   final DateTime projectStart;
   final int totalWeeks;
   final double timeW;
+  final VoidCallback? onTap;
 
   const _TaskRow({
     required this.task,
     required this.projectStart,
     required this.totalWeeks,
     required this.timeW,
+    this.onTap,
   });
 
   @override
@@ -404,48 +437,58 @@ class _TaskRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Label
+          // Label (cliquable)
           SizedBox(
             width: _kLabelW,
             height: _kRowH,
-            child: Container(
-              decoration: const BoxDecoration(
-                border: Border(
-                    bottom: BorderSide(color: Color(0xFFF0F0F0), width: 1)),
-              ),
-              alignment: Alignment.centerLeft,
-              padding: const EdgeInsets.only(left: 16, right: 8),
-              child: Row(
-                children: [
-                  if (task.isMilestone)
-                    const Icon(Icons.diamond_outlined,
-                        size: 12, color: Color(0xFF888888))
-                  else
-                    Icon(
-                      isDone
-                          ? Icons.check_circle_outline
-                          : Icons.radio_button_unchecked,
-                      size: 12,
-                      color: isDone
-                          ? Colors.green
-                          : const Color(0xFFCCCCCC),
-                    ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      task.title,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isDone
-                            ? const Color(0xFFAAAAAA)
-                            : const Color(0xFF1A1A1A),
-                        decoration:
-                            isDone ? TextDecoration.lineThrough : null,
+            child: InkWell(
+              onTap: onTap,
+              child: Container(
+                decoration: const BoxDecoration(
+                  border: Border(
+                      bottom: BorderSide(color: Color(0xFFF0F0F0), width: 1)),
+                ),
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.only(left: 16, right: 8),
+                child: Row(
+                  children: [
+                    if (task.isMilestone)
+                      const Icon(Icons.diamond_outlined,
+                          size: 12, color: Color(0xFF888888))
+                    else
+                      Icon(
+                        isDone
+                            ? Icons.check_circle_outline
+                            : Icons.radio_button_unchecked,
+                        size: 12,
+                        color: isDone ? Colors.green : const Color(0xFFCCCCCC),
                       ),
-                      overflow: TextOverflow.ellipsis,
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        task.title,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDone
+                              ? const Color(0xFFAAAAAA)
+                              : const Color(0xFF1A1A1A),
+                          decoration:
+                              isDone ? TextDecoration.lineThrough : null,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
-                ],
+                    if (task.stepsTotal > 0)
+                      Text(
+                        '${task.stepsDone}/${task.stepsTotal}',
+                        style: const TextStyle(
+                            fontSize: 9, color: Color(0xFFAAAAAA)),
+                      ),
+                    if (onTap != null)
+                      const Icon(Icons.chevron_right,
+                          size: 12, color: Color(0xFFCCCCCC)),
+                  ],
+                ),
               ),
             ),
           ),
@@ -593,4 +636,211 @@ List<({String label, List<ProjectTask> tasks})> _buildGroups(
     map.putIfAbsent(g, () => []).add(t);
   }
   return seen.map((g) => (label: g, tasks: map[g]!)).toList();
+}
+
+// ── Dialog détail tâche (web) ─────────────────────────────────────────────────
+
+class _TaskDetailDialog extends StatefulWidget {
+  final Project project;
+  final ProjectTask task;
+  final FirestoreSync sync;
+  final void Function(Project) onProjectUpdated;
+
+  const _TaskDetailDialog({
+    required this.project,
+    required this.task,
+    required this.sync,
+    required this.onProjectUpdated,
+  });
+
+  @override
+  State<_TaskDetailDialog> createState() => _TaskDetailDialogState();
+}
+
+class _TaskDetailDialogState extends State<_TaskDetailDialog> {
+  late ProjectTask _task;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _task = widget.task;
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    final updatedTasks = widget.project.tasks
+        .map((t) => t.id == _task.id ? _task : t)
+        .toList();
+    await widget.sync.saveProjectTasks(widget.project.id, updatedTasks);
+    final updatedProject = widget.project..tasks
+        .replaceRange(0, widget.project.tasks.length, updatedTasks);
+    widget.onProjectUpdated(updatedProject);
+    if (mounted) setState(() => _saving = false);
+  }
+
+  Future<void> _addAction() async {
+    final ctrl = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Nouvelle action'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Description',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+          FilledButton(
+            onPressed: () {
+              if (ctrl.text.trim().isNotEmpty) Navigator.pop(ctx, ctrl.text.trim());
+            },
+            child: const Text('Ajouter'),
+          ),
+        ],
+      ),
+    );
+    if (result == null) return;
+    setState(() => _task.actions.add(TaskAction(title: result)));
+    _save();
+  }
+
+  String _fmtDate(DateTime d) {
+    const m = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin',
+                'juil', 'aoû', 'sep', 'oct', 'nov', 'déc'];
+    return '${d.day} ${m[d.month - 1]} ${d.year}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final pending = _task.actions.where((a) => !a.done).toList();
+    final done = _task.actions.where((a) => a.done).toList();
+
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: SizedBox(
+        width: 480,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // En-tête
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 16, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(widget.project.title.toUpperCase(),
+                            style: TextStyle(
+                                fontSize: 10, fontWeight: FontWeight.w700,
+                                letterSpacing: 1, color: cs.primary)),
+                        const SizedBox(height: 4),
+                        Text(_task.title,
+                            style: const TextStyle(
+                                fontSize: 17, fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${_fmtDate(_task.startDate)}'
+                          '${_task.endDate != null ? ' → ${_fmtDate(_task.endDate!)}' : ''}',
+                          style: TextStyle(
+                              fontSize: 12, color: cs.onSurface.withOpacity(.5)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (_saving)
+                    const Padding(
+                      padding: EdgeInsets.only(right: 8),
+                      child: SizedBox(width: 16, height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2)),
+                    ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 20),
+
+            // Actions
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 340),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (pending.isEmpty && done.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Text('Aucune action. Clique + pour en ajouter.',
+                            style: TextStyle(
+                                fontSize: 13, fontStyle: FontStyle.italic,
+                                color: cs.onSurface.withOpacity(.4))),
+                      ),
+                    for (final a in pending)
+                      CheckboxListTile(
+                        dense: true,
+                        value: a.done,
+                        title: Text(a.title, style: const TextStyle(fontSize: 13)),
+                        onChanged: (v) {
+                          setState(() {
+                            a.done = v ?? false;
+                            a.doneAt = a.done ? DateTime.now() : null;
+                          });
+                          _save();
+                        },
+                        controlAffinity: ListTileControlAffinity.leading,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    if (done.isNotEmpty) ...[
+                      const Divider(height: 16),
+                      Text('Réalisées (${done.length})',
+                          style: TextStyle(fontSize: 11,
+                              color: cs.onSurface.withOpacity(.4),
+                              fontWeight: FontWeight.w600)),
+                      for (final a in done)
+                        CheckboxListTile(
+                          dense: true,
+                          value: a.done,
+                          title: Text(a.title,
+                              style: const TextStyle(fontSize: 12,
+                                  decoration: TextDecoration.lineThrough,
+                                  color: Colors.grey)),
+                          onChanged: (v) {
+                            setState(() { a.done = v ?? false; a.doneAt = null; });
+                            _save();
+                          },
+                          controlAffinity: ListTileControlAffinity.leading,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+
+            // Footer
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: TextButton.icon(
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('Ajouter une action'),
+                onPressed: _addAction,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

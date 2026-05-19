@@ -27,6 +27,19 @@ class _RecurringActionsSheetState extends State<_RecurringActionsSheet> {
 
   static const _dayLabels = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 
+  static String _fmtDate(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+
+  String _dateRangeLabel(RecurringAction ra) {
+    if (ra.isExpired) return '⌛ Expirée le ${_fmtDate(ra.endDate!)}';
+    if (ra.startDate != null && ra.endDate != null) {
+      return '${_fmtDate(ra.startDate!)} → ${_fmtDate(ra.endDate!)}';
+    }
+    if (ra.startDate != null) return 'Depuis le ${_fmtDate(ra.startDate!)}';
+    if (ra.endDate != null) return 'Jusqu\'au ${_fmtDate(ra.endDate!)}';
+    return '';
+  }
+
   String _typeLabel(RecurringAction ra) {
     if (ra.type == RecurrenceType.daily) return 'Chaque jour';
     if (ra.weekdays.isEmpty) return 'Jours spécifiques';
@@ -57,9 +70,25 @@ class _RecurringActionsSheetState extends State<_RecurringActionsSheet> {
     setState(() {});
   }
 
+  Future<void> _pickDate(
+    BuildContext context,
+    DateTime? initial,
+    ValueChanged<DateTime?> onPicked,
+  ) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+    );
+    onPicked(picked);
+  }
+
   Future<void> _edit(RecurringAction ra) async {
     RecurrenceType type = ra.type;
     List<int> weekdays = List.from(ra.weekdays);
+    DateTime? startDate = ra.startDate;
+    DateTime? endDate = ra.endDate;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -144,11 +173,49 @@ class _RecurringActionsSheetState extends State<_RecurringActionsSheet> {
                 ),
               ],
 
+              // ── Période (optionnel) ──────────────────────────────────
+              const SizedBox(height: 16),
+              Text('Période (optionnel)',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Theme.of(ctx).colorScheme.onSurface.withOpacity(.5))),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: _DatePickerTile(
+                      label: 'Début',
+                      date: startDate,
+                      onTap: () => _pickDate(ctx, startDate,
+                          (d) => setS(() => startDate = d)),
+                      onClear: startDate != null
+                          ? () => setS(() => startDate = null)
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _DatePickerTile(
+                      label: 'Fin',
+                      date: endDate,
+                      onTap: () => _pickDate(ctx, endDate,
+                          (d) => setS(() => endDate = d)),
+                      onClear: endDate != null
+                          ? () => setS(() => endDate = null)
+                          : null,
+                    ),
+                  ),
+                ],
+              ),
+
               const SizedBox(height: 20),
               FilledButton(
                 onPressed: () {
                   ra.type = type;
                   ra.weekdays = List.from(weekdays);
+                  ra.startDate = startDate;
+                  ra.endDate = endDate;
                   logic.onChange();
                   // Regénère pour les 8 prochains jours
                   final today = DateTime.now();
@@ -170,9 +237,9 @@ class _RecurringActionsSheetState extends State<_RecurringActionsSheet> {
     );
   }
 
-  Widget _typeChip(BuildContext context, String label,
+  Widget _typeChip(BuildContext ctx, String label,
       {required bool selected, required VoidCallback onTap}) {
-    final cs = Theme.of(context).colorScheme;
+    final cs = Theme.of(ctx).colorScheme;
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -274,11 +341,27 @@ class _RecurringActionsSheetState extends State<_RecurringActionsSheet> {
                                 : TextDecoration.lineThrough,
                           ),
                         ),
-                        subtitle: Text(
-                          _typeLabel(ra),
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: cs.onSurface.withOpacity(.45)),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _typeLabel(ra),
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: cs.onSurface.withOpacity(.45)),
+                            ),
+                            if (ra.startDate != null || ra.endDate != null)
+                              Text(
+                                _dateRangeLabel(ra),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: ra.isExpired
+                                      ? cs.error.withOpacity(.7)
+                                      : cs.primary.withOpacity(.7),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                          ],
                         ),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -323,6 +406,70 @@ class _RecurringActionsSheetState extends State<_RecurringActionsSheet> {
                   ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Widget date picker compact ────────────────────────────────────────────────
+
+class _DatePickerTile extends StatelessWidget {
+  final String label;
+  final DateTime? date;
+  final VoidCallback onTap;
+  final VoidCallback? onClear;
+
+  const _DatePickerTile({
+    required this.label,
+    required this.date,
+    required this.onTap,
+    this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final hasDate = date != null;
+    final dateStr = hasDate
+        ? '${date!.day.toString().padLeft(2, '0')}/${date!.month.toString().padLeft(2, '0')}/${date!.year}'
+        : label;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: hasDate ? cs.primary.withOpacity(.5) : cs.outline.withOpacity(.4),
+          ),
+          borderRadius: BorderRadius.circular(8),
+          color: hasDate ? cs.primaryContainer.withOpacity(.3) : null,
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.calendar_today_outlined,
+                size: 14,
+                color: hasDate ? cs.primary : cs.onSurface.withOpacity(.4)),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                dateStr,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: hasDate ? FontWeight.w600 : FontWeight.normal,
+                  color: hasDate ? cs.primary : cs.onSurface.withOpacity(.45),
+                ),
+              ),
+            ),
+            if (onClear != null)
+              GestureDetector(
+                onTap: onClear,
+                child: Icon(Icons.close,
+                    size: 14, color: cs.onSurface.withOpacity(.4)),
+              ),
+          ],
+        ),
       ),
     );
   }
