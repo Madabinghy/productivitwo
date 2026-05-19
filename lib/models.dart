@@ -1242,6 +1242,23 @@ class AppState {
 String yyyymmdd(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}${d.month.toString().padLeft(2, '0')}${d.day.toString().padLeft(2, '0')}';
 
+/// Parse une date qui peut être une String ISO ou un Firestore Timestamp.
+DateTime _parseDate(dynamic v, [DateTime? fallback]) {
+  if (v == null) return fallback ?? DateTime.now();
+  if (v is DateTime) return v;
+  if (v is String) return DateTime.tryParse(v) ?? (fallback ?? DateTime.now());
+  try { return (v as dynamic).toDate() as DateTime; } catch (_) {}
+  return fallback ?? DateTime.now();
+}
+
+DateTime? _parseDateOrNull(dynamic v) {
+  if (v == null) return null;
+  if (v is DateTime) return v;
+  if (v is String) return DateTime.tryParse(v);
+  try { return (v as dynamic).toDate() as DateTime; } catch (_) {}
+  return null;
+}
+
 // ─── GESTION DE PROJETS (Gantt) ──────────────────────────────────────────────
 //
 // Ces modèles sont indépendants de AppState : ils sont chargés à la demande
@@ -1397,17 +1414,15 @@ class Project {
         description: j['description'],
         strategicObjectiveId: j['strategicObjectiveId'],
         domainId: j['domainId'],
-        startDate: DateTime.parse(j['startDate']),
-        endDate: j['endDate'] != null ? DateTime.tryParse(j['endDate']) : null,
+        startDate: _parseDate(j['startDate']),
+        endDate: _parseDateOrNull(j['endDate']),
         status: j['status'] ?? 'active',
         phases: (j['phases'] as List?)?.map((p) => ProjectPhase.from(p)).toList() ?? [],
         tasks: (j['tasks'] as List?)?.map((t) => ProjectTask.from(t)).toList() ?? [],
         createdBy: j['createdBy'] ?? '',
         sourceType: j['sourceType'] ?? 'manual',
-        createdAt: j['createdAt'] != null
-            ? DateTime.tryParse(j['createdAt']) ?? DateTime.now()
-            : DateTime.now(),
-        updatedAt: j['updatedAt'] != null ? DateTime.tryParse(j['updatedAt']) : null,
+        createdAt: _parseDate(j['createdAt']),
+        updatedAt: _parseDateOrNull(j['updatedAt']),
       );
 }
 
@@ -1461,13 +1476,11 @@ class StrategicObjective {
         domainId: j['domainId'],
         kpiTarget: j['kpiTarget'],
         horizonLabel: j['horizonLabel'],
-        startDate: j['startDate'] != null ? DateTime.tryParse(j['startDate']) : null,
-        endDate: j['endDate'] != null ? DateTime.tryParse(j['endDate']) : null,
+        startDate: _parseDateOrNull(j['startDate']),
+        endDate: _parseDateOrNull(j['endDate']),
         status: j['status'] ?? 'active',
         projectIds: (j['projectIds'] as List?)?.cast<String>() ?? [],
-        createdAt: j['createdAt'] != null
-            ? DateTime.tryParse(j['createdAt']) ?? DateTime.now()
-            : DateTime.now(),
+        createdAt: _parseDate(j['createdAt']),
       );
 }
 

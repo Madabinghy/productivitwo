@@ -271,14 +271,8 @@ class FirestoreSync {
 
   Future<List<Project>> fetchProjects() async {
     if (uid == null) return [];
-    try {
-      final snap = await _col('projects').orderBy('createdAt', descending: true).get();
-      return snap.docs
-          .map((d) => Project.from(d.data() as Map))
-          .toList();
-    } catch (_) {
-      return [];
-    }
+    final snap = await _col('projects').get();
+    return snap.docs.map((d) => Project.from(d.data() as Map)).toList();
   }
 
   Future<void> saveProject(Project project) async {
@@ -322,9 +316,7 @@ class FirestoreSync {
   Future<List<ApiToken>> fetchApiTokens() async {
     if (uid == null) return [];
     try {
-      final snap = await _col('api_tokens')
-          .orderBy('createdAt', descending: true)
-          .get();
+      final snap = await _col('api_tokens').get();
       return snap.docs
           .map((d) => ApiToken.from(d.data() as Map))
           .toList();

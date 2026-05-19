@@ -10,6 +10,7 @@ class _Entry {
 const _changelog = [
   _Entry('2.2', '19 mai 2026', [
     (Icons.key_outlined, 'Tokens API : génère des tokens pour envoyer des projets Gantt depuis Claude ou un coach'),
+    (Icons.account_tree_outlined, 'Web app : visualise tes projets Gantt sur productivitwo-app.web.app'),
   ]),
   _Entry('2.1', '18 mai 2026', [
     (Icons.show_chart, 'Pro : heatmap 12 semaines + graphe couleur domaine dans la liste des activités'),

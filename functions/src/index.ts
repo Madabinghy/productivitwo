@@ -12,7 +12,7 @@ interface ProjectPhase {
   id?: string;
   label: string;
   color?: string;
-  startDate: string; // ISO8601
+  startDate: string;
   endDate: string;
 }
 
@@ -57,7 +57,7 @@ interface PushGanttBody {
   strategicObjective?: StrategicObjectivePayload;
 }
 
-// ── Helper ────────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function normalizePhases(phases?: ProjectPhase[]): ProjectPhase[] {
   if (!phases) return [];
@@ -76,28 +76,30 @@ function normalizeTasks(tasks?: ProjectTask[]): ProjectTask[] {
 
 // ── pushGantt ─────────────────────────────────────────────────────────────────
 //
-// POST /pushGantt
+// POST https://us-central1-productivitwo-app.cloudfunctions.net/pushGantt
 // Headers: Authorization: Bearer <token>
 // Body: { uid, project, strategicObjective? }
-//
-// Authentification : le token est comparé à la collection
-// users/{uid}/api_tokens/ (champ "token", actif = true).
 
-export const pushGantt = onRequest({ cors: true }, async (req, res) => {
+export const pushGantt = onRequest({ cors: true, invoker: "public" }, async (req, res) => {
+  if (req.method === "OPTIONS") {
+    res.status(204).send("");
+    return;
+  }
+
   if (req.method !== "POST") {
     res.status(405).json({ error: "Method Not Allowed" });
     return;
   }
 
-  // 1. Extraire le Bearer token
+  // 1. Bearer token
   const authHeader = req.headers.authorization ?? "";
   if (!authHeader.startsWith("Bearer ")) {
-    res.status(401).json({ error: "Missing or invalid Authorization header" });
+    res.status(401).json({ error: "Missing Authorization header" });
     return;
   }
   const rawToken = authHeader.slice(7).trim();
 
-  // 2. Valider le corps
+  // 2. Validation du corps
   const body = req.body as PushGanttBody;
   if (!body.uid || !body.project?.title || !body.project?.startDate) {
     res.status(400).json({ error: "Missing required fields: uid, project.title, project.startDate" });
@@ -105,7 +107,7 @@ export const pushGantt = onRequest({ cors: true }, async (req, res) => {
   }
   const { uid, project, strategicObjective } = body;
 
-  // 3. Vérifier le token dans Firestore
+  // 3. Vérification du token
   const tokenQuery = await db
     .collection(`users/${uid}/api_tokens`)
     .where("token", "==", rawToken)
@@ -118,10 +120,10 @@ export const pushGantt = onRequest({ cors: true }, async (req, res) => {
     return;
   }
 
-  // 4. Mettre à jour lastUsedAt (fire-and-forget)
+  // 4. Mise à jour lastUsedAt
   tokenQuery.docs[0].ref.update({ lastUsedAt: FieldValue.serverTimestamp() });
 
-  // 5. Résoudre l'objectif stratégique (création ou mise à jour)
+  // 5. Objectif stratégique
   let strategicObjectiveId: string | undefined;
   if (strategicObjective) {
     const objId = strategicObjective.id || uuidv4();
@@ -138,7 +140,7 @@ export const pushGantt = onRequest({ cors: true }, async (req, res) => {
     );
   }
 
-  // 6. Écrire le projet
+  // 6. Projet
   const projectId = project.id || uuidv4();
   const projectDoc = {
     ...project,
@@ -153,12 +155,9 @@ export const pushGantt = onRequest({ cors: true }, async (req, res) => {
     createdAt: FieldValue.serverTimestamp(),
   };
 
-  await db
-    .collection(`users/${uid}/projects`)
-    .doc(projectId)
-    .set(projectDoc, { merge: true });
+  await db.collection(`users/${uid}/projects`).doc(projectId).set(projectDoc, { merge: true });
 
-  // 7. Lier le projet à l'objectif stratégique (liste projectIds)
+  // 7. Lier projet → objectif
   if (strategicObjectiveId) {
     await db
       .collection(`users/${uid}/strategic_objectives`)
@@ -166,9 +165,5 @@ export const pushGantt = onRequest({ cors: true }, async (req, res) => {
       .update({ projectIds: FieldValue.arrayUnion(projectId) });
   }
 
-  res.status(200).json({
-    success: true,
-    projectId,
-    strategicObjectiveId: strategicObjectiveId ?? null,
-  });
+  res.status(200).json({ success: true, projectId, strategicObjectiveId: strategicObjectiveId ?? null });
 });

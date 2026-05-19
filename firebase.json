@@ -27,9 +27,17 @@
       }
     }
   },
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [{ "source": "**", "destination": "/index.html" }]
+  },
   "functions": {
     "source": "functions",
     "codebase": "default",
-    "ignore": ["node_modules", ".git", "lib"]
+    "ignore": ["node_modules", ".git", "src"]
   }
 }

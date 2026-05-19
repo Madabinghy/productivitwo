@@ -39,6 +39,7 @@ import 'package:productivitwo_v1/widgets/routine_freq_card.dart';
 import 'package:productivitwo_v1/widgets/changelog_sheet.dart';
 import 'package:productivitwo_v1/widgets/privacy_policy_screen.dart';
 import 'package:productivitwo_v1/widgets/api_tokens_screen.dart';
+import 'package:productivitwo_v1/web/web_app.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/dev_logger.dart';
 import 'package:productivitwo_v1/pro_manager.dart';
@@ -678,12 +679,24 @@ final _navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // RevenueCat non supporté sur web/desktop
-  if (!kIsWeb && !Platform.isMacOS && !Platform.isWindows && !Platform.isLinux) {
+
+  if (kIsWeb) {
+    // Web : Firebase uniquement, pas de RevenueCat ni de notifications
+    try {
+      if (Firebase.apps.isEmpty) {
+        await Firebase.initializeApp(
+            options: DefaultFirebaseOptions.currentPlatform);
+      }
+    } catch (e) { /* ignore */ }
+    runApp(const WebApp());
+    return;
+  }
+
+  // Mobile / desktop
+  if (!Platform.isMacOS && !Platform.isWindows && !Platform.isLinux) {
     await ProManager.init();
   }
-  // Firebase configuré pour iOS et Android uniquement
-  if (!kIsWeb && !Platform.isMacOS && !Platform.isWindows && !Platform.isLinux) {
+  if (!Platform.isMacOS && !Platform.isWindows && !Platform.isLinux) {
     try {
       if (Firebase.apps.isEmpty) {
         await Firebase.initializeApp(
