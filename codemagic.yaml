@@ -51,6 +51,7 @@ workflows:
       - name: Build Android AAB
         script: |
           flutter build appbundle --release \
+            --no-tree-shake-icons \
             --build-name=1.0.0 \
             --build-number=1 2>&1 | tee /tmp/flutter_build.log
           BUILD_EXIT=${PIPESTATUS[0]}
