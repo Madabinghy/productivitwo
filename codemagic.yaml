@@ -23,7 +23,7 @@ workflows:
         recipients:
           - emeric.edmond@gmail.com
         notify:
-          success: false   # Email seulement si ça casse
+          success: true
           failure: true
 
   # ── iOS — TestFlight (manuel uniquement) ─────────────────────────────────
@@ -92,5 +92,5 @@ workflows:
         recipients:
           - emeric.edmond@gmail.com
         notify:
-          success: false   # Email seulement si ça casse
+          success: true
           failure: true
