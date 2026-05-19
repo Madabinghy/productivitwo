@@ -49,3 +49,4 @@ android/key.properties
 
 # Firebase — google-services.json Android (non configuré)
 google-services.json
+.claude/

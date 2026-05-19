@@ -1,0 +1,10 @@
+{
+  "name": "productivitwo-scripts",
+  "type": "module",
+  "scripts": {
+    "gantt": "node push_gantt.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.30.0"
+  }
+}

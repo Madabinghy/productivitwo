@@ -1,0 +1,16 @@
+{
+  "name": "productivitwo-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for Productivitwo — push Gantt projects from Claude",
+  "type": "module",
+  "bin": {
+    "productivitwo-mcp": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "engines": { "node": ">=18" }
+}

@@ -96,9 +96,9 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
                 ),
               ),
             ),
-            IconButton(
-              icon: const Icon(Icons.key_outlined, size: 18),
-              tooltip: 'Tokens API',
+            TextButton.icon(
+              icon: const Icon(Icons.auto_awesome_outlined, size: 16),
+              label: const Text('Connecter Claude'),
               onPressed: () => _showTokensPanel(context),
             ),
             IconButton(
@@ -387,7 +387,7 @@ class _SourceBadge extends StatelessWidget {
   }
 }
 
-// ── Panel Tokens API (web) ────────────────────────────────────────────────────
+// ── Panel Connecter Claude / Tokens ──────────────────────────────────────────
 
 class _TokensPanel extends StatefulWidget {
   final FirestoreSync sync;
@@ -397,17 +397,26 @@ class _TokensPanel extends StatefulWidget {
   State<_TokensPanel> createState() => _TokensPanelState();
 }
 
-class _TokensPanelState extends State<_TokensPanel> {
+class _TokensPanelState extends State<_TokensPanel>
+    with SingleTickerProviderStateMixin {
   List<ApiToken> _tokens = [];
   bool _loading = true;
-  String? _newTokenValue; // affiché une seule fois après création
+  String? _newTokenValue;
+  late TabController _tabs;
 
   final _uid = FirebaseAuth.instance.currentUser?.uid ?? '';
 
   @override
   void initState() {
     super.initState();
+    _tabs = TabController(length: 2, vsync: this);
     _load();
+  }
+
+  @override
+  void dispose() {
+    _tabs.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -466,173 +475,271 @@ class _TokensPanelState extends State<_TokensPanel> {
     );
   }
 
+  String _mcpConfig(String token) => '''{
+  "mcpServers": {
+    "productivitwo": {
+      "command": "npx",
+      "args": ["-y", "productivitwo-mcp@latest"],
+      "env": {
+        "PRODUCTIVITWO_TOKEN": "$token",
+        "PRODUCTIVITWO_UID": "$_uid"
+      }
+    }
+  }
+}''';
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final activeTokens = _tokens.where((t) => t.active).toList();
 
     return DraggableScrollableSheet(
-      initialChildSize: 0.6,
-      maxChildSize: 0.9,
+      initialChildSize: 0.75,
+      maxChildSize: 0.95,
       expand: false,
-      builder: (_, scroll) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Titre + bouton créer
-            Row(
+      builder: (_, scroll) => Column(
+        children: [
+          // Titre
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+            child: Row(
               children: [
-                const Icon(Icons.key_outlined, size: 18),
+                const Icon(Icons.auto_awesome_outlined, size: 18),
                 const SizedBox(width: 8),
                 const Expanded(
-                  child: Text('Tokens API',
-                      style: TextStyle(
-                          fontSize: 17, fontWeight: FontWeight.w700)),
-                ),
-                FilledButton.icon(
-                  icon: const Icon(Icons.add, size: 16),
-                  label: const Text('Nouveau'),
-                  onPressed: _create,
-                  style: FilledButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                  ),
+                  child: Text('Connecter Claude',
+                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-
-            // UID (pour les appels API)
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: cs.surfaceContainerHighest.withOpacity(0.6),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Ton UID Firebase',
-                            style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: cs.onSurface.withOpacity(0.5))),
-                        const SizedBox(height: 2),
-                        SelectableText(
-                          _uid,
-                          style: const TextStyle(
-                              fontFamily: 'monospace', fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.copy_outlined, size: 16),
-                    onPressed: () => _copy(_uid, 'UID copié'),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Nouveau token affiché après création
-            if (_newTokenValue != null) ...[
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: cs.primaryContainer.withOpacity(0.5),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                      color: cs.primary.withOpacity(0.3), width: 1),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.check_circle_outline,
-                            size: 14, color: cs.primary),
-                        const SizedBox(width: 6),
-                        Text('Token créé — copie-le maintenant',
-                            style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: cs.primary)),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: SelectableText(
-                            _newTokenValue!,
-                            style: const TextStyle(
-                                fontFamily: 'monospace', fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          TabBar(
+            controller: _tabs,
+            tabs: const [
+              Tab(text: 'Connexion Claude Desktop'),
+              Tab(text: 'Mes tokens'),
+            ],
+          ),
+          Expanded(
+            child: TabBarView(
+              controller: _tabs,
+              children: [
+                // ── Onglet 1 : Connexion ──────────────────────────────────
+                _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : ListView(
+                        controller: scroll,
+                        padding: const EdgeInsets.all(20),
+                        children: [
+                          // Étapes
+                          _Step(
+                            number: '1',
+                            title: 'Génère un token',
+                            child: activeTokens.isEmpty
+                                ? FilledButton.icon(
+                                    icon: const Icon(Icons.add, size: 16),
+                                    label: const Text('Créer un token Claude'),
+                                    onPressed: () async {
+                                      await _create();
+                                      _tabs.animateTo(0);
+                                    },
+                                  )
+                                : Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('Token actif : ${activeTokens.first.label}',
+                                          style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(0.7))),
+                                      const SizedBox(height: 6),
+                                      OutlinedButton.icon(
+                                        icon: const Icon(Icons.add, size: 14),
+                                        label: const Text('Créer un autre token'),
+                                        onPressed: _create,
+                                        style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
+                                      ),
+                                    ],
+                                  ),
                           ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.copy_outlined, size: 16),
-                          onPressed: () =>
-                              _copy(_newTokenValue!, 'Token copié'),
-                        ),
-                      ],
+                          const SizedBox(height: 16),
+                          _Step(
+                            number: '2',
+                            title: 'Copie cette config dans Claude Desktop',
+                            child: activeTokens.isEmpty
+                                ? Text('Crée d\'abord un token (étape 1)',
+                                    style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(0.45),
+                                        fontStyle: FontStyle.italic))
+                                : Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      Text(
+                                        'Colle ça dans ton fichier ~/.claude.json '
+                                        '(ou Paramètres → MCP dans Claude Desktop) :',
+                                        style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(0.65)),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      Container(
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: cs.surfaceContainerHighest.withOpacity(0.7),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: SelectableText(
+                                          _mcpConfig(activeTokens.first.token),
+                                          style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      OutlinedButton.icon(
+                                        icon: const Icon(Icons.copy_outlined, size: 16),
+                                        label: const Text('Copier la config'),
+                                        onPressed: () => _copy(
+                                          _mcpConfig(activeTokens.first.token),
+                                          'Config copiée',
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                          ),
+                          const SizedBox(height: 16),
+                          _Step(
+                            number: '3',
+                            title: 'Redémarre Claude Desktop',
+                            child: Text(
+                              'Productivitwo apparaîtra dans tes outils MCP. '
+                              'Dis à Claude : "Crée un Gantt pour ma roadmap marketing de 3 mois".',
+                              style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(0.65), height: 1.5),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          // Note token visible
+                          if (_newTokenValue != null)
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: cs.primaryContainer.withOpacity(0.5),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.info_outline, size: 14, color: cs.primary),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text('Token créé (visible une seule fois)',
+                                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: cs.primary)),
+                                        SelectableText(_newTokenValue!,
+                                            style: const TextStyle(fontFamily: 'monospace', fontSize: 11)),
+                                      ],
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.copy_outlined, size: 14),
+                                    onPressed: () => _copy(_newTokenValue!, 'Token copié'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+
+                // ── Onglet 2 : Tokens ─────────────────────────────────────
+                Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text('Tokens actifs',
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
+                                    color: cs.onSurface.withOpacity(0.6))),
+                          ),
+                          FilledButton.icon(
+                            icon: const Icon(Icons.add, size: 14),
+                            label: const Text('Nouveau'),
+                            onPressed: _create,
+                            style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: _loading
+                          ? const Center(child: CircularProgressIndicator())
+                          : activeTokens.isEmpty
+                              ? Center(
+                                  child: Text('Aucun token actif',
+                                      style: TextStyle(color: cs.onSurface.withOpacity(0.4))))
+                              : ListView.builder(
+                                  itemCount: activeTokens.length,
+                                  itemBuilder: (_, i) {
+                                    final t = activeTokens[i];
+                                    return ListTile(
+                                      dense: true,
+                                      leading: Icon(Icons.key_outlined, size: 16, color: cs.primary),
+                                      title: Text(t.label, style: const TextStyle(fontSize: 13)),
+                                      subtitle: Text(
+                                        t.lastUsedAt != null
+                                            ? 'Utilisé le ${t.lastUsedAt!.day}/${t.lastUsedAt!.month}'
+                                            : 'Jamais utilisé',
+                                        style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.4)),
+                                      ),
+                                      trailing: TextButton(
+                                        child: Text('Révoquer', style: TextStyle(color: cs.error, fontSize: 12)),
+                                        onPressed: () async {
+                                          await widget.sync.revokeApiToken(t.id);
+                                          _load();
+                                        },
+                                      ),
+                                    );
+                                  },
+                                ),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 12),
-            ],
-
-            // Liste des tokens
-            Expanded(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : activeTokens.isEmpty
-                      ? Center(
-                          child: Text('Aucun token actif',
-                              style: TextStyle(
-                                  color:
-                                      cs.onSurface.withOpacity(0.4))),
-                        )
-                      : ListView.builder(
-                          controller: scroll,
-                          itemCount: activeTokens.length,
-                          itemBuilder: (_, i) {
-                            final t = activeTokens[i];
-                            return ListTile(
-                              dense: true,
-                              leading: Icon(Icons.key_outlined,
-                                  size: 16, color: cs.primary),
-                              title: Text(t.label,
-                                  style: const TextStyle(fontSize: 13)),
-                              subtitle: Text(
-                                t.lastUsedAt != null
-                                    ? 'Utilisé le ${t.lastUsedAt!.day}/${t.lastUsedAt!.month}'
-                                    : 'Jamais utilisé',
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    color:
-                                        cs.onSurface.withOpacity(0.4)),
-                              ),
-                              trailing: TextButton(
-                                child: Text('Révoquer',
-                                    style:
-                                        TextStyle(color: cs.error, fontSize: 12)),
-                                onPressed: () async {
-                                  await widget.sync.revokeApiToken(t.id);
-                                  _load();
-                                },
-                              ),
-                            );
-                          },
-                        ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
+    );
+  }
+}
+
+// ── Widget étape numérotée ────────────────────────────────────────────────────
+
+class _Step extends StatelessWidget {
+  final String number;
+  final String title;
+  final Widget child;
+  const _Step({required this.number, required this.title, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 28, height: 28,
+          decoration: BoxDecoration(color: cs.primaryContainer, shape: BoxShape.circle),
+          alignment: Alignment.center,
+          child: Text(number, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: cs.primary)),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              child,
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
