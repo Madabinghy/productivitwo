@@ -803,19 +803,20 @@ async function executeGetDayPlan(uid, date) {
         .get();
     if (snap.empty)
         return `Aucune action planifiée le ${date}.`;
-    const items = snap.docs.map((d) => {
-        const v = d.data();
-        return {
-            id: v.id,
-            title: v.title,
-            done: v.done,
-            blockId: v.blockId || null,
-            domainId: v.domainId || null,
-            activityId: v.activityId || null,
-            status: v.status || "active",
-            order: v.order || 0,
-        };
-    }).sort((a, b) => a.order - b.order);
+    const items = snap.docs
+        .map((d) => d.data())
+        .filter((v) => !v.archived && v.status !== "archived")
+        .map((v) => ({
+        id: v.id,
+        title: v.title,
+        done: v.done,
+        blockId: v.blockId || null,
+        domainId: v.domainId || null,
+        activityId: v.activityId || null,
+        status: v.status || "active",
+        order: v.order || 0,
+    }))
+        .sort((a, b) => a.order - b.order);
     const done = items.filter((it) => it.done).length;
     return JSON.stringify({
         date,
