@@ -5,8 +5,9 @@ import 'package:productivitwo_v1/models.dart';
 
 class ApiTokensScreen extends StatefulWidget {
   final FirestoreSync sync;
+  final String uid;
 
-  const ApiTokensScreen({super.key, required this.sync});
+  const ApiTokensScreen({super.key, required this.sync, this.uid = ''});
 
   @override
   State<ApiTokensScreen> createState() => _ApiTokensScreenState();
@@ -189,6 +190,57 @@ class _ApiTokensScreenState extends State<ApiTokensScreen> {
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               children: [
+                // ── UID (pour lier avec le web app) ────────────────────────
+                if (widget.uid.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: cs.surfaceContainerHighest.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Ton UID (pour le web app)',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color:
+                                          cs.onSurface.withOpacity(0.5)),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  widget.uid,
+                                  style: const TextStyle(
+                                      fontFamily: 'monospace',
+                                      fontSize: 12),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.copy_outlined, size: 16),
+                            onPressed: () {
+                              Clipboard.setData(
+                                  ClipboardData(text: widget.uid));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                    content: Text('UID copié'),
+                                    duration: Duration(seconds: 2)),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 // ── En-tête explicatif ──────────────────────────────────────
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),

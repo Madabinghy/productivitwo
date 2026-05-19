@@ -8,6 +8,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('2.4', '19 mai 2026', [
+    (Icons.link_outlined, 'Liaison compte iOS ↔ web app : connecte-toi avec ton UID + token iOS sur productivitwo-app.web.app'),
+    (Icons.smart_toy_outlined, 'Claude peut lire et modifier tes activités, routines et plan du jour via MCP'),
+  ]),
   _Entry('2.3', '19 mai 2026', [
     (Icons.schedule_outlined, 'Routines temporelles : définis une période de début/fin sur chaque action récurrente'),
     (Icons.account_tree_outlined, 'Actions de tâche Gantt : ajoute le détail opérationnel à chaque tâche, planifiable au quotidien'),

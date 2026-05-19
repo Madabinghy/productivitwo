@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.mcpHandler = exports.pushGantt = void 0;
+exports.mcpHandler = exports.getCustomToken = exports.pushGantt = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const firestore_1 = require("firebase-admin/firestore");
@@ -405,6 +405,33 @@ async function executePushGantt(uid, input) {
         `• Voir sur : https://productivitwo-app.web.app\n` +
         `• projectId : ${projectId}`);
 }
+// ── getCustomToken ────────────────────────────────────────────────────────────
+//
+// POST { uid, token }
+// Valide le token API, retourne un Firebase custom token pour cet UID.
+// Permet au web app de se connecter avec le même UID que l'app iOS.
+exports.getCustomToken = (0, https_1.onRequest)({ cors: true, invoker: "public" }, async (req, res) => {
+    if (req.method === "OPTIONS") {
+        res.status(204).send("");
+        return;
+    }
+    if (req.method !== "POST") {
+        res.status(405).json({ error: "Method Not Allowed" });
+        return;
+    }
+    const { uid, token } = req.body;
+    if (!uid || !token) {
+        res.status(400).json({ error: "uid et token requis" });
+        return;
+    }
+    const valid = await validateToken(uid, token);
+    if (!valid) {
+        res.status(401).json({ error: "Token invalide ou révoqué" });
+        return;
+    }
+    const customToken = await admin.auth().createCustomToken(uid);
+    res.status(200).json({ customToken });
+});
 exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, async (req, res) => {
     var _a, _b, _c, _d, _e, _f;
     // CORS preflight

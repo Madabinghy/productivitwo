@@ -3475,7 +3475,7 @@ class _AppRootState extends State<AppRoot>
                   ));
                 } else if (v == 'api_tokens') {
                   Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => ApiTokensScreen(sync: _sync),
+                    builder: (_) => ApiTokensScreen(sync: _sync, uid: _sync.uid ?? ''),
                   ));
                 } else if (v == 'apple_account') {
                   showModalBottomSheet(

@@ -570,6 +570,32 @@ async function executePushGantt(uid: string, input: PushGanttBody): Promise<stri
   );
 }
 
+// ── getCustomToken ────────────────────────────────────────────────────────────
+//
+// POST { uid, token }
+// Valide le token API, retourne un Firebase custom token pour cet UID.
+// Permet au web app de se connecter avec le même UID que l'app iOS.
+
+export const getCustomToken = onRequest({ cors: true, invoker: "public" }, async (req, res) => {
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") { res.status(405).json({ error: "Method Not Allowed" }); return; }
+
+  const { uid, token } = req.body as { uid?: string; token?: string };
+  if (!uid || !token) {
+    res.status(400).json({ error: "uid et token requis" });
+    return;
+  }
+
+  const valid = await validateToken(uid, token);
+  if (!valid) {
+    res.status(401).json({ error: "Token invalide ou révoqué" });
+    return;
+  }
+
+  const customToken = await admin.auth().createCustomToken(uid);
+  res.status(200).json({ customToken });
+});
+
 export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (req, res) => {
   // CORS preflight
   if (req.method === "OPTIONS") { res.status(204).send(""); return; }
