@@ -25,25 +25,22 @@ class AppleSignInTile extends StatefulWidget {
 
 class _AppleSignInTileState extends State<AppleSignInTile> {
   bool _loading = false;
+  String? _error;
 
   Future<void> _signIn() async {
-    setState(() => _loading = true);
+    setState(() { _loading = true; _error = null; });
     try {
       final result = await widget.sync.signInWithApple();
 
-      // Lier RevenueCat au compte
       await ProManager.loginUser(result.uid);
 
       if (!result.isNew) {
-        // Compte existant → télécharger les données Firestore
         final remote = await widget.sync.pull();
         if (remote != null && mounted) {
-          // Remplace les données locales par celles du compte
           await FileStore().save(remote);
           widget.onDataChanged();
         }
       } else {
-        // Nouveau compte → uploader les données locales vers Firestore
         await widget.sync.pushAll(widget.state);
       }
 
@@ -51,11 +48,14 @@ class _AppleSignInTileState extends State<AppleSignInTile> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Compte connecté ✓')),
+          const SnackBar(content: Text('Compte Apple connecté ✓')),
         );
       }
     } catch (e) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() {
+        _loading = false;
+        _error = e.toString().replaceAll('Exception: ', '');
+      });
     }
   }
 
@@ -102,24 +102,60 @@ class _AppleSignInTileState extends State<AppleSignInTile> {
     }
 
     if (!isAnon) {
-      return ListTile(
-        leading: Icon(Icons.apple, color: cs.onSurface),
-        title: const Text('Compte Apple connecté'),
-        subtitle: email != null ? Text(email) : null,
-        trailing: TextButton(
-          onPressed: _signOut,
-          child: Text('Déconnecter',
-              style: TextStyle(color: cs.onSurface.withOpacity(.5))),
-        ),
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: Container(
+              width: 36, height: 36,
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.check, color: Colors.green, size: 18),
+            ),
+            title: const Text('Compte Apple connecté',
+                style: TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: email != null
+                ? Text(email, style: const TextStyle(fontSize: 12))
+                : const Text('Synchronisation active'),
+            trailing: TextButton(
+              onPressed: _signOut,
+              child: Text('Déconnecter',
+                  style: TextStyle(color: cs.onSurface.withOpacity(.45), fontSize: 13)),
+            ),
+          ),
+        ],
       );
     }
 
-    return ListTile(
-      leading: Icon(Icons.apple, color: cs.onSurface),
-      title: const Text('Connecter avec Apple'),
-      subtitle: const Text('Sauvegardez et restaurez vos données'),
-      trailing: const Icon(Icons.chevron_right),
-      onTap: _signIn,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ListTile(
+          leading: Icon(Icons.apple, color: cs.onSurface),
+          title: const Text('Connecter avec Apple'),
+          subtitle: const Text('Sauvegardez et restaurez vos données'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: _signIn,
+        ),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: cs.errorContainer,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                _error!,
+                style: TextStyle(fontSize: 12, color: cs.onErrorContainer),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

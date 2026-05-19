@@ -8,6 +8,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('2.5', '19 mai 2026', [
+    (Icons.apple, 'Compte Apple : affichage clair de l\'état connecté + messages d\'erreur'),
+    (Icons.key_outlined, 'Tokens API : UID Apple visible et copiable pour lier au web app'),
+  ]),
   _Entry('2.4', '19 mai 2026', [
     (Icons.link_outlined, 'Liaison compte iOS ↔ web app : connecte-toi avec ton UID + token iOS sur productivitwo-app.web.app'),
     (Icons.smart_toy_outlined, 'Claude peut lire et modifier tes activités, routines et plan du jour via MCP'),
