@@ -6,27 +6,39 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/.env"
 
-WORKFLOW_ID="${1:-}"
+ARG="${1:-}"
 
-# Si un workflow est spécifié, déclencher un nouveau build
-if [ -n "$WORKFLOW_ID" ]; then
-  echo "🚀 Déclenchement du build $WORKFLOW_ID..."
+if [[ "$ARG" =~ ^[a-f0-9]{24}$ ]]; then
+  # ID de build fourni directement
+  BUILD_ID="$ARG"
+  echo "🔨 Build ID fourni : $BUILD_ID"
+elif [ -n "$ARG" ]; then
+  # Workflow ID → déclenche un nouveau build
+  echo "🚀 Déclenchement du build $ARG..."
   BUILD_RESP=$(curl -s -X POST \
     -H "x-auth-token: $CODEMAGIC_API_KEY" \
     -H "Content-Type: application/json" \
     "https://api.codemagic.io/builds" \
-    -d "{\"appId\":\"$CODEMAGIC_APP_ID\",\"workflowId\":\"$WORKFLOW_ID\",\"branch\":\"main\"}")
+    -d "{\"appId\":\"$CODEMAGIC_APP_ID\",\"workflowId\":\"$ARG\",\"branch\":\"main\"}")
   BUILD_ID=$(echo "$BUILD_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('buildId','error'))" 2>/dev/null)
-  echo "🔨 Build ID : $BUILD_ID"
+  echo "🔨 Build lancé : $BUILD_ID"
 else
-  # Prendre le dernier build
-  echo "⏳ Récupération du dernier build..."
+  # Prend le build le plus récent NON terminé, sinon le dernier
+  echo "⏳ Récupération du dernier build actif..."
   BUILD_DATA=$(curl -s \
     -H "x-auth-token: $CODEMAGIC_API_KEY" \
-    "https://api.codemagic.io/builds?appId=$CODEMAGIC_APP_ID&branch=main&limit=1")
-  BUILD_ID=$(echo "$BUILD_DATA" | python3 -c "import sys,json; print(json.load(sys.stdin)['builds'][0]['_id'])" 2>/dev/null)
-  WORKFLOW=$(echo "$BUILD_DATA" | python3 -c "import sys,json; print(json.load(sys.stdin)['builds'][0].get('workflowName','?'))" 2>/dev/null)
-  echo "🔨 Workflow : $WORKFLOW | ID : $BUILD_ID"
+    "https://api.codemagic.io/builds?appId=$CODEMAGIC_APP_ID&branch=main&limit=5")
+  BUILD_ID=$(echo "$BUILD_DATA" | python3 -c "
+import sys,json
+builds = json.load(sys.stdin)['builds']
+# Préférer un build non terminé
+for b in builds:
+    if b['status'] not in ('finished','failed','error','canceled'):
+        print(b['_id']); exit()
+# Sinon le plus récent
+print(builds[0]['_id'])
+" 2>/dev/null)
+  echo "🔨 Build ID : $BUILD_ID"
 fi
 
 echo "⏳ Attente de la fin du build (max 20 min)..."

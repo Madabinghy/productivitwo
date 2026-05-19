@@ -406,6 +406,24 @@ const PLAN_DAY_TOOL = {
         },
     },
 };
+const ARCHIVE_PROJECT_TOOL = {
+    name: "archive_project",
+    description: "Met un projet Gantt en veille (archived) ou le réactive (active). " +
+        "Un projet en veille reste visible dans la section 'En veille' du web app " +
+        "mais n'apparaît plus dans le focus principal. " +
+        "Utilise cet outil plutôt que delete_project pour les projets à reprendre plus tard.",
+    inputSchema: {
+        type: "object",
+        required: ["projectId"],
+        properties: {
+            projectId: { type: "string", description: "id du projet" },
+            restore: {
+                type: "boolean",
+                description: "true = réactiver le projet, false/absent = mettre en veille",
+            },
+        },
+    },
+};
 const DELETE_PROJECT_TOOL = {
     name: "delete_project",
     description: "Supprime définitivement un projet Gantt et son objectif stratégique associé. " +
@@ -899,6 +917,19 @@ async function executeClearDayPlan(uid, date) {
     await batch.commit();
     return `✅ ${snap.size} action(s) non faite(s) supprimée(s) du plan du ${date}.`;
 }
+async function executeArchiveProject(uid, projectId, restore) {
+    var _a, _b;
+    const ref = db.collection(`users/${uid}/projects`).doc(projectId);
+    const snap = await ref.get();
+    if (!snap.exists)
+        return `Projet introuvable : ${projectId}`;
+    const title = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.title) !== null && _b !== void 0 ? _b : projectId;
+    const newStatus = restore ? "active" : "archived";
+    await ref.update({ status: newStatus, updatedAt: firestore_1.FieldValue.serverTimestamp() });
+    return restore
+        ? `✅ Projet "${title}" réactivé — il apparaît à nouveau dans le focus.`
+        : `✅ Projet "${title}" mis en veille — visible dans la section Archives du web app.`;
+}
 async function executeDeleteProject(uid, projectId, deleteObjective) {
     var _a;
     const projectRef = db.collection(`users/${uid}/projects`).doc(projectId);
@@ -985,7 +1016,7 @@ exports.getCustomToken = (0, https_1.onRequest)({ cors: true, invoker: "public" 
     res.status(200).json({ customToken });
 });
 exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, async (req, res) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r;
     // CORS preflight
     if (req.method === "OPTIONS") {
         res.status(204).send("");
@@ -1062,6 +1093,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                         LIST_PROJECTS_TOOL,
                         GET_PROJECT_TOOL,
                         PUSH_GANTT_MCP_TOOL,
+                        ARCHIVE_PROJECT_TOOL,
                         DELETE_PROJECT_TOOL,
                         UPDATE_ACTIVITY_GOAL_TOOL,
                         CREATE_ROUTINE_TOOL,
@@ -1107,8 +1139,11 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                 else if (toolName === "clear_day_plan") {
                     text = await executeClearDayPlan(uid, args.date);
                 }
+                else if (toolName === "archive_project") {
+                    text = await executeArchiveProject(uid, args.projectId, (_q = args.restore) !== null && _q !== void 0 ? _q : false);
+                }
                 else if (toolName === "delete_project") {
-                    text = await executeDeleteProject(uid, args.projectId, (_q = args.deleteObjective) !== null && _q !== void 0 ? _q : false);
+                    text = await executeDeleteProject(uid, args.projectId, (_r = args.deleteObjective) !== null && _r !== void 0 ? _r : false);
                 }
                 else if (toolName === "get_user_context") {
                     text = await executeGetUserContext(uid);

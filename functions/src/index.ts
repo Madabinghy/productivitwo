@@ -530,6 +530,26 @@ const PLAN_DAY_TOOL = {
   },
 };
 
+const ARCHIVE_PROJECT_TOOL = {
+  name: "archive_project",
+  description:
+    "Met un projet Gantt en veille (archived) ou le réactive (active). " +
+    "Un projet en veille reste visible dans la section 'En veille' du web app " +
+    "mais n'apparaît plus dans le focus principal. " +
+    "Utilise cet outil plutôt que delete_project pour les projets à reprendre plus tard.",
+  inputSchema: {
+    type: "object",
+    required: ["projectId"],
+    properties: {
+      projectId: { type: "string", description: "id du projet" },
+      restore: {
+        type: "boolean",
+        description: "true = réactiver le projet, false/absent = mettre en veille",
+      },
+    },
+  },
+};
+
 const DELETE_PROJECT_TOOL = {
   name: "delete_project",
   description:
@@ -1118,6 +1138,18 @@ async function executeClearDayPlan(uid: string, date: string): Promise<string> {
   return `✅ ${snap.size} action(s) non faite(s) supprimée(s) du plan du ${date}.`;
 }
 
+async function executeArchiveProject(uid: string, projectId: string, restore: boolean): Promise<string> {
+  const ref = db.collection(`users/${uid}/projects`).doc(projectId);
+  const snap = await ref.get();
+  if (!snap.exists) return `Projet introuvable : ${projectId}`;
+  const title = snap.data()?.title ?? projectId;
+  const newStatus = restore ? "active" : "archived";
+  await ref.update({ status: newStatus, updatedAt: FieldValue.serverTimestamp() });
+  return restore
+    ? `✅ Projet "${title}" réactivé — il apparaît à nouveau dans le focus.`
+    : `✅ Projet "${title}" mis en veille — visible dans la section Archives du web app.`;
+}
+
 async function executeDeleteProject(
   uid: string,
   projectId: string,
@@ -1313,6 +1345,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
             LIST_PROJECTS_TOOL,
             GET_PROJECT_TOOL,
             PUSH_GANTT_MCP_TOOL,
+            ARCHIVE_PROJECT_TOOL,
             DELETE_PROJECT_TOOL,
             UPDATE_ACTIVITY_GOAL_TOOL,
             CREATE_ROUTINE_TOOL,
@@ -1358,6 +1391,8 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
           text = await executeDeleteGoal(uid, args.goalId as string, (args.action as string) ?? "archive");
         } else if (toolName === "clear_day_plan") {
           text = await executeClearDayPlan(uid, args.date as string);
+        } else if (toolName === "archive_project") {
+          text = await executeArchiveProject(uid, args.projectId as string, (args.restore as boolean) ?? false);
         } else if (toolName === "delete_project") {
           text = await executeDeleteProject(
             uid,

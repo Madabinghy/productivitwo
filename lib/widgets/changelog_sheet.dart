@@ -8,6 +8,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('2.6', '19 mai 2026', [
+    (Icons.archive_outlined, 'Projets Gantt : mettre en veille et réactiver depuis le web app'),
+    (Icons.add_circle_outline, 'Claude peut créer et modifier des activités directement'),
+  ]),
   _Entry('2.5', '19 mai 2026', [
     (Icons.apple, 'Compte Apple : affichage clair de l\'état connecté + messages d\'erreur'),
     (Icons.key_outlined, 'Tokens API : UID Apple visible et copiable pour lier au web app'),

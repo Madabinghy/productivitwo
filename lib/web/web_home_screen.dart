@@ -266,11 +266,14 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
       );
     }
 
-    // Grouper les projets par objectif stratégique
+    // Séparer actifs et archivés
+    final active = _projects.where((p) => p.status != 'archived').toList();
+    final archived = _projects.where((p) => p.status == 'archived').toList();
+
+    // Grouper les actifs par objectif stratégique
     final withObj = <StrategicObjective, List<Project>>{};
     final withoutObj = <Project>[];
-
-    for (final p in _projects) {
+    for (final p in active) {
       final obj = _objectiveFor(p);
       if (obj != null) {
         withObj.putIfAbsent(obj, () => []).add(p);
@@ -284,44 +287,56 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
       child: ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          // Projets avec objectif stratégique
+          // Projets actifs avec objectif stratégique
           for (final entry in withObj.entries) ...[
             _ObjectiveHeader(objective: entry.key),
             const SizedBox(height: 12),
             for (final p in entry.value) ...[
               _ProjectCard(
                 project: p,
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => GanttScreen(project: p)),
-                ),
+                onTap: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => GanttScreen(project: p))),
+                onArchive: () => _archiveProject(p, true),
               ),
               const SizedBox(height: 10),
             ],
             const SizedBox(height: 20),
           ],
-          // Projets sans objectif
+          // Projets actifs sans objectif
           if (withoutObj.isNotEmpty) ...[
             if (withObj.isNotEmpty) ...[
-              Divider(color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.4)),
+              Divider(color: cs.outlineVariant.withOpacity(0.4)),
               const SizedBox(height: 16),
             ],
             for (final p in withoutObj) ...[
               _ProjectCard(
                 project: p,
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => GanttScreen(project: p)),
-                ),
+                onTap: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => GanttScreen(project: p))),
+                onArchive: () => _archiveProject(p, true),
               ),
               const SizedBox(height: 10),
             ],
           ],
+
+          // ── Section En veille ─────────────────────────────────────────
+          if (archived.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _ArchivedSection(
+              projects: archived,
+              onRestore: (p) => _archiveProject(p, false),
+              onTap: (p) => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => GanttScreen(project: p))),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  Future<void> _archiveProject(Project p, bool archive) async {
+    await _sync.saveProject(p..status = archive ? 'archived' : 'active');
+    _load();
   }
 }
 
@@ -375,7 +390,8 @@ class _ObjectiveHeader extends StatelessWidget {
 class _ProjectCard extends StatelessWidget {
   final Project project;
   final VoidCallback onTap;
-  const _ProjectCard({required this.project, required this.onTap});
+  final VoidCallback? onArchive;
+  const _ProjectCard({required this.project, required this.onTap, this.onArchive});
 
   String _fmt(DateTime d) {
     const m = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin', 'juil', 'aoû', 'sep', 'oct', 'nov', 'déc'];
@@ -414,7 +430,17 @@ class _ProjectCard extends StatelessWidget {
                     ),
                   ),
                   _SourceBadge(source: project.sourceType),
-                  const SizedBox(width: 8),
+                  if (onArchive != null) ...[
+                    const SizedBox(width: 4),
+                    IconButton(
+                      icon: Icon(Icons.archive_outlined,
+                          size: 16, color: cs.onSurface.withOpacity(0.35)),
+                      tooltip: 'Mettre en veille',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: onArchive,
+                    ),
+                  ],
+                  const SizedBox(width: 4),
                   Icon(Icons.chevron_right,
                       size: 18,
                       color: cs.onSurface.withOpacity(0.3)),
@@ -465,6 +491,143 @@ class _ProjectCard extends StatelessWidget {
                   color: cs.primary,
                 ),
               ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Section En veille ─────────────────────────────────────────────────────────
+
+class _ArchivedSection extends StatefulWidget {
+  final List<Project> projects;
+  final void Function(Project) onRestore;
+  final void Function(Project) onTap;
+  const _ArchivedSection({
+    required this.projects,
+    required this.onRestore,
+    required this.onTap,
+  });
+
+  @override
+  State<_ArchivedSection> createState() => _ArchivedSectionState();
+}
+
+class _ArchivedSectionState extends State<_ArchivedSection> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _expanded = !_expanded),
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                Icon(
+                  _expanded ? Icons.expand_less : Icons.expand_more,
+                  size: 18, color: cs.onSurface.withOpacity(0.4)),
+                const SizedBox(width: 8),
+                Icon(Icons.archive_outlined,
+                    size: 14, color: cs.onSurface.withOpacity(0.4)),
+                const SizedBox(width: 6),
+                Text(
+                  'En veille (${widget.projects.length})',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurface.withOpacity(0.45)),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_expanded) ...[
+          const SizedBox(height: 8),
+          for (final p in widget.projects) ...[
+            _ArchivedProjectCard(
+              project: p,
+              onRestore: () => widget.onRestore(p),
+              onTap: () => widget.onTap(p),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ],
+      ],
+    );
+  }
+}
+
+class _ArchivedProjectCard extends StatelessWidget {
+  final Project project;
+  final VoidCallback onRestore;
+  final VoidCallback onTap;
+  const _ArchivedProjectCard({
+    required this.project,
+    required this.onRestore,
+    required this.onTap,
+  });
+
+  String _fmt(DateTime d) {
+    const m = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin',
+                'juil', 'aoû', 'sep', 'oct', 'nov', 'déc'];
+    return '${d.day} ${m[d.month - 1]} ${d.year}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Card(
+      elevation: 0,
+      color: cs.surfaceContainerHighest.withOpacity(0.3),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: cs.outlineVariant.withOpacity(0.3)),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+          child: Row(
+            children: [
+              Icon(Icons.archive_outlined,
+                  size: 16, color: cs.onSurface.withOpacity(0.3)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(project.title,
+                        style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: cs.onSurface.withOpacity(0.5))),
+                    if (project.endDate != null)
+                      Text('jusqu\'au ${_fmt(project.endDate!)}',
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: cs.onSurface.withOpacity(0.3))),
+                  ],
+                ),
+              ),
+              TextButton.icon(
+                icon: Icon(Icons.unarchive_outlined, size: 14,
+                    color: cs.primary.withOpacity(0.7)),
+                label: Text('Réactiver',
+                    style: TextStyle(
+                        fontSize: 12, color: cs.primary.withOpacity(0.7))),
+                onPressed: onRestore,
+                style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact),
+              ),
             ],
           ),
         ),
