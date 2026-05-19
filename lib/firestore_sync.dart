@@ -51,7 +51,6 @@ class FirestoreSync {
     final oauthCredential = OAuthProvider('apple.com').credential(
       idToken: idToken,
       rawNonce: rawNonce,
-      accessToken: appleCredential.authorizationCode,
     );
 
     // Si l'user est anonyme, on tente de lier le compte Apple au compte anonyme.

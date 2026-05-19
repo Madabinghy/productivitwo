@@ -27,7 +27,11 @@ class WebApp extends StatelessWidget {
         ).copyWith(
           primary: _kPrimary,
           secondary: _kDark,
+          surface: const Color(0xFFD6EEE6),
+          surfaceContainerLowest: const Color(0xFFC8E8DC),
+          surfaceContainerHighest: const Color(0xFFB0DDCB),
         ),
+        scaffoldBackgroundColor: const Color(0xFFC8E8DC),
         useMaterial3: true,
       ),
 
@@ -39,10 +43,11 @@ class WebApp extends StatelessWidget {
         ).copyWith(
           primary: _kSeedDark,
           secondary: _kPrimary,
-          surface: const Color(0xFF1C1830),
-          surfaceContainerLowest: const Color(0xFF120F22),
-          surfaceContainerHighest: const Color(0xFF2A2445),
+          surface: const Color(0xFF0C1C14),
+          surfaceContainerLowest: const Color(0xFF07100D),
+          surfaceContainerHighest: const Color(0xFF152B1E),
         ),
+        scaffoldBackgroundColor: const Color(0xFF07100D),
         useMaterial3: true,
       ),
 

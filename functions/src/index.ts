@@ -251,6 +251,25 @@ const ADD_TO_DAY_PLAN_TOOL = {
   },
 };
 
+const DELETE_PROJECT_TOOL = {
+  name: "delete_project",
+  description:
+    "Supprime définitivement un projet Gantt et son objectif stratégique associé. " +
+    "Utilise list_projects pour trouver l'id avant de supprimer. " +
+    "Demande toujours confirmation à l'utilisateur avant d'appeler cet outil.",
+  inputSchema: {
+    type: "object",
+    required: ["projectId"],
+    properties: {
+      projectId: { type: "string", description: "id du projet à supprimer" },
+      deleteObjective: {
+        type: "boolean",
+        description: "Si true, supprime aussi l'objectif stratégique lié (défaut: false)",
+      },
+    },
+  },
+};
+
 const LIST_PROJECTS_TOOL = {
   name: "list_projects",
   description:
@@ -502,6 +521,32 @@ async function executeAddToDayPlan(
   return `✅ "${args.title}" ajouté au plan du ${args.date}.`;
 }
 
+async function executeDeleteProject(
+  uid: string,
+  projectId: string,
+  deleteObjective: boolean
+): Promise<string> {
+  const projectRef = db.collection(`users/${uid}/projects`).doc(projectId);
+  const projectSnap = await projectRef.get();
+
+  if (!projectSnap.exists) {
+    return `Projet introuvable : ${projectId}`;
+  }
+
+  const projectData = projectSnap.data() as Record<string, unknown>;
+  const title = projectData.title ?? projectId;
+  const objId = projectData.strategicObjectiveId as string | undefined;
+
+  await projectRef.delete();
+
+  if (deleteObjective && objId) {
+    await db.collection(`users/${uid}/strategic_objectives`).doc(objId).delete();
+    return `✅ Projet "${title}" et son objectif stratégique supprimés.`;
+  }
+
+  return `✅ Projet "${title}" supprimé.`;
+}
+
 async function executeListProjects(uid: string): Promise<string> {
   const snap = await db.collection(`users/${uid}/projects`).get();
   if (snap.empty) return "Aucun projet trouvé dans Productivitwo.";
@@ -650,6 +695,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
             LIST_PROJECTS_TOOL,
             GET_PROJECT_TOOL,
             PUSH_GANTT_MCP_TOOL,
+            DELETE_PROJECT_TOOL,
             UPDATE_ACTIVITY_GOAL_TOOL,
             CREATE_ROUTINE_TOOL,
             ADD_TO_DAY_PLAN_TOOL,
@@ -661,7 +707,13 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
       const args = rpc.params?.arguments ?? {};
       try {
         let text = "";
-        if (toolName === "get_user_context") {
+        if (toolName === "delete_project") {
+          text = await executeDeleteProject(
+            uid,
+            args.projectId as string,
+            (args.deleteObjective as boolean) ?? false
+          );
+        } else if (toolName === "get_user_context") {
           text = await executeGetUserContext(uid);
         } else if (toolName === "list_projects") {
           text = await executeListProjects(uid);

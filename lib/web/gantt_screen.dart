@@ -1039,6 +1039,15 @@ class _TaskRow extends StatelessWidget {
         decoration: BoxDecoration(
           color: barColor,
           borderRadius: BorderRadius.circular(3),
+          boxShadow: isDone
+              ? null
+              : [
+                  BoxShadow(
+                    color: barColor.withOpacity(0.55),
+                    blurRadius: 8,
+                    spreadRadius: 0,
+                  ),
+                ],
         ),
         alignment: Alignment.centerLeft,
         padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -1060,7 +1069,7 @@ class _TaskRow extends StatelessWidget {
   Widget _buildMilestone() {
     final centerX = task.startDate.difference(projectStart).inDays / 7 * _kCellW + _kCellW / 2;
     final color = _hex(task.color, const Color(0xFF6B57F0));
-    const size = 12.0;
+    const size = 13.0;
 
     return Positioned(
       left: centerX - size / 2,
@@ -1073,6 +1082,13 @@ class _TaskRow extends StatelessWidget {
           decoration: BoxDecoration(
             color: color,
             borderRadius: BorderRadius.circular(2),
+            boxShadow: [
+              BoxShadow(
+                color: color.withOpacity(0.7),
+                blurRadius: 10,
+                spreadRadius: 1,
+              ),
+            ],
           ),
         ),
       ),
