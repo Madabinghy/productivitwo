@@ -88,6 +88,74 @@ exports.pushGantt = (0, https_1.onRequest)({ cors: true, invoker: "public" }, as
 // URL : /mcp/{uid}/{token}
 // Implémente le protocole MCP JSON-RPC 2.0 (Streamable HTTP, stateless).
 // Compatible Claude Desktop et Claude.ai web (Integrations).
+// ── Outils contexte utilisateur + écriture agenda ────────────────────────────
+const GET_USER_CONTEXT_TOOL = {
+    name: "get_user_context",
+    description: "Retourne le contexte complet de l'utilisateur : domaines de vie, activités " +
+        "(avec leurs objectifs quotidiens), routines actives et objectifs GTD en cours. " +
+        "Appelle cet outil en premier pour personnaliser tes suggestions.",
+    inputSchema: { type: "object", properties: {} },
+};
+const UPDATE_ACTIVITY_GOAL_TOOL = {
+    name: "update_activity_goal",
+    description: "Modifie l'objectif quotidien d'une activité (temps ou fréquence). " +
+        "Utilise cet outil pour ajuster la charge de travail en fonction du Gantt ou de la réalité de l'utilisateur.",
+    inputSchema: {
+        type: "object",
+        required: ["activityId"],
+        properties: {
+            activityId: { type: "string", description: "id de l'activité (obtenu via get_user_context)" },
+            goalMin: { type: "number", description: "Nouvel objectif en minutes/jour (activités 'time')" },
+            habitTarget: { type: "number", description: "Nouvelle cible de fréquence (activités 'habit')" },
+            habitFreq: { type: "number", description: "0=daily, 1=weekly, 2=monthly" },
+        },
+    },
+};
+const CREATE_ROUTINE_TOOL = {
+    name: "create_routine",
+    description: "Crée une action récurrente dans Productivitwo. " +
+        "Peut être liée à une période (startDate/endDate) et à une tâche Gantt (projectTaskId). " +
+        "La routine apparaît automatiquement dans le plan quotidien de l'utilisateur.",
+    inputSchema: {
+        type: "object",
+        required: ["title"],
+        properties: {
+            title: { type: "string", description: "Intitulé de l'action récurrente" },
+            domainId: { type: "string", description: "id du domaine associé (optionnel)" },
+            activityId: { type: "string", description: "id de l'activité associée (optionnel)" },
+            recurrenceType: {
+                type: "string",
+                enum: ["daily", "specificDays"],
+                description: "'daily' = tous les jours, 'specificDays' = jours choisis",
+            },
+            weekdays: {
+                type: "array",
+                items: { type: "number" },
+                description: "Jours actifs si specificDays : 1=Lun, 2=Mar … 7=Dim",
+            },
+            startDate: { type: "string", description: "Date d'activation ISO YYYY-MM-DD (optionnel)" },
+            endDate: { type: "string", description: "Date d'expiration ISO YYYY-MM-DD (optionnel)" },
+            projectTaskId: { type: "string", description: "id de la tâche Gantt liée (optionnel)" },
+        },
+    },
+};
+const ADD_TO_DAY_PLAN_TOOL = {
+    name: "add_to_day_plan",
+    description: "Ajoute une action au plan quotidien de l'utilisateur pour une date donnée. " +
+        "Utilise cet outil pour planifier des actions spécifiques dans l'agenda.",
+    inputSchema: {
+        type: "object",
+        required: ["title", "date"],
+        properties: {
+            title: { type: "string", description: "Titre de l'action" },
+            date: { type: "string", description: "Date ISO YYYY-MM-DD" },
+            domainId: { type: "string" },
+            activityId: { type: "string" },
+            projectId: { type: "string" },
+            projectTaskId: { type: "string" },
+        },
+    },
+};
 const LIST_PROJECTS_TOOL = {
     name: "list_projects",
     description: "Liste les projets Gantt existants dans Productivitwo. " +
@@ -179,6 +247,123 @@ async function validateToken(uid, rawToken) {
     }
     return false;
 }
+async function executeGetUserContext(uid) {
+    const [domainsSnap, activitiesSnap, routinesSnap, goalsSnap] = await Promise.all([
+        db.collection(`users/${uid}/domains`).get(),
+        db.collection(`users/${uid}/activities`).get(),
+        db.collection(`users/${uid}/recurringActions`).get(),
+        db.collection(`users/${uid}/goals`).where("status", "==", "active").get(),
+    ]);
+    const domains = domainsSnap.docs.map((d) => {
+        const v = d.data();
+        return { id: v.id, name: v.name };
+    });
+    const activities = activitiesSnap.docs.map((d) => {
+        const v = d.data();
+        return {
+            id: v.id,
+            name: v.name,
+            type: v.type, // 'time' | 'habit'
+            domainId: v.domainId,
+            goalMin: v.goalMin, // objectif minutes/jour
+            habitFreq: v.habitFreq, // 0=daily 1=weekly 2=monthly
+            habitTarget: v.habitTarget,
+        };
+    });
+    const activeRoutines = routinesSnap.docs
+        .map((d) => d.data())
+        .filter((r) => r.active)
+        .map((r) => ({
+        id: r.id,
+        title: r.title,
+        type: r.type,
+        weekdays: r.weekdays || [],
+        startDate: r.startDate || null,
+        endDate: r.endDate || null,
+        domainId: r.domainId || null,
+        activityId: r.activityId || null,
+    }));
+    const activeGoals = goalsSnap.docs.map((d) => {
+        const v = d.data();
+        const actions = (v.actions || []);
+        return {
+            id: v.id,
+            title: v.title,
+            domainId: v.domainId,
+            dueDate: v.dueDate || null,
+            progress: `${actions.filter((a) => a.done).length}/${actions.length}`,
+        };
+    });
+    return JSON.stringify({ domains, activities, activeRoutines, activeGoals }, null, 2);
+}
+async function executeUpdateActivityGoal(uid, activityId, updates) {
+    var _a, _b;
+    const ref = db.collection(`users/${uid}/activities`).doc(activityId);
+    const snap = await ref.get();
+    if (!snap.exists)
+        return `Activité introuvable : ${activityId}`;
+    const patch = {};
+    if (updates.goalMin !== undefined)
+        patch.goalMin = updates.goalMin;
+    if (updates.habitTarget !== undefined)
+        patch.habitTarget = updates.habitTarget;
+    if (updates.habitFreq !== undefined)
+        patch.habitFreq = updates.habitFreq;
+    await ref.update(patch);
+    const name = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : activityId;
+    return `✅ Objectif de "${name}" mis à jour. Visible dans Productivitwo à la prochaine synchronisation.`;
+}
+async function executeCreateRoutine(uid, args) {
+    const id = (0, uuid_1.v4)();
+    await db.collection(`users/${uid}/recurringActions`).doc(id).set({
+        id,
+        title: args.title,
+        domainId: args.domainId || null,
+        activityId: args.activityId || null,
+        blockId: null,
+        type: args.recurrenceType === "specificDays" ? "specificDays" : "daily",
+        weekdays: args.weekdays || [],
+        active: true,
+        createdAt: firestore_1.FieldValue.serverTimestamp(),
+        startDate: args.startDate || null,
+        endDate: args.endDate || null,
+        projectTaskId: args.projectTaskId || null,
+    });
+    const period = args.startDate && args.endDate
+        ? ` du ${args.startDate} au ${args.endDate}`
+        : args.startDate ? ` à partir du ${args.startDate}`
+            : args.endDate ? ` jusqu'au ${args.endDate}`
+                : "";
+    return `✅ Routine "${args.title}" créée${period}. Elle apparaîtra dans le plan quotidien dès la prochaine ouverture de l'app.`;
+}
+async function executeAddToDayPlan(uid, args) {
+    // Valider le format de date
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(args.date)) {
+        return `Date invalide : ${args.date}. Format attendu : YYYY-MM-DD`;
+    }
+    const yyyymmdd = args.date.replace(/-/g, "");
+    const id = (0, uuid_1.v4)();
+    await db.collection(`users/${uid}/dayPlan`).doc(id).set({
+        id,
+        kind: "action",
+        title: args.title,
+        yyyymmdd,
+        done: false,
+        doneCount: 0,
+        allDay: false,
+        isNowFocus: false,
+        order: 9999,
+        toPlan: false,
+        archived: false,
+        status: "active",
+        createdAt: firestore_1.FieldValue.serverTimestamp(),
+        domainId: args.domainId || null,
+        activityId: args.activityId || null,
+        projectId: args.projectId || null,
+        projectTaskId: args.projectTaskId || null,
+    });
+    return `✅ "${args.title}" ajouté au plan du ${args.date}.`;
+}
 async function executeListProjects(uid) {
     const snap = await db.collection(`users/${uid}/projects`).get();
     if (snap.empty)
@@ -266,14 +451,30 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
             responses.push({ jsonrpc: "2.0", id, result: {} });
         }
         else if (method === "tools/list") {
-            responses.push({ jsonrpc: "2.0", id, result: { tools: [LIST_PROJECTS_TOOL, GET_PROJECT_TOOL, PUSH_GANTT_MCP_TOOL] } });
+            responses.push({
+                jsonrpc: "2.0", id,
+                result: {
+                    tools: [
+                        GET_USER_CONTEXT_TOOL,
+                        LIST_PROJECTS_TOOL,
+                        GET_PROJECT_TOOL,
+                        PUSH_GANTT_MCP_TOOL,
+                        UPDATE_ACTIVITY_GOAL_TOOL,
+                        CREATE_ROUTINE_TOOL,
+                        ADD_TO_DAY_PLAN_TOOL,
+                    ],
+                },
+            });
         }
         else if (method === "tools/call") {
             const toolName = (_d = (_c = rpc.params) === null || _c === void 0 ? void 0 : _c.name) !== null && _d !== void 0 ? _d : "";
             const args = (_f = (_e = rpc.params) === null || _e === void 0 ? void 0 : _e.arguments) !== null && _f !== void 0 ? _f : {};
             try {
                 let text = "";
-                if (toolName === "list_projects") {
+                if (toolName === "get_user_context") {
+                    text = await executeGetUserContext(uid);
+                }
+                else if (toolName === "list_projects") {
                     text = await executeListProjects(uid);
                 }
                 else if (toolName === "get_project") {
@@ -281,6 +482,15 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                 }
                 else if (toolName === "push_gantt") {
                     text = await executePushGantt(uid, Object.assign({ uid }, args));
+                }
+                else if (toolName === "update_activity_goal") {
+                    text = await executeUpdateActivityGoal(uid, args.activityId, args);
+                }
+                else if (toolName === "create_routine") {
+                    text = await executeCreateRoutine(uid, args);
+                }
+                else if (toolName === "add_to_day_plan") {
+                    text = await executeAddToDayPlan(uid, args);
                 }
                 else {
                     responses.push({ jsonrpc: "2.0", id, error: { code: -32601, message: `Outil inconnu : ${toolName}` } });
