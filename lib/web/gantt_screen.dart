@@ -78,7 +78,424 @@ class _GanttScreenState extends State<GanttScreen> {
           child: Divider(height: 1, color: cs.outlineVariant.withOpacity(0.4)),
         ),
       ),
-      body: _GanttBody(project: _project, onTaskTap: _onTaskTap),
+      body: Column(
+        children: [
+          _GanttDashboard(project: _project),
+          Expanded(child: _GanttBody(project: _project, onTaskTap: _onTaskTap)),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Dashboard stratégique ─────────────────────────────────────────────────────
+
+class _GanttDashboard extends StatefulWidget {
+  final Project project;
+  const _GanttDashboard({required this.project});
+
+  @override
+  State<_GanttDashboard> createState() => _GanttDashboardState();
+}
+
+class _GanttDashboardState extends State<_GanttDashboard> {
+  bool _expanded = true;
+
+  Project get p => widget.project;
+
+  // ── Calculs ────────────────────────────────────────────────────────────────
+
+  DateTime get _today => DateTime.now();
+
+  bool _isOverdue(ProjectTask t) =>
+      t.endDate != null &&
+      DateTime(t.endDate!.year, t.endDate!.month, t.endDate!.day)
+          .isBefore(DateTime(_today.year, _today.month, _today.day)) &&
+      t.status != 'done' &&
+      t.status != 'skipped';
+
+  List<ProjectTask> get _realTasks =>
+      p.tasks.where((t) => !t.isMilestone).toList();
+  List<ProjectTask> get _milestones =>
+      p.tasks.where((t) => t.isMilestone).toList();
+
+  int get _totalTasks => _realTasks.length;
+  int get _doneTasks => _realTasks.where((t) => t.status == 'done').length;
+  int get _overdueTasks => _realTasks.where(_isOverdue).length;
+  double get _globalPct =>
+      _totalTasks > 0 ? _doneTasks / _totalTasks : 0.0;
+
+  // Statut d'une phase
+  ({int done, int total, int overdue, String label, Color color})
+      _phaseStats(ProjectPhase phase) {
+    final tasks = _realTasks.where((t) => t.phaseId == phase.id).toList();
+    final done = tasks.where((t) => t.status == 'done').length;
+    final overdue = tasks.where(_isOverdue).length;
+    final today = _today;
+    final start = DateTime(phase.startDate.year, phase.startDate.month, phase.startDate.day);
+    final end = DateTime(phase.endDate.year, phase.endDate.month, phase.endDate.day);
+    final todayD = DateTime(today.year, today.month, today.day);
+
+    String label;
+    Color color;
+    if (tasks.isNotEmpty && done == tasks.length) {
+      label = 'Terminée';
+      color = Colors.green;
+    } else if (overdue > 0) {
+      label = '$overdue en retard';
+      color = Colors.orange;
+    } else if (todayD.isBefore(start)) {
+      label = 'À venir';
+      color = Colors.grey;
+    } else if (todayD.isAfter(end)) {
+      label = 'Dépassée';
+      color = Colors.red;
+    } else {
+      label = 'En cours';
+      color = Colors.blue;
+    }
+    return (done: done, total: tasks.length, overdue: overdue, label: label, color: color);
+  }
+
+  // Statut d'un jalon
+  ({Color color, String label, IconData icon}) _milestoneStatus(ProjectTask m) {
+    if (m.status == 'done') {
+      return (color: Colors.green, label: 'Atteint', icon: Icons.check_circle_outline);
+    }
+    if (_isOverdue(m)) {
+      return (color: Colors.red, label: 'En retard', icon: Icons.warning_amber_outlined);
+    }
+    return (color: Colors.grey, label: 'À venir', icon: Icons.radio_button_unchecked);
+  }
+
+  String _fmtDate(DateTime d) {
+    const months = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin',
+                    'juil', 'aoû', 'sep', 'oct', 'nov', 'déc'];
+    return '${d.day} ${months[d.month - 1]}';
+  }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      color: cs.surface,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // ── Header cliquable ───────────────────────────────────────────
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              child: Row(
+                children: [
+                  Icon(Icons.analytics_outlined, size: 16, color: cs.primary),
+                  const SizedBox(width: 8),
+                  Text('Suivi stratégique',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: cs.onSurface)),
+                  const SizedBox(width: 12),
+                  // Résumé compact toujours visible
+                  _PillStat(
+                    label: '${(_globalPct * 100).round()}%',
+                    color: cs.primary,
+                  ),
+                  if (_overdueTasks > 0) ...[
+                    const SizedBox(width: 6),
+                    _PillStat(
+                      label: '$_overdueTasks en retard',
+                      color: Colors.orange,
+                    ),
+                  ],
+                  const Spacer(),
+                  Icon(
+                    _expanded ? Icons.expand_less : Icons.expand_more,
+                    size: 18,
+                    color: cs.onSurface.withOpacity(0.4),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // ── Contenu dépliable ──────────────────────────────────────────
+          if (_expanded) ...[
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Ligne 1 : stats globales
+                  Row(
+                    children: [
+                      _StatCard(
+                        label: 'Avancement',
+                        value: '$_doneTasks / $_totalTasks tâches',
+                        progress: _globalPct,
+                        color: cs.primary,
+                      ),
+                      const SizedBox(width: 12),
+                      _StatCard(
+                        label: 'En retard',
+                        value: '$_overdueTasks tâche${_overdueTasks != 1 ? 's' : ''}',
+                        color: _overdueTasks > 0 ? Colors.orange : Colors.green,
+                        icon: _overdueTasks > 0
+                            ? Icons.warning_amber_outlined
+                            : Icons.check_circle_outline,
+                      ),
+                      const SizedBox(width: 12),
+                      _StatCard(
+                        label: 'Jalons',
+                        value:
+                            '${_milestones.where((m) => m.status == 'done').length} / ${_milestones.length} atteint${_milestones.where((m) => m.status == 'done').length != 1 ? 's' : ''}',
+                        color: cs.secondary,
+                        icon: Icons.diamond_outlined,
+                      ),
+                    ],
+                  ),
+
+                  if (p.phases.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    Text('Par phase',
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.8,
+                            color: cs.onSurface.withOpacity(0.45))),
+                    const SizedBox(height: 8),
+                    // Grille des phases
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 8,
+                      children: p.phases.map((phase) {
+                        final s = _phaseStats(phase);
+                        final pct = s.total > 0 ? s.done / s.total : 0.0;
+                        return _PhaseChip(
+                          label: phase.label,
+                          done: s.done,
+                          total: s.total,
+                          pct: pct,
+                          statusLabel: s.label,
+                          statusColor: s.color,
+                          bgColor: _hex(phase.color, cs.primaryContainer),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+
+                  if (_milestones.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    Text('Jalons',
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.8,
+                            color: cs.onSurface.withOpacity(0.45))),
+                    const SizedBox(height: 6),
+                    ..._milestones.map((m) {
+                      final s = _milestoneStatus(m);
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Row(
+                          children: [
+                            Icon(s.icon, size: 14, color: s.color),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(m.title,
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      color: cs.onSurface.withOpacity(0.8))),
+                            ),
+                            if (m.startDate != null)
+                              Text(_fmtDate(m.startDate),
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: cs.onSurface.withOpacity(0.4))),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 7, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: s.color.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(s.label,
+                                  style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: s.color)),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+                ],
+              ),
+            ),
+          ],
+          Divider(height: 1, color: cs.outlineVariant.withOpacity(0.4)),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Widgets du dashboard ──────────────────────────────────────────────────────
+
+class _PillStat extends StatelessWidget {
+  final String label;
+  final Color color;
+  const _PillStat({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(label,
+            style: TextStyle(
+                fontSize: 11, fontWeight: FontWeight.w600, color: color)),
+      );
+}
+
+class _StatCard extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+  final double? progress;
+  final IconData? icon;
+
+  const _StatCard({
+    required this.label,
+    required this.value,
+    required this.color,
+    this.progress,
+    this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.07),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withOpacity(0.2), width: 1),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label,
+                style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: cs.onSurface.withOpacity(0.45),
+                    letterSpacing: 0.5)),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                if (icon != null) ...[
+                  Icon(icon, size: 14, color: color),
+                  const SizedBox(width: 5),
+                ],
+                Text(value,
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: color)),
+              ],
+            ),
+            if (progress != null) ...[
+              const SizedBox(height: 6),
+              LinearProgressIndicator(
+                value: progress,
+                minHeight: 3,
+                borderRadius: BorderRadius.circular(2),
+                backgroundColor: color.withOpacity(0.12),
+                color: color,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PhaseChip extends StatelessWidget {
+  final String label;
+  final int done;
+  final int total;
+  final double pct;
+  final String statusLabel;
+  final Color statusColor;
+  final Color bgColor;
+
+  const _PhaseChip({
+    required this.label,
+    required this.done,
+    required this.total,
+    required this.pct,
+    required this.statusLabel,
+    required this.statusColor,
+    required this.bgColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 180,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: bgColor.withOpacity(0.35),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: bgColor.withOpacity(0.6), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              overflow: TextOverflow.ellipsis),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Expanded(
+                child: LinearProgressIndicator(
+                  value: pct,
+                  minHeight: 3,
+                  borderRadius: BorderRadius.circular(2),
+                  backgroundColor: statusColor.withOpacity(0.12),
+                  color: statusColor,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text('$done/$total',
+                  style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.black.withOpacity(0.45))),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(statusLabel,
+              style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: statusColor)),
+        ],
+      ),
     );
   }
 }
