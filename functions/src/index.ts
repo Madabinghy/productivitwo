@@ -369,11 +369,29 @@ async function validateToken(uid: string, rawToken: string): Promise<boolean> {
 }
 
 async function executeGetUserContext(uid: string): Promise<string> {
-  const [domainsSnap, activitiesSnap, routinesSnap, goalsSnap] = await Promise.all([
+  // Fenêtre glissante : 7 derniers jours
+  const now = new Date();
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const ymdFrom = sevenDaysAgo.toISOString().slice(0, 10).replace(/-/g, "");
+
+  const [domainsSnap, activitiesSnap, routinesSnap, goalsSnap,
+         dayPlanSnap, habitHitsSnap, sessionsSnap] = await Promise.all([
     db.collection(`users/${uid}/domains`).get(),
     db.collection(`users/${uid}/activities`).get(),
     db.collection(`users/${uid}/recurringActions`).get(),
     db.collection(`users/${uid}/goals`).where("status", "==", "active").get(),
+    // Actions planifiées et réalisées sur 7 jours
+    db.collection(`users/${uid}/dayPlan`)
+      .where("yyyymmdd", ">=", ymdFrom)
+      .get(),
+    // Incréments de routines/habitudes sur 7 jours
+    db.collection(`users/${uid}/habitHits`)
+      .where("ts", ">=", sevenDaysAgo)
+      .get(),
+    // Sessions de temps loggué sur 7 jours
+    db.collection(`users/${uid}/sessions`)
+      .where("startAt", ">=", sevenDaysAgo.toISOString())
+      .get(),
   ]);
 
   const domains = domainsSnap.docs.map((d) => {
@@ -381,15 +399,17 @@ async function executeGetUserContext(uid: string): Promise<string> {
     return { id: v.id, name: v.name };
   });
 
+  const activityMap = new Map<string, string>();
   const activities = activitiesSnap.docs.map((d) => {
     const v = d.data();
+    activityMap.set(v.id, v.name);
     return {
       id: v.id,
       name: v.name,
-      type: v.type,           // 'time' | 'habit'
+      type: v.type,
       domainId: v.domainId,
-      goalMin: v.goalMin,     // objectif minutes/jour
-      habitFreq: v.habitFreq, // 0=daily 1=weekly 2=monthly
+      goalMin: v.goalMin,
+      habitFreq: v.habitFreq,
       habitTarget: v.habitTarget,
     };
   });
@@ -420,7 +440,68 @@ async function executeGetUserContext(uid: string): Promise<string> {
     };
   });
 
-  return JSON.stringify({ domains, activities, activeRoutines, activeGoals }, null, 2);
+  // ── Réalisé des 7 derniers jours ──────────────────────────────────────────
+
+  // Actions complétées (dayPlan done)
+  const completedActions = dayPlanSnap.docs
+    .map((d) => d.data())
+    .filter((it) => it.done)
+    .map((it) => ({
+      title: it.title,
+      date: it.yyyymmdd,
+      domainId: it.domainId || null,
+    }));
+
+  // Actions planifiées non faites (pour identifier les écarts)
+  const pendingActions = dayPlanSnap.docs
+    .map((d) => d.data())
+    .filter((it) => !it.done && !it.archived && it.status !== "archived")
+    .map((it) => ({ title: it.title, date: it.yyyymmdd }));
+
+  // Taux de complétion des habitudes/routines (habitHits groupés par habitId)
+  const hitsByHabit = new Map<string, number>();
+  for (const doc of habitHitsSnap.docs) {
+    const v = doc.data();
+    hitsByHabit.set(v.habitId, (hitsByHabit.get(v.habitId) || 0) + 1);
+  }
+  const habitCompletion = Array.from(hitsByHabit.entries()).map(([id, count]) => ({
+    activityId: id,
+    name: activityMap.get(id) || id,
+    hitsLast7Days: count,
+  }));
+
+  // Temps loggué par activité (sessions)
+  const minByActivity = new Map<string, number>();
+  for (const doc of sessionsSnap.docs) {
+    const v = doc.data();
+    if (!v.endAt) continue;
+    const start = new Date(v.startAt);
+    const end = new Date(v.endAt);
+    const mins = Math.round((end.getTime() - start.getTime()) / 60000);
+    if (mins > 0) {
+      minByActivity.set(v.activityId,
+        (minByActivity.get(v.activityId) || 0) + mins);
+    }
+  }
+  const timeLogged = Array.from(minByActivity.entries()).map(([id, mins]) => ({
+    activityId: id,
+    name: activityMap.get(id) || id,
+    minutesLast7Days: mins,
+    hoursLast7Days: Math.round(mins / 6) / 10, // arrondi 1 décimale
+  }));
+
+  const recentActivity = {
+    period: "7 derniers jours",
+    completedActions,
+    pendingActions,
+    habitCompletion,
+    timeLogged,
+  };
+
+  return JSON.stringify(
+    { domains, activities, activeRoutines, activeGoals, recentActivity },
+    null, 2
+  );
 }
 
 async function executeUpdateActivityGoal(

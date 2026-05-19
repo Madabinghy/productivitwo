@@ -156,6 +156,23 @@ const ADD_TO_DAY_PLAN_TOOL = {
         },
     },
 };
+const DELETE_PROJECT_TOOL = {
+    name: "delete_project",
+    description: "Supprime définitivement un projet Gantt et son objectif stratégique associé. " +
+        "Utilise list_projects pour trouver l'id avant de supprimer. " +
+        "Demande toujours confirmation à l'utilisateur avant d'appeler cet outil.",
+    inputSchema: {
+        type: "object",
+        required: ["projectId"],
+        properties: {
+            projectId: { type: "string", description: "id du projet à supprimer" },
+            deleteObjective: {
+                type: "boolean",
+                description: "Si true, supprime aussi l'objectif stratégique lié (défaut: false)",
+            },
+        },
+    },
+};
 const LIST_PROJECTS_TOOL = {
     name: "list_projects",
     description: "Liste les projets Gantt existants dans Productivitwo. " +
@@ -248,25 +265,43 @@ async function validateToken(uid, rawToken) {
     return false;
 }
 async function executeGetUserContext(uid) {
-    const [domainsSnap, activitiesSnap, routinesSnap, goalsSnap] = await Promise.all([
+    // Fenêtre glissante : 7 derniers jours
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const ymdFrom = sevenDaysAgo.toISOString().slice(0, 10).replace(/-/g, "");
+    const [domainsSnap, activitiesSnap, routinesSnap, goalsSnap, dayPlanSnap, habitHitsSnap, sessionsSnap] = await Promise.all([
         db.collection(`users/${uid}/domains`).get(),
         db.collection(`users/${uid}/activities`).get(),
         db.collection(`users/${uid}/recurringActions`).get(),
         db.collection(`users/${uid}/goals`).where("status", "==", "active").get(),
+        // Actions planifiées et réalisées sur 7 jours
+        db.collection(`users/${uid}/dayPlan`)
+            .where("yyyymmdd", ">=", ymdFrom)
+            .get(),
+        // Incréments de routines/habitudes sur 7 jours
+        db.collection(`users/${uid}/habitHits`)
+            .where("ts", ">=", sevenDaysAgo)
+            .get(),
+        // Sessions de temps loggué sur 7 jours
+        db.collection(`users/${uid}/sessions`)
+            .where("startAt", ">=", sevenDaysAgo.toISOString())
+            .get(),
     ]);
     const domains = domainsSnap.docs.map((d) => {
         const v = d.data();
         return { id: v.id, name: v.name };
     });
+    const activityMap = new Map();
     const activities = activitiesSnap.docs.map((d) => {
         const v = d.data();
+        activityMap.set(v.id, v.name);
         return {
             id: v.id,
             name: v.name,
-            type: v.type, // 'time' | 'habit'
+            type: v.type,
             domainId: v.domainId,
-            goalMin: v.goalMin, // objectif minutes/jour
-            habitFreq: v.habitFreq, // 0=daily 1=weekly 2=monthly
+            goalMin: v.goalMin,
+            habitFreq: v.habitFreq,
             habitTarget: v.habitTarget,
         };
     });
@@ -294,7 +329,59 @@ async function executeGetUserContext(uid) {
             progress: `${actions.filter((a) => a.done).length}/${actions.length}`,
         };
     });
-    return JSON.stringify({ domains, activities, activeRoutines, activeGoals }, null, 2);
+    // ── Réalisé des 7 derniers jours ──────────────────────────────────────────
+    // Actions complétées (dayPlan done)
+    const completedActions = dayPlanSnap.docs
+        .map((d) => d.data())
+        .filter((it) => it.done)
+        .map((it) => ({
+        title: it.title,
+        date: it.yyyymmdd,
+        domainId: it.domainId || null,
+    }));
+    // Actions planifiées non faites (pour identifier les écarts)
+    const pendingActions = dayPlanSnap.docs
+        .map((d) => d.data())
+        .filter((it) => !it.done && !it.archived && it.status !== "archived")
+        .map((it) => ({ title: it.title, date: it.yyyymmdd }));
+    // Taux de complétion des habitudes/routines (habitHits groupés par habitId)
+    const hitsByHabit = new Map();
+    for (const doc of habitHitsSnap.docs) {
+        const v = doc.data();
+        hitsByHabit.set(v.habitId, (hitsByHabit.get(v.habitId) || 0) + 1);
+    }
+    const habitCompletion = Array.from(hitsByHabit.entries()).map(([id, count]) => ({
+        activityId: id,
+        name: activityMap.get(id) || id,
+        hitsLast7Days: count,
+    }));
+    // Temps loggué par activité (sessions)
+    const minByActivity = new Map();
+    for (const doc of sessionsSnap.docs) {
+        const v = doc.data();
+        if (!v.endAt)
+            continue;
+        const start = new Date(v.startAt);
+        const end = new Date(v.endAt);
+        const mins = Math.round((end.getTime() - start.getTime()) / 60000);
+        if (mins > 0) {
+            minByActivity.set(v.activityId, (minByActivity.get(v.activityId) || 0) + mins);
+        }
+    }
+    const timeLogged = Array.from(minByActivity.entries()).map(([id, mins]) => ({
+        activityId: id,
+        name: activityMap.get(id) || id,
+        minutesLast7Days: mins,
+        hoursLast7Days: Math.round(mins / 6) / 10, // arrondi 1 décimale
+    }));
+    const recentActivity = {
+        period: "7 derniers jours",
+        completedActions,
+        pendingActions,
+        habitCompletion,
+        timeLogged,
+    };
+    return JSON.stringify({ domains, activities, activeRoutines, activeGoals, recentActivity }, null, 2);
 }
 async function executeUpdateActivityGoal(uid, activityId, updates) {
     var _a, _b;
@@ -363,6 +450,23 @@ async function executeAddToDayPlan(uid, args) {
         projectTaskId: args.projectTaskId || null,
     });
     return `✅ "${args.title}" ajouté au plan du ${args.date}.`;
+}
+async function executeDeleteProject(uid, projectId, deleteObjective) {
+    var _a;
+    const projectRef = db.collection(`users/${uid}/projects`).doc(projectId);
+    const projectSnap = await projectRef.get();
+    if (!projectSnap.exists) {
+        return `Projet introuvable : ${projectId}`;
+    }
+    const projectData = projectSnap.data();
+    const title = (_a = projectData.title) !== null && _a !== void 0 ? _a : projectId;
+    const objId = projectData.strategicObjectiveId;
+    await projectRef.delete();
+    if (deleteObjective && objId) {
+        await db.collection(`users/${uid}/strategic_objectives`).doc(objId).delete();
+        return `✅ Projet "${title}" et son objectif stratégique supprimés.`;
+    }
+    return `✅ Projet "${title}" supprimé.`;
 }
 async function executeListProjects(uid) {
     const snap = await db.collection(`users/${uid}/projects`).get();
@@ -433,7 +537,7 @@ exports.getCustomToken = (0, https_1.onRequest)({ cors: true, invoker: "public" 
     res.status(200).json({ customToken });
 });
 exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, async (req, res) => {
-    var _a, _b, _c, _d, _e, _f;
+    var _a, _b, _c, _d, _e, _f, _g;
     // CORS preflight
     if (req.method === "OPTIONS") {
         res.status(204).send("");
@@ -486,6 +590,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                         LIST_PROJECTS_TOOL,
                         GET_PROJECT_TOOL,
                         PUSH_GANTT_MCP_TOOL,
+                        DELETE_PROJECT_TOOL,
                         UPDATE_ACTIVITY_GOAL_TOOL,
                         CREATE_ROUTINE_TOOL,
                         ADD_TO_DAY_PLAN_TOOL,
@@ -498,7 +603,10 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
             const args = (_f = (_e = rpc.params) === null || _e === void 0 ? void 0 : _e.arguments) !== null && _f !== void 0 ? _f : {};
             try {
                 let text = "";
-                if (toolName === "get_user_context") {
+                if (toolName === "delete_project") {
+                    text = await executeDeleteProject(uid, args.projectId, (_g = args.deleteObjective) !== null && _g !== void 0 ? _g : false);
+                }
+                else if (toolName === "get_user_context") {
                     text = await executeGetUserContext(uid);
                 }
                 else if (toolName === "list_projects") {
