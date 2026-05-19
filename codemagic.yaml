@@ -16,6 +16,8 @@ workflows:
       vars:
         PACKAGE_NAME: "com.madabinghy.productivitwo"
     scripts:
+      - name: Clean
+        script: flutter clean
       - name: Get dependencies
         script: flutter pub get
       - name: Build Android AAB
