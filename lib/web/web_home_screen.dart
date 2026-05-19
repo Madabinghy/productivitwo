@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/web/gantt_screen.dart';
@@ -38,6 +40,13 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
       if (!mounted) return;
       setState(() => _loading = false);
     }
+  }
+
+  Future<void> _showLinkIosDialog(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _LinkIosDialog(onLinked: _load),
+    );
   }
 
   void _showTokensPanel(BuildContext context) {
@@ -123,25 +132,99 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
   Widget _buildBody(ColorScheme cs) {
     if (_projects.isEmpty) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.account_tree_outlined,
-                size: 64, color: cs.onSurface.withOpacity(0.15)),
-            const SizedBox(height: 16),
-            Text('Aucun projet',
-                style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: cs.onSurface.withOpacity(0.4))),
-            const SizedBox(height: 8),
-            Text(
-              'Génère un Gantt avec Claude ou utilise l\'API pushGantt.',
-              style: TextStyle(
-                  fontSize: 14,
-                  color: cs.onSurface.withOpacity(0.3)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.account_tree_outlined,
+                    size: 56, color: cs.onSurface.withOpacity(0.15)),
+                const SizedBox(height: 20),
+                Text('Aucun projet',
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurface.withOpacity(0.4))),
+                const SizedBox(height: 24),
+
+                // ── Carte : déjà utilisateur iOS ? ──────────────────────
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: cs.primaryContainer.withOpacity(0.35),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                        color: cs.primary.withOpacity(0.2), width: 1),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.smartphone_outlined,
+                              size: 18, color: cs.primary),
+                          const SizedBox(width: 8),
+                          Text('Tu as Productivitwo sur iPhone ?',
+                              style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: cs.primary)),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Connecte ton compte iOS pour retrouver tes activités, '
+                        'routines et objectifs, et laisser Claude les piloter.',
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: cs.onSurface.withOpacity(0.65),
+                            height: 1.4),
+                      ),
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          icon: const Icon(Icons.link_outlined, size: 16),
+                          label: const Text('Connecter mon compte iOS'),
+                          onPressed: () => _showLinkIosDialog(context),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // ── Séparateur ───────────────────────────────────────────
+                Row(
+                  children: [
+                    Expanded(
+                        child: Divider(
+                            color: cs.onSurface.withOpacity(0.12))),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text('ou',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: cs.onSurface.withOpacity(0.35))),
+                    ),
+                    Expanded(
+                        child: Divider(
+                            color: cs.onSurface.withOpacity(0.12))),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Génère ton premier Gantt avec Claude',
+                  style: TextStyle(
+                      fontSize: 13, color: cs.onSurface.withOpacity(0.35)),
+                  textAlign: TextAlign.center,
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       );
     }
@@ -801,6 +884,151 @@ class _Step extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ── Dialog liaison compte iOS ─────────────────────────────────────────────────
+
+class _LinkIosDialog extends StatefulWidget {
+  final VoidCallback onLinked;
+  const _LinkIosDialog({required this.onLinked});
+
+  @override
+  State<_LinkIosDialog> createState() => _LinkIosDialogState();
+}
+
+class _LinkIosDialogState extends State<_LinkIosDialog> {
+  final _uidCtrl   = TextEditingController();
+  final _tokenCtrl = TextEditingController();
+  bool _loading = false;
+  String? _error;
+
+  static const _customTokenUrl =
+      'https://getcustomtoken-dzos75b65q-uc.a.run.app';
+
+  @override
+  void dispose() {
+    _uidCtrl.dispose();
+    _tokenCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _link() async {
+    final uid   = _uidCtrl.text.trim();
+    final token = _tokenCtrl.text.trim();
+    if (uid.isEmpty || token.isEmpty) {
+      setState(() => _error = 'UID et token requis');
+      return;
+    }
+    setState(() { _loading = true; _error = null; });
+    try {
+      final res = await http.post(
+        Uri.parse(_customTokenUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'uid': uid, 'token': token}),
+      );
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      if (res.statusCode != 200) {
+        throw Exception(body['error'] ?? 'Erreur (${res.statusCode})');
+      }
+      final customToken = body['customToken'] as String?;
+      if (customToken == null) throw Exception('Token Firebase manquant');
+
+      await FirebaseAuth.instance.signInWithCustomToken(customToken);
+      if (mounted) Navigator.pop(context);
+      widget.onLinked();
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: SizedBox(
+        width: 400,
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.link_outlined, color: cs.primary),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text('Connecter mon compte iOS',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w700)),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 18),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '1. Ouvre Productivitwo iOS → menu ⋮ → Tokens API\n'
+                '2. Copie ton UID (en haut) et génère un token\n'
+                '3. Colle-les ici',
+                style: TextStyle(
+                    fontSize: 13,
+                    color: cs.onSurface.withOpacity(0.6),
+                    height: 1.5),
+              ),
+              const SizedBox(height: 16),
+              if (_error != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: cs.errorContainer,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(_error!,
+                      style:
+                          TextStyle(fontSize: 12, color: cs.onErrorContainer)),
+                ),
+                const SizedBox(height: 12),
+              ],
+              TextField(
+                controller: _uidCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'UID iOS',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _tokenCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Token',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: _loading ? null : _link,
+                child: _loading
+                    ? const SizedBox(
+                        width: 16, height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('Connecter'),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
