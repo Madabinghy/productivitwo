@@ -24,7 +24,7 @@ dependencies:
   cloud_firestore: ^5.0.0
   flutter_local_notifications: ^18.0.0
   timezone: ^0.9.4
-  flutter_timezone: ^1.0.7
+  flutter_timezone: ^5.0.2
   purchases_flutter: ^8.0.0
   sign_in_with_apple: ^6.0.0
   crypto: ^3.0.0
