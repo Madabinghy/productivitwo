@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/dev_logger.dart';
 
 /// Synchronisation Firestore.
 /// Structure : users/{uid}/<collection>/{id}
@@ -169,8 +170,7 @@ class FirestoreSync {
         reviewNotifEnabled: meta['reviewNotifEnabled'] ?? true,
       );
     } catch (e, stack) {
-      // ignore: avoid_print
-      print('[FIREBASE] pull() exception: $e\n$stack');
+      devLog.error('pull() exception: $e\n${stack.toString().split('\n').take(5).join('\n')}', tag: 'FIREBASE');
       return null;
     }
   }
