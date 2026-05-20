@@ -30,13 +30,7 @@ workflows:
   android-release:
     name: Android Release → AAB
     max_build_duration: 60
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: main
-          include: true
-          source: true
+    # Pas de triggering → déclenchement manuel depuis Codemagic uniquement
     environment:
       flutter: stable
       android_signing:
