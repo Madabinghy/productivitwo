@@ -7,6 +7,7 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/web/gantt_screen.dart';
 import 'package:productivitwo_v1/web/help_sheet.dart';
+import 'package:productivitwo_v1/utils/domain_colors.dart';
 
 class WebHomeScreen extends StatefulWidget {
   const WebHomeScreen({super.key});
@@ -337,13 +338,14 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                   selected: _selectedDomainId == null,
                   onSelected: (_) => setState(() => _selectedDomainId = null),
                 ),
-                for (final d in _domains)
+                for (final (i, d) in _domains.indexed)
                   FilterChip(
                     label: Text(d.name),
                     selected: _selectedDomainId == d.id,
-                    selectedColor: d.colorValue != null
-                        ? Color(d.colorValue!).withOpacity(0.25)
-                        : null,
+                    selectedColor: (d.colorValue != null
+                        ? Color(d.colorValue!)
+                        : kDomainPalette[i % kDomainPalette.length])
+                        .withOpacity(0.25),
                     onSelected: (_) => setState(() =>
                         _selectedDomainId =
                             _selectedDomainId == d.id ? null : d.id),
@@ -402,8 +404,13 @@ class _WebHomeScreenState extends State<WebHomeScreen>
     );
   }
 
-  static Color _domainColor(Domain? domain, ColorScheme cs) {
-    if (domain?.colorValue != null) return Color(domain!.colorValue!);
+  static Color _domainColor(Domain? domain, ColorScheme cs, [List<Domain>? allDomains]) {
+    if (domain == null) return cs.primary;
+    if (domain.colorValue != null) return Color(domain.colorValue!);
+    if (allDomains != null) {
+      final idx = allDomains.indexWhere((d) => d.id == domain.id);
+      if (idx >= 0) return kDomainPalette[idx % kDomainPalette.length];
+    }
     return cs.primary;
   }
 
@@ -675,7 +682,7 @@ class _FocusTaskTile extends StatelessWidget {
                                 .where((d) => d.id == project.domainId)
                                 .firstOrNull;
                         if (domain == null) return const SizedBox.shrink();
-                        final color = _WebHomeScreenState._domainColor(domain, cs);
+                        final color = _WebHomeScreenState._domainColor(domain, cs, domains);
                         return Padding(
                           padding: const EdgeInsets.only(left: 6),
                           child: Container(
@@ -863,7 +870,7 @@ class _ProjectCard extends StatelessWidget {
                         .where((d) => d.id == project.domainId)
                         .firstOrNull;
                 if (domain == null) return const SizedBox.shrink();
-                final color = _WebHomeScreenState._domainColor(domain, cs);
+                final color = _WebHomeScreenState._domainColor(domain, cs, domains);
                 return Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
