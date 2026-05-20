@@ -987,6 +987,7 @@ class AppState {
   List<Domain> domains; // inclut les deleted:true (filtrés par activeDomains)
   List<Domain> get activeDomains => domains.where((d) => !d.deleted).toList();
   List<Activity> activities;
+  List<Activity> get activeActivities => activities.where((a) => !a.deleted).toList();
   List<Session> sessions;
   List<HabitProgress> habitProgress;
 
@@ -1030,6 +1031,7 @@ class AppState {
   // Blocs journaliers
   List<DayBlock> blocks;
   List<RecurringAction> recurringActions;
+  List<RecurringAction> get activeRecurringActions => recurringActions.where((r) => !r.deleted).toList();
   Map<String, List<String>> disabledBlocksByYmd; // ymd -> [blockIds désactivés]
 
   // Gamification
