@@ -2261,7 +2261,11 @@ class _ArchivesViewState extends State<_ArchivesView> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Supprimer définitivement ?'),
-        content: const Text('Cette action est irréversible.'),
+        content: const Text(
+          'L\'élément sera masqué partout (app iOS + web).\n\n'
+          'Note : si l\'élément existe encore localement sur iOS, '
+          'il sera supprimé au prochain démarrage de l\'app.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -2277,7 +2281,9 @@ class _ArchivesViewState extends State<_ArchivesView> {
       ),
     );
     if (confirmed == true) {
-      await widget.sync.hardDelete(col, id);
+      // Soft-delete plutôt que hard-delete : iOS re-créerait sinon depuis son état local
+      // deleted:true est filtré par activeActivities/activeRecurringActions côté iOS
+      await widget.sync.archiveItem(col, id);
       _load();
     }
   }
