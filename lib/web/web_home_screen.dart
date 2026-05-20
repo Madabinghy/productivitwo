@@ -505,12 +505,6 @@ class _FocusView extends StatelessWidget {
         e.task.status != 'skipped' && !e.task.isMilestone).length;
     final weekDone = allPairs.where((e) => e.task.status == 'done').length;
 
-    // ── Milestones this week ──────────────────────────────────────────────
-    final weekMilestones = allPairs
-        .where((e) => e.task.isMilestone)
-        .toList()
-      ..sort((a, b) => a.task.startDate.compareTo(b.task.startDate));
-
     return LayoutBuilder(
       builder: (context, constraints) {
         final isNarrow = constraints.maxWidth < 700;
@@ -532,7 +526,6 @@ class _FocusView extends StatelessWidget {
                 weekDone,
                 weekActive,
                 domainGroups,
-                weekMilestones,
               ),
             ),
             // ── Sidebar (30%) ──────────────────────────────────────────────
@@ -562,10 +555,10 @@ class _FocusView extends StatelessWidget {
     int weekDone,
     int weekActive,
     List<({Domain? domain, List<({ProjectTask task, Project project})> pairs})> domainGroups,
-    List<({ProjectTask task, Project project})> weekMilestones,
   ) {
-    const rowH = 28.0;
-    const labelW = 120.0;
+    const rowH = 30.0;
+    const labelW = 200.0;
+    const dayW = 44.0;
     const headerH = 36.0;
     const domainHeaderH = 26.0;
 
@@ -586,107 +579,58 @@ class _FocusView extends StatelessWidget {
             ),
             const SizedBox(height: 12),
 
-            // ── Timeline ─────────────────────────────────────────────────
-            LayoutBuilder(builder: (_, bc) {
-              final totalW = bc.maxWidth;
-              final ganttW = totalW - labelW;
-              final dayW = ganttW / 7;
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header row
-                  Row(
-                    children: [
-                      SizedBox(width: labelW),
-                      for (int d = 0; d < 7; d++) ...[
-                        _buildDayHeader(
-                          cs,
-                          _dayLabels[d],
-                          weekStart.add(Duration(days: d)).day,
-                          weekStart.add(Duration(days: d)) == today,
-                          dayW,
-                          headerH,
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-
-                  // Domain groups
-                  if (domainGroups.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 32),
-                      child: Center(
-                        child: Text(
-                          'Aucune tâche cette semaine',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: cs.onSurface.withOpacity(0.35),
-                          ),
-                        ),
-                      ),
-                    )
-                  else
-                    for (final group in domainGroups) ...[
-                      _buildDomainGroupRows(
+            // ── Tracker ──────────────────────────────────────────────────
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header row
+                Row(
+                  children: [
+                    SizedBox(width: labelW),
+                    for (int d = 0; d < 7; d++) ...[
+                      _buildDayHeader(
                         cs,
-                        group.domain,
-                        group.pairs,
-                        today,
-                        weekStart,
-                        labelW,
+                        _dayLabels[d],
+                        weekStart.add(Duration(days: d)).day,
+                        weekStart.add(Duration(days: d)) == today,
                         dayW,
-                        rowH,
-                        domainHeaderH,
+                        headerH,
                       ),
                     ],
+                  ],
+                ),
+                const SizedBox(height: 4),
 
-                  // ── Jalons de la semaine ────────────────────────────────
-                  if (weekMilestones.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Divider(
-                        height: 1,
-                        color: cs.outlineVariant.withOpacity(0.4)),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        SizedBox(
-                          width: labelW,
-                          child: Text(
-                            'JALONS',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.8,
-                              color: cs.primary.withOpacity(0.7),
-                            ),
-                          ),
+                // Domain groups
+                if (domainGroups.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 32),
+                    child: Center(
+                      child: Text(
+                        'Aucune tâche cette semaine',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: cs.onSurface.withOpacity(0.35),
                         ),
-                        Expanded(
-                          child: SizedBox(
-                            height: rowH,
-                            child: Stack(
-                              children: [
-                                for (final e in weekMilestones) ...[
-                                  _buildMilestoneDiamond(
-                                    cs,
-                                    e.task,
-                                    weekStart,
-                                    dayW,
-                                    rowH,
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
+                      ),
+                    ),
+                  )
+                else
+                  for (final group in domainGroups) ...[
+                    _buildDomainGroupRows(
+                      cs,
+                      group.domain,
+                      group.pairs,
+                      today,
+                      weekStart,
+                      labelW,
+                      dayW,
+                      rowH,
+                      domainHeaderH,
                     ),
                   ],
-                ],
-              );
-            }),
+              ],
+            ),
           ],
         ),
       ),
@@ -706,7 +650,7 @@ class _FocusView extends StatelessWidget {
       height: height,
       child: Center(
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
           decoration: isToday
               ? BoxDecoration(
                   color: Colors.teal.withOpacity(0.15),
@@ -714,13 +658,15 @@ class _FocusView extends StatelessWidget {
                 )
               : null,
           child: Text(
-            '$dayName $dayNum',
+            '$dayName\n$dayNum',
+            textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 11,
+              fontSize: 10,
               fontWeight: isToday ? FontWeight.w700 : FontWeight.w500,
               color: isToday
                   ? Colors.teal.shade700
                   : cs.onSurface.withOpacity(0.5),
+              height: 1.3,
             ),
           ),
         ),
@@ -741,40 +687,45 @@ class _FocusView extends StatelessWidget {
   ) {
     final color = _domainColor(domain, cs, domains);
     final domainName = domain?.name ?? 'Sans domaine';
+    // Total width = labelW + 7 * dayW
+    final totalW = labelW + 7 * dayW;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Domain header
-        Container(
-          height: domainHeaderH,
-          margin: const EdgeInsets.only(bottom: 2, top: 6),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Row(
-            children: [
-              SizedBox(width: 8),
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
+        // Domain header (spans full width)
+        SizedBox(
+          width: totalW,
+          child: Container(
+            height: domainHeaderH,
+            margin: const EdgeInsets.only(bottom: 2, top: 6),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Row(
+              children: [
+                const SizedBox(width: 8),
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                domainName.toUpperCase(),
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.8,
-                  color: color,
+                const SizedBox(width: 6),
+                Text(
+                  domainName.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8,
+                    color: color,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
         // Task rows
@@ -828,116 +779,141 @@ class _FocusView extends StatelessWidget {
               ),
             ),
           ),
-          // Gantt bar area
-          Expanded(
-            child: task.isMilestone
-                ? _buildMilestoneDiamond(cs, task, weekStart, dayW, rowH)
-                : _buildTaskBar(cs, task, today, weekStart, dayW, rowH, domainColor),
-          ),
+          // Day cells
+          for (int d = 0; d < 7; d++) ...[
+            _buildDayCell(
+              cs,
+              task,
+              weekStart.add(Duration(days: d)),
+              today,
+              dayW,
+              rowH,
+              domainColor,
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildTaskBar(
+  /// Retourne l'icône et la couleur pour une cellule jour donnée.
+  Widget _buildDayCell(
     ColorScheme cs,
     ProjectTask task,
+    DateTime day,
     DateTime today,
-    DateTime weekStart,
     double dayW,
     double rowH,
-    Color barColor,
+    Color domainColor,
   ) {
-    final isDone = task.status == 'done';
-    final weekEnd = weekStart.add(const Duration(days: 6));
-
-    // Clamp dates to the week
-    final clampedStart =
-        task.startDate.isBefore(weekStart) ? weekStart : task.startDate;
     final effectiveEnd = task.endDate ?? task.startDate;
-    final clampedEnd =
-        effectiveEnd.isAfter(weekEnd) ? weekEnd : effectiveEnd;
+    final taskStart = DateTime(task.startDate.year, task.startDate.month, task.startDate.day);
+    final taskEnd = DateTime(effectiveEnd.year, effectiveEnd.month, effectiveEnd.day);
+    final cellDay = DateTime(day.year, day.month, day.day);
+    final todayN = DateTime(today.year, today.month, today.day);
 
-    final startOffset =
-        clampedStart.difference(weekStart).inDays.toDouble();
-    final endOffset =
-        clampedEnd.difference(weekStart).inDays.toDouble() + 1.0;
-    final barLeft = startOffset * dayW;
-    final barWidth = (endOffset - startOffset) * dayW;
+    // Séparateur vertical léger entre cellules
+    final divider = Positioned(
+      left: 0,
+      top: 4,
+      bottom: 4,
+      width: 1,
+      child: Container(color: cs.outlineVariant.withOpacity(0.1)),
+    );
 
-    return LayoutBuilder(builder: (_, bc) {
-      return Stack(
-        children: [
-          // Day grid lines
-          for (int d = 0; d < 7; d++)
-            Positioned(
-              left: d * dayW,
-              top: 0,
-              bottom: 0,
-              width: 1,
-              child: Container(color: cs.outlineVariant.withOpacity(0.12)),
-            ),
-          // Bar
-          if (barWidth > 0)
-            Positioned(
-              left: barLeft,
-              width: barWidth.clamp(0, bc.maxWidth - barLeft),
-              top: (rowH - 14) / 2,
-              height: 14,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: isDone
-                      ? barColor.withOpacity(0.25)
-                      : barColor.withOpacity(0.75),
-                  borderRadius: BorderRadius.circular(3),
+    // Tâche hors plage active ce jour → cellule vide
+    final isActiveDay = !cellDay.isBefore(taskStart) && !cellDay.isAfter(taskEnd);
+
+    // Jalon
+    if (task.isMilestone) {
+      // Afficher le ◆ uniquement sur le jour de startDate
+      if (cellDay != taskStart) {
+        return SizedBox(
+          width: dayW,
+          height: rowH,
+          child: Stack(children: [divider]),
+        );
+      }
+      final milestoneColor = task.status == 'done'
+          ? Colors.green.shade600
+          : Colors.orange.shade700;
+      return SizedBox(
+        width: dayW,
+        height: rowH,
+        child: Stack(
+          children: [
+            divider,
+            Center(
+              child: Transform.rotate(
+                angle: 0.785398,
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: milestoneColor,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
             ),
-        ],
+          ],
+        ),
       );
-    });
-  }
-
-  Widget _buildMilestoneDiamond(
-    ColorScheme cs,
-    ProjectTask task,
-    DateTime weekStart,
-    double dayW,
-    double rowH,
-  ) {
-    final weekEnd = weekStart.add(const Duration(days: 6));
-    final date = task.startDate;
-    if (date.isBefore(weekStart) || date.isAfter(weekEnd)) {
-      return const SizedBox.shrink();
     }
 
-    final dayOffset = date.difference(weekStart).inDays.toDouble();
-    final centerX = dayOffset * dayW + dayW / 2;
-    final isDone = task.status == 'done';
+    if (!isActiveDay) {
+      return SizedBox(
+        width: dayW,
+        height: rowH,
+        child: Stack(children: [divider]),
+      );
+    }
 
-    return Stack(
-      children: [
-        Positioned(
-          left: centerX - 7,
-          top: (rowH - 14) / 2,
-          width: 14,
-          height: 14,
-          child: Opacity(
-            opacity: isDone ? 0.35 : 1.0,
-            child: Transform.rotate(
-              angle: 0.785398, // 45 degrees
-              child: Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                  color: cs.primary,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
+    final isFuture = cellDay.isAfter(todayN);
+    final isToday = cellDay == todayN;
+
+    IconData icon;
+    Color iconColor;
+    double opacity = 1.0;
+
+    if (task.status == 'done') {
+      // Tâche done → toujours ✓ vert sur les jours actifs
+      icon = Icons.check_circle_outline;
+      iconColor = Colors.green.shade600;
+    } else if (isFuture) {
+      icon = Icons.schedule_outlined;
+      iconColor = cs.onSurface.withOpacity(0.25);
+    } else if (isToday) {
+      // Aujourd'hui, status pending
+      icon = Icons.schedule_outlined;
+      iconColor = Colors.teal.shade600;
+    } else {
+      // Passé
+      if (task.status == 'skipped') {
+        icon = Icons.remove_circle_outline;
+        iconColor = cs.onSurface.withOpacity(0.4);
+      } else {
+        // pending sur un jour passé → manqué
+        icon = Icons.cancel_outlined;
+        iconColor = Colors.red.shade300;
+        opacity = 0.6;
+      }
+    }
+
+    return SizedBox(
+      width: dayW,
+      height: rowH,
+      child: Stack(
+        children: [
+          divider,
+          Center(
+            child: Opacity(
+              opacity: opacity,
+              child: Icon(icon, size: 14, color: iconColor),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 

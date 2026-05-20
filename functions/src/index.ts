@@ -890,10 +890,23 @@ async function executeGetUserContext(uid: string): Promise<string> {
     }));
 
   // Actions planifiées non faites (pour identifier les écarts)
-  const pendingActions = dayPlanSnap.docs
+  // Déduplique les routines daily (même recurringActionId sur 7 jours → une seule entrée)
+  const pendingRaw = dayPlanSnap.docs
     .map((d) => d.data())
-    .filter((it) => !it.done && !it.archived && it.status !== "archived")
-    .map((it) => ({ title: it.title, date: it.yyyymmdd }));
+    .filter((it) => !it.done && !it.archived && it.status !== "archived");
+  const seenRoutines = new Set<string>();
+  const pendingActions = pendingRaw
+    .filter((it) => {
+      if (!it.recurringActionId) return true;
+      if (seenRoutines.has(it.recurringActionId)) return false;
+      seenRoutines.add(it.recurringActionId);
+      return true;
+    })
+    .map((it) => ({
+      title: it.title,
+      date: it.yyyymmdd,
+      ...(it.recurringActionId ? { isRoutine: true } : {}),
+    }));
 
   // Taux de complétion des habitudes/routines (habitHits groupés par habitId)
   const hitsByHabit = new Map<string, number>();
@@ -974,13 +987,14 @@ async function executeCreateRoutine(
   }
 ): Promise<string> {
   const id = uuidv4();
+  const recurrenceType = args.recurrenceType === "specificDays" ? "specificDays" : "daily";
   await db.collection(`users/${uid}/recurringActions`).doc(id).set({
     id,
     title: args.title,
     domainId: args.domainId || null,
     activityId: args.activityId || null,
     blockId: null,
-    type: args.recurrenceType === "specificDays" ? "specificDays" : "daily",
+    type: recurrenceType,
     weekdays: args.weekdays || [],
     active: true,
     createdAt: FieldValue.serverTimestamp(),
@@ -989,13 +1003,42 @@ async function executeCreateRoutine(
     projectTaskId: args.projectTaskId || null,
   });
 
+  // Ajouter automatiquement au plan d'aujourd'hui si la routine est active ce jour
+  const today = new Date();
+  const yyyymmdd = today.toISOString().slice(0, 10).replace(/-/g, "");
+  const todayWeekday = today.getDay() === 0 ? 7 : today.getDay(); // 1=Lun..7=Dim
+  const activeToday = recurrenceType === "daily" ||
+    (args.weekdays || []).includes(todayWeekday);
+
+  if (activeToday) {
+    const planId = uuidv4();
+    await db.collection(`users/${uid}/dayPlan`).doc(planId).set({
+      id: planId,
+      kind: "action",
+      title: args.title,
+      yyyymmdd,
+      done: false,
+      doneCount: 0,
+      allDay: false,
+      isNowFocus: false,
+      order: 9999,
+      toPlan: false,
+      archived: false,
+      status: "active",
+      createdAt: FieldValue.serverTimestamp(),
+      recurringActionId: id,
+      domainId: args.domainId || null,
+      activityId: args.activityId || null,
+    });
+  }
+
   const period = args.startDate && args.endDate
     ? ` du ${args.startDate} au ${args.endDate}`
     : args.startDate ? ` à partir du ${args.startDate}`
     : args.endDate ? ` jusqu'au ${args.endDate}`
     : "";
 
-  return `✅ Routine "${args.title}" créée${period}. Elle apparaîtra dans le plan quotidien dès la prochaine ouverture de l'app.`;
+  return `✅ Routine "${args.title}" créée${period}.${activeToday ? " Ajoutée au plan d'aujourd'hui." : " Apparaîtra dans le plan demain."}`;
 }
 
 async function executeAddToDayPlan(
