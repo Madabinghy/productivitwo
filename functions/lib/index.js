@@ -802,7 +802,9 @@ async function executeUpdateActivityGoal(uid, activityId, updates) {
 }
 async function executeCreateRoutine(uid, args) {
     const id = (0, uuid_1.v4)();
-    const recurrenceType = args.recurrenceType === "specificDays" ? "specificDays" : "daily";
+    // Si specificDays sans jours définis → fallback daily pour éviter une routine invisible
+    const hasSpecificDays = args.recurrenceType === "specificDays" && (args.weekdays || []).length > 0;
+    const recurrenceType = hasSpecificDays ? "specificDays" : "daily";
     await db.collection(`users/${uid}/recurringActions`).doc(id).set({
         id,
         title: args.title,
@@ -1045,6 +1047,19 @@ async function executeRestoreItem(uid, collection, itemId) {
     await ref.update({ deleted: false });
     return `✅ "${label}" restauré dans ${collection}.`;
 }
+async function archivePlanItemsForRoutine(uid, routineId) {
+    const planSnap = await db.collection(`users/${uid}/dayPlan`)
+        .where("recurringActionId", "==", routineId)
+        .where("done", "==", false)
+        .get();
+    if (!planSnap.empty) {
+        const batch = db.batch();
+        for (const doc of planSnap.docs)
+            batch.update(doc.ref, { archived: true, status: "archived" });
+        await batch.commit();
+    }
+    return planSnap.size;
+}
 async function executeCreateDomain(uid, args) {
     var _a, _b, _c;
     const id = (0, uuid_1.v4)();
@@ -1088,6 +1103,8 @@ async function executeDeleteDomain(uid, domainId) {
                 for (const r of routinesSnap.docs)
                     rBatch.update(r.ref, { deleted: true, active: false });
                 await rBatch.commit();
+                for (const r of routinesSnap.docs)
+                    await archivePlanItemsForRoutine(uid, r.id);
                 deletedRoutines += routinesSnap.size;
             }
         }
@@ -1106,7 +1123,7 @@ async function executeDeleteActivity(uid, activityId) {
         return `Activité introuvable : ${activityId}`;
     const name = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : activityId;
     await ref.update({ deleted: true });
-    // Cascade : soft-delete routines liées
+    // Cascade : soft-delete routines liées + archive leurs items du plan
     const routinesSnap = await db.collection(`users/${uid}/recurringActions`)
         .where("activityId", "==", activityId)
         .get();
@@ -1115,6 +1132,8 @@ async function executeDeleteActivity(uid, activityId) {
         for (const r of routinesSnap.docs)
             rBatch.update(r.ref, { deleted: true, active: false });
         await rBatch.commit();
+        for (const r of routinesSnap.docs)
+            await archivePlanItemsForRoutine(uid, r.id);
     }
     // Délie les day plan items non faits
     const planSnap = await db.collection(`users/${uid}/dayPlan`)

@@ -22,6 +22,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   List<Project> _projects = [];
   List<StrategicObjective> _objectives = [];
   List<Domain> _domains = [];
+  List<RecurringAction> _routines = [];
   String? _selectedDomainId;
   bool _loading = true;
   late TabController _mainTabs;
@@ -48,6 +49,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
         _sync.fetchStrategicObjectives(),
         _sync.fetchApiTokens(),
         _sync.fetchDomains(),
+        _sync.fetchRoutines(),
       ]);
       if (!mounted) return;
       final tokens = results[2] as List;
@@ -55,6 +57,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
         _projects = results[0] as List<Project>;
         _objectives = results[1] as List<StrategicObjective>;
         _domains = results[3] as List<Domain>;
+        _routines = results[4] as List<RecurringAction>;
         _hasIosData = tokens.isNotEmpty;
         _loading = false;
       });
@@ -170,6 +173,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                       .where((p) => p.status != 'archived')
                       .toList(),
                   domains: _domains,
+                  routines: _routines,
                 ),
                 _ArchivesView(sync: _sync),
               ],
@@ -427,7 +431,12 @@ class _WebHomeScreenState extends State<WebHomeScreen>
 class _FocusView extends StatelessWidget {
   final List<Project> projects;
   final List<Domain> domains;
-  const _FocusView({required this.projects, required this.domains});
+  final List<RecurringAction> routines;
+  const _FocusView({
+    required this.projects,
+    required this.domains,
+    required this.routines,
+  });
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -486,17 +495,24 @@ class _FocusView extends StatelessWidget {
     }
 
     // Build ordered domain groups: known domains first (sorted), then null
+    // Inclut les domaines qui ont des routines même sans tâches Gantt cette semaine
     final domainGroups = <({Domain? domain, List<({ProjectTask task, Project project})> pairs})>[];
+    final seenDomainIds = <String?>{};
     for (final domain in domains) {
       if (domain.deleted) continue;
-      final pairs = byDomain[domain.id];
-      if (pairs != null && pairs.isNotEmpty) {
+      final pairs = byDomain[domain.id] ?? [];
+      final hasRoutines = routines.any((r) => r.domainId == domain.id && !r.deleted && r.active);
+      if (pairs.isNotEmpty || hasRoutines) {
         domainGroups.add((domain: domain, pairs: pairs));
+        seenDomainIds.add(domain.id);
       }
     }
-    // Tasks with no domain
+    // Tâches/routines sans domaine ou domaine inconnu
     final noDomainPairs = byDomain[null] ?? [];
-    if (noDomainPairs.isNotEmpty) {
+    final nodomainRoutines = routines.where((r) =>
+        !r.deleted && r.active &&
+        (r.domainId == null || !seenDomainIds.contains(r.domainId))).toList();
+    if (noDomainPairs.isNotEmpty || nodomainRoutines.isNotEmpty) {
       domainGroups.add((domain: null, pairs: noDomainPairs));
     }
 
@@ -557,8 +573,8 @@ class _FocusView extends StatelessWidget {
     List<({Domain? domain, List<({ProjectTask task, Project project})> pairs})> domainGroups,
   ) {
     const rowH = 30.0;
-    const labelW = 200.0;
-    const dayW = 44.0;
+    const labelW = 240.0;
+    const dayW = 40.0;
     const headerH = 36.0;
     const domainHeaderH = 26.0;
 
@@ -627,6 +643,7 @@ class _FocusView extends StatelessWidget {
                       dayW,
                       rowH,
                       domainHeaderH,
+                      routines,
                     ),
                   ],
               ],
@@ -684,11 +701,22 @@ class _FocusView extends StatelessWidget {
     double dayW,
     double rowH,
     double domainHeaderH,
+    List<RecurringAction> allRoutines,
   ) {
     final color = _domainColor(domain, cs, domains);
     final domainName = domain?.name ?? 'Sans domaine';
     // Total width = labelW + 7 * dayW
     final totalW = labelW + 7 * dayW;
+
+    // Routines actives pour ce domaine
+    final domainRoutines = allRoutines
+        .where((r) =>
+            r.domainId == domain?.id &&
+            !r.deleted &&
+            r.active)
+        .toList();
+
+    final hasRoutines = domainRoutines.isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -728,9 +756,42 @@ class _FocusView extends StatelessWidget {
             ),
           ),
         ),
-        // Task rows
+        // Routine rows (first)
+        for (final routine in domainRoutines) ...[
+          _buildRoutineRow(
+            cs,
+            routine,
+            today,
+            weekStart,
+            labelW,
+            dayW,
+            rowH,
+            color,
+          ),
+        ],
+        // Separator between routines and tasks
+        if (hasRoutines && pairs.isNotEmpty)
+          SizedBox(
+            width: totalW,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                children: [
+                  SizedBox(width: labelW),
+                  Expanded(
+                    child: CustomPaint(
+                      painter: _DashedLinePainter(
+                          color: cs.outlineVariant.withOpacity(0.5)),
+                      child: const SizedBox(height: 1),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        // Task rows (Gantt bars)
         for (final pair in pairs) ...[
-          _buildTaskRow(
+          _buildTaskBarRow(
             cs,
             pair.task,
             today,
@@ -745,7 +806,183 @@ class _FocusView extends StatelessWidget {
     );
   }
 
-  Widget _buildTaskRow(
+  /// Ligne routine : cases à cocher par jour (cercle radio selon planification)
+  Widget _buildRoutineRow(
+    ColorScheme cs,
+    RecurringAction routine,
+    DateTime today,
+    DateTime weekStart,
+    double labelW,
+    double dayW,
+    double rowH,
+    Color domainColor,
+  ) {
+    final todayN = DateTime(today.year, today.month, today.day);
+
+    return SizedBox(
+      height: rowH,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Label avec petit cercle domaine à gauche
+          SizedBox(
+            width: labelW,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Row(
+                children: [
+                  Container(
+                    width: 6,
+                    height: 6,
+                    margin: const EdgeInsets.only(right: 5),
+                    decoration: BoxDecoration(
+                      color: domainColor.withOpacity(0.7),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      routine.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: cs.onSurface.withOpacity(0.75),
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // 7 day cells
+          for (int d = 0; d < 7; d++) ...[
+            _buildRoutineDayCell(
+              cs,
+              routine,
+              weekStart.add(Duration(days: d)),
+              todayN,
+              dayW,
+              rowH,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Cellule jour pour une routine
+  Widget _buildRoutineDayCell(
+    ColorScheme cs,
+    RecurringAction routine,
+    DateTime day,
+    DateTime todayN,
+    double dayW,
+    double rowH,
+  ) {
+    final cellDay = DateTime(day.year, day.month, day.day);
+
+    // Divider vertical léger
+    final divider = Positioned(
+      left: 0,
+      top: 4,
+      bottom: 4,
+      width: 1,
+      child: Container(color: cs.outlineVariant.withOpacity(0.1)),
+    );
+
+    // Vérifier si la routine est planifiée ce jour
+    bool isScheduled = false;
+    bool daysUnknown = false;
+    if (routine.type == RecurrenceType.daily) {
+      isScheduled = true;
+    } else if (routine.type == RecurrenceType.specificDays) {
+      if (routine.weekdays.isEmpty) {
+        // Jours non définis → afficher sur tous les jours avec indicateur "?"
+        isScheduled = true;
+        daysUnknown = true;
+      } else {
+        isScheduled = routine.weekdays.contains(cellDay.weekday);
+      }
+    }
+
+    // Vérifier les bornes startDate/endDate
+    if (isScheduled) {
+      if (routine.startDate != null) {
+        final s = DateTime(routine.startDate!.year, routine.startDate!.month, routine.startDate!.day);
+        if (cellDay.isBefore(s)) isScheduled = false;
+      }
+      if (isScheduled && routine.endDate != null) {
+        final e = DateTime(routine.endDate!.year, routine.endDate!.month, routine.endDate!.day);
+        if (cellDay.isAfter(e)) isScheduled = false;
+      }
+    }
+
+    if (!isScheduled) {
+      return SizedBox(
+        width: dayW,
+        height: rowH,
+        child: Stack(children: [divider]),
+      );
+    }
+
+    final isToday = cellDay == todayN;
+    final isPast = cellDay.isBefore(todayN);
+
+    // Jours non définis → afficher "?" en orange sur toutes les cellules
+    if (daysUnknown) {
+      return SizedBox(
+        width: dayW, height: rowH,
+        child: Stack(children: [
+          divider,
+          Center(child: Text('?', style: TextStyle(fontSize: 11, color: Colors.orange.shade300, fontWeight: FontWeight.w600))),
+        ]),
+      );
+    }
+
+    IconData icon;
+    Color iconColor;
+    double opacity;
+    double iconSize;
+
+    if (isToday) {
+      icon = Icons.radio_button_unchecked;
+      iconColor = Colors.teal;
+      opacity = 1.0;
+      iconSize = 16;
+    } else if (isPast) {
+      icon = Icons.radio_button_unchecked;
+      iconColor = Colors.red.shade300;
+      opacity = 0.4;
+      iconSize = 14;
+    } else {
+      // futur
+      icon = Icons.radio_button_unchecked;
+      iconColor = cs.onSurface.withOpacity(0.3);
+      opacity = 0.5;
+      iconSize = 14;
+    }
+
+    return SizedBox(
+      width: dayW,
+      height: rowH,
+      child: Stack(
+        children: [
+          divider,
+          Center(
+            child: Opacity(
+              opacity: opacity,
+              child: Icon(icon, size: iconSize, color: iconColor),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Ligne tâche Gantt : barre horizontale
+  Widget _buildTaskBarRow(
     ColorScheme cs,
     ProjectTask task,
     DateTime today,
@@ -756,6 +993,28 @@ class _FocusView extends StatelessWidget {
     Color domainColor,
   ) {
     final isDone = task.status == 'done';
+    final weekEnd = weekStart.add(const Duration(days: 6));
+    final totalDayW = dayW * 7;
+
+    // Calcul position et largeur de la barre dans la semaine
+    final effectiveEnd = task.endDate ?? task.startDate;
+    final taskStart = DateTime(task.startDate.year, task.startDate.month, task.startDate.day);
+    final taskEnd = DateTime(effectiveEnd.year, effectiveEnd.month, effectiveEnd.day);
+    final wStart = DateTime(weekStart.year, weekStart.month, weekStart.day);
+    final wEnd = DateTime(weekEnd.year, weekEnd.month, weekEnd.day);
+
+    // Clamp dans la semaine
+    final barStart = taskStart.isBefore(wStart) ? wStart : taskStart;
+    final barEnd = taskEnd.isAfter(wEnd) ? wEnd : taskEnd;
+
+    // Offset en pixels depuis le début de la grille jour
+    final startOffset = barStart.difference(wStart).inDays * dayW;
+    final barDays = barEnd.difference(barStart).inDays + 1;
+    final barWidth = barDays * dayW;
+
+    final barColor = isDone
+        ? domainColor.withOpacity(0.35)
+        : domainColor.withOpacity(0.75);
 
     return SizedBox(
       height: rowH,
@@ -779,137 +1038,57 @@ class _FocusView extends StatelessWidget {
               ),
             ),
           ),
-          // Day cells
-          for (int d = 0; d < 7; d++) ...[
-            _buildDayCell(
-              cs,
-              task,
-              weekStart.add(Duration(days: d)),
-              today,
-              dayW,
-              rowH,
-              domainColor,
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  /// Retourne l'icône et la couleur pour une cellule jour donnée.
-  Widget _buildDayCell(
-    ColorScheme cs,
-    ProjectTask task,
-    DateTime day,
-    DateTime today,
-    double dayW,
-    double rowH,
-    Color domainColor,
-  ) {
-    final effectiveEnd = task.endDate ?? task.startDate;
-    final taskStart = DateTime(task.startDate.year, task.startDate.month, task.startDate.day);
-    final taskEnd = DateTime(effectiveEnd.year, effectiveEnd.month, effectiveEnd.day);
-    final cellDay = DateTime(day.year, day.month, day.day);
-    final todayN = DateTime(today.year, today.month, today.day);
-
-    // Séparateur vertical léger entre cellules
-    final divider = Positioned(
-      left: 0,
-      top: 4,
-      bottom: 4,
-      width: 1,
-      child: Container(color: cs.outlineVariant.withOpacity(0.1)),
-    );
-
-    // Tâche hors plage active ce jour → cellule vide
-    final isActiveDay = !cellDay.isBefore(taskStart) && !cellDay.isAfter(taskEnd);
-
-    // Jalon
-    if (task.isMilestone) {
-      // Afficher le ◆ uniquement sur le jour de startDate
-      if (cellDay != taskStart) {
-        return SizedBox(
-          width: dayW,
-          height: rowH,
-          child: Stack(children: [divider]),
-        );
-      }
-      final milestoneColor = task.status == 'done'
-          ? Colors.green.shade600
-          : Colors.orange.shade700;
-      return SizedBox(
-        width: dayW,
-        height: rowH,
-        child: Stack(
-          children: [
-            divider,
-            Center(
-              child: Transform.rotate(
-                angle: 0.785398,
-                child: Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    color: milestoneColor,
-                    borderRadius: BorderRadius.circular(2),
+          // Grille jour avec barre
+          SizedBox(
+            width: totalDayW,
+            height: rowH,
+            child: Stack(
+              children: [
+                // Séparateurs verticaux
+                for (int d = 0; d < 7; d++)
+                  Positioned(
+                    left: d * dayW,
+                    top: 4,
+                    bottom: 4,
+                    width: 1,
+                    child: Container(color: cs.outlineVariant.withOpacity(0.1)),
                   ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
 
-    if (!isActiveDay) {
-      return SizedBox(
-        width: dayW,
-        height: rowH,
-        child: Stack(children: [divider]),
-      );
-    }
-
-    final isFuture = cellDay.isAfter(todayN);
-    final isToday = cellDay == todayN;
-
-    IconData icon;
-    Color iconColor;
-    double opacity = 1.0;
-
-    if (task.status == 'done') {
-      // Tâche done → toujours ✓ vert sur les jours actifs
-      icon = Icons.check_circle_outline;
-      iconColor = Colors.green.shade600;
-    } else if (isFuture) {
-      icon = Icons.schedule_outlined;
-      iconColor = cs.onSurface.withOpacity(0.25);
-    } else if (isToday) {
-      // Aujourd'hui, status pending
-      icon = Icons.schedule_outlined;
-      iconColor = Colors.teal.shade600;
-    } else {
-      // Passé
-      if (task.status == 'skipped') {
-        icon = Icons.remove_circle_outline;
-        iconColor = cs.onSurface.withOpacity(0.4);
-      } else {
-        // pending sur un jour passé → manqué
-        icon = Icons.cancel_outlined;
-        iconColor = Colors.red.shade300;
-        opacity = 0.6;
-      }
-    }
-
-    return SizedBox(
-      width: dayW,
-      height: rowH,
-      child: Stack(
-        children: [
-          divider,
-          Center(
-            child: Opacity(
-              opacity: opacity,
-              child: Icon(icon, size: 14, color: iconColor),
+                // Jalon ◆
+                if (task.isMilestone) ...[
+                  Positioned(
+                    left: startOffset + dayW / 2 - 6,
+                    top: rowH / 2 - 6,
+                    child: Transform.rotate(
+                      angle: 0.785398,
+                      child: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: isDone
+                              ? Colors.green.shade600
+                              : Colors.orange.shade700,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                  ),
+                ] else if (barWidth > 0) ...[
+                  // Barre horizontale
+                  Positioned(
+                    left: startOffset,
+                    top: rowH / 2 - 4,
+                    width: barWidth,
+                    height: 8,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: barColor,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
         ],
@@ -1065,6 +1244,30 @@ class _FocusView extends StatelessWidget {
       ),
     );
   }
+}
+
+// ── Peintre ligne pointillée ──────────────────────────────────────────────────
+
+class _DashedLinePainter extends CustomPainter {
+  final Color color;
+  const _DashedLinePainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1;
+    const dashWidth = 4.0;
+    const dashSpace = 4.0;
+    double x = 0;
+    while (x < size.width) {
+      canvas.drawLine(Offset(x, 0), Offset(x + dashWidth, 0), paint);
+      x += dashWidth + dashSpace;
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedLinePainter old) => old.color != color;
 }
 
 // ── Sidebar widgets ───────────────────────────────────────────────────────────
