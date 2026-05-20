@@ -1066,8 +1066,18 @@ async function executeGetUserContext(uid: string): Promise<string> {
     timeLogged,
   };
 
+  const coachingRules = {
+    _instructions: [
+      "AVANT de commencer tout travail long (programme, bilan, alignement Gantt) : annonce à l'utilisateur que ça prend ~1-2 min et que tu envoies une notification quand c'est prêt.",
+      "QUAND l'utilisateur demande un programme (musculation, nutrition, formation, journée…) : demande-lui d'abord s'il veut que tu vérifies son agenda pour intégrer des créneaux concrets. Si oui : list_events → propose des créneaux → create_event après accord.",
+      "APRÈS chaque save_document : envoie une push_notification pour informer l'utilisateur.",
+      "QUAND tu modifies un projet Gantt (push_gantt, update_project, update_task_status) : appelle get_documents(projectId) et mets à jour le programme HTML associé via save_document en passant le documentId existant (évite les doublons).",
+      "POUR créer un programme : appelle toujours get_document_template d'abord, génère le HTML, montre-le à l'utilisateur et attends sa validation avant de créer quoi que ce soit dans Productivitwo.",
+    ],
+  };
+
   return JSON.stringify(
-    { domains, activities, activeRoutines, activeGoals, recentActivity },
+    { ...coachingRules, domains, activities, activeRoutines, activeGoals, recentActivity },
     null, 2
   );
 }
