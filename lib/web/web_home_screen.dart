@@ -1556,6 +1556,11 @@ class _ArchivesViewState extends State<_ArchivesView> {
     }
   }
 
+  Future<void> _archive(String col, String id) async {
+    await widget.sync.archiveItem(col, id);
+    _load();
+  }
+
   Future<void> _restore(String col, String id) async {
     await widget.sync.restoreDeleted(col, id);
     _load();
@@ -1593,26 +1598,21 @@ class _ArchivesViewState extends State<_ArchivesView> {
 
     if (_loading) return const Center(child: CircularProgressIndicator());
 
-    // Domaines archivés (deleted == true)
-    final deletedDomains = _domains.where((d) => d.deleted).toList();
-    final deletedDomainIds = deletedDomains.map((d) => d.id).toSet();
+    // Tri : actifs en premier, archivés ensuite
+    final sortedDomains = [
+      ..._domains.where((d) => !d.deleted),
+      ..._domains.where((d) => d.deleted),
+    ];
 
-    // Activités archivées dont le domaine n'est PAS deleted
-    final deletedActivities = _activities
-        .where((a) => a.deleted && !deletedDomainIds.contains(a.domainId))
-        .toList();
-    // Toutes activités deleted (pour comptage sous domaines)
-    final allDeletedActivities = _activities.where((a) => a.deleted).toList();
+    final sortedActivities = [
+      ..._activities.where((a) => !a.deleted),
+      ..._activities.where((a) => a.deleted),
+    ];
 
-    // Routines archivées dont l'activité parente n'est PAS deleted
-    final allDeletedActivityIds =
-        _activities.where((a) => a.deleted).map((a) => a.id).toSet();
-    final deletedRoutines = _routines
-        .where((r) => r.deleted && !allDeletedActivityIds.contains(r.activityId))
-        .toList();
-
-    final allEmpty =
-        deletedDomains.isEmpty && deletedActivities.isEmpty && deletedRoutines.isEmpty;
+    final sortedRoutines = [
+      ..._routines.where((r) => !r.deleted),
+      ..._routines.where((r) => r.deleted),
+    ];
 
     return Center(
       child: ConstrainedBox(
@@ -1644,107 +1644,148 @@ class _ArchivesViewState extends State<_ArchivesView> {
             ),
             const SizedBox(height: 20),
 
-            if (allEmpty)
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 48),
-                  child: Text(
-                    'Aucun élément archivé — tout est propre ✓',
-                    style: TextStyle(
-                      fontSize: 15,
-                      color: Colors.green.shade600,
-                      fontWeight: FontWeight.w500,
+            // ── Section Domaines ──────────────────────────────────────────
+            ExpansionTile(
+              initiallyExpanded: true,
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: EdgeInsets.zero,
+              title: Text(
+                'DOMAINES (${sortedDomains.length})',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.0,
+                  color: cs.onSurface.withOpacity(0.55),
+                ),
+              ),
+              children: [
+                if (sortedDomains.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Text(
+                      'Aucun domaine',
+                      style: TextStyle(
+                          fontSize: 13,
+                          color: cs.onSurface.withOpacity(0.4),
+                          fontStyle: FontStyle.italic),
                     ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              )
-            else ...[
-              // ── Section Domaines archivés ─────────────────────────────
-              if (deletedDomains.isNotEmpty) ...[
-                Text(
-                  'DOMAINES ARCHIVÉS',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.0,
-                    color: cs.error,
-                  ),
-                ),
+                  )
+                else
+                  for (final d in sortedDomains) ...[
+                    _ArchiveItemRow(
+                      label: d.name,
+                      isArchived: d.deleted,
+                      onArchive: () => _archive('domains', d.id),
+                      onRestore: () => _restore('domains', d.id),
+                      onDelete: () => _confirmHardDelete('domains', d.id),
+                      cs: cs,
+                    ),
+                    const SizedBox(height: 6),
+                  ],
                 const SizedBox(height: 8),
-                for (final d in deletedDomains) ...[
-                  _ArchiveItemTile(
-                    label: d.name,
-                    details: [
-                      'Activités liées supprimées : ${allDeletedActivities.where((a) => a.domainId == d.id).length}',
-                      'Routines liées supprimées : ${_routines.where((r) => r.deleted && _activities.where((a) => a.domainId == d.id).map((a) => a.id).contains(r.activityId)).length}',
-                    ],
-                    onRestore: () => _restore('domains', d.id),
-                    onDelete: () => _confirmHardDelete('domains', d.id),
-                    cs: cs,
-                  ),
-                  const SizedBox(height: 6),
-                ],
-                const SizedBox(height: 16),
               ],
+            ),
+            const SizedBox(height: 8),
 
-              // ── Section Activités archivées ────────────────────────────
-              if (deletedActivities.isNotEmpty) ...[
-                Text(
-                  'ACTIVITÉS ARCHIVÉES',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.0,
-                    color: cs.error,
-                  ),
+            // ── Section Activités ─────────────────────────────────────────
+            ExpansionTile(
+              initiallyExpanded: true,
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: EdgeInsets.zero,
+              title: Text(
+                'ACTIVITÉS (${sortedActivities.length})',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.0,
+                  color: cs.onSurface.withOpacity(0.55),
                 ),
-                const SizedBox(height: 8),
-                for (final a in deletedActivities) ...[
-                  _ArchiveItemTile(
-                    label: a.name,
-                    details: [
-                      () {
-                        if (a.domainId.isEmpty) return 'sans domaine';
-                        final domain = _domains
-                            .where((d) => d.id == a.domainId)
-                            .firstOrNull;
+              ),
+              children: [
+                if (sortedActivities.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Text(
+                      'Aucune activité',
+                      style: TextStyle(
+                          fontSize: 13,
+                          color: cs.onSurface.withOpacity(0.4),
+                          fontStyle: FontStyle.italic),
+                    ),
+                  )
+                else
+                  for (final a in sortedActivities) ...[
+                    _ArchiveItemRow(
+                      label: a.name,
+                      isArchived: a.deleted,
+                      subtitle: () {
+                        if (a.domainId.isEmpty) return null;
+                        final domain =
+                            _domains.where((d) => d.id == a.domainId).firstOrNull;
                         return 'domaine: ${domain?.name ?? a.domainId.substring(0, 8)}…';
                       }(),
-                    ],
-                    onRestore: () => _restore('activities', a.id),
-                    onDelete: () => _confirmHardDelete('activities', a.id),
-                    cs: cs,
-                  ),
-                  const SizedBox(height: 6),
-                ],
-                const SizedBox(height: 16),
-              ],
-
-              // ── Section Routines archivées ─────────────────────────────
-              if (deletedRoutines.isNotEmpty) ...[
-                Text(
-                  'ROUTINES ARCHIVÉES',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.0,
-                    color: cs.error,
-                  ),
-                ),
+                      onArchive: () => _archive('activities', a.id),
+                      onRestore: () => _restore('activities', a.id),
+                      onDelete: () => _confirmHardDelete('activities', a.id),
+                      cs: cs,
+                    ),
+                    const SizedBox(height: 6),
+                  ],
                 const SizedBox(height: 8),
-                for (final r in deletedRoutines) ...[
-                  _ArchiveItemTile(
-                    label: r.title,
-                    details: const [],
-                    onRestore: () => _restore('recurringActions', r.id),
-                    onDelete: () => _confirmHardDelete('recurringActions', r.id),
-                    cs: cs,
-                  ),
-                  const SizedBox(height: 6),
-                ],
               ],
-            ],
+            ),
+            const SizedBox(height: 8),
+
+            // ── Section Routines ──────────────────────────────────────────
+            ExpansionTile(
+              initiallyExpanded: true,
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: EdgeInsets.zero,
+              title: Text(
+                'ROUTINES (${sortedRoutines.length})',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.0,
+                  color: cs.onSurface.withOpacity(0.55),
+                ),
+              ),
+              children: [
+                if (sortedRoutines.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Text(
+                      'Aucune routine',
+                      style: TextStyle(
+                          fontSize: 13,
+                          color: cs.onSurface.withOpacity(0.4),
+                          fontStyle: FontStyle.italic),
+                    ),
+                  )
+                else
+                  for (final r in sortedRoutines) ...[
+                    _ArchiveItemRow(
+                      label: r.title,
+                      isArchived: r.deleted,
+                      subtitle: () {
+                        if (r.activityId == null || r.activityId!.isEmpty)
+                          return null;
+                        final activity = _activities
+                            .where((a) => a.id == r.activityId)
+                            .firstOrNull;
+                        return activity != null ? 'activité: ${activity.name}' : null;
+                      }(),
+                      onArchive: () => _archive('recurringActions', r.id),
+                      onRestore: () => _restore('recurringActions', r.id),
+                      onDelete: () =>
+                          _confirmHardDelete('recurringActions', r.id),
+                      cs: cs,
+                    ),
+                    const SizedBox(height: 6),
+                  ],
+                const SizedBox(height: 8),
+              ],
+            ),
           ],
         ),
       ),
@@ -1752,67 +1793,77 @@ class _ArchivesViewState extends State<_ArchivesView> {
   }
 }
 
-class _ArchiveItemTile extends StatelessWidget {
+// ── Ligne d'un item dans la vue Archives ─────────────────────────────────────
+
+class _ArchiveItemRow extends StatelessWidget {
   final String label;
-  final List<String> details;
+  final String? subtitle;
+  final bool isArchived;
+  final VoidCallback onArchive;
   final VoidCallback onRestore;
   final VoidCallback onDelete;
   final ColorScheme cs;
 
-  const _ArchiveItemTile({
+  const _ArchiveItemRow({
     required this.label,
-    required this.details,
+    required this.isArchived,
+    required this.onArchive,
     required this.onRestore,
     required this.onDelete,
     required this.cs,
+    this.subtitle,
   });
 
   @override
   Widget build(BuildContext context) {
+    final bgColor = isArchived
+        ? cs.errorContainer.withOpacity(0.2)
+        : cs.surfaceContainerHighest.withOpacity(0.3);
+    final borderColor = isArchived
+        ? cs.error.withOpacity(0.25)
+        : cs.outlineVariant.withOpacity(0.4);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: cs.errorContainer.withOpacity(0.15),
+        color: bgColor,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: cs.error.withOpacity(0.2)),
+        border: Border.all(color: borderColor),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Icône + texte
+          // ● bullet
+          Text(
+            '●',
+            style: TextStyle(
+              fontSize: 10,
+              color: isArchived
+                  ? cs.error.withOpacity(0.6)
+                  : Colors.green.shade600,
+            ),
+          ),
+          const SizedBox(width: 10),
+          // Nom + sous-titre
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Text(
-                      '🗑',
-                      style: const TextStyle(fontSize: 14),
-                    ),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        label,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: cs.onSurface,
-                        ),
-                      ),
-                    ),
-                  ],
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: cs.onSurface,
+                  ),
                 ),
-                for (final d in details) ...[
-                  const SizedBox(height: 3),
-                  Padding(
-                    padding: const EdgeInsets.only(left: 24),
-                    child: Text(
-                      '└─ $d',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: cs.onSurface.withOpacity(0.55),
-                      ),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle!,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: cs.onSurface.withOpacity(0.5),
                     ),
                   ),
                 ],
@@ -1820,29 +1871,71 @@ class _ArchiveItemTile extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          // Actions
-          OutlinedButton(
-            onPressed: onRestore,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.green.shade700,
-              side: BorderSide(color: Colors.green.shade400),
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          // Badge statut
+          Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: isArchived
+                  ? cs.errorContainer
+                  : Colors.green.shade100,
+              borderRadius: BorderRadius.circular(20),
             ),
-            child: const Text('Restaurer'),
-          ),
-          const SizedBox(width: 6),
-          TextButton(
-            onPressed: onDelete,
-            style: TextButton.styleFrom(
-              foregroundColor: cs.error,
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            child: Text(
+              isArchived ? 'Archivé' : 'Actif',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: isArchived
+                    ? cs.error
+                    : Colors.green.shade800,
+              ),
             ),
-            child: const Text('Supprimer'),
           ),
+          const SizedBox(width: 8),
+          // Boutons d'action
+          if (!isArchived) ...[
+            OutlinedButton(
+              onPressed: onArchive,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.amber.shade800,
+                side: BorderSide(color: Colors.amber.shade600),
+                visualDensity: VisualDensity.compact,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                textStyle: const TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+              child: const Text('Archiver'),
+            ),
+          ] else ...[
+            OutlinedButton(
+              onPressed: onRestore,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.green.shade700,
+                side: BorderSide(color: Colors.green.shade400),
+                visualDensity: VisualDensity.compact,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                textStyle: const TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+              child: const Text('Restaurer'),
+            ),
+            const SizedBox(width: 6),
+            TextButton(
+              onPressed: onDelete,
+              style: TextButton.styleFrom(
+                foregroundColor: cs.error,
+                visualDensity: VisualDensity.compact,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                textStyle: const TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+              child: const Text('Supprimer'),
+            ),
+          ],
         ],
       ),
     );

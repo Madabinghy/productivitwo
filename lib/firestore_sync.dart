@@ -450,4 +450,9 @@ class FirestoreSync {
     if (uid == null) return;
     await _col(collection).doc(docId).update({'deleted': false});
   }
+
+  Future<void> archiveItem(String collection, String docId) async {
+    if (uid == null) return;
+    await _col(collection).doc(docId).update({'deleted': true});
+  }
 }
