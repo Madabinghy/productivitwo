@@ -407,4 +407,47 @@ class FirestoreSync {
     if (uid == null) return;
     await _col('api_tokens').doc(tokenId).update({'active': false});
   }
+
+  // ── Debug helpers ────────────────────────────────────────────────────────────
+
+  /// Retourne TOUS les domaines y compris ceux avec deleted:true (usage debug).
+  Future<List<Domain>> fetchAllDomains() async {
+    if (uid == null) return [];
+    try {
+      final snap = await _col('domains').get();
+      return snap.docs.map((d) => Domain.from(d.data() as Map)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<List<Activity>> fetchActivities() async {
+    if (uid == null) return [];
+    try {
+      final snap = await _col('activities').get();
+      return snap.docs.map((d) => Activity.from(d.data() as Map)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<List<RecurringAction>> fetchRoutines() async {
+    if (uid == null) return [];
+    try {
+      final snap = await _col('recurringActions').get();
+      return snap.docs.map((d) => RecurringAction.from(d.data() as Map)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> hardDelete(String collection, String docId) async {
+    if (uid == null) return;
+    await _col(collection).doc(docId).delete();
+  }
+
+  Future<void> restoreDeleted(String collection, String docId) async {
+    if (uid == null) return;
+    await _col(collection).doc(docId).update({'deleted': false});
+  }
 }

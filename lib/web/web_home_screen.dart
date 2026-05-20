@@ -29,7 +29,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   @override
   void initState() {
     super.initState();
-    _mainTabs = TabController(length: 2, vsync: this);
+    _mainTabs = TabController(length: 3, vsync: this);
     _load();
   }
 
@@ -151,6 +151,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                 tabs: const [
                   Tab(text: 'Projets'),
                   Tab(text: 'Focus'),
+                  Tab(text: 'Debug'),
                 ],
               ),
               Divider(height: 1, color: cs.outlineVariant.withOpacity(0.4)),
@@ -170,6 +171,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                       .toList(),
                   domains: _domains,
                 ),
+                _DebugView(sync: _sync),
               ],
             ),
     );
@@ -1508,6 +1510,317 @@ class _Step extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ── Vue Debug Firestore ───────────────────────────────────────────────────────
+
+class _DebugView extends StatefulWidget {
+  final FirestoreSync sync;
+  const _DebugView({required this.sync});
+
+  @override
+  State<_DebugView> createState() => _DebugViewState();
+}
+
+class _DebugViewState extends State<_DebugView> {
+  List<Domain> _domains = [];
+  List<Activity> _activities = [];
+  List<RecurringAction> _routines = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final results = await Future.wait([
+        widget.sync.fetchAllDomains(),
+        widget.sync.fetchActivities(),
+        widget.sync.fetchRoutines(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _domains    = results[0] as List<Domain>;
+        _activities = results[1] as List<Activity>;
+        _routines   = results[2] as List<RecurringAction>;
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _hardDelete(String col, String id) async {
+    await widget.sync.hardDelete(col, id);
+    _load();
+  }
+
+  Future<void> _restore(String col, String id) async {
+    await widget.sync.restoreDeleted(col, id);
+    _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return _loading
+        ? const Center(child: CircularProgressIndicator())
+        : ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+              // ── En-tête avec bouton Rafraîchir ────────────────────────────
+              Row(
+                children: [
+                  Text(
+                    'ÉTAT FIRESTORE BRUT',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.0,
+                      color: cs.onSurface.withOpacity(0.45),
+                    ),
+                  ),
+                  const Spacer(),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.refresh_outlined, size: 14),
+                    label: const Text('Rafraîchir'),
+                    onPressed: _load,
+                    style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // ── Section Domaines ───────────────────────────────────────────
+              ExpansionTile(
+                initiallyExpanded: true,
+                title: Text(
+                  'Domaines (${_domains.length})',
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w700),
+                ),
+                children: _domains.isEmpty
+                    ? [
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Text('Aucun domaine',
+                              style: TextStyle(
+                                  color: cs.onSurface.withOpacity(0.4),
+                                  fontStyle: FontStyle.italic)),
+                        )
+                      ]
+                    : _domains
+                        .map((d) => _DebugItemTile(
+                              isDeleted: d.deleted,
+                              title: d.name,
+                              subtitle: 'id: ${d.id.substring(0, 8)}…',
+                              extra: d.deleted ? 'supprimé' : null,
+                              onHardDelete: () => _hardDelete('domains', d.id),
+                              onRestore: d.deleted
+                                  ? () => _restore('domains', d.id)
+                                  : null,
+                              cs: cs,
+                            ))
+                        .toList(),
+              ),
+              const SizedBox(height: 8),
+
+              // ── Section Activités ──────────────────────────────────────────
+              ExpansionTile(
+                initiallyExpanded: true,
+                title: Text(
+                  'Activités (${_activities.length})',
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w700),
+                ),
+                children: _activities.isEmpty
+                    ? [
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Text('Aucune activité',
+                              style: TextStyle(
+                                  color: cs.onSurface.withOpacity(0.4),
+                                  fontStyle: FontStyle.italic)),
+                        )
+                      ]
+                    : _activities
+                        .map((a) => _DebugItemTile(
+                              isDeleted: a.deleted,
+                              title: a.name,
+                              subtitle:
+                                  'id: ${a.id.substring(0, 8)}…  •  domainId: ${a.domainId.isEmpty ? '—' : a.domainId.substring(0, 8)}…',
+                              extra: a.deleted ? 'supprimé' : null,
+                              onHardDelete: () =>
+                                  _hardDelete('activities', a.id),
+                              onRestore: a.deleted
+                                  ? () => _restore('activities', a.id)
+                                  : null,
+                              cs: cs,
+                            ))
+                        .toList(),
+              ),
+              const SizedBox(height: 8),
+
+              // ── Section Routines ───────────────────────────────────────────
+              ExpansionTile(
+                initiallyExpanded: true,
+                title: Text(
+                  'Routines (${_routines.length})',
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w700),
+                ),
+                children: _routines.isEmpty
+                    ? [
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Text('Aucune routine',
+                              style: TextStyle(
+                                  color: cs.onSurface.withOpacity(0.4),
+                                  fontStyle: FontStyle.italic)),
+                        )
+                      ]
+                    : _routines
+                        .map((r) => _DebugItemTile(
+                              isDeleted: r.deleted,
+                              title: r.title,
+                              subtitle:
+                                  'id: ${r.id.substring(0, 8)}…  •  active: ${r.active}',
+                              extra: r.deleted ? 'supprimé' : null,
+                              onHardDelete: () =>
+                                  _hardDelete('recurringActions', r.id),
+                              onRestore: r.deleted
+                                  ? () => _restore('recurringActions', r.id)
+                                  : null,
+                              cs: cs,
+                            ))
+                        .toList(),
+              ),
+            ],
+          );
+  }
+}
+
+class _DebugItemTile extends StatelessWidget {
+  final bool isDeleted;
+  final String title;
+  final String subtitle;
+  final String? extra;
+  final VoidCallback onHardDelete;
+  final VoidCallback? onRestore;
+  final ColorScheme cs;
+
+  const _DebugItemTile({
+    required this.isDeleted,
+    required this.title,
+    required this.subtitle,
+    this.extra,
+    required this.onHardDelete,
+    this.onRestore,
+    required this.cs,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = isDeleted
+        ? cs.errorContainer.withOpacity(0.3)
+        : cs.surfaceContainerHighest.withOpacity(0.3);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isDeleted
+              ? cs.error.withOpacity(0.3)
+              : cs.outlineVariant.withOpacity(0.3),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          title,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: isDeleted
+                                ? cs.onSurface.withOpacity(0.5)
+                                : cs.onSurface,
+                            decoration: isDeleted
+                                ? TextDecoration.lineThrough
+                                : null,
+                          ),
+                        ),
+                      ),
+                      if (extra != null) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: cs.errorContainer,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            '🗑 $extra',
+                            style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: cs.onErrorContainer),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                      color: cs.onSurface.withOpacity(0.45),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Bouton Restore (si deleted)
+            if (onRestore != null)
+              IconButton(
+                icon: const Icon(Icons.restore_outlined, size: 16),
+                tooltip: 'Restaurer',
+                visualDensity: VisualDensity.compact,
+                color: cs.primary,
+                onPressed: onRestore,
+              ),
+            // Bouton Hard delete
+            IconButton(
+              icon: const Icon(Icons.delete_forever_outlined, size: 16),
+              tooltip: 'Supprimer définitivement',
+              visualDensity: VisualDensity.compact,
+              color: cs.error,
+              onPressed: onHardDelete,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
