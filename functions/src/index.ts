@@ -438,6 +438,37 @@ const DELETE_DOMAIN_TOOL = {
   },
 };
 
+const SAVE_DOCUMENT_TOOL = {
+  name: "save_document",
+  description:
+    "Sauvegarde un document HTML dans Productivitwo (programme, plan, bilan, fiche). " +
+    "Claude peut le relire plus tard avec get_documents pour comparer au réalisé. " +
+    "Lier au projectId du projet Gantt associé si possible.",
+  inputSchema: {
+    type: "object",
+    required: ["title", "content"],
+    properties: {
+      title:     { type: "string", description: "Titre du document (ex: Programme Prise de Masse 6 mois)" },
+      content:   { type: "string", description: "Contenu HTML complet du document" },
+      projectId: { type: "string", description: "id du projet Gantt associé (optionnel)" },
+    },
+  },
+};
+
+const GET_DOCUMENTS_TOOL = {
+  name: "get_documents",
+  description:
+    "Récupère les documents sauvegardés (programmes, plans, bilans). " +
+    "Utilise cet outil pour relire un programme préconisé et le comparer à l'état actuel. " +
+    "Retourne la liste avec titres et dates — utilise le contenu pour analyser les écarts.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      projectId: { type: "string", description: "Filtrer par projet (optionnel)" },
+    },
+  },
+};
+
 const GET_ARCHIVES_TOOL = {
   name: "get_archives",
   description:
@@ -1293,6 +1324,43 @@ async function executeDeleteAction(uid: string, actionId: string): Promise<strin
   return `✅ Action "${title}" supprimée du plan.`;
 }
 
+async function executeSaveDocument(
+  uid: string,
+  args: { title: string; content: string; projectId?: string }
+): Promise<string> {
+  const id = uuidv4();
+  await db.collection(`users/${uid}/documents`).doc(id).set({
+    id,
+    title: args.title,
+    content: args.content,
+    projectId: args.projectId || null,
+    type: "html",
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  return `✅ Document "${args.title}" sauvegardé (id: ${id}). Visible dans l'onglet Projets du web app.`;
+}
+
+async function executeGetDocuments(uid: string, projectId?: string): Promise<string> {
+  let query = db.collection(`users/${uid}/documents`).orderBy("createdAt", "desc");
+  const snap = await query.get();
+  if (snap.empty) return "Aucun document sauvegardé.";
+
+  const docs = snap.docs
+    .map((d) => d.data())
+    .filter((d) => !projectId || d.projectId === projectId)
+    .map((d) => ({
+      id: d.id,
+      title: d.title,
+      projectId: d.projectId || null,
+      createdAt: d.createdAt?.toDate?.()?.toISOString?.() || null,
+      // Inclure le contenu pour que Claude puisse analyser
+      content: d.content,
+    }));
+
+  if (!docs.length) return "Aucun document pour ce projet.";
+  return JSON.stringify(docs, null, 2);
+}
+
 async function executeGetArchives(uid: string): Promise<string> {
   const [domainsSnap, activitiesSnap, routinesSnap] = await Promise.all([
     db.collection(`users/${uid}/domains`).where("deleted", "==", true).get(),
@@ -1798,6 +1866,8 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
             UPDATE_PROJECT_TOOL,
             DELETE_ACTIVITY_TOOL,
             DELETE_ACTION_TOOL,
+            SAVE_DOCUMENT_TOOL,
+            GET_DOCUMENTS_TOOL,
             GET_ARCHIVES_TOOL,
             RESTORE_ITEM_TOOL,
             CREATE_DOMAIN_TOOL,
@@ -1873,6 +1943,10 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
           );
         } else if (toolName === "delete_action") {
           text = await executeDeleteAction(uid, args.actionId as string);
+        } else if (toolName === "save_document") {
+          text = await executeSaveDocument(uid, args as Parameters<typeof executeSaveDocument>[1]);
+        } else if (toolName === "get_documents") {
+          text = await executeGetDocuments(uid, args.projectId as string | undefined);
         } else if (toolName === "get_archives") {
           text = await executeGetArchives(uid);
         } else if (toolName === "restore_item") {

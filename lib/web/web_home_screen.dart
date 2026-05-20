@@ -1,4 +1,7 @@
 import 'dart:convert';
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:html' as html;
+import 'dart:ui_web' as ui_web;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -23,6 +26,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   List<StrategicObjective> _objectives = [];
   List<Domain> _domains = [];
   List<RecurringAction> _routines = [];
+  Map<String, List<Map<String, dynamic>>> _documentsByProject = {};
   String? _selectedDomainId;
   bool _loading = true;
   late TabController _mainTabs;
@@ -50,14 +54,25 @@ class _WebHomeScreenState extends State<WebHomeScreen>
         _sync.fetchApiTokens(),
         _sync.fetchDomains(),
         _sync.fetchRoutines(),
+        _sync.fetchDocuments(),
       ]);
       if (!mounted) return;
       final tokens = results[2] as List;
+      final allDocs = results[5] as List<Map<String, dynamic>>;
+      // Group documents by projectId
+      final byProject = <String, List<Map<String, dynamic>>>{};
+      for (final doc in allDocs) {
+        final pid = doc['projectId'] as String?;
+        if (pid != null && pid.isNotEmpty) {
+          byProject.putIfAbsent(pid, () => []).add(doc);
+        }
+      }
       setState(() {
         _projects = results[0] as List<Project>;
         _objectives = results[1] as List<StrategicObjective>;
         _domains = results[3] as List<Domain>;
         _routines = results[4] as List<RecurringAction>;
+        _documentsByProject = byProject;
         _hasIosData = tokens.isNotEmpty;
         _loading = false;
       });
@@ -369,6 +384,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
               _ProjectCard(
                 project: p,
                 domains: _domains,
+                documents: _documentsByProject[p.id] ?? [],
                 onTap: () => Navigator.push(context,
                     MaterialPageRoute(builder: (_) => GanttScreen(project: p))),
                 onArchive: () => _archiveProject(p, true),
@@ -387,6 +403,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
               _ProjectCard(
                 project: p,
                 domains: _domains,
+                documents: _documentsByProject[p.id] ?? [],
                 onTap: () => Navigator.push(context,
                     MaterialPageRoute(builder: (_) => GanttScreen(project: p))),
                 onArchive: () => _archiveProject(p, true),
@@ -1481,11 +1498,13 @@ class _ObjectiveHeader extends StatelessWidget {
 class _ProjectCard extends StatelessWidget {
   final Project project;
   final List<Domain> domains;
+  final List<Map<String, dynamic>> documents;
   final VoidCallback onTap;
   final VoidCallback? onArchive;
   const _ProjectCard({
     required this.project,
     required this.domains,
+    required this.documents,
     required this.onTap,
     this.onArchive,
   });
@@ -1605,6 +1624,41 @@ class _ProjectCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(2),
                   backgroundColor: cs.onSurface.withOpacity(0.07),
                   color: cs.primary,
+                ),
+              ],
+              if (documents.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    icon: Icon(
+                      Icons.description_outlined,
+                      size: 14,
+                      color: cs.primary.withOpacity(0.7),
+                    ),
+                    label: Text(
+                      '${documents.length} document${documents.length > 1 ? 's' : ''}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: cs.primary.withOpacity(0.7),
+                      ),
+                    ),
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                    ),
+                    onPressed: () {
+                      showDialog<void>(
+                        context: context,
+                        barrierDismissible: true,
+                        builder: (_) => _DocumentViewerDialog(
+                          projectTitle: project.title,
+                          documents: documents,
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ],
             ],
@@ -1751,6 +1805,190 @@ class _ArchivedProjectCard extends StatelessWidget {
     );
   }
 }
+
+// ── Dialog visualisation documents ───────────────────────────────────────────
+
+class _DocumentViewerDialog extends StatefulWidget {
+  final String projectTitle;
+  final List<Map<String, dynamic>> documents;
+
+  const _DocumentViewerDialog({
+    required this.projectTitle,
+    required this.documents,
+  });
+
+  @override
+  State<_DocumentViewerDialog> createState() => _DocumentViewerDialogState();
+}
+
+class _DocumentViewerDialogState extends State<_DocumentViewerDialog> {
+  int _selectedIndex = 0;
+
+  Map<String, dynamic> get _current => widget.documents[_selectedIndex];
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final hasMultiple = widget.documents.length > 1;
+    final title = _current['title'] as String? ?? 'Document';
+
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 900, maxHeight: 700),
+        child: Column(
+          children: [
+            // AppBar-like header
+            Container(
+              decoration: BoxDecoration(
+                color: cs.surface,
+                borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(12)),
+                border: Border(
+                  bottom: BorderSide(
+                      color: cs.outlineVariant.withOpacity(0.4)),
+                ),
+              ),
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+              child: Row(
+                children: [
+                  Icon(Icons.description_outlined,
+                      size: 18, color: cs.primary),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      hasMultiple
+                          ? '${widget.projectTitle} — $title'
+                          : title,
+                      style: const TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w700),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_outlined, size: 18),
+                    onPressed: () => Navigator.pop(context),
+                    tooltip: 'Fermer',
+                  ),
+                ],
+              ),
+            ),
+
+            // Body
+            Expanded(
+              child: Row(
+                children: [
+                  // Sidebar list (only when multiple docs)
+                  if (hasMultiple) ...[
+                    Container(
+                      width: 200,
+                      decoration: BoxDecoration(
+                        border: Border(
+                          right: BorderSide(
+                              color: cs.outlineVariant.withOpacity(0.4)),
+                        ),
+                      ),
+                      child: ListView.builder(
+                        itemCount: widget.documents.length,
+                        itemBuilder: (_, i) {
+                          final doc = widget.documents[i];
+                          final docTitle =
+                              doc['title'] as String? ?? 'Document ${i + 1}';
+                          final isSelected = i == _selectedIndex;
+                          return ListTile(
+                            dense: true,
+                            selected: isSelected,
+                            selectedTileColor:
+                                cs.primaryContainer.withOpacity(0.4),
+                            leading: Icon(
+                              Icons.article_outlined,
+                              size: 16,
+                              color: isSelected
+                                  ? cs.primary
+                                  : cs.onSurface.withOpacity(0.5),
+                            ),
+                            title: Text(
+                              docTitle,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: isSelected
+                                    ? FontWeight.w600
+                                    : FontWeight.normal,
+                                color: isSelected
+                                    ? cs.primary
+                                    : cs.onSurface,
+                              ),
+                            ),
+                            onTap: () =>
+                                setState(() => _selectedIndex = i),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+
+                  // HTML content viewer
+                  Expanded(
+                    child: _HtmlDocViewer(
+                      key: ValueKey(_current['id'] ?? _selectedIndex),
+                      documentId:
+                          _current['id'] as String? ?? 'doc-$_selectedIndex',
+                      htmlContent: _current['content'] as String? ?? '',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Widget rendu HTML via iframe ──────────────────────────────────────────────
+
+class _HtmlDocViewer extends StatefulWidget {
+  final String documentId;
+  final String htmlContent;
+
+  const _HtmlDocViewer({
+    super.key,
+    required this.documentId,
+    required this.htmlContent,
+  });
+
+  @override
+  State<_HtmlDocViewer> createState() => _HtmlDocViewerState();
+}
+
+class _HtmlDocViewerState extends State<_HtmlDocViewer> {
+  late final String _viewId;
+
+  @override
+  void initState() {
+    super.initState();
+    _viewId = 'html-doc-${widget.documentId}';
+    // ignore: undefined_prefixed_name
+    ui_web.platformViewRegistry.registerViewFactory(_viewId, (_) {
+      final iframe = html.IFrameElement()
+        ..srcdoc = widget.htmlContent
+        ..style.border = 'none'
+        ..style.width = '100%'
+        ..style.height = '100%';
+      return iframe;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return HtmlElementView(viewType: _viewId);
+  }
+}
+
+// ── Badge source ──────────────────────────────────────────────────────────────
 
 class _SourceBadge extends StatelessWidget {
   final String source;
