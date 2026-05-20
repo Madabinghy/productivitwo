@@ -191,6 +191,26 @@ class _ExamplesTab extends StatelessWidget {
               'phase et met à jour le projet.',
         ),
         SizedBox(height: 16),
+        _SectionTitle('Domaines & activités'),
+        _ExampleCard(
+          prompt: 'Crée un domaine Business et une activité Productivitwo de 60 min/jour',
+          result:
+              'Claude crée le domaine dans Productivitwo et y attache l\'activité. '
+              'Tu peux ensuite lui demander de lier tes projets Gantt à ce domaine.',
+        ),
+        _ExampleCard(
+          prompt: 'Range mon Gantt Lancement dans le domaine Business',
+          result:
+              'Claude lit tes projets existants et met à jour le domainId '
+              'du projet pour l\'associer au bon domaine de vie.',
+        ),
+        _ExampleCard(
+          prompt: 'Marque la tâche "Définir le profil utilisateur" comme faite dans mon Gantt',
+          result:
+              'Claude identifie la tâche dans le projet et met à jour son statut '
+              'directement — sans avoir à recréer tout le projet.',
+        ),
+        SizedBox(height: 16),
         _SectionTitle('Coaching & ajustements'),
         _ExampleCard(
           prompt: 'Fais mon bilan de la semaine',
@@ -230,58 +250,165 @@ class _FeaturesTab extends StatelessWidget {
     return ListView(
       controller: scroll,
       padding: const EdgeInsets.all(20),
-      children: const [
-        _SectionTitle('Ce que Claude peut faire'),
-        _FeatureRow(
-          icon: Icons.visibility_outlined,
-          title: 'Lire ton contexte',
-          body:
-              'Domaines, activités + objectifs, routines actives, goals GTD, '
-              'et tout le réalisé des 7 derniers jours (actions faites, '
-              'temps loggué, taux de complétion des habitudes).',
+      children: [
+        const _SectionTitle('Ce que tu peux demander à Claude'),
+        const Text(
+          'Parle-lui naturellement, comme à un assistant',
+          style: TextStyle(fontSize: 12, color: Color(0xFF888888)),
         ),
-        _FeatureRow(
-          icon: Icons.calendar_today_outlined,
-          title: 'Planifier ta journée',
-          body:
-              'Crée un programme personnalisé en tenant compte de ton '
-              'calendrier Google, de tes blocs et de tes objectifs. '
-              'Ajoute aussi les créneaux dans Google Calendar.',
-        ),
-        _FeatureRow(
-          icon: Icons.account_tree_outlined,
-          title: 'Gérer les Gantts',
-          body:
-              'Crée, modifie et supprime des projets Gantt. '
-              'Lit tes projets existants pour les faire évoluer. '
-              'Aligne ton planning quotidien sur les phases et jalons.',
-        ),
-        _FeatureRow(
-          icon: Icons.repeat_outlined,
-          title: 'Créer des routines temporelles',
-          body:
-              'Crée des routines liées à une période ou à une phase Gantt. '
-              'Elles apparaissent dans ton plan quotidien iOS et '
-              'expirent automatiquement à la date de fin.',
-        ),
-        _FeatureRow(
-          icon: Icons.tune_outlined,
-          title: 'Ajuster les objectifs',
-          body:
-              'Modifie les objectifs quotidiens de tes activités '
-              '(temps ou fréquence) basé sur ta réalité récente.',
-        ),
-        SizedBox(height: 16),
-        _SectionTitle('Limites actuelles'),
-        _InfoBox(
+        const SizedBox(height: 16),
+        const _ActionGrid(),
+        const SizedBox(height: 16),
+        const _SectionTitle('Limites actuelles'),
+        const _InfoBox(
           icon: Icons.info_outline,
           text:
               '• Claude voit les 7 derniers jours d\'activité (pas l\'historique complet)\n'
               '• La sync iOS nécessite la connexion Apple Sign In pour fonctionner entre plusieurs appareils\n'
               '• Les modifications de Claude apparaissent dans Productivitwo iOS à la prochaine ouverture de l\'app',
         ),
-        SizedBox(height: 24),
+        const SizedBox(height: 24),
       ],
+    );
+  }
+}
+
+class _ActionGrid extends StatelessWidget {
+  const _ActionGrid();
+
+  @override
+  Widget build(BuildContext context) {
+    const cards = [
+      _ActionCard(
+        emoji: '🏗',
+        title: 'Créer',
+        color: Color(0xFF378ADD),
+        bg: Color(0xFFE6F1FB),
+        items: [
+          'Domaines de vie',
+          'Activités & habitudes',
+          'Projets Gantt complets',
+          'Routines sur une période',
+          'Actions dans le plan du jour',
+        ],
+        example: 'Crée un domaine Sport',
+      ),
+      _ActionCard(
+        emoji: '📅',
+        title: 'Planifier',
+        color: Color(0xFF639922),
+        bg: Color(0xFFEAF3DE),
+        items: [
+          'Plan du jour personnalisé',
+          'Adapter selon l\'agenda',
+          'Ajouter / vider des actions',
+          'Structurer une semaine',
+          'Lier Gantt et actions quotidiennes',
+        ],
+        example: 'Planifie ma semaine',
+      ),
+      _ActionCard(
+        emoji: '✏️',
+        title: 'Modifier',
+        color: Color(0xFFBA7517),
+        bg: Color(0xFFFAEEDA),
+        items: [
+          'Mettre à jour un Gantt',
+          'Changer le statut des tâches',
+          'Ajuster les objectifs',
+          'Supprimer des données',
+          'Renommer des éléments',
+        ],
+        example: 'Marque cette tâche comme faite',
+      ),
+      _ActionCard(
+        emoji: '📊',
+        title: 'Analyser',
+        color: Color(0xFF7F77DD),
+        bg: Color(0xFFEEEDFE),
+        items: [
+          'Voir ton activité récente',
+          'Identifier les blocages',
+          'Comparer objectifs / réalisé',
+          'Suggérer des priorités',
+          'Résumer la semaine',
+        ],
+        example: 'Comment s\'est passée ma semaine ?',
+      ),
+      _ActionCard(
+        emoji: '🔗',
+        title: 'Connecter',
+        color: Color(0xFF993C1D),
+        bg: Color(0xFFFAECE7),
+        items: [
+          'Lire & créer des events Calendar',
+          'Sauvegarder des docs sur Drive',
+          'Planifier selon tes RDV réels',
+        ],
+        example: 'Planifie selon mon agenda de juin',
+      ),
+    ];
+
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: cards.map((c) => SizedBox(
+        width: 300,
+        child: c,
+      )).toList(),
+    );
+  }
+}
+
+class _ActionCard extends StatelessWidget {
+  final String emoji;
+  final String title;
+  final Color color;
+  final Color bg;
+  final List<String> items;
+  final String example;
+
+  const _ActionCard({
+    required this.emoji,
+    required this.title,
+    required this.color,
+    required this.bg,
+    required this.items,
+    required this.example,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = dark ? color.withOpacity(0.12) : bg;
+    final textColor = dark ? color.withOpacity(0.9) : color;
+    final itemColor = dark ? color.withOpacity(0.75) : color.withOpacity(0.8);
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('$emoji  $title',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: textColor)),
+          const SizedBox(height: 8),
+          ...items.map((item) => Padding(
+            padding: const EdgeInsets.only(bottom: 3),
+            child: Row(children: [
+              Text('•  ', style: TextStyle(color: itemColor, fontSize: 12)),
+              Expanded(child: Text(item, style: TextStyle(fontSize: 12, color: itemColor))),
+            ]),
+          )),
+          const SizedBox(height: 8),
+          Text('ex : « $example »',
+              style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: color.withOpacity(0.7))),
+        ],
+      ),
     );
   }
 }
