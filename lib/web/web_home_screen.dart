@@ -20,6 +20,8 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   final _sync = FirestoreSync();
   List<Project> _projects = [];
   List<StrategicObjective> _objectives = [];
+  List<Domain> _domains = [];
+  String? _selectedDomainId;
   bool _loading = true;
   late TabController _mainTabs;
 
@@ -43,15 +45,15 @@ class _WebHomeScreenState extends State<WebHomeScreen>
       final results = await Future.wait([
         _sync.fetchProjects(),
         _sync.fetchStrategicObjectives(),
-        // Vérifie rapidement si l'utilisateur a des données iOS (activités)
         _sync.fetchApiTokens(),
+        _sync.fetchDomains(),
       ]);
       if (!mounted) return;
       final tokens = results[2] as List;
       setState(() {
         _projects = results[0] as List<Project>;
         _objectives = results[1] as List<StrategicObjective>;
-        // S'il a des tokens, il est déjà connecté à iOS
+        _domains = results[3] as List<Domain>;
         _hasIosData = tokens.isNotEmpty;
         _loading = false;
       });
@@ -165,6 +167,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                   projects: _projects
                       .where((p) => p.status != 'archived')
                       .toList(),
+                  domains: _domains,
                 ),
               ],
             ),
@@ -298,10 +301,15 @@ class _WebHomeScreenState extends State<WebHomeScreen>
     }
 
     // Séparer actifs et archivés
-    final active = _projects.where((p) => p.status != 'archived').toList();
+    final allActive = _projects.where((p) => p.status != 'archived').toList();
     final archived = _projects.where((p) => p.status == 'archived').toList();
 
-    // Grouper les actifs par objectif stratégique
+    // Filtre par domaine
+    final active = _selectedDomainId == null
+        ? allActive
+        : allActive.where((p) => p.domainId == _selectedDomainId).toList();
+
+    // Grouper les actifs filtrés par objectif stratégique
     final withObj = <StrategicObjective, List<Project>>{};
     final withoutObj = <Project>[];
     for (final p in active) {
@@ -318,6 +326,33 @@ class _WebHomeScreenState extends State<WebHomeScreen>
       child: ListView(
         padding: const EdgeInsets.all(24),
         children: [
+          // ── Filtre par domaine ─────────────────────────────────────────
+          if (_domains.isNotEmpty) ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                FilterChip(
+                  label: const Text('Tous'),
+                  selected: _selectedDomainId == null,
+                  onSelected: (_) => setState(() => _selectedDomainId = null),
+                ),
+                for (final d in _domains)
+                  FilterChip(
+                    label: Text(d.name),
+                    selected: _selectedDomainId == d.id,
+                    selectedColor: d.colorValue != null
+                        ? Color(d.colorValue!).withOpacity(0.25)
+                        : null,
+                    onSelected: (_) => setState(() =>
+                        _selectedDomainId =
+                            _selectedDomainId == d.id ? null : d.id),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 20),
+          ],
+
           // Projets actifs avec objectif stratégique
           for (final entry in withObj.entries) ...[
             _ObjectiveHeader(objective: entry.key),
@@ -325,6 +360,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
             for (final p in entry.value) ...[
               _ProjectCard(
                 project: p,
+                domains: _domains,
                 onTap: () => Navigator.push(context,
                     MaterialPageRoute(builder: (_) => GanttScreen(project: p))),
                 onArchive: () => _archiveProject(p, true),
@@ -342,6 +378,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
             for (final p in withoutObj) ...[
               _ProjectCard(
                 project: p,
+                domains: _domains,
                 onTap: () => Navigator.push(context,
                     MaterialPageRoute(builder: (_) => GanttScreen(project: p))),
                 onArchive: () => _archiveProject(p, true),
@@ -365,6 +402,11 @@ class _WebHomeScreenState extends State<WebHomeScreen>
     );
   }
 
+  static Color _domainColor(Domain? domain, ColorScheme cs) {
+    if (domain?.colorValue != null) return Color(domain!.colorValue!);
+    return cs.primary;
+  }
+
   Future<void> _archiveProject(Project p, bool archive) async {
     await _sync.saveProject(p..status = archive ? 'archived' : 'active');
     _load();
@@ -375,7 +417,8 @@ class _WebHomeScreenState extends State<WebHomeScreen>
 
 class _FocusView extends StatelessWidget {
   final List<Project> projects;
-  const _FocusView({required this.projects});
+  final List<Domain> domains;
+  const _FocusView({required this.projects, required this.domains});
 
   @override
   Widget build(BuildContext context) {
@@ -455,6 +498,7 @@ class _FocusView extends StatelessWidget {
                       _FocusTaskTile(
                         task: e.task,
                         project: e.project,
+                        domains: domains,
                         today: today,
                         cs: cs,
                         isOverdue: true,
@@ -482,6 +526,7 @@ class _FocusView extends StatelessWidget {
                       _FocusTaskTile(
                         task: e.task,
                         project: e.project,
+                        domains: domains,
                         today: today,
                         cs: cs,
                         isOverdue: false,
@@ -497,6 +542,7 @@ class _FocusView extends StatelessWidget {
                       _FocusTaskTile(
                         task: e.task,
                         project: e.project,
+                        domains: domains,
                         today: today,
                         cs: cs,
                         isOverdue: false,
@@ -533,12 +579,14 @@ class _FocusSectionHeader extends StatelessWidget {
 class _FocusTaskTile extends StatelessWidget {
   final ProjectTask task;
   final Project project;
+  final List<Domain> domains;
   final DateTime today;
   final ColorScheme cs;
   final bool isOverdue;
   const _FocusTaskTile({
     required this.task,
     required this.project,
+    required this.domains,
     required this.today,
     required this.cs,
     required this.isOverdue,
@@ -610,13 +658,46 @@ class _FocusTaskTile extends StatelessWidget {
                         fontSize: 14, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    project.title,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: cs.primary,
-                    ),
+                  Row(
+                    children: [
+                      Text(
+                        project.title,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: cs.primary,
+                        ),
+                      ),
+                      Builder(builder: (context) {
+                        final domain = project.domainId == null
+                            ? null
+                            : domains
+                                .where((d) => d.id == project.domainId)
+                                .firstOrNull;
+                        if (domain == null) return const SizedBox.shrink();
+                        final color = _WebHomeScreenState._domainColor(domain, cs);
+                        return Padding(
+                          padding: const EdgeInsets.only(left: 6),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: color.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                  color: color.withOpacity(0.4), width: 1),
+                            ),
+                            child: Text(
+                              domain.name,
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: color),
+                            ),
+                          ),
+                        );
+                      }),
+                    ],
                   ),
                 ],
               ),
@@ -700,9 +781,15 @@ class _ObjectiveHeader extends StatelessWidget {
 
 class _ProjectCard extends StatelessWidget {
   final Project project;
+  final List<Domain> domains;
   final VoidCallback onTap;
   final VoidCallback? onArchive;
-  const _ProjectCard({required this.project, required this.onTap, this.onArchive});
+  const _ProjectCard({
+    required this.project,
+    required this.domains,
+    required this.onTap,
+    this.onArchive,
+  });
 
   String _fmt(DateTime d) {
     const m = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin', 'juil', 'aoû', 'sep', 'oct', 'nov', 'déc'];
@@ -769,6 +856,25 @@ class _ProjectCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
+              Builder(builder: (context) {
+                final domain = project.domainId == null
+                    ? null
+                    : domains
+                        .where((d) => d.id == project.domainId)
+                        .firstOrNull;
+                if (domain == null) return const SizedBox.shrink();
+                final color = _WebHomeScreenState._domainColor(domain, cs);
+                return Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    domain.name,
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: color),
+                  ),
+                );
+              }),
               const SizedBox(height: 12),
               Row(
                 children: [

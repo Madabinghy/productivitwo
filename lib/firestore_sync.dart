@@ -292,6 +292,21 @@ class FirestoreSync {
         'lastSync': FieldValue.serverTimestamp(),
       };
 
+  // ── Domains ─────────────────────────────────────────────────────────────────
+
+  Future<List<Domain>> fetchDomains() async {
+    if (uid == null) return [];
+    try {
+      final snap = await _col('domains').get();
+      return snap.docs
+          .map((d) => Domain.from(d.data() as Map))
+          .where((d) => !d.deleted)
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
   // ── Projects ────────────────────────────────────────────────────────────────
 
   Future<List<Project>> fetchProjects() async {
