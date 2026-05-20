@@ -674,12 +674,16 @@ async function executeGetUserContext(uid) {
         .map((d) => d.data())
         .filter((v) => !v.deleted)
         .map((v) => ({ id: v.id, name: v.name }));
+    // activityMap inclut TOUTES les activités (y compris archivées) pour résoudre les noms dans timeLogged/habitCompletion
     const activityMap = new Map();
+    activitiesSnap.docs.forEach((d) => {
+        const v = d.data();
+        activityMap.set(v.id, v.deleted ? `${v.name} (archivé)` : v.name);
+    });
     const activities = activitiesSnap.docs
         .map((d) => d.data())
         .filter((v) => !v.deleted)
         .map((v) => {
-        activityMap.set(v.id, v.name);
         return {
             id: v.id,
             name: v.name,
