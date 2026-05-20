@@ -5,8 +5,9 @@ import 'package:productivitwo_v1/models.dart';
 
 // ── Constantes de layout ──────────────────────────────────────────────────────
 
-const double _kLabelW = 220.0;
+const double _kLabelW = 280.0;
 const double _kCellW = 68.0;
+const double _kDayCellW = 28.0;
 const double _kRowH = 36.0;
 const double _kGroupH = 30.0;
 const double _kPhaseH = 28.0;
@@ -588,6 +589,7 @@ class _GanttBody extends StatefulWidget {
 
 class _GanttBodyState extends State<_GanttBody> {
   late final TransformationController _ctrl;
+  bool _dayView = false;
 
   @override
   void initState() {
@@ -603,25 +605,61 @@ class _GanttBodyState extends State<_GanttBody> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final project = widget.project;
     final start = project.startDate;
     final end = project.endDate ?? start.add(const Duration(days: 84));
     final weeks = max(4, ((end.difference(start).inDays / 7).ceil() + 1));
 
-    return InteractiveViewer(
-      transformationController: _ctrl,
-      constrained: false,
-      minScale: 0.25,
-      maxScale: 4.0,
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: _GanttGrid(
-          project: widget.project,
-          projectStart: start,
-          totalWeeks: weeks,
-          onTaskTap: widget.onTaskTap,
+    return Column(
+      children: [
+        // Toggle Semaine / Jour
+        Container(
+          color: cs.surface,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+          child: Row(
+            children: [
+              const Spacer(),
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment<bool>(value: false, label: Text('Semaine')),
+                  ButtonSegment<bool>(value: true, label: Text('Jour')),
+                ],
+                selected: {_dayView},
+                onSelectionChanged: (s) => setState(() => _dayView = s.first),
+                style: ButtonStyle(
+                  textStyle: WidgetStateProperty.all(
+                    const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                  padding: WidgetStateProperty.all(
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
+        Divider(height: 1, color: cs.outlineVariant.withOpacity(0.4)),
+        // Grille
+        Expanded(
+          child: InteractiveViewer(
+            transformationController: _ctrl,
+            constrained: false,
+            minScale: 0.25,
+            maxScale: 4.0,
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: _GanttGrid(
+                project: widget.project,
+                projectStart: start,
+                totalWeeks: weeks,
+                dayView: _dayView,
+                onTaskTap: widget.onTaskTap,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -632,16 +670,23 @@ class _GanttGrid extends StatelessWidget {
   final Project project;
   final DateTime projectStart;
   final int totalWeeks;
+  final bool dayView;
   final void Function(ProjectTask)? onTaskTap;
 
   const _GanttGrid({
     required this.project,
     required this.projectStart,
     required this.totalWeeks,
+    this.dayView = false,
     this.onTaskTap,
   });
 
-  double get timeW => totalWeeks * _kCellW;
+  int get totalDays {
+    final end = project.endDate ?? projectStart.add(const Duration(days: 84));
+    return end.difference(projectStart).inDays + 7;
+  }
+
+  double get timeW => dayView ? totalDays * _kDayCellW : totalWeeks * _kCellW;
   double get totalW => _kLabelW + timeW;
 
   @override
@@ -656,12 +701,16 @@ class _GanttGrid extends StatelessWidget {
           project: project,
           projectStart: projectStart,
           totalWeeks: totalWeeks,
+          totalDays: totalDays,
+          dayView: dayView,
           timeW: timeW,
         ),
         // ── Week header ───────────────────────────────────────
         _WeekHeaderRow(
           projectStart: projectStart,
           totalWeeks: totalWeeks,
+          totalDays: totalDays,
+          dayView: dayView,
           timeW: timeW,
         ),
         // ── Séparateur ────────────────────────────────────────
@@ -679,6 +728,8 @@ class _GanttGrid extends StatelessWidget {
               task: task,
               projectStart: projectStart,
               totalWeeks: totalWeeks,
+              totalDays: totalDays,
+              dayView: dayView,
               timeW: timeW,
               onTap: onTaskTap != null ? () => onTaskTap!(task) : null,
             ),
@@ -696,14 +747,21 @@ class _PhaseHeaderRow extends StatelessWidget {
   final Project project;
   final DateTime projectStart;
   final int totalWeeks;
+  final int totalDays;
+  final bool dayView;
   final double timeW;
 
   const _PhaseHeaderRow({
     required this.project,
     required this.projectStart,
     required this.totalWeeks,
+    required this.totalDays,
+    required this.dayView,
     required this.timeW,
   });
+
+  double _toX(int inDays) =>
+      dayView ? inDays * _kDayCellW : inDays / 7 * _kCellW;
 
   @override
   Widget build(BuildContext context) {
@@ -724,18 +782,10 @@ class _PhaseHeaderRow extends StatelessWidget {
               children: project.phases.map((phase) {
                 final left = max(
                     0.0,
-                    phase.startDate
-                            .difference(projectStart)
-                            .inDays /
-                        7 *
-                        _kCellW);
+                    _toX(phase.startDate.difference(projectStart).inDays));
                 final right = min(
                     timeW,
-                    phase.endDate
-                            .difference(projectStart)
-                            .inDays /
-                        7 *
-                        _kCellW);
+                    _toX(phase.endDate.difference(projectStart).inDays));
                 final w = max(0.0, right - left);
                 final bg = _hex(phase.color, const Color(0xFFEEEDFE));
                 final fg = _darken(bg);
@@ -778,15 +828,19 @@ class _PhaseHeaderRow extends StatelessWidget {
 class _WeekHeaderRow extends StatelessWidget {
   final DateTime projectStart;
   final int totalWeeks;
+  final int totalDays;
+  final bool dayView;
   final double timeW;
 
   const _WeekHeaderRow({
     required this.projectStart,
     required this.totalWeeks,
+    required this.totalDays,
+    required this.dayView,
     required this.timeW,
   });
 
-  String _label(int i) {
+  String _weekLabel(int i) {
     final d = projectStart.add(Duration(days: i * 7));
     return '${d.day}/${d.month}';
   }
@@ -799,30 +853,58 @@ class _WeekHeaderRow extends StatelessWidget {
       child: Row(
         children: [
           const SizedBox(width: _kLabelW),
-          ...List.generate(totalWeeks, (i) {
-            return SizedBox(
-              width: _kCellW,
-              height: _kWeekH,
-              child: Container(
-                decoration: BoxDecoration(
-                  border: Border(
-                    left: BorderSide(
-                        color: _kGridLine, width: 1),
-                    bottom: BorderSide(
-                        color: _kGridLine, width: 1),
+          if (dayView)
+            ...List.generate(totalDays, (i) {
+              final d = projectStart.add(Duration(days: i));
+              final isWeekend = d.weekday == DateTime.saturday || d.weekday == DateTime.sunday;
+              return SizedBox(
+                width: _kDayCellW,
+                height: _kWeekH,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isWeekend ? const Color(0x11AAAAAA) : null,
+                    border: const Border(
+                      left: BorderSide(color: _kGridLine, width: 1),
+                      bottom: BorderSide(color: _kGridLine, width: 1),
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    '${d.day}',
+                    style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w500,
+                      color: isWeekend
+                          ? const Color(0xFFAAAAAA)
+                          : const Color(0xFF888888),
+                    ),
                   ),
                 ),
-                alignment: Alignment.center,
-                child: Text(
-                  _label(i),
-                  style: const TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xFF888888)),
+              );
+            })
+          else
+            ...List.generate(totalWeeks, (i) {
+              return SizedBox(
+                width: _kCellW,
+                height: _kWeekH,
+                child: Container(
+                  decoration: const BoxDecoration(
+                    border: Border(
+                      left: BorderSide(color: _kGridLine, width: 1),
+                      bottom: BorderSide(color: _kGridLine, width: 1),
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    _weekLabel(i),
+                    style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF888888)),
+                  ),
                 ),
-              ),
-            );
-          }),
+              );
+            }),
         ],
       ),
     );
@@ -892,6 +974,8 @@ class _TaskRow extends StatelessWidget {
   final ProjectTask task;
   final DateTime projectStart;
   final int totalWeeks;
+  final int totalDays;
+  final bool dayView;
   final double timeW;
   final VoidCallback? onTap;
 
@@ -899,6 +983,8 @@ class _TaskRow extends StatelessWidget {
     required this.task,
     required this.projectStart,
     required this.totalWeeks,
+    required this.totalDays,
+    required this.dayView,
     required this.timeW,
     this.onTap,
   });
@@ -989,6 +1075,8 @@ class _TaskRow extends StatelessWidget {
   }
 
   List<Widget> _buildGridLines(double timeW) {
+    final count = dayView ? totalDays : totalWeeks;
+    final cellW = dayView ? _kDayCellW : _kCellW;
     return [
       // Fond global
       Positioned.fill(
@@ -999,10 +1087,10 @@ class _TaskRow extends StatelessWidget {
           ),
         ),
       ),
-      // Lignes verticales par semaine
-      ...List.generate(totalWeeks, (i) {
+      // Lignes verticales
+      ...List.generate(count, (i) {
         return Positioned(
-          left: i * _kCellW,
+          left: i * cellW,
           top: 0,
           bottom: 0,
           width: 1,
@@ -1012,13 +1100,16 @@ class _TaskRow extends StatelessWidget {
     ];
   }
 
+  double _toX(int inDays) =>
+      dayView ? inDays * _kDayCellW : inDays / 7 * _kCellW;
+
   Widget _buildBar(bool isDone) {
     final end = task.endDate ?? task.startDate.add(const Duration(days: 7));
     final startDays = task.startDate.difference(projectStart).inDays;
     final endDays = end.difference(projectStart).inDays;
 
-    final left = max(0.0, startDays / 7 * _kCellW);
-    final right = min(timeW, endDays / 7 * _kCellW);
+    final left = max(0.0, _toX(startDays));
+    final right = min(timeW, _toX(endDays));
     final barW = max(4.0, right - left);
 
     final barColor = isDone
@@ -1067,7 +1158,9 @@ class _TaskRow extends StatelessWidget {
   }
 
   Widget _buildMilestone() {
-    final centerX = task.startDate.difference(projectStart).inDays / 7 * _kCellW + _kCellW / 2;
+    final inDays = task.startDate.difference(projectStart).inDays;
+    final cellHalf = dayView ? _kDayCellW / 2 : _kCellW / 2;
+    final centerX = _toX(inDays) + cellHalf;
     final color = _hex(task.color, const Color(0xFF6B57F0));
     const size = 13.0;
 
