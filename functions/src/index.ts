@@ -690,6 +690,7 @@ const PUSH_GANTT_MCP_TOOL = {
         properties: {
           title:       { type: "string" },
           description: { type: "string" },
+          domainId:    { type: "string", description: "id du domaine (get_user_context)" },
           startDate:   { type: "string", description: "YYYY-MM-DD" },
           endDate:     { type: "string", description: "YYYY-MM-DD" },
           phases: {
