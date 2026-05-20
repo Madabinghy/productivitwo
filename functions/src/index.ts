@@ -441,6 +441,25 @@ const DELETE_ACTIVITY_TOOL = {
   },
 };
 
+const UPDATE_PROJECT_TOOL = {
+  name: "update_project",
+  description:
+    "Modifie les métadonnées d'un projet Gantt existant sans toucher aux tâches/phases. " +
+    "Utilise cet outil pour changer le domaine, le titre, la description ou le statut. " +
+    "Utilise list_projects pour obtenir le projectId.",
+  inputSchema: {
+    type: "object",
+    required: ["projectId"],
+    properties: {
+      projectId:   { type: "string", description: "id du projet (list_projects)" },
+      domainId:    { type: "string", description: "id du domaine (get_user_context)" },
+      title:       { type: "string" },
+      description: { type: "string" },
+      status:      { type: "string", enum: ["active", "archived", "done"] },
+    },
+  },
+};
+
 const UPDATE_TASK_STATUS_TOOL = {
   name: "update_task_status",
   description:
@@ -1219,6 +1238,26 @@ async function executeDeleteActivity(uid: string, activityId: string): Promise<s
   return `✅ Activité "${name}" supprimée${planSnap.size > 0 ? ` (${planSnap.size} action(s) du plan déliée(s))` : ""}.`;
 }
 
+async function executeUpdateProject(
+  uid: string,
+  projectId: string,
+  updates: { domainId?: string; title?: string; description?: string; status?: string }
+): Promise<string> {
+  const ref = db.collection(`users/${uid}/projects`).doc(projectId);
+  const snap = await ref.get();
+  if (!snap.exists) return `Projet introuvable : ${projectId}`;
+  const title = updates.title ?? (snap.data()?.title ?? projectId);
+
+  const patch: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
+  if (updates.domainId  !== undefined) patch.domainId    = updates.domainId;
+  if (updates.title     !== undefined) patch.title       = updates.title;
+  if (updates.description !== undefined) patch.description = updates.description;
+  if (updates.status    !== undefined) patch.status      = updates.status;
+
+  await ref.update(patch);
+  return `✅ Projet "${title}" mis à jour.`;
+}
+
 async function executeUpdateTaskStatus(
   uid: string,
   projectId: string,
@@ -1553,6 +1592,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
             CREATE_ACTIVITY_TOOL,
             UPDATE_ACTIVITY_TOOL,
             UPDATE_TASK_STATUS_TOOL,
+            UPDATE_PROJECT_TOOL,
             DELETE_ACTIVITY_TOOL,
             DELETE_ACTION_TOOL,
             CREATE_DOMAIN_TOOL,
@@ -1615,6 +1655,8 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
           text = await executeCreateRoutine(uid, args as Parameters<typeof executeCreateRoutine>[1]);
         } else if (toolName === "add_to_day_plan") {
           text = await executeAddToDayPlan(uid, args as Parameters<typeof executeAddToDayPlan>[1]);
+        } else if (toolName === "update_project") {
+          text = await executeUpdateProject(uid, args.projectId as string, args);
         } else if (toolName === "update_task_status") {
           text = await executeUpdateTaskStatus(
             uid,

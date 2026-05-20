@@ -325,6 +325,23 @@ const DELETE_ACTIVITY_TOOL = {
         },
     },
 };
+const UPDATE_PROJECT_TOOL = {
+    name: "update_project",
+    description: "Modifie les métadonnées d'un projet Gantt existant sans toucher aux tâches/phases. " +
+        "Utilise cet outil pour changer le domaine, le titre, la description ou le statut. " +
+        "Utilise list_projects pour obtenir le projectId.",
+    inputSchema: {
+        type: "object",
+        required: ["projectId"],
+        properties: {
+            projectId: { type: "string", description: "id du projet (list_projects)" },
+            domainId: { type: "string", description: "id du domaine (get_user_context)" },
+            title: { type: "string" },
+            description: { type: "string" },
+            status: { type: "string", enum: ["active", "archived", "done"] },
+        },
+    },
+};
 const UPDATE_TASK_STATUS_TOOL = {
     name: "update_task_status",
     description: "Met à jour le statut d'une tâche Gantt (pending → done, skipped, etc.). " +
@@ -990,6 +1007,25 @@ async function executeDeleteActivity(uid, activityId) {
     }
     return `✅ Activité "${name}" supprimée${planSnap.size > 0 ? ` (${planSnap.size} action(s) du plan déliée(s))` : ""}.`;
 }
+async function executeUpdateProject(uid, projectId, updates) {
+    var _a, _b, _c;
+    const ref = db.collection(`users/${uid}/projects`).doc(projectId);
+    const snap = await ref.get();
+    if (!snap.exists)
+        return `Projet introuvable : ${projectId}`;
+    const title = (_a = updates.title) !== null && _a !== void 0 ? _a : ((_c = (_b = snap.data()) === null || _b === void 0 ? void 0 : _b.title) !== null && _c !== void 0 ? _c : projectId);
+    const patch = { updatedAt: firestore_1.FieldValue.serverTimestamp() };
+    if (updates.domainId !== undefined)
+        patch.domainId = updates.domainId;
+    if (updates.title !== undefined)
+        patch.title = updates.title;
+    if (updates.description !== undefined)
+        patch.description = updates.description;
+    if (updates.status !== undefined)
+        patch.status = updates.status;
+    await ref.update(patch);
+    return `✅ Projet "${title}" mis à jour.`;
+}
 async function executeUpdateTaskStatus(uid, projectId, taskId, status) {
     var _a;
     const ref = db.collection(`users/${uid}/projects`).doc(projectId);
@@ -1280,6 +1316,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                         CREATE_ACTIVITY_TOOL,
                         UPDATE_ACTIVITY_TOOL,
                         UPDATE_TASK_STATUS_TOOL,
+                        UPDATE_PROJECT_TOOL,
                         DELETE_ACTIVITY_TOOL,
                         DELETE_ACTION_TOOL,
                         CREATE_DOMAIN_TOOL,
@@ -1346,6 +1383,9 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                 }
                 else if (toolName === "add_to_day_plan") {
                     text = await executeAddToDayPlan(uid, args);
+                }
+                else if (toolName === "update_project") {
+                    text = await executeUpdateProject(uid, args.projectId, args);
                 }
                 else if (toolName === "update_task_status") {
                     text = await executeUpdateTaskStatus(uid, args.projectId, args.taskId, args.status);
