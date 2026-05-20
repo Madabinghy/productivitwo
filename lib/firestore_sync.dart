@@ -109,7 +109,16 @@ class FirestoreSync {
     final existing = await col.get();
     final localIds = items.map((e) => e['id'] as String).toSet();
     for (final doc in existing.docs) {
-      if (!localIds.contains(doc.id)) batch.delete(doc.reference);
+      if (!localIds.contains(doc.id)) {
+        // Ne supprimer que si l'item Firestore a deleted:true
+        // (suppression MCP déjà persistée) ou si ce n'est PAS une collection
+        // gérée par soft-delete (pour éviter de détruire des items créés par MCP
+        // pendant que l'app tournait en arrière-plan).
+        final data = doc.data() as Map<String, dynamic>?;
+        final isDeleted = data?['deleted'] == true;
+        if (isDeleted) batch.delete(doc.reference);
+        // Sinon : laisser — sera intégré au prochain pull+merge
+      }
     }
     for (final item in items) {
       batch.set(col.doc(item['id'] as String), item);
