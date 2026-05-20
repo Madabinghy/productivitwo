@@ -1247,35 +1247,28 @@ async function executePlanDay(
 
 async function executeCreateActivity(
   uid: string,
-  args: {
-    name: string;
-    domainId: string;
-    type: "time" | "habit";
-    goalMin?: number;
-    unit?: string;
-    habitFreq?: number;
-    habitTarget?: number;
-  }
+  args: { name: string; domainId: string; goalMin?: number }
 ): Promise<string> {
   const id = uuidv4();
   await db.collection(`users/${uid}/activities`).doc(id).set({
     id,
     name: args.name,
     domainId: args.domainId,
-    type: args.type,
+    type: "time",
     role: "generic",
     goalMin: args.goalMin ?? 1,
-    unit: args.unit ?? null,
-    habitFreq: args.habitFreq ?? null,
-    habitTarget: args.habitTarget ?? null,
+    unit: null,
+    habitFreq: null,
+    habitTarget: null,
     manualTarget: false,
     autoTune: true,
     createdAt: FieldValue.serverTimestamp(),
     lastTuneAt: null,
     order: 0,
     iconCode: null,
+    deleted: false,
   });
-  return `✅ Activité "${args.name}" créée (${args.type}). Elle apparaîtra dans Productivitwo à la prochaine synchronisation.`;
+  return `✅ Activité "${args.name}" créée (tracking temps). Elle apparaîtra dans Productivitwo à la prochaine synchronisation.`;
 }
 
 async function executeDeleteAction(uid: string, actionId: string): Promise<string> {

@@ -1021,26 +1021,27 @@ async function executePlanDay(uid, date, items, clearExisting) {
         items.map((it, i) => `  ${i + 1}. ${it.title}${it.blockId ? ` → bloc ${it.blockId}` : ""}`).join("\n"));
 }
 async function executeCreateActivity(uid, args) {
-    var _a, _b, _c, _d;
+    var _a;
     const id = (0, uuid_1.v4)();
     await db.collection(`users/${uid}/activities`).doc(id).set({
         id,
         name: args.name,
         domainId: args.domainId,
-        type: args.type,
+        type: "time",
         role: "generic",
         goalMin: (_a = args.goalMin) !== null && _a !== void 0 ? _a : 1,
-        unit: (_b = args.unit) !== null && _b !== void 0 ? _b : null,
-        habitFreq: (_c = args.habitFreq) !== null && _c !== void 0 ? _c : null,
-        habitTarget: (_d = args.habitTarget) !== null && _d !== void 0 ? _d : null,
+        unit: null,
+        habitFreq: null,
+        habitTarget: null,
         manualTarget: false,
         autoTune: true,
         createdAt: firestore_1.FieldValue.serverTimestamp(),
         lastTuneAt: null,
         order: 0,
         iconCode: null,
+        deleted: false,
     });
-    return `✅ Activité "${args.name}" créée (${args.type}). Elle apparaîtra dans Productivitwo à la prochaine synchronisation.`;
+    return `✅ Activité "${args.name}" créée (tracking temps). Elle apparaîtra dans Productivitwo à la prochaine synchronisation.`;
 }
 async function executeDeleteAction(uid, actionId) {
     var _a, _b;
