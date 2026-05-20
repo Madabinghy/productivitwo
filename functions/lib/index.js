@@ -1168,7 +1168,8 @@ async function executeListProjects(uid) {
         const taskCount = (d.tasks || []).length;
         const start = d.startDate || "?";
         const end = d.endDate || "?";
-        return `• [${d.id}] ${d.title} (${start} → ${end}, ${taskCount} tâche(s))`;
+        const domain = d.domainId ? ` · domaine:${d.domainId}` : '';
+        return `• [${d.id}] ${d.title} (${start} → ${end}, ${taskCount} tâche(s)${domain})`;
     });
     return `Projets Productivitwo (${snap.size}) :\n${lines.join("\n")}`;
 }
