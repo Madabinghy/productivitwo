@@ -338,17 +338,17 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                   selected: _selectedDomainId == null,
                   onSelected: (_) => setState(() => _selectedDomainId = null),
                 ),
-                for (final (i, d) in _domains.indexed)
+                for (int i = 0; i < _domains.length; i++)
                   FilterChip(
-                    label: Text(d.name),
-                    selected: _selectedDomainId == d.id,
-                    selectedColor: (d.colorValue != null
-                        ? Color(d.colorValue!)
+                    label: Text(_domains[i].name),
+                    selected: _selectedDomainId == _domains[i].id,
+                    selectedColor: (_domains[i].colorValue != null
+                        ? Color(_domains[i].colorValue!)
                         : kDomainPalette[i % kDomainPalette.length])
                         .withOpacity(0.25),
                     onSelected: (_) => setState(() =>
                         _selectedDomainId =
-                            _selectedDomainId == d.id ? null : d.id),
+                            _selectedDomainId == _domains[i].id ? null : _domains[i].id),
                   ),
               ],
             ),
