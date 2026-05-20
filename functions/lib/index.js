@@ -993,8 +993,8 @@ async function executeDeleteActivity(uid, activityId) {
     if (!snap.exists)
         return `Activité introuvable : ${activityId}`;
     const name = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : activityId;
-    await ref.delete();
-    // Délier les day plan items non faits qui référencent cette activité
+    // Soft-delete pour que le merge Flutter respecte la suppression
+    await ref.update({ deleted: true });
     const planSnap = await db.collection(`users/${uid}/dayPlan`)
         .where("activityId", "==", activityId)
         .where("done", "==", false)
@@ -1085,8 +1085,8 @@ async function executeDeleteRoutine(uid, routineId) {
     if (!snap.exists)
         return `Routine introuvable : ${routineId}`;
     const title = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.title) !== null && _b !== void 0 ? _b : routineId;
-    await ref.delete();
-    // Supprimer aussi les DayPlanItems générés par cette routine (non faits)
+    // Soft-delete pour que le merge Flutter respecte la suppression
+    await ref.update({ deleted: true, active: false });
     const planSnap = await db.collection(`users/${uid}/dayPlan`)
         .where("recurringActionId", "==", routineId)
         .where("done", "==", false)
@@ -1094,7 +1094,7 @@ async function executeDeleteRoutine(uid, routineId) {
     if (!planSnap.empty) {
         const batch = db.batch();
         for (const doc of planSnap.docs)
-            batch.delete(doc.ref);
+            batch.update(doc.ref, { archived: true, status: "archived" });
         await batch.commit();
     }
     return `✅ Routine "${title}" supprimée (${planSnap.size} occurrence(s) future(s) retirée(s) du plan).`;

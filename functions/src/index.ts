@@ -1222,9 +1222,9 @@ async function executeDeleteActivity(uid: string, activityId: string): Promise<s
   if (!snap.exists) return `Activité introuvable : ${activityId}`;
   const name = snap.data()?.name ?? activityId;
 
-  await ref.delete();
+  // Soft-delete pour que le merge Flutter respecte la suppression
+  await ref.update({ deleted: true });
 
-  // Délier les day plan items non faits qui référencent cette activité
   const planSnap = await db.collection(`users/${uid}/dayPlan`)
     .where("activityId", "==", activityId)
     .where("done", "==", false)
@@ -1332,15 +1332,15 @@ async function executeDeleteRoutine(uid: string, routineId: string): Promise<str
   const snap = await ref.get();
   if (!snap.exists) return `Routine introuvable : ${routineId}`;
   const title = snap.data()?.title ?? routineId;
-  await ref.delete();
-  // Supprimer aussi les DayPlanItems générés par cette routine (non faits)
+  // Soft-delete pour que le merge Flutter respecte la suppression
+  await ref.update({ deleted: true, active: false });
   const planSnap = await db.collection(`users/${uid}/dayPlan`)
     .where("recurringActionId", "==", routineId)
     .where("done", "==", false)
     .get();
   if (!planSnap.empty) {
     const batch = db.batch();
-    for (const doc of planSnap.docs) batch.delete(doc.ref);
+    for (const doc of planSnap.docs) batch.update(doc.ref, { archived: true, status: "archived" });
     await batch.commit();
   }
   return `✅ Routine "${title}" supprimée (${planSnap.size} occurrence(s) future(s) retirée(s) du plan).`;

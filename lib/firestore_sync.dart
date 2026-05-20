@@ -94,6 +94,7 @@ class FirestoreSync {
         _pushCollection(st.habitHits.map((e) => e.toJson()).toList(), 'habitHits'),
         _pushCollection(st.dayPlan.map((e) => e.toJson()).toList(), 'dayPlan'),
         _pushCollection(st.goals.map((e) => e.toJson()).toList(), 'goals'),
+        _pushCollection(st.recurringActions.map((e) => e.toJson()).toList(), 'recurringActions'),
         _pushCollection(st.blocks.map((e) => e.toJson()).toList(), 'blocks'),
         _pushCollection(st.earnedBadges.map((e) => e.toJson()).toList(), 'badges'),
         _meta().set(_encodeMeta(st), SetOptions(merge: true)),
@@ -130,6 +131,7 @@ class FirestoreSync {
         _col('habitHits').get(),
         _col('dayPlan').get(),
         _col('goals').get(),
+        _col('recurringActions').get(),
         _col('blocks').get(),
         _col('badges').get(),
       ]);
@@ -155,8 +157,9 @@ class FirestoreSync {
         habitHits: docs(5).map(HabitHit.from).toList(),
         dayPlan: docs(6).map(DayPlanItem.from).toList(),
         goals: docs(7).map(Goal.from).toList(),
-        blocks: docs(8).map(DayBlock.from).toList(),
-        earnedBadges: docs(9)
+        recurringActions: docs(8).map(RecurringAction.from).toList(),
+        blocks: docs(9).map(DayBlock.from).toList(),
+        earnedBadges: docs(10)
             .map(EarnedBadge.tryFrom)
             .whereType<EarnedBadge>()
             .toList(),
@@ -218,18 +221,38 @@ class FirestoreSync {
     }
 
     return AppState(
-      // Domains : remote gagne (MCP peut soft-delete via deleted:true)
+      // Domains : remote gagne + déduplication par nom
       domains: () {
         final remoteMap = byId(remote.domains, (d) => d.id);
         final merged = Map.of(remoteMap);
         for (final d in local.domains) {
-          if (!remoteMap.containsKey(d.id)) merged[d.id] = d;
+          if (!remoteMap.containsKey(d.id) &&
+              !remoteMap.values.any((r) => r.name == d.name)) {
+            merged[d.id] = d;
+          }
         }
         return merged.values.toList();
       }(),
-      activities:    union(local.activities,    remote.activities,    (a) => a.id),
+      // Activities : remote gagne pour les suppressions MCP (deleted:true)
+      activities: () {
+        final remoteMap = byId(remote.activities, (a) => a.id);
+        final merged = Map.of(remoteMap);
+        for (final a in local.activities) {
+          if (!remoteMap.containsKey(a.id)) merged[a.id] = a;
+        }
+        return merged.values.toList();
+      }(),
       sessions:      union(local.sessions,      remote.sessions,      (s) => s.id),
       habitHits:     union(local.habitHits,     remote.habitHits,     (h) => h.id),
+      // RecurringActions : remote gagne pour les suppressions MCP (deleted:true)
+      recurringActions: () {
+        final remoteMap = byId(remote.recurringActions, (r) => r.id);
+        final merged = Map.of(remoteMap);
+        for (final r in local.recurringActions) {
+          if (!remoteMap.containsKey(r.id)) merged[r.id] = r;
+        }
+        return merged.values.toList();
+      }(),
       // Goals : remote est la source de vérité (MCP peut archiver/supprimer)
       // On garde en plus les goals locaux absents du remote (créés offline)
       goals: () {

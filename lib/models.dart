@@ -224,6 +224,7 @@ class RecurringAction {
   DateTime? startDate;    // date d'activation (null = immédiatement)
   DateTime? endDate;      // date d'expiration (null = pas de limite)
   String? projectTaskId;  // id de la tâche Gantt associée
+  bool deleted;
 
   RecurringAction({
     String? id,
@@ -238,6 +239,7 @@ class RecurringAction {
     this.startDate,
     this.endDate,
     this.projectTaskId,
+    this.deleted = false,
   })  : id = id ?? _uuid.v4(),
         weekdays = weekdays ?? [],
         createdAt = createdAt ?? DateTime.now();
@@ -278,6 +280,7 @@ class RecurringAction {
         'startDate': startDate?.toIso8601String(),
         'endDate': endDate?.toIso8601String(),
         'projectTaskId': projectTaskId,
+        'deleted': deleted,
       };
 
   static RecurringAction from(Map j) => RecurringAction(
@@ -303,6 +306,7 @@ class RecurringAction {
             ? DateTime.tryParse(j['endDate'])
             : null,
         projectTaskId: j['projectTaskId'] as String?,
+        deleted: j['deleted'] as bool? ?? false,
       );
 }
 
@@ -611,8 +615,9 @@ class Activity {
   int order;
 
   /// Code point d'une icône Material Icons (optionnel).
-  /// Rendu via Icon(IconData(iconCode!, fontFamily: 'MaterialIcons')).
   int? iconCode;
+
+  bool deleted;
 
   Activity({
     String? id,
@@ -631,6 +636,7 @@ class Activity {
     this.linkedActivityId,
     this.order = 0,
     this.iconCode,
+    this.deleted = false,
   })  : id = id ?? _uuid.v4(), // <-- sans const ici
         createdAt = createdAt ?? DateTime.now();
 
@@ -662,6 +668,7 @@ class Activity {
         'lastTuneAt': lastTuneAt?.toIso8601String(),
         'order': order,
         'iconCode': iconCode,
+        'deleted': deleted,
       };
 
   /// Migration douce :
@@ -707,6 +714,7 @@ class Activity {
           j['lastTuneAt'] != null ? DateTime.parse(j['lastTuneAt']) : null,
       order: (j['order'] as num?)?.toInt() ?? 0,
       iconCode: (j['iconCode'] as num?)?.toInt(),
+      deleted: j['deleted'] as bool? ?? false,
     );
   }
 
