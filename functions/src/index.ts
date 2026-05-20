@@ -277,11 +277,19 @@ const GET_USER_CONTEXT_TOOL = {
   description:
     "APPELLE CET OUTIL EN PREMIER dans toute conversation liée à la productivité. " +
     "Retourne : domaines de vie, activités + objectifs quotidiens, routines actives, " +
-    "objectifs GTD, ET l'activité réelle des 7 derniers jours (actions faites, actions " +
-    "non faites, taux de complétion des habitudes, temps loggué par activité). " +
-    "Analyse l'écart entre 'completedActions' et 'pendingActions' pour détecter " +
-    "les blocages récurrents. Compare 'timeLogged' aux objectifs des activités " +
-    "pour identifier les domaines sous-investis. Signale proactivement tout écart > 30%.",
+    "objectifs GTD, ET l'activité réelle des 7 derniers jours. " +
+    "\n\n" +
+    "⚡ WORKFLOW OBLIGATOIRE — quelle que soit la demande de l'utilisateur :\n\n" +
+    "Pour TOUTE demande (programme, objectif, habitude, routine, action à créer) :\n" +
+    "1. Identifier le bon domaine existant OU créer un nouveau domaine.\n" +
+    "2. Identifier ou créer l'activité temps (create_activity) qui couvre ce domaine/objectif.\n" +
+    "3. Créer un projet Gantt (push_gantt) couvrant AU MINIMUM la semaine en cours " +
+    "   avec un jalon 'Bilan' le dimanche et un objectif KPI mesurable.\n" +
+    "   → Si la demande est déjà dans un projet existant, dispatcher dans ce projet.\n" +
+    "4. Créer les routines (create_routine) et actions récurrentes (create_recurring_action) " +
+    "   TOUTES liées à l'activityId de l'étape 2.\n\n" +
+    "Structure garantie : Domaine → Activité temps → Projet Gantt (+ KPI + Bilan dim.) → Routines & Actions liées.\n" +
+    "Ne jamais créer une routine ou action sans activityId et sans projet associé.",
   inputSchema: { type: "object", properties: {} },
 };
 
@@ -306,16 +314,16 @@ const CREATE_ROUTINE_TOOL = {
   name: "create_routine",
   description:
     "Crée une **routine** : habitude trackée avec compteur ou fréquence (ex: Méditation, Gainage, Eau). " +
-    "Utilise cet outil quand l'utilisateur veut suivre combien de fois il fait quelque chose. " +
+    "⚠️ activityId OBLIGATOIRE — créer d'abord l'activité temps avec create_activity si elle n'existe pas. " +
     "⚠️ NE PAS confondre avec create_recurring_action (case à cocher sans tracking). " +
-    "⚠️ NE PAS confondre avec create_activity (tracking de temps/chrono). " +
-    "Demande confirmation avant de créer.",
+    "⚠️ NE PAS confondre avec create_activity (tracking de temps/chrono).",
   inputSchema: {
     type: "object",
-    required: ["name", "domainId"],
+    required: ["name", "domainId", "activityId"],
     properties: {
       name:        { type: "string", description: "Nom de la routine (ex: Méditation, Gainage)" },
       domainId:    { type: "string", description: "id du domaine (get_user_context)" },
+      activityId:  { type: "string", description: "id de l'activité temps associée (OBLIGATOIRE — créer avec create_activity si absente)" },
       unit:        { type: "string", description: "Unité comptée (ex: fois, verres, séries)" },
       habitFreq:   { type: "number", description: "Fréquence : 0=daily, 1=weekly, 2=monthly" },
       habitTarget: { type: "number", description: "Cible par période (ex: 3 fois/semaine)" },
@@ -328,16 +336,17 @@ const CREATE_RECURRING_ACTION_TOOL = {
   description:
     "Crée une **action récurrente** : tâche qui apparaît dans le plan du jour sans tracking. " +
     "Simple case à cocher (ex: Faire la vaisselle, Revue journalière, Arroser les plantes). " +
+    "⚠️ activityId OBLIGATOIRE — créer d'abord l'activité temps avec create_activity si elle n'existe pas. " +
     "⚠️ NE PAS utiliser si l'utilisateur veut tracker une fréquence → create_routine. " +
     "⚠️ NE PAS utiliser si l'utilisateur veut tracker du temps → create_activity. " +
-    "Si liée à une phase Gantt, renseigne startDate/endDate pour qu'elle expire en fin de phase. " +
-    "Préfère les jours spécifiques (specificDays) sauf si vraiment quotidien.",
+    "Si liée à une phase Gantt, renseigne startDate/endDate pour qu'elle expire en fin de phase.",
   inputSchema: {
     type: "object",
-    required: ["title"],
+    required: ["title", "activityId"],
     properties: {
       title: { type: "string", description: "Intitulé de l'action (ex: Faire la vaisselle)" },
-      domainId: { type: "string", description: "id du domaine (optionnel)" },
+      activityId: { type: "string", description: "id de l'activité temps associée (OBLIGATOIRE)" },
+      domainId: { type: "string", description: "id du domaine" },
       recurrenceType: {
         type: "string",
         enum: ["daily", "specificDays"],
@@ -1021,6 +1030,7 @@ async function executeCreateRecurringAction(
   uid: string,
   args: {
     title: string;
+    activityId: string;
     domainId?: string;
     recurrenceType?: string;
     weekdays?: number[];
@@ -1037,7 +1047,7 @@ async function executeCreateRecurringAction(
     id,
     title: args.title,
     domainId: args.domainId || null,
-    activityId: null,
+    activityId: args.activityId || null,
     blockId: null,
     type: recurrenceType,
     weekdays: args.weekdays || [],
@@ -1073,7 +1083,7 @@ async function executeCreateRecurringAction(
       createdAt: FieldValue.serverTimestamp(),
       recurringActionId: id,
       domainId: args.domainId || null,
-      activityId: null,
+      activityId: args.activityId || null,
     });
   }
 
