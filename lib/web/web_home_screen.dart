@@ -199,6 +199,11 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                       .toList(),
                   domains: _domains,
                   routines: _routines,
+                  onTaskColorChange: (project, task, color) async {
+                    task.color = color;
+                    await _sync.saveProjectTasks(project.id, project.tasks);
+                    _load();
+                  },
                 ),
                 _ArchivesView(sync: _sync),
               ],
@@ -460,10 +465,12 @@ class _FocusView extends StatelessWidget {
   final List<Project> projects;
   final List<Domain> domains;
   final List<RecurringAction> routines;
+  final Future<void> Function(Project, ProjectTask, String?) onTaskColorChange;
   const _FocusView({
     required this.projects,
     required this.domains,
     required this.routines,
+    required this.onTaskColorChange,
   });
 
   // ── Helpers ──────────────────────────────────────────────────────────────
@@ -662,6 +669,7 @@ class _FocusView extends StatelessWidget {
                 else
                   for (final group in domainGroups) ...[
                     _buildDomainGroupRows(
+                      context,
                       cs,
                       group.domain,
                       group.pairs,
@@ -720,6 +728,7 @@ class _FocusView extends StatelessWidget {
   }
 
   Widget _buildDomainGroupRows(
+    BuildContext context,
     ColorScheme cs,
     Domain? domain,
     List<({ProjectTask task, Project project})> pairs,
@@ -820,8 +829,10 @@ class _FocusView extends StatelessWidget {
         // Task rows (Gantt bars)
         for (final pair in pairs) ...[
           _buildTaskBarRow(
+            context,
             cs,
             pair.task,
+            pair.project,
             today,
             weekStart,
             labelW,
@@ -830,6 +841,88 @@ class _FocusView extends StatelessWidget {
             color,
           ),
         ],
+      ],
+    );
+  }
+
+  void _showColorPicker(
+    BuildContext context,
+    ProjectTask task,
+    Project project,
+    Offset globalPosition,
+    Color currentColor,
+  ) {
+    final RenderBox overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox;
+    showMenu<String?>(
+      context: context,
+      position: RelativeRect.fromRect(
+        globalPosition & const Size(1, 1),
+        Offset.zero & overlay.size,
+      ),
+      items: [
+        PopupMenuItem<String?>(
+          enabled: false,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Couleur de la barre',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  // Option "par défaut du domaine"
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.pop(context);
+                      onTaskColorChange(project, task, null);
+                    },
+                    child: Tooltip(
+                      message: 'Couleur du domaine',
+                      child: Container(
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey.shade400, width: 1.5),
+                          borderRadius: BorderRadius.circular(6),
+                          gradient: const LinearGradient(
+                            colors: [Colors.grey, Colors.white],
+                          ),
+                        ),
+                        child: const Icon(Icons.restart_alt, size: 14, color: Colors.grey),
+                      ),
+                    ),
+                  ),
+                  for (final c in kColorPickerOptions)
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.pop(context);
+                        final hex = '#${c.value.toRadixString(16).substring(2).toUpperCase()}';
+                        onTaskColorChange(project, task, hex);
+                      },
+                      child: Container(
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          color: c,
+                          borderRadius: BorderRadius.circular(6),
+                          border: c.value == currentColor.value
+                              ? Border.all(color: Colors.white, width: 2)
+                              : null,
+                          boxShadow: c.value == currentColor.value
+                              ? [BoxShadow(color: c.withOpacity(0.6), blurRadius: 4)]
+                              : null,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -1011,8 +1104,10 @@ class _FocusView extends StatelessWidget {
 
   /// Ligne tâche Gantt : barre horizontale
   Widget _buildTaskBarRow(
+    BuildContext context,
     ColorScheme cs,
     ProjectTask task,
+    Project project,
     DateTime today,
     DateTime weekStart,
     double labelW,
@@ -1103,16 +1198,28 @@ class _FocusView extends StatelessWidget {
                     ),
                   ),
                 ] else if (barWidth > 0) ...[
-                  // Barre horizontale
+                  // Barre horizontale — clic pour changer la couleur
                   Positioned(
                     left: startOffset,
-                    top: rowH / 2 - 4,
+                    top: rowH / 2 - 6,
                     width: barWidth,
-                    height: 8,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: barColor,
-                        borderRadius: BorderRadius.circular(4),
+                    height: 12,
+                    child: GestureDetector(
+                      onTapUp: (details) => _showColorPicker(
+                        context,
+                        task,
+                        project,
+                        details.globalPosition,
+                        resolvedColor,
+                      ),
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: barColor,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
                       ),
                     ),
                   ),
