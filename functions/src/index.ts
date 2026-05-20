@@ -396,9 +396,10 @@ const CREATE_DOMAIN_TOOL = {
 const DELETE_DOMAIN_TOOL = {
   name: "delete_domain",
   description:
-    "Supprime un domaine de vie et toutes ses activités + routines associées (cascade). " +
-    "Irréversible — demande toujours confirmation. " +
-    "Utilise get_user_context pour obtenir le domainId.",
+    "Archive un domaine de vie et toutes ses activités + routines (cascade). " +
+    "L'élément reste récupérable depuis les Archives — la suppression définitive " +
+    "est réservée à l'utilisateur depuis le web app. " +
+    "Demande toujours confirmation avant d'appeler.",
   inputSchema: {
     type: "object",
     required: ["domainId"],
@@ -454,8 +455,10 @@ const DELETE_ACTION_TOOL = {
 const DELETE_ACTIVITY_TOOL = {
   name: "delete_activity",
   description:
-    "Supprime définitivement une activité. Irréversible — demande toujours confirmation. " +
-    "Utilise get_user_context pour obtenir l'activityId.",
+    "Archive une activité et ses routines liées (cascade). " +
+    "L'élément reste récupérable depuis les Archives — la suppression définitive " +
+    "est réservée à l'utilisateur depuis le web app. " +
+    "Demande toujours confirmation avant d'appeler.",
   inputSchema: {
     type: "object",
     required: ["activityId"],
@@ -543,8 +546,9 @@ const LINK_GOAL_TO_TASK_TOOL = {
 const DELETE_ROUTINE_TOOL = {
   name: "delete_routine",
   description:
-    "Supprime une action récurrente. Demande toujours confirmation avant d'appeler. " +
-    "Utilise get_user_context pour obtenir l'id de la routine.",
+    "Archive une action récurrente. L'élément reste récupérable depuis les Archives — " +
+    "la suppression définitive est réservée à l'utilisateur depuis le web app. " +
+    "Demande toujours confirmation avant d'appeler.",
   inputSchema: {
     type: "object",
     required: ["routineId"],
