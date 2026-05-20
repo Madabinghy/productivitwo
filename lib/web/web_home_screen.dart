@@ -151,7 +151,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                 tabs: const [
                   Tab(text: 'Projets'),
                   Tab(text: 'Focus'),
-                  Tab(text: 'Debug'),
+                  Tab(text: 'Archives'),
                 ],
               ),
               Divider(height: 1, color: cs.outlineVariant.withOpacity(0.4)),
@@ -171,7 +171,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                       .toList(),
                   domains: _domains,
                 ),
-                _DebugView(sync: _sync),
+                _ArchivesView(sync: _sync),
               ],
             ),
     );
@@ -1514,17 +1514,17 @@ class _Step extends StatelessWidget {
   }
 }
 
-// ── Vue Debug Firestore ───────────────────────────────────────────────────────
+// ── Vue Archives ─────────────────────────────────────────────────────────────
 
-class _DebugView extends StatefulWidget {
+class _ArchivesView extends StatefulWidget {
   final FirestoreSync sync;
-  const _DebugView({required this.sync});
+  const _ArchivesView({required this.sync});
 
   @override
-  State<_DebugView> createState() => _DebugViewState();
+  State<_ArchivesView> createState() => _ArchivesViewState();
 }
 
-class _DebugViewState extends State<_DebugView> {
+class _ArchivesViewState extends State<_ArchivesView> {
   List<Domain> _domains = [];
   List<Activity> _activities = [];
   List<RecurringAction> _routines = [];
@@ -1556,270 +1556,294 @@ class _DebugViewState extends State<_DebugView> {
     }
   }
 
-  Future<void> _hardDelete(String col, String id) async {
-    await widget.sync.hardDelete(col, id);
-    _load();
-  }
-
   Future<void> _restore(String col, String id) async {
     await widget.sync.restoreDeleted(col, id);
     _load();
+  }
+
+  Future<void> _confirmHardDelete(String col, String id) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer définitivement ?'),
+        content: const Text('Cette action est irréversible.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(
+                foregroundColor: Theme.of(ctx).colorScheme.error),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await widget.sync.hardDelete(col, id);
+      _load();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return _loading
-        ? const Center(child: CircularProgressIndicator())
-        : ListView(
-            padding: const EdgeInsets.all(24),
-            children: [
-              // ── En-tête avec bouton Rafraîchir ────────────────────────────
-              Row(
-                children: [
-                  Text(
-                    'ÉTAT FIRESTORE BRUT',
+    if (_loading) return const Center(child: CircularProgressIndicator());
+
+    // Domaines archivés (deleted == true)
+    final deletedDomains = _domains.where((d) => d.deleted).toList();
+    final deletedDomainIds = deletedDomains.map((d) => d.id).toSet();
+
+    // Activités archivées dont le domaine n'est PAS deleted
+    final deletedActivities = _activities
+        .where((a) => a.deleted && !deletedDomainIds.contains(a.domainId))
+        .toList();
+    // Toutes activités deleted (pour comptage sous domaines)
+    final allDeletedActivities = _activities.where((a) => a.deleted).toList();
+
+    // Routines archivées dont l'activité parente n'est PAS deleted
+    final allDeletedActivityIds =
+        _activities.where((a) => a.deleted).map((a) => a.id).toSet();
+    final deletedRoutines = _routines
+        .where((r) => r.deleted && !allDeletedActivityIds.contains(r.activityId))
+        .toList();
+
+    final allEmpty =
+        deletedDomains.isEmpty && deletedActivities.isEmpty && deletedRoutines.isEmpty;
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 800),
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            // ── En-tête ───────────────────────────────────────────────────
+            Row(
+              children: [
+                Text(
+                  'ARCHIVES',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.0,
+                    color: cs.onSurface.withOpacity(0.45),
+                  ),
+                ),
+                const Spacer(),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.refresh_outlined, size: 14),
+                  label: const Text('Rafraîchir'),
+                  onPressed: _load,
+                  style: OutlinedButton.styleFrom(
+                      visualDensity: VisualDensity.compact),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            if (allEmpty)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 48),
+                  child: Text(
+                    'Aucun élément archivé — tout est propre ✓',
                     style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1.0,
-                      color: cs.onSurface.withOpacity(0.45),
+                      fontSize: 15,
+                      color: Colors.green.shade600,
+                      fontWeight: FontWeight.w500,
                     ),
+                    textAlign: TextAlign.center,
                   ),
-                  const Spacer(),
-                  OutlinedButton.icon(
-                    icon: const Icon(Icons.refresh_outlined, size: 14),
-                    label: const Text('Rafraîchir'),
-                    onPressed: _load,
-                    style: OutlinedButton.styleFrom(
-                        visualDensity: VisualDensity.compact),
+                ),
+              )
+            else ...[
+              // ── Section Domaines archivés ─────────────────────────────
+              if (deletedDomains.isNotEmpty) ...[
+                Text(
+                  'DOMAINES ARCHIVÉS',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.0,
+                    color: cs.error,
                   ),
+                ),
+                const SizedBox(height: 8),
+                for (final d in deletedDomains) ...[
+                  _ArchiveItemTile(
+                    label: d.name,
+                    details: [
+                      'Activités liées supprimées : ${allDeletedActivities.where((a) => a.domainId == d.id).length}',
+                      'Routines liées supprimées : ${_routines.where((r) => r.deleted && _activities.where((a) => a.domainId == d.id).map((a) => a.id).contains(r.activityId)).length}',
+                    ],
+                    onRestore: () => _restore('domains', d.id),
+                    onDelete: () => _confirmHardDelete('domains', d.id),
+                    cs: cs,
+                  ),
+                  const SizedBox(height: 6),
                 ],
-              ),
-              const SizedBox(height: 16),
+                const SizedBox(height: 16),
+              ],
 
-              // ── Section Domaines ───────────────────────────────────────────
-              ExpansionTile(
-                initiallyExpanded: true,
-                title: Text(
-                  'Domaines (${_domains.length})',
-                  style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w700),
+              // ── Section Activités archivées ────────────────────────────
+              if (deletedActivities.isNotEmpty) ...[
+                Text(
+                  'ACTIVITÉS ARCHIVÉES',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.0,
+                    color: cs.error,
+                  ),
                 ),
-                children: _domains.isEmpty
-                    ? [
-                        Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Text('Aucun domaine',
-                              style: TextStyle(
-                                  color: cs.onSurface.withOpacity(0.4),
-                                  fontStyle: FontStyle.italic)),
-                        )
-                      ]
-                    : _domains
-                        .map((d) => _DebugItemTile(
-                              isDeleted: d.deleted,
-                              title: d.name,
-                              subtitle: 'id: ${d.id.substring(0, 8)}…',
-                              extra: d.deleted ? 'supprimé' : null,
-                              onHardDelete: () => _hardDelete('domains', d.id),
-                              onRestore: d.deleted
-                                  ? () => _restore('domains', d.id)
-                                  : null,
-                              cs: cs,
-                            ))
-                        .toList(),
-              ),
-              const SizedBox(height: 8),
+                const SizedBox(height: 8),
+                for (final a in deletedActivities) ...[
+                  _ArchiveItemTile(
+                    label: a.name,
+                    details: [
+                      () {
+                        if (a.domainId.isEmpty) return 'sans domaine';
+                        final domain = _domains
+                            .where((d) => d.id == a.domainId)
+                            .firstOrNull;
+                        return 'domaine: ${domain?.name ?? a.domainId.substring(0, 8)}…';
+                      }(),
+                    ],
+                    onRestore: () => _restore('activities', a.id),
+                    onDelete: () => _confirmHardDelete('activities', a.id),
+                    cs: cs,
+                  ),
+                  const SizedBox(height: 6),
+                ],
+                const SizedBox(height: 16),
+              ],
 
-              // ── Section Activités ──────────────────────────────────────────
-              ExpansionTile(
-                initiallyExpanded: true,
-                title: Text(
-                  'Activités (${_activities.length})',
-                  style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w700),
+              // ── Section Routines archivées ─────────────────────────────
+              if (deletedRoutines.isNotEmpty) ...[
+                Text(
+                  'ROUTINES ARCHIVÉES',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.0,
+                    color: cs.error,
+                  ),
                 ),
-                children: _activities.isEmpty
-                    ? [
-                        Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Text('Aucune activité',
-                              style: TextStyle(
-                                  color: cs.onSurface.withOpacity(0.4),
-                                  fontStyle: FontStyle.italic)),
-                        )
-                      ]
-                    : _activities
-                        .map((a) => _DebugItemTile(
-                              isDeleted: a.deleted,
-                              title: a.name,
-                              subtitle:
-                                  'id: ${a.id.substring(0, 8)}…  •  domainId: ${a.domainId.isEmpty ? '—' : a.domainId.substring(0, 8)}…',
-                              extra: a.deleted ? 'supprimé' : null,
-                              onHardDelete: () =>
-                                  _hardDelete('activities', a.id),
-                              onRestore: a.deleted
-                                  ? () => _restore('activities', a.id)
-                                  : null,
-                              cs: cs,
-                            ))
-                        .toList(),
-              ),
-              const SizedBox(height: 8),
-
-              // ── Section Routines ───────────────────────────────────────────
-              ExpansionTile(
-                initiallyExpanded: true,
-                title: Text(
-                  'Routines (${_routines.length})',
-                  style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w700),
-                ),
-                children: _routines.isEmpty
-                    ? [
-                        Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Text('Aucune routine',
-                              style: TextStyle(
-                                  color: cs.onSurface.withOpacity(0.4),
-                                  fontStyle: FontStyle.italic)),
-                        )
-                      ]
-                    : _routines
-                        .map((r) => _DebugItemTile(
-                              isDeleted: r.deleted,
-                              title: r.title,
-                              subtitle:
-                                  'id: ${r.id.substring(0, 8)}…  •  active: ${r.active}',
-                              extra: r.deleted ? 'supprimé' : null,
-                              onHardDelete: () =>
-                                  _hardDelete('recurringActions', r.id),
-                              onRestore: r.deleted
-                                  ? () => _restore('recurringActions', r.id)
-                                  : null,
-                              cs: cs,
-                            ))
-                        .toList(),
-              ),
+                const SizedBox(height: 8),
+                for (final r in deletedRoutines) ...[
+                  _ArchiveItemTile(
+                    label: r.title,
+                    details: const [],
+                    onRestore: () => _restore('recurringActions', r.id),
+                    onDelete: () => _confirmHardDelete('recurringActions', r.id),
+                    cs: cs,
+                  ),
+                  const SizedBox(height: 6),
+                ],
+              ],
             ],
-          );
+          ],
+        ),
+      ),
+    );
   }
 }
 
-class _DebugItemTile extends StatelessWidget {
-  final bool isDeleted;
-  final String title;
-  final String subtitle;
-  final String? extra;
-  final VoidCallback onHardDelete;
-  final VoidCallback? onRestore;
+class _ArchiveItemTile extends StatelessWidget {
+  final String label;
+  final List<String> details;
+  final VoidCallback onRestore;
+  final VoidCallback onDelete;
   final ColorScheme cs;
 
-  const _DebugItemTile({
-    required this.isDeleted,
-    required this.title,
-    required this.subtitle,
-    this.extra,
-    required this.onHardDelete,
-    this.onRestore,
+  const _ArchiveItemTile({
+    required this.label,
+    required this.details,
+    required this.onRestore,
+    required this.onDelete,
     required this.cs,
   });
 
   @override
   Widget build(BuildContext context) {
-    final bg = isDeleted
-        ? cs.errorContainer.withOpacity(0.3)
-        : cs.surfaceContainerHighest.withOpacity(0.3);
-
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: isDeleted
-              ? cs.error.withOpacity(0.3)
-              : cs.outlineVariant.withOpacity(0.3),
-        ),
+        color: cs.errorContainer.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: cs.error.withOpacity(0.2)),
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          title,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: isDeleted
-                                ? cs.onSurface.withOpacity(0.5)
-                                : cs.onSurface,
-                            decoration: isDeleted
-                                ? TextDecoration.lineThrough
-                                : null,
-                          ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Icône + texte
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      '🗑',
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: cs.onSurface,
                         ),
                       ),
-                      if (extra != null) ...[
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: cs.errorContainer,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            '🗑 $extra',
-                            style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                color: cs.onErrorContainer),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontFamily: 'monospace',
-                      color: cs.onSurface.withOpacity(0.45),
+                    ),
+                  ],
+                ),
+                for (final d in details) ...[
+                  const SizedBox(height: 3),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 24),
+                    child: Text(
+                      '└─ $d',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: cs.onSurface.withOpacity(0.55),
+                      ),
                     ),
                   ),
                 ],
-              ),
+              ],
             ),
-            // Bouton Restore (si deleted)
-            if (onRestore != null)
-              IconButton(
-                icon: const Icon(Icons.restore_outlined, size: 16),
-                tooltip: 'Restaurer',
-                visualDensity: VisualDensity.compact,
-                color: cs.primary,
-                onPressed: onRestore,
-              ),
-            // Bouton Hard delete
-            IconButton(
-              icon: const Icon(Icons.delete_forever_outlined, size: 16),
-              tooltip: 'Supprimer définitivement',
+          ),
+          const SizedBox(width: 8),
+          // Actions
+          OutlinedButton(
+            onPressed: onRestore,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.green.shade700,
+              side: BorderSide(color: Colors.green.shade400),
               visualDensity: VisualDensity.compact,
-              color: cs.error,
-              onPressed: onHardDelete,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
             ),
-          ],
-        ),
+            child: const Text('Restaurer'),
+          ),
+          const SizedBox(width: 6),
+          TextButton(
+            onPressed: onDelete,
+            style: TextButton.styleFrom(
+              foregroundColor: cs.error,
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+            child: const Text('Supprimer'),
+          ),
+        ],
       ),
     );
   }
