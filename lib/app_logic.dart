@@ -1714,7 +1714,7 @@ class AppLogic {
     }
 
     final map = <String, int>{};
-    for (final d in state.domains) {
+    for (final d in state.activeDomains) {
       int sum = 0;
       for (final a
           in state.activities.where((a) => a.domainId == d.id && a.isHabit)) {
@@ -1804,7 +1804,7 @@ class AppLogic {
 
   Map<String, Duration> timeTotalsByDomain(DateTime start, DateTime end) {
     final map = <String, Duration>{};
-    for (final d in state.domains) {
+    for (final d in state.activeDomains) {
       map[d.id] = totalForRange(start, end, domainId: d.id);
     }
     return map;
@@ -2427,7 +2427,7 @@ class AppLogic {
       state.activities.where((a) => a.domainId == domainId).toList();
 
   int domainGoalMinDay(String domainId) {
-    final d = state.domains.firstWhere((x) => x.id == domainId);
+    final d = state.activeDomains.firstWhere((x) => x.id == domainId);
     if (!d.autoGoal) return d.goalMinDay ?? 0;
     return state.activities
         .where((a) => a.domainId == domainId && !a.isHabit)
@@ -2772,7 +2772,7 @@ class AppLogic {
     }
 
     // DOMAINES (manuel)
-    for (final d in state.domains.where((dom) => !dom.autoGoal)) {
+    for (final d in state.activeDomains.where((dom) => !dom.autoGoal)) {
       final base = d.goalMinDay ?? 0;
       if (base <= 0) continue;
 
@@ -4313,7 +4313,7 @@ extension TodayLogic on AppLogic {
     final scoreByDomain = <String, double>{};
     final haloReachedByDomain = <String, bool>{};
 
-    for (final d in state.domains) {
+    for (final d in state.activeDomains) {
       final hoursToday = (totalsTodayAll[d.id]?.inMinutes ?? 0) / 60.0;
       final hours24 = (totals24All[d.id]?.inMinutes ?? 0) / 60.0;
 
@@ -4329,7 +4329,7 @@ extension TodayLogic on AppLogic {
       haloReachedByDomain[d.id] = outer >= haloReachedThreshold;
     }
 
-    final sortedDomains = [...state.domains]..sort((a, b) {
+    final sortedDomains = [...state.activeDomains]..sort((a, b) {
         final aReached = haloReachedByDomain[a.id] ?? false;
         final bReached = haloReachedByDomain[b.id] ?? false;
 
@@ -4383,7 +4383,7 @@ extension TodayLogic on AppLogic {
     required Map<String, double> scoreByDomain,
     required Map<String, bool> haloReachedByDomain,
   }) {
-    final sorted = [...state.domains]..sort((a, b) {
+    final sorted = [...state.activeDomains]..sort((a, b) {
         final aReached = haloReachedByDomain[a.id] ?? false;
         final bReached = haloReachedByDomain[b.id] ?? false;
 

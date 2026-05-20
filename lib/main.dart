@@ -453,7 +453,7 @@ class _StatsViewState extends State<StatsView> {
                     items: [
                       const DropdownMenuItem<String?>(
                           value: null, child: Text('Tous')),
-                      ...widget.state.domains.map(
+                      ...widget.state.activeDomains.map(
                         (d) => DropdownMenuItem<String?>(
                             value: d.id, child: Text(d.name)),
                       ),
@@ -1790,7 +1790,7 @@ class _AppRootState extends State<AppRoot>
       }();
 
       // Migration : utilisateurs existants avec des données → onboarding déjà fait
-      if (!_state!.onboardingDone && _state!.domains.isNotEmpty) {
+      if (!_state!.onboardingDone && _state!.activeDomains.isNotEmpty) {
         _state!.onboardingDone = true;
       }
 
@@ -1832,11 +1832,11 @@ class _AppRootState extends State<AppRoot>
         }
       }
 
-      if (_state!.domains.isEmpty && _state!.onboardingDone) {
+      if (_state!.activeDomains.isEmpty && _state!.onboardingDone) {
         _state!.domains.add(Domain(name: 'Général'));
       }
-      if (_state!.domains.isNotEmpty) {
-        selectedDomainId ??= _state!.domains.first.id;
+      if (_state!.activeDomains.isNotEmpty) {
+        selectedDomainId ??= _state!.activeDomains.first.id;
       }
     });
 
@@ -1851,8 +1851,8 @@ class _AppRootState extends State<AppRoot>
             onDone: () {
               Navigator.of(context).pop();
               setState(() {
-                selectedDomainId = _state!.domains.isNotEmpty
-                    ? _state!.domains.first.id
+                selectedDomainId = _state!.activeDomains.isNotEmpty
+                    ? _state!.activeDomains.first.id
                     : null;
               });
             },
@@ -1917,7 +1917,7 @@ class _AppRootState extends State<AppRoot>
           final act = _state!.activities.firstWhere((a) => a.id == ch.id,
               orElse: () =>
                   Activity(domainId: '', name: 'deleted', habitTarget: 1));
-          final dom = _state!.domains.firstWhere((d) => d.id == act.domainId,
+          final dom = _state!.activeDomains.firstWhere((d) => d.id == act.domainId,
               orElse: () => Domain(name: 'deleted'));
           if (dom.autoGoal) {
             _domainAutoDeltas[dom.id] =
@@ -2185,14 +2185,14 @@ class _AppRootState extends State<AppRoot>
 
     if (activities.isEmpty) return;
 
-    final domainById = {for (final d in logic.state.domains) d.id: d};
+    final domainById = {for (final d in logic.state.activeDomains) d.id: d};
 
     // Grouper par domaine
     final Map<String, List<Activity>> byDomain = {};
     for (final a in activities) {
       (byDomain[a.domainId] ??= []).add(a);
     }
-    final domainOrder = logic.state.domains.map((d) => d.id).toList()
+    final domainOrder = logic.state.activeDomains.map((d) => d.id).toList()
       ..add(''); // domaines orphelins en dernier
 
     await showModalBottomSheet<void>(
@@ -2268,7 +2268,7 @@ class _AppRootState extends State<AppRoot>
                             dense: true,
                             leading: CircleAvatar(
                               radius: 16,
-                              backgroundColor: domainColor(domId, logic.state.domains)
+                              backgroundColor: domainColor(domId, logic.state.activeDomains)
                                       ?.withOpacity(.15) ??
                                   cs.surfaceContainerHighest,
                               child: Icon(
@@ -2278,7 +2278,7 @@ class _AppRootState extends State<AppRoot>
                                 size: 18,
                                 color: running?.id == a.id
                                     ? cs.error
-                                    : domainColor(domId, logic.state.domains) ??
+                                    : domainColor(domId, logic.state.activeDomains) ??
                                         cs.primary,
                               ),
                             ),
@@ -2347,7 +2347,7 @@ class _AppRootState extends State<AppRoot>
   }
 
   Future<String?> _pickDomainId(BuildContext context) async {
-    final domains = logic.state.domains;
+    final domains = logic.state.activeDomains;
 
     return showModalBottomSheet<String>(
       context: context,
@@ -3369,7 +3369,7 @@ class _AppRootState extends State<AppRoot>
                 final domColors = domainIds
                     .map((id) => id == null
                         ? null
-                        : domainColor(id, logic.state.domains))
+                        : domainColor(id, logic.state.activeDomains))
                     .toList();
                 final cs = Theme.of(context).colorScheme;
                 return Padding(
@@ -3922,7 +3922,7 @@ class _AppRootState extends State<AppRoot>
 
     int doneHabitsAllCalendar(DateTime start, DateTime end) {
       int sum = 0;
-      for (final d in _state!.domains) {
+      for (final d in _state!.activeDomains) {
         // done par domaine
         DateTime day = DateTime(start.year, start.month, start.day);
         while (day.isBefore(end)) {
@@ -4335,7 +4335,7 @@ class _AppRootState extends State<AppRoot>
       builder: (_) => StatefulBuilder(
         builder: (ctx, setS) {
           final cs = Theme.of(ctx).colorScheme;
-          final domains = logic.state.domains;
+          final domains = logic.state.activeDomains;
 
           Future<void> rename(Domain d) async {
             final ctrl = TextEditingController(text: d.name);
@@ -4738,9 +4738,9 @@ class _AppRootState extends State<AppRoot>
           return pb.compareTo(pa); // plus avancé en premier
         })).first;
     final nextAction = goal.nextAction!;
-    final domain = logic.state.domains
+    final domain = logic.state.activeDomains
         .firstWhereOrNull((d) => d.id == goal.domainId);
-    final dColor = domainColor(goal.domainId, logic.state.domains);
+    final dColor = domainColor(goal.domainId, logic.state.activeDomains);
     final progress = goal.stepsTotal > 0
         ? goal.stepsDone / goal.stepsTotal
         : 0.0;
@@ -4959,7 +4959,7 @@ class _AppRootState extends State<AppRoot>
               ? 'Objectifs'
               : 'Objectifs · $goalCount actif${goalCount > 1 ? 's' : ''}';
 
-          final dColor = domainColor(d.id, _state!.domains);
+          final dColor = domainColor(d.id, _state!.activeDomains);
           return SectionCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -5040,7 +5040,7 @@ class _AppRootState extends State<AppRoot>
     final nameCtrl = TextEditingController();
     final unitCtrl = TextEditingController(); // seulement pertinent pour habit
     String? selectedDomainId = domainId ??
-        (_state!.domains.isNotEmpty ? _state!.domains.first.id : null);
+        (_state!.activeDomains.isNotEmpty ? _state!.activeDomains.first.id : null);
 
     await showDialog(
       context: context,
@@ -5057,7 +5057,7 @@ class _AppRootState extends State<AppRoot>
                     onChanged: (v) => selectedDomainId = v,
                     isExpanded: true,
                     decoration: const InputDecoration(labelText: "Domaine"),
-                    items: _state!.domains
+                    items: _state!.activeDomains
                         .map((d) =>
                             DropdownMenuItem(value: d.id, child: Text(d.name)))
                         .toList(),
@@ -5254,9 +5254,9 @@ class _AppRootState extends State<AppRoot>
         }
 
         final cs = Theme.of(ctx).colorScheme;
-        final domain = logic.state.domains
+        final domain = logic.state.activeDomains
             .firstWhereOrNull((d) => d.id == a.domainId);
-        final dColor = domainColor(a.domainId, logic.state.domains);
+        final dColor = domainColor(a.domainId, logic.state.activeDomains);
 
         // Stats temps
         final today = DateTime(now.year, now.month, now.day);
@@ -5502,7 +5502,7 @@ class _AppRootState extends State<AppRoot>
                       style: TextStyle(fontWeight: FontWeight.w600)),
                   subtitle: domain != null ? Text(domain.name) : null,
                   onTap: () async {
-                    final domains = logic.state.domains;
+                    final domains = logic.state.activeDomains;
                     final picked = await showModalBottomSheet<String>(
                       context: ctx,
                       showDragHandle: true,
@@ -6371,7 +6371,7 @@ class _AppRootState extends State<AppRoot>
             final avg7 = avgHoursNow(
                 minutesByDay: minutesByDay, today: now, windowDays: 7);
             final cs = Theme.of(context).colorScheme;
-            final accentColor = domainColor(a.domainId, _state!.domains) ?? cs.primary;
+            final accentColor = domainColor(a.domainId, _state!.activeDomains) ?? cs.primary;
 
             // Bande heatmap 12 semaines (Pro uniquement)
             Widget chartWidget;
@@ -6675,7 +6675,7 @@ class _AppRootState extends State<AppRoot>
             return HabitTileFull(
               habit: a,
               logic: logic,
-              domains: logic.state.domains,
+              domains: logic.state.activeDomains,
               ringTarget: ringRatio,
               ringToken: token,
               onRingBump: () => _triggerRingAnimFor(a.id, setSB),
@@ -6840,7 +6840,7 @@ class _AppRootState extends State<AppRoot>
 
             Future<void> addGoalForDomain() async {
               String? selDomainId = domainId ??
-                  (_state!.domains.isNotEmpty ? _state!.domains.first.id : null);
+                  (_state!.activeDomains.isNotEmpty ? _state!.activeDomains.first.id : null);
               final titleCtrl = TextEditingController();
               final actionCtrl = TextEditingController();
 
@@ -6857,7 +6857,7 @@ class _AppRootState extends State<AppRoot>
                             DropdownButtonFormField<String>(
                               value: selDomainId,
                               decoration: const InputDecoration(labelText: 'Domaine'),
-                              items: _state!.domains
+                              items: _state!.activeDomains
                                   .map((d) => DropdownMenuItem(value: d.id, child: Text(d.name)))
                                   .toList(),
                               onChanged: (v) => setD(() => selDomainId = v),
