@@ -183,7 +183,9 @@ const GET_USER_CONTEXT_TOOL = {
         "⚡ WORKFLOW OBLIGATOIRE — quelle que soit la demande de l'utilisateur :\n\n" +
         "Pour TOUTE demande (programme, objectif, habitude, routine, action à créer) :\n" +
         "1. Identifier le bon domaine existant OU créer un nouveau domaine.\n" +
-        "2. Identifier ou créer l'activité temps (create_activity) qui couvre ce domaine/objectif.\n" +
+        "2. Identifier ou créer UNE OU PLUSIEURS activités temps selon les dimensions de l'objectif. " +
+        "   Ex: 'prendre de la masse' → Musculation (temps) + Nutrition (temps). " +
+        "   Chaque routine/action sera ensuite liée à l'activité la plus pertinente.\n" +
         "3. Créer un projet Gantt (push_gantt) couvrant AU MINIMUM la semaine en cours " +
         "   avec un jalon 'Bilan' le dimanche et un objectif KPI mesurable.\n" +
         "   → Si la demande est déjà dans un projet existant, dispatcher dans ce projet.\n" +
