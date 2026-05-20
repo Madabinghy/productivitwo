@@ -441,6 +441,23 @@ const DELETE_ACTIVITY_TOOL = {
   },
 };
 
+const UPDATE_TASK_STATUS_TOOL = {
+  name: "update_task_status",
+  description:
+    "Met à jour le statut d'une tâche Gantt (pending → done, skipped, etc.). " +
+    "Utilise list_projects + get_project pour obtenir projectId et taskId. " +
+    "Beaucoup plus rapide que de recréer tout le projet.",
+  inputSchema: {
+    type: "object",
+    required: ["projectId", "taskId", "status"],
+    properties: {
+      projectId: { type: "string", description: "id du projet (list_projects)" },
+      taskId:    { type: "string", description: "id de la tâche (get_project)" },
+      status:    { type: "string", enum: ["pending", "done", "skipped"], description: "Nouveau statut" },
+    },
+  },
+};
+
 const UPDATE_ACTIVITY_TOOL = {
   name: "update_activity",
   description:
@@ -1201,6 +1218,29 @@ async function executeDeleteActivity(uid: string, activityId: string): Promise<s
   return `✅ Activité "${name}" supprimée${planSnap.size > 0 ? ` (${planSnap.size} action(s) du plan déliée(s))` : ""}.`;
 }
 
+async function executeUpdateTaskStatus(
+  uid: string,
+  projectId: string,
+  taskId: string,
+  status: string
+): Promise<string> {
+  const ref = db.collection(`users/${uid}/projects`).doc(projectId);
+  const snap = await ref.get();
+  if (!snap.exists) return `Projet introuvable : ${projectId}`;
+
+  const data = snap.data() as Record<string, unknown>;
+  const tasks = (data.tasks || []) as Array<Record<string, unknown>>;
+  const idx = tasks.findIndex((t) => t.id === taskId);
+  if (idx === -1) return `Tâche introuvable : ${taskId}`;
+
+  tasks[idx] = { ...tasks[idx], status };
+  await ref.update({ tasks, updatedAt: FieldValue.serverTimestamp() });
+
+  const taskTitle = tasks[idx].title ?? taskId;
+  const emoji = status === "done" ? "✅" : status === "skipped" ? "⏭️" : "🔄";
+  return `${emoji} Tâche "${taskTitle}" → ${status}.`;
+}
+
 async function executeUpdateActivity(
   uid: string,
   activityId: string,
@@ -1511,6 +1551,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
             LINK_GOAL_TO_TASK_TOOL,
             CREATE_ACTIVITY_TOOL,
             UPDATE_ACTIVITY_TOOL,
+            UPDATE_TASK_STATUS_TOOL,
             DELETE_ACTIVITY_TOOL,
             DELETE_ACTION_TOOL,
             CREATE_DOMAIN_TOOL,
@@ -1573,6 +1614,13 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
           text = await executeCreateRoutine(uid, args as Parameters<typeof executeCreateRoutine>[1]);
         } else if (toolName === "add_to_day_plan") {
           text = await executeAddToDayPlan(uid, args as Parameters<typeof executeAddToDayPlan>[1]);
+        } else if (toolName === "update_task_status") {
+          text = await executeUpdateTaskStatus(
+            uid,
+            args.projectId as string,
+            args.taskId as string,
+            args.status as string
+          );
         } else if (toolName === "delete_action") {
           text = await executeDeleteAction(uid, args.actionId as string);
         } else if (toolName === "create_domain") {
