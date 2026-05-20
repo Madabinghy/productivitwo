@@ -179,9 +179,7 @@ class DayPlanItem {
         (s) => s.name == j['status'],
         orElse: () => ActionStatus.active,
       ),
-      createdAt: j['createdAt'] != null
-          ? DateTime.tryParse(j['createdAt']) ?? DateTime.now()
-          : null,
+      createdAt: _parseDate(j['createdAt']),
       blockId: j['blockId'] as String?,
       recurringActionId: j['recurringActionId'] as String?,
       originalYmd: j['originalYmd'] as String?,
@@ -192,6 +190,13 @@ class DayPlanItem {
               .toList() ??
           [],
     );
+  }
+
+  static DateTime? _parseDate(dynamic v) {
+    if (v == null) return null;
+    if (v is String) return DateTime.tryParse(v);
+    // Firestore Timestamp (FieldValue.serverTimestamp) via cloud_firestore SDK
+    try { return (v as dynamic).toDate() as DateTime; } catch (_) { return DateTime.now(); }
   }
 
   static bool _asBool(dynamic v, {bool defaultValue = false}) {
@@ -296,15 +301,9 @@ class RecurringAction {
         weekdays:
             (j['weekdays'] as List?)?.map((e) => e as int).toList() ?? [],
         active: j['active'] as bool? ?? true,
-        createdAt: j['createdAt'] != null
-            ? DateTime.tryParse(j['createdAt']) ?? DateTime.now()
-            : null,
-        startDate: j['startDate'] != null
-            ? DateTime.tryParse(j['startDate'])
-            : null,
-        endDate: j['endDate'] != null
-            ? DateTime.tryParse(j['endDate'])
-            : null,
+        createdAt: _parseDateOrNull(j['createdAt']),
+        startDate: _parseDateOrNull(j['startDate']),
+        endDate: _parseDateOrNull(j['endDate']),
         projectTaskId: j['projectTaskId'] as String?,
         deleted: j['deleted'] as bool? ?? false,
       );
@@ -519,9 +518,9 @@ class Goal {
               .toList() ??
           [],
       context: j['context'],
-      createdAt: DateTime.parse(j['createdAt']),
-      doneAt: j['doneAt'] != null ? DateTime.parse(j['doneAt']) : null,
-      dueDate: j['dueDate'] != null ? DateTime.parse(j['dueDate']) : null,
+      createdAt: _parseDate(j['createdAt']),
+      doneAt: _parseDateOrNull(j['doneAt']),
+      dueDate: _parseDateOrNull(j['dueDate']),
       actions: actions,
       order: (j['order'] as num?)?.toInt() ?? 0,
       pinned: j['pinned'] as bool? ?? false,
@@ -707,11 +706,8 @@ class Activity {
       manualTarget: j['manualTarget'] ?? false,
       autoTune: j['autoTune'] ?? true,
       linkedActivityId:j['linkedActivityId'],
-      createdAt: j['createdAt'] != null
-          ? DateTime.parse(j['createdAt'])
-          : DateTime.now(),
-      lastTuneAt:
-          j['lastTuneAt'] != null ? DateTime.parse(j['lastTuneAt']) : null,
+      createdAt: _parseDate(j['createdAt']),
+      lastTuneAt: _parseDateOrNull(j['lastTuneAt']),
       order: (j['order'] as num?)?.toInt() ?? 0,
       iconCode: (j['iconCode'] as num?)?.toInt(),
       deleted: j['deleted'] as bool? ?? false,
