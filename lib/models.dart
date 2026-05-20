@@ -686,8 +686,8 @@ class Activity {
 
     return Activity(
       id: j['id'],
-      domainId: j['domainId'],
-      name: j['name'],
+      domainId: j['domainId'] ?? '',
+      name: j['name'] ?? '',
       type: (j['type'] ?? 'time'),
       role: ActivityRole.values.firstWhere(
         (r) => r.name == j['role'],
