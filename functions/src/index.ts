@@ -527,6 +527,21 @@ const GET_DOCUMENTS_TOOL = {
   },
 };
 
+const DELETE_DOCUMENT_TOOL = {
+  name: "delete_document",
+  description:
+    "Supprime définitivement un document sauvegardé (programme, bilan, fiche). " +
+    "Utilise get_documents pour obtenir le documentId avant d'appeler cet outil. " +
+    "Demande confirmation à l'utilisateur avant de supprimer.",
+  inputSchema: {
+    type: "object",
+    required: ["documentId"],
+    properties: {
+      documentId: { type: "string", description: "id du document à supprimer (obtenu via get_documents)" },
+    },
+  },
+};
+
 const GET_ARCHIVES_TOOL = {
   name: "get_archives",
   description:
@@ -2057,6 +2072,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
             GET_DOCUMENT_TEMPLATE_TOOL,
             SAVE_DOCUMENT_TOOL,
             GET_DOCUMENTS_TOOL,
+            DELETE_DOCUMENT_TOOL,
             GET_ARCHIVES_TOOL,
             RESTORE_ITEM_TOOL,
             CREATE_DOMAIN_TOOL,
@@ -2136,6 +2152,16 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
           text = executeGetDocumentTemplate();
         } else if (toolName === "save_document") {
           text = await executeSaveDocument(uid, args as Parameters<typeof executeSaveDocument>[1]);
+        } else if (toolName === "delete_document") {
+          const ref = db.collection(`users/${uid}/documents`).doc(args.documentId as string);
+          const snap = await ref.get();
+          if (!snap.exists) {
+            text = `Document introuvable : ${args.documentId}`;
+          } else {
+            const title = (snap.data() as Record<string, unknown>)?.title ?? args.documentId;
+            await ref.delete();
+            text = `✅ Document "${title}" supprimé.`;
+          }
         } else if (toolName === "get_documents") {
           text = await executeGetDocuments(uid, args.projectId as string | undefined);
         } else if (toolName === "get_archives") {
