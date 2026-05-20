@@ -396,18 +396,14 @@ const CREATE_DOMAIN_TOOL = {
 const DELETE_DOMAIN_TOOL = {
   name: "delete_domain",
   description:
-    "Supprime définitivement un domaine de vie. Irréversible — demande toujours confirmation. " +
-    "Par défaut les activités du domaine sont conservées (domainId mis à null). " +
+    "Supprime un domaine de vie et toutes ses activités + routines associées (cascade). " +
+    "Irréversible — demande toujours confirmation. " +
     "Utilise get_user_context pour obtenir le domainId.",
   inputSchema: {
     type: "object",
     required: ["domainId"],
     properties: {
       domainId: { type: "string", description: "id du domaine (get_user_context)" },
-      deleteActivities: {
-        type: "boolean",
-        description: "Si true, supprime aussi toutes les activités du domaine (défaut: false)",
-      },
     },
   },
 };
@@ -1183,37 +1179,48 @@ async function executeCreateDomain(
   return `✅ Domaine "${args.name}" créé (id: ${id}). Il apparaîtra dans Productivitwo à la prochaine synchronisation.`;
 }
 
-async function executeDeleteDomain(
-  uid: string,
-  domainId: string,
-  deleteActivities: boolean
-): Promise<string> {
+async function executeDeleteDomain(uid: string, domainId: string): Promise<string> {
   const ref = db.collection(`users/${uid}/domains`).doc(domainId);
   const snap = await ref.get();
   if (!snap.exists) return `Domaine introuvable : ${domainId}`;
   const name = snap.data()?.name ?? domainId;
 
-  // Soft-delete : on garde le document avec deleted:true pour que le merge Flutter respecte la suppression
   await ref.update({ deleted: true });
 
+  // Cascade : soft-delete toutes les activités du domaine
   const activitiesSnap = await db.collection(`users/${uid}/activities`)
     .where("domainId", "==", domainId)
     .get();
 
+  let deletedActivities = 0;
+  let deletedRoutines = 0;
+
   if (!activitiesSnap.empty) {
-    const batch = db.batch();
-    for (const doc of activitiesSnap.docs) {
-      if (deleteActivities) batch.update(doc.ref, { deleted: true });
-      else batch.update(doc.ref, { domainId: null });
+    const actBatch = db.batch();
+    for (const doc of activitiesSnap.docs) actBatch.update(doc.ref, { deleted: true });
+    await actBatch.commit();
+    deletedActivities = activitiesSnap.size;
+
+    // Cascade : soft-delete les routines liées à ces activités
+    for (const actDoc of activitiesSnap.docs) {
+      const routinesSnap = await db.collection(`users/${uid}/recurringActions`)
+        .where("activityId", "==", actDoc.id)
+        .get();
+      if (!routinesSnap.empty) {
+        const rBatch = db.batch();
+        for (const r of routinesSnap.docs) rBatch.update(r.ref, { deleted: true, active: false });
+        await rBatch.commit();
+        deletedRoutines += routinesSnap.size;
+      }
     }
-    await batch.commit();
-    if (deleteActivities) {
-      return `✅ Domaine "${name}" et ses ${activitiesSnap.size} activité(s) supprimés.`;
-    }
-    return `✅ Domaine "${name}" supprimé. ${activitiesSnap.size} activité(s) conservée(s) sans domaine.`;
   }
 
-  return `✅ Domaine "${name}" supprimé.`;
+  const details = [
+    deletedActivities > 0 ? `${deletedActivities} activité(s)` : null,
+    deletedRoutines > 0 ? `${deletedRoutines} routine(s)` : null,
+  ].filter(Boolean).join(", ");
+
+  return `✅ Domaine "${name}" supprimé${details ? ` (cascade : ${details})` : ""}.`;
 }
 
 async function executeDeleteActivity(uid: string, activityId: string): Promise<string> {
@@ -1222,9 +1229,19 @@ async function executeDeleteActivity(uid: string, activityId: string): Promise<s
   if (!snap.exists) return `Activité introuvable : ${activityId}`;
   const name = snap.data()?.name ?? activityId;
 
-  // Soft-delete pour que le merge Flutter respecte la suppression
   await ref.update({ deleted: true });
 
+  // Cascade : soft-delete routines liées
+  const routinesSnap = await db.collection(`users/${uid}/recurringActions`)
+    .where("activityId", "==", activityId)
+    .get();
+  if (!routinesSnap.empty) {
+    const rBatch = db.batch();
+    for (const r of routinesSnap.docs) rBatch.update(r.ref, { deleted: true, active: false });
+    await rBatch.commit();
+  }
+
+  // Délie les day plan items non faits
   const planSnap = await db.collection(`users/${uid}/dayPlan`)
     .where("activityId", "==", activityId)
     .where("done", "==", false)
@@ -1235,7 +1252,12 @@ async function executeDeleteActivity(uid: string, activityId: string): Promise<s
     await batch.commit();
   }
 
-  return `✅ Activité "${name}" supprimée${planSnap.size > 0 ? ` (${planSnap.size} action(s) du plan déliée(s))` : ""}.`;
+  const details = [
+    routinesSnap.size > 0 ? `${routinesSnap.size} routine(s)` : null,
+    planSnap.size > 0 ? `${planSnap.size} action(s) du plan déliée(s)` : null,
+  ].filter(Boolean).join(", ");
+
+  return `✅ Activité "${name}" supprimée${details ? ` (cascade : ${details})` : ""}.`;
 }
 
 async function executeUpdateProject(
@@ -1670,11 +1692,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
         } else if (toolName === "create_domain") {
           text = await executeCreateDomain(uid, args as Parameters<typeof executeCreateDomain>[1]);
         } else if (toolName === "delete_domain") {
-          text = await executeDeleteDomain(
-            uid,
-            args.domainId as string,
-            (args.deleteActivities as boolean) ?? false
-          );
+          text = await executeDeleteDomain(uid, args.domainId as string);
         } else if (toolName === "delete_activity") {
           text = await executeDeleteActivity(uid, args.activityId as string);
         } else {
