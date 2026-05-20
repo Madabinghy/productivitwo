@@ -422,12 +422,24 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   }
 }
 
-// ── Vue Focus ────────────────────────────────────────────────────────────────
+// ── Vue Focus — Semaine en cours ─────────────────────────────────────────────
 
 class _FocusView extends StatelessWidget {
   final List<Project> projects;
   final List<Domain> domains;
   const _FocusView({required this.projects, required this.domains});
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+
+  static const _dayLabels = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+
+  static Color _domainColor(Domain? domain, ColorScheme cs, List<Domain> allDomains) {
+    if (domain == null) return cs.onSurface.withOpacity(0.4);
+    if (domain.colorValue != null) return Color(domain.colorValue!);
+    final idx = allDomains.indexWhere((d) => d.id == domain.id);
+    if (idx >= 0) return kDomainPalette[idx % kDomainPalette.length];
+    return cs.primary;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -440,303 +452,802 @@ class _FocusView extends StatelessWidget {
     final weekStart = today.subtract(Duration(days: weekday - 1));
     final weekEnd = weekStart.add(const Duration(days: 6));
 
-    // Gather (task, project) pairs from all active projects
+    // ── Build (task, project) pairs that overlap the week ────────────────
     final allPairs = <({ProjectTask task, Project project})>[];
     for (final p in projects) {
       for (final t in p.tasks) {
-        allPairs.add((task: t, project: p));
+        final effectiveEnd = t.endDate ?? t.startDate;
+        final overlaps = !t.startDate.isAfter(weekEnd) &&
+            !effectiveEnd.isBefore(weekStart);
+        if (overlaps) allPairs.add((task: t, project: p));
       }
     }
 
-    // ── Overdue ──────────────────────────────────────────────────────────────
-    final overdue = allPairs
-        .where((e) =>
-            e.task.endDate != null &&
-            e.task.endDate!.isBefore(today) &&
-            e.task.status != 'done' &&
-            e.task.status != 'skipped')
-        .toList()
-      ..sort((a, b) => a.task.endDate!.compareTo(b.task.endDate!));
+    // ── Overdue (all tasks, not just this week) ───────────────────────────
+    final overduePairs = <({ProjectTask task, Project project})>[];
+    for (final p in projects) {
+      for (final t in p.tasks) {
+        if (t.endDate != null &&
+            t.endDate!.isBefore(today) &&
+            t.status != 'done' &&
+            t.status != 'skipped') {
+          overduePairs.add((task: t, project: p));
+        }
+      }
+    }
+    overduePairs.sort((a, b) => a.task.endDate!.compareTo(b.task.endDate!));
 
-    // ── This week ────────────────────────────────────────────────────────────
-    final thisWeek = allPairs
-        .where((e) =>
-            e.task.status != 'done' &&
-            e.task.status != 'skipped' &&
-            !e.task.startDate.isAfter(weekEnd) &&
-            (e.task.endDate == null || !e.task.endDate!.isBefore(weekStart)))
+    // ── Group tasks by domain ─────────────────────────────────────────────
+    // Map domainId -> list of pairs
+    final byDomain = <String?, List<({ProjectTask task, Project project})>>{};
+    for (final pair in allPairs) {
+      final did = pair.project.domainId;
+      byDomain.putIfAbsent(did, () => []).add(pair);
+    }
+
+    // Build ordered domain groups: known domains first (sorted), then null
+    final domainGroups = <({Domain? domain, List<({ProjectTask task, Project project})> pairs})>[];
+    for (final domain in domains) {
+      if (domain.deleted) continue;
+      final pairs = byDomain[domain.id];
+      if (pairs != null && pairs.isNotEmpty) {
+        domainGroups.add((domain: domain, pairs: pairs));
+      }
+    }
+    // Tasks with no domain
+    final noDomainPairs = byDomain[null] ?? [];
+    if (noDomainPairs.isNotEmpty) {
+      domainGroups.add((domain: null, pairs: noDomainPairs));
+    }
+
+    // ── Week stats ────────────────────────────────────────────────────────
+    final weekActive = allPairs.where((e) =>
+        e.task.status != 'skipped' && !e.task.isMilestone).length;
+    final weekDone = allPairs.where((e) => e.task.status == 'done').length;
+
+    // ── Milestones this week ──────────────────────────────────────────────
+    final weekMilestones = allPairs
+        .where((e) => e.task.isMilestone)
         .toList()
       ..sort((a, b) => a.task.startDate.compareTo(b.task.startDate));
 
-    // ── Upcoming milestones (14 days) ────────────────────────────────────────
-    final milestoneDeadline = today.add(const Duration(days: 14));
-    final milestones = allPairs
-        .where((e) =>
-            e.task.isMilestone &&
-            !e.task.startDate.isBefore(today) &&
-            !e.task.startDate.isAfter(milestoneDeadline))
-        .toList()
-      ..sort((a, b) => a.task.startDate.compareTo(b.task.startDate));
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 700;
+        if (isNarrow) {
+          return _buildSidebar(
+              cs, today, weekStart, weekEnd, overduePairs, allPairs, projects);
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Gantt column (70%) ─────────────────────────────────────────
+            Expanded(
+              flex: 7,
+              child: _buildGantt(
+                context,
+                cs,
+                today,
+                weekStart,
+                weekDone,
+                weekActive,
+                domainGroups,
+                weekMilestones,
+              ),
+            ),
+            // ── Sidebar (30%) ──────────────────────────────────────────────
+            SizedBox(
+              width: 1,
+              child: VerticalDivider(
+                  color: cs.outlineVariant.withOpacity(0.4), width: 1),
+            ),
+            Expanded(
+              flex: 3,
+              child: _buildSidebar(
+                  cs, today, weekStart, weekEnd, overduePairs, allPairs, projects),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
-    final allEmpty =
-        overdue.isEmpty && thisWeek.isEmpty && milestones.isEmpty;
+  // ── GANTT ─────────────────────────────────────────────────────────────────
 
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 800),
-        child: allEmpty
-            ? Center(
-                child: Text(
-                  'Aucune tâche en cours cette semaine',
-                  style: TextStyle(
-                      fontSize: 15,
-                      color: cs.onSurface.withOpacity(0.4)),
-                ),
-              )
-            : ListView(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 24, vertical: 24),
+  Widget _buildGantt(
+    BuildContext context,
+    ColorScheme cs,
+    DateTime today,
+    DateTime weekStart,
+    int weekDone,
+    int weekActive,
+    List<({Domain? domain, List<({ProjectTask task, Project project})> pairs})> domainGroups,
+    List<({ProjectTask task, Project project})> weekMilestones,
+  ) {
+    const rowH = 28.0;
+    const labelW = 120.0;
+    const headerH = 36.0;
+    const domainHeaderH = 26.0;
+
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Stat globale ─────────────────────────────────────────────
+            Text(
+              '$weekDone / $weekActive tâches actives faites cette semaine',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: cs.onSurface.withOpacity(0.55),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // ── Timeline ─────────────────────────────────────────────────
+            LayoutBuilder(builder: (_, bc) {
+              final totalW = bc.maxWidth;
+              final ganttW = totalW - labelW;
+              final dayW = ganttW / 7;
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ── En retard ─────────────────────────────────────────────
-                  if (overdue.isNotEmpty) ...[
-                    _FocusSectionHeader(
-                        label: 'En retard',
-                        color: cs.error),
-                    const SizedBox(height: 8),
-                    for (final e in overdue) ...[
-                      _FocusTaskTile(
-                        task: e.task,
-                        project: e.project,
-                        domains: domains,
-                        today: today,
-                        cs: cs,
-                        isOverdue: true,
-                      ),
+                  // Header row
+                  Row(
+                    children: [
+                      SizedBox(width: labelW),
+                      for (int d = 0; d < 7; d++) ...[
+                        _buildDayHeader(
+                          cs,
+                          _dayLabels[d],
+                          weekStart.add(Duration(days: d)).day,
+                          weekStart.add(Duration(days: d)) == today,
+                          dayW,
+                          headerH,
+                        ),
+                      ],
                     ],
-                    const SizedBox(height: 20),
-                  ],
+                  ),
+                  const SizedBox(height: 4),
 
-                  // ── Cette semaine ─────────────────────────────────────────
-                  _FocusSectionHeader(label: 'Cette semaine'),
-                  const SizedBox(height: 8),
-                  if (thisWeek.isEmpty)
+                  // Domain groups
+                  if (domainGroups.isEmpty)
                     Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Text(
-                        'Aucune tâche cette semaine',
-                        style: TextStyle(
-                            fontSize: 13,
-                            color: cs.onSurface.withOpacity(0.4),
-                            fontStyle: FontStyle.italic),
+                      padding: const EdgeInsets.symmetric(vertical: 32),
+                      child: Center(
+                        child: Text(
+                          'Aucune tâche cette semaine',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: cs.onSurface.withOpacity(0.35),
+                          ),
+                        ),
                       ),
                     )
                   else
-                    for (final e in thisWeek) ...[
-                      _FocusTaskTile(
-                        task: e.task,
-                        project: e.project,
-                        domains: domains,
-                        today: today,
-                        cs: cs,
-                        isOverdue: false,
+                    for (final group in domainGroups) ...[
+                      _buildDomainGroupRows(
+                        cs,
+                        group.domain,
+                        group.pairs,
+                        today,
+                        weekStart,
+                        labelW,
+                        dayW,
+                        rowH,
+                        domainHeaderH,
                       ),
                     ],
 
-                  // ── Prochains jalons ──────────────────────────────────────
-                  if (milestones.isNotEmpty) ...[
-                    const SizedBox(height: 20),
-                    _FocusSectionHeader(label: 'Prochains jalons (14 jours)'),
+                  // ── Jalons de la semaine ────────────────────────────────
+                  if (weekMilestones.isNotEmpty) ...[
                     const SizedBox(height: 8),
-                    for (final e in milestones) ...[
-                      _FocusTaskTile(
-                        task: e.task,
-                        project: e.project,
-                        domains: domains,
-                        today: today,
-                        cs: cs,
-                        isOverdue: false,
-                      ),
-                    ],
-                  ],
-                ],
-              ),
-      ),
-    );
-  }
-}
-
-class _FocusSectionHeader extends StatelessWidget {
-  final String label;
-  final Color? color;
-  const _FocusSectionHeader({required this.label, this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Text(
-      label.toUpperCase(),
-      style: TextStyle(
-        fontSize: 11,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 1.0,
-        color: color ?? cs.onSurface.withOpacity(0.45),
-      ),
-    );
-  }
-}
-
-class _FocusTaskTile extends StatelessWidget {
-  final ProjectTask task;
-  final Project project;
-  final List<Domain> domains;
-  final DateTime today;
-  final ColorScheme cs;
-  final bool isOverdue;
-  const _FocusTaskTile({
-    required this.task,
-    required this.project,
-    required this.domains,
-    required this.today,
-    required this.cs,
-    required this.isOverdue,
-  });
-
-  static String _fmtDate(DateTime d) {
-    const months = [
-      'jan', 'fév', 'mar', 'avr', 'mai', 'juin',
-      'juil', 'aoû', 'sep', 'oct', 'nov', 'déc'
-    ];
-    return '${d.day} ${months[d.month - 1]}';
-  }
-
-  String get _statusIcon {
-    if (task.isMilestone) return '◆';
-    return switch (task.status) {
-      'done' => '✓',
-      'skipped' => '⏭',
-      _ => '○',
-    };
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final dateToShow = task.endDate ?? task.startDate;
-    final daysLate = isOverdue && task.endDate != null
-        ? today.difference(task.endDate!).inDays
-        : 0;
-
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 6),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: BorderSide(
-          color: isOverdue
-              ? cs.error.withOpacity(0.3)
-              : cs.outlineVariant.withOpacity(0.4),
-        ),
-      ),
-      color: isOverdue
-          ? cs.errorContainer.withOpacity(0.15)
-          : cs.surface,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        child: Row(
-          children: [
-            // Status icon
-            Text(
-              _statusIcon,
-              style: TextStyle(
-                fontSize: 14,
-                color: task.isMilestone
-                    ? cs.primary
-                    : isOverdue
-                        ? cs.error
-                        : cs.onSurface.withOpacity(0.5),
-              ),
-            ),
-            const SizedBox(width: 12),
-            // Task info
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    task.title,
-                    style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 2),
-                  Row(
-                    children: [
-                      Text(
-                        project.title,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                          color: cs.primary,
-                        ),
-                      ),
-                      Builder(builder: (context) {
-                        final domain = project.domainId == null
-                            ? null
-                            : domains
-                                .where((d) => d.id == project.domainId)
-                                .firstOrNull;
-                        if (domain == null) return const SizedBox.shrink();
-                        final color = _WebHomeScreenState._domainColor(domain, cs, domains);
-                        return Padding(
-                          padding: const EdgeInsets.only(left: 6),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: color.withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                  color: color.withOpacity(0.4), width: 1),
-                            ),
-                            child: Text(
-                              domain.name,
-                              style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                  color: color),
+                    Divider(
+                        height: 1,
+                        color: cs.outlineVariant.withOpacity(0.4)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: labelW,
+                          child: Text(
+                            'JALONS',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.8,
+                              color: cs.primary.withOpacity(0.7),
                             ),
                           ),
-                        );
-                      }),
-                    ],
-                  ),
+                        ),
+                        Expanded(
+                          child: SizedBox(
+                            height: rowH,
+                            child: Stack(
+                              children: [
+                                for (final e in weekMilestones) ...[
+                                  _buildMilestoneDiamond(
+                                    cs,
+                                    e.task,
+                                    weekStart,
+                                    dayW,
+                                    rowH,
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            // Date + overdue badge
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  _fmtDate(dateToShow),
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: cs.onSurface.withOpacity(0.45)),
-                ),
-                if (isOverdue && daysLate > 0) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    '−$daysLate j',
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: cs.error),
-                  ),
-                ],
-              ],
-            ),
+              );
+            }),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildDayHeader(
+    ColorScheme cs,
+    String dayName,
+    int dayNum,
+    bool isToday,
+    double width,
+    double height,
+  ) {
+    return SizedBox(
+      width: width,
+      height: height,
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          decoration: isToday
+              ? BoxDecoration(
+                  color: Colors.teal.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(6),
+                )
+              : null,
+          child: Text(
+            '$dayName $dayNum',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: isToday ? FontWeight.w700 : FontWeight.w500,
+              color: isToday
+                  ? Colors.teal.shade700
+                  : cs.onSurface.withOpacity(0.5),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDomainGroupRows(
+    ColorScheme cs,
+    Domain? domain,
+    List<({ProjectTask task, Project project})> pairs,
+    DateTime today,
+    DateTime weekStart,
+    double labelW,
+    double dayW,
+    double rowH,
+    double domainHeaderH,
+  ) {
+    final color = _domainColor(domain, cs, domains);
+    final domainName = domain?.name ?? 'Sans domaine';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Domain header
+        Container(
+          height: domainHeaderH,
+          margin: const EdgeInsets.only(bottom: 2, top: 6),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Row(
+            children: [
+              SizedBox(width: 8),
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: color,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                domainName.toUpperCase(),
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Task rows
+        for (final pair in pairs) ...[
+          _buildTaskRow(
+            cs,
+            pair.task,
+            today,
+            weekStart,
+            labelW,
+            dayW,
+            rowH,
+            color,
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildTaskRow(
+    ColorScheme cs,
+    ProjectTask task,
+    DateTime today,
+    DateTime weekStart,
+    double labelW,
+    double dayW,
+    double rowH,
+    Color domainColor,
+  ) {
+    final isDone = task.status == 'done';
+
+    return SizedBox(
+      height: rowH,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Label
+          SizedBox(
+            width: labelW,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Text(
+                task.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: cs.onSurface.withOpacity(isDone ? 0.35 : 0.8),
+                  decoration: isDone ? TextDecoration.lineThrough : null,
+                ),
+              ),
+            ),
+          ),
+          // Gantt bar area
+          Expanded(
+            child: task.isMilestone
+                ? _buildMilestoneDiamond(cs, task, weekStart, dayW, rowH)
+                : _buildTaskBar(cs, task, today, weekStart, dayW, rowH, domainColor),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTaskBar(
+    ColorScheme cs,
+    ProjectTask task,
+    DateTime today,
+    DateTime weekStart,
+    double dayW,
+    double rowH,
+    Color barColor,
+  ) {
+    final isDone = task.status == 'done';
+    final weekEnd = weekStart.add(const Duration(days: 6));
+
+    // Clamp dates to the week
+    final clampedStart =
+        task.startDate.isBefore(weekStart) ? weekStart : task.startDate;
+    final effectiveEnd = task.endDate ?? task.startDate;
+    final clampedEnd =
+        effectiveEnd.isAfter(weekEnd) ? weekEnd : effectiveEnd;
+
+    final startOffset =
+        clampedStart.difference(weekStart).inDays.toDouble();
+    final endOffset =
+        clampedEnd.difference(weekStart).inDays.toDouble() + 1.0;
+    final barLeft = startOffset * dayW;
+    final barWidth = (endOffset - startOffset) * dayW;
+
+    return LayoutBuilder(builder: (_, bc) {
+      return Stack(
+        children: [
+          // Day grid lines
+          for (int d = 0; d < 7; d++)
+            Positioned(
+              left: d * dayW,
+              top: 0,
+              bottom: 0,
+              width: 1,
+              child: Container(color: cs.outlineVariant.withOpacity(0.12)),
+            ),
+          // Bar
+          if (barWidth > 0)
+            Positioned(
+              left: barLeft,
+              width: barWidth.clamp(0, bc.maxWidth - barLeft),
+              top: (rowH - 14) / 2,
+              height: 14,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: isDone
+                      ? barColor.withOpacity(0.25)
+                      : barColor.withOpacity(0.75),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+            ),
+        ],
+      );
+    });
+  }
+
+  Widget _buildMilestoneDiamond(
+    ColorScheme cs,
+    ProjectTask task,
+    DateTime weekStart,
+    double dayW,
+    double rowH,
+  ) {
+    final weekEnd = weekStart.add(const Duration(days: 6));
+    final date = task.startDate;
+    if (date.isBefore(weekStart) || date.isAfter(weekEnd)) {
+      return const SizedBox.shrink();
+    }
+
+    final dayOffset = date.difference(weekStart).inDays.toDouble();
+    final centerX = dayOffset * dayW + dayW / 2;
+    final isDone = task.status == 'done';
+
+    return Stack(
+      children: [
+        Positioned(
+          left: centerX - 7,
+          top: (rowH - 14) / 2,
+          width: 14,
+          height: 14,
+          child: Opacity(
+            opacity: isDone ? 0.35 : 1.0,
+            child: Transform.rotate(
+              angle: 0.785398, // 45 degrees
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: cs.primary,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── SIDEBAR ───────────────────────────────────────────────────────────────
+
+  Widget _buildSidebar(
+    ColorScheme cs,
+    DateTime today,
+    DateTime weekStart,
+    DateTime weekEnd,
+    List<({ProjectTask task, Project project})> overduePairs,
+    List<({ProjectTask task, Project project})> weekPairs,
+    List<Project> allProjects,
+  ) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Card En retard ──────────────────────────────────────────────
+          _SidebarCard(
+            title: 'En retard',
+            titleColor: cs.error,
+            icon: Icons.warning_amber_rounded,
+            cs: cs,
+            child: overduePairs.isEmpty
+                ? Row(
+                    children: [
+                      Icon(Icons.check_circle_outline,
+                          size: 14, color: Colors.green.shade600),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Aucun retard',
+                        style: TextStyle(
+                            fontSize: 13, color: Colors.green.shade600),
+                      ),
+                    ],
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (final e in overduePairs) ...[
+                        _OverdueItem(
+                            task: e.task, today: today, cs: cs),
+                        const SizedBox(height: 4),
+                      ],
+                    ],
+                  ),
+          ),
+          const SizedBox(height: 12),
+
+          // ── Card Cette semaine ──────────────────────────────────────────
+          _SidebarCard(
+            title: 'Cette semaine',
+            icon: Icons.calendar_view_week_outlined,
+            cs: cs,
+            child: Builder(builder: (_) {
+              // Count active (non-milestone, non-done/skipped) tasks per project
+              final countByProject = <String, int>{};
+              for (final e in weekPairs) {
+                if (!e.task.isMilestone &&
+                    e.task.status != 'done' &&
+                    e.task.status != 'skipped') {
+                  countByProject[e.project.id] =
+                      (countByProject[e.project.id] ?? 0) + 1;
+                }
+              }
+              if (countByProject.isEmpty) {
+                return Text(
+                  'Aucune tâche active',
+                  style: TextStyle(
+                      fontSize: 13,
+                      color: cs.onSurface.withOpacity(0.4),
+                      fontStyle: FontStyle.italic),
+                );
+              }
+              final entries = countByProject.entries.toList()
+                ..sort((a, b) => b.value.compareTo(a.value));
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final entry in entries) ...[
+                    Builder(builder: (_) {
+                      final proj = allProjects
+                          .where((p) => p.id == entry.key)
+                          .firstOrNull;
+                      if (proj == null) return const SizedBox.shrink();
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Row(
+                          children: [
+                            Text('• ',
+                                style: TextStyle(
+                                    color: cs.primary,
+                                    fontWeight: FontWeight.w700)),
+                            Expanded(
+                              child: Text(
+                                proj.title,
+                                style: const TextStyle(fontSize: 13),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            Text(
+                              '${entry.value} tâche${entry.value > 1 ? 's' : ''}',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: cs.onSurface.withOpacity(0.5)),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+                ],
+              );
+            }),
+          ),
+          const SizedBox(height: 12),
+
+          // ── Card Avancement ─────────────────────────────────────────────
+          _SidebarCard(
+            title: 'Avancement',
+            titleColor: Colors.teal.shade700,
+            icon: Icons.trending_up_outlined,
+            cs: cs,
+            child: allProjects.isEmpty
+                ? Text(
+                    'Aucun projet actif',
+                    style: TextStyle(
+                        fontSize: 13,
+                        color: cs.onSurface.withOpacity(0.4),
+                        fontStyle: FontStyle.italic),
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (final p in allProjects) ...[
+                        _ProjectProgressItem(
+                          project: p,
+                          domains: domains,
+                          cs: cs,
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Sidebar widgets ───────────────────────────────────────────────────────────
+
+class _SidebarCard extends StatelessWidget {
+  final String title;
+  final Color? titleColor;
+  final IconData icon;
+  final ColorScheme cs;
+  final Widget child;
+
+  const _SidebarCard({
+    required this.title,
+    required this.icon,
+    required this.cs,
+    required this.child,
+    this.titleColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = titleColor ?? cs.onSurface.withOpacity(0.65);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withOpacity(0.35),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.outlineVariant.withOpacity(0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 14, color: color),
+              const SizedBox(width: 6),
+              Text(
+                title.toUpperCase(),
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _OverdueItem extends StatelessWidget {
+  final ProjectTask task;
+  final DateTime today;
+  final ColorScheme cs;
+
+  const _OverdueItem({
+    required this.task,
+    required this.today,
+    required this.cs,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final daysLate = task.endDate != null
+        ? today.difference(task.endDate!).inDays
+        : 0;
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            task.title,
+            style: const TextStyle(fontSize: 12),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          '−$daysLate j',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: cs.error,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ProjectProgressItem extends StatelessWidget {
+  final Project project;
+  final List<Domain> domains;
+  final ColorScheme cs;
+
+  const _ProjectProgressItem({
+    required this.project,
+    required this.domains,
+    required this.cs,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final total = project.tasks.length;
+    final done = project.tasks.where((t) => t.status == 'done').length;
+    final progress = total > 0 ? done / total : 0.0;
+
+    // Resolve domain color for progress bar
+    final domain = project.domainId == null
+        ? null
+        : domains.where((d) => d.id == project.domainId).firstOrNull;
+    Color barColor;
+    if (domain != null) {
+      if (domain.colorValue != null) {
+        barColor = Color(domain.colorValue!);
+      } else {
+        final idx = domains.indexWhere((d) => d.id == domain.id);
+        barColor = idx >= 0
+            ? kDomainPalette[idx % kDomainPalette.length]
+            : cs.primary;
+      }
+    } else {
+      barColor = cs.primary;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                project.title,
+                style: const TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w600),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Text(
+              '$done / $total',
+              style: TextStyle(
+                  fontSize: 11, color: cs.onSurface.withOpacity(0.45)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        LinearProgressIndicator(
+          value: progress,
+          minHeight: 5,
+          borderRadius: BorderRadius.circular(3),
+          backgroundColor: cs.onSurface.withOpacity(0.08),
+          color: barColor,
+        ),
+      ],
     );
   }
 }
