@@ -4,13 +4,7 @@ workflows:
   ios-check:
     name: iOS Regression Check
     max_build_duration: 30
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: main
-          include: true
-          source: true
+    # Pas de triggering → déclenchement manuel uniquement (iOS géré via Xcode Cloud)
     environment:
       flutter: stable
     scripts:
