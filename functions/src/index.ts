@@ -280,17 +280,21 @@ const GET_USER_CONTEXT_TOOL = {
     "objectifs GTD, ET l'activité réelle des 7 derniers jours. " +
     "\n\n" +
     "⚡ WORKFLOW OBLIGATOIRE — quelle que soit la demande de l'utilisateur :\n\n" +
-    "Pour TOUTE demande (programme, objectif, habitude, routine, action à créer) :\n" +
-    "1. Identifier le bon domaine existant OU créer un nouveau domaine.\n" +
+    "ÉTAPE 1 — Présenter le programme (AVANT de créer quoi que ce soit dans Productivitwo) :\n" +
+    "  → Générer un programme HTML complet et détaillé (phases, planning, nutrition si pertinent).\n" +
+    "  → Le montrer à l'utilisateur et attendre sa validation explicite ('ok', 'c'est bon', 'crée ça').\n" +
+    "  → NE PAS appeler save_document ni créer d'éléments Productivitwo avant validation.\n\n" +
+    "ÉTAPE 2 — Après validation, créer la structure dans cet ordre :\n" +
+    "1. Identifier ou créer le domaine concerné.\n" +
     "2. Identifier ou créer UNE OU PLUSIEURS activités temps selon les dimensions de l'objectif. " +
     "   Ex: 'prendre de la masse' → Musculation (temps) + Nutrition (temps). " +
-    "   Chaque routine/action sera ensuite liée à l'activité la plus pertinente.\n" +
-    "3. Créer un projet Gantt (push_gantt) couvrant AU MINIMUM la semaine en cours " +
+    "   Chaque routine/action sera liée à l'activité la plus pertinente.\n" +
+    "3. Créer le projet Gantt (push_gantt) couvrant AU MINIMUM la semaine en cours " +
     "   avec un jalon 'Bilan' le dimanche et un objectif KPI mesurable.\n" +
-    "   → Si la demande est déjà dans un projet existant, dispatcher dans ce projet.\n" +
-    "4. Créer les routines (create_routine) et actions récurrentes (create_recurring_action) " +
+    "4. Sauvegarder le programme HTML avec save_document lié au projectId créé.\n" +
+    "5. Créer les routines (create_routine) et actions récurrentes (create_recurring_action) " +
     "   TOUTES liées à l'activityId de l'étape 2.\n\n" +
-    "Structure garantie : Domaine → Activité temps → Projet Gantt (+ KPI + Bilan dim.) → Routines & Actions liées.\n" +
+    "Structure garantie : Domaine → Activités temps → Projet Gantt (+ KPI + Bilan dim.) → Programme HTML sauvegardé → Routines & Actions liées.\n" +
     "Ne jamais créer une routine ou action sans activityId et sans projet associé.",
   inputSchema: { type: "object", properties: {} },
 };
