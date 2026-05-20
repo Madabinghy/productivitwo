@@ -231,6 +231,8 @@ class RecurringAction {
   String? projectTaskId;  // id de la tâche Gantt associée
   bool deleted;
 
+  List<ChecklistItem> checklist;
+
   RecurringAction({
     String? id,
     required this.title,
@@ -245,9 +247,11 @@ class RecurringAction {
     this.endDate,
     this.projectTaskId,
     this.deleted = false,
+    List<ChecklistItem>? checklist,
   })  : id = id ?? _uuid.v4(),
         weekdays = weekdays ?? [],
-        createdAt = createdAt ?? DateTime.now();
+        createdAt = createdAt ?? DateTime.now(),
+        checklist = checklist ?? [];
 
   /// Vrai si la routine est dans sa fenêtre d'activité pour le jour donné.
   bool isActiveOn(DateTime day) {
@@ -286,6 +290,7 @@ class RecurringAction {
         'endDate': endDate?.toIso8601String(),
         'projectTaskId': projectTaskId,
         'deleted': deleted,
+        'checklist': checklist.map((c) => c.toJson()).toList(),
       };
 
   static RecurringAction from(Map j) => RecurringAction(
@@ -306,6 +311,10 @@ class RecurringAction {
         endDate: _parseDateOrNull(j['endDate']),
         projectTaskId: j['projectTaskId'] as String?,
         deleted: j['deleted'] as bool? ?? false,
+        checklist: (j['checklist'] as List?)
+            ?.map((e) => ChecklistItem.from(e as Map))
+            .toList() ??
+            [],
       );
 }
 

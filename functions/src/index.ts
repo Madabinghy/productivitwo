@@ -203,17 +203,22 @@ function getPromptMessages(name: string, args: Record<string, string>) {
           type: "text",
           text:
             `Crée mon programme pour le ${date}.\n\n` +
+            `Annonce-moi d'abord : "Je prépare ton programme — ça prend environ 1-2 min. Je t'envoie une notification dès que c'est prêt."\n\n` +
             `Étapes à suivre dans l'ordre :\n` +
             `1. Appelle get_user_context pour connaître mes objectifs et ce que j'ai fait cette semaine.\n` +
             `2. Appelle get_day_blocks pour connaître mes blocs de journée.\n` +
             `3. Appelle get_day_plan(${date}) pour voir ce qui est déjà prévu.\n` +
-            `4. Appelle list_events (Google Calendar) pour voir mes rendez-vous.\n` +
+            `4. Appelle list_events (Google Calendar) pour voir mes rendez-vous existants.\n` +
             `5. Crée un programme cohérent avec plan_day :\n` +
             `   - Respecte mes blocs\n` +
             `   - Priorise les tâches Gantt en retard\n` +
             `   - Ajoute des créneaux "Rendez-vous avec [objectif]" pour mes goals GTD\n` +
             `   - Commente les actions non faites de la semaine si pertinent\n` +
-            `6. Ajoute les créneaux importants dans Google Calendar.`,
+            `6. Demande-moi : "Veux-tu que j'intègre des créneaux dans ton agenda Google Calendar ?"\n` +
+            `   - Si oui : identifie les créneaux libres, propose-les clairement, puis appelle create_event après validation.\n` +
+            `   - Si non : passe à l'étape suivante.\n` +
+            `7. Génère le document HTML du programme avec save_document (utilise get_document_template si besoin).\n` +
+            `8. Envoie-moi une notification push_notification : "Programme du ${date} prêt ✅"`,
         },
       },
     ];
@@ -248,6 +253,7 @@ function getPromptMessages(name: string, args: Record<string, string>) {
           type: "text",
           text:
             `Aligne mon planning des prochains jours avec mes projets Gantt.\n\n` +
+            `Annonce-moi d'abord : "Je fais le point sur tes Gantts — ça prend environ 1-2 min. Je t'envoie une notification dès que c'est prêt."\n\n` +
             `1. Appelle get_user_context.\n` +
             `2. Appelle list_projects puis get_project pour chaque projet actif.\n` +
             `3. Identifie les tâches Gantt :\n` +
@@ -255,7 +261,12 @@ function getPromptMessages(name: string, args: Record<string, string>) {
             `   - À venir dans les 7 prochains jours\n` +
             `   - Des jalons proches\n` +
             `4. Pour chaque tâche urgente, propose de la planifier via plan_day sur les prochains jours.\n` +
-            `5. Si une tâche Gantt devrait générer des routines régulières, propose create_routine.`,
+            `5. Si une tâche Gantt devrait générer des routines régulières, propose create_routine.\n` +
+            `6. Pour chaque projet modifié (push_gantt, update_project, update_task_status) :\n` +
+            `   - Appelle get_documents(projectId) pour voir si un programme HTML existe.\n` +
+            `   - Si oui, mets-le à jour avec save_document en passant son documentId (évite les doublons).\n` +
+            `   - Si non, propose-moi de le créer.\n` +
+            `7. Envoie-moi une notification push_notification : "Gantts alignés ✅"`,
         },
       },
     ];
@@ -280,11 +291,18 @@ const GET_USER_CONTEXT_TOOL = {
     "objectifs GTD, ET l'activité réelle des 7 derniers jours. " +
     "\n\n" +
     "⚡ WORKFLOW OBLIGATOIRE — quelle que soit la demande de l'utilisateur :\n\n" +
+    "⏱️ ANNONCE D'ABORD (avant tout tool call) :\n" +
+    "  → Dire à l'utilisateur : \"Je prépare ton programme — ça prend environ 1-2 min. Je t'envoie une notification dès que c'est prêt.\"\n" +
+    "  → Cela évite que l'utilisateur interrompe le process en pensant que rien ne se passe.\n\n" +
     "ÉTAPE 1 — Présenter le programme (AVANT de créer quoi que ce soit dans Productivitwo) :\n" +
     "  → Appeler get_document_template pour récupérer le template HTML de référence.\n" +
     "  → Générer un programme HTML complet en utilisant ce template (adapter couleur au domaine).\n" +
     "  → Le montrer à l'utilisateur et attendre sa validation explicite ('ok', 'c'est bon', 'crée ça').\n" +
     "  → NE PAS appeler save_document ni créer d'éléments Productivitwo avant validation.\n\n" +
+    "📅 PROPOSITION AGENDA (juste après validation du programme, avant l'étape 2) :\n" +
+    "  → Demander : \"Veux-tu que je vérifie ton agenda pour intégrer des créneaux concrets ?\"\n" +
+    "  → Si oui : appeler list_events (Google Calendar), identifier les créneaux libres, les proposer clairement, puis create_event après accord.\n" +
+    "  → Si non : passer directement à l'étape 2.\n\n" +
     "ÉTAPE 2 — Après validation, créer la structure dans cet ordre :\n" +
     "1. Identifier ou créer le domaine concerné.\n" +
     "2. Identifier ou créer UNE OU PLUSIEURS activités temps selon les dimensions de l'objectif. " +
@@ -292,9 +310,15 @@ const GET_USER_CONTEXT_TOOL = {
     "   Chaque routine/action sera liée à l'activité la plus pertinente.\n" +
     "3. Créer le projet Gantt (push_gantt) couvrant AU MINIMUM la semaine en cours " +
     "   avec un jalon 'Bilan' le dimanche et un objectif KPI mesurable.\n" +
-    "4. Sauvegarder le programme HTML avec save_document lié au projectId créé.\n" +
+    "4. Sauvegarder le programme HTML avec save_document lié au projectId créé. " +
+    "   Toujours renseigner domainId et subtitle. " +
+    "   Si un document existe déjà pour ce projet (get_documents avant), passer son documentId pour éviter les doublons.\n" +
     "5. Créer les routines (create_routine) et actions récurrentes (create_recurring_action) " +
-    "   TOUTES liées à l'activityId de l'étape 2.\n\n" +
+    "   TOUTES liées à l'activityId de l'étape 2.\n" +
+    "   → Pour chaque séance du programme (ex: Push Lundi, Pull Mercredi…), renseigne le paramètre checklist " +
+    "     avec le détail des exercices extraits du programme HTML (ex: 'Développé couché barre — 4×8 · 2 min'). " +
+    "     Ces items seront copiés automatiquement dans le plan du jour à chaque occurrence.\n" +
+    "6. Envoyer une push_notification : \"[Titre du programme] créé ✅\"\n\n" +
     "Structure garantie : Domaine → Activités temps → Projet Gantt (+ KPI + Bilan dim.) → Programme HTML sauvegardé → Routines & Actions liées.\n" +
     "Ne jamais créer une routine ou action sans activityId et sans projet associé.",
   inputSchema: { type: "object", properties: {} },
@@ -346,12 +370,15 @@ const CREATE_RECURRING_ACTION_TOOL = {
     "⚠️ activityId OBLIGATOIRE — créer d'abord l'activité temps avec create_activity si elle n'existe pas. " +
     "⚠️ NE PAS utiliser si l'utilisateur veut tracker une fréquence → create_routine. " +
     "⚠️ NE PAS utiliser si l'utilisateur veut tracker du temps → create_activity. " +
-    "Si liée à une phase Gantt, renseigne startDate/endDate pour qu'elle expire en fin de phase.",
+    "Si liée à une phase Gantt, renseigne startDate/endDate pour qu'elle expire en fin de phase. " +
+    "Pour les séances sportives ou toute action avec un détail de contenu (exercices, étapes…), " +
+    "utilise le paramètre checklist pour lister les éléments à cocher — ils apparaîtront dans l'app " +
+    "et seront copiés à chaque occurrence (ex: Développé couché 4×8 · 2 min).",
   inputSchema: {
     type: "object",
     required: ["title", "activityId"],
     properties: {
-      title: { type: "string", description: "Intitulé de l'action (ex: Faire la vaisselle)" },
+      title: { type: "string", description: "Intitulé de l'action (ex: Push — Pectoraux / Épaules / Triceps)" },
       activityId: { type: "string", description: "id de l'activité temps associée (OBLIGATOIRE)" },
       domainId: { type: "string", description: "id du domaine" },
       recurrenceType: {
@@ -367,6 +394,17 @@ const CREATE_RECURRING_ACTION_TOOL = {
       startDate: { type: "string", description: "Date d'activation ISO YYYY-MM-DD (optionnel)" },
       endDate: { type: "string", description: "Date d'expiration ISO YYYY-MM-DD (optionnel)" },
       projectTaskId: { type: "string", description: "id de la tâche Gantt liée (optionnel)" },
+      checklist: {
+        type: "array",
+        description: "Détail de la séance : liste d'exercices ou d'étapes à cocher. Copiée à chaque occurrence dans le plan du jour.",
+        items: {
+          type: "object",
+          required: ["title"],
+          properties: {
+            title: { type: "string", description: "Ex: 'Développé couché barre — 4×8 · 2 min repos'" },
+          },
+        },
+      },
     },
   },
 };
@@ -455,16 +493,22 @@ const GET_DOCUMENT_TEMPLATE_TOOL = {
 const SAVE_DOCUMENT_TOOL = {
   name: "save_document",
   description:
-    "Sauvegarde un document HTML dans Productivitwo (programme, plan, bilan, fiche). " +
-    "Claude peut le relire plus tard avec get_documents pour comparer au réalisé. " +
-    "Lier au projectId du projet Gantt associé si possible.",
+    "Sauvegarde ou met à jour un document HTML dans Productivitwo (programme, plan, bilan, fiche). " +
+    "Pour MODIFIER un document existant : passer son documentId (obtenu via get_documents) — évite les doublons. " +
+    "Pour CRÉER un nouveau document : ne pas passer documentId. " +
+    "Toujours lier au projectId et domainId si disponibles — utilisés pour l'affichage dans l'app. " +
+    "Renseigner subtitle avec un résumé court (ex: 'Phase 1 · 4 séances/semaine · Mois 1-2'). " +
+    "Après chaque save_document réussi, envoyer une push_notification pour informer l'utilisateur.",
   inputSchema: {
     type: "object",
     required: ["title", "content"],
     properties: {
-      title:     { type: "string", description: "Titre du document (ex: Programme Prise de Masse 6 mois)" },
-      content:   { type: "string", description: "Contenu HTML complet du document" },
-      projectId: { type: "string", description: "id du projet Gantt associé (optionnel)" },
+      title:      { type: "string", description: "Titre du document (ex: Programme Prise de Masse 6 mois)" },
+      content:    { type: "string", description: "Contenu HTML complet du document" },
+      projectId:  { type: "string", description: "id du projet Gantt associé (optionnel)" },
+      documentId: { type: "string", description: "id du document existant à mettre à jour — obtenu via get_documents. NE PAS passer pour une création." },
+      domainId:   { type: "string", description: "id du domaine (obtenu via get_user_context) — utilisé pour la couleur de la carte dans l'app" },
+      subtitle:   { type: "string", description: "Résumé court affiché sur la carte preview (ex: 'Phase 1 · 4 séances/semaine · Mois 1-2')" },
     },
   },
 };
@@ -1084,12 +1128,18 @@ async function executeCreateRecurringAction(
     startDate?: string;
     endDate?: string;
     projectTaskId?: string;
+    checklist?: Array<{ title: string }>;
   }
 ): Promise<string> {
   const id = uuidv4();
   // Si specificDays sans jours définis → fallback daily pour éviter une action invisible
   const hasSpecificDays = args.recurrenceType === "specificDays" && (args.weekdays || []).length > 0;
   const recurrenceType = hasSpecificDays ? "specificDays" : "daily";
+  const checklistItems = (args.checklist || []).map((c) => ({
+    id: uuidv4(),
+    title: c.title,
+    done: false,
+  }));
   await db.collection(`users/${uid}/recurringActions`).doc(id).set({
     id,
     title: args.title,
@@ -1103,6 +1153,7 @@ async function executeCreateRecurringAction(
     startDate: args.startDate || null,
     endDate: args.endDate || null,
     projectTaskId: args.projectTaskId || null,
+    checklist: checklistItems,
   });
 
   // Ajouter automatiquement au plan d'aujourd'hui si la routine est active ce jour
@@ -1131,6 +1182,7 @@ async function executeCreateRecurringAction(
       recurringActionId: id,
       domainId: args.domainId || null,
       activityId: args.activityId || null,
+      checklist: checklistItems.map((c) => ({ ...c, id: uuidv4(), done: false })),
     });
   }
 
@@ -1449,18 +1501,21 @@ INSTRUCTIONS D'ADAPTATION :
 
 async function executeSaveDocument(
   uid: string,
-  args: { title: string; content: string; projectId?: string }
+  args: { title: string; content: string; projectId?: string; documentId?: string; domainId?: string; subtitle?: string }
 ): Promise<string> {
-  const id = uuidv4();
+  const id = args.documentId || uuidv4();
+  const isUpdate = !!args.documentId;
   await db.collection(`users/${uid}/documents`).doc(id).set({
     id,
     title: args.title,
     content: args.content,
     projectId: args.projectId || null,
+    domainId: args.domainId || null,
+    subtitle: args.subtitle || null,
     type: "html",
-    createdAt: FieldValue.serverTimestamp(),
-  });
-  return `✅ Document "${args.title}" sauvegardé (id: ${id}). Visible dans l'onglet Projets du web app.`;
+    ...(isUpdate ? { updatedAt: FieldValue.serverTimestamp() } : { createdAt: FieldValue.serverTimestamp() }),
+  }, { merge: true });
+  return `✅ Document "${args.title}" ${isUpdate ? "mis à jour" : "sauvegardé"} (id: ${id}).`;
 }
 
 async function executeGetDocuments(uid: string, projectId?: string): Promise<string> {

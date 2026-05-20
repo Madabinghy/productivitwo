@@ -1273,10 +1273,15 @@ class _TodayViewState extends State<TodayView> {
     final idx = widget.logic.state.dayPlan.indexWhere((e) => e.id == it.id);
     if (idx < 0) return;
 
-    final removed = widget.logic.state.dayPlan[idx];
+    final item = widget.logic.state.dayPlan[idx];
+    final prevArchived = item.archived;
+    final prevStatus = item.status;
 
+    // Soft-delete : archived=true pour que Firestore reçoive le marqueur
+    // et que le merge ne réintroduise pas l'item au prochain pull.
     setState(() {
-      widget.logic.state.dayPlan.removeAt(idx);
+      item.archived = true;
+      item.status = ActionStatus.archived;
     });
     widget.logic.skipBadgeCheck = true;
     widget.logic.onChange();
@@ -1286,7 +1291,7 @@ class _TodayViewState extends State<TodayView> {
       SnackBar(
         duration: const Duration(seconds: 4),
         content: Text(
-          "Action supprimée : ${removed.title}",
+          "Action supprimée : ${item.title}",
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
@@ -1294,8 +1299,8 @@ class _TodayViewState extends State<TodayView> {
           label: "Annuler",
           onPressed: () {
             setState(() {
-              final safeIdx = idx.clamp(0, widget.logic.state.dayPlan.length);
-              widget.logic.state.dayPlan.insert(safeIdx, removed);
+              item.archived = prevArchived;
+              item.status = prevStatus;
             });
             widget.logic.onChange();
           },

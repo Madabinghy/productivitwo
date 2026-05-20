@@ -46,6 +46,7 @@ import 'package:productivitwo_v1/pro_manager.dart';
 import 'package:uuid/uuid.dart';
 import 'package:productivitwo_v1/widgets/paywall_sheet.dart';
 import 'package:productivitwo_v1/widgets/apple_sign_in_button.dart';
+import 'package:productivitwo_v1/widgets/programmes_sheet.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -3434,6 +3435,24 @@ class _AppRootState extends State<AppRoot>
                           : 'Mode local\n(appui long = console dev)',
                       child: Text(_syncStatus, style: const TextStyle(fontSize: 14)),
                     ),
+                  ),
+                );
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.menu_book_outlined),
+              tooltip: 'Programmes',
+              onPressed: () {
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Theme.of(context).colorScheme.surface,
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                  ),
+                  builder: (_) => ProgrammesSheet(
+                    sync: _sync,
+                    domains: _state?.domains ?? [],
                   ),
                 );
               },

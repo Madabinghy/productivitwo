@@ -61,6 +61,69 @@ Suis ce workflow dans l'ordre :
 
 ---
 
+## Synchronisation programme HTML ↔ projet Gantt
+
+**Règle absolue** : chaque fois que tu modifies un projet Gantt (`push_gantt`, `update_project`, `update_task_status`), tu mets à jour le document HTML associé via `save_document` dans la foulée.
+
+Workflow obligatoire après toute modification Gantt :
+```
+1. [modification Gantt]      → push_gantt / update_project / update_task_status
+2. get_documents(projectId)  → récupère le document HTML existant s'il y en a un
+3. save_document             → régénère/met à jour le programme HTML avec les nouvelles données
+```
+
+Si aucun document n'existe encore pour ce projet, proposes-en la création.
+
+---
+
+## Quand tu crées ou mets à jour un programme (save_document)
+
+Avant de finaliser le document, demande systématiquement :
+
+> "Veux-tu que je vérifie ton agenda pour intégrer des créneaux concrets dans le programme ?"
+
+**Si oui** :
+```
+1. list_events (G.Calendar)  → récupère les dispo sur la période concernée
+2. Identifie les créneaux libres compatibles avec les tâches du projet
+3. Propose les créneaux à l'utilisateur avec une suggestion claire
+4. Après validation, crée les events (create_event) et intègre les dates dans le document HTML
+```
+
+**Si non** : génère le document sans créneaux calendrier, mais note qu'ils peuvent être ajoutés plus tard.
+
+---
+
+## Quand je te demande de créer un programme (musculation, nutrition, formation…)
+
+Dès que tu détectes une demande de création de programme (peu importe le domaine), applique ce workflow :
+
+1. **Annonce avant de commencer** :
+   > "Je prépare ton programme — ça prend environ 1-2 min. Je t'envoie une notification dès que c'est prêt."
+
+2. **Demande si je veux intégrer des créneaux dans mon agenda** :
+   > "Veux-tu que je vérifie ton agenda pour te proposer des créneaux concrets ?"
+   - Si oui : appelle `list_events` (Google Calendar), identifie les créneaux libres compatibles, propose-les clairement, puis crée les events (`create_event`) après validation et intègre les dates dans le document HTML.
+   - Si non : génère le programme sans créneaux calendrier.
+
+3. **Génère le document HTML** avec `save_document` (utilise `get_document_template` comme base).
+
+4. **Envoie une notification** :
+   > `push_notification` : "Programme [titre] créé ✅"
+
+---
+
+## Opérations longues : annonce + notification
+
+Quand tu t'apprêtes à enchaîner plusieurs tool calls (programme + calendrier + créneaux), annonce-le avant de commencer :
+
+> "Je lance la mise à jour du programme et la vérification calendrier — ça prend environ 1-2 min. Je t'envoie une notification dès que c'est prêt."
+
+À la fin, envoie une push notification (outil `push_notification`) avec un résumé succinct :
+> "Programme [nom du projet] mis à jour ✅"
+
+---
+
 ## Analyse de l'écart (attendu vs réalisé)
 
 Quand tu regardes `recentActivity` dans mon contexte :
@@ -100,3 +163,7 @@ Quand tu regardes `recentActivity` dans mon contexte :
 | `update_activity_goal` | Ajuster un objectif d'activité |
 | `create_routine` | Créer une routine (temporelle si besoin) |
 | `add_to_day_plan` | Ajouter une action au plan du jour |
+| `get_documents` | Récupérer les documents HTML d'un projet |
+| `save_document` | Créer/mettre à jour le programme HTML |
+| `get_document_template` | Template HTML pour créer un programme |
+| `push_notification` | Envoyer une notification à l'utilisateur |

@@ -12,6 +12,16 @@ import 'package:productivitwo_v1/web/gantt_screen.dart';
 import 'package:productivitwo_v1/web/help_sheet.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 
+Color? _parseTaskColor(String? hex) {
+  if (hex == null || hex.isEmpty) return null;
+  try {
+    final clean = hex.replaceAll('#', '').replaceAll(RegExp(r'^0[xX]'), '');
+    if (clean.length == 6) return Color(int.parse('FF$clean', radix: 16));
+    if (clean.length == 8) return Color(int.parse(clean, radix: 16));
+  } catch (_) {}
+  return null;
+}
+
 class WebHomeScreen extends StatefulWidget {
   const WebHomeScreen({super.key});
 
@@ -436,6 +446,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
     }
     return cs.primary;
   }
+
 
   Future<void> _archiveProject(Project p, bool archive) async {
     await _sync.saveProject(p..status = archive ? 'archived' : 'active');
@@ -1029,9 +1040,10 @@ class _FocusView extends StatelessWidget {
     final barDays = barEnd.difference(barStart).inDays + 1;
     final barWidth = barDays * dayW;
 
+    final resolvedColor = _parseTaskColor(task.color) ?? domainColor;
     final barColor = isDone
-        ? domainColor.withOpacity(0.35)
-        : domainColor.withOpacity(0.75);
+        ? resolvedColor.withOpacity(0.35)
+        : resolvedColor.withOpacity(0.75);
 
     return SizedBox(
       height: rowH,

@@ -1667,6 +1667,9 @@ class AppLogic {
         blockId: ra.blockId,
         recurringActionId: ra.id,
         order: ord,
+        checklist: ra.checklist
+            .map((c) => ChecklistItem(id: _uuid.v4(), title: c.title))
+            .toList(),
       ));
       changed = true;
     }
