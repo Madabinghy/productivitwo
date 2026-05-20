@@ -202,18 +202,37 @@ const UPDATE_ACTIVITY_GOAL_TOOL = {
 };
 const CREATE_ROUTINE_TOOL = {
     name: "create_routine",
-    description: "Crée une action récurrente. Demande TOUJOURS confirmation avant de créer. " +
-        "Si la routine est liée à une phase Gantt, renseigne startDate/endDate pour " +
-        "qu'elle expire automatiquement en fin de phase. " +
-        "Exemple : routine 'Séance muscu' du 2026-06-01 au 2026-08-31 liée à la phase Intensification. " +
-        "Préfère les jours spécifiques (specificDays) aux routines quotidiennes sauf si vraiment pertinent.",
+    description: "Crée une **routine** : habitude trackée avec compteur ou fréquence (ex: Méditation, Gainage, Eau). " +
+        "Utilise cet outil quand l'utilisateur veut suivre combien de fois il fait quelque chose. " +
+        "⚠️ NE PAS confondre avec create_recurring_action (case à cocher sans tracking). " +
+        "⚠️ NE PAS confondre avec create_activity (tracking de temps/chrono). " +
+        "Demande confirmation avant de créer.",
+    inputSchema: {
+        type: "object",
+        required: ["name", "domainId"],
+        properties: {
+            name: { type: "string", description: "Nom de la routine (ex: Méditation, Gainage)" },
+            domainId: { type: "string", description: "id du domaine (get_user_context)" },
+            unit: { type: "string", description: "Unité comptée (ex: fois, verres, séries)" },
+            habitFreq: { type: "number", description: "Fréquence : 0=daily, 1=weekly, 2=monthly" },
+            habitTarget: { type: "number", description: "Cible par période (ex: 3 fois/semaine)" },
+        },
+    },
+};
+const CREATE_RECURRING_ACTION_TOOL = {
+    name: "create_recurring_action",
+    description: "Crée une **action récurrente** : tâche qui apparaît dans le plan du jour sans tracking. " +
+        "Simple case à cocher (ex: Faire la vaisselle, Revue journalière, Arroser les plantes). " +
+        "⚠️ NE PAS utiliser si l'utilisateur veut tracker une fréquence → create_routine. " +
+        "⚠️ NE PAS utiliser si l'utilisateur veut tracker du temps → create_activity. " +
+        "Si liée à une phase Gantt, renseigne startDate/endDate pour qu'elle expire en fin de phase. " +
+        "Préfère les jours spécifiques (specificDays) sauf si vraiment quotidien.",
     inputSchema: {
         type: "object",
         required: ["title"],
         properties: {
-            title: { type: "string", description: "Intitulé de l'action récurrente" },
-            domainId: { type: "string", description: "id du domaine associé (optionnel)" },
-            activityId: { type: "string", description: "id de l'activité associée (optionnel)" },
+            title: { type: "string", description: "Intitulé de l'action (ex: Faire la vaisselle)" },
+            domainId: { type: "string", description: "id du domaine (optionnel)" },
             recurrenceType: {
                 type: "string",
                 enum: ["daily", "specificDays"],
@@ -249,21 +268,18 @@ const ADD_TO_DAY_PLAN_TOOL = {
 };
 const CREATE_ACTIVITY_TOOL = {
     name: "create_activity",
-    description: "Crée une nouvelle activité dans Productivitwo. " +
-        "Utilise get_user_context pour trouver le bon domainId. " +
-        "type 'time' = suivi du temps (chrono), 'habit' = routine à comptabiliser. " +
+    description: "Crée une **activité** : tracking de temps avec chrono (ex: Deep Work, Running, Lecture). " +
+        "Utilise cet outil quand l'utilisateur veut mesurer le temps passé sur quelque chose. " +
+        "⚠️ NE PAS utiliser pour tracker une fréquence/compteur → create_routine. " +
+        "⚠️ NE PAS utiliser pour une tâche récurrente sans tracking → create_recurring_action. " +
         "Demande confirmation avant de créer.",
     inputSchema: {
         type: "object",
-        required: ["name", "domainId", "type"],
+        required: ["name", "domainId"],
         properties: {
-            name: { type: "string", description: "Nom de l'activité" },
+            name: { type: "string", description: "Nom de l'activité (ex: Deep Work, Running)" },
             domainId: { type: "string", description: "id du domaine (get_user_context)" },
-            type: { type: "string", enum: ["time", "habit"], description: "'time' = chrono, 'habit' = compteur" },
-            goalMin: { type: "number", description: "Objectif minutes/jour (type time)" },
-            unit: { type: "string", description: "Unité pour les habitudes (ex: verres, km, pages)" },
-            habitFreq: { type: "number", description: "Fréquence : 0=daily, 1=weekly, 2=monthly" },
-            habitTarget: { type: "number", description: "Cible par période" },
+            goalMin: { type: "number", description: "Objectif en minutes/jour" },
         },
     },
 };
@@ -801,15 +817,38 @@ async function executeUpdateActivityGoal(uid, activityId, updates) {
     return `✅ Objectif de "${name}" mis à jour. Visible dans Productivitwo à la prochaine synchronisation.`;
 }
 async function executeCreateRoutine(uid, args) {
+    var _a, _b, _c;
     const id = (0, uuid_1.v4)();
-    // Si specificDays sans jours définis → fallback daily pour éviter une routine invisible
+    await db.collection(`users/${uid}/activities`).doc(id).set({
+        id,
+        name: args.name,
+        domainId: args.domainId,
+        type: "habit",
+        role: "generic",
+        goalMin: 1,
+        unit: (_a = args.unit) !== null && _a !== void 0 ? _a : null,
+        habitFreq: (_b = args.habitFreq) !== null && _b !== void 0 ? _b : 0,
+        habitTarget: (_c = args.habitTarget) !== null && _c !== void 0 ? _c : 1,
+        manualTarget: false,
+        autoTune: true,
+        createdAt: firestore_1.FieldValue.serverTimestamp(),
+        lastTuneAt: null,
+        order: 0,
+        iconCode: null,
+        deleted: false,
+    });
+    return `✅ Routine "${args.name}" créée (tracking habitude). Elle apparaîtra dans Productivitwo à la prochaine synchronisation.`;
+}
+async function executeCreateRecurringAction(uid, args) {
+    const id = (0, uuid_1.v4)();
+    // Si specificDays sans jours définis → fallback daily pour éviter une action invisible
     const hasSpecificDays = args.recurrenceType === "specificDays" && (args.weekdays || []).length > 0;
     const recurrenceType = hasSpecificDays ? "specificDays" : "daily";
     await db.collection(`users/${uid}/recurringActions`).doc(id).set({
         id,
         title: args.title,
         domainId: args.domainId || null,
-        activityId: args.activityId || null,
+        activityId: null,
         blockId: null,
         type: recurrenceType,
         weekdays: args.weekdays || [],
@@ -843,7 +882,7 @@ async function executeCreateRoutine(uid, args) {
             createdAt: firestore_1.FieldValue.serverTimestamp(),
             recurringActionId: id,
             domainId: args.domainId || null,
-            activityId: args.activityId || null,
+            activityId: null,
         });
     }
     const period = args.startDate && args.endDate
@@ -1455,6 +1494,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                         DELETE_PROJECT_TOOL,
                         UPDATE_ACTIVITY_GOAL_TOOL,
                         CREATE_ROUTINE_TOOL,
+                        CREATE_RECURRING_ACTION_TOOL,
                         DELETE_ROUTINE_TOOL,
                         ADD_TO_DAY_PLAN_TOOL,
                         DELETE_GOAL_TOOL,
@@ -1528,6 +1568,9 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                 }
                 else if (toolName === "create_routine") {
                     text = await executeCreateRoutine(uid, args);
+                }
+                else if (toolName === "create_recurring_action") {
+                    text = await executeCreateRecurringAction(uid, args);
                 }
                 else if (toolName === "add_to_day_plan") {
                     text = await executeAddToDayPlan(uid, args);
