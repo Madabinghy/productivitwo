@@ -110,14 +110,13 @@ class FirestoreSync {
     final localIds = items.map((e) => e['id'] as String).toSet();
     for (final doc in existing.docs) {
       if (!localIds.contains(doc.id)) {
-        // Ne supprimer que si l'item Firestore a deleted:true
-        // (suppression MCP déjà persistée) ou si ce n'est PAS une collection
-        // gérée par soft-delete (pour éviter de détruire des items créés par MCP
-        // pendant que l'app tournait en arrière-plan).
         final data = doc.data() as Map<String, dynamic>?;
         final isDeleted = data?['deleted'] == true;
-        if (isDeleted) batch.delete(doc.reference);
-        // Sinon : laisser — sera intégré au prochain pull+merge
+        if (isDeleted) {
+          // Item soft-deleted : on peut hard-delete maintenant que le local ne l'a plus
+          batch.delete(doc.reference);
+        }
+        // Sinon : item créé par MCP pendant que l'app tournait → laisser, sera mergé au prochain pull
       }
     }
     for (final item in items) {
@@ -230,7 +229,7 @@ class FirestoreSync {
     }
 
     return AppState(
-      // Domains : remote gagne + déduplication par nom
+      // Domains : remote gagne + déduplication par nom. deleted:true → retiré du local
       domains: () {
         final remoteMap = byId(remote.domains, (d) => d.id);
         final merged = Map.of(remoteMap);
@@ -240,26 +239,30 @@ class FirestoreSync {
             merged[d.id] = d;
           }
         }
+        merged.removeWhere((_, d) => d.deleted);
         return merged.values.toList();
       }(),
-      // Activities : remote gagne pour les suppressions MCP (deleted:true)
+      // Activities : remote gagne. Si deleted:true → retiré de l'état local (suppression réelle)
       activities: () {
         final remoteMap = byId(remote.activities, (a) => a.id);
         final merged = Map.of(remoteMap);
         for (final a in local.activities) {
           if (!remoteMap.containsKey(a.id)) merged[a.id] = a;
         }
+        // Supprimer physiquement les items marqués deleted:true → ils disparaissent du local
+        merged.removeWhere((_, a) => a.deleted);
         return merged.values.toList();
       }(),
       sessions:      union(local.sessions,      remote.sessions,      (s) => s.id),
       habitHits:     union(local.habitHits,     remote.habitHits,     (h) => h.id),
-      // RecurringActions : remote gagne pour les suppressions MCP (deleted:true)
+      // RecurringActions : remote gagne. deleted:true → retiré du local
       recurringActions: () {
         final remoteMap = byId(remote.recurringActions, (r) => r.id);
         final merged = Map.of(remoteMap);
         for (final r in local.recurringActions) {
           if (!remoteMap.containsKey(r.id)) merged[r.id] = r;
         }
+        merged.removeWhere((_, r) => r.deleted);
         return merged.values.toList();
       }(),
       // Goals : remote est la source de vérité (MCP peut archiver/supprimer)

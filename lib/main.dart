@@ -1817,7 +1817,7 @@ class _AppRootState extends State<AppRoot>
       final todayYmd = yyyymmdd(DateTime.now());
       for (final b in _state!.blocks) {
         for (final actId in b.activityIds) {
-          final a = _state!.activities.firstWhereOrNull((x) => x.id == actId);
+          final a = _state!.activeActivities.firstWhereOrNull((x) => x.id == actId);
           if (a != null && a.isHabit) {
             logic.ensureHabitPlannedForDay(todayYmd, actId);
           }
@@ -1825,7 +1825,7 @@ class _AppRootState extends State<AppRoot>
       }
 
       // Migration : assigne l'icône water_drop aux routines "Boire de l'eau" existantes
-      for (final a in _state!.activities) {
+      for (final a in _state!.activeActivities) {
         if (a.iconCode == null &&
             (a.name == "Boire de l'eau" || a.name == "💧 Boire de l'eau")) {
           a.iconCode = 0xf0695; // Icons.water_drop_outlined
@@ -1914,7 +1914,7 @@ class _AppRootState extends State<AppRoot>
       setState(() {
         _domainAutoDeltas = {};
         for (final ch in changes.where((c) => c.kind == 'activity')) {
-          final act = _state!.activities.firstWhere((a) => a.id == ch.id,
+          final act = _state!.activeActivities.firstWhere((a) => a.id == ch.id,
               orElse: () =>
                   Activity(domainId: '', name: 'deleted', habitTarget: 1));
           final dom = _state!.activeDomains.firstWhere((d) => d.id == act.domainId,
@@ -3842,7 +3842,7 @@ class _AppRootState extends State<AppRoot>
         totalsToday.values.fold<Duration>(Duration.zero, (a, b) => a + b);
     final totalTodayHours = totalTodayDur.inMinutes / 60.0;
 
-    final dailyTargetMinAll = _state!.activities
+    final dailyTargetMinAll = _state!.activeActivities
         .where((a) => a.type == 'time' && a.goalMin > 0)
         .fold<int>(0, (sum, a) => sum + a.goalMin);
 
@@ -3926,7 +3926,7 @@ class _AppRootState extends State<AppRoot>
         // done par domaine
         DateTime day = DateTime(start.year, start.month, start.day);
         while (day.isBefore(end)) {
-          for (final a in _state!.activities
+          for (final a in _state!.activeActivities
               .where((a) => a.isHabit && a.domainId == d.id)) {
             sum += logic.habitValueOn(a.id, day);
           }
@@ -3939,7 +3939,7 @@ class _AppRootState extends State<AppRoot>
     int targetHabitsAllCalendar(DateTime start, DateTime end) {
       final days = end.difference(start).inDays;
       int sum = 0;
-      for (final a in _state!.activities.where((a) => a.isHabit)) {
+      for (final a in _state!.activeActivities.where((a) => a.isHabit)) {
         sum += logic.dayQuotaFor(a) * days;
       }
       return sum;
@@ -4916,7 +4916,7 @@ class _AppRootState extends State<AppRoot>
               routinesTotal == 0 ? '' : '$routinesReached / $routinesTotal';
 
           // ---- TIME domain
-          final dailyTargetMinD = _state!.activities
+          final dailyTargetMinD = _state!.activeActivities
               .where((a) =>
                   a.domainId == d.id && a.type == 'time' && a.goalMin > 0)
               .fold<int>(0, (sum, a) => sum + a.goalMin);

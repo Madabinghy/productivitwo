@@ -135,7 +135,7 @@ class AppLogic {
     String habitId,
     String? linkedTimeActivityId,
   ) async {
-    final acts = state.activities;
+    final acts = state.activeActivities;
 
     final idx = acts.indexWhere((a) => a.id == habitId);
     if (idx == -1) return;
@@ -220,7 +220,7 @@ class AppLogic {
   }
 
   List<RoutineProgressItem> routineProgressItemsForCurrentPeriod() {
-    final base = state.activities.where((a) => a.isHabit).toList();
+    final base = state.activeActivities.where((a) => a.isHabit).toList();
 
     double ratio(Activity a) {
       final tgt = activeHabitTarget(a);
@@ -268,7 +268,7 @@ class AppLogic {
   Activity? _activityById(String? id) {
     final actId = (id ?? '').trim();
     if (actId.isEmpty) return null;
-    for (final a in state.activities) {
+    for (final a in state.activeActivities) {
       if (a.id == actId) return a;
     }
     return null;
@@ -304,7 +304,7 @@ class AppLogic {
   }
 
   Activity? getActivityById(String id) {
-    for (final a in state.activities) {
+    for (final a in state.activeActivities) {
       if (a.id == id) return a;
     }
     return null;
@@ -398,7 +398,7 @@ class AppLogic {
       if (it.order > maxOrder) maxOrder = it.order;
     }
 
-    final habits = state.activities.where((a) => a.isHabit).toList();
+    final habits = state.activeActivities.where((a) => a.isHabit).toList();
 
     bool changed = false;
 
@@ -460,7 +460,7 @@ class AppLogic {
   }
 
   List<int> habitBars30dUi(String habitId, DateTime now, {int maxBar = 10}) {
-    final a = state.activities.firstWhere((x) => x.id == habitId);
+    final a = state.activeActivities.firstWhere((x) => x.id == habitId);
     final freq = effectiveHabitFreq(a);
 
     final end = DateTime(now.year, now.month, now.day);
@@ -513,7 +513,7 @@ class AppLogic {
   }
 
   List<HabitTrendPoint> habitTrend30dAvg7(String habitId, DateTime now) {
-    final a = state.activities.firstWhere((x) => x.id == habitId);
+    final a = state.activeActivities.firstWhere((x) => x.id == habitId);
     final expected = _expectedPerDay(a); // rythme attendu / jour
 
     final end = _dayOnly(now);
@@ -708,7 +708,7 @@ class AppLogic {
 
       final todayDate = DateTime(n.year, n.month, n.day);
 
-      final virtHabits = state.activities
+      final virtHabits = state.activeActivities
           .where((a) => a.isHabit)
           .where((a) {
             final freq = effectiveHabitFreq(a);
@@ -863,7 +863,7 @@ class AppLogic {
 
   String activityName(String activityId) {
     final a = _firstWhereOrNull(
-      state.activities,
+      state.activeActivities,
       (x) => x.id == activityId,
     );
     return a?.name ?? 'Activité';
@@ -1075,7 +1075,7 @@ class AppLogic {
     }
     if (last == null) return null;
 
-    return state.activities.firstWhere(
+    return state.activeActivities.firstWhere(
       (a) => a.id == last!.activityId,
       orElse: () => Activity(domainId: '', name: '', habitTarget: 1),
     );
@@ -1099,7 +1099,7 @@ class AppLogic {
     final actId = runningActivityId();
     if (actId == null) return null;
 
-    final a = state.activities.firstWhere(
+    final a = state.activeActivities.firstWhere(
       (x) => x.id == actId,
       orElse: () => Activity(domainId: '', name: '', habitTarget: 1),
     );
@@ -1119,7 +1119,7 @@ class AppLogic {
   List<Activity> get focusToday {
     final ids = state.focusTodayIds.toSet();
     if (ids.isEmpty) return [];
-    return state.activities.where((a) => ids.contains(a.id)).toList();
+    return state.activeActivities.where((a) => ids.contains(a.id)).toList();
   }
 
   bool isInFocus(String activityId) => state.focusTodayIds.contains(activityId);
@@ -1172,7 +1172,7 @@ class AppLogic {
     final candidates = <Activity>[];
 
     // 1) routines quotidiennes non atteintes en priorité
-    for (final a in state.activities.where((x) => x.isHabit)) {
+    for (final a in state.activeActivities.where((x) => x.isHabit)) {
       if (effectiveHabitFreq(a) == HabitFreq.daily) {
         final tgt = activeHabitTarget(a);
         if (tgt > 0 && activeHabitDone(a) < tgt) {
@@ -1185,7 +1185,7 @@ class AppLogic {
     if (candidates.length < maxCount) {
       final now = DateTime.now();
       final start = now.subtract(const Duration(hours: 24));
-      final deficits = state.activities.where((a) => !a.isHabit).map((a) {
+      final deficits = state.activeActivities.where((a) => !a.isHabit).map((a) {
         final done = totalForRangeByActivity(a.id, start, now).inMinutes;
         final need = a.goalMin;
         final deficit = (need - done).clamp(0, 1 << 30);
@@ -1300,7 +1300,7 @@ class AppLogic {
     // 2) Migration : toutes les routines passent en mode manuel
     int bumps = 0;
     try {
-      for (final a in state.activities.where((x) => x.isHabit)) {
+      for (final a in state.activeActivities.where((x) => x.isHabit)) {
         if (!a.manualTarget) {
           a.manualTarget = true;
           a.autoTune = false;
@@ -1325,8 +1325,8 @@ class AppLogic {
     final t = now ?? DateTime.now();
 
     // sécurité : ne fait rien si ce n’est pas une routine
-    final idx = state.activities.indexWhere((a) => a.id == activityId);
-    if (idx < 0 || !state.activities[idx].isHabit) return;
+    final idx = state.activeActivities.indexWhere((a) => a.id == activityId);
+    if (idx < 0 || !state.activeActivities[idx].isHabit) return;
 
     for (int i = 0; i < days; i++) {
       final d = DateTime(t.year, t.month, t.day).subtract(Duration(days: i));
@@ -1554,9 +1554,9 @@ class AppLogic {
 
   void deleteDomain(Domain domain) {
     state.domains.removeWhere((d) => d.id == domain.id);
-    for (int i = 0; i < state.activities.length; i++) {
-      if (state.activities[i].domainId == domain.id) {
-        state.activities[i] = state.activities[i].copyWith(domainId: '');
+    for (int i = 0; i < state.activeActivities.length; i++) {
+      if (state.activeActivities[i].domainId == domain.id) {
+        state.activeActivities[i] = state.activeActivities[i].copyWith(domainId: '');
       }
     }
     onChange();
@@ -1674,7 +1674,7 @@ class AppLogic {
   }
 
   void reorderDailyRoutines(int oldIndex, int newIndex) {
-    final habits = state.activities
+    final habits = state.activeActivities
         .where((a) => a.isHabit && effectiveHabitFreq(a) == HabitFreq.daily)
         .toList()
       ..sort((a, b) => a.order.compareTo(b.order));
@@ -1717,7 +1717,7 @@ class AppLogic {
     for (final d in state.activeDomains) {
       int sum = 0;
       for (final a
-          in state.activities.where((a) => a.domainId == d.id && a.isHabit)) {
+          in state.activeActivities.where((a) => a.domainId == d.id && a.isHabit)) {
         sum += habitSumForRange(a.id, s, e);
       }
       map[d.id] = sum;
@@ -1749,7 +1749,7 @@ class AppLogic {
     onChange();
 
     final delta = await maybeAutoAdjustActivity(ended.activityId);
-    final name = state.activities
+    final name = state.activeActivities
         .firstWhereOrNull((a) => a.id == ended.activityId)
         ?.name;
 
@@ -1770,7 +1770,7 @@ class AppLogic {
 
     bool inDomain(Session s) {
       if (domainId == null) return true;
-      final act = state.activities.firstWhere(
+      final act = state.activeActivities.firstWhere(
         (a) => a.id == s.activityId,
         orElse: () => Activity(domainId: '', name: 'deleted', habitTarget: 1),
       );
@@ -1814,7 +1814,7 @@ class AppLogic {
   Map<String, Map<String, int>> timeMinutesPerDomainPerDay(
       DateTime start, DateTime end) {
     final activityDomain = {
-      for (final a in state.activities) a.id: a.domainId
+      for (final a in state.activeActivities) a.id: a.domainId
     };
     final result = <String, Map<String, int>>{};
 
@@ -1914,7 +1914,7 @@ class AppLogic {
       state.habitProgress[prevIdx].value = v < 0 ? 0 : v;
     }
 
-    final act = state.activities.firstWhere((a) => a.id == activityId);
+    final act = state.activeActivities.firstWhere((a) => a.id == activityId);
     final currentDay = DateTime(day.year, day.month, day.day);
     final doneOnDay = habitValueOn(activityId, currentDay);
 
@@ -1973,7 +1973,7 @@ class AppLogic {
   }
 
   String checklistPeriodKey(String habitId, DateTime day) {
-    final act = state.activities.firstWhere((a) => a.id == habitId);
+    final act = state.activeActivities.firstWhere((a) => a.id == habitId);
     final d = DateTime(day.year, day.month, day.day);
 
     final freq = effectiveHabitFreq(act);
@@ -2076,7 +2076,7 @@ class AppLogic {
     }
 
     // --- après MAJ compteur ---
-    final act = state.activities.firstWhere((a) => a.id == activityId);
+    final act = state.activeActivities.firstWhere((a) => a.id == activityId);
     final currentDay = DateTime(day.year, day.month, day.day);
     final doneOnDay = habitValueOn(activityId, currentDay);
 
@@ -2167,7 +2167,7 @@ class AppLogic {
         if (suggestedActId != null &&
             !seenActivityIds.contains(suggestedActId)) {
           final act =
-              state.activities.firstWhereOrNull((a) => a.id == suggestedActId);
+              state.activeActivities.firstWhereOrNull((a) => a.id == suggestedActId);
           if (act != null) {
             out.add(
               DayPlanItem(
@@ -2193,7 +2193,7 @@ class AppLogic {
 
     // --- C) ensuite, ajouter les activités "sous seuil" (à rattraper) EN BAS ---
     // ⚠️ seulement après les routines, donc ici à la fin.
-    final underGoalActs = state.activities
+    final underGoalActs = state.activeActivities
         .where((a) => !a.isHabit) // activités temps
         .where((a) => activityUnderGoal(a, now)) // à toi: today ou 7j
         .where((a) => !seenActivityIds.contains(a.id))
@@ -2303,7 +2303,7 @@ class AppLogic {
 
     if (existing.isNotEmpty) return existing.first;
 
-    final a = state.activities.firstWhere((x) => x.id == habitId);
+    final a = state.activeActivities.firstWhere((x) => x.id == habitId);
     final it = DayPlanItem(
       id: const Uuid().v4(),
       kind: PlanKind.habit,
@@ -2424,12 +2424,12 @@ class AppLogic {
 
   // ---------- Domaines ----------
   List<Activity> activitiesOfDomain(String domainId) =>
-      state.activities.where((a) => a.domainId == domainId).toList();
+      state.activeActivities.where((a) => a.domainId == domainId).toList();
 
   int domainGoalMinDay(String domainId) {
     final d = state.activeDomains.firstWhere((x) => x.id == domainId);
     if (!d.autoGoal) return d.goalMinDay ?? 0;
-    return state.activities
+    return state.activeActivities
         .where((a) => a.domainId == domainId && !a.isHabit)
         .fold<int>(0, (s, a) => s + a.goalMin);
   }
@@ -2450,7 +2450,7 @@ class AppLogic {
     bool onlyUnderCap = false,
     bool dailyStrict = false,
   }) {
-    Iterable<Activity> src = state.activities.where((a) => a.isHabit == habits);
+    Iterable<Activity> src = state.activeActivities.where((a) => a.isHabit == habits);
     if (domainId != null) src = src.where((a) => a.domainId == domainId);
     final items = src.toList();
 
@@ -2518,7 +2518,7 @@ class AppLogic {
     bool exists(String ymd, PlanKind kind, String refId) =>
         _existsInDay(ymd, kind, refId);
 
-    for (final a in state.activities.where((x) => x.isHabit)) {
+    for (final a in state.activeActivities.where((x) => x.isHabit)) {
       if (effectiveHabitFreq(a) != HabitFreq.daily) continue;
 
       final quota = dayQuotaFor(a);
@@ -2579,7 +2579,7 @@ class AppLogic {
       if (_autoAdjustDay[activityId] == today) return null;
     }
 
-    final a = state.activities.firstWhere(
+    final a = state.activeActivities.firstWhere(
       (x) => x.id == activityId,
       orElse: () => Activity(domainId: '', name: 'deleted', habitTarget: 1),
     );
@@ -2627,7 +2627,7 @@ class AppLogic {
     final t = now ?? DateTime.now();
     bool touched = false;
 
-    for (final a in state.activities.where((x) => !x.isHabit)) {
+    for (final a in state.activeActivities.where((x) => !x.isHabit)) {
       final s30 = timeSliding(a.id, 30); // doneMin/targetMin/ratio
 
       if (a.goalMin < floorMin) a.goalMin = floorMin;
@@ -2732,7 +2732,7 @@ class AppLogic {
     }
 
     // TIME
-    for (final a in state.activities.where((x) => !x.isHabit)) {
+    for (final a in state.activeActivities.where((x) => !x.isHabit)) {
       final base = a.goalMin;
       if (base <= 0) continue;
 
@@ -2808,7 +2808,7 @@ class AppLogic {
     }
 
     // HABITS : ajustements
-/*     for (final a in state.activities.where((x) => x.isHabit)) {
+/*     for (final a in state.activeActivities.where((x) => x.isHabit)) {
       autoTuneHabitImmediate(this, a); // hausse immédiate si >120%
       _autoTuneHabitSafe(a, now: t); // finetune avec cooldown
     } */
@@ -2832,7 +2832,7 @@ class AppLogic {
       {DateTime? now}) {
     final r = lastNDays(days, now: now);
     final dur = totalForRangeByActivity(activityId, r.start, r.end);
-    final a = state.activities.firstWhere((x) => x.id == activityId);
+    final a = state.activeActivities.firstWhere((x) => x.id == activityId);
     final target = (a.goalMin * days).clamp(0, 24 * 60 * days);
     final done = dur.inMinutes;
     final ratio = target > 0 ? (done / target).clamp(0.0, 1.0) : 0.0;
@@ -2853,7 +2853,7 @@ class AppLogic {
 
     final done = habitSumForRange(activityId, start, end);
 
-    final a = state.activities.firstWhere((x) => x.id == activityId);
+    final a = state.activeActivities.firstWhere((x) => x.id == activityId);
 
     // Cible proportionnelle à la fenêtre demandée
     final int target;
@@ -2894,7 +2894,7 @@ class AppLogic {
           .add(Duration(days: i + 1)); // minuit du jour suivant
       final dayStart = dayEnd.subtract(const Duration(hours: 24)); // glissant
 
-      final acts = state.activities.where(
+      final acts = state.activeActivities.where(
         (a) => a.isHabit && (domainId == null || a.domainId == domainId),
       );
 
@@ -2910,8 +2910,8 @@ class AppLogic {
   /// Objectif total d’habitudes/jour (somme des quotas journaliers dérivés)
   int habitDailyTarget({String? domainId}) {
     final acts = (domainId == null)
-        ? state.activities.where((a) => a.isHabit)
-        : state.activities.where((a) => a.isHabit && a.domainId == domainId);
+        ? state.activeActivities.where((a) => a.isHabit)
+        : state.activeActivities.where((a) => a.isHabit && a.domainId == domainId);
     int t = 0;
     for (final a in acts) {
       t += dayQuotaFor(a); // ✅ plus de dailyTarget
@@ -3015,7 +3015,7 @@ class AppLogic {
 
     switch (kind) {
       case PlanKind.activityTime:
-        act = state.activities.firstWhere(
+        act = state.activeActivities.firstWhere(
           (a) => a.id == refId,
           orElse: () =>
               Activity(domainId: '', name: 'Activité', habitTarget: 1),
@@ -3024,7 +3024,7 @@ class AppLogic {
         break;
 
       case PlanKind.habit:
-        act = state.activities.firstWhere(
+        act = state.activeActivities.firstWhere(
           (a) => a.id == refId,
           orElse: () => Activity(
             domainId: '',
@@ -3291,7 +3291,7 @@ class AppLogic {
       if (it.refId == null) continue;
 
       if (it.kind == PlanKind.habit || it.kind == PlanKind.activityTime) {
-        final a = state.activities.firstWhere(
+        final a = state.activeActivities.firstWhere(
           (x) => x.id == it.refId,
           orElse: () => Activity(domainId: '', name: '', habitTarget: 1),
         );
@@ -3365,7 +3365,7 @@ class AppLogic {
 
     // Cas couverts tout de suite chez toi : refId = Activity.id
     if (kind == PlanKind.habit || kind == PlanKind.activityTime) {
-      final a = state.activities.firstWhere(
+      final a = state.activeActivities.firstWhere(
         (x) => x.id == refId,
         orElse: () => Activity(domainId: '', name: '', habitTarget: 1),
       );
@@ -3470,7 +3470,7 @@ class AppLogic {
     String _resolveTitle() {
       switch (kind) {
         case PlanKind.activityTime:
-          return state.activities
+          return state.activeActivities
               .firstWhere(
                 (a) => a.id == refId,
                 orElse: () =>
@@ -3478,7 +3478,7 @@ class AppLogic {
               )
               .name;
         case PlanKind.habit:
-          return state.activities
+          return state.activeActivities
               .firstWhere(
                 (a) => a.id == refId,
                 orElse: () => Activity(
@@ -3497,7 +3497,7 @@ class AppLogic {
       switch (kind) {
         case PlanKind.activityTime:
         case PlanKind.habit:
-          final a = state.activities.firstWhere(
+          final a = state.activeActivities.firstWhere(
             (x) => x.id == refId,
             orElse: () => Activity(domainId: '', name: '', habitTarget: 1),
           );
@@ -3604,7 +3604,7 @@ class AppLogic {
         case PlanKind.action:
           return it.done == false;
         case PlanKind.habit:
-          final a = state.activities.firstWhere((x) => x.id == it.refId);
+          final a = state.activeActivities.firstWhere((x) => x.id == it.refId);
           final freq = effectiveHabitFreq(a);
           if (freq != HabitFreq.daily)
             return false; // on ne déplace auto que le quotidien
@@ -3656,7 +3656,7 @@ class AppLogic {
     Activity? worst;
     double worstRatio = double.infinity;
 
-    for (final act in state.activities.where((a) => a.isHabit)) {
+    for (final act in state.activeActivities.where((a) => a.isHabit)) {
       if (effectiveHabitFreq(act) != HabitFreq.daily) continue;
       final quota = dayQuotaFor(act);
       if (quota <= 0) continue;
@@ -3683,7 +3683,7 @@ class AppLogic {
   /// Routines quotidiennes avec streak ≥ 3 non encore validées aujourd'hui.
   List<String> streakAtRiskNames() {
     final today = DateTime.now();
-    return state.activities
+    return state.activeActivities
         .where((a) =>
             a.isHabit &&
             effectiveHabitFreq(a) == HabitFreq.daily &&
@@ -3761,7 +3761,7 @@ class AppLogic {
       final ymd = yyyymmdd(d);
       final hasActions = state.dayPlan.any((it) =>
           it.yyyymmdd == ymd && it.kind == PlanKind.action && !it.archived);
-      final hasRoutines = state.activities.any((a) =>
+      final hasRoutines = state.activeActivities.any((a) =>
           a.isHabit &&
           effectiveHabitFreq(a) == HabitFreq.daily &&
           dayQuotaFor(a) > 0);
@@ -3805,7 +3805,7 @@ class AppLogic {
       if (d.isAfter(today)) continue;
       final ymd = yyyymmdd(d);
       final plan = planFor(ymd);
-      final hasRoutines = state.activities.any(
+      final hasRoutines = state.activeActivities.any(
           (a) => a.isHabit && effectiveHabitFreq(a) == HabitFreq.daily);
       if (plan.isEmpty && !hasRoutines) continue;
       byWeekday[d.weekday - 1].add(_dailyScoreFor(d));
@@ -3822,7 +3822,7 @@ class AppLogic {
       {int days = 84}) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final hasRoutines = state.activities
+    final hasRoutines = state.activeActivities
         .any((a) => a.isHabit && effectiveHabitFreq(a) == HabitFreq.daily);
 
     return List.generate(days, (i) {
@@ -3860,7 +3860,7 @@ class AppLogic {
         .toList();
     final actionsDone = actions.where((it) => it.done).length;
     int routinesDone = 0, routinesTotal = 0;
-    for (final act in state.activities.where((a) => a.isHabit)) {
+    for (final act in state.activeActivities.where((a) => a.isHabit)) {
       if (effectiveHabitFreq(act) != HabitFreq.daily) continue;
       final quota = dayQuotaFor(act);
       if (quota <= 0) continue;
@@ -3888,7 +3888,7 @@ class AppLogic {
     }
 
     // --- Streaks par routine quotidienne ---
-    for (final act in state.activities.where((a) => a.isHabit)) {
+    for (final act in state.activeActivities.where((a) => a.isHabit)) {
       if (effectiveHabitFreq(act) != HabitFreq.daily) continue;
       final streak = habitCurrentStreak(act.id);
       if (streak >= 3) award(BadgeId.streak3, habitId: act.id);
@@ -3943,7 +3943,7 @@ class AppLogic {
   /// Nombre de jours consécutifs où le quota est atteint (en partant d'aujourd'hui ou d'hier).
   /// Retourne 0 pour les routines hebdo/mensuelles.
   int habitCurrentStreak(String habitId) {
-    final act = state.activities.firstWhereOrNull((a) => a.id == habitId);
+    final act = state.activeActivities.firstWhereOrNull((a) => a.id == habitId);
     if (act == null || effectiveHabitFreq(act) != HabitFreq.daily) return 0;
 
     final quota = dayQuotaFor(act);
@@ -3971,7 +3971,7 @@ class AppLogic {
   /// Meilleur streak jamais atteint (jours consécutifs avec quota atteint).
   /// Retourne 0 pour les routines hebdo/mensuelles.
   int habitBestStreak(String habitId) {
-    final act = state.activities.firstWhereOrNull((a) => a.id == habitId);
+    final act = state.activeActivities.firstWhereOrNull((a) => a.id == habitId);
     if (act == null || effectiveHabitFreq(act) != HabitFreq.daily) return 0;
 
     final quota = dayQuotaFor(act);
@@ -4082,9 +4082,9 @@ class AppLogic {
     if (g.activityId == null) return (ratio: 0.0, label: "Semaine 0 / 0");
 
     // Récupère l’activité (si absente → neutre)
-    final idx = state.activities.indexWhere((a) => a.id == g.activityId);
+    final idx = state.activeActivities.indexWhere((a) => a.id == g.activityId);
     if (idx < 0) return (ratio: 0.0, label: "Semaine 0 / 0");
-    final act = state.activities[idx];
+    final act = state.activeActivities[idx];
 
     if (!act.isHabit) {
       final w = timeSliding(act.id, 7, now: now); // {doneMin,targetMin,ratio}
@@ -4130,7 +4130,7 @@ class AppLogic {
   /// Somme des cibles actives pour un domaine (ou tous si null).
   int sumHabitTarget(String? domainId, int days) {
     // on choisit le mode : si days=1 → daily, si 7 → weekly, si 30 → monthly
-    return state.activities
+    return state.activeActivities
         .where((a) => a.isHabit && (domainId == null || a.domainId == domainId))
         .fold<int>(0, (sum, a) {
       final freq = effectiveHabitFreq(a);
@@ -4161,7 +4161,7 @@ class AppLogic {
     return List.generate(days, (i) {
       final day = today.subtract(Duration(days: days - 1 - i));
       int done = 0;
-      for (final a in state.activities.where((a) => a.isHabit)) {
+      for (final a in state.activeActivities.where((a) => a.isHabit)) {
         done += habitValueOn(a.id, day);
       }
       return (done / dailyTarget).clamp(0.0, 1.0);
@@ -4171,7 +4171,7 @@ class AppLogic {
   /// Somme des réalisés sur N jours pour un domaine.
   int sumHabitDone(String? domainId, int days) {
     final r = lastNDays(days); // [now - days, now)
-    final acts = state.activities.where(
+    final acts = state.activeActivities.where(
       (a) => a.isHabit && (domainId == null || a.domainId == domainId),
     );
 
@@ -4260,7 +4260,7 @@ extension TodayLogic on AppLogic {
   }
 
   String? _domainIdOfSession(Session s) {
-    final a = state.activities.firstWhere(
+    final a = state.activeActivities.firstWhere(
       (x) => x.id == s.activityId,
       orElse: () => Activity(domainId: '', name: '', habitTarget: 1),
     );
@@ -4491,7 +4491,7 @@ extension TodayLogic on AppLogic {
   }
 
   Activity? shoppingActivity() {
-    for (final a in state.activities) {
+    for (final a in state.activeActivities) {
       if (!a.isHabit && a.role == ActivityRole.shopping) {
         return a;
       }
@@ -4511,7 +4511,7 @@ extension TodayLogic on AppLogic {
     final it = state.dayPlan.last;
 
     // trouve courses (temporaire par nom)
-    final courses = state.activities.firstWhere(
+    final courses = state.activeActivities.firstWhere(
       (a) => !a.isHabit && a.name == "Courses",
       orElse: () =>
           Activity(domainId: domainId ?? '', name: "Courses", type: 'time'),
@@ -4569,7 +4569,7 @@ extension TodayLogic on AppLogic {
     // Propagation automatique : domainId depuis l'activité si non fourni
     String? effectiveDomainId = domainId;
     if ((effectiveDomainId ?? '').isEmpty && (activityId ?? '').isNotEmpty) {
-      effectiveDomainId = state.activities
+      effectiveDomainId = state.activeActivities
           .firstWhereOrNull((a) => a.id == activityId)
           ?.domainId;
     }
@@ -4637,7 +4637,7 @@ extension TodayLogic on AppLogic {
   }) {
     final domainId = domain?.id;
 
-    final base = state.activities
+    final base = state.activeActivities
         .where((a) =>
             !a.isHabit &&
             a.goalMin > 0 &&
@@ -4692,11 +4692,11 @@ extension TodayLogic on AppLogic {
 
     // --- base (exactement comme ton écran) ---
     final base = isHabitsTab
-        ? state.activities
+        ? state.activeActivities
             .where((a) =>
                 a.isHabit && (domainId == null || a.domainId == domainId))
             .toList()
-        : state.activities
+        : state.activeActivities
             .where((a) =>
                 !a.isHabit && (domainId == null || a.domainId == domainId))
             .toList();
@@ -4763,7 +4763,7 @@ extension TodayLogic on AppLogic {
     required bool isHabit,
     bool allDay = false,
   }) async {
-    final act = state.activities.firstWhere((a) => a.id == activityId);
+    final act = state.activeActivities.firstWhere((a) => a.id == activityId);
     final key = ymd; // respecte l'onglet (aujourd'hui/demain/...)
 
     final plan = planFor(key); // trié par order
@@ -5000,7 +5000,7 @@ extension TodayLogic on AppLogic {
     final windowEnd = currentHour.add(const Duration(hours: 1));
 
     final activityDomain = {
-      for (final a in state.activities) a.id: a.domainId
+      for (final a in state.activeActivities) a.id: a.domainId
     };
 
     // Par heure : domainId → minutes
@@ -5082,7 +5082,7 @@ extension TodayLogic on AppLogic {
       if (it.kind == PlanKind.habit) {
         final habitId = it.refId ?? it.habitId;
         if (habitId == null) return it.done;
-        final act = state.activities.firstWhereOrNull((a) => a.id == habitId);
+        final act = state.activeActivities.firstWhereOrNull((a) => a.id == habitId);
         return act != null ? habitReached(act) : it.done;
       }
       return it.done;
@@ -5110,7 +5110,7 @@ extension TodayLogic on AppLogic {
     if (running == null) return null;
 
     // Routines qui ont cette activité comme timer lié
-    final linkedRoutines = state.activities
+    final linkedRoutines = state.activeActivities
         .where((a) => a.isHabit && a.linkedActivityId == running.id)
         .toList();
 
@@ -5200,7 +5200,7 @@ extension TodayLogic on AppLogic {
     if (!b.activityIds.contains(activityId)) b.activityIds.add(activityId);
     // Garantit qu'un DayPlanItem existe pour aujourd'hui, sinon blockItemsForDay
     // ne peut pas retrouver la routine dans le plan du jour.
-    final a = state.activities.firstWhereOrNull((x) => x.id == activityId);
+    final a = state.activeActivities.firstWhereOrNull((x) => x.id == activityId);
     if (a != null && a.isHabit) {
       ensureHabitPlannedForDay(yyyymmdd(DateTime.now()), activityId);
     }
@@ -5231,7 +5231,7 @@ extension TodayLogic on AppLogic {
 
     bool changed = false;
 
-    for (final a in state.activities.where((x) => x.isHabit)) {
+    for (final a in state.activeActivities.where((x) => x.isHabit)) {
       if (effectiveHabitFreq(a) != HabitFreq.daily) continue;
 
       final quota = dayQuotaFor(a);
@@ -5456,7 +5456,7 @@ extension SlidingProgress on AppLogic {
   double timePct(String activityId, DateTime start, DateTime end, int days) {
     final doneMin = totalForRangeByActivity(activityId, start, end).inMinutes;
     final goalDay =
-        state.activities.firstWhere((a) => a.id == activityId).goalMin;
+        state.activeActivities.firstWhere((a) => a.id == activityId).goalMin;
     final target = goalDay * days;
     if (target <= 0) return 0.0;
     return doneMin / target;

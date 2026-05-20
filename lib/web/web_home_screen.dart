@@ -2281,9 +2281,7 @@ class _ArchivesViewState extends State<_ArchivesView> {
       ),
     );
     if (confirmed == true) {
-      // Soft-delete plutôt que hard-delete : iOS re-créerait sinon depuis son état local
-      // deleted:true est filtré par activeActivities/activeRecurringActions côté iOS
-      await widget.sync.archiveItem(col, id);
+      await widget.sync.hardDelete(col, id);
       _load();
     }
   }
@@ -2473,8 +2471,7 @@ class _ArchivesViewState extends State<_ArchivesView> {
                       }(),
                       onArchive: () => _archive('recurringActions', r.id),
                       onRestore: () => _restore('recurringActions', r.id),
-                      onDelete: () =>
-                          _confirmHardDelete('recurringActions', r.id),
+                      onDelete: () => _confirmHardDelete('recurringActions', r.id),
                       cs: cs,
                     ),
                     const SizedBox(height: 6),
@@ -2497,7 +2494,7 @@ class _ArchiveItemRow extends StatelessWidget {
   final bool isArchived;
   final VoidCallback onArchive;
   final VoidCallback onRestore;
-  final VoidCallback onDelete;
+  final VoidCallback? onDelete;
   final ColorScheme cs;
 
   const _ArchiveItemRow({
@@ -2505,9 +2502,9 @@ class _ArchiveItemRow extends StatelessWidget {
     required this.isArchived,
     required this.onArchive,
     required this.onRestore,
-    required this.onDelete,
     required this.cs,
     this.subtitle,
+    this.onDelete,
   });
 
   @override
@@ -2611,26 +2608,24 @@ class _ArchiveItemRow extends StatelessWidget {
                 foregroundColor: Colors.green.shade700,
                 side: BorderSide(color: Colors.green.shade400),
                 visualDensity: VisualDensity.compact,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                textStyle: const TextStyle(
-                    fontSize: 12, fontWeight: FontWeight.w600),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
               ),
               child: const Text('Restaurer'),
             ),
-            const SizedBox(width: 6),
-            TextButton(
-              onPressed: onDelete,
-              style: TextButton.styleFrom(
-                foregroundColor: cs.error,
-                visualDensity: VisualDensity.compact,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                textStyle: const TextStyle(
-                    fontSize: 12, fontWeight: FontWeight.w600),
+            if (onDelete != null) ...[
+              const SizedBox(width: 6),
+              TextButton(
+                onPressed: onDelete,
+                style: TextButton.styleFrom(
+                  foregroundColor: cs.error,
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+                child: const Text('Supprimer'),
               ),
-              child: const Text('Supprimer'),
-            ),
+            ],
           ],
         ],
       ),
