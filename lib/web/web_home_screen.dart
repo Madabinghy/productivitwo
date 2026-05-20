@@ -1637,7 +1637,7 @@ class _ProjectCard extends StatelessWidget {
                       color: cs.primary.withOpacity(0.7),
                     ),
                     label: Text(
-                      '${documents.length} document${documents.length > 1 ? 's' : ''}',
+                      documents.length == 1 ? 'Voir le programme' : 'Voir les programmes (${documents.length})',
                       style: TextStyle(
                         fontSize: 12,
                         color: cs.primary.withOpacity(0.7),
