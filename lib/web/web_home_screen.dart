@@ -15,16 +15,25 @@ class WebHomeScreen extends StatefulWidget {
   State<WebHomeScreen> createState() => _WebHomeScreenState();
 }
 
-class _WebHomeScreenState extends State<WebHomeScreen> {
+class _WebHomeScreenState extends State<WebHomeScreen>
+    with SingleTickerProviderStateMixin {
   final _sync = FirestoreSync();
   List<Project> _projects = [];
   List<StrategicObjective> _objectives = [];
   bool _loading = true;
+  late TabController _mainTabs;
 
   @override
   void initState() {
     super.initState();
+    _mainTabs = TabController(length: 2, vsync: this);
     _load();
+  }
+
+  @override
+  void dispose() {
+    _mainTabs.dispose();
+    super.dispose();
   }
 
   bool _hasIosData = false;
@@ -130,13 +139,35 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
           ],
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Divider(height: 1, color: cs.outlineVariant.withOpacity(0.4)),
+          preferredSize: const Size.fromHeight(49),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TabBar(
+                controller: _mainTabs,
+                tabs: const [
+                  Tab(text: 'Projets'),
+                  Tab(text: 'Focus'),
+                ],
+              ),
+              Divider(height: 1, color: cs.outlineVariant.withOpacity(0.4)),
+            ],
+          ),
         ),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _buildBody(cs),
+          : TabBarView(
+              controller: _mainTabs,
+              children: [
+                _buildBody(cs),
+                _FocusView(
+                  projects: _projects
+                      .where((p) => p.status != 'archived')
+                      .toList(),
+                ),
+              ],
+            ),
     );
   }
 
@@ -337,6 +368,286 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
   Future<void> _archiveProject(Project p, bool archive) async {
     await _sync.saveProject(p..status = archive ? 'archived' : 'active');
     _load();
+  }
+}
+
+// ── Vue Focus ────────────────────────────────────────────────────────────────
+
+class _FocusView extends StatelessWidget {
+  final List<Project> projects;
+  const _FocusView({required this.projects});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    // Week boundaries (Monday–Sunday)
+    final weekday = today.weekday; // 1=Mon..7=Sun
+    final weekStart = today.subtract(Duration(days: weekday - 1));
+    final weekEnd = weekStart.add(const Duration(days: 6));
+
+    // Gather (task, project) pairs from all active projects
+    final allPairs = <({ProjectTask task, Project project})>[];
+    for (final p in projects) {
+      for (final t in p.tasks) {
+        allPairs.add((task: t, project: p));
+      }
+    }
+
+    // ── Overdue ──────────────────────────────────────────────────────────────
+    final overdue = allPairs
+        .where((e) =>
+            e.task.endDate != null &&
+            e.task.endDate!.isBefore(today) &&
+            e.task.status != 'done' &&
+            e.task.status != 'skipped')
+        .toList()
+      ..sort((a, b) => a.task.endDate!.compareTo(b.task.endDate!));
+
+    // ── This week ────────────────────────────────────────────────────────────
+    final thisWeek = allPairs
+        .where((e) =>
+            e.task.status != 'done' &&
+            e.task.status != 'skipped' &&
+            !e.task.startDate.isAfter(weekEnd) &&
+            (e.task.endDate == null || !e.task.endDate!.isBefore(weekStart)))
+        .toList()
+      ..sort((a, b) => a.task.startDate.compareTo(b.task.startDate));
+
+    // ── Upcoming milestones (14 days) ────────────────────────────────────────
+    final milestoneDeadline = today.add(const Duration(days: 14));
+    final milestones = allPairs
+        .where((e) =>
+            e.task.isMilestone &&
+            !e.task.startDate.isBefore(today) &&
+            !e.task.startDate.isAfter(milestoneDeadline))
+        .toList()
+      ..sort((a, b) => a.task.startDate.compareTo(b.task.startDate));
+
+    final allEmpty =
+        overdue.isEmpty && thisWeek.isEmpty && milestones.isEmpty;
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 800),
+        child: allEmpty
+            ? Center(
+                child: Text(
+                  'Aucune tâche en cours cette semaine',
+                  style: TextStyle(
+                      fontSize: 15,
+                      color: cs.onSurface.withOpacity(0.4)),
+                ),
+              )
+            : ListView(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 24, vertical: 24),
+                children: [
+                  // ── En retard ─────────────────────────────────────────────
+                  if (overdue.isNotEmpty) ...[
+                    _FocusSectionHeader(
+                        label: 'En retard',
+                        color: cs.error),
+                    const SizedBox(height: 8),
+                    for (final e in overdue) ...[
+                      _FocusTaskTile(
+                        task: e.task,
+                        project: e.project,
+                        today: today,
+                        cs: cs,
+                        isOverdue: true,
+                      ),
+                    ],
+                    const SizedBox(height: 20),
+                  ],
+
+                  // ── Cette semaine ─────────────────────────────────────────
+                  _FocusSectionHeader(label: 'Cette semaine'),
+                  const SizedBox(height: 8),
+                  if (thisWeek.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(
+                        'Aucune tâche cette semaine',
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: cs.onSurface.withOpacity(0.4),
+                            fontStyle: FontStyle.italic),
+                      ),
+                    )
+                  else
+                    for (final e in thisWeek) ...[
+                      _FocusTaskTile(
+                        task: e.task,
+                        project: e.project,
+                        today: today,
+                        cs: cs,
+                        isOverdue: false,
+                      ),
+                    ],
+
+                  // ── Prochains jalons ──────────────────────────────────────
+                  if (milestones.isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    _FocusSectionHeader(label: 'Prochains jalons (14 jours)'),
+                    const SizedBox(height: 8),
+                    for (final e in milestones) ...[
+                      _FocusTaskTile(
+                        task: e.task,
+                        project: e.project,
+                        today: today,
+                        cs: cs,
+                        isOverdue: false,
+                      ),
+                    ],
+                  ],
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+class _FocusSectionHeader extends StatelessWidget {
+  final String label;
+  final Color? color;
+  const _FocusSectionHeader({required this.label, this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Text(
+      label.toUpperCase(),
+      style: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 1.0,
+        color: color ?? cs.onSurface.withOpacity(0.45),
+      ),
+    );
+  }
+}
+
+class _FocusTaskTile extends StatelessWidget {
+  final ProjectTask task;
+  final Project project;
+  final DateTime today;
+  final ColorScheme cs;
+  final bool isOverdue;
+  const _FocusTaskTile({
+    required this.task,
+    required this.project,
+    required this.today,
+    required this.cs,
+    required this.isOverdue,
+  });
+
+  static String _fmtDate(DateTime d) {
+    const months = [
+      'jan', 'fév', 'mar', 'avr', 'mai', 'juin',
+      'juil', 'aoû', 'sep', 'oct', 'nov', 'déc'
+    ];
+    return '${d.day} ${months[d.month - 1]}';
+  }
+
+  String get _statusIcon {
+    if (task.isMilestone) return '◆';
+    return switch (task.status) {
+      'done' => '✓',
+      'skipped' => '⏭',
+      _ => '○',
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dateToShow = task.endDate ?? task.startDate;
+    final daysLate = isOverdue && task.endDate != null
+        ? today.difference(task.endDate!).inDays
+        : 0;
+
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 6),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(
+          color: isOverdue
+              ? cs.error.withOpacity(0.3)
+              : cs.outlineVariant.withOpacity(0.4),
+        ),
+      ),
+      color: isOverdue
+          ? cs.errorContainer.withOpacity(0.15)
+          : cs.surface,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: Row(
+          children: [
+            // Status icon
+            Text(
+              _statusIcon,
+              style: TextStyle(
+                fontSize: 14,
+                color: task.isMilestone
+                    ? cs.primary
+                    : isOverdue
+                        ? cs.error
+                        : cs.onSurface.withOpacity(0.5),
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Task info
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    task.title,
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    project.title,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: cs.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Date + overdue badge
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  _fmtDate(dateToShow),
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: cs.onSurface.withOpacity(0.45)),
+                ),
+                if (isOverdue && daysLate > 0) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    '−$daysLate j',
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: cs.error),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
