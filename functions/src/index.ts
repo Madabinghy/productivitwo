@@ -408,6 +408,34 @@ const DELETE_DOMAIN_TOOL = {
   },
 };
 
+const GET_ARCHIVES_TOOL = {
+  name: "get_archives",
+  description:
+    "Liste tous les éléments archivés (deleted:true) : domaines, activités, routines. " +
+    "Utilise cet outil pour voir ce qui a été supprimé et pouvoir restaurer en cas d'erreur.",
+  inputSchema: { type: "object", properties: {} },
+};
+
+const RESTORE_ITEM_TOOL = {
+  name: "restore_item",
+  description:
+    "Restaure un élément archivé (annule la suppression). " +
+    "Utilise get_archives pour obtenir l'id. " +
+    "collection: 'domains', 'activities' ou 'recurringActions'.",
+  inputSchema: {
+    type: "object",
+    required: ["collection", "itemId"],
+    properties: {
+      collection: {
+        type: "string",
+        enum: ["domains", "activities", "recurringActions"],
+        description: "La collection Firestore",
+      },
+      itemId: { type: "string", description: "id de l'élément à restaurer" },
+    },
+  },
+};
+
 const DELETE_ACTION_TOOL = {
   name: "delete_action",
   description:
@@ -1163,6 +1191,40 @@ async function executeDeleteAction(uid: string, actionId: string): Promise<strin
   return `✅ Action "${title}" supprimée du plan.`;
 }
 
+async function executeGetArchives(uid: string): Promise<string> {
+  const [domainsSnap, activitiesSnap, routinesSnap] = await Promise.all([
+    db.collection(`users/${uid}/domains`).where("deleted", "==", true).get(),
+    db.collection(`users/${uid}/activities`).where("deleted", "==", true).get(),
+    db.collection(`users/${uid}/recurringActions`).where("deleted", "==", true).get(),
+  ]);
+
+  const domains = domainsSnap.docs.map((d) => ({ id: d.id, name: d.data().name }));
+  const activities = activitiesSnap.docs.map((d) => ({
+    id: d.id, name: d.data().name, domainId: d.data().domainId ?? null,
+  }));
+  const routines = routinesSnap.docs.map((d) => ({
+    id: d.id, title: d.data().title, activityId: d.data().activityId ?? null,
+  }));
+
+  if (!domains.length && !activities.length && !routines.length)
+    return "Aucun élément archivé — tout est propre.";
+
+  return JSON.stringify({ domains, activities, routines }, null, 2);
+}
+
+async function executeRestoreItem(
+  uid: string,
+  collection: string,
+  itemId: string
+): Promise<string> {
+  const ref = db.collection(`users/${uid}/${collection}`).doc(itemId);
+  const snap = await ref.get();
+  if (!snap.exists) return `Élément introuvable : ${itemId}`;
+  const label = snap.data()?.name ?? snap.data()?.title ?? itemId;
+  await ref.update({ deleted: false });
+  return `✅ "${label}" restauré dans ${collection}.`;
+}
+
 async function executeCreateDomain(
   uid: string,
   args: { name: string; goalMinDay?: number; autoGoal?: boolean; colorValue?: number }
@@ -1618,6 +1680,8 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
             UPDATE_PROJECT_TOOL,
             DELETE_ACTIVITY_TOOL,
             DELETE_ACTION_TOOL,
+            GET_ARCHIVES_TOOL,
+            RESTORE_ITEM_TOOL,
             CREATE_DOMAIN_TOOL,
             DELETE_DOMAIN_TOOL,
           ],
@@ -1689,6 +1753,10 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
           );
         } else if (toolName === "delete_action") {
           text = await executeDeleteAction(uid, args.actionId as string);
+        } else if (toolName === "get_archives") {
+          text = await executeGetArchives(uid);
+        } else if (toolName === "restore_item") {
+          text = await executeRestoreItem(uid, args.collection as string, args.itemId as string);
         } else if (toolName === "create_domain") {
           text = await executeCreateDomain(uid, args as Parameters<typeof executeCreateDomain>[1]);
         } else if (toolName === "delete_domain") {

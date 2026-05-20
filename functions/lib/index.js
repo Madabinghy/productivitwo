@@ -296,6 +296,30 @@ const DELETE_DOMAIN_TOOL = {
         },
     },
 };
+const GET_ARCHIVES_TOOL = {
+    name: "get_archives",
+    description: "Liste tous les éléments archivés (deleted:true) : domaines, activités, routines. " +
+        "Utilise cet outil pour voir ce qui a été supprimé et pouvoir restaurer en cas d'erreur.",
+    inputSchema: { type: "object", properties: {} },
+};
+const RESTORE_ITEM_TOOL = {
+    name: "restore_item",
+    description: "Restaure un élément archivé (annule la suppression). " +
+        "Utilise get_archives pour obtenir l'id. " +
+        "collection: 'domains', 'activities' ou 'recurringActions'.",
+    inputSchema: {
+        type: "object",
+        required: ["collection", "itemId"],
+        properties: {
+            collection: {
+                type: "string",
+                enum: ["domains", "activities", "recurringActions"],
+                description: "La collection Firestore",
+            },
+            itemId: { type: "string", description: "id de l'élément à restaurer" },
+        },
+    },
+};
 const DELETE_ACTION_TOOL = {
     name: "delete_action",
     description: "Supprime une action individuelle du plan quotidien. " +
@@ -941,6 +965,39 @@ async function executeDeleteAction(uid, actionId) {
     await ref.update({ archived: true, status: "archived" });
     return `✅ Action "${title}" supprimée du plan.`;
 }
+async function executeGetArchives(uid) {
+    const [domainsSnap, activitiesSnap, routinesSnap] = await Promise.all([
+        db.collection(`users/${uid}/domains`).where("deleted", "==", true).get(),
+        db.collection(`users/${uid}/activities`).where("deleted", "==", true).get(),
+        db.collection(`users/${uid}/recurringActions`).where("deleted", "==", true).get(),
+    ]);
+    const domains = domainsSnap.docs.map((d) => ({ id: d.id, name: d.data().name }));
+    const activities = activitiesSnap.docs.map((d) => {
+        var _a;
+        return ({
+            id: d.id, name: d.data().name, domainId: (_a = d.data().domainId) !== null && _a !== void 0 ? _a : null,
+        });
+    });
+    const routines = routinesSnap.docs.map((d) => {
+        var _a;
+        return ({
+            id: d.id, title: d.data().title, activityId: (_a = d.data().activityId) !== null && _a !== void 0 ? _a : null,
+        });
+    });
+    if (!domains.length && !activities.length && !routines.length)
+        return "Aucun élément archivé — tout est propre.";
+    return JSON.stringify({ domains, activities, routines }, null, 2);
+}
+async function executeRestoreItem(uid, collection, itemId) {
+    var _a, _b, _c, _d;
+    const ref = db.collection(`users/${uid}/${collection}`).doc(itemId);
+    const snap = await ref.get();
+    if (!snap.exists)
+        return `Élément introuvable : ${itemId}`;
+    const label = (_d = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : (_c = snap.data()) === null || _c === void 0 ? void 0 : _c.title) !== null && _d !== void 0 ? _d : itemId;
+    await ref.update({ deleted: false });
+    return `✅ "${label}" restauré dans ${collection}.`;
+}
 async function executeCreateDomain(uid, args) {
     var _a, _b, _c;
     const id = (0, uuid_1.v4)();
@@ -1342,6 +1399,8 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                         UPDATE_PROJECT_TOOL,
                         DELETE_ACTIVITY_TOOL,
                         DELETE_ACTION_TOOL,
+                        GET_ARCHIVES_TOOL,
+                        RESTORE_ITEM_TOOL,
                         CREATE_DOMAIN_TOOL,
                         DELETE_DOMAIN_TOOL,
                     ],
@@ -1415,6 +1474,12 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                 }
                 else if (toolName === "delete_action") {
                     text = await executeDeleteAction(uid, args.actionId);
+                }
+                else if (toolName === "get_archives") {
+                    text = await executeGetArchives(uid);
+                }
+                else if (toolName === "restore_item") {
+                    text = await executeRestoreItem(uid, args.collection, args.itemId);
                 }
                 else if (toolName === "create_domain") {
                     text = await executeCreateDomain(uid, args);
