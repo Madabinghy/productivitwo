@@ -10,6 +10,7 @@ class _Entry {
 const _changelog = [
   _Entry('2.9', '21 mai 2026', [
     (Icons.tune, 'Cibles de temps 100% manuelles — la progression automatique a été retirée'),
+    (Icons.timer_outlined, 'Fiche activité : saisie directe de la cible quotidienne (en minutes)'),
   ]),
   _Entry('2.8', '21 mai 2026', [
     (Icons.delete_outline, 'Fix : supprimer une action en swipe est maintenant persistant après redémarrage'),

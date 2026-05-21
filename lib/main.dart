@@ -5532,6 +5532,70 @@ class _AppRootState extends State<AppRoot>
 
                 const Divider(height: 1),
 
+                // ── Cible quotidienne ─────────────────────────────────────────
+                StatefulBuilder(builder: (ctx2, setGoal) {
+                  String fmtGoal(int min) {
+                    if (min <= 0) return 'Non définie';
+                    if (min < 60) return '${min}min/j';
+                    final h = min ~/ 60;
+                    final m = min % 60;
+                    return m == 0 ? '${h}h/j' : '${h}h${m.toString().padLeft(2, '0')}/j';
+                  }
+
+                  return ListTile(
+                    leading: Icon(Icons.timer_outlined,
+                        color: dColor ?? cs.onSurface.withOpacity(.6)),
+                    title: const Text('Cible quotidienne',
+                        style: TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Text(fmtGoal(a.goalMin)),
+                    trailing: Icon(Icons.edit_outlined,
+                        size: 16, color: cs.onSurface.withOpacity(.4)),
+                    onTap: () async {
+                      final ctrl = TextEditingController(
+                          text: a.goalMin > 0 ? '${a.goalMin}' : '');
+                      final result = await showDialog<int>(
+                        context: ctx,
+                        builder: (d) => AlertDialog(
+                          title: const Text('Cible quotidienne'),
+                          content: TextField(
+                            controller: ctrl,
+                            autofocus: true,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Minutes par jour',
+                              suffixText: 'min',
+                              border: OutlineInputBorder(),
+                              helperText: 'ex : 45 pour 45 min, 90 pour 1h30',
+                            ),
+                            onSubmitted: (_) {
+                              final v = int.tryParse(ctrl.text.trim()) ?? 0;
+                              Navigator.pop(d, v.clamp(0, 720));
+                            },
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(d),
+                              child: const Text('Annuler'),
+                            ),
+                            FilledButton(
+                              onPressed: () {
+                                final v = int.tryParse(ctrl.text.trim()) ?? 0;
+                                Navigator.pop(d, v.clamp(0, 720));
+                              },
+                              child: const Text('Enregistrer'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (result == null) return;
+                      setGoal(() => a.goalMin = result);
+                      logic.onChange();
+                    },
+                  );
+                }),
+
+                const Divider(height: 1),
+
                 // ── Masquer jusqu'à ───────────────────────────────────────────
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
