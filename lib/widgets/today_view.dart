@@ -2831,7 +2831,11 @@ class _TodayViewState extends State<TodayView> {
       tooltip: "Retirer de la liste du jour",
       onPressed: () {
         setState(() {
-          widget.state.dayPlan.removeWhere((e) => e.id == it.id);
+          final target = widget.state.dayPlan.firstWhereOrNull((e) => e.id == it.id);
+          if (target != null) {
+            target.archived = true;
+            target.status = ActionStatus.archived;
+          }
           widget.logic.onChange();
         });
       },
@@ -3224,7 +3228,11 @@ class _TodayViewState extends State<TodayView> {
       if (res.markDone == true) widget.logic.completePlanItem(it, true);
 
       if (res.delete == true) {
-        widget.state.dayPlan.removeWhere((e) => e.id == it.id);
+        final target = widget.state.dayPlan.firstWhereOrNull((e) => e.id == it.id);
+        if (target != null) {
+          target.archived = true;
+          target.status = ActionStatus.archived;
+        }
       }
 
       if (res.deactivate == true && it.goalActionId != null) {

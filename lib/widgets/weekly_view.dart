@@ -551,8 +551,12 @@ class _WeeklyViewState extends State<WeeklyView> {
                                             widget.logic.completePlanItem(it, true);
                                           }
                                         } else {
-                                          widget.logic.state.dayPlan
-                                              .removeWhere((e) => e.id == it.id);
+                                          final item = widget.logic.state.dayPlan
+                                              .firstWhereOrNull((e) => e.id == it.id);
+                                          if (item != null) {
+                                            item.archived = true;
+                                            item.status = ActionStatus.archived;
+                                          }
                                           widget.logic.onChange();
                                         }
                                         setState(() {});
