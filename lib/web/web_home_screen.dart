@@ -1945,6 +1945,22 @@ class _DocumentViewerDialogState extends State<_DocumentViewerDialog> {
 
   Map<String, dynamic> get _current => widget.documents[_selectedIndex];
 
+  void _download() {
+    final title = _current['title'] as String? ?? 'document';
+    final htmlContent = _current['content'] as String? ?? '';
+    final content = htmlContent.contains('<html')
+        ? htmlContent
+        : '<html><head><meta charset="utf-8"></head><body>$htmlContent</body></html>';
+    final blob = html.Blob([content], 'text/html');
+    final url = html.Url.createObjectUrl(blob);
+    final filename =
+        '${title.replaceAll(RegExp(r'[^\w\s-]'), '').trim().replaceAll(' ', '_')}.html';
+    html.AnchorElement(href: url)
+      ..setAttribute('download', filename)
+      ..click();
+    html.Url.revokeObjectUrl(url);
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -1983,6 +1999,12 @@ class _DocumentViewerDialogState extends State<_DocumentViewerDialog> {
                           fontSize: 15, fontWeight: FontWeight.w700),
                       overflow: TextOverflow.ellipsis,
                     ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.download_outlined,
+                        size: 18, color: cs.onSurface.withOpacity(.6)),
+                    tooltip: 'Télécharger (.html)',
+                    onPressed: _download,
                   ),
                   IconButton(
                     icon: const Icon(Icons.close_outlined, size: 18),

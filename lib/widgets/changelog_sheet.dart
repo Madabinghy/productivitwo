@@ -9,7 +9,8 @@ class _Entry {
 
 const _changelog = [
   _Entry('2.8', '21 mai 2026', [
-    (Icons.delete_outline, 'Fix : supprimer une action en swipe (vue Semaine) est maintenant persistant après redémarrage'),
+    (Icons.delete_outline, 'Fix : supprimer une action en swipe est maintenant persistant après redémarrage'),
+    (Icons.download_outlined, 'Bouton téléchargement (.html) dans la visionneuse de programmes depuis la liste des projets'),
   ]),
   _Entry('2.7', '19 mai 2026', [
     (Icons.smart_toy_outlined, 'Claude peut supprimer activités, actions et routines du plan'),
