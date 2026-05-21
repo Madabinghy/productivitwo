@@ -1,7 +1,10 @@
+import 'dart:html' as html;
 import 'dart:math';
+import 'dart:ui_web' as ui_web;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/web/gantt_pdf_exporter.dart';
 
 // ── Constantes de layout ──────────────────────────────────────────────────────
 
@@ -49,6 +52,17 @@ class _GanttScreenState extends State<GanttScreen> {
     _project = widget.project;
   }
 
+  Future<void> _exportPdf() async {
+    final pdf = await GanttPdfExporter.build(_project);
+    final bytes = await pdf.save();
+    final blob = html.Blob([bytes], 'application/pdf');
+    final url = html.Url.createObjectUrl(blob);
+    html.AnchorElement(href: url)
+      ..setAttribute('download', '${_project.title.replaceAll(' ', '_')}_gantt.pdf')
+      ..click();
+    html.Url.revokeObjectUrl(url);
+  }
+
   void _onTaskTap(ProjectTask task) {
     showDialog(
       context: context,
@@ -87,7 +101,12 @@ class _GanttScreenState extends State<GanttScreen> {
         ),
         actions: [
           _ZoomHint(),
-          const SizedBox(width: 8),
+          IconButton(
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            tooltip: 'Exporter en PDF',
+            onPressed: _exportPdf,
+          ),
+          const SizedBox(width: 4),
         ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
@@ -1241,14 +1260,34 @@ class _TaskDetailDialog extends StatefulWidget {
   State<_TaskDetailDialog> createState() => _TaskDetailDialogState();
 }
 
-class _TaskDetailDialogState extends State<_TaskDetailDialog> {
+class _TaskDetailDialogState extends State<_TaskDetailDialog>
+    with SingleTickerProviderStateMixin {
   late ProjectTask _task;
   bool _saving = false;
+  late final TabController _tabCtrl;
+
+  // Fichiers
+  List<Map<String, dynamic>> _docs = [];
+  bool _loadingDocs = true;
 
   @override
   void initState() {
     super.initState();
     _task = widget.task;
+    _tabCtrl = TabController(length: 2, vsync: this);
+    _tabCtrl.addListener(() => setState(() {}));
+    _loadDocs();
+  }
+
+  @override
+  void dispose() {
+    _tabCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadDocs() async {
+    final docs = await widget.sync.fetchDocuments(taskId: _task.id);
+    if (mounted) setState(() { _docs = docs; _loadingDocs = false; });
   }
 
   Future<void> _save() async {
@@ -1304,11 +1343,12 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog> {
     final cs = Theme.of(context).colorScheme;
     final pending = _task.actions.where((a) => !a.done).toList();
     final done = _task.actions.where((a) => a.done).toList();
+    final isFilesTab = _tabCtrl.index == 1;
 
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: SizedBox(
-        width: 480,
+        width: 520,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1353,73 +1393,452 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog> {
                 ],
               ),
             ),
-            const Divider(height: 20),
 
-            // Actions
+            // Tab bar
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: TabBar(
+                controller: _tabCtrl,
+                dividerColor: Colors.transparent,
+                tabs: [
+                  Tab(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.checklist_outlined, size: 14),
+                        const SizedBox(width: 6),
+                        Text('Actions (${_task.actions.length})'),
+                      ],
+                    ),
+                  ),
+                  Tab(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.folder_outlined, size: 14),
+                        const SizedBox(width: 6),
+                        Text('Fichiers${_docs.isNotEmpty ? ' (${_docs.length})' : ''}'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Divider(height: 1, color: cs.outlineVariant.withOpacity(0.4)),
+
+            // Contenu
             ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 340),
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              constraints: const BoxConstraints(maxHeight: 360),
+              child: isFilesTab
+                  ? _buildFilesTab(cs)
+                  : _buildActionsTab(cs, pending, done),
+            ),
+
+            // Footer
+            if (!isFilesTab)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                child: TextButton.icon(
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Ajouter une action'),
+                  onPressed: _addAction,
+                ),
+              )
+            else
+              const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Onglet Actions ───────────────────────────────────────────────────────────
+
+  Widget _buildActionsTab(ColorScheme cs,
+      List<TaskAction> pending, List<TaskAction> done) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (pending.isEmpty && done.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text('Aucune action. Clique + pour en ajouter.',
+                  style: TextStyle(
+                      fontSize: 13, fontStyle: FontStyle.italic,
+                      color: cs.onSurface.withOpacity(.4))),
+            ),
+          for (final a in pending)
+            CheckboxListTile(
+              dense: true,
+              value: a.done,
+              title: Text(a.title, style: const TextStyle(fontSize: 13)),
+              onChanged: (v) {
+                setState(() {
+                  a.done = v ?? false;
+                  a.doneAt = a.done ? DateTime.now() : null;
+                });
+                _save();
+              },
+              controlAffinity: ListTileControlAffinity.leading,
+              contentPadding: EdgeInsets.zero,
+            ),
+          if (done.isNotEmpty) ...[
+            const Divider(height: 16),
+            Text('Réalisées (${done.length})',
+                style: TextStyle(fontSize: 11,
+                    color: cs.onSurface.withOpacity(.4),
+                    fontWeight: FontWeight.w600)),
+            for (final a in done)
+              CheckboxListTile(
+                dense: true,
+                value: a.done,
+                title: Text(a.title,
+                    style: const TextStyle(fontSize: 12,
+                        decoration: TextDecoration.lineThrough,
+                        color: Colors.grey)),
+                onChanged: (v) {
+                  setState(() { a.done = v ?? false; a.doneAt = null; });
+                  _save();
+                },
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ── Onglet Fichiers ──────────────────────────────────────────────────────────
+
+  Widget _buildFilesTab(ColorScheme cs) {
+    if (_loadingDocs) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+
+    if (_docs.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.folder_open_outlined,
+                  size: 40, color: cs.onSurface.withOpacity(.2)),
+              const SizedBox(height: 12),
+              Text('Aucun fichier associé à cette tâche.',
+                  style: TextStyle(
+                      fontSize: 13, color: cs.onSurface.withOpacity(.5))),
+              const SizedBox(height: 6),
+              Text('Demandez à Claude de créer un document\net de l\'associer à cette tâche.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 11, color: cs.onSurface.withOpacity(.35))),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Grouper par catégorie
+    const catOrder = ['programme', 'livrable', 'brief', 'recherche', 'notes'];
+    final grouped = <String, List<Map<String, dynamic>>>{};
+    for (final d in _docs) {
+      final cat = d['category'] as String? ?? 'notes';
+      grouped.putIfAbsent(cat, () => []).add(d);
+    }
+    final cats = catOrder.where(grouped.containsKey).toList();
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final cat in cats) ...[
+            _CatHeader(category: cat),
+            const SizedBox(height: 6),
+            for (final doc in grouped[cat]!)
+              _DocCard(
+                doc: doc,
+                cs: cs,
+                taskTitle: _task.title,
+                onRefresh: _loadDocs,
+                sync: widget.sync,
+              ),
+            const SizedBox(height: 12),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ── En-tête de catégorie ──────────────────────────────────────────────────────
+
+class _CatHeader extends StatelessWidget {
+  final String category;
+  const _CatHeader({required this.category});
+
+  static const _meta = {
+    'programme': (Icons.list_alt_outlined, Color(0xFF2563EB), 'Programme'),
+    'brief':     (Icons.assignment_outlined, Color(0xFFD97706), 'Brief'),
+    'recherche': (Icons.search, Color(0xFF7C3AED), 'Recherche'),
+    'livrable':  (Icons.task_alt_outlined, Color(0xFF059669), 'Livrable'),
+    'notes':     (Icons.notes, Color(0xFF6B7280), 'Notes'),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final (icon, color, label) = _meta[category] ?? _meta['notes']!;
+    return Row(
+      children: [
+        Icon(icon, size: 13, color: color),
+        const SizedBox(width: 5),
+        Text(label,
+            style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.5,
+                color: color)),
+      ],
+    );
+  }
+}
+
+// ── Carte document ────────────────────────────────────────────────────────────
+
+class _DocCard extends StatelessWidget {
+  final Map<String, dynamic> doc;
+  final ColorScheme cs;
+  final String taskTitle;
+  final VoidCallback onRefresh;
+  final FirestoreSync sync;
+
+  const _DocCard({
+    required this.doc,
+    required this.cs,
+    required this.taskTitle,
+    required this.onRefresh,
+    required this.sync,
+  });
+
+  void _openViewer(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (_) => _TaskDocViewerDialog(
+        title: doc['title'] as String? ?? 'Document',
+        taskTitle: taskTitle,
+        htmlContent: doc['content'] as String? ?? '',
+        docId: doc['id'] as String? ?? 'doc',
+      ),
+    );
+  }
+
+  void _printDoc(String htmlContent) {
+    final content = htmlContent.contains('</head>')
+        ? htmlContent.replaceFirst(
+            '</head>',
+            '<script>window.onload=function(){window.print()}</script></head>')
+        : '<html><head><script>window.onload=function(){window.print()}</script></head><body>$htmlContent</body></html>';
+    final blob = html.Blob([content], 'text/html');
+    final url = html.Url.createObjectUrl(blob);
+    html.window.open(url, '_blank');
+    Future.delayed(const Duration(seconds: 10),
+        () => html.Url.revokeObjectUrl(url));
+  }
+
+  void _downloadDoc(String title, String htmlContent) {
+    final content = htmlContent.contains('<html') ? htmlContent
+        : '<html><head><meta charset="utf-8"></head><body>$htmlContent</body></html>';
+    final blob = html.Blob([content], 'text/html');
+    final url = html.Url.createObjectUrl(blob);
+    final filename = '${title.replaceAll(RegExp(r'[^\w\s-]'), '').trim().replaceAll(' ', '_')}.html';
+    html.AnchorElement(href: url)
+      ..setAttribute('download', filename)
+      ..click();
+    html.Url.revokeObjectUrl(url);
+  }
+
+  String _fmtTs(dynamic ts) {
+    if (ts == null) return '';
+    try {
+      final dt = DateTime.parse(ts.toString());
+      return '${dt.day}/${dt.month}/${dt.year}';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final title = doc['title'] as String? ?? 'Document';
+    final subtitle = doc['subtitle'] as String?;
+    final date = _fmtTs(doc['updatedAt'] ?? doc['createdAt']);
+    final htmlContent = doc['content'] as String? ?? '';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: cs.outlineVariant.withOpacity(0.5)),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () => _openViewer(context),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+          child: Row(
+            children: [
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (pending.isEmpty && done.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Text('Aucune action. Clique + pour en ajouter.',
-                            style: TextStyle(
-                                fontSize: 13, fontStyle: FontStyle.italic,
-                                color: cs.onSurface.withOpacity(.4))),
-                      ),
-                    for (final a in pending)
-                      CheckboxListTile(
-                        dense: true,
-                        value: a.done,
-                        title: Text(a.title, style: const TextStyle(fontSize: 13)),
-                        onChanged: (v) {
-                          setState(() {
-                            a.done = v ?? false;
-                            a.doneAt = a.done ? DateTime.now() : null;
-                          });
-                          _save();
-                        },
-                        controlAffinity: ListTileControlAffinity.leading,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    if (done.isNotEmpty) ...[
-                      const Divider(height: 16),
-                      Text('Réalisées (${done.length})',
-                          style: TextStyle(fontSize: 11,
-                              color: cs.onSurface.withOpacity(.4),
-                              fontWeight: FontWeight.w600)),
-                      for (final a in done)
-                        CheckboxListTile(
-                          dense: true,
-                          value: a.done,
-                          title: Text(a.title,
-                              style: const TextStyle(fontSize: 12,
-                                  decoration: TextDecoration.lineThrough,
-                                  color: Colors.grey)),
-                          onChanged: (v) {
-                            setState(() { a.done = v ?? false; a.doneAt = null; });
-                            _save();
-                          },
-                          controlAffinity: ListTileControlAffinity.leading,
-                          contentPadding: EdgeInsets.zero,
-                        ),
+                    Text(title,
+                        style: const TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w600)),
+                    if (subtitle != null && subtitle.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(subtitle,
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: cs.onSurface.withOpacity(.5))),
+                    ],
+                    if (date.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(date,
+                          style: TextStyle(
+                              fontSize: 10,
+                              color: cs.onSurface.withOpacity(.35))),
                     ],
                   ],
                 ),
               ),
-            ),
+              IconButton(
+                icon: Icon(Icons.print_outlined,
+                    size: 18, color: cs.onSurface.withOpacity(.5)),
+                tooltip: 'Imprimer / Exporter PDF',
+                onPressed: () => _printDoc(htmlContent),
+              ),
+              IconButton(
+                icon: Icon(Icons.download_outlined,
+                    size: 18, color: cs.onSurface.withOpacity(.5)),
+                tooltip: 'Télécharger (.html)',
+                onPressed: () => _downloadDoc(title, htmlContent),
+              ),
+              IconButton(
+                icon: Icon(Icons.open_in_new_outlined,
+                    size: 18, color: cs.primary),
+                tooltip: 'Ouvrir',
+                onPressed: () => _openViewer(context),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
-            // Footer
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: TextButton.icon(
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('Ajouter une action'),
-                onPressed: _addAction,
+// ── Dialog viewer document de tâche ──────────────────────────────────────────
+
+class _TaskDocViewerDialog extends StatefulWidget {
+  final String title;
+  final String taskTitle;
+  final String htmlContent;
+  final String docId;
+
+  const _TaskDocViewerDialog({
+    required this.title,
+    required this.taskTitle,
+    required this.htmlContent,
+    required this.docId,
+  });
+
+  @override
+  State<_TaskDocViewerDialog> createState() => _TaskDocViewerDialogState();
+}
+
+class _TaskDocViewerDialogState extends State<_TaskDocViewerDialog> {
+  void _print() {
+    final content = widget.htmlContent.contains('</head>')
+        ? widget.htmlContent.replaceFirst(
+            '</head>',
+            '<script>window.onload=function(){window.print()}</script></head>')
+        : '<html><head><script>window.onload=function(){window.print()}</script></head><body>${widget.htmlContent}</body></html>';
+    final blob = html.Blob([content], 'text/html');
+    final url = html.Url.createObjectUrl(blob);
+    html.window.open(url, '_blank');
+    Future.delayed(const Duration(seconds: 10),
+        () => html.Url.revokeObjectUrl(url));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 900, maxHeight: 700),
+        child: Column(
+          children: [
+            // Header
+            Container(
+              decoration: BoxDecoration(
+                color: cs.surface,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(12)),
+                border: Border(
+                    bottom: BorderSide(
+                        color: cs.outlineVariant.withOpacity(0.4))),
+              ),
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+              child: Row(
+                children: [
+                  Icon(Icons.description_outlined,
+                      size: 18, color: cs.primary),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(widget.title,
+                            style: const TextStyle(
+                                fontSize: 14, fontWeight: FontWeight.w700),
+                            overflow: TextOverflow.ellipsis),
+                        Text(widget.taskTitle,
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: cs.onSurface.withOpacity(.45))),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.print_outlined,
+                        size: 18, color: cs.onSurface.withOpacity(.6)),
+                    tooltip: 'Imprimer / Exporter PDF',
+                    onPressed: _print,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_outlined, size: 18),
+                    onPressed: () => Navigator.pop(context),
+                    tooltip: 'Fermer',
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: _GanttHtmlViewer(
+                key: ValueKey(widget.docId),
+                docId: widget.docId,
+                htmlContent: widget.htmlContent,
               ),
             ),
           ],
@@ -1427,4 +1846,37 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog> {
       ),
     );
   }
+}
+
+// ── Viewer HTML via iframe ────────────────────────────────────────────────────
+
+class _GanttHtmlViewer extends StatefulWidget {
+  final String docId;
+  final String htmlContent;
+  const _GanttHtmlViewer(
+      {super.key, required this.docId, required this.htmlContent});
+
+  @override
+  State<_GanttHtmlViewer> createState() => _GanttHtmlViewerState();
+}
+
+class _GanttHtmlViewerState extends State<_GanttHtmlViewer> {
+  late final String _viewId;
+
+  @override
+  void initState() {
+    super.initState();
+    _viewId = 'gantt-doc-${widget.docId}';
+    // ignore: undefined_prefixed_name
+    ui_web.platformViewRegistry.registerViewFactory(_viewId, (_) {
+      return html.IFrameElement()
+        ..srcdoc = widget.htmlContent
+        ..style.border = 'none'
+        ..style.width = '100%'
+        ..style.height = '100%';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => HtmlElementView(viewType: _viewId);
 }
