@@ -8,6 +8,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('2.9', '21 mai 2026', [
+    (Icons.tune, 'Cibles de temps 100% manuelles — la progression automatique a été retirée'),
+  ]),
   _Entry('2.8', '21 mai 2026', [
     (Icons.delete_outline, 'Fix : supprimer une action en swipe est maintenant persistant après redémarrage'),
     (Icons.download_outlined, 'Bouton téléchargement (.html) dans la visionneuse de programmes depuis la liste des projets'),

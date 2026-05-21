@@ -1285,34 +1285,8 @@ class AppLogic {
 
   // AppLogic
   Future<int> scanAllActivities({DateTime? now}) async {
-    final t = now ?? DateTime.now();
-
-    // 1) Revue des objectifs temps & domaines (force = même jour)
-    try {
-      await reviewGoals(now: t, force: true);
-    } catch (_) {
-      // si reviewGoals sans 'force' dans ta version:
-      try {
-        await reviewGoals(now: t);
-      } catch (_) {}
-    }
-
-    // 2) Migration : toutes les routines passent en mode manuel
-    int bumps = 0;
-    try {
-      for (final a in state.activeActivities.where((x) => x.isHabit)) {
-        if (!a.manualTarget) {
-          a.manualTarget = true;
-          a.autoTune = false;
-          bumps++;
-        }
-      }
-    } catch (_) {
-      // no-op si pas encore implémenté
-    }
-
-    onChange(); // persiste + notifie l’UI
-    return bumps;
+    onChange();
+    return 0;
   }
 
 // AppLogic
@@ -1736,27 +1710,12 @@ class AppLogic {
     ended.endAt = DateTime.now();
     onChange();
 
-    maybeAutoAdjustActivity(ended.activityId);
-
     return ended;
   }
 
-  // Arrête la session et retourne (session, activityName, deltaMin)
-  // si l'objectif a été ajusté à la hausse.
   Future<(Session?, String?, int?)> stopActiveWithAdjustment() async {
-    final run = state.sessions.where((s) => s.endAt == null).toList();
-    if (run.isEmpty) return (null, null, null);
-
-    final ended = run.last;
-    ended.endAt = DateTime.now();
-    onChange();
-
-    final delta = await maybeAutoAdjustActivity(ended.activityId);
-    final name = state.activeActivities
-        .firstWhereOrNull((a) => a.id == ended.activityId)
-        ?.name;
-
-    return (ended, name, delta);
+    final session = stopActive();
+    return (session, null, null);
   }
 
   Duration totalForDay(DateTime day, {String? domainId}) {
@@ -2712,6 +2671,9 @@ class AppLogic {
     double maxWeeklyPct = 0.20,
     bool force = false,
   }) async {
+    // Cibles toujours manuelles — l'auto-ajustement a été retiré.
+    return <GoalChange>[];
+    // ignore: dead_code
     final changes = <GoalChange>[];
     final t = now ?? DateTime.now();
     final today = DateTime(t.year, t.month, t.day);

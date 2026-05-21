@@ -1570,10 +1570,6 @@ class _AppRootState extends State<AppRoot>
   String? _weekHighlightYmd; // jour à mettre en avant dans la vue semaine
 // affiché une seule fois tant que l'app reste ouverte
 
-  // Champs d'état pour les badges
-  Map<String, int> _domainAutoDeltas =
-      {}; // agrégat des deltas d'activités par domaine
-
   Timer? _saveDebounce;
   bool _saveQueued = false;
   bool _saving = false;
@@ -1909,36 +1905,11 @@ class _AppRootState extends State<AppRoot>
       }
     }());
 
-    // ... le reste inchangé
-    final changes = await logic.reviewGoals();
-
     if (mounted) {
-      setState(() {
-        _domainAutoDeltas = {};
-        for (final ch in changes.where((c) => c.kind == 'activity')) {
-          final act = _state!.activeActivities.firstWhere((a) => a.id == ch.id,
-              orElse: () =>
-                  Activity(domainId: '', name: 'deleted', habitTarget: 1));
-          final dom = _state!.activeDomains.firstWhere((d) => d.id == act.domainId,
-              orElse: () => Domain(name: 'deleted'));
-          if (dom.autoGoal) {
-            _domainAutoDeltas[dom.id] =
-                (_domainAutoDeltas[dom.id] ?? 0) + ch.deltaMin;
-          }
-        }
-      });
-
       // Gestion "app terminée lancée depuis une notification" — appelé ici
       // car logic est maintenant initialisé.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) NotificationService.handleLaunchNotification();
-      });
-
-      Future.delayed(const Duration(minutes: 10), () {
-        if (!mounted) return;
-        setState(() {
-          _domainAutoDeltas = {};
-        });
       });
     }
   }
@@ -5782,10 +5753,8 @@ class _AppRootState extends State<AppRoot>
             final cs = Theme.of(context).colorScheme;
 
             // État local (copié de l'activité pour édition non destructive)
-            bool manual = habit.manualTarget;
             HabitFreq freq = habit.habitFreq ?? HabitFreq.monthly;
             int target = habit.habitTarget ?? 1;
-            bool autoTune = habit.autoTune;
 
             // Pour éviter la perte de focus du TextField quand on change de radio/switch
             final targetCtrl = TextEditingController(text: '$target');
@@ -5815,20 +5784,13 @@ class _AppRootState extends State<AppRoot>
               builder: (ctx) {
                 return StatefulBuilder(builder: (ctx, setSB) {
                   void saveAndClose() {
-                    // parse + clamp
                     final parsed = int.tryParse(targetCtrl.text.trim());
-                    if (manual) {
-                      target = (parsed == null || parsed < 1) ? 1 : parsed;
-                    }
-                    // Écrit dans l'objet
-                    habit.manualTarget = manual;
-                    habit.habitFreq = manual
-                        ? freq
-                        : habit.habitFreq; // si auto, on garde la freq actuelle
-                    habit.habitTarget = manual ? target : habit.habitTarget;
-                    habit.autoTune = autoTune;
+                    habit.manualTarget = true;
+                    habit.habitFreq = freq;
+                    habit.habitTarget = (parsed == null || parsed < 1) ? 1 : parsed;
+                    habit.autoTune = false;
 
-                    logic.onChange(); // persiste
+                    logic.onChange();
                     onSaved?.call();
                     Navigator.pop(ctx);
                   }
@@ -5846,8 +5808,6 @@ class _AppRootState extends State<AppRoot>
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Titre
-
                           InkWell(
                             onTap: () =>
                                 _renameRoutineFromDashboard(context, habit),
@@ -5861,119 +5821,53 @@ class _AppRootState extends State<AppRoot>
                           ),
                           const SizedBox(height: 8),
 
-                          // Switch manuel / auto
-                          Row(
+                          // Fréquence
+                          Column(
                             children: [
-                              Expanded(
-                                child: Text(
-                                  "Définir une cible manuellement",
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    color: cs.onSurface,
-                                  ),
-                                ),
+                              RadioListTile<HabitFreq>(
+                                title: const Text("Quotidienne"),
+                                value: HabitFreq.daily,
+                                groupValue: freq,
+                                onChanged: (v) =>
+                                    setSB(() => freq = v ?? freq),
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
                               ),
-                              Switch(
-                                value: manual,
-                                onChanged: (v) {
-                                  setSB(() {
-                                    manual = v;
-                                    if (manual) {
-                                      // seed si jamais absent
-                                      if (habit.habitTarget == null) {
-                                        target = (target <= 0) ? 1 : target;
-                                        targetCtrl.text = '$target';
-                                      }
-                                    }
-                                  });
-                                  // ne pas toucher au focus du TextField
-                                },
+                              RadioListTile<HabitFreq>(
+                                title: const Text("Hebdomadaire"),
+                                value: HabitFreq.weekly,
+                                groupValue: freq,
+                                onChanged: (v) =>
+                                    setSB(() => freq = v ?? freq),
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                              RadioListTile<HabitFreq>(
+                                title: const Text("Mensuelle"),
+                                value: HabitFreq.monthly,
+                                groupValue: freq,
+                                onChanged: (v) =>
+                                    setSB(() => freq = v ?? freq),
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
                               ),
                             ],
-                          ),
-                          const SizedBox(height: 8),
-
-                          // Choix fréquence (désactivé si pas manuel)
-                          Opacity(
-                            opacity: manual ? 1.0 : 0.4,
-                            child: IgnorePointer(
-                              ignoring: !manual,
-                              child: Column(
-                                children: [
-                                  RadioListTile<HabitFreq>(
-                                    title: const Text("Quotidienne"),
-                                    value: HabitFreq.daily,
-                                    groupValue: freq,
-                                    onChanged: (v) =>
-                                        setSB(() => freq = v ?? freq),
-                                    dense: true,
-                                    contentPadding: EdgeInsets.zero,
-                                  ),
-                                  RadioListTile<HabitFreq>(
-                                    title: const Text("Hebdomadaire"),
-                                    value: HabitFreq.weekly,
-                                    groupValue: freq,
-                                    onChanged: (v) =>
-                                        setSB(() => freq = v ?? freq),
-                                    dense: true,
-                                    contentPadding: EdgeInsets.zero,
-                                  ),
-                                  RadioListTile<HabitFreq>(
-                                    title: const Text("Mensuelle"),
-                                    value: HabitFreq.monthly,
-                                    groupValue: freq,
-                                    onChanged: (v) =>
-                                        setSB(() => freq = v ?? freq),
-                                    dense: true,
-                                    contentPadding: EdgeInsets.zero,
-                                  ),
-                                ],
-                              ),
-                            ),
                           ),
                           const SizedBox(height: 8),
 
                           // Champ cible
-                          Opacity(
-                            opacity: manual ? 1.0 : 0.4,
-                            child: IgnorePointer(
-                              ignoring: !manual,
-                              child: TextField(
-                                controller: targetCtrl,
-                                focusNode: targetNode,
-                                keyboardType: TextInputType.number,
-                                decoration: InputDecoration(
-                                  labelText: "Cible ${freqLabel(freq)}",
-                                  helperText:
-                                      "Entier ≥ 1${unitSuffix().isNotEmpty ? " (${unitSuffix().trim()})" : ""}",
-                                  border: const OutlineInputBorder(),
-                                ),
-                                onChanged: (_) {
-                                  // ne rien faire, on parse à l'enregistrement
-                                },
-                                onTapOutside: (_) => targetNode.unfocus(),
-                              ),
+                          TextField(
+                            controller: targetCtrl,
+                            focusNode: targetNode,
+                            keyboardType: TextInputType.number,
+                            decoration: InputDecoration(
+                              labelText: "Cible ${freqLabel(freq)}",
+                              helperText:
+                                  "Entier ≥ 1${unitSuffix().isNotEmpty ? " (${unitSuffix().trim()})" : ""}",
+                              border: const OutlineInputBorder(),
                             ),
-                          ),
-
-                          const SizedBox(height: 12),
-                          // Switch auto-tune
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  "Ajustement automatique",
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    color: cs.onSurface,
-                                  ),
-                                ),
-                              ),
-                              Switch(
-                                value: autoTune,
-                                onChanged: (v) => setSB(() => autoTune = v),
-                              ),
-                            ],
+                            onChanged: (_) {},
+                            onTapOutside: (_) => targetNode.unfocus(),
                           ),
 
                           const SizedBox(height: 12),
