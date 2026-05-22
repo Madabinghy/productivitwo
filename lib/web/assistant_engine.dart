@@ -79,13 +79,22 @@ class AssistantEngine {
 
     List<Map<String, dynamic>>? dayPlanCache;
     List<Map<String, dynamic>>? goalsCache;
+    List<Map<String, dynamic>>? sessionsCache;
+    List<Map<String, dynamic>>? habitHitsCache;
+    List<Map<String, dynamic>>? activitiesCache;
 
-    if (conditionTypes.any(_needsDayPlan)) {
-      dayPlanCache = await _fetchTodayPlan(uid, todayStr);
-    }
-    if (conditionTypes.any(_needsGoals)) {
-      goalsCache = await _fetchGoals(uid);
-    }
+    await Future.wait([
+      if (conditionTypes.any(_needsDayPlan))
+        _fetchTodayPlan(uid, todayStr).then((v) => dayPlanCache = v),
+      if (conditionTypes.any(_needsGoals))
+        _fetchGoals(uid).then((v) => goalsCache = v),
+      if (conditionTypes.any(_needsSessions))
+        _fetchRecentSessions(uid, today).then((v) => sessionsCache = v),
+      if (conditionTypes.any(_needsHabitHits))
+        _fetchRecentHabitHits(uid, today).then((v) => habitHitsCache = v),
+      if (conditionTypes.any(_needsActivities))
+        _fetchActivities(uid).then((v) => activitiesCache = v),
+    ]);
 
     final results = <AssistantMessageData>[];
 
@@ -114,6 +123,9 @@ class AssistantEngine {
         today: today,
         dayPlan: dayPlanCache,
         goals: goalsCache,
+        sessions: sessionsCache,
+        habitHits: habitHitsCache,
+        activities: activitiesCache,
       );
       if (!met) continue;
 
@@ -251,6 +263,9 @@ class AssistantEngine {
     required DateTime today,
     List<Map<String, dynamic>>? dayPlan,
     List<Map<String, dynamic>>? goals,
+    List<Map<String, dynamic>>? sessions,
+    List<Map<String, dynamic>>? habitHits,
+    List<Map<String, dynamic>>? activities,
   }) {
     final type = condition['type'] as String? ?? '';
     final todayD = DateTime(today.year, today.month, today.day);
@@ -375,14 +390,103 @@ class AssistantEngine {
         }
         return undone >= min;
 
-      // ── Conditions non évaluables dans le contexte web ───────────────────
-      // (nécessitent sessions, habitHits — non chargés dans le web app)
+      // ── Conditions activités (sessions) ──────────────────────────────────
+
+      case 'no_activity_logged_today':
+        if (sessions == null) return false;
+        final todayStart = todayD.toIso8601String();
+        return !sessions.any((s) {
+          final start = s['startAt'] as String?;
+          return start != null && start.compareTo(todayStart) >= 0;
+        });
 
       case 'activity_behind_target':
-      case 'no_activity_logged_today':
+        final actId = condition['activityId'] as String?;
+        if (actId == null || sessions == null || activities == null) return false;
+        final act = activities.where((a) => a['id'] == actId && a['deleted'] != true).firstOrNull;
+        if (act == null) return false;
+        final goalMin = (act['goalMin'] as num?)?.toDouble() ?? 0;
+        if (goalMin <= 0) return false;
+        // Progression attendue jusqu'à aujourd'hui dans la semaine (1=Lun..7=Dim)
+        final expectedMin = goalMin * today.weekday;
+        // Lundi de cette semaine
+        final weekStart = todayD.subtract(Duration(days: today.weekday - 1));
+        double loggedMin = 0;
+        for (final s in sessions) {
+          if (s['activityId'] != actId) continue;
+          final start = s['startAt'] as String?;
+          final end   = s['endAt']   as String?;
+          if (start == null || end == null) continue;
+          if (start.compareTo(weekStart.toIso8601String()) < 0) continue;
+          final startDt = DateTime.tryParse(start);
+          final endDt   = DateTime.tryParse(end);
+          if (startDt == null || endDt == null) continue;
+          loggedMin += endDt.difference(startDt).inSeconds / 60.0;
+        }
+        return loggedMin < expectedMin * 0.7;
+
       case 'activity_streak':
-      case 'routine_completion_low':
+        final actId2 = condition['activityId'] as String?;
+        final minDays = (condition['minDays'] as num?)?.toInt() ?? 3;
+        if (actId2 == null || sessions == null) return false;
+        int streak = 0;
+        for (int i = 1; i <= 30; i++) {
+          final day = todayD.subtract(Duration(days: i));
+          final dayStr = _isoDate(day);
+          final nextStr = _isoDate(day.add(const Duration(days: 1)));
+          final hasSession = sessions.any((s) {
+            if (s['activityId'] != actId2) return false;
+            final start = s['startAt'] as String?;
+            return start != null && start.compareTo(dayStr) >= 0 && start.compareTo(nextStr) < 0;
+          });
+          if (hasSession) { streak++; } else { break; }
+        }
+        return streak >= minDays;
+
+      // ── Conditions habitudes (habitHits) ──────────────────────────────────
+
       case 'habit_streak_broken':
+        final habitId = condition['habitId'] as String?;
+        if (habitId == null || habitHits == null) return false;
+        final yesterday    = todayD.subtract(const Duration(days: 1));
+        final dayBefore    = todayD.subtract(const Duration(days: 2));
+        final yStr  = _isoDate(yesterday);
+        final dbStr = _isoDate(dayBefore);
+        bool hadHitDayBefore = false;
+        bool hadHitYesterday = false;
+        for (final h in habitHits) {
+          if (h['habitId'] != habitId) continue;
+          final ts = _hitDate(h['ts']);
+          if (ts == null) continue;
+          final tsStr = _isoDate(ts);
+          if (tsStr == dbStr) hadHitDayBefore = true;
+          if (tsStr == yStr)  hadHitYesterday = true;
+        }
+        // Streak rompue : avait un hit avant-hier mais pas hier
+        return hadHitDayBefore && !hadHitYesterday;
+
+      case 'routine_completion_low':
+        final maxPercent = (condition['maxPercent'] as num?)?.toDouble() ?? 50;
+        if (habitHits == null || activities == null) return false;
+        final habits = activities.where((a) =>
+            a['deleted'] != true &&
+            (a['type'] == 'habit' || a['habitFreq'] != null)).toList();
+        if (habits.isEmpty) return false;
+        for (final habit in habits) {
+          final hId = habit['id'] as String?;
+          if (hId == null) continue;
+          final freq   = (habit['habitFreq']   as num?)?.toInt() ?? 0;
+          final target = (habit['habitTarget'] as num?)?.toDouble() ?? 1;
+          // Cible sur 7 jours selon fréquence (0=daily, 1=weekly, 2=monthly)
+          final expected = switch (freq) {
+            1 => target,                      // hebdo
+            2 => target * 7 / 30,             // mensuel → approx 7j
+            _ => target * 7,                  // daily
+          };
+          if (expected <= 0) continue;
+          final hits = habitHits.where((h) => h['habitId'] == hId).length;
+          if (hits / expected * 100 < maxPercent) return true;
+        }
         return false;
 
       default:
@@ -415,6 +519,18 @@ class AssistantEngine {
     'goal_near_deadline', 'goal_undone_actions',
   }.contains(type);
 
+  static bool _needsSessions(String type) => const {
+    'activity_behind_target', 'no_activity_logged_today', 'activity_streak',
+  }.contains(type);
+
+  static bool _needsHabitHits(String type) => const {
+    'habit_streak_broken', 'routine_completion_low',
+  }.contains(type);
+
+  static bool _needsActivities(String type) => const {
+    'activity_behind_target', 'routine_completion_low',
+  }.contains(type);
+
   static Future<List<Map<String, dynamic>>> _fetchTodayPlan(
       String uid, String todayStr) async {
     final yyyymmdd = todayStr.replaceAll('-', '');
@@ -423,6 +539,39 @@ class AssistantEngine {
         .where('yyyymmdd', isEqualTo: yyyymmdd)
         .get();
     return snap.docs.map((d) => d.data()).toList();
+  }
+
+  static Future<List<Map<String, dynamic>>> _fetchRecentSessions(
+      String uid, DateTime today) async {
+    final since = today.subtract(const Duration(days: 30)).toIso8601String();
+    final snap = await _db
+        .collection('users/$uid/sessions')
+        .where('startAt', isGreaterThanOrEqualTo: since)
+        .get();
+    return snap.docs.map((d) => d.data()).toList();
+  }
+
+  static Future<List<Map<String, dynamic>>> _fetchRecentHabitHits(
+      String uid, DateTime today) async {
+    final since = today.subtract(const Duration(days: 7));
+    final snap = await _db
+        .collection('users/$uid/habitHits')
+        .where('ts', isGreaterThanOrEqualTo: Timestamp.fromDate(since))
+        .get();
+    return snap.docs.map((d) => d.data()).toList();
+  }
+
+  static Future<List<Map<String, dynamic>>> _fetchActivities(String uid) async {
+    final snap = await _db.collection('users/$uid/activities').get();
+    return snap.docs.map((d) => d.data()).toList();
+  }
+
+  // Convertit un champ ts (Timestamp ou String) en DateTime
+  static DateTime? _hitDate(dynamic v) {
+    if (v == null) return null;
+    if (v is Timestamp) return v.toDate();
+    if (v is String) return DateTime.tryParse(v);
+    return null;
   }
 
   static Future<List<Map<String, dynamic>>> _fetchGoals(String uid) async {
