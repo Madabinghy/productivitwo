@@ -1,6 +1,8 @@
 import 'dart:html' as html;
 import 'dart:math';
+import 'dart:ui' as ui;
 import 'dart:ui_web' as ui_web;
+import 'package:flutter/rendering.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -43,9 +45,26 @@ class GanttScreen extends StatefulWidget {
   State<GanttScreen> createState() => _GanttScreenState();
 }
 
+// Thème clair Productivitwo (même palette que web_app.dart)
+final _kGanttLightTheme = ThemeData(
+  colorScheme: ColorScheme.fromSeed(
+    seedColor: const Color(0xFF1D9E75),
+    brightness: Brightness.light,
+  ).copyWith(
+    primary: const Color(0xFF1D9E75),
+    secondary: const Color(0xFF155F47),
+    surface: const Color(0xFFD6EEE6),
+    surfaceContainerLowest: const Color(0xFFC8E8DC),
+    surfaceContainerHighest: const Color(0xFFB0DDCB),
+  ),
+  scaffoldBackgroundColor: const Color(0xFFC8E8DC),
+  useMaterial3: true,
+);
+
 class _GanttScreenState extends State<GanttScreen> {
   late Project _project;
   final _sync = FirestoreSync();
+  bool _forceLight = false;
 
   @override
   void initState() {
@@ -88,7 +107,17 @@ class _GanttScreenState extends State<GanttScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final child = _buildScaffold(context);
+    if (_forceLight && isDark) {
+      return Theme(data: _kGanttLightTheme, child: Builder(builder: _buildScaffold));
+    }
+    return child;
+  }
+
+  Widget _buildScaffold(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       backgroundColor: cs.surfaceContainerLowest,
       appBar: AppBar(
@@ -112,6 +141,13 @@ class _GanttScreenState extends State<GanttScreen> {
         ),
         actions: [
           _ZoomHint(),
+          IconButton(
+            icon: Icon(isDark && _forceLight
+                ? Icons.dark_mode_outlined
+                : Icons.light_mode_outlined),
+            tooltip: _forceLight ? 'Revenir au thème sombre' : 'Mode clair',
+            onPressed: () => setState(() => _forceLight = !_forceLight),
+          ),
           IconButton(
             icon: const Icon(Icons.picture_as_pdf_outlined),
             tooltip: 'Exporter en PDF',
@@ -620,6 +656,8 @@ class _GanttBody extends StatefulWidget {
 class _GanttBodyState extends State<_GanttBody> {
   late final TransformationController _ctrl;
   bool _dayView = false;
+  bool _exportingPng = false;
+  final _gridKey = GlobalKey();
 
   @override
   void initState() {
@@ -633,6 +671,30 @@ class _GanttBodyState extends State<_GanttBody> {
     super.dispose();
   }
 
+  Future<void> _exportPng() async {
+    setState(() => _exportingPng = true);
+    try {
+      final boundary = _gridKey.currentContext
+          ?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) return;
+      final image = await boundary.toImage(pixelRatio: 2.0);
+      final byteData =
+          await image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) return;
+      final bytes = byteData.buffer.asUint8List();
+      final blob = html.Blob([bytes], 'image/png');
+      final url = html.Url.createObjectUrl(blob);
+      html.AnchorElement(href: url)
+        ..setAttribute(
+            'download',
+            '${widget.project.title.replaceAll(' ', '_')}_gantt.png')
+        ..click();
+      html.Url.revokeObjectUrl(url);
+    } finally {
+      if (mounted) setState(() => _exportingPng = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -643,12 +705,25 @@ class _GanttBodyState extends State<_GanttBody> {
 
     return Column(
       children: [
-        // Toggle Semaine / Jour
+        // Toggle Semaine / Jour + export PNG
         Container(
           color: cs.surface,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
           child: Row(
             children: [
+              Tooltip(
+                message: 'Exporter en PNG (haute résolution)',
+                child: _exportingPng
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : IconButton(
+                        icon: const Icon(Icons.image_outlined, size: 18),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: _exportPng,
+                      ),
+              ),
               const Spacer(),
               SegmentedButton<bool>(
                 segments: const [
@@ -679,12 +754,15 @@ class _GanttBodyState extends State<_GanttBody> {
             maxScale: 4.0,
             child: Padding(
               padding: const EdgeInsets.all(32),
-              child: _GanttGrid(
-                project: widget.project,
-                projectStart: start,
-                totalWeeks: weeks,
-                dayView: _dayView,
-                onTaskTap: widget.onTaskTap,
+              child: RepaintBoundary(
+                key: _gridKey,
+                child: _GanttGrid(
+                  project: widget.project,
+                  projectStart: start,
+                  totalWeeks: weeks,
+                  dayView: _dayView,
+                  onTaskTap: widget.onTaskTap,
+                ),
               ),
             ),
           ),
@@ -1359,7 +1437,7 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: SizedBox(
-        width: 520,
+        width: 720,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1397,6 +1475,12 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
                       child: SizedBox(width: 16, height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2)),
                     ),
+                  IconButton(
+                    icon: Icon(Icons.delete_outline,
+                        color: cs.onSurface.withOpacity(.4)),
+                    tooltip: 'Supprimer la tâche',
+                    onPressed: () => _confirmDeleteTask(cs),
+                  ),
                   IconButton(
                     icon: const Icon(Icons.close),
                     onPressed: () => Navigator.pop(context),
@@ -1463,62 +1547,114 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
     );
   }
 
+  Future<void> _confirmDeleteTask(ColorScheme cs) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer la tâche ?'),
+        content: Text(
+            'Supprimer "${_task.title}" ? Cette action est irréversible.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annuler')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: cs.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+
+    final updatedTasks =
+        widget.project.tasks.where((t) => t.id != _task.id).toList();
+    await widget.sync.saveProjectTasks(widget.project.id, updatedTasks);
+    final updatedProject = widget.project
+      ..tasks.replaceRange(0, widget.project.tasks.length, updatedTasks);
+    widget.onProjectUpdated(updatedProject);
+    if (mounted) Navigator.pop(context);
+  }
+
   // ── Onglet Actions ───────────────────────────────────────────────────────────
 
   Widget _buildActionsTab(ColorScheme cs,
       List<TaskAction> pending, List<TaskAction> done) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (pending.isEmpty && done.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Text('Aucune action. Clique + pour en ajouter.',
-                  style: TextStyle(
-                      fontSize: 13, fontStyle: FontStyle.italic,
-                      color: cs.onSurface.withOpacity(.4))),
+    if (pending.isEmpty && done.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          'Aucune action. Clique + pour en ajouter.',
+          style: TextStyle(
+              fontSize: 13,
+              fontStyle: FontStyle.italic,
+              color: cs.onSurface.withOpacity(.4)),
+        ),
+      );
+    }
+
+    // Liste complète dans l'ordre (pending en haut, done en bas)
+    final allActions = _task.actions;
+
+    return ReorderableListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      buildDefaultDragHandles: false,
+      itemCount: allActions.length,
+      onReorder: (oldIndex, newIndex) {
+        setState(() {
+          if (newIndex > oldIndex) newIndex--;
+          final item = allActions.removeAt(oldIndex);
+          allActions.insert(newIndex, item);
+        });
+        _save();
+      },
+      itemBuilder: (ctx, i) {
+        final a = allActions[i];
+        return ListTile(
+          key: ValueKey(a.title + i.toString()),
+          dense: true,
+          contentPadding: const EdgeInsets.only(left: 0, right: 4),
+          leading: Checkbox(
+            value: a.done,
+            onChanged: (v) {
+              setState(() {
+                a.done = v ?? false;
+                a.doneAt = a.done ? DateTime.now() : null;
+              });
+              _save();
+            },
+          ),
+          title: Text(
+            a.title,
+            style: TextStyle(
+              fontSize: 13,
+              color: a.done ? cs.onSurface.withOpacity(.4) : null,
+              decoration: a.done ? TextDecoration.lineThrough : null,
             ),
-          for (final a in pending)
-            CheckboxListTile(
-              dense: true,
-              value: a.done,
-              title: Text(a.title, style: const TextStyle(fontSize: 13)),
-              onChanged: (v) {
-                setState(() {
-                  a.done = v ?? false;
-                  a.doneAt = a.done ? DateTime.now() : null;
-                });
-                _save();
-              },
-              controlAffinity: ListTileControlAffinity.leading,
-              contentPadding: EdgeInsets.zero,
-            ),
-          if (done.isNotEmpty) ...[
-            const Divider(height: 16),
-            Text('Réalisées (${done.length})',
-                style: TextStyle(fontSize: 11,
-                    color: cs.onSurface.withOpacity(.4),
-                    fontWeight: FontWeight.w600)),
-            for (final a in done)
-              CheckboxListTile(
-                dense: true,
-                value: a.done,
-                title: Text(a.title,
-                    style: const TextStyle(fontSize: 12,
-                        decoration: TextDecoration.lineThrough,
-                        color: Colors.grey)),
-                onChanged: (v) {
-                  setState(() { a.done = v ?? false; a.doneAt = null; });
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: Icon(Icons.delete_outline,
+                    size: 16, color: cs.onSurface.withOpacity(.3)),
+                visualDensity: VisualDensity.compact,
+                tooltip: 'Supprimer',
+                onPressed: () {
+                  setState(() => allActions.removeAt(i));
                   _save();
                 },
-                controlAffinity: ListTileControlAffinity.leading,
-                contentPadding: EdgeInsets.zero,
               ),
-          ],
-        ],
-      ),
+              ReorderableDragStartListener(
+                index: i,
+                child: Icon(Icons.drag_handle,
+                    size: 18, color: cs.onSurface.withOpacity(.3)),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 

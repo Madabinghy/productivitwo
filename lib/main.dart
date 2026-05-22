@@ -51,12 +51,13 @@ import 'package:productivitwo_v1/widgets/apple_sign_in_button.dart';
 import 'package:productivitwo_v1/widgets/programmes_sheet.dart';
 import 'package:productivitwo_v1/widgets/project_sheet.dart';
 import 'package:productivitwo_v1/widgets/orion_screen.dart';
+import 'package:productivitwo_v1/widgets/focus_view.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
 import 'package:productivitwo_v1/web/assistant_widget.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-enum _Tab { dashboard, now, today, week }
+enum _Tab { dashboard, projets, maintenant, orion }
 
 class MiniRingThick extends StatelessWidget {
   const MiniRingThick({
@@ -1581,6 +1582,8 @@ class _AppRootState extends State<AppRoot>
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   StreamSubscription<List<Domain>>? _domainsSub;
+  Project? _focusProject;
+  ProjectTask? _focusTask;
   bool _wasOffline = false;
   List<AssistantMessageData> _assistantMessages = [];
 
@@ -1633,7 +1636,7 @@ class _AppRootState extends State<AppRoot>
           showDayReviewSheet(ctx, logic: logic);
         case 3: // Streak en danger → onglet À faire
         case 4: // Défi du jour → onglet À faire
-          setState(() => _tab = _Tab.today);
+          setState(() => _tab = _Tab.projets);
         case 5: // Score mi-journée → résumé du jour
           showDayReviewSheet(ctx, logic: logic);
       }
@@ -2063,29 +2066,20 @@ class _AppRootState extends State<AppRoot>
 // 1) Helpers d'index <-> enum
   int _tabIndex(_Tab t) {
     switch (t) {
-      case _Tab.dashboard:
-        return 0;
-      case _Tab.today:
-        return 1;
-      case _Tab.now:
-        return 2;
-      case _Tab.week:
-        return 3;
+      case _Tab.dashboard:   return 0;
+      case _Tab.projets:     return 1;
+      case _Tab.maintenant:  return 2;
+      case _Tab.orion:       return 3;
     }
   }
 
   _Tab _tabFromIndex(int i) {
     switch (i) {
-      case 0:
-        return _Tab.dashboard;
-      case 1:
-        return _Tab.today;
-      case 2:
-        return _Tab.now;
-      case 3:
-        return _Tab.week;
-      default:
-        return _Tab.dashboard;
+      case 0:  return _Tab.dashboard;
+      case 1:  return _Tab.projets;
+      case 2:  return _Tab.maintenant;
+      case 3:  return _Tab.orion;
+      default: return _Tab.dashboard;
     }
   }
 
@@ -2146,42 +2140,51 @@ class _AppRootState extends State<AppRoot>
     return FadeTransition(
       opacity: _tabFade,
       child: IndexedStack(
-      index: _tabIndex(_tab),
-      children: [
-        _buildDashboardBody(context),
-        TodayView(
-          logic: logic,
-          state: _state!,
-          isVisible: _tab == _Tab.today,
-          onGoNow: (habitId) {
-            logic.forceNowHabit(habitId);
-            setState(() => _tab = _Tab.now);
-          },
-          onGoNowTab: () => setState(() => _tab = _Tab.now),
-          onOpenRoutineDetail: (habitId) {
-            showModalBottomSheet(
-              context: context,
-              showDragHandle: true,
-              isScrollControlled: true,
-              builder: (_) => RoutineDetailSheet(
-                logic: logic,
-                st: logic.state,
-                habitId: habitId,
-                day: DateTime.now(),
-              ),
-            );
-          },
-        ),
-        NowTab(
-          logic: logic,
-          st: st,
-          items: filteredTodo,
-          day: DateTime.now(),
-          buildRowsGrouped: logic.buildRowsGrouped,
-          onGoTodo: () => setState(() => _tab = _Tab.today),
-        ),
-        WeeklyView(logic: logic, state: st, highlightYmd: _weekHighlightYmd),
-      ],
+        index: _tabIndex(_tab),
+        children: [
+          _buildDashboardBody(context),
+          GoalsView(
+            domains: _state?.domains ?? [],
+            activities: _state?.activities ?? [],
+            onStartTimer: (activity, project, task) {
+              logic.start(activity.id);
+              setState(() {
+                _focusProject = project;
+                _focusTask = task;
+                _tab = _Tab.maintenant;
+              });
+            },
+          ),
+          FocusView(
+            logic: logic,
+            state: st,
+            focusProject: _focusProject,
+            focusTask: _focusTask,
+            onGoToProjects: () => setState(() => _tab = _Tab.projets),
+            onStartTimer: (activity, project, task) {
+              logic.start(activity.id);
+              setState(() {
+                _focusProject = project;
+                _focusTask = task;
+              });
+            },
+            onStopTimer: () {
+              logic.stopActive();
+              setState(() {
+                _focusProject = null;
+                _focusTask = null;
+              });
+            },
+            onClearFocusTask: (project, task) {
+              setState(() {
+                _focusProject = null;
+                _focusTask = null;
+              });
+            },
+          ),
+          // ORION tab : navigue vers OrionScreen (plein écran)
+          const SizedBox.shrink(),
+        ],
       ),
     );
   }
@@ -2190,7 +2193,7 @@ class _AppRootState extends State<AppRoot>
     switch (action.type) {
       case 'open_day_plan':
       case 'open_goals':
-        setState(() => _tab = _Tab.today);
+        setState(() => _tab = _Tab.projets);
       case 'open_project':
         _openProjectSheet(action.payload?['projectId'] as String?);
       case 'open_gantt_task':
@@ -2199,7 +2202,7 @@ class _AppRootState extends State<AppRoot>
           targetTaskId: action.payload?['taskId'] as String?,
         );
       case 'open_activity':
-        setState(() => _tab = _Tab.now);
+        setState(() => _tab = _Tab.maintenant);
     }
   }
 
@@ -2341,7 +2344,7 @@ class _AppRootState extends State<AppRoot>
                                 logic.stopActive();
                               } else {
                                 logic.start(a.id);
-                                setState(() => _tab = _Tab.now);
+                                setState(() => _tab = _Tab.maintenant);
                               }
                               setState(() {});
                               Navigator.pop(ctx);
@@ -2569,7 +2572,7 @@ class _AppRootState extends State<AppRoot>
   }
 
   bool _shouldShowFab() {
-    return _tab == _Tab.today || _tab == _Tab.dashboard || _tab == _Tab.week;
+    return _tab == _Tab.projets || _tab == _Tab.dashboard || _tab == _Tab.dashboard;
   }
 
   Widget _buildFab() {
@@ -2580,7 +2583,7 @@ class _AppRootState extends State<AppRoot>
       child: const Icon(Icons.play_arrow_rounded),
     );
 
-    if (_tab == _Tab.now) return playFab;
+    if (_tab == _Tab.maintenant) return playFab;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -2693,7 +2696,7 @@ class _AppRootState extends State<AppRoot>
         }
 
         setState(() {
-          _tab = _Tab.now;
+          _tab = _Tab.maintenant;
         });
       }
 
@@ -3507,24 +3510,6 @@ class _AppRootState extends State<AppRoot>
               ),
             ),
             IconButton(
-              icon: const Icon(Icons.menu_book_outlined),
-              tooltip: 'Programmes',
-              onPressed: () {
-                showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: Theme.of(context).colorScheme.surface,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                  ),
-                  builder: (_) => ProgrammesSheet(
-                    sync: _sync,
-                    domains: _state?.domains ?? [],
-                  ),
-                );
-              },
-            ),
-            IconButton(
               icon: Badge(
                 isLabelVisible: _assistantMessages.isNotEmpty,
                 smallSize: 7,
@@ -3815,7 +3800,7 @@ class _AppRootState extends State<AppRoot>
               return RunningActivityBanner(
                 state: _state,
                 logic: logic,
-                onTap: () => setState(() => _tab = _Tab.now),
+                onTap: () => setState(() => _tab = _Tab.maintenant),
               );
             },
           ),
@@ -3843,8 +3828,13 @@ class _AppRootState extends State<AppRoot>
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _tabIndex(_tab),
         onTap: (i) {
+          final tapped = _tabFromIndex(i);
+          if (tapped == _Tab.orion) {
+            OrionScreen.show(context, _sync);
+            return;
+          }
           _tabFadeController.forward(from: 0);
-          setState(() => _tab = _tabFromIndex(i));
+          setState(() => _tab = tapped);
         },
         type: BottomNavigationBarType.fixed,
         selectedFontSize: 11,
@@ -3855,17 +3845,17 @@ class _AppRootState extends State<AppRoot>
               activeIcon: Icon(Icons.dashboard),
               label: 'Accueil'),
           BottomNavigationBarItem(
-              icon: Icon(Icons.checklist_outlined),
-              activeIcon: Icon(Icons.checklist),
-              label: 'À faire'),
+              icon: Icon(Icons.account_tree_outlined),
+              activeIcon: Icon(Icons.account_tree),
+              label: 'Projets'),
           BottomNavigationBarItem(
               icon: Icon(Icons.play_circle_outline),
               activeIcon: Icon(Icons.play_circle),
               label: 'Maintenant'),
           BottomNavigationBarItem(
-              icon: Icon(Icons.calendar_view_week_outlined),
-              activeIcon: Icon(Icons.calendar_view_week),
-              label: 'Semaine'),
+              icon: Icon(Icons.smart_toy_outlined),
+              activeIcon: Icon(Icons.smart_toy),
+              label: 'ORION'),
         ],
       ),
 
@@ -4122,7 +4112,7 @@ class _AppRootState extends State<AppRoot>
                               null, startCal, endCal, days,
                               focus: 'time');
                           if (!mounted) return;
-                          if (goNow == true) setState(() => _tab = _Tab.now);
+                          if (goNow == true) setState(() => _tab = _Tab.maintenant);
                         },
                       ),
                       GaugeRing(
@@ -4165,7 +4155,7 @@ class _AppRootState extends State<AppRoot>
                             );
                             setState(() {
                               _weekHighlightYmd = yyyymmdd(tappedDay);
-                              _tab = _Tab.week;
+                              _tab = _Tab.dashboard;
                             });
                           },
                         ),
@@ -4874,7 +4864,7 @@ class _AppRootState extends State<AppRoot>
                             d, startCal, endCal, days,
                             focus: 'time');
                         if (!mounted) return;
-                        if (goNow == true) setState(() => _tab = _Tab.now);
+                        if (goNow == true) setState(() => _tab = _Tab.maintenant);
                       },
                     ),
                     const SizedBox(height: 6),
@@ -5358,7 +5348,7 @@ class _AppRootState extends State<AppRoot>
                   onTap: () {
                     logic.start(a.id);
                     Navigator.pop(ctx, true);
-                    setState(() => _tab = _Tab.now);
+                    setState(() => _tab = _Tab.maintenant);
                   },
                 ),
 

@@ -45,6 +45,7 @@ class _ProjectSheetState extends State<_ProjectSheet> {
   final _sync = FirestoreSync();
   final _scrollCtrl = ScrollController();
   final _taskKeys = <String, GlobalKey>{};
+  List<Map<String, dynamic>> _docs = [];
 
   @override
   void initState() {
@@ -56,6 +57,12 @@ class _ProjectSheetState extends State<_ProjectSheet> {
     if (widget.targetTaskId != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToTarget());
     }
+    _loadDocs();
+  }
+
+  Future<void> _loadDocs() async {
+    final docs = await _sync.fetchDocuments(projectId: _project.id);
+    if (mounted) setState(() => _docs = docs);
   }
 
   @override
@@ -260,6 +267,51 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                         today: today,
                         cs: cs,
                         onToggle: () => _toggleStatus(task),
+                      ),
+                  ],
+
+                  // ── Documents liés au projet ─────────────────────────
+                  if (_docs.isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    Divider(height: 1, color: cs.outlineVariant.withOpacity(.3)),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(0, 14, 0, 8),
+                      child: Text(
+                        'DOCUMENTS (${_docs.length})',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1,
+                          color: cs.onSurface.withOpacity(.4),
+                        ),
+                      ),
+                    ),
+                    for (final doc in _docs)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Container(
+                          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                          decoration: BoxDecoration(
+                            color: cs.surfaceContainerHighest.withOpacity(.4),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.description_outlined,
+                                  size: 16,
+                                  color: cs.onSurface.withOpacity(.45)),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  doc['title'] as String? ?? 'Document',
+                                  style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                   ],
                 ],

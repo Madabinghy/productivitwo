@@ -8,8 +8,16 @@ import 'package:productivitwo_v1/widgets/project_sheet.dart';
 
 class GoalsView extends StatefulWidget {
   final List<Domain> domains;
+  final List<Activity> activities;
+  final void Function(Activity activity, Project project, ProjectTask task)?
+      onStartTimer;
 
-  const GoalsView({super.key, required this.domains});
+  const GoalsView({
+    super.key,
+    required this.domains,
+    this.activities = const [],
+    this.onStartTimer,
+  });
 
   @override
   State<GoalsView> createState() => _GoalsViewState();
@@ -56,7 +64,7 @@ class _GoalsViewState extends State<GoalsView> {
           ? _buildEmptyState(context, cs)
           : CustomScrollView(
               slivers: [
-                ..._buildProjectSections(context, activeProjects, todayD, horizon),
+                ..._buildProjectSections(context, activeProjects, todayD),
                 const SliverToBoxAdapter(child: SizedBox(height: 100)),
               ],
             ),
@@ -108,46 +116,38 @@ class _GoalsViewState extends State<GoalsView> {
     BuildContext context,
     List<Project> projects,
     DateTime todayD,
-    DateTime horizon,
   ) {
-    // Grouper les tâches actives par domaine
+    final cs = Theme.of(context).colorScheme;
+
+    // Tâches actives aujourd'hui (startDate <= today, non terminées)
     final byDomain = <String?, List<({Project project, ProjectTask task})>>{};
     for (final p in projects) {
       for (final t in p.tasks) {
         if (t.status == 'done' || t.status == 'skipped') continue;
-        if (t.startDate.isAfter(horizon)) continue;
+        if (t.startDate.isAfter(todayD)) continue; // pas encore démarrée
         byDomain.putIfAbsent(p.domainId, () => []).add((project: p, task: t));
       }
     }
 
-    // Projets sans tâches actives proches (affiche quand même le projet)
-    final projectsWithNoNearTasks = projects
-        .where((p) => !byDomain.values.any(
-            (pairs) => pairs.any((pair) => pair.project.id == p.id)))
-        .toList();
-
     final widgets = <Widget>[];
 
-    if (byDomain.isEmpty && projectsWithNoNearTasks.isNotEmpty) {
-      // Tous les projets existent mais aucune tâche dans les 30j
+    // Aucune tâche active aujourd'hui → résumé des projets
+    if (byDomain.isEmpty) {
       widgets.add(SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
           child: Text(
-            'PROJETS ACTIFS — aucune tâche urgente (30j)',
+            'AUCUNE TÂCHE DÉMARRÉE AUJOURD\'HUI',
             style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1.2,
-              color: Theme.of(context).colorScheme.onSurface.withOpacity(.4),
+              fontSize: 11, fontWeight: FontWeight.bold,
+              letterSpacing: 1.2, color: cs.onSurface.withOpacity(.4),
             ),
           ),
         ),
       ));
-      for (final p in projectsWithNoNearTasks) {
+      for (final p in projects) {
         widgets.add(SliverToBoxAdapter(
-          child: _buildProjectSummaryTile(context, p),
-        ));
+            child: _buildProjectSummaryTile(context, p)));
       }
       return widgets;
     }
@@ -165,8 +165,7 @@ class _GoalsViewState extends State<GoalsView> {
       final domain = domainId != null
           ? domains.where((d) => d.id == domainId).firstOrNull
           : null;
-      final color = domainColor(domainId, domains) ??
-          Theme.of(context).colorScheme.primary;
+      final color = domainColor(domainId, domains) ?? cs.primary;
 
       // Header domaine
       widgets.add(SliverToBoxAdapter(
@@ -181,12 +180,8 @@ class _GoalsViewState extends State<GoalsView> {
               const SizedBox(width: 8),
               Text(
                 domain?.name.toUpperCase() ?? 'SANS DOMAINE',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1,
-                  color: color,
-                ),
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold,
+                    letterSpacing: 1, color: color),
               ),
             ],
           ),
@@ -204,33 +199,106 @@ class _GoalsViewState extends State<GoalsView> {
       for (final projectId in byProject.keys) {
         final project = projectMap[projectId]!;
         final tasks = byProject[projectId]!;
-        widgets.add(SliverList(
-          delegate: SliverChildBuilderDelegate(
-            (ctx, i) => _GanttTaskCard(
-              project: project,
-              task: tasks[i],
-              domains: domains,
-              today: todayD,
-              color: color,
-              projectTitle: project.title,
-              onTaskActionToggled: (taskId, actionIdx, value) async {
-                project.tasks
-                    .firstWhere((t) => t.id == taskId)
-                    .actions[actionIdx]
-                    .done = value;
-                await _sync.saveProjectTasks(project.id, project.tasks);
-                setState(() {});
-              },
-              onTap: () => showProjectSheet(
-                context,
-                project: project,
-                domains: domains,
-                targetTaskId: tasks[i].id,
+
+        // Header projet (si plusieurs projets dans le même domaine)
+        if (byProject.length > 1) {
+          widgets.add(SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: Text(
+                project.title,
+                style: TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w700,
+                    color: cs.onSurface.withOpacity(.55)),
               ),
             ),
-            childCount: tasks.length,
-          ),
-        ));
+          ));
+        }
+
+        // Grouper par phase dans ce projet
+        final phaseMap = {for (final ph in project.phases) ph.id: ph};
+        final byPhase = <String?, List<ProjectTask>>{};
+        for (final t in tasks) {
+          byPhase.putIfAbsent(t.phaseId, () => []).add(t);
+        }
+
+        // Afficher dans l'ordre des phases, puis sans phase
+        final orderedPhaseIds = [
+          ...project.phases.map((ph) => ph.id).where(byPhase.containsKey),
+          if (byPhase.containsKey(null)) null,
+        ];
+
+        for (final phaseId in orderedPhaseIds) {
+          final phaseTasks = byPhase[phaseId]!;
+          final phase = phaseId != null ? phaseMap[phaseId] : null;
+
+          // Header phase
+          if (phase != null) {
+            Color phaseColor = color;
+            if (phase.color != null) {
+              try {
+                final hex = phase.color!.replaceAll('#', '');
+                phaseColor = Color(int.parse('FF$hex', radix: 16));
+              } catch (_) {}
+            }
+            widgets.add(SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 6, height: 6,
+                      decoration: BoxDecoration(
+                          color: phaseColor, shape: BoxShape.circle),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      phase.label.toUpperCase(),
+                      style: TextStyle(
+                          fontSize: 10, fontWeight: FontWeight.w700,
+                          letterSpacing: 0.8,
+                          color: cs.onSurface.withOpacity(.45)),
+                    ),
+                  ],
+                ),
+              ),
+            ));
+          }
+
+          widgets.add(SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (ctx, i) {
+                final task = phaseTasks[i];
+                return _GanttTaskCard(
+                  project: project,
+                  task: task,
+                  domains: domains,
+                  today: todayD,
+                  color: color,
+                  projectTitle: byProject.length == 1 ? project.title : '',
+                  onTaskActionToggled: (taskId, actionIdx, value) async {
+                    project.tasks
+                        .firstWhere((t) => t.id == taskId)
+                        .actions[actionIdx]
+                        .done = value;
+                    await _sync.saveProjectTasks(project.id, project.tasks);
+                    setState(() {});
+                  },
+                  onTap: () => showProjectSheet(
+                    context,
+                    project: project,
+                    domains: domains,
+                    targetTaskId: task.id,
+                  ),
+                  onPlay: widget.onStartTimer == null
+                      ? null
+                      : () => _onPlay(context, project, task, color),
+                );
+              },
+              childCount: phaseTasks.length,
+            ),
+          ));
+        }
       }
     }
 
@@ -302,6 +370,64 @@ class _GoalsViewState extends State<GoalsView> {
     );
   }
 
+  Future<void> _onPlay(BuildContext context, Project project,
+      ProjectTask task, Color color) async {
+    // Activités du domaine du projet
+    final domainActivities = widget.activities
+        .where((a) => a.domainId == project.domainId && !a.isHabit)
+        .toList();
+
+    if (domainActivities.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Aucune activité dans ce domaine.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    Activity? activity;
+    if (domainActivities.length == 1) {
+      activity = domainActivities.first;
+    } else {
+      activity = await showModalBottomSheet<Activity>(
+        context: context,
+        showDragHandle: true,
+        builder: (ctx) {
+          final cs = Theme.of(ctx).colorScheme;
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                  child: Text('Sur quelle activité ?',
+                      style: const TextStyle(
+                          fontSize: 17, fontWeight: FontWeight.bold)),
+                ),
+                for (final a in domainActivities)
+                  ListTile(
+                    leading: Container(
+                      width: 10, height: 10,
+                      decoration: BoxDecoration(
+                          color: color, shape: BoxShape.circle),
+                    ),
+                    title: Text(a.name),
+                    onTap: () => Navigator.pop(ctx, a),
+                  ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          );
+        },
+      );
+    }
+
+    if (activity != null) widget.onStartTimer?.call(activity, project, task);
+  }
+
   void _showWebHint(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -345,6 +471,7 @@ class _GanttTaskCard extends StatelessWidget {
   final String projectTitle;
   final void Function(String taskId, int actionIdx, bool value) onTaskActionToggled;
   final VoidCallback onTap;
+  final VoidCallback? onPlay;
 
   const _GanttTaskCard({
     required this.project,
@@ -355,6 +482,7 @@ class _GanttTaskCard extends StatelessWidget {
     required this.projectTitle,
     required this.onTaskActionToggled,
     required this.onTap,
+    this.onPlay,
   });
 
   @override
@@ -422,8 +550,23 @@ class _GanttTaskCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 4),
                   ],
-                  Icon(Icons.chevron_right,
-                      size: 16, color: cs.onSurface.withOpacity(.25)),
+                  if (onPlay != null)
+                    GestureDetector(
+                      onTap: onPlay,
+                      child: Container(
+                        margin: const EdgeInsets.only(left: 4),
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: color.withOpacity(.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(Icons.play_arrow_rounded,
+                            size: 18, color: color),
+                      ),
+                    )
+                  else
+                    Icon(Icons.chevron_right,
+                        size: 16, color: cs.onSurface.withOpacity(.25)),
                 ],
               ),
               Text(

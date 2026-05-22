@@ -8,6 +8,24 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.0', '22 mai 2026', [
+    (Icons.account_tree_outlined, 'Nouvelle nav : Accueil · Projets · Maintenant · ORION'),
+    (Icons.play_circle_outline, 'Maintenant : camembert du jour + flow démarrer (activité → tâche Gantt)'),
+    (Icons.checklist_outlined, 'Maintenant actif : timer + tâche Gantt liée + sous-actions cochables'),
+    (Icons.account_tree_outlined, 'Projets : bouton ▶ sur chaque tâche pour lancer directement'),
+    (Icons.document_scanner_outlined, 'Fiche projet : documents liés au projet visibles en bas'),
+    (Icons.today_outlined, 'Projets : phases affichées, tâches filtrées sur aujourd\'hui uniquement'),
+  ]),
+  _Entry('4.4', '22 mai 2026', [
+    (Icons.picture_as_pdf_outlined, 'PDF Gantt : emojis retirés des titres et descriptions'),
+  ]),
+  _Entry('4.3', '22 mai 2026', [
+    (Icons.image_outlined, 'Gantt : export PNG haute résolution (bouton 🖼 dans la barre de la grille)'),
+    (Icons.delete_outline, 'Gantt : suppression d\'une tâche depuis la fiche'),
+    (Icons.drag_handle, 'Gantt : réorganisation des actions par drag & drop'),
+    (Icons.open_in_full, 'Gantt : dialog tâche plus large (720px)'),
+    (Icons.light_mode_outlined, 'Gantt : bouton mode clair dans l\'app bar'),
+  ]),
   _Entry('4.2', '22 mai 2026', [
     (Icons.account_tree_outlined, 'Objectifs unifiés — les projets Gantt sont désormais la seule source de vérité, accessibles via le bouton ⬡ dans la barre'),
     (Icons.flag_outlined, 'Suppression du système GTD Goals — plus de confusion entre deux systèmes'),
