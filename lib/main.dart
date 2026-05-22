@@ -39,20 +39,20 @@ import 'package:productivitwo_v1/widgets/routine_freq_card.dart';
 import 'package:productivitwo_v1/widgets/changelog_sheet.dart';
 import 'package:productivitwo_v1/widgets/privacy_policy_screen.dart';
 import 'package:productivitwo_v1/widgets/api_tokens_screen.dart';
-import 'package:productivitwo_v1/widgets/orion_config_sheet.dart';
 import 'package:productivitwo_v1/web/web_app_stub.dart'
     if (dart.library.html) 'package:productivitwo_v1/web/web_app.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/dev_logger.dart';
 import 'package:productivitwo_v1/pro_manager.dart';
+import 'package:productivitwo_v1/fcm_service.dart';
 import 'package:uuid/uuid.dart';
 import 'package:productivitwo_v1/widgets/paywall_sheet.dart';
 import 'package:productivitwo_v1/widgets/apple_sign_in_button.dart';
 import 'package:productivitwo_v1/widgets/programmes_sheet.dart';
 import 'package:productivitwo_v1/widgets/project_sheet.dart';
+import 'package:productivitwo_v1/widgets/orion_screen.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
 import 'package:productivitwo_v1/web/assistant_widget.dart';
-import 'package:productivitwo_v1/web/assistant_history_sheet.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -1930,6 +1930,15 @@ class _AppRootState extends State<AppRoot>
           .toList();
       await NotificationService.scheduleBlockReminders(blocks: blocksWithTime);
 
+      // FCM — enregistre le token et écoute les notifications ORION
+      final uid = _sync.uid;
+      if (uid != null) {
+        FcmService.onOrionNotificationTap = () {
+          if (mounted) OrionScreen.show(context, _sync);
+        };
+        unawaited(FcmService.init(uid));
+      }
+
       // Injecte les actions récurrentes pour aujourd'hui + 7 prochains jours
       final now2 = DateTime.now();
       for (int i = 0; i < 8; i++) {
@@ -3519,8 +3528,8 @@ class _AppRootState extends State<AppRoot>
                 backgroundColor: const Color(0xFFe8c94a),
                 child: const Icon(Icons.smart_toy_outlined, size: 20),
               ),
-              tooltip: 'Messages ORION',
-              onPressed: () => AssistantHistorySheet.show(context),
+              tooltip: 'ORION',
+              onPressed: () => OrionScreen.show(context, _sync),
             ),
             const SizedBox(width: 4),
             PopupMenuButton<String>(
@@ -3558,13 +3567,6 @@ class _AppRootState extends State<AppRoot>
                   Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => const PrivacyPolicyScreen(),
                   ));
-                } else if (v == 'orion_config') {
-                  showModalBottomSheet(
-                    context: context,
-                    isScrollControlled: true,
-                    showDragHandle: true,
-                    builder: (_) => OrionConfigSheet(sync: _sync),
-                  );
                 } else if (v == 'api_tokens') {
                   Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => ApiTokensScreen(sync: _sync, uid: _sync.uid ?? ''),
@@ -3717,16 +3719,6 @@ class _AppRootState extends State<AppRoot>
                       Icon(Icons.privacy_tip_outlined, size: 18),
                       SizedBox(width: 12),
                       Text('Confidentialité'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'orion_config',
-                  child: Row(
-                    children: [
-                      Icon(Icons.smart_toy_outlined, size: 18),
-                      SizedBox(width: 12),
-                      Text('Configuration ORION'),
                     ],
                   ),
                 ),

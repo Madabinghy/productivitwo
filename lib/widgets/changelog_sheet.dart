@@ -8,6 +8,13 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('3.8', '22 mai 2026', [
+    (Icons.notifications_outlined, 'Notifications push ORION — reçois un message dès qu\'ORION génère un conseil (cron 6h, déclenchement manuel iOS ou web)'),
+  ]),
+  _Entry('3.7', '22 mai 2026', [
+    (Icons.smart_toy_outlined, 'ORION : nouvelle page dédiée avec identité visuelle, onboarding et statut de plan (Gratuit ∞ · Pro)'),
+    (Icons.message_outlined, 'Messages ORION redesignés : cards hiérarchisées, badge PRÉVU, réponse rapide en bas de page'),
+  ]),
   _Entry('3.6', '22 mai 2026', [
     (Icons.sync_outlined, 'iOS : projets, goals et domaines synchronisés en temps réel depuis Firestore'),
     (Icons.account_tree_outlined, 'Fix : projets Gantt affichés même si le domaine n\'est pas encore connu localement'),

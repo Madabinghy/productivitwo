@@ -40,6 +40,7 @@ exports.normalizePhases = normalizePhases;
 exports.normalizeTasks = normalizeTasks;
 const db_1 = require("./db");
 const uuid_1 = require("uuid");
+const admin = require("firebase-admin");
 function normalizePhases(phases) {
     if (!phases)
         return [];
@@ -84,10 +85,46 @@ async function executePushAssistantMessage(uid, args) {
         createdBy: "claude",
         shownAt: null,
     });
+    // Notification push FCM — fire and forget
+    sendOrionPushNotification(uid, args.text).catch(() => { });
     return (`✅ Message assistant programmé pour le ${args.targetDate}.\n` +
         `• Condition : ${args.condition.type}\n` +
         `• Texte : "${args.text.slice(0, 60)}${args.text.length > 60 ? "…" : ""}"\n` +
         `• messageId : ${id}`);
+}
+async function sendOrionPushNotification(uid, text) {
+    var _a;
+    const configSnap = await db_1.db.collection(`users/${uid}/orion_config`).doc("main").get();
+    if (!configSnap.exists)
+        return;
+    const fcmToken = (_a = configSnap.data()) === null || _a === void 0 ? void 0 : _a.fcmToken;
+    if (!fcmToken)
+        return;
+    const preview = text.length > 120 ? text.slice(0, 120) + "…" : text;
+    await admin.messaging().send({
+        token: fcmToken,
+        notification: {
+            title: "◉ ORION",
+            body: preview,
+        },
+        data: {
+            type: "orion_message",
+        },
+        apns: {
+            payload: {
+                aps: {
+                    sound: "default",
+                    badge: 1,
+                },
+            },
+        },
+        android: {
+            notification: {
+                channelId: "orion_messages",
+                priority: "high",
+            },
+        },
+    });
 }
 async function validateToken(uid, rawToken) {
     const q = await db_1.db

@@ -3283,6 +3283,24 @@ class _OrionViewState extends State<_OrionView> {
                 Text('$_runCount / 50 activations aujourd\'hui',
                     style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.5))),
               ]),
+              const SizedBox(width: 12),
+              // Badge plan tarifaire
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: cs.outlineVariant.withOpacity(0.4)),
+                ),
+                child: Text.rich(
+                  TextSpan(children: [
+                    TextSpan(text: 'Gratuit ', style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.7))),
+                    TextSpan(text: '∞', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: cs.primary)),
+                    TextSpan(text: '  ·  Pro ', style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.5))),
+                    TextSpan(text: '5/j', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: cs.onSurface.withOpacity(0.7))),
+                  ]),
+                ),
+              ),
               const Spacer(),
               OutlinedButton.icon(
                 icon: const Icon(Icons.refresh_outlined, size: 14),

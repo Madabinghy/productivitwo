@@ -1,5 +1,6 @@
 import { db, FieldValue } from "./db";
 import { v4 as uuidv4 } from "uuid";
+import * as admin from "firebase-admin";
 import type { ProjectPhase, ProjectTask, PushGanttBody } from "./types";
 
 function normalizePhases(phases?: ProjectPhase[]): ProjectPhase[] {
@@ -61,12 +62,49 @@ async function executePushAssistantMessage(
     shownAt: null,
   });
 
+  // Notification push FCM — fire and forget
+  sendOrionPushNotification(uid, args.text).catch(() => {});
+
   return (
     `✅ Message assistant programmé pour le ${args.targetDate}.\n` +
     `• Condition : ${args.condition.type}\n` +
     `• Texte : "${args.text.slice(0, 60)}${args.text.length > 60 ? "…" : ""}"\n` +
     `• messageId : ${id}`
   );
+}
+
+async function sendOrionPushNotification(uid: string, text: string): Promise<void> {
+  const configSnap = await db.collection(`users/${uid}/orion_config`).doc("main").get();
+  if (!configSnap.exists) return;
+  const fcmToken = configSnap.data()?.fcmToken as string | undefined;
+  if (!fcmToken) return;
+
+  const preview = text.length > 120 ? text.slice(0, 120) + "…" : text;
+
+  await admin.messaging().send({
+    token: fcmToken,
+    notification: {
+      title: "◉ ORION",
+      body: preview,
+    },
+    data: {
+      type: "orion_message",
+    },
+    apns: {
+      payload: {
+        aps: {
+          sound: "default",
+          badge: 1,
+        },
+      },
+    },
+    android: {
+      notification: {
+        channelId: "orion_messages",
+        priority: "high",
+      },
+    },
+  });
 }
 
 async function validateToken(uid: string, rawToken: string): Promise<boolean> {
