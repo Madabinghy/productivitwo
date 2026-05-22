@@ -10,9 +10,6 @@ const _kOrionChannelId = 'orion_messages';
 const _kOrionChannelName = 'Messages ORION';
 const _kOrionNotifId = 100;
 
-// Appelé quand une notif ORION est tapée (app en arrière-plan ou terminée)
-void Function()? onOrionNotificationTap;
-
 /// Handler top-level requis par firebase_messaging pour le background
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -23,6 +20,9 @@ class FcmService {
   static final _messaging = FirebaseMessaging.instance;
   static final _localNotifs = FlutterLocalNotificationsPlugin();
   static bool _initialized = false;
+
+  // Appelé quand une notif ORION est tapée (app en arrière-plan ou terminée)
+  static void Function()? onOrionNotificationTap;
 
   static bool get _supported =>
       !kIsWeb && (Platform.isAndroid || Platform.isIOS);
