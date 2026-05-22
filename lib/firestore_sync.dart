@@ -363,6 +363,13 @@ class FirestoreSync {
     return snap.docs.map((d) => Project.from(d.data() as Map)).toList();
   }
 
+  Stream<List<Project>> streamProjects() {
+    if (uid == null) return const Stream.empty();
+    return _col('projects').snapshots().map(
+      (snap) => snap.docs.map((d) => Project.from(d.data() as Map)).toList(),
+    );
+  }
+
   Future<void> saveProject(Project project) async {
     if (uid == null) return;
     await _col('projects').doc(project.id).set(project.toJson());

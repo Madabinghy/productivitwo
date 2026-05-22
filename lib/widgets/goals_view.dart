@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -22,6 +24,7 @@ class _GoalsViewState extends State<GoalsView> {
   bool _showDone = false;
   List<Project> _projects = [];
   final _sync = FirestoreSync();
+  StreamSubscription<List<Project>>? _projectsSub;
 
   AppLogic get logic => widget.logic;
   AppState get st => widget.state;
@@ -29,14 +32,15 @@ class _GoalsViewState extends State<GoalsView> {
   @override
   void initState() {
     super.initState();
-    _loadProjects();
+    _projectsSub = _sync.streamProjects().listen((projects) {
+      if (mounted) setState(() => _projects = projects);
+    });
   }
 
-  Future<void> _loadProjects() async {
-    try {
-      final projects = await _sync.fetchProjects();
-      if (mounted) setState(() => _projects = projects);
-    } catch (_) {}
+  @override
+  void dispose() {
+    _projectsSub?.cancel();
+    super.dispose();
   }
 
   @override

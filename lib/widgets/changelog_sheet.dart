@@ -8,6 +8,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('3.3', '22 mai 2026', [
+    (Icons.sync_outlined, 'iOS : projets Gantt mis à jour en temps réel dans la vue Objectifs'),
+  ]),
   _Entry('3.2', '21 mai 2026', [
     (Icons.account_tree_outlined, 'Objectifs unifiés : tâches Gantt actives visibles dans la vue Objectifs iOS'),
     (Icons.check_box_outlined, 'Sous-actions des tâches Gantt cochables directement depuis les Objectifs'),
