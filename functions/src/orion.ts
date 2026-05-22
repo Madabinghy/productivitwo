@@ -2,13 +2,44 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { PromptCachingBetaMessageParam, PromptCachingBetaTool } from "@anthropic-ai/sdk/resources/beta/prompt-caching/messages";
 import { db, FieldValue } from "./db";
 import {
-  executeGetUserContext,
-  executeGetAssistantMessages,
-  executePushAssistantMessage,
+  executeGetUserContext, executeGetAssistantMessages, executePushAssistantMessage,
+  executeDeleteAssistantMessage, executeUpdateActivityGoal, executeCreateRoutine,
+  executeCreateRecurringAction, executeAddToDayPlan, executeGetDayBlocks,
+  executeGetDayPlan, executePlanDay, executeClearDayPlan, executeCreateActivity,
+  executeUpdateActivity, executeUpdateActivityGoal as _uag, executeDeleteActivity,
+  executeDeleteAction, executeCreateDomain, executeDeleteDomain,
+  executeListProjects, executeGetProject, executePushGantt, executeUpdateProject,
+  executeUpdateTaskStatus, executeArchiveProject, executeDeleteProject,
+  executeLinkGoalToTask, executeDeleteGoal, executeDeleteRoutine,
+  executeGetDocuments, executeSaveDocument, executeGetDocumentTemplate,
+  executeGetArchives, executeRestoreItem,
 } from "./execute";
+import {
+  GET_USER_CONTEXT_TOOL, UPDATE_ACTIVITY_GOAL_TOOL, CREATE_ROUTINE_TOOL,
+  CREATE_RECURRING_ACTION_TOOL, ADD_TO_DAY_PLAN_TOOL, CREATE_ACTIVITY_TOOL,
+  CREATE_DOMAIN_TOOL, PUSH_ASSISTANT_MESSAGE_TOOL, DELETE_DOMAIN_TOOL,
+  GET_DOCUMENT_TEMPLATE_TOOL, SAVE_DOCUMENT_TOOL, GET_DOCUMENTS_TOOL,
+  DELETE_DOCUMENT_TOOL, GET_ARCHIVES_TOOL, RESTORE_ITEM_TOOL, DELETE_ACTION_TOOL,
+  DELETE_ACTIVITY_TOOL, UPDATE_PROJECT_TOOL, UPDATE_TASK_STATUS_TOOL,
+  UPDATE_ACTIVITY_TOOL, LINK_GOAL_TO_TASK_TOOL, DELETE_ROUTINE_TOOL,
+  DELETE_GOAL_TOOL, CLEAR_DAY_PLAN_TOOL, GET_DAY_BLOCKS_TOOL, GET_DAY_PLAN_TOOL,
+  PLAN_DAY_TOOL, ARCHIVE_PROJECT_TOOL, DELETE_PROJECT_TOOL, LIST_PROJECTS_TOOL,
+  GET_PROJECT_TOOL, PUSH_GANTT_MCP_TOOL,
+  GET_ASSISTANT_MESSAGES_TOOL, DELETE_ASSISTANT_MESSAGE_TOOL,
+} from "./tools";
+import type { PushGanttBody } from "./types";
 
-const ORION_MAX_RUNS = 5;
+const ORION_MAX_RUNS = 50;
 const ORION_MODEL = "claude-haiku-4-5-20251001";
+
+// ── Convertit un tool MCP (inputSchema) en tool Anthropic (input_schema) ──────
+function toAT(t: { name: string; description: string; inputSchema: unknown }): PromptCachingBetaTool {
+  return {
+    name: t.name,
+    description: t.description,
+    input_schema: t.inputSchema as PromptCachingBetaTool["input_schema"],
+  };
+}
 
 // ── Config utilisateur ────────────────────────────────────────────────────────
 
@@ -54,7 +85,7 @@ async function incrementOrionRunCount(uid: string, date: string): Promise<void> 
     .set({ count: FieldValue.increment(1), uid, date }, { merge: true });
 }
 
-// ── Cycle ORION ───────────────────────────────────────────────────────────────
+// ── Cycle ORION — accès complet à tous les tools ──────────────────────────────
 
 export async function runOrionCycle(uid: string): Promise<{
   skipped: boolean;
@@ -67,7 +98,6 @@ export async function runOrionCycle(uid: string): Promise<{
     return { skipped: true, reason: `Limite journalière atteinte (${count}/${ORION_MAX_RUNS})` };
   }
 
-  // Incrémenter avant l'appel Claude (évite les doublons en cas de retry)
   await incrementOrionRunCount(uid, today);
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -77,69 +107,55 @@ export async function runOrionCycle(uid: string): Promise<{
   const client = new Anthropic({ apiKey });
 
   const userContext = [
-    config.userNeeds
-      ? `Instructions persistantes de l'utilisateur :\n${config.userNeeds}`
-      : "",
+    config.userNeeds ? `Instructions de l'utilisateur :\n${config.userNeeds}` : "",
     config.userReply
-      ? `Dernière réponse de l'utilisateur à ORION (${config.replyTimestamp ?? "récent"}) :\n${config.userReply}`
+      ? `Dernière réponse de l'utilisateur (${config.replyTimestamp ?? "récent"}) :\n${config.userReply}`
       : "",
   ]
     .filter(Boolean)
     .join("\n\n");
 
-  const systemPrompt = `Tu es ORION, l'assistant IA autonome de Productivitwo. Tu fonctionnes silencieusement en arrière-plan pour soutenir l'utilisateur dans sa productivité et ses objectifs.
+  const systemPrompt = `Tu es ORION, l'agent IA autonome de Productivitwo. Tu as accès à tous les outils de l'app et tu peux agir directement sur les données de l'utilisateur.
 
 Date du jour : ${today}${userContext ? `\n\n${userContext}` : ""}
 
-Mission pour ce cycle :
-1. Appelle get_assistant_messages — vérifie les messages ORION en attente pour éviter les doublons.
-2. Appelle get_user_context — analyse l'état actuel (activités, objectifs, projets, plan du jour).
-3. Génère 1 ou 2 messages ORION pertinents et non-redondants via push_assistant_message.
+Ta mission pour ce cycle :
+1. Appelle get_assistant_messages pour voir les messages ORION en attente (évite les doublons).
+2. Appelle get_user_context pour analyser l'état complet de l'utilisateur.
+3. Si l'utilisateur a donné des instructions ou répondu à un message, exécute ce qu'il a demandé en utilisant les outils appropriés.
+4. Génère 1 ou 2 messages ORION contextuels via push_assistant_message pour informer l'utilisateur de ce que tu as fait ou de ce qu'il devrait faire.
 
-Règles impératives :
-- Aucun doublon avec les messages pending existants.
-- Messages courts (< 180 caractères), bienveillants, concrets, actionnables.
-- Utilise des conditions contextuelles adaptées (project_deadline_near, overdue_count, week_start, etc.).
-- targetDate = aujourd'hui (${today}) ou demain au maximum.
-- characterName toujours "ORION".
-- Si userReply est fourni, adapte le message en tenant compte de ce retour utilisateur.`;
+Règles :
+- Lis TOUJOURS get_user_context avant d'agir pour avoir le contexte complet.
+- Si l'instruction est ambiguë ou destructive (delete), envoie d'abord un message ORION pour confirmation plutôt que d'agir directement.
+- Pour les actions réversibles (archive, update, plan), agis directement si l'intention est claire.
+- Messages ORION courts (< 180 chars), bienveillants, actionnables.
+- Pas de doublons avec les messages pending existants.
+- characterName toujours "ORION".`;
 
-  // Tools ORION : lecture + push uniquement
-  const tools: PromptCachingBetaTool[] = [
-    {
-      name: "get_user_context",
-      description: "Retourne le contexte complet de l'utilisateur (activités, objectifs, plan du jour, projets).",
-      input_schema: { type: "object" as const, properties: {}, required: [] },
-    },
-    {
-      name: "get_assistant_messages",
-      description: "Liste les messages ORION en attente et récents. Appeler en premier pour éviter les doublons.",
-      input_schema: { type: "object" as const, properties: {}, required: [] },
-    },
-    {
-      name: "push_assistant_message",
-      description: "Planifie un message ORION contextuel pour l'utilisateur.",
-      input_schema: {
-        type: "object" as const,
-        properties: {
-          targetDate: { type: "string", description: "Date YYYY-MM-DD" },
-          text: { type: "string", description: "Texte du message (max 180 chars)" },
-          condition: {
-            type: "object",
-            description: "Condition d'affichage. Ex: {type:'always'} ou {type:'overdue_count',min:2}",
-          },
-          expiresAfterDays: { type: "number", description: "Durée d'expiration en jours (défaut: 2)" },
-          priority: { type: "number", description: "Priorité 1 (haute) à 5 (basse)" },
-        },
-        required: ["targetDate", "text", "condition"],
-      },
-      // Cache les tool schemas (statiques entre appels)
-      cache_control: { type: "ephemeral" },
-    },
+  // Tous les tools disponibles — cache sur le dernier
+  const allMcpTools = [
+    GET_USER_CONTEXT_TOOL, GET_ASSISTANT_MESSAGES_TOOL, GET_DAY_BLOCKS_TOOL,
+    GET_DAY_PLAN_TOOL, GET_DOCUMENTS_TOOL, GET_DOCUMENT_TEMPLATE_TOOL,
+    GET_ARCHIVES_TOOL, LIST_PROJECTS_TOOL, GET_PROJECT_TOOL,
+    PLAN_DAY_TOOL, CLEAR_DAY_PLAN_TOOL, ADD_TO_DAY_PLAN_TOOL,
+    CREATE_ACTIVITY_TOOL, UPDATE_ACTIVITY_TOOL, UPDATE_ACTIVITY_GOAL_TOOL, DELETE_ACTIVITY_TOOL,
+    CREATE_ROUTINE_TOOL, DELETE_ROUTINE_TOOL, CREATE_RECURRING_ACTION_TOOL, DELETE_ACTION_TOOL,
+    CREATE_DOMAIN_TOOL, DELETE_DOMAIN_TOOL,
+    UPDATE_PROJECT_TOOL, UPDATE_TASK_STATUS_TOOL, ARCHIVE_PROJECT_TOOL,
+    DELETE_PROJECT_TOOL, PUSH_GANTT_MCP_TOOL,
+    LINK_GOAL_TO_TASK_TOOL, DELETE_GOAL_TOOL,
+    SAVE_DOCUMENT_TOOL, DELETE_DOCUMENT_TOOL, RESTORE_ITEM_TOOL,
+    PUSH_ASSISTANT_MESSAGE_TOOL, DELETE_ASSISTANT_MESSAGE_TOOL,
   ];
 
+  const tools: PromptCachingBetaTool[] = allMcpTools.map((t, i) => ({
+    ...toAT(t as Parameters<typeof toAT>[0]),
+    ...(i === allMcpTools.length - 1 ? { cache_control: { type: "ephemeral" as const } } : {}),
+  }));
+
   const messages: PromptCachingBetaMessageParam[] = [
-    { role: "user", content: "Effectue ton analyse et génère les messages ORION pour aujourd'hui." },
+    { role: "user", content: "Effectue ton analyse et agis selon mes instructions." },
   ];
 
   let pushedCount = 0;
@@ -148,14 +164,8 @@ Règles impératives :
   while (continueLoop) {
     const response = await client.beta.promptCaching.messages.create({
       model: ORION_MODEL,
-      max_tokens: 1024,
-      system: [
-        {
-          type: "text",
-          text: systemPrompt,
-          cache_control: { type: "ephemeral" },
-        },
-      ],
+      max_tokens: 2048,
+      system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
       tools,
       messages,
     });
@@ -172,31 +182,72 @@ Règles impératives :
 
       for (const block of response.content) {
         if (block.type !== "tool_use") continue;
-
+        const args = block.input as Record<string, unknown>;
         let result = "";
+
         try {
-          if (block.name === "get_user_context") {
-            result = await executeGetUserContext(uid);
-          } else if (block.name === "get_assistant_messages") {
-            result = await executeGetAssistantMessages(uid);
-          } else if (block.name === "push_assistant_message") {
-            result = await executePushAssistantMessage(
-              uid,
-              block.input as Parameters<typeof executePushAssistantMessage>[1]
-            );
-            pushedCount++;
-          } else {
-            result = `Outil non disponible dans ORION : ${block.name}`;
+          switch (block.name) {
+            // ── Lecture ──────────────────────────────────────────────────
+            case "get_user_context":        result = await executeGetUserContext(uid); break;
+            case "get_assistant_messages":  result = await executeGetAssistantMessages(uid); break;
+            case "get_day_blocks":          result = await executeGetDayBlocks(uid); break;
+            case "get_day_plan":            result = await executeGetDayPlan(uid, args.date as string); break;
+            case "get_documents":           result = await executeGetDocuments(uid, args.projectId as string | undefined, args.taskId as string | undefined); break;
+            case "get_document_template":   result = executeGetDocumentTemplate(); break;
+            case "get_archives":            result = await executeGetArchives(uid); break;
+            case "list_projects":           result = await executeListProjects(uid); break;
+            case "get_project":             result = await executeGetProject(uid, args.projectId as string); break;
+            // ── Plan du jour ─────────────────────────────────────────────
+            case "plan_day":                result = await executePlanDay(uid, args.date as string, args.items as Parameters<typeof executePlanDay>[2], (args.clearExisting as boolean) ?? false); break;
+            case "clear_day_plan":          result = await executeClearDayPlan(uid, args.date as string); break;
+            case "add_to_day_plan":         result = await executeAddToDayPlan(uid, args as Parameters<typeof executeAddToDayPlan>[1]); break;
+            // ── Activités ────────────────────────────────────────────────
+            case "create_activity":         result = await executeCreateActivity(uid, args as Parameters<typeof executeCreateActivity>[1]); break;
+            case "update_activity":         result = await executeUpdateActivity(uid, args.activityId as string, args); break;
+            case "update_activity_goal":    result = await executeUpdateActivityGoal(uid, args.activityId as string, args); break;
+            case "delete_activity":         result = await executeDeleteActivity(uid, args.activityId as string); break;
+            // ── Routines / Actions ───────────────────────────────────────
+            case "create_routine":          result = await executeCreateRoutine(uid, args as Parameters<typeof executeCreateRoutine>[1]); break;
+            case "delete_routine":          result = await executeDeleteRoutine(uid, args.routineId as string); break;
+            case "create_recurring_action": result = await executeCreateRecurringAction(uid, args as Parameters<typeof executeCreateRecurringAction>[1]); break;
+            case "delete_action":           result = await executeDeleteAction(uid, args.actionId as string); break;
+            // ── Domaines ─────────────────────────────────────────────────
+            case "create_domain":           result = await executeCreateDomain(uid, args as Parameters<typeof executeCreateDomain>[1]); break;
+            case "delete_domain":           result = await executeDeleteDomain(uid, args.domainId as string); break;
+            // ── Projets ──────────────────────────────────────────────────
+            case "update_project":          result = await executeUpdateProject(uid, args.projectId as string, args); break;
+            case "update_task_status":      result = await executeUpdateTaskStatus(uid, args.projectId as string, args.taskId as string, args.status as string); break;
+            case "archive_project":         result = await executeArchiveProject(uid, args.projectId as string, (args.restore as boolean) ?? false); break;
+            case "delete_project":          result = await executeDeleteProject(uid, args.projectId as string, (args.deleteObjective as boolean) ?? false); break;
+            case "push_gantt":              result = await executePushGantt(uid, { uid, ...args } as PushGanttBody); break;
+            // ── Objectifs ────────────────────────────────────────────────
+            case "link_goal_to_task":       result = await executeLinkGoalToTask(uid, args.goalId as string, (args.projectId as string) ?? null, (args.projectTaskId as string) ?? null); break;
+            case "delete_goal":             result = await executeDeleteGoal(uid, args.goalId as string, (args.action as string) ?? "archive"); break;
+            // ── Documents ────────────────────────────────────────────────
+            case "save_document":           result = await executeSaveDocument(uid, args as Parameters<typeof executeSaveDocument>[1]); break;
+            case "delete_document": {
+              const ref = db.collection(`users/${uid}/documents`).doc(args.documentId as string);
+              const snap = await ref.get();
+              if (!snap.exists) { result = `Document introuvable : ${args.documentId}`; break; }
+              await ref.delete();
+              result = `✅ Document supprimé.`;
+              break;
+            }
+            case "restore_item":            result = await executeRestoreItem(uid, args.collection as string, args.itemId as string); break;
+            // ── Messages ORION ───────────────────────────────────────────
+            case "push_assistant_message":
+              result = await executePushAssistantMessage(uid, args as Parameters<typeof executePushAssistantMessage>[1]);
+              pushedCount++;
+              break;
+            case "delete_assistant_message": result = await executeDeleteAssistantMessage(uid, args.messageId as string); break;
+            default:
+              result = `Outil inconnu dans ORION : ${block.name}`;
           }
         } catch (e) {
           result = `Erreur outil ${block.name} : ${e instanceof Error ? e.message : String(e)}`;
         }
 
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: block.id,
-          content: result,
-        });
+        toolResults.push({ type: "tool_result", tool_use_id: block.id, content: result });
       }
 
       messages.push({ role: "user", content: toolResults as PromptCachingBetaMessageParam["content"] });
@@ -217,7 +268,6 @@ export async function getAllActiveUserIds(): Promise<string[]> {
     .get();
   const uids = new Set<string>();
   for (const doc of snap.docs) {
-    // path : users/{uid}/api_tokens/{id}
     const parts = doc.ref.path.split("/");
     if (parts.length >= 2) uids.add(parts[1]);
   }
