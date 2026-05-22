@@ -482,6 +482,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
               onRestore: (p) => _archiveProject(p, false),
               onTap: (p) => Navigator.push(context,
                   MaterialPageRoute(builder: (_) => GanttScreen(project: p))),
+              onDelete: (p) => _deleteProject(p),
             ),
           ],
         ],
@@ -502,6 +503,11 @@ class _WebHomeScreenState extends State<WebHomeScreen>
 
   Future<void> _archiveProject(Project p, bool archive) async {
     await _sync.saveProject(p..status = archive ? 'archived' : 'active');
+    _load();
+  }
+
+  Future<void> _deleteProject(Project p) async {
+    await _sync.deleteProject(p.id);
     _load();
   }
 
@@ -1874,10 +1880,12 @@ class _ArchivedSection extends StatefulWidget {
   final List<Project> projects;
   final void Function(Project) onRestore;
   final void Function(Project) onTap;
+  final void Function(Project) onDelete;
   const _ArchivedSection({
     required this.projects,
     required this.onRestore,
     required this.onTap,
+    required this.onDelete,
   });
 
   @override
@@ -1925,6 +1933,7 @@ class _ArchivedSectionState extends State<_ArchivedSection> {
               project: p,
               onRestore: () => widget.onRestore(p),
               onTap: () => widget.onTap(p),
+              onDelete: () => widget.onDelete(p),
             ),
             const SizedBox(height: 8),
           ],
@@ -1938,10 +1947,12 @@ class _ArchivedProjectCard extends StatelessWidget {
   final Project project;
   final VoidCallback onRestore;
   final VoidCallback onTap;
+  final VoidCallback onDelete;
   const _ArchivedProjectCard({
     required this.project,
     required this.onRestore,
     required this.onTap,
+    required this.onDelete,
   });
 
   String _fmt(DateTime d) {
@@ -1994,6 +2005,39 @@ class _ArchivedProjectCard extends StatelessWidget {
                     style: TextStyle(
                         fontSize: 12, color: cs.primary.withOpacity(0.7))),
                 onPressed: onRestore,
+                style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact),
+              ),
+              TextButton.icon(
+                icon: Icon(Icons.delete_outline, size: 14,
+                    color: cs.error.withOpacity(0.7)),
+                label: Text('Supprimer',
+                    style: TextStyle(
+                        fontSize: 12, color: cs.error.withOpacity(0.7))),
+                onPressed: () async {
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Supprimer définitivement ?'),
+                      content: Text(
+                        'Le projet "${project.title}" sera supprimé définitivement. Cette action est irréversible.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('Annuler'),
+                        ),
+                        FilledButton(
+                          style: FilledButton.styleFrom(
+                              backgroundColor: cs.error),
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('Supprimer'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirm == true) onDelete();
+                },
                 style: TextButton.styleFrom(
                     visualDensity: VisualDensity.compact),
               ),
@@ -3332,6 +3376,10 @@ class _OrionViewState extends State<_OrionView> {
               ),
             ),
 
+            // ── Comment ça marche ────────────────────────────────────────
+            const SizedBox(height: 20),
+            const _OrionHowItWorksCard(),
+
             // ── Config actuelle ───────────────────────────────────────────
             if (_config != null) ...[
               const SizedBox(height: 24),
@@ -3777,6 +3825,317 @@ class _LinkIosDialogState extends State<_LinkIosDialog> {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ── Comment ça marche — ORION ─────────────────────────────────────────────────
+
+class _OrionHowItWorksCard extends StatefulWidget {
+  const _OrionHowItWorksCard();
+
+  @override
+  State<_OrionHowItWorksCard> createState() => _OrionHowItWorksCardState();
+}
+
+class _OrionHowItWorksCardState extends State<_OrionHowItWorksCard> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withOpacity(0.25),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.outlineVariant.withOpacity(0.35)),
+      ),
+      child: Column(
+        children: [
+          // ── Header cliquable ──────────────────────────────────────────
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            borderRadius: _expanded
+                ? const BorderRadius.vertical(top: Radius.circular(12))
+                : BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: Row(
+                children: [
+                  Icon(Icons.help_outline_rounded,
+                      size: 16, color: cs.primary.withOpacity(0.7)),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Comment ça marche ?',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurface.withOpacity(0.7),
+                    ),
+                  ),
+                  const Spacer(),
+                  Icon(
+                    _expanded ? Icons.expand_less : Icons.expand_more,
+                    size: 18,
+                    color: cs.onSurface.withOpacity(0.4),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // ── Contenu ──────────────────────────────────────────────────
+          if (_expanded) ...[
+            Divider(height: 1, color: cs.outlineVariant.withOpacity(0.3)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Schéma 3 acteurs
+                  LayoutBuilder(builder: (ctx, constraints) {
+                    final narrow = constraints.maxWidth < 600;
+                    final actors = [
+                      _OrionActor(
+                        icon: '✦',
+                        iconColor: const Color(0xFF6366f1),
+                        title: 'Claude',
+                        subtitle: 'claude.ai · Claude Desktop',
+                        description:
+                            'Tu lui parles en langage naturel. Via MCP, il lit et modifie tes données directement : crée des projets, planifie tes journées, gère tes objectifs.',
+                        cs: cs,
+                      ),
+                      _OrionActor(
+                        icon: '◉',
+                        iconColor: const Color(0xFF10b981),
+                        title: 'ORION',
+                        subtitle: 'Agent autonome · toutes les 6h',
+                        description:
+                            'Tourne en arrière-plan sans que tu aies à lui demander. Il analyse ton contexte, détecte tes retards et te pousse des messages actionnables sur iOS.',
+                        cs: cs,
+                      ),
+                      _OrionActor(
+                        icon: '⬡',
+                        iconColor: const Color(0xFF8b5cf6),
+                        title: 'App web',
+                        subtitle: 'Projets · Documents · Pilotage',
+                        description:
+                            'Ton tableau de bord Gantt. Tu peux aussi déclencher ORION manuellement, voir ses logs et configurer ses instructions depuis ici.',
+                        cs: cs,
+                      ),
+                    ];
+
+                    return narrow
+                        ? Column(
+                            children: actors
+                                .map((a) => Padding(
+                                      padding: const EdgeInsets.only(bottom: 12),
+                                      child: a,
+                                    ))
+                                .toList(),
+                          )
+                        : Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(child: actors[0]),
+                              _Arrow(cs: cs),
+                              Expanded(child: actors[1]),
+                              _Arrow(cs: cs),
+                              Expanded(child: actors[2]),
+                            ],
+                          );
+                  }),
+
+                  const SizedBox(height: 20),
+
+                  // Firestore — socle commun
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFf97316).withOpacity(0.06),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                          color: const Color(0xFFf97316).withOpacity(0.2)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Text('🗄', style: TextStyle(fontSize: 16)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Firestore — tes données, partagées en temps réel',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: cs.onSurface.withOpacity(0.8),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Domaines · Activités · Projets Gantt · Plan du jour · Messages ORION',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: cs.onSurface.withOpacity(0.45),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Flux en 4 étapes
+                  Text(
+                    'Le flux en pratique',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: cs.onSurface.withOpacity(0.55),
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  for (final step in [
+                    ('1', 'Tu configures tes données',
+                        'Depuis l\'app iOS ou en demandant à Claude de le faire.'),
+                    ('2', 'ORION analyse toutes les 6h',
+                        'Il lit ton contexte complet et génère 1 à 3 messages ciblés.'),
+                    ('3', 'Tu reçois une notification push',
+                        'Le message apparaît dans l\'app iOS avec une action directe.'),
+                    ('4', 'Tu peux aussi déclencher manuellement',
+                        'Via les actions rapides ci-dessous ou en activant depuis iOS.'),
+                  ])
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 22,
+                            height: 22,
+                            margin: const EdgeInsets.only(top: 1, right: 12),
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: cs.primary.withOpacity(0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Text(
+                              step.$1,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: cs.primary,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(step.$2,
+                                    style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600)),
+                                Text(step.$3,
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color:
+                                            cs.onSurface.withOpacity(0.5))),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _OrionActor extends StatelessWidget {
+  final String icon;
+  final Color iconColor;
+  final String title;
+  final String subtitle;
+  final String description;
+  final ColorScheme cs;
+
+  const _OrionActor({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+    required this.description,
+    required this.cs,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: iconColor.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: iconColor.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Text(icon,
+                style: TextStyle(
+                    fontSize: 16,
+                    color: iconColor,
+                    fontWeight: FontWeight.bold)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(title,
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: cs.onSurface)),
+            ),
+          ]),
+          const SizedBox(height: 4),
+          Text(subtitle,
+              style: TextStyle(
+                  fontSize: 10,
+                  color: iconColor.withOpacity(0.8),
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          Text(description,
+              style: TextStyle(
+                  fontSize: 12,
+                  color: cs.onSurface.withOpacity(0.55),
+                  height: 1.5)),
+        ],
+      ),
+    );
+  }
+}
+
+class _Arrow extends StatelessWidget {
+  final ColorScheme cs;
+  const _Arrow({required this.cs});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 24),
+      child: Icon(Icons.sync_alt_rounded,
+          size: 18, color: cs.onSurface.withOpacity(0.2)),
     );
   }
 }

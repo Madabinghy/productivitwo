@@ -8,6 +8,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('4.1', '22 mai 2026', [
+    (Icons.delete_outline, 'Web : suppression définitive d\'un projet archivé'),
+    (Icons.help_outline_rounded, 'Web : schéma "Comment ça marche ?" dans le tab ORION'),
+  ]),
   _Entry('4.0', '22 mai 2026', [
     (Icons.bolt_outlined, 'Web : fix actions rapides ORION (Analyser retards, Deadlines…) — envoyées au bon endpoint'),
   ]),
