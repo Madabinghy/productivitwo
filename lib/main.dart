@@ -1581,6 +1581,7 @@ class _AppRootState extends State<AppRoot>
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   StreamSubscription<List<Goal>>? _goalsSub;
+  StreamSubscription<List<Domain>>? _domainsSub;
   bool _wasOffline = false;
   List<AssistantMessageData> _assistantMessages = [];
 
@@ -1670,6 +1671,7 @@ class _AppRootState extends State<AppRoot>
     _heartbeat?.cancel();
     _connectivitySub?.cancel();
     _goalsSub?.cancel();
+    _domainsSub?.cancel();
     _tick.dispose();
     _confettiController.dispose();
     _tabFadeController.dispose();
@@ -1867,13 +1869,15 @@ class _AppRootState extends State<AppRoot>
       });
     }
 
-    // Stream temps réel des goals — se met à jour dès qu'un goal change dans Firestore
+    // Streams temps réel — se mettent à jour dès qu'une donnée change dans Firestore
     if (firestoreEnabled) {
       _goalsSub?.cancel();
       _goalsSub = _sync.streamGoals().listen((goals) {
-        if (mounted && _state != null) {
-          setState(() => _state!.goals = goals);
-        }
+        if (mounted && _state != null) setState(() => _state!.goals = goals);
+      });
+      _domainsSub?.cancel();
+      _domainsSub = _sync.streamDomains().listen((domains) {
+        if (mounted && _state != null) setState(() => _state!.domains = domains);
       });
     }
 

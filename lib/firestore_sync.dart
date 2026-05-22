@@ -376,6 +376,14 @@ class FirestoreSync {
         snap.docs.map((d) => Goal.from(d.data() as Map)).toList());
   }
 
+  Stream<List<Domain>> streamDomains() {
+    if (uid == null) return const Stream.empty();
+    return _col('domains').snapshots().map((snap) => snap.docs
+        .map((d) => Domain.from(d.data() as Map))
+        .where((d) => !d.deleted)
+        .toList());
+  }
+
   Future<void> saveProject(Project project) async {
     if (uid == null) return;
     await _col('projects').doc(project.id).set(project.toJson());

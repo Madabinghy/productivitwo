@@ -8,6 +8,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('3.6', '22 mai 2026', [
+    (Icons.sync_outlined, 'iOS : projets, goals et domaines synchronisés en temps réel depuis Firestore'),
+    (Icons.account_tree_outlined, 'Fix : projets Gantt affichés même si le domaine n\'est pas encore connu localement'),
+  ]),
   _Entry('3.5', '22 mai 2026', [
     (Icons.key_outlined, 'Fix : tokens API affichés correctement (Timestamp Firestore → DateTime)'),
   ]),

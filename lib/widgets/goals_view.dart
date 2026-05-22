@@ -203,9 +203,11 @@ class _GoalsViewState extends State<GoalsView> {
       ),
     ));
 
-    // Domaines dans l'ordre de st.domains, puis null
+    // Domaines dans l'ordre de st.domains, puis domaines inconnus, puis null
+    final knownIds = st.domains.map((d) => d.id).toSet();
     final orderedDomainIds = [
       ...st.domains.map((d) => d.id).where(byDomain.containsKey),
+      ...byDomain.keys.where((k) => k != null && !knownIds.contains(k)),
       if (byDomain.containsKey(null)) null,
     ];
 
