@@ -502,7 +502,6 @@ class _WebHomeScreenState extends State<WebHomeScreen>
     switch (action.type) {
       case 'open_day_plan':
       case 'open_goals':
-        // Redirige vers l'onglet Focus (index 1)
         _mainTabs.animateTo(1);
       case 'open_project':
         final projectId = action.payload?['projectId'] as String?;
@@ -511,6 +510,16 @@ class _WebHomeScreenState extends State<WebHomeScreen>
         if (p == null) return;
         Navigator.push(context,
             MaterialPageRoute(builder: (_) => GanttScreen(project: p)));
+      case 'open_gantt_task':
+        final projectId = action.payload?['projectId'] as String?;
+        final taskId   = action.payload?['taskId']   as String?;
+        if (projectId == null) return;
+        final p = _projects.where((p) => p.id == projectId).firstOrNull;
+        if (p == null) return;
+        Navigator.push(context,
+            MaterialPageRoute(
+              builder: (_) => GanttScreen(project: p, targetTaskId: taskId),
+            ));
       case 'open_activity':
         _mainTabs.animateTo(1);
     }

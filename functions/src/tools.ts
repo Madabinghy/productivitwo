@@ -268,8 +268,8 @@ const PUSH_ASSISTANT_MESSAGE_TOOL = {
         properties: {
           type: {
             type: "string",
-            enum: ["open_day_plan", "open_project", "open_activity", "open_goals"],
-            description: "Deep link vers l'écran concerné",
+            enum: ["open_day_plan", "open_project", "open_gantt_task", "open_activity", "open_goals"],
+            description: "Deep link — open_gantt_task ouvre la fiche de la tâche directement (payload: { projectId, taskId })",
           },
           label: { type: "string", description: "Libellé du bouton (ex: 'Voir le plan')" },
           payload: {

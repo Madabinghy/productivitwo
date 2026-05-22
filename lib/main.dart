@@ -2171,6 +2171,7 @@ class _AppRootState extends State<AppRoot>
       case 'open_goals':
         setState(() => _tab = _Tab.today);
       case 'open_project':
+      case 'open_gantt_task':
         setState(() => _tab = _Tab.dashboard);
       case 'open_activity':
         setState(() => _tab = _Tab.now);

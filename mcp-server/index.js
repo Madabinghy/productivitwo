@@ -134,7 +134,7 @@ const PUSH_ASSISTANT_MESSAGE_TOOL = {
       action: {
         type: "object",
         properties: {
-          type: { type: "string", enum: ["open_day_plan", "open_project", "open_activity", "open_goals"] },
+          type: { type: "string", enum: ["open_day_plan", "open_project", "open_gantt_task", "open_activity", "open_goals"] },
           label: { type: "string" },
           payload: { type: "object" },
         },

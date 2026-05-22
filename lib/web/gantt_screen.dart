@@ -36,7 +36,8 @@ Color _gridColorAlt(BuildContext ctx) {
 
 class GanttScreen extends StatefulWidget {
   final Project project;
-  const GanttScreen({super.key, required this.project});
+  final String? targetTaskId;
+  const GanttScreen({super.key, required this.project, this.targetTaskId});
 
   @override
   State<GanttScreen> createState() => _GanttScreenState();
@@ -50,6 +51,16 @@ class _GanttScreenState extends State<GanttScreen> {
   void initState() {
     super.initState();
     _project = widget.project;
+    if (widget.targetTaskId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openTargetTask());
+    }
+  }
+
+  void _openTargetTask() {
+    final task = _project.tasks
+        .where((t) => t.id == widget.targetTaskId)
+        .firstOrNull;
+    if (task != null) _onTaskTap(task);
   }
 
   Future<void> _exportPdf() async {
