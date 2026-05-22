@@ -68,7 +68,30 @@ class AssistantEngine {
         today: today,
         dayPlan: dayPlan,
       );
-      if (fallbacks.isNotEmpty) _fallbackShownThisSession = true;
+      if (fallbacks.isNotEmpty) {
+        _fallbackShownThisSession = true;
+        // Persister en Firestore pour qu'ils apparaissent dans l'historique
+        for (final msg in fallbacks) {
+          _db.collection('users/$uid/assistant_messages').doc('${todayStr}_${msg.id}').set({
+            'id': '${todayStr}_${msg.id}',
+            'targetDate': todayStr,
+            'text': msg.text,
+            'characterName': msg.characterName,
+            'condition': {'type': 'always'},
+            'priority': msg.priority,
+            'status': 'shown',
+            'createdBy': 'fallback',
+            'createdAt': FieldValue.serverTimestamp(),
+            'shownAt': FieldValue.serverTimestamp(),
+            'expiresAfterDays': 1,
+            'action': msg.action != null ? {
+              'type': msg.action!.type,
+              'label': msg.action!.label,
+              'payload': msg.action!.payload,
+            } : null,
+          }, SetOptions(merge: true));
+        }
+      }
       return fallbacks;
     }
 
