@@ -1,7 +1,8 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as admin from "firebase-admin";
-import { runOrionCycle, getAllActiveUserIds, getOrionRunCount, saveOrionConfig } from "./orion";
+import { runOrionCycle, getAllActiveUserIds, getOrionRunCount, saveOrionConfig, writeCycleLog } from "./orion";
+import { runDeterministicTask } from "./orion_tasks";
 import { v4 as uuidv4 } from "uuid";
 import { db, FieldValue } from "./db";
 import { MCP_PROMPTS, getPromptMessages, executeGetDocumentTemplate } from "./prompts";
@@ -333,15 +334,22 @@ export const orionWebhook = onRequest(
     if (req.method === "OPTIONS") { res.status(204).send(""); return; }
     if (req.method !== "POST") { res.status(405).json({ error: "Method Not Allowed" }); return; }
 
-    const { uid, token } = req.body as { uid?: string; token?: string };
+    const { uid, token, taskId } = req.body as { uid?: string; token?: string; taskId?: string };
     if (!uid || !token) { res.status(400).json({ error: "uid et token requis" }); return; }
 
     const valid = await validateToken(uid, token);
     if (!valid) { res.status(401).json({ error: "Token invalide ou révoqué" }); return; }
 
     try {
-      const result = await runOrionCycle(uid);
-      res.status(200).json({ success: true, ...result });
+      if (taskId) {
+        // Tâche déterministe — pas d'appel LLM, coût $0
+        const result = await runDeterministicTask(uid, taskId);
+        await writeCycleLog(uid, { userNeeds: `[déterministe] ${taskId}`, userReply: "", ...result, skipped: result.skipped });
+        res.status(200).json({ success: true, ...result });
+      } else {
+        const result = await runOrionCycle(uid);
+        res.status(200).json({ success: true, ...result });
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error(`ORION webhook erreur uid=${uid}:`, msg);

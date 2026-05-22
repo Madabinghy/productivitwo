@@ -5,6 +5,7 @@ const https_1 = require("firebase-functions/v2/https");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
 const orion_1 = require("./orion");
+const orion_tasks_1 = require("./orion_tasks");
 const uuid_1 = require("uuid");
 const db_1 = require("./db");
 const prompts_1 = require("./prompts");
@@ -347,7 +348,7 @@ exports.orionWebhook = (0, https_1.onRequest)({ cors: true, invoker: "public", s
         res.status(405).json({ error: "Method Not Allowed" });
         return;
     }
-    const { uid, token } = req.body;
+    const { uid, token, taskId } = req.body;
     if (!uid || !token) {
         res.status(400).json({ error: "uid et token requis" });
         return;
@@ -358,8 +359,16 @@ exports.orionWebhook = (0, https_1.onRequest)({ cors: true, invoker: "public", s
         return;
     }
     try {
-        const result = await (0, orion_1.runOrionCycle)(uid);
-        res.status(200).json(Object.assign({ success: true }, result));
+        if (taskId) {
+            // Tâche déterministe — pas d'appel LLM, coût $0
+            const result = await (0, orion_tasks_1.runDeterministicTask)(uid, taskId);
+            await (0, orion_1.writeCycleLog)(uid, Object.assign(Object.assign({ userNeeds: `[déterministe] ${taskId}`, userReply: "" }, result), { skipped: result.skipped }));
+            res.status(200).json(Object.assign({ success: true }, result));
+        }
+        else {
+            const result = await (0, orion_1.runOrionCycle)(uid);
+            res.status(200).json(Object.assign({ success: true }, result));
+        }
     }
     catch (e) {
         const msg = e instanceof Error ? e.message : String(e);

@@ -3093,13 +3093,16 @@ class _OrionViewState extends State<_OrionView> {
   static const _webhookUrl = 'https://orionsaveconfig-dzos75b65q-uc.a.run.app';
 
   // Actions pré-établies
+  // taskId non vide = déterministe ($0), need non vide = LLM (coût API)
   static const _presets = [
-    (icon: '📋', label: 'Analyser mes retards', need: 'Analyse mes tâches en retard et propose un plan de rattrapage'),
-    (icon: '🎯', label: 'Bilan de semaine', need: 'Fais un bilan de ma semaine et propose des ajustements pour la suivante'),
-    (icon: '⚡', label: 'Optimiser mon plan du jour', need: 'Optimise mon plan du jour en fonction de mes priorités et deadlines'),
-    (icon: '🗄', label: 'Archiver les projets inactifs', need: 'Archive les projets inactifs depuis plus de 2 semaines'),
-    (icon: '🔗', label: 'Lier objectifs et tâches', need: 'Lie mes objectifs GTD aux tâches Gantt correspondantes'),
-    (icon: '📊', label: 'Rapport de progression', need: 'Génère un rapport de progression sur tous mes projets actifs'),
+    (icon: '📋', label: 'Analyser mes retards',       taskId: 'overdue_summary',  need: ''),
+    (icon: '📅', label: 'Deadlines de la semaine',    taskId: 'weekly_deadlines', need: ''),
+    (icon: '🗄', label: 'Archiver projets inactifs',  taskId: 'archive_inactive', need: ''),
+    (icon: '📊', label: 'Rapport de progression',     taskId: 'progress_report',  need: ''),
+    (icon: '🧹', label: 'Nettoyer messages expirés',  taskId: 'clean_expired',    need: ''),
+    (icon: '🎯', label: 'Bilan de semaine',            taskId: '',  need: 'Fais un bilan de ma semaine et propose des ajustements pour la suivante'),
+    (icon: '⚡', label: 'Optimiser plan du jour',     taskId: '',  need: 'Optimise mon plan du jour en fonction de mes priorités et deadlines'),
+    (icon: '🔗', label: 'Lier objectifs et tâches',   taskId: '',  need: 'Lie mes objectifs GTD aux tâches Gantt correspondantes'),
   ];
 
   @override
@@ -3114,7 +3117,9 @@ class _OrionViewState extends State<_OrionView> {
       final uid = widget.sync.uid;
       if (uid == null) return;
 
-      final today = DateTime.now().toIso8601String().substring(0, 10);
+      final tokens = await widget.sync.fetchApiTokens();
+      final token = tokens.where((t) => t.active).firstOrNull?.token ?? '';
+
       final results = await Future.wait([
         FirebaseFirestore.instance
             .collection('users/$uid/orion_logs')
@@ -3130,23 +3135,30 @@ class _OrionViewState extends State<_OrionView> {
             .collection('users/$uid/orion_config')
             .doc('main')
             .get(),
-        FirebaseFirestore.instance
-            .collection('orion_runs')
-            .doc('${uid}_$today')
-            .get(),
+        // Compteur via HTTP (orion_runs est hors users/{uid}, règles Firestore restrictives)
+        if (token.isNotEmpty)
+          http.get(Uri.parse('https://orionruncount-dzos75b65q-uc.a.run.app?uid=$uid&token=$token'))
+        else
+          Future.value(null),
       ]);
 
       final logsSnap = results[0] as QuerySnapshot;
       final msgsSnap = results[1] as QuerySnapshot;
       final configSnap = results[2] as DocumentSnapshot;
-      final runSnap = results[3] as DocumentSnapshot;
+      final countResp = results[3];
+
+      int runCount = 0;
+      if (countResp is http.Response && countResp.statusCode == 200) {
+        final data = jsonDecode(countResp.body) as Map<String, dynamic>;
+        runCount = (data['count'] as int?) ?? 0;
+      }
 
       if (mounted) {
         setState(() {
           _logs = logsSnap.docs.map((d) => d.data() as Map<String, dynamic>).toList();
           _messages = msgsSnap.docs.map((d) => d.data() as Map<String, dynamic>).toList();
           _config = configSnap.exists ? configSnap.data() as Map<String, dynamic> : null;
-          _runCount = runSnap.exists ? (runSnap.data() as Map<String, dynamic>)['count'] as int? ?? 0 : 0;
+          _runCount = runCount;
           _loading = false;
         });
       }
@@ -3155,22 +3167,30 @@ class _OrionViewState extends State<_OrionView> {
     }
   }
 
-  Future<void> _triggerWithPreset(String need) async {
+  Future<void> _triggerWithPreset({required String taskId, required String need}) async {
     final uid = widget.sync.uid;
     final tokens = await widget.sync.fetchApiTokens();
     final token = tokens.where((t) => t.active).firstOrNull?.token;
     if (uid == null || token == null) return;
 
+    final isDeterministic = taskId.isNotEmpty;
     setState(() => _triggering = true);
     try {
+      final body = isDeterministic
+          ? {'uid': uid, 'token': token, 'taskId': taskId}
+          : {'uid': uid, 'token': token, 'userNeeds': need};
       final resp = await http.post(
         Uri.parse(_webhookUrl),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'uid': uid, 'token': token, 'userNeeds': need}),
+        body: jsonEncode(body),
       );
       if (resp.statusCode == 200 && mounted) {
+        final label = isDeterministic ? taskId : need.substring(0, need.length.clamp(0, 40));
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('ORION activé : "$need"'), behavior: SnackBarBehavior.floating),
+          SnackBar(
+            content: Text(isDeterministic ? 'Tâche ORION exécutée : $label' : 'ORION activé (LLM) : $label…'),
+            behavior: SnackBarBehavior.floating,
+          ),
         );
         await Future.delayed(const Duration(seconds: 2));
         _load();
@@ -3329,8 +3349,13 @@ class _OrionViewState extends State<_OrionView> {
               children: _presets.map((p) => ActionChip(
                 avatar: Text(p.icon, style: const TextStyle(fontSize: 14)),
                 label: Text(p.label, style: const TextStyle(fontSize: 13)),
-                onPressed: _triggering ? null : () => _triggerWithPreset(p.need),
-                backgroundColor: cs.surfaceContainerHighest.withOpacity(0.5),
+                backgroundColor: p.taskId.isNotEmpty
+                    ? Colors.green.withOpacity(0.08)
+                    : cs.surfaceContainerHighest.withOpacity(0.5),
+                side: p.taskId.isNotEmpty
+                    ? BorderSide(color: Colors.green.withOpacity(0.3))
+                    : null,
+                onPressed: _triggering ? null : () => _triggerWithPreset(taskId: p.taskId, need: p.need),
               )).toList(),
             ),
 

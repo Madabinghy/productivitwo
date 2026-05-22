@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getOrionConfig = getOrionConfig;
 exports.saveOrionConfig = saveOrionConfig;
 exports.getOrionRunCount = getOrionRunCount;
+exports.writeCycleLog = writeCycleLog;
 exports.runOrionCycle = runOrionCycle;
 exports.getAllActiveUserIds = getAllActiveUserIds;
 const sdk_1 = require("@anthropic-ai/sdk");

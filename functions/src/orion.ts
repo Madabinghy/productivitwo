@@ -101,7 +101,7 @@ async function incrementOrionRunCount(uid: string, date: string): Promise<void> 
 
 // ── Log de cycle ──────────────────────────────────────────────────────────────
 
-async function writeCycleLog(uid: string, log: {
+export async function writeCycleLog(uid: string, log: {
   userNeeds: string;
   userReply: string;
   actions: string[];
