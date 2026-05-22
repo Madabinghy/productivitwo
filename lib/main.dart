@@ -48,6 +48,7 @@ import 'package:uuid/uuid.dart';
 import 'package:productivitwo_v1/widgets/paywall_sheet.dart';
 import 'package:productivitwo_v1/widgets/apple_sign_in_button.dart';
 import 'package:productivitwo_v1/widgets/programmes_sheet.dart';
+import 'package:productivitwo_v1/widgets/project_sheet.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
 import 'package:productivitwo_v1/web/assistant_widget.dart';
 import 'package:productivitwo_v1/web/assistant_history_sheet.dart';
@@ -2171,11 +2172,36 @@ class _AppRootState extends State<AppRoot>
       case 'open_goals':
         setState(() => _tab = _Tab.today);
       case 'open_project':
+        _openProjectSheet(action.payload?['projectId'] as String?);
       case 'open_gantt_task':
-        setState(() => _tab = _Tab.dashboard);
+        _openProjectSheet(
+          action.payload?['projectId'] as String?,
+          targetTaskId: action.payload?['taskId'] as String?,
+        );
       case 'open_activity':
         setState(() => _tab = _Tab.now);
     }
+  }
+
+  Future<void> _openProjectSheet(String? projectId, {String? targetTaskId}) async {
+    if (projectId == null || _state == null) {
+      setState(() => _tab = _Tab.dashboard);
+      return;
+    }
+    // Cherche d'abord dans les projets déjà fetchés (si dispo), sinon fetch
+    List<Project> projects = [];
+    try { projects = await _sync.fetchProjects(); } catch (_) {}
+    final project = projects.where((p) => p.id == projectId).firstOrNull;
+    if (project == null || !mounted) {
+      setState(() => _tab = _Tab.dashboard);
+      return;
+    }
+    showProjectSheet(
+      context,
+      project: project,
+      domains: _state!.domains,
+      targetTaskId: targetTaskId,
+    );
   }
 
   // ---------- UI ----------
