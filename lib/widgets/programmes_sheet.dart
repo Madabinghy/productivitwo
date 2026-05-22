@@ -34,6 +34,33 @@ class _ProgrammesSheetState extends State<ProgrammesSheet> {
     if (mounted) setState(() { _docs = docs; _loading = false; });
   }
 
+  Future<void> _deleteDoc(Map<String, dynamic> doc) async {
+    final docId = doc['id'] as String?;
+    if (docId == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Supprimer ce programme ?'),
+        content: Text('"${doc['title'] ?? 'Programme'}" sera supprimé définitivement.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await widget.sync.hardDelete('documents', docId);
+    _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -127,6 +154,7 @@ class _ProgrammesSheetState extends State<ProgrammesSheet> {
                               domainId: domainId,
                               domains: widget.domains,
                               docs: grouped[domainId]!,
+                              onDelete: _deleteDoc,
                             ),
                             const SizedBox(height: 8),
                           ],
@@ -143,11 +171,13 @@ class _DomainSection extends StatelessWidget {
   final String? domainId;
   final List<Domain> domains;
   final List<Map<String, dynamic>> docs;
+  final Future<void> Function(Map<String, dynamic>) onDelete;
 
   const _DomainSection({
     required this.domainId,
     required this.domains,
     required this.docs,
+    required this.onDelete,
   });
 
   @override
@@ -187,7 +217,7 @@ class _DomainSection extends StatelessWidget {
           ),
         ),
         for (final doc in docs)
-          _ProgrammeCard(doc: doc, domainColor: color),
+          _ProgrammeCard(doc: doc, domainColor: color, onDelete: () => onDelete(doc)),
       ],
     );
   }
@@ -196,8 +226,13 @@ class _DomainSection extends StatelessWidget {
 class _ProgrammeCard extends StatelessWidget {
   final Map<String, dynamic> doc;
   final Color domainColor;
+  final VoidCallback onDelete;
 
-  const _ProgrammeCard({required this.doc, required this.domainColor});
+  const _ProgrammeCard({
+    required this.doc,
+    required this.domainColor,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -286,7 +321,14 @@ class _ProgrammeCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 4),
+                IconButton(
+                  icon: Icon(Icons.delete_outline,
+                      size: 18, color: cs.onSurface.withOpacity(0.3)),
+                  tooltip: 'Supprimer',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: onDelete,
+                ),
                 Icon(
                   Icons.chevron_right,
                   color: domainColor.withOpacity(0.6),

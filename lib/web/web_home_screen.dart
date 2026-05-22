@@ -440,6 +440,8 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                 project: p,
                 domains: _domains,
                 documents: _documentsByProject[p.id] ?? [],
+                sync: _sync,
+                onDocumentDeleted: _load,
                 onTap: () => Navigator.push(context,
                     MaterialPageRoute(builder: (_) => GanttScreen(project: p))),
                 onArchive: () => _archiveProject(p, true),
@@ -459,6 +461,8 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                 project: p,
                 domains: _domains,
                 documents: _documentsByProject[p.id] ?? [],
+                sync: _sync,
+                onDocumentDeleted: _load,
                 onTap: () => Navigator.push(context,
                     MaterialPageRoute(builder: (_) => GanttScreen(project: p))),
                 onArchive: () => _archiveProject(p, true),
@@ -1687,12 +1691,16 @@ class _ProjectCard extends StatelessWidget {
   final List<Map<String, dynamic>> documents;
   final VoidCallback onTap;
   final VoidCallback? onArchive;
+  final FirestoreSync sync;
+  final VoidCallback? onDocumentDeleted;
   const _ProjectCard({
     required this.project,
     required this.domains,
     required this.documents,
     required this.onTap,
+    required this.sync,
     this.onArchive,
+    this.onDocumentDeleted,
   });
 
   String _fmt(DateTime d) {
@@ -1841,6 +1849,8 @@ class _ProjectCard extends StatelessWidget {
                         builder: (_) => _DocumentViewerDialog(
                           projectTitle: project.title,
                           documents: documents,
+                          sync: sync,
+                          onDeleted: onDocumentDeleted,
                         ),
                       );
                     },
@@ -1997,10 +2007,14 @@ class _ArchivedProjectCard extends StatelessWidget {
 class _DocumentViewerDialog extends StatefulWidget {
   final String projectTitle;
   final List<Map<String, dynamic>> documents;
+  final FirestoreSync sync;
+  final VoidCallback? onDeleted;
 
   const _DocumentViewerDialog({
     required this.projectTitle,
     required this.documents,
+    required this.sync,
+    this.onDeleted,
   });
 
   @override
@@ -2009,8 +2023,54 @@ class _DocumentViewerDialog extends StatefulWidget {
 
 class _DocumentViewerDialogState extends State<_DocumentViewerDialog> {
   int _selectedIndex = 0;
+  late List<Map<String, dynamic>> _docs;
 
-  Map<String, dynamic> get _current => widget.documents[_selectedIndex];
+  @override
+  void initState() {
+    super.initState();
+    _docs = List.of(widget.documents);
+  }
+
+  Map<String, dynamic> get _current => _docs[_selectedIndex];
+
+  Future<void> _deleteDocument() async {
+    final doc = _current;
+    final docId = doc['id'] as String?;
+    if (docId == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Supprimer ce document ?'),
+        content: Text('"${doc['title'] ?? 'Document'}" sera supprimé définitivement.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    await widget.sync.hardDelete('documents', docId);
+    widget.onDeleted?.call();
+
+    if (_docs.length == 1) {
+      if (mounted) Navigator.pop(context);
+      return;
+    }
+    setState(() {
+      _docs.removeAt(_selectedIndex);
+      if (_selectedIndex >= _docs.length) _selectedIndex = _docs.length - 1;
+    });
+  }
 
   void _download() {
     final title = _current['title'] as String? ?? 'document';
@@ -2031,7 +2091,7 @@ class _DocumentViewerDialogState extends State<_DocumentViewerDialog> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final hasMultiple = widget.documents.length > 1;
+    final hasMultiple = _docs.length > 1;
     final title = _current['title'] as String? ?? 'Document';
 
     return Dialog(
@@ -2074,6 +2134,12 @@ class _DocumentViewerDialogState extends State<_DocumentViewerDialog> {
                     onPressed: _download,
                   ),
                   IconButton(
+                    icon: Icon(Icons.delete_outline,
+                        size: 18, color: cs.onSurface.withOpacity(.45)),
+                    tooltip: 'Supprimer ce document',
+                    onPressed: _deleteDocument,
+                  ),
+                  IconButton(
                     icon: const Icon(Icons.close_outlined, size: 18),
                     onPressed: () => Navigator.pop(context),
                     tooltip: 'Fermer',
@@ -2097,9 +2163,9 @@ class _DocumentViewerDialogState extends State<_DocumentViewerDialog> {
                         ),
                       ),
                       child: ListView.builder(
-                        itemCount: widget.documents.length,
+                        itemCount: _docs.length,
                         itemBuilder: (_, i) {
-                          final doc = widget.documents[i];
+                          final doc = _docs[i];
                           final docTitle =
                               doc['title'] as String? ?? 'Document ${i + 1}';
                           final isSelected = i == _selectedIndex;
