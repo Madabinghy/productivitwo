@@ -1,5 +1,7 @@
 import { onRequest } from "firebase-functions/v2/https";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as admin from "firebase-admin";
+import { runOrionCycle, getAllActiveUserIds, getOrionRunCount, saveOrionConfig } from "./orion";
 import { v4 as uuidv4 } from "uuid";
 import { db, FieldValue } from "./db";
 import { MCP_PROMPTS, getPromptMessages, executeGetDocumentTemplate } from "./prompts";
@@ -318,3 +320,102 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
   res.setHeader("Content-Type", "application/json");
   res.status(200).json(responses.length === 1 ? responses[0] : responses);
 });
+
+// ── orionWebhook ──────────────────────────────────────────────────────────────
+//
+// POST https://orionwebhook-dzos75b65q-uc.a.run.app
+// Body: { uid, token }
+// Déclenché par l'app sur actions clés (save config, tâche validée, réponse user)
+
+export const orionWebhook = onRequest(
+  { cors: true, invoker: "public", secrets: ["ANTHROPIC_API_KEY"] },
+  async (req, res) => {
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST") { res.status(405).json({ error: "Method Not Allowed" }); return; }
+
+    const { uid, token } = req.body as { uid?: string; token?: string };
+    if (!uid || !token) { res.status(400).json({ error: "uid et token requis" }); return; }
+
+    const valid = await validateToken(uid, token);
+    if (!valid) { res.status(401).json({ error: "Token invalide ou révoqué" }); return; }
+
+    try {
+      const result = await runOrionCycle(uid);
+      res.status(200).json({ success: true, ...result });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(`ORION webhook erreur uid=${uid}:`, msg);
+      res.status(500).json({ error: msg });
+    }
+  }
+);
+
+// ── orionSaveConfig ───────────────────────────────────────────────────────────
+//
+// POST { uid, token, userNeeds?, userReply? }
+// Sauvegarde la config ORION puis déclenche un cycle.
+
+export const orionSaveConfig = onRequest(
+  { cors: true, invoker: "public", secrets: ["ANTHROPIC_API_KEY"] },
+  async (req, res) => {
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST") { res.status(405).json({ error: "Method Not Allowed" }); return; }
+
+    const { uid, token, userNeeds, userReply } = req.body as {
+      uid?: string; token?: string;
+      userNeeds?: string; userReply?: string;
+    };
+    if (!uid || !token) { res.status(400).json({ error: "uid et token requis" }); return; }
+
+    const valid = await validateToken(uid, token);
+    if (!valid) { res.status(401).json({ error: "Token invalide ou révoqué" }); return; }
+
+    await saveOrionConfig(uid, { userNeeds, userReply });
+
+    try {
+      const result = await runOrionCycle(uid);
+      res.status(200).json({ success: true, configSaved: true, ...result });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(`ORION saveConfig erreur uid=${uid}:`, msg);
+      res.status(500).json({ error: msg });
+    }
+  }
+);
+
+// ── orionRunCount ─────────────────────────────────────────────────────────────
+//
+// GET ?uid=&token= — retourne le nombre de cycles ORION du jour
+
+export const orionRunCount = onRequest({ cors: true, invoker: "public" }, async (req, res) => {
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+
+  const uid = (req.query.uid as string) ?? "";
+  const token = (req.query.token as string) ?? "";
+  if (!uid || !token) { res.status(400).json({ error: "uid et token requis" }); return; }
+
+  const valid = await validateToken(uid, token);
+  if (!valid) { res.status(401).json({ error: "Token invalide ou révoqué" }); return; }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const count = await getOrionRunCount(uid, today);
+  res.status(200).json({ count, max: 5, date: today });
+});
+
+// ── orionCron — toutes les 6h ─────────────────────────────────────────────────
+
+export const orionCron = onSchedule(
+  { schedule: "every 6 hours", timeZone: "Europe/Paris", secrets: ["ANTHROPIC_API_KEY"] },
+  async () => {
+    const uids = await getAllActiveUserIds();
+    console.log(`ORION cron : ${uids.length} users actifs`);
+
+    const results = await Promise.allSettled(uids.map((uid) => runOrionCycle(uid)));
+    const executed = results.filter(
+      (r) => r.status === "fulfilled" && !(r.value as { skipped: boolean }).skipped
+    ).length;
+    const skipped = results.length - executed;
+
+    console.log(`ORION cron terminé : ${executed} cycles exécutés, ${skipped} skippés`);
+  }
+);

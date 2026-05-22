@@ -8,6 +8,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('3.4', '22 mai 2026', [
+    (Icons.smart_toy_outlined, 'ORION autonome : agent IA qui génère des messages contextuels toutes les 6h'),
+    (Icons.tune, 'Configuration ORION : instructions persistantes + réponse directe depuis le menu'),
+  ]),
   _Entry('3.3', '22 mai 2026', [
     (Icons.sync_outlined, 'iOS : projets Gantt mis à jour en temps réel dans la vue Objectifs'),
   ]),
