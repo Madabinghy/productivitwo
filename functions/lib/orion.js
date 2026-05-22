@@ -54,13 +54,20 @@ async function incrementOrionRunCount(uid, date) {
         .doc(`${uid}_${date}`)
         .set({ count: db_1.FieldValue.increment(1), uid, date }, { merge: true });
 }
+// ── Log de cycle ──────────────────────────────────────────────────────────────
+async function writeCycleLog(uid, log) {
+    const { v4: uuidv4 } = await Promise.resolve().then(() => require("uuid"));
+    await db_1.db.collection(`users/${uid}/orion_logs`).doc(uuidv4()).set(Object.assign(Object.assign({}, log), { cycleAt: db_1.FieldValue.serverTimestamp() }));
+}
 // ── Cycle ORION — accès complet à tous les tools ──────────────────────────────
 async function runOrionCycle(uid) {
-    var _a, _b, _c, _d, _e, _f, _g;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q;
     const today = new Date().toISOString().slice(0, 10);
     const count = await getOrionRunCount(uid, today);
     if (count >= ORION_MAX_RUNS) {
-        return { skipped: true, reason: `Limite journalière atteinte (${count}/${ORION_MAX_RUNS})` };
+        const reason = `Limite journalière atteinte (${count}/${ORION_MAX_RUNS})`;
+        await writeCycleLog(uid, { userNeeds: "", userReply: "", actions: [], pushed: 0, skipped: true, skippedReason: reason });
+        return { skipped: true, reason };
     }
     await incrementOrionRunCount(uid, today);
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -114,6 +121,7 @@ Règles :
     ];
     let pushedCount = 0;
     let continueLoop = true;
+    const actionLog = [];
     while (continueLoop) {
         const response = await client.beta.promptCaching.messages.create({
             model: ORION_MODEL,
@@ -139,9 +147,11 @@ Règles :
                         // ── Lecture ──────────────────────────────────────────────────
                         case "get_user_context":
                             result = await (0, execute_1.executeGetUserContext)(uid);
+                            actionLog.push("📖 Lecture du contexte utilisateur");
                             break;
                         case "get_assistant_messages":
                             result = await (0, execute_1.executeGetAssistantMessages)(uid);
+                            actionLog.push("📩 Vérification des messages ORION existants");
                             break;
                         case "get_day_blocks":
                             result = await (0, execute_1.executeGetDayBlocks)(uid);
@@ -167,72 +177,93 @@ Règles :
                         // ── Plan du jour ─────────────────────────────────────────────
                         case "plan_day":
                             result = await (0, execute_1.executePlanDay)(uid, args.date, args.items, (_b = args.clearExisting) !== null && _b !== void 0 ? _b : false);
+                            actionLog.push(`📅 Plan du jour mis à jour (${args.date})`);
                             break;
                         case "clear_day_plan":
                             result = await (0, execute_1.executeClearDayPlan)(uid, args.date);
+                            actionLog.push(`🗑 Plan du jour vidé (${args.date})`);
                             break;
                         case "add_to_day_plan":
                             result = await (0, execute_1.executeAddToDayPlan)(uid, args);
+                            actionLog.push(`➕ Ajout au plan du jour`);
                             break;
                         // ── Activités ────────────────────────────────────────────────
                         case "create_activity":
                             result = await (0, execute_1.executeCreateActivity)(uid, args);
+                            actionLog.push(`✅ Activité créée : ${(_c = args.name) !== null && _c !== void 0 ? _c : ""}`);
                             break;
                         case "update_activity":
                             result = await (0, execute_1.executeUpdateActivity)(uid, args.activityId, args);
+                            actionLog.push(`✏️ Activité mise à jour`);
                             break;
                         case "update_activity_goal":
                             result = await (0, execute_1.executeUpdateActivityGoal)(uid, args.activityId, args);
+                            actionLog.push(`🎯 Objectif activité mis à jour`);
                             break;
                         case "delete_activity":
                             result = await (0, execute_1.executeDeleteActivity)(uid, args.activityId);
+                            actionLog.push(`🗑 Activité supprimée`);
                             break;
                         // ── Routines / Actions ───────────────────────────────────────
                         case "create_routine":
                             result = await (0, execute_1.executeCreateRoutine)(uid, args);
+                            actionLog.push(`✅ Routine créée : ${(_d = args.title) !== null && _d !== void 0 ? _d : ""}`);
                             break;
                         case "delete_routine":
                             result = await (0, execute_1.executeDeleteRoutine)(uid, args.routineId);
+                            actionLog.push(`🗑 Routine supprimée`);
                             break;
                         case "create_recurring_action":
                             result = await (0, execute_1.executeCreateRecurringAction)(uid, args);
+                            actionLog.push(`✅ Action récurrente créée : ${(_e = args.title) !== null && _e !== void 0 ? _e : ""}`);
                             break;
                         case "delete_action":
                             result = await (0, execute_1.executeDeleteAction)(uid, args.actionId);
+                            actionLog.push(`🗑 Action supprimée`);
                             break;
                         // ── Domaines ─────────────────────────────────────────────────
                         case "create_domain":
                             result = await (0, execute_1.executeCreateDomain)(uid, args);
+                            actionLog.push(`✅ Domaine créé : ${(_f = args.name) !== null && _f !== void 0 ? _f : ""}`);
                             break;
                         case "delete_domain":
                             result = await (0, execute_1.executeDeleteDomain)(uid, args.domainId);
+                            actionLog.push(`🗑 Domaine supprimé`);
                             break;
                         // ── Projets ──────────────────────────────────────────────────
                         case "update_project":
                             result = await (0, execute_1.executeUpdateProject)(uid, args.projectId, args);
+                            actionLog.push(`✏️ Projet mis à jour`);
                             break;
                         case "update_task_status":
                             result = await (0, execute_1.executeUpdateTaskStatus)(uid, args.projectId, args.taskId, args.status);
+                            actionLog.push(`✏️ Statut tâche → ${args.status} (${args.taskId})`);
                             break;
                         case "archive_project":
-                            result = await (0, execute_1.executeArchiveProject)(uid, args.projectId, (_c = args.restore) !== null && _c !== void 0 ? _c : false);
+                            result = await (0, execute_1.executeArchiveProject)(uid, args.projectId, (_g = args.restore) !== null && _g !== void 0 ? _g : false);
+                            actionLog.push(args.restore ? `♻️ Projet restauré` : `🗄 Projet archivé`);
                             break;
                         case "delete_project":
-                            result = await (0, execute_1.executeDeleteProject)(uid, args.projectId, (_d = args.deleteObjective) !== null && _d !== void 0 ? _d : false);
+                            result = await (0, execute_1.executeDeleteProject)(uid, args.projectId, (_h = args.deleteObjective) !== null && _h !== void 0 ? _h : false);
+                            actionLog.push(`🗑 Projet supprimé`);
                             break;
                         case "push_gantt":
                             result = await (0, execute_1.executePushGantt)(uid, Object.assign({ uid }, args));
+                            actionLog.push(`🗂 Projet Gantt créé : ${(_k = (_j = args.project) === null || _j === void 0 ? void 0 : _j.title) !== null && _k !== void 0 ? _k : ""}`);
                             break;
                         // ── Objectifs ────────────────────────────────────────────────
                         case "link_goal_to_task":
-                            result = await (0, execute_1.executeLinkGoalToTask)(uid, args.goalId, (_e = args.projectId) !== null && _e !== void 0 ? _e : null, (_f = args.projectTaskId) !== null && _f !== void 0 ? _f : null);
+                            result = await (0, execute_1.executeLinkGoalToTask)(uid, args.goalId, (_l = args.projectId) !== null && _l !== void 0 ? _l : null, (_m = args.projectTaskId) !== null && _m !== void 0 ? _m : null);
+                            actionLog.push(`🔗 Objectif lié à une tâche Gantt`);
                             break;
                         case "delete_goal":
-                            result = await (0, execute_1.executeDeleteGoal)(uid, args.goalId, (_g = args.action) !== null && _g !== void 0 ? _g : "archive");
+                            result = await (0, execute_1.executeDeleteGoal)(uid, args.goalId, (_o = args.action) !== null && _o !== void 0 ? _o : "archive");
+                            actionLog.push(`🗑 Objectif archivé/supprimé`);
                             break;
                         // ── Documents ────────────────────────────────────────────────
                         case "save_document":
                             result = await (0, execute_1.executeSaveDocument)(uid, args);
+                            actionLog.push(`📄 Document sauvegardé : ${(_p = args.title) !== null && _p !== void 0 ? _p : ""}`);
                             break;
                         case "delete_document": {
                             const ref = db_1.db.collection(`users/${uid}/documents`).doc(args.documentId);
@@ -249,10 +280,13 @@ Règles :
                             result = await (0, execute_1.executeRestoreItem)(uid, args.collection, args.itemId);
                             break;
                         // ── Messages ORION ───────────────────────────────────────────
-                        case "push_assistant_message":
+                        case "push_assistant_message": {
                             result = await (0, execute_1.executePushAssistantMessage)(uid, args);
+                            const msgText = ((_q = args.text) !== null && _q !== void 0 ? _q : "").slice(0, 80);
+                            actionLog.push(`💬 Message ORION planifié : "${msgText}${msgText.length >= 80 ? "…" : ""}"`);
                             pushedCount++;
                             break;
+                        }
                         case "delete_assistant_message":
                             result = await (0, execute_1.executeDeleteAssistantMessage)(uid, args.messageId);
                             break;
@@ -271,6 +305,13 @@ Règles :
             continueLoop = false;
         }
     }
+    await writeCycleLog(uid, {
+        userNeeds: config.userNeeds,
+        userReply: config.userReply,
+        actions: actionLog,
+        pushed: pushedCount,
+        skipped: false,
+    });
     return { skipped: false, pushed: pushedCount };
 }
 // ── Itération sur tous les users actifs (pour le cron) ────────────────────────

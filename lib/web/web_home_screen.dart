@@ -2,6 +2,7 @@ import 'dart:convert';
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:html' as html;
 import 'dart:ui_web' as ui_web;
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -48,7 +49,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   @override
   void initState() {
     super.initState();
-    _mainTabs = TabController(length: 3, vsync: this);
+    _mainTabs = TabController(length: 4, vsync: this);
     _load();
   }
 
@@ -206,6 +207,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                   Tab(text: 'Projets'),
                   Tab(text: 'Focus'),
                   Tab(text: 'Archives'),
+                  Tab(text: 'ORION'),
                 ],
               ),
               Divider(height: 1, color: cs.outlineVariant.withOpacity(0.4)),
@@ -234,6 +236,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                       },
                     ),
                     _ArchivesView(sync: _sync),
+                    _OrionView(sync: _sync),
                   ],
                 ),
                 if (_assistantMessages.isNotEmpty)
@@ -2730,6 +2733,7 @@ class _ArchivesViewState extends State<_ArchivesView> {
   List<Domain> _domains = [];
   List<Activity> _activities = [];
   List<RecurringAction> _routines = [];
+  List<Project> _projects = [];
   bool _loading = true;
 
   @override
@@ -2745,12 +2749,14 @@ class _ArchivesViewState extends State<_ArchivesView> {
         widget.sync.fetchAllDomains(),
         widget.sync.fetchActivities(),
         widget.sync.fetchRoutines(),
+        widget.sync.fetchProjects(),
       ]);
       if (!mounted) return;
       setState(() {
         _domains    = results[0] as List<Domain>;
         _activities = results[1] as List<Activity>;
         _routines   = results[2] as List<RecurringAction>;
+        _projects   = results[3] as List<Project>;
         _loading = false;
       });
     } catch (_) {
@@ -2801,196 +2807,635 @@ class _ArchivesViewState extends State<_ArchivesView> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-
     if (_loading) return const Center(child: CircularProgressIndicator());
 
-    // Tri : actifs en premier, archivés ensuite
-    final sortedDomains = [
-      ..._domains.where((d) => !d.deleted),
-      ..._domains.where((d) => d.deleted),
-    ];
+    // ── Données ─────────────────────────────────────────────────────────────
+    final archivedProjects = _projects.where((p) => p.status == 'archived').toList()
+      ..sort((a, b) => a.title.compareTo(b.title));
+    final activeProjects = _projects.where((p) => p.status != 'archived').toList()
+      ..sort((a, b) => a.title.compareTo(b.title));
 
-    final sortedActivities = [
-      ..._activities.where((a) => !a.deleted),
-      ..._activities.where((a) => a.deleted),
-    ];
+    // Domaines actifs + archivés triés
+    final activeDomains = _domains.where((d) => !d.deleted).toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    final archivedDomains = _domains.where((d) => d.deleted).toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    final allDomains = [...activeDomains, ...archivedDomains];
 
-    final sortedRoutines = [
-      ..._routines.where((r) => !r.deleted),
-      ..._routines.where((r) => r.deleted),
-    ];
+    // Activités et routines indexées
+    final activitiesByDomain = <String, List<Activity>>{};
+    final activitiesWithoutDomain = <Activity>[];
+    for (final a in _activities) {
+      if (a.domainId.isEmpty) {
+        activitiesWithoutDomain.add(a);
+      } else {
+        activitiesByDomain.putIfAbsent(a.domainId, () => []).add(a);
+      }
+    }
+    final routinesByActivity = <String, List<RecurringAction>>{};
+    final routinesWithoutActivity = <RecurringAction>[];
+    for (final r in _routines) {
+      if (r.activityId == null || r.activityId!.isEmpty) {
+        routinesWithoutActivity.add(r);
+      } else {
+        routinesByActivity.putIfAbsent(r.activityId!, () => []).add(r);
+      }
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    Widget sectionLabel(String text) => Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.1,
+              color: cs.onSurface.withOpacity(0.45),
+            ),
+          ),
+        );
+
+    Widget domainHeader(Domain d) => Padding(
+          padding: const EdgeInsets.fromLTRB(0, 16, 0, 8),
+          child: Row(children: [
+            Container(
+              width: 8, height: 8,
+              decoration: BoxDecoration(
+                color: d.deleted ? cs.error.withOpacity(0.5) : cs.primary,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              d.name.toUpperCase(),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.8,
+                color: d.deleted ? cs.error.withOpacity(0.6) : cs.primary,
+              ),
+            ),
+            if (d.deleted) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: cs.errorContainer.withOpacity(0.4),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text('archivé',
+                    style: TextStyle(fontSize: 10, color: cs.error)),
+              ),
+            ],
+            const SizedBox(width: 8),
+            Expanded(child: Divider(color: cs.outlineVariant.withOpacity(0.3))),
+            IconButton(
+              icon: Icon(d.deleted ? Icons.restore_outlined : Icons.archive_outlined,
+                  size: 15, color: cs.onSurface.withOpacity(0.4)),
+              tooltip: d.deleted ? 'Restaurer' : 'Archiver',
+              visualDensity: VisualDensity.compact,
+              onPressed: d.deleted
+                  ? () => _restore('domains', d.id)
+                  : () => _archive('domains', d.id),
+            ),
+          ]),
+        );
+
+    List<Widget> buildActivityBlock(Activity a) {
+      final routines = (routinesByActivity[a.id] ?? [])
+        ..sort((x, y) => x.title.compareTo(y.title));
+      return [
+        // Activité
+        Padding(
+          padding: const EdgeInsets.only(left: 16, bottom: 6),
+          child: _ArchiveItemRow(
+            label: a.name,
+            isArchived: a.deleted,
+            subtitle: a.isHabit ? 'Routine' : 'Activité temps',
+            onArchive: () => _archive('activities', a.id),
+            onRestore: () => _restore('activities', a.id),
+            onDelete: () => _confirmHardDelete('activities', a.id),
+            cs: cs,
+          ),
+        ),
+        // Routines de cette activité
+        for (final r in routines)
+          Padding(
+            padding: const EdgeInsets.only(left: 40, bottom: 4),
+            child: _ArchiveItemRow(
+              label: r.title,
+              isArchived: r.deleted,
+              onArchive: () => _archive('recurringActions', r.id),
+              onRestore: () => _restore('recurringActions', r.id),
+              onDelete: () => _confirmHardDelete('recurringActions', r.id),
+              cs: cs,
+            ),
+          ),
+        if (routines.isNotEmpty) const SizedBox(height: 4),
+      ];
+    }
+
+    // ── Rendu ────────────────────────────────────────────────────────────────
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 860),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 60),
+          children: [
+            // En-tête
+            Row(children: [
+              sectionLabel('ARCHIVES'),
+              const Spacer(),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.refresh_outlined, size: 14),
+                label: const Text('Rafraîchir'),
+                onPressed: _load,
+                style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
+              ),
+            ]),
+            const SizedBox(height: 8),
+
+            // ── PROJETS ─────────────────────────────────────────────────────
+            sectionLabel('PROJETS (${_projects.length})'),
+            if (_projects.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Text('Aucun projet',
+                    style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(0.4), fontStyle: FontStyle.italic)),
+              )
+            else ...[
+              if (activeProjects.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text('Actifs', style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.5))),
+                ),
+                for (final p in activeProjects) ...[
+                  _ArchiveItemRow(
+                    label: p.title,
+                    isArchived: false,
+                    subtitle: () {
+                      final d = _domains.where((d) => d.id == p.domainId).firstOrNull;
+                      return d != null ? d.name : null;
+                    }(),
+                    onArchive: () async {
+                      await widget.sync.saveProject(p..status = 'archived');
+                      _load();
+                    },
+                    onRestore: () async {},
+                    cs: cs,
+                  ),
+                  const SizedBox(height: 6),
+                ],
+              ],
+              if (archivedProjects.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text('Archivés', style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.5))),
+                ),
+                for (final p in archivedProjects) ...[
+                  _ArchiveItemRow(
+                    label: p.title,
+                    isArchived: true,
+                    subtitle: () {
+                      final d = _domains.where((d) => d.id == p.domainId).firstOrNull;
+                      return d != null ? d.name : null;
+                    }(),
+                    onArchive: () async {},
+                    onRestore: () async {
+                      await widget.sync.saveProject(p..status = 'active');
+                      _load();
+                    },
+                    cs: cs,
+                  ),
+                  const SizedBox(height: 6),
+                ],
+              ],
+            ],
+
+            const SizedBox(height: 24),
+            const Divider(),
+            const SizedBox(height: 16),
+
+            // ── ACTIVITÉS & ROUTINES par domaine ─────────────────────────────
+            sectionLabel('ACTIVITÉS & ROUTINES PAR DOMAINE'),
+
+            for (final d in allDomains) ...[
+              domainHeader(d),
+              if ((activitiesByDomain[d.id] ?? []).isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(left: 16, bottom: 8),
+                  child: Text('Aucune activité dans ce domaine',
+                      style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.35), fontStyle: FontStyle.italic)),
+                )
+              else
+                for (final a in [...(activitiesByDomain[d.id] ?? [])
+                    ..sort((x, y) => x.name.compareTo(y.name))])
+                  ...buildActivityBlock(a),
+              const SizedBox(height: 4),
+            ],
+
+            // Sans domaine
+            if (activitiesWithoutDomain.isNotEmpty || routinesWithoutActivity.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(0, 16, 0, 8),
+                child: Row(children: [
+                  Container(width: 8, height: 8,
+                      decoration: BoxDecoration(color: cs.onSurface.withOpacity(0.3), shape: BoxShape.circle)),
+                  const SizedBox(width: 8),
+                  Text('SANS DOMAINE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
+                      letterSpacing: 0.8, color: cs.onSurface.withOpacity(0.4))),
+                  const SizedBox(width: 8),
+                  Expanded(child: Divider(color: cs.outlineVariant.withOpacity(0.3))),
+                ]),
+              ),
+              for (final a in activitiesWithoutDomain..sort((x, y) => x.name.compareTo(y.name)))
+                ...buildActivityBlock(a),
+              for (final r in routinesWithoutActivity..sort((x, y) => x.title.compareTo(y.title)))
+                Padding(
+                  padding: const EdgeInsets.only(left: 16, bottom: 4),
+                  child: _ArchiveItemRow(
+                    label: r.title,
+                    isArchived: r.deleted,
+                    onArchive: () => _archive('recurringActions', r.id),
+                    onRestore: () => _restore('recurringActions', r.id),
+                    onDelete: () => _confirmHardDelete('recurringActions', r.id),
+                    cs: cs,
+                  ),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Vue ORION ─────────────────────────────────────────────────────────────────
+
+class _OrionView extends StatefulWidget {
+  final FirestoreSync sync;
+  const _OrionView({required this.sync});
+
+  @override
+  State<_OrionView> createState() => _OrionViewState();
+}
+
+class _OrionViewState extends State<_OrionView> {
+  List<Map<String, dynamic>> _logs = [];
+  List<Map<String, dynamic>> _messages = [];
+  Map<String, dynamic>? _config;
+  int _runCount = 0;
+  bool _loading = true;
+  bool _triggering = false;
+
+  static const _webhookUrl = 'https://orionsaveconfig-dzos75b65q-uc.a.run.app';
+
+  // Actions pré-établies
+  static const _presets = [
+    (icon: '📋', label: 'Analyser mes retards', need: 'Analyse mes tâches en retard et propose un plan de rattrapage'),
+    (icon: '🎯', label: 'Bilan de semaine', need: 'Fais un bilan de ma semaine et propose des ajustements pour la suivante'),
+    (icon: '⚡', label: 'Optimiser mon plan du jour', need: 'Optimise mon plan du jour en fonction de mes priorités et deadlines'),
+    (icon: '🗄', label: 'Archiver les projets inactifs', need: 'Archive les projets inactifs depuis plus de 2 semaines'),
+    (icon: '🔗', label: 'Lier objectifs et tâches', need: 'Lie mes objectifs GTD aux tâches Gantt correspondantes'),
+    (icon: '📊', label: 'Rapport de progression', need: 'Génère un rapport de progression sur tous mes projets actifs'),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final uid = widget.sync.uid;
+      if (uid == null) return;
+
+      final today = DateTime.now().toIso8601String().substring(0, 10);
+      final results = await Future.wait([
+        FirebaseFirestore.instance
+            .collection('users/$uid/orion_logs')
+            .orderBy('cycleAt', descending: true)
+            .limit(15)
+            .get(),
+        FirebaseFirestore.instance
+            .collection('users/$uid/assistant_messages')
+            .orderBy('targetDate', descending: true)
+            .limit(30)
+            .get(),
+        FirebaseFirestore.instance
+            .collection('users/$uid/orion_config')
+            .doc('main')
+            .get(),
+        FirebaseFirestore.instance
+            .collection('orion_runs')
+            .doc('${uid}_$today')
+            .get(),
+      ]);
+
+      final logsSnap = results[0] as QuerySnapshot;
+      final msgsSnap = results[1] as QuerySnapshot;
+      final configSnap = results[2] as DocumentSnapshot;
+      final runSnap = results[3] as DocumentSnapshot;
+
+      if (mounted) {
+        setState(() {
+          _logs = logsSnap.docs.map((d) => d.data() as Map<String, dynamic>).toList();
+          _messages = msgsSnap.docs.map((d) => d.data() as Map<String, dynamic>).toList();
+          _config = configSnap.exists ? configSnap.data() as Map<String, dynamic> : null;
+          _runCount = runSnap.exists ? (runSnap.data() as Map<String, dynamic>)['count'] as int? ?? 0 : 0;
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _triggerWithPreset(String need) async {
+    final uid = widget.sync.uid;
+    final tokens = await widget.sync.fetchApiTokens();
+    final token = tokens.where((t) => t.active).firstOrNull?.token;
+    if (uid == null || token == null) return;
+
+    setState(() => _triggering = true);
+    try {
+      final resp = await http.post(
+        Uri.parse(_webhookUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'uid': uid, 'token': token, 'userNeeds': need}),
+      );
+      if (resp.statusCode == 200 && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('ORION activé : "$need"'), behavior: SnackBarBehavior.floating),
+        );
+        await Future.delayed(const Duration(seconds: 2));
+        _load();
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _triggering = false);
+  }
+
+  Future<void> _triggerNow() async {
+    final uid = widget.sync.uid;
+    final tokens = await widget.sync.fetchApiTokens();
+    final token = tokens.where((t) => t.active).firstOrNull?.token;
+    if (uid == null || token == null) return;
+
+    setState(() => _triggering = true);
+    try {
+      final resp = await http.post(
+        Uri.parse('https://orionwebhook-dzos75b65q-uc.a.run.app'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'uid': uid, 'token': token}),
+      );
+      if (resp.statusCode == 200 && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cycle ORION déclenché'), behavior: SnackBarBehavior.floating),
+        );
+        await Future.delayed(const Duration(seconds: 2));
+        _load();
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _triggering = false);
+  }
+
+  String _fmtTs(dynamic ts) {
+    if (ts == null) return '';
+    try {
+      final dt = (ts as dynamic).toDate() as DateTime;
+      return '${dt.day}/${dt.month} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    if (_loading) return const Center(child: CircularProgressIndicator());
+
+    final pendingMsgs = _messages.where((m) => m['status'] == 'pending').toList();
+    final shownMsgs = _messages.where((m) => m['status'] == 'shown').toList();
+    final otherMsgs = _messages.where((m) => m['status'] != 'pending' && m['status'] != 'shown').toList();
+
+    Widget sectionLabel(String text) => Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(text,
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+                  letterSpacing: 1.1, color: cs.onSurface.withOpacity(0.45))),
+        );
+
+    Widget msgChip(String status) {
+      final colors = {
+        'pending': Colors.blue,
+        'shown': Colors.green,
+        'dismissed': Colors.orange,
+        'expired': Colors.grey,
+      };
+      final c = colors[status] ?? Colors.grey;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(color: c.withOpacity(0.15), borderRadius: BorderRadius.circular(4)),
+        child: Text(status, style: TextStyle(fontSize: 10, color: c, fontWeight: FontWeight.w600)),
+      );
+    }
 
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 800),
+        constraints: const BoxConstraints(maxWidth: 900),
         child: ListView(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 60),
           children: [
-            // ── En-tête ───────────────────────────────────────────────────
-            Row(
-              children: [
-                Text(
-                  'ARCHIVES',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.0,
-                    color: cs.onSurface.withOpacity(0.45),
+            // ── En-tête ──────────────────────────────────────────────────
+            Row(children: [
+              Container(
+                width: 36, height: 36,
+                decoration: BoxDecoration(color: cs.primaryContainer, shape: BoxShape.circle),
+                child: Icon(Icons.smart_toy_outlined, size: 20, color: cs.primary),
+              ),
+              const SizedBox(width: 12),
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('Agent ORION', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                Text('$_runCount / 50 activations aujourd\'hui',
+                    style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.5))),
+              ]),
+              const Spacer(),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.refresh_outlined, size: 14),
+                label: const Text('Rafraîchir'),
+                onPressed: _load,
+                style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                icon: _triggering
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.play_arrow_outlined, size: 16),
+                label: const Text('Déclencher'),
+                onPressed: _triggering ? null : _triggerNow,
+                style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
+              ),
+            ]),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: _runCount / 50,
+                minHeight: 4,
+                backgroundColor: cs.onSurface.withOpacity(0.08),
+                color: _runCount >= 50 ? cs.error : cs.primary,
+              ),
+            ),
+
+            // ── Config actuelle ───────────────────────────────────────────
+            if (_config != null) ...[
+              const SizedBox(height: 24),
+              sectionLabel('INSTRUCTIONS ACTUELLES'),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest.withOpacity(0.4),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: cs.outlineVariant.withOpacity(0.3)),
+                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  if ((_config!['userNeeds'] as String? ?? '').isNotEmpty) ...[
+                    Text('Besoins :', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: cs.onSurface.withOpacity(0.5))),
+                    const SizedBox(height: 4),
+                    Text(_config!['userNeeds'] as String, style: const TextStyle(fontSize: 14)),
+                  ],
+                  if ((_config!['userReply'] as String? ?? '').isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Text('Dernière réponse (${_config!['replyTimestamp'] ?? ''}) :',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: cs.onSurface.withOpacity(0.5))),
+                    const SizedBox(height: 4),
+                    Text(_config!['userReply'] as String,
+                        style: TextStyle(fontSize: 14, color: cs.primary)),
+                  ],
+                ]),
+              ),
+            ],
+
+            // ── Actions pré-établies ─────────────────────────────────────
+            const SizedBox(height: 24),
+            sectionLabel('ACTIONS RAPIDES'),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _presets.map((p) => ActionChip(
+                avatar: Text(p.icon, style: const TextStyle(fontSize: 14)),
+                label: Text(p.label, style: const TextStyle(fontSize: 13)),
+                onPressed: _triggering ? null : () => _triggerWithPreset(p.need),
+                backgroundColor: cs.surfaceContainerHighest.withOpacity(0.5),
+              )).toList(),
+            ),
+
+            // ── Logs des cycles récents ───────────────────────────────────
+            const SizedBox(height: 24),
+            sectionLabel('CYCLES RÉCENTS (${_logs.length})'),
+            if (_logs.isEmpty)
+              Text('Aucun cycle enregistré',
+                  style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(0.4), fontStyle: FontStyle.italic))
+            else
+              for (final log in _logs) ...[
+                Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: cs.outlineVariant.withOpacity(0.3)),
+                  ),
+                  child: ExpansionTile(
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                    childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+                    title: Row(children: [
+                      Text(_fmtTs(log['cycleAt']),
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurface)),
+                      const SizedBox(width: 10),
+                      if (log['skipped'] == true)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(color: cs.errorContainer.withOpacity(0.4), borderRadius: BorderRadius.circular(4)),
+                          child: Text('skippé', style: TextStyle(fontSize: 10, color: cs.error)),
+                        )
+                      else
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(color: Colors.green.withOpacity(0.15), borderRadius: BorderRadius.circular(4)),
+                          child: Text('${log['pushed'] ?? 0} message(s)', style: const TextStyle(fontSize: 10, color: Colors.green, fontWeight: FontWeight.w600)),
+                        ),
+                    ]),
+                    subtitle: (log['userNeeds'] as String? ?? '').isNotEmpty
+                        ? Text('"${(log['userNeeds'] as String).substring(0, ((log['userNeeds'] as String).length).clamp(0, 60))}…"',
+                            style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.5)),
+                            maxLines: 1, overflow: TextOverflow.ellipsis)
+                        : null,
+                    children: [
+                      if (log['skipped'] == true && log['skippedReason'] != null)
+                        Text(log['skippedReason'] as String,
+                            style: TextStyle(fontSize: 13, color: cs.error)),
+                      for (final action in (log['actions'] as List? ?? []))
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Text('• $action', style: const TextStyle(fontSize: 13)),
+                        ),
+                    ],
                   ),
                 ),
-                const Spacer(),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.refresh_outlined, size: 14),
-                  label: const Text('Rafraîchir'),
-                  onPressed: _load,
-                  style: OutlinedButton.styleFrom(
-                      visualDensity: VisualDensity.compact),
-                ),
               ],
-            ),
-            const SizedBox(height: 20),
 
-            // ── Section Domaines ──────────────────────────────────────────
-            ExpansionTile(
-              initiallyExpanded: true,
-              tilePadding: EdgeInsets.zero,
-              childrenPadding: EdgeInsets.zero,
-              title: Text(
-                'DOMAINES (${sortedDomains.length})',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.0,
-                  color: cs.onSurface.withOpacity(0.55),
-                ),
-              ),
-              children: [
-                if (sortedDomains.isEmpty)
+            // ── Messages ORION ────────────────────────────────────────────
+            const SizedBox(height: 24),
+            sectionLabel('MESSAGES ORION (${_messages.length})'),
+            if (_messages.isEmpty)
+              Text('Aucun message',
+                  style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(0.4), fontStyle: FontStyle.italic))
+            else
+              for (final group in [
+                ('EN ATTENTE', pendingMsgs),
+                ('AFFICHÉS', shownMsgs),
+                ('AUTRES', otherMsgs),
+              ]) ...[
+                if ((group.$2).isNotEmpty) ...[
                   Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: Text(
-                      'Aucun domaine',
-                      style: TextStyle(
-                          fontSize: 13,
-                          color: cs.onSurface.withOpacity(0.4),
-                          fontStyle: FontStyle.italic),
+                    padding: const EdgeInsets.only(top: 8, bottom: 6),
+                    child: Text(group.$1,
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+                            letterSpacing: 0.8, color: cs.onSurface.withOpacity(0.4))),
+                  ),
+                  for (final msg in group.$2)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 6),
+                      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+                      decoration: BoxDecoration(
+                        color: cs.surfaceContainerHighest.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border(left: BorderSide(color: cs.primary.withOpacity(0.4), width: 3)),
+                      ),
+                      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Expanded(
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(msg['text'] as String? ?? '', style: const TextStyle(fontSize: 14)),
+                            const SizedBox(height: 4),
+                            Row(children: [
+                              Text(msg['targetDate'] as String? ?? '',
+                                  style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.45))),
+                              const SizedBox(width: 8),
+                              Text('condition: ${(msg['condition'] as Map?)?.entries.map((e) => '${e.key}=${e.value}').join(', ') ?? ''}',
+                                  style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.4))),
+                            ]),
+                          ]),
+                        ),
+                        const SizedBox(width: 8),
+                        msgChip(msg['status'] as String? ?? ''),
+                      ]),
                     ),
-                  )
-                else
-                  for (final d in sortedDomains) ...[
-                    _ArchiveItemRow(
-                      label: d.name,
-                      isArchived: d.deleted,
-                      onArchive: () => _archive('domains', d.id),
-                      onRestore: () => _restore('domains', d.id),
-                      onDelete: () => _confirmHardDelete('domains', d.id),
-                      cs: cs,
-                    ),
-                    const SizedBox(height: 6),
-                  ],
-                const SizedBox(height: 8),
+                ],
               ],
-            ),
-            const SizedBox(height: 8),
-
-            // ── Section Activités ─────────────────────────────────────────
-            ExpansionTile(
-              initiallyExpanded: true,
-              tilePadding: EdgeInsets.zero,
-              childrenPadding: EdgeInsets.zero,
-              title: Text(
-                'ACTIVITÉS (${sortedActivities.length})',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.0,
-                  color: cs.onSurface.withOpacity(0.55),
-                ),
-              ),
-              children: [
-                if (sortedActivities.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: Text(
-                      'Aucune activité',
-                      style: TextStyle(
-                          fontSize: 13,
-                          color: cs.onSurface.withOpacity(0.4),
-                          fontStyle: FontStyle.italic),
-                    ),
-                  )
-                else
-                  for (final a in sortedActivities) ...[
-                    _ArchiveItemRow(
-                      label: a.name,
-                      isArchived: a.deleted,
-                      subtitle: () {
-                        if (a.domainId.isEmpty) return null;
-                        final domain =
-                            _domains.where((d) => d.id == a.domainId).firstOrNull;
-                        return 'domaine: ${domain?.name ?? a.domainId.substring(0, 8)}…';
-                      }(),
-                      onArchive: () => _archive('activities', a.id),
-                      onRestore: () => _restore('activities', a.id),
-                      onDelete: () => _confirmHardDelete('activities', a.id),
-                      cs: cs,
-                    ),
-                    const SizedBox(height: 6),
-                  ],
-                const SizedBox(height: 8),
-              ],
-            ),
-            const SizedBox(height: 8),
-
-            // ── Section Routines ──────────────────────────────────────────
-            ExpansionTile(
-              initiallyExpanded: true,
-              tilePadding: EdgeInsets.zero,
-              childrenPadding: EdgeInsets.zero,
-              title: Text(
-                'ROUTINES (${sortedRoutines.length})',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.0,
-                  color: cs.onSurface.withOpacity(0.55),
-                ),
-              ),
-              children: [
-                if (sortedRoutines.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: Text(
-                      'Aucune routine',
-                      style: TextStyle(
-                          fontSize: 13,
-                          color: cs.onSurface.withOpacity(0.4),
-                          fontStyle: FontStyle.italic),
-                    ),
-                  )
-                else
-                  for (final r in sortedRoutines) ...[
-                    _ArchiveItemRow(
-                      label: r.title,
-                      isArchived: r.deleted,
-                      subtitle: () {
-                        if (r.activityId == null || r.activityId!.isEmpty)
-                          return null;
-                        final activity = _activities
-                            .where((a) => a.id == r.activityId)
-                            .firstOrNull;
-                        return activity != null ? 'activité: ${activity.name}' : null;
-                      }(),
-                      onArchive: () => _archive('recurringActions', r.id),
-                      onRestore: () => _restore('recurringActions', r.id),
-                      onDelete: () => _confirmHardDelete('recurringActions', r.id),
-                      cs: cs,
-                    ),
-                    const SizedBox(height: 6),
-                  ],
-                const SizedBox(height: 8),
-              ],
-            ),
           ],
         ),
       ),
