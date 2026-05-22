@@ -3179,8 +3179,11 @@ class _OrionViewState extends State<_OrionView> {
       final body = isDeterministic
           ? {'uid': uid, 'token': token, 'taskId': taskId}
           : {'uid': uid, 'token': token, 'userNeeds': need};
+      final url = isDeterministic
+          ? 'https://orionwebhook-dzos75b65q-uc.a.run.app'
+          : _webhookUrl;
       final resp = await http.post(
-        Uri.parse(_webhookUrl),
+        Uri.parse(url),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(body),
       );

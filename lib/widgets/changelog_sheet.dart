@@ -8,6 +8,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('4.0', '22 mai 2026', [
+    (Icons.bolt_outlined, 'Web : fix actions rapides ORION (Analyser retards, Deadlines…) — envoyées au bon endpoint'),
+  ]),
   _Entry('3.9', '22 mai 2026', [
     (Icons.account_tree_outlined, 'Objectifs : tâches Gantt actives enfin visibles — retards en rouge, tap ouvre la fiche projet'),
     (Icons.flag_outlined, 'Objectifs : fix clavier caché + erreur index Firestore'),
