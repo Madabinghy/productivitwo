@@ -14,10 +14,12 @@ import {
   GET_DOCUMENT_TEMPLATE_TOOL, SAVE_DOCUMENT_TOOL, GET_DOCUMENTS_TOOL,
   DELETE_DOCUMENT_TOOL, GET_ARCHIVES_TOOL, RESTORE_ITEM_TOOL,
   CREATE_DOMAIN_TOOL, DELETE_DOMAIN_TOOL, PUSH_ASSISTANT_MESSAGE_TOOL,
+  GET_ASSISTANT_MESSAGES_TOOL, DELETE_ASSISTANT_MESSAGE_TOOL,
 } from "./tools";
 import {
   validateToken, normalizePhases, normalizeTasks,
-  executePushAssistantMessage, executeGetUserContext, executeUpdateActivityGoal,
+  executePushAssistantMessage, executeGetAssistantMessages, executeDeleteAssistantMessage,
+  executeGetUserContext, executeUpdateActivityGoal,
   executeCreateRoutine, executeCreateRecurringAction, executeAddToDayPlan,
   executeGetDayBlocks, executeGetDayPlan, executePlanDay, executeCreateActivity,
   executeDeleteAction, executeSaveDocument, executeGetDocuments, executeGetArchives,
@@ -213,6 +215,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
             GET_DOCUMENT_TEMPLATE_TOOL, SAVE_DOCUMENT_TOOL, GET_DOCUMENTS_TOOL,
             DELETE_DOCUMENT_TOOL, GET_ARCHIVES_TOOL, RESTORE_ITEM_TOOL,
             CREATE_DOMAIN_TOOL, DELETE_DOMAIN_TOOL, PUSH_ASSISTANT_MESSAGE_TOOL,
+            GET_ASSISTANT_MESSAGES_TOOL, DELETE_ASSISTANT_MESSAGE_TOOL,
           ],
         },
       });
@@ -294,6 +297,10 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
           text = await executeRestoreItem(uid, args.collection as string, args.itemId as string);
         } else if (toolName === "push_assistant_message") {
           text = await executePushAssistantMessage(uid, args as Parameters<typeof executePushAssistantMessage>[1]);
+        } else if (toolName === "get_assistant_messages") {
+          text = await executeGetAssistantMessages(uid);
+        } else if (toolName === "delete_assistant_message") {
+          text = await executeDeleteAssistantMessage(uid, args.messageId as string);
         } else {
           responses.push({ jsonrpc: "2.0", id, error: { code: -32601, message: `Outil inconnu : ${toolName}` } });
           continue;

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.PLAN_DAY_TOOL = exports.GET_DAY_PLAN_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.CLEAR_DAY_PLAN_TOOL = exports.DELETE_GOAL_TOOL = exports.DELETE_ROUTINE_TOOL = exports.LINK_GOAL_TO_TASK_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.DELETE_ACTION_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.ADD_TO_DAY_PLAN_TOOL = exports.CREATE_RECURRING_ACTION_TOOL = exports.CREATE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = void 0;
+exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.PLAN_DAY_TOOL = exports.GET_DAY_PLAN_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.CLEAR_DAY_PLAN_TOOL = exports.DELETE_GOAL_TOOL = exports.DELETE_ROUTINE_TOOL = exports.LINK_GOAL_TO_TASK_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.DELETE_ACTION_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.ADD_TO_DAY_PLAN_TOOL = exports.CREATE_RECURRING_ACTION_TOOL = exports.CREATE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
 const GET_USER_CONTEXT_TOOL = {
     name: "get_user_context",
     description: "APPELLE CET OUTIL EN PREMIER dans toute conversation liée à la productivité. " +
@@ -708,4 +708,24 @@ const PUSH_GANTT_MCP_TOOL = {
     },
 };
 exports.PUSH_GANTT_MCP_TOOL = PUSH_GANTT_MCP_TOOL;
+exports.GET_ASSISTANT_MESSAGES_TOOL = {
+    name: "get_assistant_messages",
+    description: "Retourne les messages ORION déjà programmés (pending) et les 10 derniers affichés (shown). " +
+        "APPELLE CET OUTIL AVANT push_assistant_message pour éviter les doublons et voir ce qui est déjà planifié. " +
+        "Utilise-le aussi pour auditer, mettre à jour ou supprimer des messages existants.",
+    inputSchema: { type: "object", properties: {} },
+};
+exports.DELETE_ASSISTANT_MESSAGE_TOOL = {
+    name: "delete_assistant_message",
+    description: "Supprime ou expire un message ORION existant. " +
+        "Utilise get_assistant_messages pour obtenir le messageId. " +
+        "Utile pour retirer un message obsolète ou incorrect avant d'en créer un nouveau.",
+    inputSchema: {
+        type: "object",
+        required: ["messageId"],
+        properties: {
+            messageId: { type: "string", description: "id du message (obtenu via get_assistant_messages)" },
+        },
+    },
+};
 //# sourceMappingURL=tools.js.map

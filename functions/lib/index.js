@@ -192,6 +192,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                         tools_1.GET_DOCUMENT_TEMPLATE_TOOL, tools_1.SAVE_DOCUMENT_TOOL, tools_1.GET_DOCUMENTS_TOOL,
                         tools_1.DELETE_DOCUMENT_TOOL, tools_1.GET_ARCHIVES_TOOL, tools_1.RESTORE_ITEM_TOOL,
                         tools_1.CREATE_DOMAIN_TOOL, tools_1.DELETE_DOMAIN_TOOL, tools_1.PUSH_ASSISTANT_MESSAGE_TOOL,
+                        tools_1.GET_ASSISTANT_MESSAGES_TOOL, tools_1.DELETE_ASSISTANT_MESSAGE_TOOL,
                     ],
                 },
             });
@@ -305,6 +306,12 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                 }
                 else if (toolName === "push_assistant_message") {
                     text = await (0, execute_1.executePushAssistantMessage)(uid, args);
+                }
+                else if (toolName === "get_assistant_messages") {
+                    text = await (0, execute_1.executeGetAssistantMessages)(uid);
+                }
+                else if (toolName === "delete_assistant_message") {
+                    text = await (0, execute_1.executeDeleteAssistantMessage)(uid, args.messageId);
                 }
                 else {
                     responses.push({ jsonrpc: "2.0", id, error: { code: -32601, message: `Outil inconnu : ${toolName}` } });

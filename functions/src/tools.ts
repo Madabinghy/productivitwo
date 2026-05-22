@@ -738,6 +738,30 @@ const PUSH_GANTT_MCP_TOOL = {
   },
 };
 
+export const GET_ASSISTANT_MESSAGES_TOOL = {
+  name: "get_assistant_messages",
+  description:
+    "Retourne les messages ORION déjà programmés (pending) et les 10 derniers affichés (shown). " +
+    "APPELLE CET OUTIL AVANT push_assistant_message pour éviter les doublons et voir ce qui est déjà planifié. " +
+    "Utilise-le aussi pour auditer, mettre à jour ou supprimer des messages existants.",
+  inputSchema: { type: "object", properties: {} },
+};
+
+export const DELETE_ASSISTANT_MESSAGE_TOOL = {
+  name: "delete_assistant_message",
+  description:
+    "Supprime ou expire un message ORION existant. " +
+    "Utilise get_assistant_messages pour obtenir le messageId. " +
+    "Utile pour retirer un message obsolète ou incorrect avant d'en créer un nouveau.",
+  inputSchema: {
+    type: "object",
+    required: ["messageId"],
+    properties: {
+      messageId: { type: "string", description: "id du message (obtenu via get_assistant_messages)" },
+    },
+  },
+};
+
 export {
 GET_USER_CONTEXT_TOOL,
 UPDATE_ACTIVITY_GOAL_TOOL,

@@ -33,6 +33,8 @@ exports.executeDeleteProject = executeDeleteProject;
 exports.executeListProjects = executeListProjects;
 exports.executeGetProject = executeGetProject;
 exports.executePushGantt = executePushGantt;
+exports.executeGetAssistantMessages = executeGetAssistantMessages;
+exports.executeDeleteAssistantMessage = executeDeleteAssistantMessage;
 exports.normalizePhases = normalizePhases;
 exports.normalizeTasks = normalizeTasks;
 const db_1 = require("./db");
@@ -242,6 +244,26 @@ async function executeGetUserContext(uid) {
             "POUR créer un programme : appelle toujours get_document_template d'abord, génère le HTML, montre-le à l'utilisateur et attends sa validation avant de créer quoi que ce soit dans Productivitwo.",
             "CONVENTION CALENDRIER : quand tu crées un événement Google Calendar dans le cadre d'une session Productivitwo, ajoute ' - Productivitwo' à la fin du titre (ex: 'Séance musculation - Productivitwo'). Cela te permet d'identifier les events que tu peux modifier librement lors d'une réorganisation. Les events sans ' - Productivitwo' ont été créés par l'utilisateur ou hors contexte Productivitwo : ne les modifie pas sans demander confirmation explicite.",
             "FICHIERS DE TÂCHE : quand tu crées ou sauvegardes un document avec save_document, associe-le toujours à la tâche Gantt concernée via taskId (obtenu depuis get_project → tasks[].id). Choisis la category appropriée : 'programme' pour un plan structuré, 'brief' pour un cahier des charges, 'recherche' pour une analyse/veille, 'livrable' pour un output final, 'notes' pour des notes de travail. Avant de créer un nouveau document, vérifie via get_documents(taskId) si un document de même category existe déjà pour éviter les doublons — si oui, mets-le à jour via documentId.",
+            "PROPOSITIONS DE FIN DE SESSION : après avoir terminé une action significative (programme créé, Gantt mis à jour, bilan fait, messages ORION programmés…), propose toujours 2 à 3 suites logiques sous forme de liste numérotée courte. " +
+                "Adapte les options à ce qui vient d'être fait. Exemples pertinents selon le contexte : " +
+                "• 'Programme ton plan du jour' (si pas encore fait aujourd'hui) " +
+                "• 'Mettre à jour tes priorités Gantt' (si des tâches sont en retard) " +
+                "• 'Faire le bilan de la semaine' (si c'est vendredi ou fin de sprint) " +
+                "• 'Programmer des messages ORION pour la semaine' (si pas encore fait) " +
+                "• 'Créer les routines liées à ce programme' (si un programme vient d'être créé) " +
+                "• 'Aligner ton agenda Google Calendar' (si des créneaux sont à bloquer) " +
+                "• 'Voir les projets en veille' (si tu as archivé quelque chose) " +
+                "Formule-les en une ligne, sans description. Ne propose pas une option déjà réalisée dans la session.",
+            "ASSISTANT ORION — RÈGLE PROACTIVE : après chaque appel get_user_context, appelle D'ABORD get_assistant_messages pour voir ce qui est déjà programmé — ne recrée jamais un message avec la même condition et la même période. Ensuite programme systématiquement 2 à 4 messages pour l'assistant via push_assistant_message, sans attendre que l'utilisateur le demande. " +
+                "Choisis des dates et conditions pertinentes selon le contexte analysé. " +
+                "Pour chaque message avec une tâche ou projet précis, ajoute TOUJOURS une action ciblée : " +
+                "• open_gantt_task(projectId, taskId) pour une tâche Gantt urgente ou un jalon — c'est le plus utile, ça ouvre la fiche directement ; " +
+                "• open_project(projectId) pour une deadline de projet ou un projet inactif ; " +
+                "• open_day_plan pour les retards ou le plan vide ; " +
+                "• open_goals pour les objectifs GTD en souffrance. " +
+                "Pour obtenir les taskId, appelle get_project(projectId) — tasks[].id. " +
+                "Exemples de messages pertinents à programmer : deadline dans 3 jours (condition: project_deadline_near), tâche en retard (overdue_count), jalon imminent (project_milestone_today), activité sous objectif (activity_behind_target), début de semaine (week_start). " +
+                "Ne programme jamais deux messages avec la même condition pour la même période.",
         ],
     };
     return JSON.stringify(Object.assign(Object.assign({}, coachingRules), { domains, activities, activeRoutines, activeGoals, recentActivity }), null, 2);
@@ -979,5 +1001,56 @@ async function executePushGantt(uid, input) {
         `• ${(project.tasks || []).length} tâche(s) · ${(project.phases || []).length} phase(s)\n` +
         `• Voir sur : https://productivitwo-app.web.app\n` +
         `• projectId : ${projectId}`);
+}
+async function executeGetAssistantMessages(uid) {
+    const [pendingSnap, shownSnap] = await Promise.all([
+        db_1.db.collection(`users/${uid}/assistant_messages`)
+            .where("status", "==", "pending")
+            .orderBy("targetDate", "asc")
+            .get(),
+        db_1.db.collection(`users/${uid}/assistant_messages`)
+            .where("status", "==", "shown")
+            .orderBy("shownAt", "desc")
+            .limit(10)
+            .get(),
+    ]);
+    const pending = pendingSnap.docs.map((d) => {
+        var _a, _b, _c, _d, _e, _f, _g, _h;
+        const v = d.data();
+        return {
+            id: v.id,
+            targetDate: v.targetDate,
+            condition: v.condition,
+            text: v.text,
+            characterName: (_a = v.characterName) !== null && _a !== void 0 ? _a : "ORION",
+            action: (_b = v.action) !== null && _b !== void 0 ? _b : null,
+            expiresAfterDays: (_c = v.expiresAfterDays) !== null && _c !== void 0 ? _c : 2,
+            createdAt: (_h = (_g = (_f = (_e = (_d = v.createdAt) === null || _d === void 0 ? void 0 : _d.toDate) === null || _e === void 0 ? void 0 : _e.call(_d)) === null || _f === void 0 ? void 0 : _f.toISOString) === null || _g === void 0 ? void 0 : _g.call(_f)) !== null && _h !== void 0 ? _h : null,
+        };
+    });
+    const recentShown = shownSnap.docs.map((d) => {
+        var _a, _b, _c, _d, _e;
+        const v = d.data();
+        return {
+            id: v.id,
+            targetDate: v.targetDate,
+            text: v.text,
+            shownAt: (_e = (_d = (_c = (_b = (_a = v.shownAt) === null || _a === void 0 ? void 0 : _a.toDate) === null || _b === void 0 ? void 0 : _b.call(_a)) === null || _c === void 0 ? void 0 : _c.toISOString) === null || _d === void 0 ? void 0 : _d.call(_c)) !== null && _e !== void 0 ? _e : null,
+        };
+    });
+    if (!pending.length && !recentShown.length) {
+        return "Aucun message ORION programmé ou récent.";
+    }
+    return JSON.stringify({ pending, recentShown }, null, 2);
+}
+async function executeDeleteAssistantMessage(uid, messageId) {
+    var _a, _b;
+    const ref = db_1.db.collection(`users/${uid}/assistant_messages`).doc(messageId);
+    const snap = await ref.get();
+    if (!snap.exists)
+        return `Message introuvable : ${messageId}`;
+    const text = ((_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.text) !== null && _b !== void 0 ? _b : "").slice(0, 50);
+    await ref.update({ status: "expired" });
+    return `✅ Message ORION supprimé : "${text}${text.length >= 50 ? "…" : ""}".`;
 }
 //# sourceMappingURL=execute.js.map
