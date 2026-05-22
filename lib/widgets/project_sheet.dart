@@ -242,6 +242,7 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                         today: today,
                         cs: cs,
                         onToggle: () => _toggleStatus(task),
+                        onOpenDetail: _openTaskDetail,
                       ),
                   ],
                   // Tâches sans phase
@@ -267,6 +268,7 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                         today: today,
                         cs: cs,
                         onToggle: () => _toggleStatus(task),
+                        onOpenDetail: _openTaskDetail,
                       ),
                   ],
 
@@ -323,10 +325,250 @@ class _ProjectSheetState extends State<_ProjectSheet> {
     );
   }
 
+  Future<void> _openTaskDetail(ProjectTask task) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _TaskDetailSheet(
+        task: task,
+        project: _project,
+        sync: _sync,
+        onChanged: () => setState(() {}),
+      ),
+    );
+    setState(() {});
+  }
+
   String _fmt(DateTime d) {
     const m = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin',
                 'juil', 'aoû', 'sep', 'oct', 'nov', 'déc'];
     return '${d.day} ${m[d.month - 1]}';
+  }
+}
+
+// ── Sheet détail d'une tâche ──────────────────────────────────────────────────
+
+class _TaskDetailSheet extends StatefulWidget {
+  final ProjectTask task;
+  final Project project;
+  final FirestoreSync sync;
+  final VoidCallback onChanged;
+
+  const _TaskDetailSheet({
+    required this.task,
+    required this.project,
+    required this.sync,
+    required this.onChanged,
+  });
+
+  @override
+  State<_TaskDetailSheet> createState() => _TaskDetailSheetState();
+}
+
+class _TaskDetailSheetState extends State<_TaskDetailSheet> {
+  late ProjectTask _task;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _task = widget.task;
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    final tasks = widget.project.tasks
+        .map((t) => t.id == _task.id ? _task : t)
+        .toList();
+    await widget.sync.saveProjectTasks(widget.project.id, tasks);
+    widget.onChanged();
+    if (mounted) setState(() => _saving = false);
+  }
+
+  Future<void> _addAction() async {
+    final ctrl = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Nouvelle action'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(hintText: 'Description…'),
+          onSubmitted: (v) { if (v.trim().isNotEmpty) Navigator.pop(ctx, v.trim()); },
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+          FilledButton(
+            onPressed: () {
+              if (ctrl.text.trim().isNotEmpty) Navigator.pop(ctx, ctrl.text.trim());
+            },
+            child: const Text('Ajouter'),
+          ),
+        ],
+      ),
+    );
+    if (result == null) return;
+    setState(() => _task.actions.add(TaskAction(title: result)));
+    _save();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final allDone = _task.actions.isNotEmpty &&
+        _task.actions.every((a) => a.done);
+    final isDone = _task.status == 'done';
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      maxChildSize: 0.92,
+      minChildSize: 0.4,
+      expand: false,
+      builder: (_, scroll) => Column(
+        children: [
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 16, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(_task.title,
+                      style: const TextStyle(
+                          fontSize: 17, fontWeight: FontWeight.bold)),
+                ),
+                if (_saving)
+                  const SizedBox(
+                      width: 16, height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2)),
+                // Toggle done
+                TextButton.icon(
+                  icon: Icon(
+                    isDone ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                    color: isDone ? Colors.green : cs.onSurface.withOpacity(.4),
+                    size: 18,
+                  ),
+                  label: Text(isDone ? 'Terminée' : 'À faire',
+                      style: TextStyle(
+                          color: isDone ? Colors.green : cs.onSurface.withOpacity(.5))),
+                  onPressed: () {
+                    setState(() =>
+                        _task.status = isDone ? 'pending' : 'done');
+                    _save();
+                  },
+                ),
+              ],
+            ),
+          ),
+          Divider(height: 1, color: cs.outlineVariant.withOpacity(.3)),
+
+          // Actions
+          Expanded(
+            child: _task.actions.isEmpty
+                ? Center(
+                    child: Text('Aucune action.',
+                        style: TextStyle(
+                            color: cs.onSurface.withOpacity(.35),
+                            fontStyle: FontStyle.italic)),
+                  )
+                : ReorderableListView.builder(
+                    scrollController: scroll,
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                    buildDefaultDragHandles: false,
+                    itemCount: _task.actions.length,
+                    onReorder: (oldIndex, newIndex) {
+                      setState(() {
+                        if (newIndex > oldIndex) newIndex--;
+                        final item = _task.actions.removeAt(oldIndex);
+                        _task.actions.insert(newIndex, item);
+                      });
+                      _save();
+                    },
+                    itemBuilder: (ctx, i) {
+                      final a = _task.actions[i];
+                      return Dismissible(
+                        key: ValueKey('${a.title}_$i'),
+                        direction: DismissDirection.endToStart,
+                        background: Container(
+                          alignment: Alignment.centerRight,
+                          padding: const EdgeInsets.only(right: 16),
+                          color: cs.errorContainer,
+                          child: Icon(Icons.delete_outline,
+                              color: cs.error),
+                        ),
+                        onDismissed: (_) {
+                          setState(() => _task.actions.removeAt(i));
+                          _save();
+                        },
+                        child: ListTile(
+                          key: ValueKey('tile_${a.title}_$i'),
+                          dense: true,
+                          contentPadding: const EdgeInsets.only(left: 0, right: 4),
+                          leading: Checkbox(
+                            value: a.done,
+                            onChanged: (v) {
+                              setState(() {
+                                a.done = v ?? false;
+                                a.doneAt = a.done ? DateTime.now() : null;
+                              });
+                              _save();
+                            },
+                          ),
+                          title: Text(a.title,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: a.done
+                                    ? cs.onSurface.withOpacity(.35)
+                                    : cs.onSurface,
+                                decoration: a.done
+                                    ? TextDecoration.lineThrough
+                                    : null,
+                              )),
+                          trailing: ReorderableDragStartListener(
+                            index: i,
+                            child: Icon(Icons.drag_handle,
+                                color: cs.onSurface.withOpacity(.3)),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+
+          // Footer
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+                16, 8, 16, MediaQuery.of(context).padding.bottom + 12),
+            child: Row(
+              children: [
+                TextButton.icon(
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Ajouter une action'),
+                  onPressed: _addAction,
+                ),
+                const Spacer(),
+                if (!isDone && (allDone || _task.actions.isEmpty))
+                  FilledButton.icon(
+                    icon: const Icon(Icons.check_rounded, size: 16),
+                    label: const Text('Valider la tâche'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.green.shade600,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: () {
+                      setState(() => _task.status = 'done');
+                      _save();
+                      Navigator.pop(context);
+                    },
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -382,6 +624,7 @@ class _TaskTile extends StatelessWidget {
   final DateTime today;
   final ColorScheme cs;
   final VoidCallback onToggle;
+  final Future<void> Function(ProjectTask)? onOpenDetail;
 
   const _TaskTile({
     super.key,
@@ -390,6 +633,7 @@ class _TaskTile extends StatelessWidget {
     required this.today,
     required this.cs,
     required this.onToggle,
+    this.onOpenDetail,
   });
 
   @override
@@ -417,7 +661,7 @@ class _TaskTile extends StatelessWidget {
         ),
       ),
       child: InkWell(
-        onTap: task.isMilestone ? null : onToggle,
+        onTap: task.isMilestone ? null : () => onOpenDetail?.call(task) ?? onToggle(),
         borderRadius: BorderRadius.circular(10),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),

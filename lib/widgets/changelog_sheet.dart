@@ -8,6 +8,15 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.1', '22 mai 2026', [
+    (Icons.repeat_rounded, 'App bar : bouton Routines — liste du jour avec progression et incrément'),
+    (Icons.smart_toy_outlined, 'ORION : intégré comme onglet natif dans la nav principale'),
+    (Icons.cloud_outlined, 'Statut sync/Pro déplacé dans le menu ⋮'),
+    (Icons.play_circle_outline, 'Maintenant : FAB Démarrer (remplace le bouton), clavier ORION corrigé'),
+    (Icons.check_rounded, 'Projets : bouton Valider quand tâche à 100%, bouton + pour ajouter une action'),
+    (Icons.task_outlined, 'Fiche projet : tap tâche → sheet détail avec swipe delete + reorder actions'),
+    (Icons.close, 'Sheet activité : bouton fermer ajouté'),
+  ]),
   _Entry('5.0', '22 mai 2026', [
     (Icons.account_tree_outlined, 'Nouvelle nav : Accueil · Projets · Maintenant · ORION'),
     (Icons.play_circle_outline, 'Maintenant : camembert du jour + flow démarrer (activité → tâche Gantt)'),

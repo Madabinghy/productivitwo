@@ -2182,8 +2182,7 @@ class _AppRootState extends State<AppRoot>
               });
             },
           ),
-          // ORION tab : navigue vers OrionScreen (plein écran)
-          const SizedBox.shrink(),
+          OrionScreen(sync: _sync, embedded: true),
         ],
       ),
     );
@@ -2572,49 +2571,250 @@ class _AppRootState extends State<AppRoot>
   }
 
   bool _shouldShowFab() {
-    return _tab == _Tab.projets || _tab == _Tab.dashboard || _tab == _Tab.dashboard;
+    if (_tab == _Tab.maintenant) {
+      return logic.runningActivity() == null;
+    }
+    return false;
   }
 
   Widget _buildFab() {
-    final playFab = FloatingActionButton(
-      heroTag: "fab_launch_activity",
-      tooltip: "Lancer une activité",
-      onPressed: () => _showLaunchActivitySheet(context),
-      child: const Icon(Icons.play_arrow_rounded),
-    );
+    if (_tab == _Tab.maintenant) {
+      return FloatingActionButton.extended(
+        heroTag: 'fab_focus_start',
+        onPressed: () => _startFocusFromFab(context),
+        icon: const Icon(Icons.play_arrow_rounded),
+        label: const Text('Démarrer'),
+      );
+    }
 
-    if (_tab == _Tab.maintenant) return playFab;
+    return const SizedBox.shrink();
+  }
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        FloatingActionButton(
-          heroTag: "fab_now_routine",
-          mini: true,
-          tooltip: "Nouvelle routine",
-          onPressed: () async {
-            await _createRoutineFromNow(context);
-            if (!mounted) return;
-            setState(() {});
+  Future<void> _startFocusFromFab(BuildContext context) async {
+    final activities = (_state?.activeActivities ?? [])
+        .where((a) => !a.isHabit)
+        .toList();
+    if (activities.isEmpty) return;
+
+    Activity? activity;
+    if (activities.length == 1) {
+      activity = activities.first;
+    } else {
+      activity = await showModalBottomSheet<Activity>(
+        context: context,
+        showDragHandle: true,
+        builder: (ctx) {
+          final cs = Theme.of(ctx).colorScheme;
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                  child: Text('Sur quelle activité ?',
+                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                ),
+                for (final a in activities)
+                  ListTile(
+                    title: Text(a.name),
+                    subtitle: Text(
+                      (_state?.activeDomains ?? [])
+                              .where((d) => d.id == a.domainId)
+                              .firstOrNull
+                              ?.name ?? '',
+                      style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.45)),
+                    ),
+                    onTap: () => Navigator.pop(ctx, a),
+                  ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          );
+        },
+      );
+    }
+    if (activity == null || !mounted) return;
+
+    logic.start(activity.id);
+    setState(() {
+      _focusProject = null;
+      _focusTask = null;
+    });
+  }
+
+  void _showRoutinesSheet(BuildContext context) {
+    final routines = logic.state.activities
+        .where((a) =>
+            a.isHabit &&
+            logic.effectiveHabitFreq(a) == HabitFreq.daily &&
+            !a.deleted)
+        .toList()
+      ..sort((a, b) => a.order.compareTo(b.order));
+
+    final today = DateTime.now();
+    final todayD = DateTime(today.year, today.month, today.day);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setS) {
+            final cs = Theme.of(ctx).colorScheme;
+            return DraggableScrollableSheet(
+              initialChildSize: 0.55,
+              maxChildSize: 0.92,
+              minChildSize: 0.3,
+              expand: false,
+              builder: (_, scroll) => Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.repeat_rounded, size: 18),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Routines du jour (${routines.length})',
+                          style: const TextStyle(
+                              fontSize: 17, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Divider(height: 1, color: cs.outlineVariant.withOpacity(.3)),
+                  if (routines.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        'Aucune routine quotidienne configurée.',
+                        style: TextStyle(
+                            color: cs.onSurface.withOpacity(.4),
+                            fontStyle: FontStyle.italic),
+                      ),
+                    )
+                  else
+                    Expanded(
+                      child: ListView.builder(
+                        controller: scroll,
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                        itemCount: routines.length,
+                        itemBuilder: (ctx, i) {
+                          final r = routines[i];
+                          final value = logic.habitValueOn(r.id, todayD);
+                          final target = logic.effectiveHabitTarget(r);
+                          final isDone = value >= target;
+                          final dColor = domainColor(r.domainId,
+                              logic.state.activeDomains);
+
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: () => showRoutineSheet(
+                                ctx,
+                                logic: logic,
+                                habitId: r.id,
+                                day: todayD,
+                                onSaved: () => setS(() {}),
+                              ),
+                              child: Container(
+                                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                                decoration: BoxDecoration(
+                                  color: isDone
+                                      ? (dColor ?? cs.primary).withOpacity(.08)
+                                      : cs.surfaceContainerHighest.withOpacity(.4),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: isDone
+                                        ? (dColor ?? cs.primary).withOpacity(.25)
+                                        : cs.outlineVariant.withOpacity(.3),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    // Dot domaine
+                                    if (dColor != null) ...[
+                                      Container(
+                                        width: 8, height: 8,
+                                        decoration: BoxDecoration(
+                                            color: dColor,
+                                            shape: BoxShape.circle),
+                                      ),
+                                      const SizedBox(width: 10),
+                                    ],
+                                    // Nom
+                                    Expanded(
+                                      child: Text(
+                                        r.name,
+                                        style: TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w600,
+                                          color: isDone
+                                              ? cs.onSurface.withOpacity(.45)
+                                              : cs.onSurface,
+                                          decoration: isDone
+                                              ? TextDecoration.lineThrough
+                                              : null,
+                                        ),
+                                      ),
+                                    ),
+                                    // Score + incrément
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          target == 1
+                                              ? (isDone ? '✓' : '○')
+                                              : '$value/$target',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w700,
+                                            color: isDone
+                                                ? (dColor ?? cs.primary)
+                                                : cs.onSurface.withOpacity(.4),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        GestureDetector(
+                                          onTap: () {
+                                            logic.incHabitWithAssocEvent(
+                                                r.id, 1, todayD);
+                                            logic.onChange();
+                                            setS(() {});
+                                            setState(() {});
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.all(6),
+                                            decoration: BoxDecoration(
+                                              color: (dColor ?? cs.primary)
+                                                  .withOpacity(.12),
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: Icon(Icons.add,
+                                                size: 16,
+                                                color: dColor ?? cs.primary),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            );
           },
-          child: const Icon(Icons.repeat),
-        ),
-        const SizedBox(height: 8),
-        FloatingActionButton(
-          heroTag: "fab_now_action",
-          mini: true,
-          tooltip: "Nouvelle action",
-          onPressed: () async {
-            await _createActionFromNow(context);
-            if (!mounted) return;
-            setState(() {});
-          },
-          child: const Icon(Icons.add),
-        ),
-        const SizedBox(height: 12),
-        playFab,
-      ],
+        );
+      },
     );
   }
 
@@ -3462,69 +3662,26 @@ class _AppRootState extends State<AppRoot>
             ),
             const Spacer(),
             _buildDailyScoreChip(context),
-            // Indicateur sync / Pro
-            ValueListenableBuilder<bool>(
-              valueListenable: ProManager.notifier,
-              builder: (context, isPro, _) {
-                if (!isPro) {
-                  return GestureDetector(
-                    onTap: () async {
-                      final unlocked = await showPaywallSheet(context);
-                      if (unlocked) setState(() {});
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: Tooltip(
-                        message: 'Passer à Pro — sync cloud & stats avancées',
-                        child: Icon(Icons.lock_outlined,
-                            size: 18,
-                            color: Theme.of(context).colorScheme.onSurface.withOpacity(.35)),
-                      ),
-                    ),
-                  );
-                }
-                if (_syncStatus.isEmpty) return const SizedBox.shrink();
-                return GestureDetector(
-                  onLongPress: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const DevConsoleScreen()),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: Tooltip(
-                      message: _syncStatus == '☁️'
-                          ? 'Sync Firestore OK\n(appui long = console dev)'
-                          : 'Mode local\n(appui long = console dev)',
-                      child: Text(_syncStatus, style: const TextStyle(fontSize: 14)),
-                    ),
-                  ),
-                );
-              },
-            ),
             IconButton(
-              icon: const Icon(Icons.account_tree_outlined),
-              tooltip: 'Projets',
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => GoalsView(domains: _state?.domains ?? []),
-                ),
-              ),
-            ),
-            IconButton(
-              icon: Badge(
-                isLabelVisible: _assistantMessages.isNotEmpty,
-                smallSize: 7,
-                backgroundColor: const Color(0xFFe8c94a),
-                child: const Icon(Icons.smart_toy_outlined, size: 20),
-              ),
-              tooltip: 'ORION',
-              onPressed: () => OrionScreen.show(context, _sync),
+              icon: const Icon(Icons.repeat_rounded, size: 20),
+              tooltip: 'Routines',
+              onPressed: () => _showRoutinesSheet(context),
             ),
             const SizedBox(width: 4),
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert),
               tooltip: 'Plus',
               onSelected: (v) async {
-                if (v == 'stats') {
+                if (v == 'sync_status') {
+                  final isPro = ProManager.isPro;
+                  if (!isPro) {
+                    final unlocked = await showPaywallSheet(context);
+                    if (unlocked) setState(() {});
+                  } else {
+                    Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const DevConsoleScreen()));
+                  }
+                } else if (v == 'stats') {
                   showModalBottomSheet(
                     context: context,
                     isScrollControlled: true,
@@ -3656,6 +3813,34 @@ class _AppRootState extends State<AppRoot>
                 }
               },
               itemBuilder: (_) => [
+                // Indicateur sync / Pro
+                PopupMenuItem(
+                  value: 'sync_status',
+                  child: ValueListenableBuilder<bool>(
+                    valueListenable: ProManager.notifier,
+                    builder: (ctx, isPro, _) => Row(
+                      children: [
+                        Icon(
+                          isPro
+                              ? (_syncStatus == '☁️' ? Icons.cloud_done_outlined : Icons.cloud_off_outlined)
+                              : Icons.lock_outlined,
+                          size: 18,
+                          color: isPro ? null : Theme.of(ctx).colorScheme.onSurface.withOpacity(.4),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          isPro
+                              ? (_syncStatus == '☁️' ? 'Sync OK' : 'Mode local')
+                              : 'Passer à Pro',
+                          style: TextStyle(
+                            color: isPro ? null : Theme.of(ctx).colorScheme.onSurface.withOpacity(.5),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const PopupMenuDivider(),
                 const PopupMenuItem(
                   value: 'stats',
                   child: Row(
@@ -3829,10 +4014,6 @@ class _AppRootState extends State<AppRoot>
         currentIndex: _tabIndex(_tab),
         onTap: (i) {
           final tapped = _tabFromIndex(i);
-          if (tapped == _Tab.orion) {
-            OrionScreen.show(context, _sync);
-            return;
-          }
           _tabFadeController.forward(from: 0);
           setState(() => _tab = tapped);
         },
@@ -5215,6 +5396,10 @@ class _AppRootState extends State<AppRoot>
                               logic.onChange();
                               Navigator.pop(ctx, true);
                             },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close, size: 18),
+                            onPressed: () => Navigator.pop(ctx, false),
                           ),
                         ],
                       ),

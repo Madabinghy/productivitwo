@@ -26,7 +26,9 @@ const _kLimitPro = 50;
 class OrionScreen extends StatefulWidget {
   final FirestoreSync sync;
 
-  const OrionScreen({super.key, required this.sync});
+  final bool embedded;
+
+  const OrionScreen({super.key, required this.sync, this.embedded = false});
 
   static void show(BuildContext context, FirestoreSync sync) {
     Navigator.of(context).push(MaterialPageRoute(
@@ -224,18 +226,29 @@ class _OrionScreenState extends State<OrionScreen>
       builder: (context, isPro, _) {
         final limitReached = isPro && _runCount >= _kLimitPro;
 
+        final content = _loading
+            ? const Center(child: CircularProgressIndicator(color: _gold))
+            : Column(
+                children: [
+                  Expanded(child: _buildBody(isPro)),
+                  _buildReplyBar(isPro, limitReached),
+                ],
+              );
+
+        if (widget.embedded) {
+          return GestureDetector(
+            onTap: () => FocusScope.of(context).unfocus(),
+            child: Container(color: _bg, child: content),
+          );
+        }
+
         return GestureDetector(
           onTap: () => FocusScope.of(context).unfocus(),
           child: Scaffold(
             backgroundColor: _bg,
             resizeToAvoidBottomInset: true,
             appBar: _buildAppBar(),
-            body: _loading
-                ? const Center(child: CircularProgressIndicator(color: _gold))
-                : _buildBody(isPro),
-            bottomNavigationBar: _loading
-                ? null
-                : _buildBottomBar(isPro, limitReached),
+            body: content,
           ),
         );
       },
@@ -286,7 +299,7 @@ class _OrionScreenState extends State<OrionScreen>
 
     return ListView(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
       children: [
         _StatusCard(isPro: isPro, runCount: _runCount),
 
@@ -300,7 +313,12 @@ class _OrionScreenState extends State<OrionScreen>
         ],
 
         const SizedBox(height: 20),
-        _SectionLabel('MES INSTRUCTIONS'),
+        _SectionLabel('INSTRUCTIONS PERMANENTES'),
+        const SizedBox(height: 4),
+        const Text(
+          'Lues à chaque cycle automatique (toutes les 6h)',
+          style: TextStyle(fontFamily: 'monospace', fontSize: 10, color: _muted),
+        ),
         const SizedBox(height: 8),
         _buildNeedsField(),
 
@@ -317,8 +335,6 @@ class _OrionScreenState extends State<OrionScreen>
           _buildEmptyState()
         else
           for (final m in _messages) _MessageCard(message: m),
-
-        const SizedBox(height: 100),
       ],
     );
   }
@@ -382,52 +398,65 @@ class _OrionScreenState extends State<OrionScreen>
     );
   }
 
-  Widget _buildBottomBar(bool isPro, bool limitReached) {
+  Widget _buildReplyBar(bool isPro, bool limitReached) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final safePadding = MediaQuery.of(context).padding.bottom;
     return Container(
       padding: EdgeInsets.fromLTRB(
-          16, 12, 16, MediaQuery.of(context).padding.bottom + 12),
+          16, 10, 16, (bottomInset > 0 ? bottomInset : safePadding) + 10),
       decoration: const BoxDecoration(
         color: _surface,
         border: Border(top: BorderSide(color: _border)),
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: TextField(
-              controller: _replyCtrl,
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) => _activating ? null : _activate(),
-              style: const TextStyle(
-                  fontFamily: 'monospace', fontSize: 13, color: _text),
-              decoration: InputDecoration(
-                hintText: 'Répondre à ORION…',
-                hintStyle: const TextStyle(
-                    fontFamily: 'monospace', fontSize: 12, color: _muted),
-                filled: true,
-                fillColor: _surface2,
-                isDense: true,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: _border),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: _border),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: _gold, width: 1.5),
-                ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              ),
-            ),
+          const Text(
+            'Réponse ponctuelle — envoyée au prochain cycle, puis effacée',
+            style: TextStyle(fontFamily: 'monospace', fontSize: 10, color: _muted),
           ),
-          const SizedBox(width: 10),
-          _ActivateButton(
-            activating: _activating,
-            limitReached: limitReached,
-            onTap: _activating || limitReached ? null : _activate,
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _replyCtrl,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) => _activating ? null : _activate(),
+                  style: const TextStyle(
+                      fontFamily: 'monospace', fontSize: 13, color: _text),
+                  decoration: InputDecoration(
+                    hintText: 'Ex : le projet X est repoussé, ignore-le…',
+                    hintStyle: const TextStyle(
+                        fontFamily: 'monospace', fontSize: 11, color: _muted),
+                    filled: true,
+                    fillColor: _surface2,
+                    isDense: true,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: _border),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: _border),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: _gold, width: 1.5),
+                    ),
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              _ActivateButton(
+                activating: _activating,
+                limitReached: limitReached,
+                onTap: _activating || limitReached ? null : _activate,
+              ),
+            ],
           ),
         ],
       ),

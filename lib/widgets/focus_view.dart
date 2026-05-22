@@ -152,35 +152,15 @@ class _FocusViewState extends State<FocusView> {
 
             const Spacer(),
 
-            // Boutons
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.account_tree_outlined, size: 18),
-                    label: const Text('Projets'),
-                    onPressed: widget.onGoToProjects,
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton.icon(
-                    icon: const Icon(Icons.play_arrow_rounded, size: 20),
-                    label: const Text('Démarrer'),
-                    onPressed: () => _showStartFlow(context),
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                ),
-              ],
+            OutlinedButton.icon(
+              icon: const Icon(Icons.account_tree_outlined, size: 18),
+              label: const Text('Voir mes projets'),
+              onPressed: widget.onGoToProjects,
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
             ),
           ],
         ),

@@ -293,6 +293,16 @@ class _GoalsViewState extends State<GoalsView> {
                   onPlay: widget.onStartTimer == null
                       ? null
                       : () => _onPlay(context, project, task, color),
+                  onComplete: () async {
+                    task.status = 'done';
+                    await _sync.saveProjectTasks(project.id, project.tasks);
+                    setState(() {});
+                  },
+                  onAddAction: (title) async {
+                    task.actions.add(TaskAction(title: title));
+                    await _sync.saveProjectTasks(project.id, project.tasks);
+                    setState(() {});
+                  },
                 );
               },
               childCount: phaseTasks.length,
@@ -472,6 +482,8 @@ class _GanttTaskCard extends StatelessWidget {
   final void Function(String taskId, int actionIdx, bool value) onTaskActionToggled;
   final VoidCallback onTap;
   final VoidCallback? onPlay;
+  final VoidCallback? onComplete;
+  final Future<void> Function(String title)? onAddAction;
 
   const _GanttTaskCard({
     required this.project,
@@ -483,6 +495,8 @@ class _GanttTaskCard extends StatelessWidget {
     required this.onTaskActionToggled,
     required this.onTap,
     this.onPlay,
+    this.onComplete,
+    this.onAddAction,
   });
 
   @override
@@ -672,11 +686,82 @@ class _GanttTaskCard extends StatelessWidget {
                     ),
                   ),
               ],
+              // Valider (100% ou pas de sous-actions) + bouton +
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  if (onAddAction != null)
+                    GestureDetector(
+                      onTap: () => _showAddActionDialog(context),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.add, size: 14, color: cs.onSurface.withOpacity(.35)),
+                          const SizedBox(width: 3),
+                          Text('Ajouter',
+                              style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(.35))),
+                        ],
+                      ),
+                    ),
+                  const Spacer(),
+                  if (onComplete != null && (!hasActions || (progress != null && progress >= 1.0)))
+                    GestureDetector(
+                      onTap: onComplete,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withOpacity(.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.green.withOpacity(.3)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.check_rounded, size: 14, color: Colors.green.shade600),
+                            const SizedBox(width: 4),
+                            Text('Valider',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.green.shade600)),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _showAddActionDialog(BuildContext context) async {
+    final ctrl = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Nouvelle action'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(hintText: 'Description…'),
+          onSubmitted: (v) { if (v.trim().isNotEmpty) Navigator.pop(ctx, v.trim()); },
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+          FilledButton(
+            onPressed: () {
+              if (ctrl.text.trim().isNotEmpty) Navigator.pop(ctx, ctrl.text.trim());
+            },
+            child: const Text('Ajouter'),
+          ),
+        ],
+      ),
+    );
+    if (result != null) await onAddAction?.call(result);
   }
 
   String _fmtDate(DateTime d) {
