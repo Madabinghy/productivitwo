@@ -152,12 +152,16 @@ export async function runOrionCycle(uid: string): Promise<{
 
 Date du jour : ${today}${userContext ? `\n\n${userContext}` : ""}
 
-## Workflow OBLIGATOIRE — à suivre dans cet ordre exact
+## Contexte déjà disponible
 
-1. Appelle get_assistant_messages (vérifie les messages déjà en attente).
-2. Appelle get_orion_context (analyse le contexte complet).
-3. Si l'utilisateur a donné une instruction spécifique → exécute-la avec les outils appropriés.
-4. TOUJOURS terminer par push_assistant_message — MINIMUM 1 message, MAXIMUM 3.
+Le contexte utilisateur et les messages ORION existants sont fournis directement dans le message — tu n'as PAS besoin d'appeler get_orion_context ou get_assistant_messages.
+
+## Workflow OBLIGATOIRE
+
+1. Lis le contexte et les messages existants dans le message fourni.
+2. Si l'utilisateur a donné une instruction spécifique → exécute-la avec les outils appropriés.
+3. TOUJOURS terminer par push_assistant_message — MINIMUM 1 message, MAXIMUM 3.
+4. Si plusieurs push, appelle-les dans la MÊME réponse (tool use parallèle) pour économiser des tokens.
 
 ## RÈGLE ABSOLUE : tu DOIS pousser au moins 1 message avant de terminer
 
@@ -194,15 +198,37 @@ Même si tu n'as fait aucune action, même s'il n'y a rien d'urgent — pousse t
 - Pas de doublons avec les messages pending existants
 - targetDate = aujourd'hui (${today}) sauf si contexte spécifique justifie demain`;
 
-  const tools = ORION_TOOLS;
-
-  const messages: PromptCachingBetaMessageParam[] = [
-    { role: "user", content: "Effectue ton analyse et agis selon mes instructions." },
-  ];
-
   let pushedCount = 0;
   let continueLoop = true;
   const actionLog: string[] = [];
+
+  // Pré-fetch contexte + messages existants — évite 2 turns d'API coûteux
+  const [orionContext, existingMessages] = await Promise.all([
+    executeGetOrionContext(uid),
+    executeGetAssistantMessages(uid),
+  ]);
+  actionLog.push("📖 Lecture du contexte utilisateur");
+  actionLog.push("📩 Vérification des messages ORION existants");
+
+  // Tools réduits : le contexte est déjà injecté, pas besoin de le refetcher
+  const tools = ORION_TOOLS.filter((t) =>
+    !["get_orion_context", "get_assistant_messages"].includes(t.name)
+  );
+  // Cache sur le dernier tool de la liste filtrée
+  if (tools.length > 0 && !tools[tools.length - 1].cache_control) {
+    tools[tools.length - 1] = { ...tools[tools.length - 1], cache_control: { type: "ephemeral" } };
+  }
+
+  const firstMessage = [
+    `## Contexte utilisateur\n${orionContext}`,
+    `## Messages ORION déjà en attente\n${existingMessages}`,
+    config.userNeeds ? `## Instruction\n${config.userNeeds}` : "## Instruction\nAnalyse autonome : génère des messages ORION pertinents.",
+    config.userReply ? `## Réponse de l'utilisateur au dernier message\n${config.userReply}` : "",
+  ].filter(Boolean).join("\n\n");
+
+  const messages: PromptCachingBetaMessageParam[] = [
+    { role: "user", content: firstMessage },
+  ];
 
   while (continueLoop) {
     const response = await client.beta.promptCaching.messages.create({
