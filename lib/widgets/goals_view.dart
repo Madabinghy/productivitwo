@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/widgets/day_block_sheet.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
+import 'package:productivitwo_v1/widgets/day_block_sheet.dart';
 import 'package:productivitwo_v1/widgets/new_goal_sheet.dart';
+import 'package:productivitwo_v1/widgets/project_sheet.dart';
 import 'package:intl/intl.dart';
 
 class GoalsView extends StatefulWidget {
@@ -18,9 +20,24 @@ class GoalsView extends StatefulWidget {
 
 class _GoalsViewState extends State<GoalsView> {
   bool _showDone = false;
+  List<Project> _projects = [];
+  final _sync = FirestoreSync();
 
   AppLogic get logic => widget.logic;
   AppState get st => widget.state;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProjects();
+  }
+
+  Future<void> _loadProjects() async {
+    try {
+      final projects = await _sync.fetchProjects();
+      if (mounted) setState(() => _projects = projects);
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,6 +49,14 @@ class _GoalsViewState extends State<GoalsView> {
       ..sort((a, b) =>
           (b.doneAt ?? b.createdAt).compareTo(a.doneAt ?? a.createdAt));
 
+    // Tâches Gantt actives (non done/skipped, démarrées ou à venir sous 30j)
+    final now = DateTime.now();
+    final todayD = DateTime(now.year, now.month, now.day);
+    final horizon = todayD.add(const Duration(days: 30));
+    final activeProjects = _projects
+        .where((p) => p.status != 'archived')
+        .toList();
+
     return Scaffold(
       body: CustomScrollView(
         slivers: [
@@ -40,7 +65,29 @@ class _GoalsViewState extends State<GoalsView> {
             floating: true,
             snap: true,
           ),
-          if (activeGoals.isEmpty)
+
+          // ── Section Projets actifs ──────────────────────────────────────
+          if (activeProjects.isNotEmpty)
+            ..._buildGanttSection(context, activeProjects, todayD, horizon),
+
+          // ── Séparateur + titre Goals si les deux sections sont présentes
+          if (activeProjects.isNotEmpty && activeGoals.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                child: Text(
+                  'OBJECTIFS LIBRES',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.2,
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(.4),
+                  ),
+                ),
+              ),
+            ),
+
+          if (activeGoals.isEmpty && activeProjects.isEmpty)
             const SliverFillRemaining(
               hasScrollBody: false,
               child: Center(
@@ -113,6 +160,125 @@ class _GoalsViewState extends State<GoalsView> {
         child: const Icon(Icons.add),
       ),
     );
+  }
+
+  // ── Section Projets / tâches Gantt ───────────────────────────────────────
+
+  List<Widget> _buildGanttSection(
+    BuildContext context,
+    List<Project> projects,
+    DateTime todayD,
+    DateTime horizon,
+  ) {
+    // Grouper les tâches actives par domaine
+    final byDomain = <String?, List<({Project project, ProjectTask task})>>{};
+    for (final p in projects) {
+      for (final t in p.tasks) {
+        if (t.status == 'done' || t.status == 'skipped') continue;
+        if (t.startDate.isAfter(horizon)) continue;
+        byDomain.putIfAbsent(p.domainId, () => []).add((project: p, task: t));
+      }
+    }
+    if (byDomain.isEmpty) return [];
+
+    final widgets = <Widget>[];
+
+    // Header section
+    widgets.add(SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+        child: Text(
+          'PROJETS ACTIFS',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.2,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+        ),
+      ),
+    ));
+
+    // Domaines dans l'ordre de st.domains, puis null
+    final orderedDomainIds = [
+      ...st.domains.map((d) => d.id).where(byDomain.containsKey),
+      if (byDomain.containsKey(null)) null,
+    ];
+
+    for (final domainId in orderedDomainIds) {
+      final pairs = byDomain[domainId]!;
+      final domain = domainId != null
+          ? st.domains.where((d) => d.id == domainId).firstOrNull
+          : null;
+      final color = domainColor(domainId, st.domains) ??
+          Theme.of(context).colorScheme.primary;
+
+      // Grouper par projet
+      final byProject = <String, List<ProjectTask>>{};
+      final projectMap = <String, Project>{};
+      for (final pair in pairs) {
+        byProject.putIfAbsent(pair.project.id, () => []).add(pair.task);
+        projectMap[pair.project.id] = pair.project;
+      }
+
+      widgets.add(SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+          child: Row(
+            children: [
+              Container(
+                width: 8, height: 8,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                domain?.name.toUpperCase() ?? 'SANS DOMAINE',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ));
+
+      for (final projectId in byProject.keys) {
+        final project = projectMap[projectId]!;
+        final tasks = byProject[projectId]!;
+        widgets.add(SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (ctx, i) => _GanttTaskCard(
+              project: project,
+              task: tasks[i],
+              domains: st.domains,
+              today: todayD,
+              color: color,
+              projectTitle: project.title,
+              onTaskActionToggled: (taskIdx, actionIdx, value) async {
+                project.tasks
+                    .firstWhere((t) => t.id == tasks[i].id)
+                    .actions[actionIdx]
+                    .done = value;
+                await _sync.saveProjectTasks(project.id, project.tasks);
+                setState(() {});
+              },
+              onTap: () => showProjectSheet(
+                context,
+                project: project,
+                domains: st.domains,
+                targetTaskId: tasks[i].id,
+              ),
+            ),
+            childCount: tasks.length,
+          ),
+        ));
+      }
+    }
+
+    return widgets;
   }
 
   List<Widget> _buildDomainSection(
@@ -1182,4 +1348,214 @@ class _SectionLabel extends StatelessWidget {
           letterSpacing: 0.3,
         ),
       );
+}
+
+// ── Carte tâche Gantt dans la vue Objectifs ───────────────────────────────────
+
+class _GanttTaskCard extends StatelessWidget {
+  final Project project;
+  final ProjectTask task;
+  final List<Domain> domains;
+  final DateTime today;
+  final Color color;
+  final String projectTitle;
+  final void Function(String taskId, int actionIdx, bool value) onTaskActionToggled;
+  final VoidCallback onTap;
+
+  const _GanttTaskCard({
+    required this.project,
+    required this.task,
+    required this.domains,
+    required this.today,
+    required this.color,
+    required this.projectTitle,
+    required this.onTaskActionToggled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isOverdue = task.endDate != null &&
+        task.endDate!.isBefore(today) &&
+        task.status != 'done';
+    final hasActions = task.actions.isNotEmpty;
+    final doneActions = task.actions.where((a) => a.done).length;
+    final totalActions = task.actions.length;
+    final progress = totalActions > 0 ? doneActions / totalActions : null;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest.withOpacity(.55),
+            borderRadius: BorderRadius.circular(12),
+            border: Border(
+              left: BorderSide(
+                color: isOverdue ? cs.error : color,
+                width: 3,
+              ),
+            ),
+          ),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Titre tâche + projet ──────────────────────────────────
+              Row(
+                children: [
+                  if (task.isMilestone)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: Transform.rotate(
+                        angle: 0.785,
+                        child: Container(
+                          width: 10, height: 10,
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade600,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                    ),
+                  Expanded(
+                    child: Text(
+                      task.title,
+                      style: const TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  if (progress != null) ...[
+                    Text(
+                      '${(progress * 100).round()}%',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: color,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                  Icon(Icons.chevron_right,
+                      size: 16, color: cs.onSurface.withOpacity(.25)),
+                ],
+              ),
+
+              // Sous-titre projet
+              Text(
+                projectTitle,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: cs.onSurface.withOpacity(.45),
+                ),
+              ),
+
+              // Barre de progression
+              if (progress != null) ...[
+                const SizedBox(height: 7),
+                LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 4,
+                  borderRadius: BorderRadius.circular(3),
+                  backgroundColor: cs.onSurface.withOpacity(.08),
+                  color: isOverdue ? cs.error : color,
+                ),
+              ],
+
+              // Date et retard
+              if (task.endDate != null) ...[
+                const SizedBox(height: 5),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.event_outlined,
+                      size: 11,
+                      color: isOverdue ? cs.error : cs.onSurface.withOpacity(.35),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      _fmtDate(task.endDate!),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isOverdue ? cs.error : cs.onSurface.withOpacity(.4),
+                        fontWeight: isOverdue ? FontWeight.w600 : FontWeight.normal,
+                      ),
+                    ),
+                    if (isOverdue) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: cs.error.withOpacity(.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '−${today.difference(task.endDate!).inDays}j',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: cs.error,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+
+              // ── Sous-actions cochables ────────────────────────────────
+              if (hasActions) ...[
+                const SizedBox(height: 8),
+                for (int i = 0; i < task.actions.length; i++)
+                  GestureDetector(
+                    onTap: () => onTaskActionToggled(task.id, i, !task.actions[i].done),
+                    behavior: HitTestBehavior.opaque,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 3),
+                      child: Row(
+                        children: [
+                          Icon(
+                            task.actions[i].done
+                                ? Icons.check_box_rounded
+                                : Icons.check_box_outline_blank,
+                            size: 16,
+                            color: task.actions[i].done
+                                ? Colors.green.shade500
+                                : cs.onSurface.withOpacity(.4),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              task.actions[i].title,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: task.actions[i].done
+                                    ? cs.onSurface.withOpacity(.35)
+                                    : cs.onSurface.withOpacity(.8),
+                                decoration: task.actions[i].done
+                                    ? TextDecoration.lineThrough
+                                    : null,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _fmtDate(DateTime d) {
+    const m = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin',
+                'juil', 'aoû', 'sep', 'oct', 'nov', 'déc'];
+    return '${d.day} ${m[d.month - 1]} ${d.year}';
+  }
 }
