@@ -1580,6 +1580,7 @@ class _AppRootState extends State<AppRoot>
   bool _saving = false;
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+  StreamSubscription<List<Goal>>? _goalsSub;
   bool _wasOffline = false;
   List<AssistantMessageData> _assistantMessages = [];
 
@@ -1668,6 +1669,7 @@ class _AppRootState extends State<AppRoot>
   void dispose() {
     _heartbeat?.cancel();
     _connectivitySub?.cancel();
+    _goalsSub?.cancel();
     _tick.dispose();
     _confettiController.dispose();
     _tabFadeController.dispose();
@@ -1862,6 +1864,16 @@ class _AppRootState extends State<AppRoot>
             },
           ),
         ));
+      });
+    }
+
+    // Stream temps réel des goals — se met à jour dès qu'un goal change dans Firestore
+    if (firestoreEnabled) {
+      _goalsSub?.cancel();
+      _goalsSub = _sync.streamGoals().listen((goals) {
+        if (mounted && _state != null) {
+          setState(() => _state!.goals = goals);
+        }
       });
     }
 
