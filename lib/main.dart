@@ -6978,65 +6978,9 @@ class _AppRootState extends State<AppRoot>
               );
             }
 
-            final goalList = activeGoals.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text('Aucun objectif actif.',
-                            style: TextStyle(color: Colors.grey)),
-                        const SizedBox(height: 16),
-                        FilledButton.icon(
-                          onPressed: addGoalForDomain,
-                          icon: const Icon(Icons.add),
-                          label: const Text('Créer un objectif'),
-                        ),
-                      ],
-                    ),
-                  )
-                : ReorderableListView.builder(
-                    scrollController: scrollCtrl,
-                    padding: const EdgeInsets.only(bottom: 100),
-                    buildDefaultDragHandles: false,
-                    itemCount: activeGoals.length,
-                    onReorder: (oldIndex, newIndex) {
-                      logic.reorderGoals(domainId, oldIndex, newIndex);
-                      setSB(() {});
-                    },
-                    itemBuilder: (ctx, i) {
-                      final g = activeGoals[i];
-                      return GoalCard(
-                          key: ValueKey(g.id),
-                          goal: g,
-                          muted: false,
-                          logic: logic,
-                          showDrag: true,
-                          dragIndex: i,
-                          onPin: () { logic.toggleGoalPin(g.id); setSB(() {}); },
-                          onTap: () => openGoalDetail(g),
-                          onArchive: () async {
-                            final confirm = await showDialog<bool>(
-                              context: ctx,
-                              builder: (c) => AlertDialog(
-                                title: const Text('Archiver ?'),
-                                content: Text('Archiver "${g.title}" ?'),
-                                actions: [
-                                  TextButton(
-                                      onPressed: () => Navigator.pop(c, false),
-                                      child: const Text('Annuler')),
-                                  FilledButton(
-                                      onPressed: () => Navigator.pop(c, true),
-                                      child: const Text('Archiver')),
-                                ],
-                              ),
-                            );
-                            if (confirm == true) {
-                              logic.archiveGoal(g.id);
-                              setSB(() {});
-                            }
-                          });
-                    },
-                  );
+            final now = DateTime.now();
+            final todayD = DateTime(now.year, now.month, now.day);
+            final horizon = todayD.add(const Duration(days: 30));
 
             final goalBody = Padding(
               padding: EdgeInsets.only(
@@ -7048,7 +6992,172 @@ class _AppRootState extends State<AppRoot>
               child: Column(children: [
                 header,
                 const SizedBox(height: 8),
-                Expanded(child: goalList),
+                Expanded(
+                  child: StreamBuilder<List<Project>>(
+                    stream: _sync.streamProjects(),
+                    builder: (ctx, snap) {
+                      final projects = (snap.data ?? [])
+                          .where((p) => p.status != 'archived')
+                          .toList();
+
+                      // Tâches actives dans les 30 prochains jours
+                      final pairs = <({Project project, ProjectTask task})>[];
+                      for (final p in projects) {
+                        for (final t in p.tasks) {
+                          if (t.status == 'done' || t.status == 'skipped') continue;
+                          if (t.startDate.isAfter(horizon)) continue;
+                          pairs.add((project: p, task: t));
+                        }
+                      }
+                      pairs.sort((a, b) => a.task.startDate.compareTo(b.task.startDate));
+
+                      if (pairs.isEmpty && activeGoals.isEmpty) {
+                        return Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text('Aucun objectif actif.',
+                                  style: TextStyle(color: Colors.grey)),
+                              const SizedBox(height: 16),
+                              FilledButton.icon(
+                                onPressed: addGoalForDomain,
+                                icon: const Icon(Icons.add),
+                                label: const Text('Créer un objectif'),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      return CustomScrollView(
+                        controller: scrollCtrl,
+                        slivers: [
+                          // ── Projets Gantt ─────────────────────────────
+                          if (pairs.isNotEmpty) ...[
+                            SliverToBoxAdapter(
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(0, 4, 0, 6),
+                                child: Text(
+                                  'PROJETS ACTIFS',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 1.2,
+                                    color: cs.primary,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            SliverList(
+                              delegate: SliverChildBuilderDelegate(
+                                (ctx, i) {
+                                  final p = pairs[i].project;
+                                  final t = pairs[i].task;
+                                  final isOverdue = t.startDate.isBefore(todayD);
+                                  final daysLeft = t.startDate.difference(todayD).inDays;
+                                  return Card(
+                                    margin: const EdgeInsets.only(bottom: 6),
+                                    child: ListTile(
+                                      dense: true,
+                                      leading: Icon(
+                                        isOverdue ? Icons.warning_amber_rounded : Icons.task_outlined,
+                                        color: isOverdue ? cs.error : cs.primary,
+                                        size: 20,
+                                      ),
+                                      title: Text(t.title, style: const TextStyle(fontSize: 14)),
+                                      subtitle: Text(
+                                        p.title,
+                                        style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.5)),
+                                      ),
+                                      trailing: Text(
+                                        isOverdue
+                                            ? '${-daysLeft}j de retard'
+                                            : daysLeft == 0
+                                                ? "Aujourd'hui"
+                                                : 'dans ${daysLeft}j',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: isOverdue ? cs.error : cs.onSurface.withOpacity(.4),
+                                          fontWeight: isOverdue ? FontWeight.bold : FontWeight.normal,
+                                        ),
+                                      ),
+                                      onTap: () => showProjectSheet(
+                                        ctx,
+                                        project: p,
+                                        domains: _state!.domains,
+                                        targetTaskId: t.id,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                childCount: pairs.length,
+                              ),
+                            ),
+                          ],
+
+                          // ── Séparateur ────────────────────────────────
+                          if (pairs.isNotEmpty && activeGoals.isNotEmpty)
+                            SliverToBoxAdapter(
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(0, 16, 0, 4),
+                                child: Text(
+                                  'OBJECTIFS LIBRES',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 1.2,
+                                    color: cs.onSurface.withOpacity(.4),
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                          // ── Objectifs GTD ─────────────────────────────
+                          SliverList(
+                            delegate: SliverChildBuilderDelegate(
+                              (ctx, i) {
+                                final g = activeGoals[i];
+                                return GoalCard(
+                                  key: ValueKey(g.id),
+                                  goal: g,
+                                  muted: false,
+                                  logic: logic,
+                                  showDrag: false,
+                                  onPin: () { logic.toggleGoalPin(g.id); setSB(() {}); },
+                                  onTap: () => openGoalDetail(g),
+                                  onArchive: () async {
+                                    final confirm = await showDialog<bool>(
+                                      context: ctx,
+                                      builder: (c) => AlertDialog(
+                                        title: const Text('Archiver ?'),
+                                        content: Text('Archiver "${g.title}" ?'),
+                                        actions: [
+                                          TextButton(
+                                              onPressed: () => Navigator.pop(c, false),
+                                              child: const Text('Annuler')),
+                                          FilledButton(
+                                              onPressed: () => Navigator.pop(c, true),
+                                              child: const Text('Archiver')),
+                                        ],
+                                      ),
+                                    );
+                                    if (confirm == true) {
+                                      logic.archiveGoal(g.id);
+                                      setSB(() {});
+                                    }
+                                  },
+                                );
+                              },
+                              childCount: activeGoals.length,
+                            ),
+                          ),
+
+                          const SliverToBoxAdapter(child: SizedBox(height: 100)),
+                        ],
+                      );
+                    },
+                  ),
+                ),
               ]),
             );
 
