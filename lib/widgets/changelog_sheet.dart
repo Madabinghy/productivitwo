@@ -8,6 +8,12 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('3.1', '21 mai 2026', [
+    (Icons.account_tree_outlined, 'iOS : fiche projet Gantt — tâches, phases, retards, statuts modifiables'),
+    (Icons.open_in_new, 'ORION : bouton "Voir la tâche" ouvre directement la fiche Gantt concernée'),
+    (Icons.delete_outline, 'Suppression de documents depuis l\'app web et iOS'),
+    (Icons.history, 'Fix : messages ORION fallback visibles dans l\'historique'),
+  ]),
   _Entry('3.0', '21 mai 2026', [
     (Icons.smart_toy_outlined, 'Assistant ORION : messages contextuels avec effet typewriter, planifiés par Claude'),
     (Icons.notifications_outlined, 'Fallbacks autonomes : deadlines proches, jalons, retards — sans connexion Claude'),
