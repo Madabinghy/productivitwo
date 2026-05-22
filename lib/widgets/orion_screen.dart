@@ -100,7 +100,6 @@ class _OrionScreenState extends State<OrionScreen>
         FirebaseFirestore.instance
             .collection('users/$uid/assistant_messages')
             .where('status', whereIn: ['shown', 'pending'])
-            .orderBy('createdAt', descending: true)
             .limit(25)
             .get(),
         if (_activeToken != null && _activeToken!.isNotEmpty)
@@ -225,15 +224,19 @@ class _OrionScreenState extends State<OrionScreen>
       builder: (context, isPro, _) {
         final limitReached = isPro && _runCount >= _kLimitPro;
 
-        return Scaffold(
-          backgroundColor: _bg,
-          appBar: _buildAppBar(),
-          body: _loading
-              ? const Center(child: CircularProgressIndicator(color: _gold))
-              : _buildBody(isPro),
-          bottomNavigationBar: _loading
-              ? null
-              : _buildBottomBar(isPro, limitReached),
+        return GestureDetector(
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: Scaffold(
+            backgroundColor: _bg,
+            resizeToAvoidBottomInset: true,
+            appBar: _buildAppBar(),
+            body: _loading
+                ? const Center(child: CircularProgressIndicator(color: _gold))
+                : _buildBody(isPro),
+            bottomNavigationBar: _loading
+                ? null
+                : _buildBottomBar(isPro, limitReached),
+          ),
         );
       },
     );
@@ -282,6 +285,7 @@ class _OrionScreenState extends State<OrionScreen>
     final isFirstLaunch = _userNeeds.isEmpty && _messages.isEmpty;
 
     return ListView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
       children: [
         _StatusCard(isPro: isPro, runCount: _runCount),
@@ -323,6 +327,8 @@ class _OrionScreenState extends State<OrionScreen>
     return TextField(
       controller: _needsCtrl,
       maxLines: 3,
+      textInputAction: TextInputAction.done,
+      onEditingComplete: () => FocusScope.of(context).unfocus(),
       style: const TextStyle(
           fontFamily: 'monospace', fontSize: 13, color: _text, height: 1.6),
       decoration: InputDecoration(
@@ -389,6 +395,8 @@ class _OrionScreenState extends State<OrionScreen>
           Expanded(
             child: TextField(
               controller: _replyCtrl,
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) => _activating ? null : _activate(),
               style: const TextStyle(
                   fontFamily: 'monospace', fontSize: 13, color: _text),
               decoration: InputDecoration(
