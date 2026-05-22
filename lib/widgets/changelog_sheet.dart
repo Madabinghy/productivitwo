@@ -8,6 +8,11 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('4.2', '22 mai 2026', [
+    (Icons.account_tree_outlined, 'Objectifs unifiés — les projets Gantt sont désormais la seule source de vérité, accessibles via le bouton ⬡ dans la barre'),
+    (Icons.flag_outlined, 'Suppression du système GTD Goals — plus de confusion entre deux systèmes'),
+    (Icons.bolt_rounded, 'À faire : directement les actions, sans l\'onglet Objectifs'),
+  ]),
   _Entry('4.1', '22 mai 2026', [
     (Icons.delete_outline, 'Web : suppression définitive d\'un projet archivé'),
     (Icons.help_outline_rounded, 'Web : schéma "Comment ça marche ?" dans le tab ORION'),

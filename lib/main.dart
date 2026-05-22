@@ -1580,7 +1580,6 @@ class _AppRootState extends State<AppRoot>
   bool _saving = false;
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
-  StreamSubscription<List<Goal>>? _goalsSub;
   StreamSubscription<List<Domain>>? _domainsSub;
   bool _wasOffline = false;
   List<AssistantMessageData> _assistantMessages = [];
@@ -1670,7 +1669,6 @@ class _AppRootState extends State<AppRoot>
   void dispose() {
     _heartbeat?.cancel();
     _connectivitySub?.cancel();
-    _goalsSub?.cancel();
     _domainsSub?.cancel();
     _tick.dispose();
     _confettiController.dispose();
@@ -1871,10 +1869,6 @@ class _AppRootState extends State<AppRoot>
 
     // Streams temps réel — se mettent à jour dès qu'une donnée change dans Firestore
     if (firestoreEnabled) {
-      _goalsSub?.cancel();
-      _goalsSub = _sync.streamGoals().listen((goals) {
-        if (mounted && _state != null) setState(() => _state!.goals = goals);
-      });
       _domainsSub?.cancel();
       _domainsSub = _sync.streamDomains().listen((domains) {
         if (mounted && _state != null) setState(() => _state!.domains = domains);
@@ -3504,6 +3498,15 @@ class _AppRootState extends State<AppRoot>
               },
             ),
             IconButton(
+              icon: const Icon(Icons.account_tree_outlined),
+              tooltip: 'Projets',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => GoalsView(domains: _state?.domains ?? []),
+                ),
+              ),
+            ),
+            IconButton(
               icon: const Icon(Icons.menu_book_outlined),
               tooltip: 'Programmes',
               onPressed: () {
@@ -4074,31 +4077,6 @@ class _AppRootState extends State<AppRoot>
     );
   }
 
-  ({double progress, String centerText, String subText})
-      _computeGoalsGauge() {
-    final goals =
-        _state!.goals.where((g) => g.status == 'active').toList();
-    final totalGoals = goals.length;
-
-    if (totalGoals == 0) {
-      return (progress: 0.0, centerText: '—', subText: '0 objectif');
-    }
-
-    final totalSteps =
-        goals.fold<int>(0, (sum, g) => sum + g.stepsTotal);
-    final doneSteps =
-        goals.fold<int>(0, (sum, g) => sum + g.stepsDone);
-
-    final progress =
-        totalSteps == 0 ? 0.0 : (doneSteps / totalSteps).clamp(0.0, 1.0);
-    final centerText =
-        totalSteps == 0 ? '$totalGoals' : '$doneSteps/$totalSteps';
-    final subText =
-        '$totalGoals objectif${totalGoals > 1 ? "s" : ""}';
-
-    return (progress: progress, centerText: centerText, subText: subText);
-  }
-
   Widget _buildDashboardBody(BuildContext context) {
     // 1) Temps “de contexte” (scope/range). OK de recalculer au build.
     final now = DateTime.now();
@@ -4118,7 +4096,6 @@ class _AppRootState extends State<AppRoot>
         final now = DateTime.now();
         final g = _computeGlobalTimeGauges(now);
         final h = _computeGlobalHabitsGauge(now);
-        final obj = _computeGoalsGauge();
         final cs = Theme.of(context).colorScheme;
 
         return ListView(
@@ -4160,45 +4137,6 @@ class _AppRootState extends State<AppRoot>
                             focus: 'habit'),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 12),
-                  GestureDetector(
-                    onTap: () => setState(() => _tab = _Tab.today),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Row(
-                        children: [
-                          Icon(Icons.flag_rounded,
-                              size: 16,
-                              color: _colorForProgress(obj.progress, context)),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(99),
-                              child: LinearProgressIndicator(
-                                value: obj.progress,
-                                minHeight: 8,
-                                backgroundColor:
-                                    cs.surfaceContainerHighest,
-                                color: _colorForProgress(
-                                    obj.progress, context),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Text(
-                            obj.centerText == '—'
-                                ? obj.subText
-                                : '${obj.centerText}  ·  ${obj.subText}',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: cs.onSurface.withOpacity(0.6),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                   ),
                   const SizedBox(height: 16),
                   const Divider(height: 1),
@@ -4283,7 +4221,6 @@ class _AppRootState extends State<AppRoot>
             },
           ),
         ),
-        _buildNextGoalCard(context),
         SectionCard(
           child: ProGate(
             featureName: 'Statistiques avancées',
@@ -4815,140 +4752,6 @@ class _AppRootState extends State<AppRoot>
     );
   }
 
-  Widget _buildNextGoalCard(BuildContext context) {
-    final activeGoals = logic.state.goals
-        .where((g) => g.status == 'active' && g.nextAction != null)
-        .toList();
-
-    if (activeGoals.isEmpty) return const SizedBox.shrink();
-
-    // Priorité : épinglé → le plus avancé en progression
-    final pinned = activeGoals.where((g) => g.pinned).firstOrNull;
-    final goal = pinned ??
-        (activeGoals..sort((a, b) {
-          final pa = a.stepsTotal > 0 ? a.stepsDone / a.stepsTotal : 0.0;
-          final pb = b.stepsTotal > 0 ? b.stepsDone / b.stepsTotal : 0.0;
-          return pb.compareTo(pa); // plus avancé en premier
-        })).first;
-    final nextAction = goal.nextAction!;
-    final domain = logic.state.activeDomains
-        .firstWhereOrNull((d) => d.id == goal.domainId);
-    final dColor = domainColor(goal.domainId, logic.state.activeDomains);
-    final progress = goal.stepsTotal > 0
-        ? goal.stepsDone / goal.stepsTotal
-        : 0.0;
-    final cs = Theme.of(context).colorScheme;
-
-    return SectionCard(
-      padding: EdgeInsets.zero,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () {
-          final now = DateTime.now();
-          final (startCal, endCal, days) = _rangeForScope(now);
-          _showDomainDetail(domain, startCal, endCal, days, focus: 'goal');
-        },
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (dColor != null)
-                  Container(width: 4, color: dColor),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Header
-                        Row(
-                          children: [
-                            Icon(Icons.flag_rounded,
-                                size: 13,
-                                color: dColor ?? cs.primary),
-                            const SizedBox(width: 6),
-                            Text(
-                              '${goal.pinned ? '📌 ' : ''}Prochain objectif${domain != null ? '  ·  ${domain.name}' : ''}',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: cs.onSurface.withOpacity(.4),
-                                letterSpacing: 0.4,
-                              ),
-                            ),
-                            const Spacer(),
-                            if (goal.stepsTotal > 0)
-                              Text(
-                                '${goal.stepsDone}/${goal.stepsTotal}',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: dColor?.withOpacity(.7) ??
-                                      cs.primary.withOpacity(.7),
-                                ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        // Titre objectif
-                        Text(
-                          goal.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        if (goal.stepsTotal > 0) ...[
-                          const SizedBox(height: 6),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(999),
-                            child: LinearProgressIndicator(
-                              value: progress,
-                              minHeight: 4,
-                              backgroundColor:
-                                  (dColor ?? cs.primary).withOpacity(.12),
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                  dColor ?? cs.primary),
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 8),
-                        // Prochaine action
-                        Row(
-                          children: [
-                            Icon(Icons.arrow_right_rounded,
-                                size: 16,
-                                color: cs.onSurface.withOpacity(.4)),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                nextAction.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: cs.onSurface.withOpacity(.7),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   List<Widget> _buildDomainListLive(BuildContext context, DateTime now) {
     final today0 = DateTime(now.year, now.month, now.day);
     final tomorrow = today0.add(const Duration(days: 1));
@@ -5036,22 +4839,6 @@ class _AppRootState extends State<AppRoot>
           final share = domainShare90(d.id);
           final timeLabel = _fmtHoursHM(doneTodayHoursD);
 
-          // ---- GOALS domain
-          final domainGoals = _state!.goals
-              .where((g) => g.domainId == d.id && g.status == 'active')
-              .toList();
-          final goalCount = domainGoals.length;
-          final totalActions =
-              domainGoals.fold<int>(0, (s, g) => s + g.stepsTotal);
-          final doneActions =
-              domainGoals.fold<int>(0, (s, g) => s + g.stepsDone);
-          final goalsProgress = totalActions > 0
-              ? (doneActions / totalActions).clamp(0.0, 1.0)
-              : 0.0;
-          final goalsLabel = goalCount == 0
-              ? 'Objectifs'
-              : 'Objectifs · $goalCount actif${goalCount > 1 ? 's' : ''}';
-
           final dColor = domainColor(d.id, _state!.activeDomains);
           return SectionCard(
             child: Column(
@@ -5077,16 +4864,6 @@ class _AppRootState extends State<AppRoot>
                 const SizedBox(height: 8),
                 Column(
                   children: [
-                    _buildProgressRow(
-                      icon: Icons.flag_outlined,
-                      label: goalsLabel,
-                      progress: goalsProgress,
-                      color: _colorForProgress(goalsProgress, context),
-                      onTap: () => _showDomainDetail(
-                          d, startCal, endCal, days,
-                          focus: 'goal'),
-                    ),
-                    const SizedBox(height: 6),
                     _buildProgressRow(
                       icon: Icons.timer_outlined,
                       label: 'Activités · $timeLabel',
@@ -5823,7 +5600,7 @@ class _AppRootState extends State<AppRoot>
 
     bool hiddenExpanded = true;
 
-    String tab = focus == 'habit' ? 'habit' : focus == 'goal' ? 'goal' : 'time';
+    String tab = focus == 'habit' ? 'habit' : 'time';
     final scrollCtrl = ScrollController();
 
     return showModalBottomSheet<bool>(
@@ -6425,7 +6202,6 @@ class _AppRootState extends State<AppRoot>
               SegmentedButton<String>(
                 expandedInsets: EdgeInsets.zero,
                 segments: const [
-                  ButtonSegment(value: 'goal', icon: Icon(Icons.flag_rounded)),
                   ButtonSegment(value: 'time', icon: Icon(Icons.access_time_rounded)),
                   ButtonSegment(value: 'habit', icon: Icon(Icons.repeat_rounded)),
                 ],
@@ -6895,283 +6671,7 @@ class _AppRootState extends State<AppRoot>
             ];
           }
 
-          // ---------- Onglet Objectifs ----------
-          if (tab == 'goal') {
-            final activeGoals = _state!.goals
-                .where((g) =>
-                    g.status == 'active' &&
-                    (domainId == null || g.domainId == domainId))
-                .toList()
-              ..sort((a, b) => a.order.compareTo(b.order));
 
-            void openGoalDetail(Goal g) {
-              showModalBottomSheet(
-                context: ctx,
-                isScrollControlled: true,
-                showDragHandle: true,
-                builder: (_) => GoalDetailSheet(
-                  goal: g,
-                  logic: logic,
-                  state: _state!,
-                  onChanged: () => setSB(() {}),
-                ),
-              );
-            }
-
-            Future<void> addGoalForDomain() async {
-              String? selDomainId = domainId ??
-                  (_state!.activeDomains.isNotEmpty ? _state!.activeDomains.first.id : null);
-              final titleCtrl = TextEditingController();
-              final actionCtrl = TextEditingController();
-
-              await showDialog(
-                context: ctx,
-                builder: (dctx) => StatefulBuilder(
-                  builder: (dctx, setD) => AlertDialog(
-                    title: const Text('Nouvel objectif'),
-                    content: SingleChildScrollView(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (domainId == null)
-                            DropdownButtonFormField<String>(
-                              value: selDomainId,
-                              decoration: const InputDecoration(labelText: 'Domaine'),
-                              items: _state!.activeDomains
-                                  .map((d) => DropdownMenuItem(value: d.id, child: Text(d.name)))
-                                  .toList(),
-                              onChanged: (v) => setD(() => selDomainId = v),
-                            ),
-                          if (domainId == null) const SizedBox(height: 12),
-                          TextField(
-                            controller: titleCtrl,
-                            autofocus: true,
-                            decoration: const InputDecoration(labelText: 'Objectif'),
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: actionCtrl,
-                            decoration: const InputDecoration(labelText: 'Première action (optionnel)'),
-                          ),
-                        ],
-                      ),
-                    ),
-                    actions: [
-                      TextButton(onPressed: () => Navigator.pop(dctx), child: const Text('Annuler')),
-                      FilledButton(
-                        onPressed: () {
-                          final title = titleCtrl.text.trim();
-                          if (title.isEmpty || selDomainId == null) return;
-                          logic.createGoal(
-                            domainId: selDomainId!,
-                            title: title,
-                            firstAction: actionCtrl.text.trim().isEmpty ? null : actionCtrl.text.trim(),
-                          );
-                          setSB(() {});
-                          Navigator.pop(dctx);
-                        },
-                        child: const Text('Ajouter'),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }
-
-            final now = DateTime.now();
-            final todayD = DateTime(now.year, now.month, now.day);
-            final horizon = todayD.add(const Duration(days: 30));
-
-            final goalBody = Padding(
-              padding: EdgeInsets.only(
-                left: 16,
-                right: 16,
-                top: 8,
-                bottom: MediaQuery.of(ctx).viewInsets.bottom,
-              ),
-              child: Column(children: [
-                header,
-                const SizedBox(height: 8),
-                Expanded(
-                  child: StreamBuilder<List<Project>>(
-                    stream: _sync.streamProjects(),
-                    builder: (ctx, snap) {
-                      final projects = (snap.data ?? [])
-                          .where((p) => p.status != 'archived')
-                          .toList();
-
-                      // Tâches actives dans les 30 prochains jours
-                      final pairs = <({Project project, ProjectTask task})>[];
-                      for (final p in projects) {
-                        for (final t in p.tasks) {
-                          if (t.status == 'done' || t.status == 'skipped') continue;
-                          if (t.startDate.isAfter(horizon)) continue;
-                          pairs.add((project: p, task: t));
-                        }
-                      }
-                      pairs.sort((a, b) => a.task.startDate.compareTo(b.task.startDate));
-
-                      if (pairs.isEmpty && activeGoals.isEmpty) {
-                        return Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text('Aucun objectif actif.',
-                                  style: TextStyle(color: Colors.grey)),
-                              const SizedBox(height: 16),
-                              FilledButton.icon(
-                                onPressed: addGoalForDomain,
-                                icon: const Icon(Icons.add),
-                                label: const Text('Créer un objectif'),
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-
-                      return CustomScrollView(
-                        controller: scrollCtrl,
-                        slivers: [
-                          // ── Projets Gantt ─────────────────────────────
-                          if (pairs.isNotEmpty) ...[
-                            SliverToBoxAdapter(
-                              child: Padding(
-                                padding: const EdgeInsets.fromLTRB(0, 4, 0, 6),
-                                child: Text(
-                                  'PROJETS ACTIFS',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 1.2,
-                                    color: cs.primary,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            SliverList(
-                              delegate: SliverChildBuilderDelegate(
-                                (ctx, i) {
-                                  final p = pairs[i].project;
-                                  final t = pairs[i].task;
-                                  final isOverdue = t.startDate.isBefore(todayD);
-                                  final daysLeft = t.startDate.difference(todayD).inDays;
-                                  return Card(
-                                    margin: const EdgeInsets.only(bottom: 6),
-                                    child: ListTile(
-                                      dense: true,
-                                      leading: Icon(
-                                        isOverdue ? Icons.warning_amber_rounded : Icons.task_outlined,
-                                        color: isOverdue ? cs.error : cs.primary,
-                                        size: 20,
-                                      ),
-                                      title: Text(t.title, style: const TextStyle(fontSize: 14)),
-                                      subtitle: Text(
-                                        p.title,
-                                        style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.5)),
-                                      ),
-                                      trailing: Text(
-                                        isOverdue
-                                            ? '${-daysLeft}j de retard'
-                                            : daysLeft == 0
-                                                ? "Aujourd'hui"
-                                                : 'dans ${daysLeft}j',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: isOverdue ? cs.error : cs.onSurface.withOpacity(.4),
-                                          fontWeight: isOverdue ? FontWeight.bold : FontWeight.normal,
-                                        ),
-                                      ),
-                                      onTap: () => showProjectSheet(
-                                        ctx,
-                                        project: p,
-                                        domains: _state!.domains,
-                                        targetTaskId: t.id,
-                                      ),
-                                    ),
-                                  );
-                                },
-                                childCount: pairs.length,
-                              ),
-                            ),
-                          ],
-
-                          // ── Séparateur ────────────────────────────────
-                          if (pairs.isNotEmpty && activeGoals.isNotEmpty)
-                            SliverToBoxAdapter(
-                              child: Padding(
-                                padding: const EdgeInsets.fromLTRB(0, 16, 0, 4),
-                                child: Text(
-                                  'OBJECTIFS LIBRES',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 1.2,
-                                    color: cs.onSurface.withOpacity(.4),
-                                  ),
-                                ),
-                              ),
-                            ),
-
-                          // ── Objectifs GTD ─────────────────────────────
-                          SliverList(
-                            delegate: SliverChildBuilderDelegate(
-                              (ctx, i) {
-                                final g = activeGoals[i];
-                                return GoalCard(
-                                  key: ValueKey(g.id),
-                                  goal: g,
-                                  muted: false,
-                                  logic: logic,
-                                  showDrag: false,
-                                  onPin: () { logic.toggleGoalPin(g.id); setSB(() {}); },
-                                  onTap: () => openGoalDetail(g),
-                                  onArchive: () async {
-                                    final confirm = await showDialog<bool>(
-                                      context: ctx,
-                                      builder: (c) => AlertDialog(
-                                        title: const Text('Archiver ?'),
-                                        content: Text('Archiver "${g.title}" ?'),
-                                        actions: [
-                                          TextButton(
-                                              onPressed: () => Navigator.pop(c, false),
-                                              child: const Text('Annuler')),
-                                          FilledButton(
-                                              onPressed: () => Navigator.pop(c, true),
-                                              child: const Text('Archiver')),
-                                        ],
-                                      ),
-                                    );
-                                    if (confirm == true) {
-                                      logic.archiveGoal(g.id);
-                                      setSB(() {});
-                                    }
-                                  },
-                                );
-                              },
-                              childCount: activeGoals.length,
-                            ),
-                          ),
-
-                          const SliverToBoxAdapter(child: SizedBox(height: 100)),
-                        ],
-                      );
-                    },
-                  ),
-                ),
-              ]),
-            );
-
-            return Scaffold(
-              backgroundColor: Colors.transparent,
-              body: goalBody,
-              floatingActionButton: FloatingActionButton.extended(
-                onPressed: addGoalForDomain,
-                icon: const Icon(Icons.add),
-                label: const Text('Nouvel objectif'),
-              ),
-              floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-            );
-          }
 
           // ---------- Rendu des sections ----------
           final list = ListView(
