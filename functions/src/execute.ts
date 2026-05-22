@@ -1186,10 +1186,97 @@ async function executeDeleteAssistantMessage(uid: string, messageId: string): Pr
   return `✅ Message ORION supprimé : "${text}${text.length >= 50 ? "…" : ""}".`;
 }
 
+// ── Contexte allégé pour ORION (sans coachingRules, sans détails sessions) ────
+
+async function executeGetOrionContext(uid: string): Promise<string> {
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const ymdFrom = sevenDaysAgo.toISOString().slice(0, 10).replace(/-/g, "");
+  const ymdToday = today.replace(/-/g, "");
+
+  const [domainsSnap, activitiesSnap, routinesSnap, goalsSnap,
+         dayPlanSnap, habitHitsSnap, sessionsSnap, projectsSnap] = await Promise.all([
+    db.collection(`users/${uid}/domains`).get(),
+    db.collection(`users/${uid}/activities`).get(),
+    db.collection(`users/${uid}/recurringActions`).get(),
+    db.collection(`users/${uid}/goals`).where("status", "==", "active").get(),
+    db.collection(`users/${uid}/dayPlan`).where("yyyymmdd", ">=", ymdFrom).get(),
+    db.collection(`users/${uid}/habitHits`).where("ts", ">=", sevenDaysAgo).get(),
+    db.collection(`users/${uid}/sessions`).where("startAt", ">=", sevenDaysAgo.toISOString()).get(),
+    db.collection(`users/${uid}/projects`).where("status", "==", "active").get(),
+  ]);
+
+  const domains = domainsSnap.docs
+    .map((d) => d.data()).filter((v) => !v.deleted)
+    .map((v) => ({ id: v.id, name: v.name }));
+
+  const activityMap = new Map<string, string>();
+  activitiesSnap.docs.forEach((d) => { const v = d.data(); activityMap.set(v.id, v.name); });
+
+  const activities = activitiesSnap.docs.map((d) => d.data()).filter((v) => !v.deleted)
+    .map((v) => ({ id: v.id, name: v.name, type: v.type, domainId: v.domainId, goalMin: v.goalMin ?? null }));
+
+  const routines = routinesSnap.docs.map((d) => d.data()).filter((r) => r.active && !r.deleted)
+    .map((r) => ({ id: r.id, title: r.title, activityId: r.activityId ?? null, weekdays: r.weekdays ?? [] }));
+
+  const goals = goalsSnap.docs.map((d) => {
+    const v = d.data();
+    const actions = (v.actions || []) as Array<{ done: boolean }>;
+    return { id: v.id, title: v.title, domainId: v.domainId, dueDate: v.dueDate ?? null,
+             progress: `${actions.filter((a) => a.done).length}/${actions.length}` };
+  });
+
+  // Plan du jour — seulement aujourd'hui, résumé
+  const todayPlan = dayPlanSnap.docs.map((d) => d.data()).filter((it) => it.yyyymmdd === ymdToday);
+  const planSummary = {
+    done: todayPlan.filter((it) => it.done).length,
+    pending: todayPlan.filter((it) => !it.done && it.status !== "archived").length,
+    overdue: dayPlanSnap.docs.map((d) => d.data())
+      .filter((it) => !it.done && it.status !== "archived" && it.yyyymmdd < ymdToday).length,
+  };
+
+  // Habitudes : hits 7j par activité
+  const hitsByHabit = new Map<string, number>();
+  habitHitsSnap.docs.forEach((d) => { const v = d.data(); hitsByHabit.set(v.habitId, (hitsByHabit.get(v.habitId) || 0) + 1); });
+  const habitStats = Array.from(hitsByHabit.entries())
+    .map(([id, count]) => ({ name: activityMap.get(id) ?? id, hits7d: count }));
+
+  // Sessions : temps 7j par activité
+  const minByActivity = new Map<string, number>();
+  sessionsSnap.docs.forEach((d) => {
+    const v = d.data();
+    if (!v.endAt) return;
+    const mins = Math.round((new Date(v.endAt).getTime() - new Date(v.startAt).getTime()) / 60000);
+    if (mins > 0) minByActivity.set(v.activityId, (minByActivity.get(v.activityId) || 0) + mins);
+  });
+  const timeStats = Array.from(minByActivity.entries())
+    .map(([id, mins]) => ({ name: activityMap.get(id) ?? id, hours7d: Math.round(mins / 6) / 10 }));
+
+  // Projets actifs — résumé + tâches urgentes seulement
+  const in30days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const projects = projectsSnap.docs.map((d) => {
+    const p = d.data();
+    const tasks = (p.tasks || []) as Array<{ id: string; title: string; status: string; startDate: string; endDate?: string }>;
+    const activeTasks = tasks.filter((t) => t.status !== "done" && t.status !== "skipped");
+    const urgentTasks = activeTasks.filter((t) => t.endDate && t.endDate <= in30days)
+      .map((t) => ({ id: t.id, title: t.title, endDate: t.endDate, overdue: t.endDate! < today }));
+    return {
+      id: p.id, title: p.title, domainId: p.domainId ?? null,
+      endDate: p.endDate ?? null,
+      activeTasks: activeTasks.length,
+      urgentTasks,
+    };
+  });
+
+  return JSON.stringify({ today, domains, activities, routines, goals, planSummary, habitStats, timeStats, projects }, null, 2);
+}
+
 export {
 executePushAssistantMessage,
 validateToken,
 executeGetUserContext,
+executeGetOrionContext,
 executeUpdateActivityGoal,
 executeCreateRoutine,
 executeCreateRecurringAction,

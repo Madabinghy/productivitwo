@@ -8,17 +8,44 @@ exports.getAllActiveUserIds = getAllActiveUserIds;
 const sdk_1 = require("@anthropic-ai/sdk");
 const db_1 = require("./db");
 const execute_1 = require("./execute");
-const tools_1 = require("./tools");
+// Descriptions compactes pour ORION — ~10x moins de tokens que les tools MCP complets
+const ORION_TOOLS = [
+    { name: "get_orion_context", description: "Contexte utilisateur : domaines, activités, routines, objectifs, projets actifs (tâches urgentes), plan du jour résumé, stats 7j.", input_schema: { type: "object", properties: {}, required: [] } },
+    { name: "get_assistant_messages", description: "Messages ORION en attente et récents. Appeler en premier pour éviter les doublons.", input_schema: { type: "object", properties: {}, required: [] } },
+    { name: "get_day_blocks", description: "Blocs de journée configurés.", input_schema: { type: "object", properties: {}, required: [] } },
+    { name: "get_day_plan", description: "Plan du jour pour une date donnée.", input_schema: { type: "object", properties: { date: { type: "string", description: "YYYYMMDD" } }, required: ["date"] } },
+    { name: "get_documents", description: "Documents de l'utilisateur, filtrables par projectId/taskId.", input_schema: { type: "object", properties: { projectId: { type: "string" }, taskId: { type: "string" } }, required: [] } },
+    { name: "get_archives", description: "Éléments archivés/supprimés.", input_schema: { type: "object", properties: {}, required: [] } },
+    { name: "list_projects", description: "Liste résumée des projets Gantt.", input_schema: { type: "object", properties: {}, required: [] } },
+    { name: "get_project", description: "Détail complet d'un projet Gantt (phases, tâches, IDs).", input_schema: { type: "object", properties: { projectId: { type: "string" } }, required: ["projectId"] } },
+    { name: "plan_day", description: "Planifie des actions pour une date.", input_schema: { type: "object", properties: { date: { type: "string" }, items: { type: "array" }, clearExisting: { type: "boolean" } }, required: ["date", "items"] } },
+    { name: "clear_day_plan", description: "Vide le plan du jour d'une date.", input_schema: { type: "object", properties: { date: { type: "string" } }, required: ["date"] } },
+    { name: "add_to_day_plan", description: "Ajoute un élément au plan du jour.", input_schema: { type: "object", properties: { title: { type: "string" }, yyyymmdd: { type: "string" } }, required: ["title", "yyyymmdd"] } },
+    { name: "create_activity", description: "Crée une activité (temps ou habitude).", input_schema: { type: "object", properties: { name: { type: "string" }, type: { type: "string" }, domainId: { type: "string" } }, required: ["name", "type", "domainId"] } },
+    { name: "update_activity", description: "Met à jour une activité.", input_schema: { type: "object", properties: { activityId: { type: "string" } }, required: ["activityId"] } },
+    { name: "update_activity_goal", description: "Met à jour l'objectif quotidien d'une activité.", input_schema: { type: "object", properties: { activityId: { type: "string" }, goalMin: { type: "number" } }, required: ["activityId"] } },
+    { name: "delete_activity", description: "Supprime (soft-delete) une activité.", input_schema: { type: "object", properties: { activityId: { type: "string" } }, required: ["activityId"] } },
+    { name: "create_routine", description: "Crée une routine récurrente.", input_schema: { type: "object", properties: { title: { type: "string" }, activityId: { type: "string" } }, required: ["title", "activityId"] } },
+    { name: "delete_routine", description: "Supprime une routine.", input_schema: { type: "object", properties: { routineId: { type: "string" } }, required: ["routineId"] } },
+    { name: "create_recurring_action", description: "Crée une action récurrente (sans tracking).", input_schema: { type: "object", properties: { title: { type: "string" }, activityId: { type: "string" } }, required: ["title", "activityId"] } },
+    { name: "delete_action", description: "Supprime une action récurrente.", input_schema: { type: "object", properties: { actionId: { type: "string" } }, required: ["actionId"] } },
+    { name: "create_domain", description: "Crée un domaine de vie.", input_schema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] } },
+    { name: "delete_domain", description: "Supprime un domaine.", input_schema: { type: "object", properties: { domainId: { type: "string" } }, required: ["domainId"] } },
+    { name: "update_project", description: "Met à jour les champs d'un projet Gantt.", input_schema: { type: "object", properties: { projectId: { type: "string" } }, required: ["projectId"] } },
+    { name: "update_task_status", description: "Change le statut d'une tâche (pending/done/skipped).", input_schema: { type: "object", properties: { projectId: { type: "string" }, taskId: { type: "string" }, status: { type: "string" } }, required: ["projectId", "taskId", "status"] } },
+    { name: "archive_project", description: "Archive ou restaure un projet.", input_schema: { type: "object", properties: { projectId: { type: "string" }, restore: { type: "boolean" } }, required: ["projectId"] } },
+    { name: "delete_project", description: "Supprime définitivement un projet.", input_schema: { type: "object", properties: { projectId: { type: "string" }, deleteObjective: { type: "boolean" } }, required: ["projectId"] } },
+    { name: "push_gantt", description: "Crée ou met à jour un projet Gantt complet (phases + tâches).", input_schema: { type: "object", properties: { project: { type: "object" } }, required: ["project"] } },
+    { name: "link_goal_to_task", description: "Lie un objectif GTD à une tâche Gantt.", input_schema: { type: "object", properties: { goalId: { type: "string" }, projectId: { type: "string" }, projectTaskId: { type: "string" } }, required: ["goalId"] } },
+    { name: "delete_goal", description: "Archive ou supprime un objectif GTD.", input_schema: { type: "object", properties: { goalId: { type: "string" }, action: { type: "string" } }, required: ["goalId"] } },
+    { name: "save_document", description: "Sauvegarde un document HTML.", input_schema: { type: "object", properties: { title: { type: "string" }, content: { type: "string" } }, required: ["title", "content"] } },
+    { name: "delete_document", description: "Supprime un document.", input_schema: { type: "object", properties: { documentId: { type: "string" } }, required: ["documentId"] } },
+    { name: "restore_item", description: "Restaure un élément archivé.", input_schema: { type: "object", properties: { collection: { type: "string" }, itemId: { type: "string" } }, required: ["collection", "itemId"] } },
+    { name: "push_assistant_message", description: "Planifie un message ORION contextuel.", input_schema: { type: "object", properties: { targetDate: { type: "string" }, text: { type: "string" }, condition: { type: "object" }, expiresAfterDays: { type: "number" }, priority: { type: "number" } }, required: ["targetDate", "text", "condition"] } },
+    { name: "delete_assistant_message", description: "Supprime un message ORION.", input_schema: { type: "object", properties: { messageId: { type: "string" } }, required: ["messageId"] }, cache_control: { type: "ephemeral" } },
+];
 const ORION_MAX_RUNS = 50;
 const ORION_MODEL = "claude-haiku-4-5-20251001";
-// ── Convertit un tool MCP (inputSchema) en tool Anthropic (input_schema) ──────
-function toAT(t) {
-    return {
-        name: t.name,
-        description: t.description,
-        input_schema: t.inputSchema,
-    };
-}
 // ── Config utilisateur ────────────────────────────────────────────────────────
 async function getOrionConfig(uid) {
     var _a, _b, _c, _d;
@@ -89,33 +116,18 @@ Date du jour : ${today}${userContext ? `\n\n${userContext}` : ""}
 
 Ta mission pour ce cycle :
 1. Appelle get_assistant_messages pour voir les messages ORION en attente (évite les doublons).
-2. Appelle get_user_context pour analyser l'état complet de l'utilisateur.
+2. Appelle get_orion_context pour analyser l'état complet de l'utilisateur.
 3. Si l'utilisateur a donné des instructions ou répondu à un message, exécute ce qu'il a demandé en utilisant les outils appropriés.
 4. Génère 1 ou 2 messages ORION contextuels via push_assistant_message pour informer l'utilisateur de ce que tu as fait ou de ce qu'il devrait faire.
 
 Règles :
-- Lis TOUJOURS get_user_context avant d'agir pour avoir le contexte complet.
+- Lis TOUJOURS get_orion_context avant d'agir pour avoir le contexte complet.
 - Si l'instruction est ambiguë ou destructive (delete), envoie d'abord un message ORION pour confirmation plutôt que d'agir directement.
 - Pour les actions réversibles (archive, update, plan), agis directement si l'intention est claire.
 - Messages ORION courts (< 180 chars), bienveillants, actionnables.
 - Pas de doublons avec les messages pending existants.
 - characterName toujours "ORION".`;
-    // Tous les tools disponibles — cache sur le dernier
-    const allMcpTools = [
-        tools_1.GET_USER_CONTEXT_TOOL, tools_1.GET_ASSISTANT_MESSAGES_TOOL, tools_1.GET_DAY_BLOCKS_TOOL,
-        tools_1.GET_DAY_PLAN_TOOL, tools_1.GET_DOCUMENTS_TOOL, tools_1.GET_DOCUMENT_TEMPLATE_TOOL,
-        tools_1.GET_ARCHIVES_TOOL, tools_1.LIST_PROJECTS_TOOL, tools_1.GET_PROJECT_TOOL,
-        tools_1.PLAN_DAY_TOOL, tools_1.CLEAR_DAY_PLAN_TOOL, tools_1.ADD_TO_DAY_PLAN_TOOL,
-        tools_1.CREATE_ACTIVITY_TOOL, tools_1.UPDATE_ACTIVITY_TOOL, tools_1.UPDATE_ACTIVITY_GOAL_TOOL, tools_1.DELETE_ACTIVITY_TOOL,
-        tools_1.CREATE_ROUTINE_TOOL, tools_1.DELETE_ROUTINE_TOOL, tools_1.CREATE_RECURRING_ACTION_TOOL, tools_1.DELETE_ACTION_TOOL,
-        tools_1.CREATE_DOMAIN_TOOL, tools_1.DELETE_DOMAIN_TOOL,
-        tools_1.UPDATE_PROJECT_TOOL, tools_1.UPDATE_TASK_STATUS_TOOL, tools_1.ARCHIVE_PROJECT_TOOL,
-        tools_1.DELETE_PROJECT_TOOL, tools_1.PUSH_GANTT_MCP_TOOL,
-        tools_1.LINK_GOAL_TO_TASK_TOOL, tools_1.DELETE_GOAL_TOOL,
-        tools_1.SAVE_DOCUMENT_TOOL, tools_1.DELETE_DOCUMENT_TOOL, tools_1.RESTORE_ITEM_TOOL,
-        tools_1.PUSH_ASSISTANT_MESSAGE_TOOL, tools_1.DELETE_ASSISTANT_MESSAGE_TOOL,
-    ];
-    const tools = allMcpTools.map((t, i) => (Object.assign(Object.assign({}, toAT(t)), (i === allMcpTools.length - 1 ? { cache_control: { type: "ephemeral" } } : {}))));
+    const tools = ORION_TOOLS;
     const messages = [
         { role: "user", content: "Effectue ton analyse et agis selon mes instructions." },
     ];
@@ -145,8 +157,8 @@ Règles :
                 try {
                     switch (block.name) {
                         // ── Lecture ──────────────────────────────────────────────────
-                        case "get_user_context":
-                            result = await (0, execute_1.executeGetUserContext)(uid);
+                        case "get_orion_context":
+                            result = await (0, execute_1.executeGetOrionContext)(uid);
                             actionLog.push("📖 Lecture du contexte utilisateur");
                             break;
                         case "get_assistant_messages":
