@@ -8,6 +8,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('3.5', '22 mai 2026', [
+    (Icons.key_outlined, 'Fix : tokens API affichés correctement (Timestamp Firestore → DateTime)'),
+  ]),
   _Entry('3.4', '22 mai 2026', [
     (Icons.smart_toy_outlined, 'ORION autonome : agent IA qui génère des messages contextuels toutes les 6h'),
     (Icons.tune, 'Configuration ORION : instructions persistantes + réponse directe depuis le menu'),

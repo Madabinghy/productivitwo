@@ -1635,8 +1635,14 @@ class ApiToken {
         label: j['label'] ?? '',
         active: j['active'] as bool? ?? true,
         createdAt: j['createdAt'] != null
-            ? DateTime.tryParse(j['createdAt']) ?? DateTime.now()
+            ? (j['createdAt'] is String
+                ? DateTime.tryParse(j['createdAt']) ?? DateTime.now()
+                : (j['createdAt'] as dynamic).toDate() as DateTime)
             : DateTime.now(),
-        lastUsedAt: j['lastUsedAt'] != null ? DateTime.tryParse(j['lastUsedAt']) : null,
+        lastUsedAt: j['lastUsedAt'] == null
+            ? null
+            : (j['lastUsedAt'] is String
+                ? DateTime.tryParse(j['lastUsedAt'])
+                : (j['lastUsedAt'] as dynamic).toDate() as DateTime),
       );
 }
