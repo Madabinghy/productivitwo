@@ -8,6 +8,11 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('3.2', '21 mai 2026', [
+    (Icons.account_tree_outlined, 'Objectifs unifiés : tâches Gantt actives visibles dans la vue Objectifs iOS'),
+    (Icons.check_box_outlined, 'Sous-actions des tâches Gantt cochables directement depuis les Objectifs'),
+    (Icons.open_in_new, 'Tap sur une tâche → fiche projet complète avec scroll vers la tâche'),
+  ]),
   _Entry('3.1', '21 mai 2026', [
     (Icons.account_tree_outlined, 'iOS : fiche projet Gantt — tâches, phases, retards, statuts modifiables'),
     (Icons.open_in_new, 'ORION : bouton "Voir la tâche" ouvre directement la fiche Gantt concernée'),
