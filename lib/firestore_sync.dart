@@ -344,14 +344,15 @@ class FirestoreSync {
 
   // ── Projects ────────────────────────────────────────────────────────────────
 
-  Future<List<Map<String, dynamic>>> fetchDocuments({String? projectId}) async {
+  Future<List<Map<String, dynamic>>> fetchDocuments({String? projectId, String? taskId}) async {
     if (uid == null) return [];
     try {
       final snap = await _col('documents')
           .orderBy('createdAt', descending: true)
           .get();
-      final docs = snap.docs.map((d) => d.data() as Map<String, dynamic>).toList();
-      if (projectId != null) return docs.where((d) => d['projectId'] == projectId).toList();
+      var docs = snap.docs.map((d) => d.data() as Map<String, dynamic>).toList();
+      if (projectId != null) docs = docs.where((d) => d['projectId'] == projectId).toList();
+      if (taskId != null) docs = docs.where((d) => d['taskId'] == taskId).toList();
       return docs;
     } catch (_) { return []; }
   }

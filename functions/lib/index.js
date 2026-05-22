@@ -1,26 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.mcpHandler = exports.getCustomToken = exports.pushGantt = void 0;
+exports.mcpHandler = exports.getCustomToken = exports.pushAssistantMessage = exports.pushGantt = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
-const firestore_1 = require("firebase-admin/firestore");
 const uuid_1 = require("uuid");
-admin.initializeApp();
-const db = admin.firestore();
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function normalizePhases(phases) {
-    if (!phases)
-        return [];
-    return phases.map((p) => (Object.assign(Object.assign({}, p), { id: p.id || (0, uuid_1.v4)() })));
-}
-function normalizeTasks(tasks) {
-    if (!tasks)
-        return [];
-    return tasks.map((t) => {
-        var _a, _b;
-        return (Object.assign(Object.assign({}, t), { id: t.id || (0, uuid_1.v4)(), isMilestone: (_a = t.isMilestone) !== null && _a !== void 0 ? _a : false, status: (_b = t.status) !== null && _b !== void 0 ? _b : "pending" }));
-    });
-}
+const db_1 = require("./db");
+const prompts_1 = require("./prompts");
+const tools_1 = require("./tools");
+const execute_1 = require("./execute");
 // ── pushGantt ─────────────────────────────────────────────────────────────────
 //
 // POST https://us-central1-productivitwo-app.cloudfunctions.net/pushGantt
@@ -36,22 +23,19 @@ exports.pushGantt = (0, https_1.onRequest)({ cors: true, invoker: "public" }, as
         res.status(405).json({ error: "Method Not Allowed" });
         return;
     }
-    // 1. Bearer token
     const authHeader = (_a = req.headers.authorization) !== null && _a !== void 0 ? _a : "";
     if (!authHeader.startsWith("Bearer ")) {
         res.status(401).json({ error: "Missing Authorization header" });
         return;
     }
     const rawToken = authHeader.slice(7).trim();
-    // 2. Validation du corps
     const body = req.body;
     if (!body.uid || !((_b = body.project) === null || _b === void 0 ? void 0 : _b.title) || !((_c = body.project) === null || _c === void 0 ? void 0 : _c.startDate)) {
         res.status(400).json({ error: "Missing required fields: uid, project.title, project.startDate" });
         return;
     }
     const { uid, project, strategicObjective } = body;
-    // 3. Vérification du token
-    const tokenQuery = await db
+    const tokenQuery = await db_1.db
         .collection(`users/${uid}/api_tokens`)
         .where("token", "==", rawToken)
         .where("active", "==", true)
@@ -61,1529 +45,57 @@ exports.pushGantt = (0, https_1.onRequest)({ cors: true, invoker: "public" }, as
         res.status(401).json({ error: "Invalid or revoked token" });
         return;
     }
-    // 4. Mise à jour lastUsedAt
-    tokenQuery.docs[0].ref.update({ lastUsedAt: firestore_1.FieldValue.serverTimestamp() });
-    // 5. Objectif stratégique
+    tokenQuery.docs[0].ref.update({ lastUsedAt: db_1.FieldValue.serverTimestamp() });
     let strategicObjectiveId;
     if (strategicObjective) {
         const objId = strategicObjective.id || (0, uuid_1.v4)();
         strategicObjectiveId = objId;
-        await db.collection(`users/${uid}/strategic_objectives`).doc(objId).set(Object.assign(Object.assign({}, strategicObjective), { id: objId, status: "active", updatedAt: firestore_1.FieldValue.serverTimestamp(), createdAt: firestore_1.FieldValue.serverTimestamp() }), { merge: true });
+        await db_1.db.collection(`users/${uid}/strategic_objectives`).doc(objId).set(Object.assign(Object.assign({}, strategicObjective), { id: objId, status: "active", updatedAt: db_1.FieldValue.serverTimestamp(), createdAt: db_1.FieldValue.serverTimestamp() }), { merge: true });
     }
-    // 6. Projet
     const projectId = project.id || (0, uuid_1.v4)();
-    const projectDoc = Object.assign(Object.assign(Object.assign(Object.assign({}, project), { id: projectId, phases: normalizePhases(project.phases), tasks: normalizeTasks(project.tasks), createdBy: uid, sourceType: "claude_api", status: "active" }), (strategicObjectiveId ? { strategicObjectiveId } : {})), { updatedAt: firestore_1.FieldValue.serverTimestamp(), createdAt: firestore_1.FieldValue.serverTimestamp() });
-    await db.collection(`users/${uid}/projects`).doc(projectId).set(projectDoc, { merge: true });
-    // 7. Lier projet → objectif
+    await db_1.db.collection(`users/${uid}/projects`).doc(projectId).set(Object.assign(Object.assign(Object.assign(Object.assign({}, project), { id: projectId, phases: (0, execute_1.normalizePhases)(project.phases), tasks: (0, execute_1.normalizeTasks)(project.tasks), createdBy: uid, sourceType: "claude_api", status: "active" }), (strategicObjectiveId ? { strategicObjectiveId } : {})), { updatedAt: db_1.FieldValue.serverTimestamp(), createdAt: db_1.FieldValue.serverTimestamp() }), { merge: true });
     if (strategicObjectiveId) {
-        await db
-            .collection(`users/${uid}/strategic_objectives`)
-            .doc(strategicObjectiveId)
-            .update({ projectIds: firestore_1.FieldValue.arrayUnion(projectId) });
+        await db_1.db.collection(`users/${uid}/strategic_objectives`).doc(strategicObjectiveId)
+            .update({ projectIds: db_1.FieldValue.arrayUnion(projectId) });
     }
     res.status(200).json({ success: true, projectId, strategicObjectiveId: strategicObjectiveId !== null && strategicObjectiveId !== void 0 ? strategicObjectiveId : null });
 });
-// ── MCP Prompts ───────────────────────────────────────────────────────────────
-const today = () => new Date().toISOString().split("T")[0];
-const MCP_PROMPTS = [
-    {
-        name: "programme-du-jour",
-        description: "Crée mon programme personnalisé pour aujourd'hui ou une date donnée",
-        arguments: [
-            { name: "date", description: "Date YYYY-MM-DD (défaut: aujourd'hui)", required: false },
-        ],
-    },
-    {
-        name: "bilan-semaine",
-        description: "Bilan de la semaine : réalisé, écarts, ajustements suggérés",
-        arguments: [],
-    },
-    {
-        name: "aligner-gantt",
-        description: "Aligne mon planning des prochains jours avec mes projets Gantt actifs",
-        arguments: [],
-    },
-];
-function getPromptMessages(name, args) {
-    const date = args.date || today();
-    if (name === "programme-du-jour") {
-        return [
-            {
-                role: "user",
-                content: {
-                    type: "text",
-                    text: `Crée mon programme pour le ${date}.\n\n` +
-                        `Étapes à suivre dans l'ordre :\n` +
-                        `1. Appelle get_user_context pour connaître mes objectifs et ce que j'ai fait cette semaine.\n` +
-                        `2. Appelle get_day_blocks pour connaître mes blocs de journée.\n` +
-                        `3. Appelle get_day_plan(${date}) pour voir ce qui est déjà prévu.\n` +
-                        `4. Appelle list_events (Google Calendar) pour voir mes rendez-vous.\n` +
-                        `5. Crée un programme cohérent avec plan_day :\n` +
-                        `   - Respecte mes blocs\n` +
-                        `   - Priorise les tâches Gantt en retard\n` +
-                        `   - Ajoute des créneaux "Rendez-vous avec [objectif]" pour mes goals GTD\n` +
-                        `   - Commente les actions non faites de la semaine si pertinent\n` +
-                        `6. Ajoute les créneaux importants dans Google Calendar.`,
-                },
-            },
-        ];
-    }
-    if (name === "bilan-semaine") {
-        return [
-            {
-                role: "user",
-                content: {
-                    type: "text",
-                    text: `Fais mon bilan de la semaine.\n\n` +
-                        `1. Appelle get_user_context — analyse recentActivity en détail :\n` +
-                        `   - Qu'est-ce que j'ai accompli (completedActions) ?\n` +
-                        `   - Qu'est-ce que j'avais prévu mais pas fait (pendingActions) ?\n` +
-                        `   - Quelles habitudes sont en dessous de leur cible (habitCompletion) ?\n` +
-                        `   - Quelles activités manquent de temps loggué vs objectif (timeLogged) ?\n` +
-                        `2. Appelle list_projects pour voir l'état des Gantts actifs.\n` +
-                        `3. Présente un bilan structuré : ce qui va bien, ce qui bloque, 3 actions prioritaires pour la semaine prochaine.\n` +
-                        `4. Propose des ajustements concrets (update_activity_goal si un objectif est irréaliste).`,
-                },
-            },
-        ];
-    }
-    if (name === "aligner-gantt") {
-        return [
-            {
-                role: "user",
-                content: {
-                    type: "text",
-                    text: `Aligne mon planning des prochains jours avec mes projets Gantt.\n\n` +
-                        `1. Appelle get_user_context.\n` +
-                        `2. Appelle list_projects puis get_project pour chaque projet actif.\n` +
-                        `3. Identifie les tâches Gantt :\n` +
-                        `   - En retard (endDate dépassée, status != done)\n` +
-                        `   - À venir dans les 7 prochains jours\n` +
-                        `   - Des jalons proches\n` +
-                        `4. Pour chaque tâche urgente, propose de la planifier via plan_day sur les prochains jours.\n` +
-                        `5. Si une tâche Gantt devrait générer des routines régulières, propose create_routine.`,
-                },
-            },
-        ];
-    }
-    return [];
-}
-// ── Remote MCP Handler ────────────────────────────────────────────────────────
+// ── pushAssistantMessage ──────────────────────────────────────────────────────
 //
-// URL : /mcp/{uid}/{token}
-// Implémente le protocole MCP JSON-RPC 2.0 (Streamable HTTP, stateless).
-// Compatible Claude Desktop et Claude.ai web (Integrations).
-// ── Outils contexte utilisateur + écriture agenda ────────────────────────────
-const GET_USER_CONTEXT_TOOL = {
-    name: "get_user_context",
-    description: "APPELLE CET OUTIL EN PREMIER dans toute conversation liée à la productivité. " +
-        "Retourne : domaines de vie, activités + objectifs quotidiens, routines actives, " +
-        "objectifs GTD, ET l'activité réelle des 7 derniers jours. " +
-        "\n\n" +
-        "⚡ WORKFLOW OBLIGATOIRE — quelle que soit la demande de l'utilisateur :\n\n" +
-        "ÉTAPE 1 — Présenter le programme (AVANT de créer quoi que ce soit dans Productivitwo) :\n" +
-        "  → Appeler get_document_template pour récupérer le template HTML de référence.\n" +
-        "  → Générer un programme HTML complet en utilisant ce template (adapter couleur au domaine).\n" +
-        "  → Le montrer à l'utilisateur et attendre sa validation explicite ('ok', 'c'est bon', 'crée ça').\n" +
-        "  → NE PAS appeler save_document ni créer d'éléments Productivitwo avant validation.\n\n" +
-        "ÉTAPE 2 — Après validation, créer la structure dans cet ordre :\n" +
-        "1. Identifier ou créer le domaine concerné.\n" +
-        "2. Identifier ou créer UNE OU PLUSIEURS activités temps selon les dimensions de l'objectif. " +
-        "   Ex: 'prendre de la masse' → Musculation (temps) + Nutrition (temps). " +
-        "   Chaque routine/action sera liée à l'activité la plus pertinente.\n" +
-        "3. Créer le projet Gantt (push_gantt) couvrant AU MINIMUM la semaine en cours " +
-        "   avec un jalon 'Bilan' le dimanche et un objectif KPI mesurable.\n" +
-        "4. Sauvegarder le programme HTML avec save_document lié au projectId créé.\n" +
-        "5. Créer les routines (create_routine) et actions récurrentes (create_recurring_action) " +
-        "   TOUTES liées à l'activityId de l'étape 2.\n\n" +
-        "Structure garantie : Domaine → Activités temps → Projet Gantt (+ KPI + Bilan dim.) → Programme HTML sauvegardé → Routines & Actions liées.\n" +
-        "Ne jamais créer une routine ou action sans activityId et sans projet associé.",
-    inputSchema: { type: "object", properties: {} },
-};
-const UPDATE_ACTIVITY_GOAL_TOOL = {
-    name: "update_activity_goal",
-    description: "Modifie l'objectif quotidien d'une activité (temps ou fréquence). " +
-        "Utilise cet outil pour ajuster la charge de travail en fonction du Gantt ou de la réalité de l'utilisateur.",
-    inputSchema: {
-        type: "object",
-        required: ["activityId"],
-        properties: {
-            activityId: { type: "string", description: "id de l'activité (obtenu via get_user_context)" },
-            goalMin: { type: "number", description: "Nouvel objectif en minutes/jour (activités 'time')" },
-            habitTarget: { type: "number", description: "Nouvelle cible de fréquence (activités 'habit')" },
-            habitFreq: { type: "number", description: "0=daily, 1=weekly, 2=monthly" },
-        },
-    },
-};
-const CREATE_ROUTINE_TOOL = {
-    name: "create_routine",
-    description: "Crée une **routine** : habitude trackée avec compteur ou fréquence (ex: Méditation, Gainage, Eau). " +
-        "⚠️ activityId OBLIGATOIRE — créer d'abord l'activité temps avec create_activity si elle n'existe pas. " +
-        "⚠️ NE PAS confondre avec create_recurring_action (case à cocher sans tracking). " +
-        "⚠️ NE PAS confondre avec create_activity (tracking de temps/chrono).",
-    inputSchema: {
-        type: "object",
-        required: ["name", "domainId", "activityId"],
-        properties: {
-            name: { type: "string", description: "Nom de la routine (ex: Méditation, Gainage)" },
-            domainId: { type: "string", description: "id du domaine (get_user_context)" },
-            activityId: { type: "string", description: "id de l'activité temps associée (OBLIGATOIRE — créer avec create_activity si absente)" },
-            unit: { type: "string", description: "Unité comptée (ex: fois, verres, séries)" },
-            habitFreq: { type: "number", description: "Fréquence : 0=daily, 1=weekly, 2=monthly" },
-            habitTarget: { type: "number", description: "Cible par période (ex: 3 fois/semaine)" },
-        },
-    },
-};
-const CREATE_RECURRING_ACTION_TOOL = {
-    name: "create_recurring_action",
-    description: "Crée une **action récurrente** : tâche qui apparaît dans le plan du jour sans tracking. " +
-        "Simple case à cocher (ex: Faire la vaisselle, Revue journalière, Arroser les plantes). " +
-        "⚠️ activityId OBLIGATOIRE — créer d'abord l'activité temps avec create_activity si elle n'existe pas. " +
-        "⚠️ NE PAS utiliser si l'utilisateur veut tracker une fréquence → create_routine. " +
-        "⚠️ NE PAS utiliser si l'utilisateur veut tracker du temps → create_activity. " +
-        "Si liée à une phase Gantt, renseigne startDate/endDate pour qu'elle expire en fin de phase.",
-    inputSchema: {
-        type: "object",
-        required: ["title", "activityId"],
-        properties: {
-            title: { type: "string", description: "Intitulé de l'action (ex: Faire la vaisselle)" },
-            activityId: { type: "string", description: "id de l'activité temps associée (OBLIGATOIRE)" },
-            domainId: { type: "string", description: "id du domaine" },
-            recurrenceType: {
-                type: "string",
-                enum: ["daily", "specificDays"],
-                description: "'daily' = tous les jours, 'specificDays' = jours choisis",
-            },
-            weekdays: {
-                type: "array",
-                items: { type: "number" },
-                description: "Jours actifs si specificDays : 1=Lun, 2=Mar … 7=Dim",
-            },
-            startDate: { type: "string", description: "Date d'activation ISO YYYY-MM-DD (optionnel)" },
-            endDate: { type: "string", description: "Date d'expiration ISO YYYY-MM-DD (optionnel)" },
-            projectTaskId: { type: "string", description: "id de la tâche Gantt liée (optionnel)" },
-        },
-    },
-};
-const ADD_TO_DAY_PLAN_TOOL = {
-    name: "add_to_day_plan",
-    description: "Ajoute une action au plan quotidien de l'utilisateur pour une date donnée. " +
-        "Utilise cet outil pour planifier des actions spécifiques dans l'agenda.",
-    inputSchema: {
-        type: "object",
-        required: ["title", "date"],
-        properties: {
-            title: { type: "string", description: "Titre de l'action" },
-            date: { type: "string", description: "Date ISO YYYY-MM-DD" },
-            domainId: { type: "string" },
-            activityId: { type: "string" },
-            projectId: { type: "string" },
-            projectTaskId: { type: "string" },
-        },
-    },
-};
-const CREATE_ACTIVITY_TOOL = {
-    name: "create_activity",
-    description: "Crée une **activité** : tracking de temps avec chrono (ex: Deep Work, Running, Lecture). " +
-        "Utilise cet outil quand l'utilisateur veut mesurer le temps passé sur quelque chose. " +
-        "⚠️ NE PAS utiliser pour tracker une fréquence/compteur → create_routine. " +
-        "⚠️ NE PAS utiliser pour une tâche récurrente sans tracking → create_recurring_action. " +
-        "Demande confirmation avant de créer.",
-    inputSchema: {
-        type: "object",
-        required: ["name", "domainId"],
-        properties: {
-            name: { type: "string", description: "Nom de l'activité (ex: Deep Work, Running)" },
-            domainId: { type: "string", description: "id du domaine (get_user_context)" },
-            goalMin: { type: "number", description: "Objectif en minutes/jour" },
-        },
-    },
-};
-const CREATE_DOMAIN_TOOL = {
-    name: "create_domain",
-    description: "Crée un nouveau domaine de vie dans Productivitwo (ex: Santé, Travail, Famille). " +
-        "Utilise get_user_context pour vérifier qu'un domaine similaire n'existe pas déjà. " +
-        "Demande confirmation avant de créer.",
-    inputSchema: {
-        type: "object",
-        required: ["name"],
-        properties: {
-            name: { type: "string", description: "Nom du domaine (ex: Santé, Travail, Famille)" },
-            goalMinDay: { type: "number", description: "Objectif quotidien en minutes (null = auto depuis les activités)" },
-            autoGoal: { type: "boolean", description: "true = objectif calculé depuis les activités (défaut: true)" },
-            colorValue: { type: "number", description: "Valeur entière Flutter Color.value (optionnel)" },
-        },
-    },
-};
-const DELETE_DOMAIN_TOOL = {
-    name: "delete_domain",
-    description: "Archive un domaine de vie et toutes ses activités + routines (cascade). " +
-        "L'élément reste récupérable depuis les Archives — la suppression définitive " +
-        "est réservée à l'utilisateur depuis le web app. " +
-        "Demande toujours confirmation avant d'appeler.",
-    inputSchema: {
-        type: "object",
-        required: ["domainId"],
-        properties: {
-            domainId: { type: "string", description: "id du domaine (get_user_context)" },
-        },
-    },
-};
-const GET_DOCUMENT_TEMPLATE_TOOL = {
-    name: "get_document_template",
-    description: "Retourne le template HTML de référence pour créer un programme Productivitwo. " +
-        "TOUJOURS appeler cet outil avant de générer un programme HTML. " +
-        "Adapter le template au contenu du programme et aux couleurs du domaine (variable --gold).",
-    inputSchema: { type: "object", properties: {} },
-};
-const SAVE_DOCUMENT_TOOL = {
-    name: "save_document",
-    description: "Sauvegarde un document HTML dans Productivitwo (programme, plan, bilan, fiche). " +
-        "Claude peut le relire plus tard avec get_documents pour comparer au réalisé. " +
-        "Lier au projectId du projet Gantt associé si possible.",
-    inputSchema: {
-        type: "object",
-        required: ["title", "content"],
-        properties: {
-            title: { type: "string", description: "Titre du document (ex: Programme Prise de Masse 6 mois)" },
-            content: { type: "string", description: "Contenu HTML complet du document" },
-            projectId: { type: "string", description: "id du projet Gantt associé (optionnel)" },
-        },
-    },
-};
-const GET_DOCUMENTS_TOOL = {
-    name: "get_documents",
-    description: "Récupère les documents sauvegardés (programmes, plans, bilans). " +
-        "Utilise cet outil pour relire un programme préconisé et le comparer à l'état actuel. " +
-        "Retourne la liste avec titres et dates — utilise le contenu pour analyser les écarts.",
-    inputSchema: {
-        type: "object",
-        properties: {
-            projectId: { type: "string", description: "Filtrer par projet (optionnel)" },
-        },
-    },
-};
-const GET_ARCHIVES_TOOL = {
-    name: "get_archives",
-    description: "Liste tous les éléments archivés (deleted:true) : domaines, activités, routines. " +
-        "Utilise cet outil pour voir ce qui a été supprimé et pouvoir restaurer en cas d'erreur.",
-    inputSchema: { type: "object", properties: {} },
-};
-const RESTORE_ITEM_TOOL = {
-    name: "restore_item",
-    description: "Restaure un élément archivé (annule la suppression). " +
-        "Utilise get_archives pour obtenir l'id. " +
-        "collection: 'domains', 'activities' ou 'recurringActions'.",
-    inputSchema: {
-        type: "object",
-        required: ["collection", "itemId"],
-        properties: {
-            collection: {
-                type: "string",
-                enum: ["domains", "activities", "recurringActions"],
-                description: "La collection Firestore",
-            },
-            itemId: { type: "string", description: "id de l'élément à restaurer" },
-        },
-    },
-};
-const DELETE_ACTION_TOOL = {
-    name: "delete_action",
-    description: "Supprime une action individuelle du plan quotidien. " +
-        "Utilise get_day_plan(date) pour obtenir l'id de l'action. " +
-        "Demande confirmation si l'action est déjà faite (done=true).",
-    inputSchema: {
-        type: "object",
-        required: ["actionId"],
-        properties: {
-            actionId: { type: "string", description: "id de l'action (obtenu via get_day_plan)" },
-        },
-    },
-};
-const DELETE_ACTIVITY_TOOL = {
-    name: "delete_activity",
-    description: "Archive une activité et ses routines liées (cascade). " +
-        "L'élément reste récupérable depuis les Archives — la suppression définitive " +
-        "est réservée à l'utilisateur depuis le web app. " +
-        "Demande toujours confirmation avant d'appeler.",
-    inputSchema: {
-        type: "object",
-        required: ["activityId"],
-        properties: {
-            activityId: { type: "string", description: "id de l'activité (get_user_context)" },
-        },
-    },
-};
-const UPDATE_PROJECT_TOOL = {
-    name: "update_project",
-    description: "Modifie les métadonnées d'un projet Gantt existant sans toucher aux tâches/phases. " +
-        "Utilise cet outil pour changer le domaine, le titre, la description ou le statut. " +
-        "Utilise list_projects pour obtenir le projectId.",
-    inputSchema: {
-        type: "object",
-        required: ["projectId"],
-        properties: {
-            projectId: { type: "string", description: "id du projet (list_projects)" },
-            domainId: { type: "string", description: "id du domaine (get_user_context)" },
-            title: { type: "string" },
-            description: { type: "string" },
-            status: { type: "string", enum: ["active", "archived", "done"] },
-        },
-    },
-};
-const UPDATE_TASK_STATUS_TOOL = {
-    name: "update_task_status",
-    description: "Met à jour le statut d'une tâche Gantt (pending → done, skipped, etc.). " +
-        "Utilise list_projects + get_project pour obtenir projectId et taskId. " +
-        "Beaucoup plus rapide que de recréer tout le projet.",
-    inputSchema: {
-        type: "object",
-        required: ["projectId", "taskId", "status"],
-        properties: {
-            projectId: { type: "string", description: "id du projet (list_projects)" },
-            taskId: { type: "string", description: "id de la tâche (get_project)" },
-            status: { type: "string", enum: ["pending", "done", "skipped"], description: "Nouveau statut" },
-        },
-    },
-};
-const UPDATE_ACTIVITY_TOOL = {
-    name: "update_activity",
-    description: "Modifie une activité existante (nom, domaine, type, objectif, unité). " +
-        "Utilise get_user_context pour obtenir l'activityId. " +
-        "Ne modifie que les champs fournis, laisse les autres inchangés.",
-    inputSchema: {
-        type: "object",
-        required: ["activityId"],
-        properties: {
-            activityId: { type: "string", description: "id de l'activité (get_user_context)" },
-            name: { type: "string" },
-            domainId: { type: "string" },
-            goalMin: { type: "number" },
-            unit: { type: "string" },
-            habitFreq: { type: "number", description: "0=daily, 1=weekly, 2=monthly" },
-            habitTarget: { type: "number" },
-        },
-    },
-};
-const LINK_GOAL_TO_TASK_TOOL = {
-    name: "link_goal_to_task",
-    description: "Lie un objectif GTD (Goal) à une tâche Gantt. " +
-        "Le goal devient le détail opérationnel de la tâche stratégique. " +
-        "Utilise get_user_context pour les goalId et list_projects+get_project pour les taskId. " +
-        "Passe null pour délier.",
-    inputSchema: {
-        type: "object",
-        required: ["goalId"],
-        properties: {
-            goalId: { type: "string", description: "id du Goal GTD" },
-            projectId: { type: "string", description: "id du projet Gantt (null pour délier)" },
-            projectTaskId: { type: "string", description: "id de la tâche Gantt (null pour délier)" },
-        },
-    },
-};
-const DELETE_ROUTINE_TOOL = {
-    name: "delete_routine",
-    description: "Archive une action récurrente. L'élément reste récupérable depuis les Archives — " +
-        "la suppression définitive est réservée à l'utilisateur depuis le web app. " +
-        "Demande toujours confirmation avant d'appeler.",
-    inputSchema: {
-        type: "object",
-        required: ["routineId"],
-        properties: {
-            routineId: { type: "string", description: "id de la routine (obtenu via get_user_context)" },
-        },
-    },
-};
-const DELETE_GOAL_TOOL = {
-    name: "delete_goal",
-    description: "Archive ou supprime définitivement un objectif GTD. " +
-        "Préfère 'archive' (status archived) pour conserver l'historique. " +
-        "Demande confirmation avant d'appeler.",
-    inputSchema: {
-        type: "object",
-        required: ["goalId"],
-        properties: {
-            goalId: { type: "string", description: "id du goal (obtenu via get_user_context)" },
-            action: {
-                type: "string",
-                enum: ["archive", "delete"],
-                description: "'archive' = marque comme archivé (recommandé), 'delete' = suppression définitive",
-            },
-        },
-    },
-};
-const CLEAR_DAY_PLAN_TOOL = {
-    name: "clear_day_plan",
-    description: "Supprime les actions non faites du plan d'un jour donné. " +
-        "Utile pour vider une journée avant de la replanifier. " +
-        "Ne supprime jamais les actions déjà faites (done=true).",
-    inputSchema: {
-        type: "object",
-        required: ["date"],
-        properties: {
-            date: { type: "string", description: "Date ISO YYYY-MM-DD" },
-        },
-    },
-};
-const GET_DAY_BLOCKS_TOOL = {
-    name: "get_day_blocks",
-    description: "Retourne les blocs de journée (Miracle Morning, Matinée, Midi, Soir…) avec horaires. " +
-        "Appelle cet outil AVANT plan_day pour connaître la structure de la journée. " +
-        "Respecte toujours les blocs existants : ne place pas une tâche de concentration " +
-        "dans un bloc 'Soir' si 'Matinée' est disponible.",
-    inputSchema: { type: "object", properties: {} },
-};
-const GET_DAY_PLAN_TOOL = {
-    name: "get_day_plan",
-    description: "Retourne le plan d'un jour donné (actions planifiées, faites, reportées). " +
-        "Appelle cet outil avant plan_day pour éviter les doublons et identifier " +
-        "les créneaux libres. Si le plan est déjà chargé, ne replanifie que ce qui manque.",
-    inputSchema: {
-        type: "object",
-        required: ["date"],
-        properties: {
-            date: { type: "string", description: "Date ISO YYYY-MM-DD" },
-        },
-    },
-};
-const PLAN_DAY_TOOL = {
-    name: "plan_day",
-    description: "OUTIL PRINCIPAL du coach : crée le programme personnalisé d'une journée. " +
-        "Workflow obligatoire avant d'appeler cet outil : " +
-        "1) get_user_context → connaître les objectifs et le réalisé récent, " +
-        "2) get_day_blocks → connaître la structure de la journée, " +
-        "3) get_day_plan → voir ce qui est déjà prévu, " +
-        "4) list_events (Google Calendar) → voir les rendez-vous existants. " +
-        "Ensuite : place les actions urgentes en matinée, les routines dans leurs blocs, " +
-        "crée des 'Rendez-vous avec [objectif]' pour les goals GTD prioritaires, " +
-        "et intègre les tâches Gantt en retard.",
-    inputSchema: {
-        type: "object",
-        required: ["date", "items"],
-        properties: {
-            date: { type: "string", description: "Date ISO YYYY-MM-DD" },
-            clearExisting: {
-                type: "boolean",
-                description: "Si true, efface le plan existant avant d'ajouter (défaut: false)",
-            },
-            items: {
-                type: "array",
-                description: "Liste des actions à planifier",
-                items: {
-                    type: "object",
-                    required: ["title"],
-                    properties: {
-                        title: { type: "string", description: "Titre de l'action ou du créneau" },
-                        blockId: { type: "string", description: "id du bloc (obtenu via get_day_blocks)" },
-                        domainId: { type: "string" },
-                        activityId: { type: "string" },
-                        projectId: { type: "string" },
-                        projectTaskId: { type: "string" },
-                        durationNote: { type: "string", description: "Note de durée visible (ex: '45 min')" },
-                    },
-                },
-            },
-        },
-    },
-};
-const ARCHIVE_PROJECT_TOOL = {
-    name: "archive_project",
-    description: "Met un projet Gantt en veille (archived) ou le réactive (active). " +
-        "Un projet en veille reste visible dans la section 'En veille' du web app " +
-        "mais n'apparaît plus dans le focus principal. " +
-        "Utilise cet outil plutôt que delete_project pour les projets à reprendre plus tard.",
-    inputSchema: {
-        type: "object",
-        required: ["projectId"],
-        properties: {
-            projectId: { type: "string", description: "id du projet" },
-            restore: {
-                type: "boolean",
-                description: "true = réactiver le projet, false/absent = mettre en veille",
-            },
-        },
-    },
-};
-const DELETE_PROJECT_TOOL = {
-    name: "delete_project",
-    description: "Supprime définitivement un projet Gantt et son objectif stratégique associé. " +
-        "Utilise list_projects pour trouver l'id avant de supprimer. " +
-        "Demande toujours confirmation à l'utilisateur avant d'appeler cet outil.",
-    inputSchema: {
-        type: "object",
-        required: ["projectId"],
-        properties: {
-            projectId: { type: "string", description: "id du projet à supprimer" },
-            deleteObjective: {
-                type: "boolean",
-                description: "Si true, supprime aussi l'objectif stratégique lié (défaut: false)",
-            },
-        },
-    },
-};
-const LIST_PROJECTS_TOOL = {
-    name: "list_projects",
-    description: "Liste les projets Gantt existants dans Productivitwo. " +
-        "Appelle cet outil avant de modifier un projet afin de récupérer son id.",
-    inputSchema: { type: "object", properties: {} },
-};
-const GET_PROJECT_TOOL = {
-    name: "get_project",
-    description: "Retourne le détail complet d'un projet Gantt (phases, tâches, jalons). " +
-        "Utilise cet outil pour lire un projet avant de le modifier.",
-    inputSchema: {
-        type: "object",
-        required: ["projectId"],
-        properties: {
-            projectId: { type: "string", description: "L'id du projet (obtenu via list_projects)" },
-        },
-    },
-};
-const PUSH_GANTT_MCP_TOOL = {
-    name: "push_gantt",
-    description: "Crée ou met à jour un projet Gantt dans Productivitwo. " +
-        "Pour modifier un projet existant, fournis son id (obtenu via list_projects + get_project) " +
-        "avec le contenu complet mis à jour. Pour créer un nouveau projet, omets l'id.",
-    inputSchema: {
-        type: "object",
-        required: ["project"],
-        properties: {
-            project: {
-                type: "object",
-                required: ["title", "startDate"],
-                properties: {
-                    title: { type: "string" },
-                    description: { type: "string" },
-                    domainId: { type: "string", description: "id du domaine (get_user_context)" },
-                    startDate: { type: "string", description: "YYYY-MM-DD" },
-                    endDate: { type: "string", description: "YYYY-MM-DD" },
-                    phases: {
-                        type: "array",
-                        items: {
-                            type: "object",
-                            required: ["label", "startDate", "endDate"],
-                            properties: {
-                                label: { type: "string" },
-                                color: { type: "string" },
-                                startDate: { type: "string" },
-                                endDate: { type: "string" },
-                            },
-                        },
-                    },
-                    tasks: {
-                        type: "array",
-                        items: {
-                            type: "object",
-                            required: ["title", "startDate"],
-                            properties: {
-                                title: { type: "string" },
-                                groupLabel: { type: "string" },
-                                startDate: { type: "string" },
-                                endDate: { type: "string" },
-                                isMilestone: { type: "boolean" },
-                                color: { type: "string" },
-                                barLabel: { type: "string" },
-                                status: { type: "string", enum: ["pending", "done", "skipped"] },
-                            },
-                        },
-                    },
-                },
-            },
-            strategicObjective: {
-                type: "object",
-                properties: {
-                    title: { type: "string" },
-                    kpiTarget: { type: "string" },
-                    horizonLabel: { type: "string" },
-                },
-            },
-        },
-    },
-};
-async function validateToken(uid, rawToken) {
-    const q = await db
-        .collection(`users/${uid}/api_tokens`)
-        .where("token", "==", rawToken)
-        .where("active", "==", true)
-        .limit(1)
-        .get();
-    if (!q.empty) {
-        q.docs[0].ref.update({ lastUsedAt: firestore_1.FieldValue.serverTimestamp() });
-        return true;
-    }
-    return false;
-}
-async function executeGetUserContext(uid) {
-    // Fenêtre glissante : 7 derniers jours
-    const now = new Date();
-    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const ymdFrom = sevenDaysAgo.toISOString().slice(0, 10).replace(/-/g, "");
-    const [domainsSnap, activitiesSnap, routinesSnap, goalsSnap, dayPlanSnap, habitHitsSnap, sessionsSnap] = await Promise.all([
-        db.collection(`users/${uid}/domains`).get(),
-        db.collection(`users/${uid}/activities`).get(),
-        db.collection(`users/${uid}/recurringActions`).get(),
-        db.collection(`users/${uid}/goals`).where("status", "==", "active").get(),
-        // Actions planifiées et réalisées sur 7 jours
-        db.collection(`users/${uid}/dayPlan`)
-            .where("yyyymmdd", ">=", ymdFrom)
-            .get(),
-        // Incréments de routines/habitudes sur 7 jours
-        db.collection(`users/${uid}/habitHits`)
-            .where("ts", ">=", sevenDaysAgo)
-            .get(),
-        // Sessions de temps loggué sur 7 jours
-        db.collection(`users/${uid}/sessions`)
-            .where("startAt", ">=", sevenDaysAgo.toISOString())
-            .get(),
-    ]);
-    const domains = domainsSnap.docs
-        .map((d) => d.data())
-        .filter((v) => !v.deleted)
-        .map((v) => ({ id: v.id, name: v.name }));
-    // activityMap inclut TOUTES les activités (y compris archivées) pour résoudre les noms dans timeLogged/habitCompletion
-    const activityMap = new Map();
-    activitiesSnap.docs.forEach((d) => {
-        const v = d.data();
-        activityMap.set(v.id, v.deleted ? `${v.name} (archivé)` : v.name);
-    });
-    const activities = activitiesSnap.docs
-        .map((d) => d.data())
-        .filter((v) => !v.deleted)
-        .map((v) => {
-        return {
-            id: v.id,
-            name: v.name,
-            type: v.type,
-            domainId: v.domainId,
-            goalMin: v.goalMin,
-            habitFreq: v.habitFreq,
-            habitTarget: v.habitTarget,
-        };
-    });
-    const activeRoutines = routinesSnap.docs
-        .map((d) => d.data())
-        .filter((r) => r.active)
-        .map((r) => ({
-        id: r.id,
-        title: r.title,
-        type: r.type,
-        weekdays: r.weekdays || [],
-        startDate: r.startDate || null,
-        endDate: r.endDate || null,
-        domainId: r.domainId || null,
-        activityId: r.activityId || null,
-    }));
-    const activeGoals = goalsSnap.docs.map((d) => {
-        const v = d.data();
-        const actions = (v.actions || []);
-        return {
-            id: v.id,
-            title: v.title,
-            domainId: v.domainId,
-            dueDate: v.dueDate || null,
-            progress: `${actions.filter((a) => a.done).length}/${actions.length}`,
-        };
-    });
-    // ── Réalisé des 7 derniers jours ──────────────────────────────────────────
-    // Actions complétées (dayPlan done)
-    const completedActions = dayPlanSnap.docs
-        .map((d) => d.data())
-        .filter((it) => it.done)
-        .map((it) => ({
-        title: it.title,
-        date: it.yyyymmdd,
-        domainId: it.domainId || null,
-    }));
-    // Actions planifiées non faites (pour identifier les écarts)
-    // Déduplique les routines daily (même recurringActionId sur 7 jours → une seule entrée)
-    const pendingRaw = dayPlanSnap.docs
-        .map((d) => d.data())
-        .filter((it) => !it.done && !it.archived && it.status !== "archived");
-    const seenRoutines = new Set();
-    const pendingActions = pendingRaw
-        .filter((it) => {
-        if (!it.recurringActionId)
-            return true;
-        if (seenRoutines.has(it.recurringActionId))
-            return false;
-        seenRoutines.add(it.recurringActionId);
-        return true;
-    })
-        .map((it) => (Object.assign({ title: it.title, date: it.yyyymmdd }, (it.recurringActionId ? { isRoutine: true } : {}))));
-    // Taux de complétion des habitudes/routines (habitHits groupés par habitId)
-    const hitsByHabit = new Map();
-    for (const doc of habitHitsSnap.docs) {
-        const v = doc.data();
-        hitsByHabit.set(v.habitId, (hitsByHabit.get(v.habitId) || 0) + 1);
-    }
-    const habitCompletion = Array.from(hitsByHabit.entries()).map(([id, count]) => ({
-        activityId: id,
-        name: activityMap.get(id) || id,
-        hitsLast7Days: count,
-    }));
-    // Temps loggué par activité (sessions)
-    const minByActivity = new Map();
-    for (const doc of sessionsSnap.docs) {
-        const v = doc.data();
-        if (!v.endAt)
-            continue;
-        const start = new Date(v.startAt);
-        const end = new Date(v.endAt);
-        const mins = Math.round((end.getTime() - start.getTime()) / 60000);
-        if (mins > 0) {
-            minByActivity.set(v.activityId, (minByActivity.get(v.activityId) || 0) + mins);
-        }
-    }
-    const timeLogged = Array.from(minByActivity.entries()).map(([id, mins]) => ({
-        activityId: id,
-        name: activityMap.get(id) || id,
-        minutesLast7Days: mins,
-        hoursLast7Days: Math.round(mins / 6) / 10, // arrondi 1 décimale
-    }));
-    const recentActivity = {
-        period: "7 derniers jours",
-        completedActions,
-        pendingActions,
-        habitCompletion,
-        timeLogged,
-    };
-    return JSON.stringify({ domains, activities, activeRoutines, activeGoals, recentActivity }, null, 2);
-}
-async function executeUpdateActivityGoal(uid, activityId, updates) {
+// POST https://us-central1-productivitwo-app.cloudfunctions.net/pushAssistantMessage
+exports.pushAssistantMessage = (0, https_1.onRequest)({ cors: true, invoker: "public" }, async (req, res) => {
     var _a, _b;
-    const ref = db.collection(`users/${uid}/activities`).doc(activityId);
-    const snap = await ref.get();
-    if (!snap.exists)
-        return `Activité introuvable : ${activityId}`;
-    const patch = {};
-    if (updates.goalMin !== undefined)
-        patch.goalMin = updates.goalMin;
-    if (updates.habitTarget !== undefined)
-        patch.habitTarget = updates.habitTarget;
-    if (updates.habitFreq !== undefined)
-        patch.habitFreq = updates.habitFreq;
-    await ref.update(patch);
-    const name = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : activityId;
-    return `✅ Objectif de "${name}" mis à jour. Visible dans Productivitwo à la prochaine synchronisation.`;
-}
-async function executeCreateRoutine(uid, args) {
-    var _a, _b, _c;
-    const id = (0, uuid_1.v4)();
-    await db.collection(`users/${uid}/activities`).doc(id).set({
-        id,
-        name: args.name,
-        domainId: args.domainId,
-        type: "habit",
-        role: "generic",
-        goalMin: 1,
-        unit: (_a = args.unit) !== null && _a !== void 0 ? _a : null,
-        habitFreq: (_b = args.habitFreq) !== null && _b !== void 0 ? _b : 0,
-        habitTarget: (_c = args.habitTarget) !== null && _c !== void 0 ? _c : 1,
-        manualTarget: false,
-        autoTune: true,
-        createdAt: firestore_1.FieldValue.serverTimestamp(),
-        lastTuneAt: null,
-        order: 0,
-        iconCode: null,
-        deleted: false,
-    });
-    return `✅ Routine "${args.name}" créée (tracking habitude). Elle apparaîtra dans Productivitwo à la prochaine synchronisation.`;
-}
-async function executeCreateRecurringAction(uid, args) {
-    const id = (0, uuid_1.v4)();
-    // Si specificDays sans jours définis → fallback daily pour éviter une action invisible
-    const hasSpecificDays = args.recurrenceType === "specificDays" && (args.weekdays || []).length > 0;
-    const recurrenceType = hasSpecificDays ? "specificDays" : "daily";
-    await db.collection(`users/${uid}/recurringActions`).doc(id).set({
-        id,
-        title: args.title,
-        domainId: args.domainId || null,
-        activityId: args.activityId || null,
-        blockId: null,
-        type: recurrenceType,
-        weekdays: args.weekdays || [],
-        active: true,
-        createdAt: firestore_1.FieldValue.serverTimestamp(),
-        startDate: args.startDate || null,
-        endDate: args.endDate || null,
-        projectTaskId: args.projectTaskId || null,
-    });
-    // Ajouter automatiquement au plan d'aujourd'hui si la routine est active ce jour
-    const today = new Date();
-    const yyyymmdd = today.toISOString().slice(0, 10).replace(/-/g, "");
-    const todayWeekday = today.getDay() === 0 ? 7 : today.getDay(); // 1=Lun..7=Dim
-    const activeToday = recurrenceType === "daily" ||
-        (args.weekdays || []).includes(todayWeekday);
-    if (activeToday) {
-        const planId = (0, uuid_1.v4)();
-        await db.collection(`users/${uid}/dayPlan`).doc(planId).set({
-            id: planId,
-            kind: "action",
-            title: args.title,
-            yyyymmdd,
-            done: false,
-            doneCount: 0,
-            allDay: false,
-            isNowFocus: false,
-            order: 9999,
-            toPlan: false,
-            archived: false,
-            status: "active",
-            createdAt: firestore_1.FieldValue.serverTimestamp(),
-            recurringActionId: id,
-            domainId: args.domainId || null,
-            activityId: args.activityId || null,
-        });
+    if (req.method === "OPTIONS") {
+        res.status(204).send("");
+        return;
     }
-    const period = args.startDate && args.endDate
-        ? ` du ${args.startDate} au ${args.endDate}`
-        : args.startDate ? ` à partir du ${args.startDate}`
-            : args.endDate ? ` jusqu'au ${args.endDate}`
-                : "";
-    return `✅ Routine "${args.title}" créée${period}.${activeToday ? " Ajoutée au plan d'aujourd'hui." : " Apparaîtra dans le plan demain."}`;
-}
-async function executeAddToDayPlan(uid, args) {
-    // Valider le format de date
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(args.date)) {
-        return `Date invalide : ${args.date}. Format attendu : YYYY-MM-DD`;
+    if (req.method !== "POST") {
+        res.status(405).json({ error: "Method Not Allowed" });
+        return;
     }
-    const yyyymmdd = args.date.replace(/-/g, "");
-    const id = (0, uuid_1.v4)();
-    await db.collection(`users/${uid}/dayPlan`).doc(id).set({
-        id,
-        kind: "action",
-        title: args.title,
-        yyyymmdd,
-        done: false,
-        doneCount: 0,
-        allDay: false,
-        isNowFocus: false,
-        order: 9999,
-        toPlan: false,
-        archived: false,
-        status: "active",
-        createdAt: firestore_1.FieldValue.serverTimestamp(),
-        domainId: args.domainId || null,
-        activityId: args.activityId || null,
-        projectId: args.projectId || null,
-        projectTaskId: args.projectTaskId || null,
-    });
-    return `✅ "${args.title}" ajouté au plan du ${args.date}.`;
-}
-async function executeGetDayBlocks(uid) {
-    const snap = await db.collection(`users/${uid}/blocks`).orderBy("order").get();
-    if (snap.empty)
-        return "Aucun bloc de journée configuré.";
-    const blocks = snap.docs.map((d) => {
-        var _a, _b;
-        const v = d.data();
-        return {
-            id: v.id,
-            name: v.name,
-            emoji: v.emoji || null,
-            order: v.order,
-            startHour: (_a = v.startHour) !== null && _a !== void 0 ? _a : null,
-            startMinute: (_b = v.startMinute) !== null && _b !== void 0 ? _b : null,
-            activityIds: v.activityIds || [],
-        };
-    });
-    return JSON.stringify({ blocks }, null, 2);
-}
-async function executeGetDayPlan(uid, date) {
-    const yyyymmdd = date.replace(/-/g, "");
-    const snap = await db.collection(`users/${uid}/dayPlan`)
-        .where("yyyymmdd", "==", yyyymmdd)
-        .get();
-    if (snap.empty)
-        return `Aucune action planifiée le ${date}.`;
-    const items = snap.docs
-        .map((d) => d.data())
-        .filter((v) => !v.archived && v.status !== "archived")
-        .map((v) => ({
-        id: v.id,
-        title: v.title,
-        done: v.done,
-        blockId: v.blockId || null,
-        domainId: v.domainId || null,
-        activityId: v.activityId || null,
-        status: v.status || "active",
-        order: v.order || 0,
-        checklist: (v.checklist || []).map((c) => {
-            var _a;
-            return ({
-                id: c.id,
-                title: c.title,
-                done: (_a = c.done) !== null && _a !== void 0 ? _a : false,
-            });
-        }),
-    }))
-        .sort((a, b) => a.order - b.order);
-    const done = items.filter((it) => it.done).length;
-    return JSON.stringify({
-        date,
-        summary: `${done}/${items.length} actions faites`,
-        items,
-    }, null, 2);
-}
-async function executePlanDay(uid, date, items, clearExisting) {
-    const yyyymmdd = date.replace(/-/g, "");
-    if (clearExisting) {
-        // Supprimer les items non-faits du jour
-        const existing = await db.collection(`users/${uid}/dayPlan`)
-            .where("yyyymmdd", "==", yyyymmdd)
-            .where("done", "==", false)
-            .get();
-        const batch = db.batch();
-        for (const doc of existing.docs)
-            batch.delete(doc.ref);
-        if (!existing.empty)
-            await batch.commit();
+    const authHeader = (_a = req.headers.authorization) !== null && _a !== void 0 ? _a : "";
+    if (!authHeader.startsWith("Bearer ")) {
+        res.status(401).json({ error: "Missing Authorization header" });
+        return;
     }
-    const addBatch = db.batch();
-    items.forEach((item, i) => {
-        const id = (0, uuid_1.v4)();
-        const title = item.durationNote
-            ? `${item.title} (${item.durationNote})`
-            : item.title;
-        addBatch.set(db.collection(`users/${uid}/dayPlan`).doc(id), {
-            id,
-            kind: "action",
-            title,
-            yyyymmdd,
-            done: false,
-            doneCount: 0,
-            allDay: false,
-            isNowFocus: false,
-            order: 9000 + i,
-            toPlan: false,
-            archived: false,
-            status: "active",
-            createdAt: firestore_1.FieldValue.serverTimestamp(),
-            blockId: item.blockId || null,
-            domainId: item.domainId || null,
-            activityId: item.activityId || null,
-            projectId: item.projectId || null,
-            projectTaskId: item.projectTaskId || null,
-        });
-    });
-    await addBatch.commit();
-    return (`✅ Programme du ${date} créé — ${items.length} action(s) planifiée(s).\n` +
-        items.map((it, i) => `  ${i + 1}. ${it.title}${it.blockId ? ` → bloc ${it.blockId}` : ""}`).join("\n"));
-}
-async function executeCreateActivity(uid, args) {
-    var _a;
-    const id = (0, uuid_1.v4)();
-    await db.collection(`users/${uid}/activities`).doc(id).set({
-        id,
-        name: args.name,
-        domainId: args.domainId,
-        type: "time",
-        role: "generic",
-        goalMin: (_a = args.goalMin) !== null && _a !== void 0 ? _a : 1,
-        unit: null,
-        habitFreq: null,
-        habitTarget: null,
-        manualTarget: false,
-        autoTune: true,
-        createdAt: firestore_1.FieldValue.serverTimestamp(),
-        lastTuneAt: null,
-        order: 0,
-        iconCode: null,
-        deleted: false,
-    });
-    return `✅ Activité "${args.name}" créée (tracking temps). Elle apparaîtra dans Productivitwo à la prochaine synchronisation.`;
-}
-async function executeDeleteAction(uid, actionId) {
-    var _a, _b;
-    const ref = db.collection(`users/${uid}/dayPlan`).doc(actionId);
-    const snap = await ref.get();
-    if (!snap.exists)
-        return `Action introuvable : ${actionId}`;
-    const title = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.title) !== null && _b !== void 0 ? _b : actionId;
-    // Archiver plutôt que supprimer pour que le merge Flutter respecte la suppression
-    await ref.update({ archived: true, status: "archived" });
-    return `✅ Action "${title}" supprimée du plan.`;
-}
-function executeGetDocumentTemplate() {
-    return `<!DOCTYPE html>
-<html lang="fr"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>{{TITRE}}</title>
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,wght@0,300;0,400;0,600;1,400&display=swap" rel="stylesheet">
-<style>
-:root{--bg:#0f0f0f;--surf:#181818;--card:#1f1f1f;--gold:{{COULEUR_ACCENT}};--red:#ff5c35;--txt:#f0ece0;--muted:#747070;--border:#2a2a2a}
-/* COULEUR_ACCENT = adapter au domaine : sport=#e8c94a | business=#4ae8b0 | santé=#e84a7a | mental=#7a8fe8 */
-*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--txt);font-family:'DM Sans',sans-serif;font-size:15px;line-height:1.65}
-.hero{background:var(--surf);border-bottom:1px solid var(--border);padding:52px 20px 40px;position:relative;overflow:hidden}
-.hero::after{content:'';position:absolute;top:-60px;right:-60px;width:280px;height:280px;background:radial-gradient(circle,rgba(var(--gold-rgb),.13) 0%,transparent 70%);pointer-events:none}
-.hero-tag{font-family:'Bebas Neue',sans-serif;font-size:11px;letter-spacing:4px;color:var(--gold);margin-bottom:10px}
-.hero-title{font-family:'Bebas Neue',sans-serif;font-size:clamp(54px,14vw,96px);line-height:.9;margin-bottom:16px}
-.hero-title em{color:var(--gold);font-style:normal}
-.hero-sub{color:var(--muted);font-size:14px;max-width:420px}
-.stats{display:flex;border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:none}
-.s{flex:1;min-width:90px;padding:18px 12px;border-right:1px solid var(--border);text-align:center}
-.s:last-child{border-right:none}
-.sv{font-family:'Bebas Neue',sans-serif;font-size:30px;color:var(--gold);display:block;line-height:1}
-.sl{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-top:3px}
-.wrap{max-width:660px;margin:0 auto;padding:28px 18px 60px}
-.sec{margin-bottom:36px}
-.sec-head{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--border)}
-.sec-n{font-family:'Bebas Neue',sans-serif;font-size:11px;letter-spacing:3px;color:var(--gold)}
-.sec-t{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:12px}
-.ic{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px}
-.ic.gold{border-color:rgba(232,201,74,.3);background:rgba(232,201,74,.05)}
-.ic-tag{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
-.ic-val{font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--gold);line-height:1}
-.ic-sub{font-size:12px;color:var(--muted);margin-top:3px}
-.note{background:rgba(232,201,74,.06);border:1px solid rgba(232,201,74,.2);border-radius:8px;padding:14px 16px;font-size:13px;color:var(--txt)}
-.note strong{color:var(--gold)}
-.phase{background:var(--card);border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden}
-.ph{display:flex;align-items:center;gap:12px;padding:15px 16px;cursor:pointer;user-select:none}
-.pn{font-family:'Bebas Neue',sans-serif;font-size:12px;letter-spacing:2px;color:var(--gold);background:rgba(232,201,74,.1);border:1px solid rgba(232,201,74,.2);padding:2px 10px;border-radius:4px;white-space:nowrap}
-.pt{font-weight:600;flex:1;font-size:14px}.pd{font-size:12px;color:var(--muted)}.pa{color:var(--muted);font-size:11px;transition:transform .2s}
-.phase.open .pa{transform:rotate(180deg)}.pb{display:none;padding:0 16px 16px;border-top:1px solid var(--border)}.phase.open .pb{display:block}
-.tabs{display:flex;gap:6px;margin:14px 0 10px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}.tabs::-webkit-scrollbar{display:none}
-.tab{font-size:12px;font-weight:600;padding:5px 14px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;white-space:nowrap;font-family:'DM Sans',sans-serif;transition:all .15s}
-.tab.on{background:var(--gold);color:#0f0f0f;border-color:var(--gold)}.wc{display:none}.wc.on{display:block}
-.day{background:var(--surf);border:1px solid var(--border);border-radius:8px;margin-bottom:10px;overflow:hidden}
-.dh{display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border)}
-.db{font-family:'Bebas Neue',sans-serif;font-size:11px;letter-spacing:1px;padding:2px 10px;border-radius:3px;background:var(--red);color:#fff}
-.dn{font-weight:600;font-size:14px}.df{font-size:12px;color:var(--muted)}
-table{width:100%;border-collapse:collapse;font-size:13px}
-th{text-align:left;padding:6px 14px;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);font-weight:500}
-td{padding:8px 14px;border-top:1px solid var(--border);vertical-align:top}
-tr:hover td{background:rgba(255,255,255,.02)}
-.en{font-weight:500}.et{font-size:11px;color:var(--muted);margin-top:2px}
-.sr{font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--gold);white-space:nowrap}.rt{font-size:12px;color:var(--muted);white-space:nowrap}
-.tl{list-style:none}.tl li{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px}.tl li:last-child{border-bottom:none}
-.ti{color:var(--gold);flex-shrink:0;font-size:16px}
-.timeline{display:flex;flex-direction:column;gap:0}.trow{display:flex;align-items:stretch;gap:0}
-.tline{display:flex;flex-direction:column;align-items:center;width:32px;flex-shrink:0}
-.tdot{width:12px;height:12px;border-radius:50%;background:var(--gold);flex-shrink:0;margin-top:4px}.tbar{flex:1;width:2px;background:var(--border)}
-.trow:last-child .tbar{display:none}.tcont{flex:1;padding:0 0 20px 14px}
-.tmonth{font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;color:var(--gold);line-height:1}
-.tdesc{font-size:13px;color:var(--muted);margin-top:4px}.tkg{font-size:13px;color:var(--txt);margin-top:2px}
-.footer{text-align:center;padding:28px 18px;color:var(--muted);font-size:12px;border-top:1px solid var(--border)}
-</style></head><body>
-
-<!-- HERO : adapter TITRE, SOUS-TITRE, TAG -->
-<div class="hero">
-  <div class="hero-tag">■ {{TAG}}</div>
-  <h1 class="hero-title">{{TITRE_LIGNE1}}<br>{{TITRE_LIGNE2_EM}}</h1>
-  <p class="hero-sub">{{SOUS_TITRE_PROFIL}}</p>
-</div>
-
-<!-- STATS : 5 métriques clés du programme -->
-<div class="stats">
-  <div class="s"><span class="sv">{{S1_VAL}}</span><div class="sl">{{S1_LABEL}}</div></div>
-  <div class="s"><span class="sv">{{S2_VAL}}</span><div class="sl">{{S2_LABEL}}</div></div>
-  <div class="s"><span class="sv">{{S3_VAL}}</span><div class="sl">{{S3_LABEL}}</div></div>
-  <div class="s"><span class="sv">{{S4_VAL}}</span><div class="sl">{{S4_LABEL}}</div></div>
-  <div class="s"><span class="sv">{{S5_VAL}}</span><div class="sl">{{S5_LABEL}}</div></div>
-</div>
-
-<div class="wrap">
-<!-- SECTIONS : reproduire le pattern sec-head + contenu adapté au programme -->
-<!-- Phases avec .phase.open + accordéons toggle() + onglets switchTab() -->
-<!-- Timeline mois par mois + règles d'or en liste .tl -->
-</div>
-
-<div class="footer">{{FOOTER_TEXT}}</div>
-
-<script>
-function toggle(id){document.getElementById(id).classList.toggle('open')}
-function switchTab(phase,key,btn){
-  document.querySelectorAll('#'+phase+' .wc').forEach(w=>w.classList.remove('on'));
-  btn.parentElement.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
-  btn.classList.add('on');
-  var t=document.getElementById(phase+'-'+key);if(t)t.classList.add('on');
-}
-window.addEventListener('load',function(){
-  var dots=document.querySelectorAll('.tdot');
-  dots.forEach((d,i)=>{d.style.opacity='0';d.style.transform='scale(0)';d.style.transition='opacity .3s,transform .3s';setTimeout(()=>{d.style.opacity='1';d.style.transform='scale(1)'},200+i*120)});
+    const rawToken = authHeader.slice(7).trim();
+    const body = req.body;
+    if (!body.uid || !body.targetDate || !body.text || !body.condition) {
+        res.status(400).json({ error: "Missing required fields: uid, targetDate, text, condition" });
+        return;
+    }
+    const valid = await (0, execute_1.validateToken)(body.uid, rawToken);
+    if (!valid) {
+        res.status(401).json({ error: "Invalid or revoked token" });
+        return;
+    }
+    const result = await (0, execute_1.executePushAssistantMessage)(body.uid, body);
+    const messageId = (_b = result.match(/messageId : (.+)$/m)) === null || _b === void 0 ? void 0 : _b[1];
+    res.status(200).json({ success: true, messageId });
 });
-</script></body></html>
-
-INSTRUCTIONS D'ADAPTATION :
-- Remplacer tous les {{PLACEHOLDER}} par le contenu réel
-- {{COULEUR_ACCENT}} : sport=#e8c94a | business=#4ae8b0 | santé=#e84a7a | mental=#7a8fe8 | général=#e8c94a
-- Reproduire la structure complète : hero + stats + sections numérotées + phases accordéon + timeline + règles
-- Chaque phase doit avoir ses onglets avec les détails complets (exercices, séries, repos)
-- NE PAS simplifier — le programme complet, pas un résumé`;
-}
-async function executeSaveDocument(uid, args) {
-    const id = (0, uuid_1.v4)();
-    await db.collection(`users/${uid}/documents`).doc(id).set({
-        id,
-        title: args.title,
-        content: args.content,
-        projectId: args.projectId || null,
-        type: "html",
-        createdAt: firestore_1.FieldValue.serverTimestamp(),
-    });
-    return `✅ Document "${args.title}" sauvegardé (id: ${id}). Visible dans l'onglet Projets du web app.`;
-}
-async function executeGetDocuments(uid, projectId) {
-    let query = db.collection(`users/${uid}/documents`).orderBy("createdAt", "desc");
-    const snap = await query.get();
-    if (snap.empty)
-        return "Aucun document sauvegardé.";
-    const docs = snap.docs
-        .map((d) => d.data())
-        .filter((d) => !projectId || d.projectId === projectId)
-        .map((d) => {
-        var _a, _b, _c, _d;
-        return ({
-            id: d.id,
-            title: d.title,
-            projectId: d.projectId || null,
-            createdAt: ((_d = (_c = (_b = (_a = d.createdAt) === null || _a === void 0 ? void 0 : _a.toDate) === null || _b === void 0 ? void 0 : _b.call(_a)) === null || _c === void 0 ? void 0 : _c.toISOString) === null || _d === void 0 ? void 0 : _d.call(_c)) || null,
-            // Inclure le contenu pour que Claude puisse analyser
-            content: d.content,
-        });
-    });
-    if (!docs.length)
-        return "Aucun document pour ce projet.";
-    return JSON.stringify(docs, null, 2);
-}
-async function executeGetArchives(uid) {
-    const [domainsSnap, activitiesSnap, routinesSnap] = await Promise.all([
-        db.collection(`users/${uid}/domains`).where("deleted", "==", true).get(),
-        db.collection(`users/${uid}/activities`).where("deleted", "==", true).get(),
-        db.collection(`users/${uid}/recurringActions`).where("deleted", "==", true).get(),
-    ]);
-    const domains = domainsSnap.docs.map((d) => ({ id: d.id, name: d.data().name }));
-    const activities = activitiesSnap.docs.map((d) => {
-        var _a;
-        return ({
-            id: d.id, name: d.data().name, domainId: (_a = d.data().domainId) !== null && _a !== void 0 ? _a : null,
-        });
-    });
-    const routines = routinesSnap.docs.map((d) => {
-        var _a;
-        return ({
-            id: d.id, title: d.data().title, activityId: (_a = d.data().activityId) !== null && _a !== void 0 ? _a : null,
-        });
-    });
-    if (!domains.length && !activities.length && !routines.length)
-        return "Aucun élément archivé — tout est propre.";
-    return JSON.stringify({ domains, activities, routines }, null, 2);
-}
-async function executeRestoreItem(uid, collection, itemId) {
-    var _a, _b, _c, _d;
-    const ref = db.collection(`users/${uid}/${collection}`).doc(itemId);
-    const snap = await ref.get();
-    if (!snap.exists)
-        return `Élément introuvable : ${itemId}`;
-    const label = (_d = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : (_c = snap.data()) === null || _c === void 0 ? void 0 : _c.title) !== null && _d !== void 0 ? _d : itemId;
-    await ref.update({ deleted: false });
-    return `✅ "${label}" restauré dans ${collection}.`;
-}
-async function archivePlanItemsForRoutine(uid, routineId) {
-    const planSnap = await db.collection(`users/${uid}/dayPlan`)
-        .where("recurringActionId", "==", routineId)
-        .where("done", "==", false)
-        .get();
-    if (!planSnap.empty) {
-        const batch = db.batch();
-        for (const doc of planSnap.docs)
-            batch.update(doc.ref, { archived: true, status: "archived" });
-        await batch.commit();
-    }
-    return planSnap.size;
-}
-async function executeCreateDomain(uid, args) {
-    var _a, _b, _c;
-    const id = (0, uuid_1.v4)();
-    await db.collection(`users/${uid}/domains`).doc(id).set({
-        id,
-        name: args.name,
-        goalMinDay: (_a = args.goalMinDay) !== null && _a !== void 0 ? _a : null,
-        autoGoal: (_b = args.autoGoal) !== null && _b !== void 0 ? _b : true,
-        colorValue: (_c = args.colorValue) !== null && _c !== void 0 ? _c : null,
-        createdAt: firestore_1.FieldValue.serverTimestamp(),
-    });
-    return `✅ Domaine "${args.name}" créé (id: ${id}). Il apparaîtra dans Productivitwo à la prochaine synchronisation.`;
-}
-async function executeDeleteDomain(uid, domainId) {
-    var _a, _b;
-    const ref = db.collection(`users/${uid}/domains`).doc(domainId);
-    const snap = await ref.get();
-    if (!snap.exists)
-        return `Domaine introuvable : ${domainId}`;
-    const name = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : domainId;
-    await ref.update({ deleted: true });
-    // Cascade : soft-delete toutes les activités du domaine
-    const activitiesSnap = await db.collection(`users/${uid}/activities`)
-        .where("domainId", "==", domainId)
-        .get();
-    let deletedActivities = 0;
-    let deletedRoutines = 0;
-    if (!activitiesSnap.empty) {
-        const actBatch = db.batch();
-        for (const doc of activitiesSnap.docs)
-            actBatch.update(doc.ref, { deleted: true });
-        await actBatch.commit();
-        deletedActivities = activitiesSnap.size;
-        // Cascade : soft-delete les routines liées à ces activités
-        for (const actDoc of activitiesSnap.docs) {
-            const routinesSnap = await db.collection(`users/${uid}/recurringActions`)
-                .where("activityId", "==", actDoc.id)
-                .get();
-            if (!routinesSnap.empty) {
-                const rBatch = db.batch();
-                for (const r of routinesSnap.docs)
-                    rBatch.update(r.ref, { deleted: true, active: false });
-                await rBatch.commit();
-                for (const r of routinesSnap.docs)
-                    await archivePlanItemsForRoutine(uid, r.id);
-                deletedRoutines += routinesSnap.size;
-            }
-        }
-    }
-    const details = [
-        deletedActivities > 0 ? `${deletedActivities} activité(s)` : null,
-        deletedRoutines > 0 ? `${deletedRoutines} routine(s)` : null,
-    ].filter(Boolean).join(", ");
-    return `✅ Domaine "${name}" supprimé${details ? ` (cascade : ${details})` : ""}.`;
-}
-async function executeDeleteActivity(uid, activityId) {
-    var _a, _b;
-    const ref = db.collection(`users/${uid}/activities`).doc(activityId);
-    const snap = await ref.get();
-    if (!snap.exists)
-        return `Activité introuvable : ${activityId}`;
-    const name = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : activityId;
-    await ref.update({ deleted: true });
-    // Cascade : soft-delete routines liées + archive leurs items du plan
-    const routinesSnap = await db.collection(`users/${uid}/recurringActions`)
-        .where("activityId", "==", activityId)
-        .get();
-    if (!routinesSnap.empty) {
-        const rBatch = db.batch();
-        for (const r of routinesSnap.docs)
-            rBatch.update(r.ref, { deleted: true, active: false });
-        await rBatch.commit();
-        for (const r of routinesSnap.docs)
-            await archivePlanItemsForRoutine(uid, r.id);
-    }
-    // Délie les day plan items non faits
-    const planSnap = await db.collection(`users/${uid}/dayPlan`)
-        .where("activityId", "==", activityId)
-        .where("done", "==", false)
-        .get();
-    if (!planSnap.empty) {
-        const batch = db.batch();
-        for (const doc of planSnap.docs)
-            batch.update(doc.ref, { activityId: null });
-        await batch.commit();
-    }
-    const details = [
-        routinesSnap.size > 0 ? `${routinesSnap.size} routine(s)` : null,
-        planSnap.size > 0 ? `${planSnap.size} action(s) du plan déliée(s)` : null,
-    ].filter(Boolean).join(", ");
-    return `✅ Activité "${name}" supprimée${details ? ` (cascade : ${details})` : ""}.`;
-}
-async function executeUpdateProject(uid, projectId, updates) {
-    var _a, _b, _c;
-    const ref = db.collection(`users/${uid}/projects`).doc(projectId);
-    const snap = await ref.get();
-    if (!snap.exists)
-        return `Projet introuvable : ${projectId}`;
-    const title = (_a = updates.title) !== null && _a !== void 0 ? _a : ((_c = (_b = snap.data()) === null || _b === void 0 ? void 0 : _b.title) !== null && _c !== void 0 ? _c : projectId);
-    const patch = { updatedAt: firestore_1.FieldValue.serverTimestamp() };
-    if (updates.domainId !== undefined)
-        patch.domainId = updates.domainId;
-    if (updates.title !== undefined)
-        patch.title = updates.title;
-    if (updates.description !== undefined)
-        patch.description = updates.description;
-    if (updates.status !== undefined)
-        patch.status = updates.status;
-    await ref.update(patch);
-    return `✅ Projet "${title}" mis à jour.`;
-}
-async function executeUpdateTaskStatus(uid, projectId, taskId, status) {
-    var _a;
-    const ref = db.collection(`users/${uid}/projects`).doc(projectId);
-    const snap = await ref.get();
-    if (!snap.exists)
-        return `Projet introuvable : ${projectId}`;
-    const data = snap.data();
-    const tasks = (data.tasks || []);
-    const idx = tasks.findIndex((t) => t.id === taskId);
-    if (idx === -1)
-        return `Tâche introuvable : ${taskId}`;
-    tasks[idx] = Object.assign(Object.assign({}, tasks[idx]), { status });
-    await ref.update({ tasks, updatedAt: firestore_1.FieldValue.serverTimestamp() });
-    const taskTitle = (_a = tasks[idx].title) !== null && _a !== void 0 ? _a : taskId;
-    const emoji = status === "done" ? "✅" : status === "skipped" ? "⏭️" : "🔄";
-    return `${emoji} Tâche "${taskTitle}" → ${status}.`;
-}
-async function executeUpdateActivity(uid, activityId, updates) {
-    var _a, _b;
-    const ref = db.collection(`users/${uid}/activities`).doc(activityId);
-    const snap = await ref.get();
-    if (!snap.exists)
-        return `Activité introuvable : ${activityId}`;
-    const currentName = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : activityId;
-    const patch = {};
-    if (updates.name !== undefined)
-        patch.name = updates.name;
-    if (updates.domainId !== undefined)
-        patch.domainId = updates.domainId;
-    if (updates.goalMin !== undefined)
-        patch.goalMin = updates.goalMin;
-    if (updates.unit !== undefined)
-        patch.unit = updates.unit;
-    if (updates.habitFreq !== undefined)
-        patch.habitFreq = updates.habitFreq;
-    if (updates.habitTarget !== undefined)
-        patch.habitTarget = updates.habitTarget;
-    await ref.update(patch);
-    return `✅ Activité "${currentName}" mise à jour.`;
-}
-async function executeLinkGoalToTask(uid, goalId, projectId, projectTaskId) {
-    var _a, _b;
-    const ref = db.collection(`users/${uid}/goals`).doc(goalId);
-    const snap = await ref.get();
-    if (!snap.exists)
-        return `Objectif introuvable : ${goalId}`;
-    const title = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.title) !== null && _b !== void 0 ? _b : goalId;
-    await ref.update({ projectId: projectId !== null && projectId !== void 0 ? projectId : null, projectTaskId: projectTaskId !== null && projectTaskId !== void 0 ? projectTaskId : null });
-    if (!projectTaskId)
-        return `✅ Objectif "${title}" délié de tout projet Gantt.`;
-    return `✅ Objectif "${title}" lié à la tâche Gantt ${projectTaskId}.`;
-}
-async function executeDeleteRoutine(uid, routineId) {
-    var _a, _b;
-    const ref = db.collection(`users/${uid}/recurringActions`).doc(routineId);
-    const snap = await ref.get();
-    if (!snap.exists)
-        return `Routine introuvable : ${routineId}`;
-    const title = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.title) !== null && _b !== void 0 ? _b : routineId;
-    // Soft-delete pour que le merge Flutter respecte la suppression
-    await ref.update({ deleted: true, active: false });
-    const planSnap = await db.collection(`users/${uid}/dayPlan`)
-        .where("recurringActionId", "==", routineId)
-        .where("done", "==", false)
-        .get();
-    if (!planSnap.empty) {
-        const batch = db.batch();
-        for (const doc of planSnap.docs)
-            batch.update(doc.ref, { archived: true, status: "archived" });
-        await batch.commit();
-    }
-    return `✅ Routine "${title}" supprimée (${planSnap.size} occurrence(s) future(s) retirée(s) du plan).`;
-}
-async function executeDeleteGoal(uid, goalId, action) {
-    var _a, _b;
-    const ref = db.collection(`users/${uid}/goals`).doc(goalId);
-    const snap = await ref.get();
-    if (!snap.exists)
-        return `Objectif introuvable : ${goalId}`;
-    const title = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.title) !== null && _b !== void 0 ? _b : goalId;
-    if (action === "delete") {
-        await ref.delete();
-        return `✅ Objectif "${title}" supprimé définitivement.`;
-    }
-    // Archive par défaut
-    await ref.update({ status: "archived" });
-    return `✅ Objectif "${title}" archivé.`;
-}
-async function executeClearDayPlan(uid, date) {
-    const yyyymmdd = date.replace(/-/g, "");
-    const snap = await db.collection(`users/${uid}/dayPlan`)
-        .where("yyyymmdd", "==", yyyymmdd)
-        .where("done", "==", false)
-        .get();
-    if (snap.empty)
-        return `Aucune action non faite à supprimer le ${date}.`;
-    // Archiver plutôt que supprimer pour que le merge Flutter respecte la suppression
-    const batch = db.batch();
-    for (const doc of snap.docs)
-        batch.update(doc.ref, { archived: true, status: "archived" });
-    await batch.commit();
-    return `✅ ${snap.size} action(s) non faite(s) supprimée(s) du plan du ${date}.`;
-}
-async function executeArchiveProject(uid, projectId, restore) {
-    var _a, _b;
-    const ref = db.collection(`users/${uid}/projects`).doc(projectId);
-    const snap = await ref.get();
-    if (!snap.exists)
-        return `Projet introuvable : ${projectId}`;
-    const title = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.title) !== null && _b !== void 0 ? _b : projectId;
-    const newStatus = restore ? "active" : "archived";
-    await ref.update({ status: newStatus, updatedAt: firestore_1.FieldValue.serverTimestamp() });
-    return restore
-        ? `✅ Projet "${title}" réactivé — il apparaît à nouveau dans le focus.`
-        : `✅ Projet "${title}" mis en veille — visible dans la section Archives du web app.`;
-}
-async function executeDeleteProject(uid, projectId, deleteObjective) {
-    var _a;
-    const projectRef = db.collection(`users/${uid}/projects`).doc(projectId);
-    const projectSnap = await projectRef.get();
-    if (!projectSnap.exists) {
-        return `Projet introuvable : ${projectId}`;
-    }
-    const projectData = projectSnap.data();
-    const title = (_a = projectData.title) !== null && _a !== void 0 ? _a : projectId;
-    const objId = projectData.strategicObjectiveId;
-    await projectRef.delete();
-    if (deleteObjective && objId) {
-        await db.collection(`users/${uid}/strategic_objectives`).doc(objId).delete();
-        return `✅ Projet "${title}" et son objectif stratégique supprimés.`;
-    }
-    return `✅ Projet "${title}" supprimé.`;
-}
-async function executeListProjects(uid) {
-    const snap = await db.collection(`users/${uid}/projects`).get();
-    if (snap.empty)
-        return "Aucun projet trouvé dans Productivitwo.";
-    const lines = snap.docs.map((doc) => {
-        const d = doc.data();
-        const taskCount = (d.tasks || []).length;
-        const start = d.startDate || "?";
-        const end = d.endDate || "?";
-        const domain = d.domainId ? ` · domaine:${d.domainId}` : '';
-        return `• [${d.id}] ${d.title} (${start} → ${end}, ${taskCount} tâche(s)${domain})`;
-    });
-    return `Projets Productivitwo (${snap.size}) :\n${lines.join("\n")}`;
-}
-async function executeGetProject(uid, projectId) {
-    const doc = await db.collection(`users/${uid}/projects`).doc(projectId).get();
-    if (!doc.exists)
-        return `Projet introuvable : ${projectId}`;
-    const d = doc.data();
-    // Retourner le JSON complet pour que Claude puisse le modifier
-    return JSON.stringify(d, null, 2);
-}
-async function executePushGantt(uid, input) {
-    const { project, strategicObjective } = input;
-    let strategicObjectiveId;
-    if (strategicObjective) {
-        const objId = strategicObjective.id || (0, uuid_1.v4)();
-        strategicObjectiveId = objId;
-        await db.collection(`users/${uid}/strategic_objectives`).doc(objId).set(Object.assign(Object.assign({}, strategicObjective), { id: objId, status: "active", updatedAt: firestore_1.FieldValue.serverTimestamp(), createdAt: firestore_1.FieldValue.serverTimestamp() }), { merge: true });
-    }
-    const projectId = project.id || (0, uuid_1.v4)();
-    await db.collection(`users/${uid}/projects`).doc(projectId).set(Object.assign(Object.assign(Object.assign(Object.assign({}, project), { id: projectId, phases: (project.phases || []).map((p) => (Object.assign(Object.assign({}, p), { id: p.id || (0, uuid_1.v4)() }))), tasks: (project.tasks || []).map((t) => { var _a, _b; return (Object.assign(Object.assign({}, t), { id: t.id || (0, uuid_1.v4)(), isMilestone: (_a = t.isMilestone) !== null && _a !== void 0 ? _a : false, status: (_b = t.status) !== null && _b !== void 0 ? _b : "pending" })); }), createdBy: uid, sourceType: "claude_mcp", status: "active" }), (strategicObjectiveId ? { strategicObjectiveId } : {})), { updatedAt: firestore_1.FieldValue.serverTimestamp(), createdAt: firestore_1.FieldValue.serverTimestamp() }), { merge: true });
-    if (strategicObjectiveId) {
-        await db.collection(`users/${uid}/strategic_objectives`).doc(strategicObjectiveId)
-            .update({ projectIds: firestore_1.FieldValue.arrayUnion(projectId) });
-    }
-    const isUpdate = !!project.id;
-    return (`✅ Projet "${project.title}" ${isUpdate ? "mis à jour" : "créé"} dans Productivitwo !\n` +
-        `• ${(project.tasks || []).length} tâche(s) · ${(project.phases || []).length} phase(s)\n` +
-        `• Voir sur : https://productivitwo-app.web.app\n` +
-        `• projectId : ${projectId}`);
-}
 // ── getCustomToken ────────────────────────────────────────────────────────────
 //
-// POST { uid, token }
-// Valide le token API, retourne un Firebase custom token pour cet UID.
-// Permet au web app de se connecter avec le même UID que l'app iOS.
+// POST { uid, token } — retourne un Firebase custom token pour cet UID.
 exports.getCustomToken = (0, https_1.onRequest)({ cors: true, invoker: "public" }, async (req, res) => {
     if (req.method === "OPTIONS") {
         res.status(204).send("");
@@ -1598,7 +110,7 @@ exports.getCustomToken = (0, https_1.onRequest)({ cors: true, invoker: "public" 
         res.status(400).json({ error: "uid et token requis" });
         return;
     }
-    const valid = await validateToken(uid, token);
+    const valid = await (0, execute_1.validateToken)(uid, token);
     if (!valid) {
         res.status(401).json({ error: "Token invalide ou révoqué" });
         return;
@@ -1606,15 +118,15 @@ exports.getCustomToken = (0, https_1.onRequest)({ cors: true, invoker: "public" 
     const customToken = await admin.auth().createCustomToken(uid);
     res.status(200).json({ customToken });
 });
+// ── mcpHandler ────────────────────────────────────────────────────────────────
+//
+// URL : /mcp/{uid}/{token} — protocole MCP JSON-RPC 2.0 (Streamable HTTP, stateless)
 exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, async (req, res) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r;
-    // CORS preflight
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t;
     if (req.method === "OPTIONS") {
         res.status(204).send("");
         return;
     }
-    // Extraire uid + token du path : /mcp/{uid}/{token}
-    // Firebase Hosting conserve le préfixe /mcp/ dans req.path
     const parts = (req.path || "").replace(/^\/+mcp\/*/, "").split("/");
     const uid = parts[0] || "";
     const token = parts[1] || "";
@@ -1622,20 +134,17 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
         res.status(401).json({ error: "URL invalide — format attendu : /mcp/{uid}/{token}" });
         return;
     }
-    // Valider le token
-    const valid = await validateToken(uid, token);
+    const valid = await (0, execute_1.validateToken)(uid, token);
     if (!valid) {
         res.status(401).json({ error: "Token invalide ou révoqué" });
         return;
     }
-    // Lire le body JSON-RPC
     const body = req.body;
     const requests = Array.isArray(body) ? body : [body];
     const responses = [];
     for (const rpc of requests) {
         const id = (_a = rpc.id) !== null && _a !== void 0 ? _a : null;
         const method = (_b = rpc.method) !== null && _b !== void 0 ? _b : "";
-        // Notifications (pas de réponse attendue)
         if (id === null && method.startsWith("notifications/"))
             continue;
         if (method === "initialize") {
@@ -1652,22 +161,19 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
             responses.push({ jsonrpc: "2.0", id, result: {} });
         }
         else if (method === "prompts/list") {
-            responses.push({ jsonrpc: "2.0", id, result: { prompts: MCP_PROMPTS } });
+            responses.push({ jsonrpc: "2.0", id, result: { prompts: prompts_1.MCP_PROMPTS } });
         }
         else if (method === "prompts/get") {
             const promptName = (_d = (_c = rpc.params) === null || _c === void 0 ? void 0 : _c.name) !== null && _d !== void 0 ? _d : "";
             const promptArgs = (_f = (_e = rpc.params) === null || _e === void 0 ? void 0 : _e.arguments) !== null && _f !== void 0 ? _f : {};
-            const prompt = MCP_PROMPTS.find((p) => p.name === promptName);
+            const prompt = prompts_1.MCP_PROMPTS.find((p) => p.name === promptName);
             if (!prompt) {
                 responses.push({ jsonrpc: "2.0", id, error: { code: -32601, message: `Prompt inconnu : ${promptName}` } });
             }
             else {
                 responses.push({
                     jsonrpc: "2.0", id,
-                    result: {
-                        description: prompt.description,
-                        messages: getPromptMessages(promptName, promptArgs),
-                    },
+                    result: { description: prompt.description, messages: (0, prompts_1.getPromptMessages)(promptName, promptArgs) },
                 });
             }
         }
@@ -1676,36 +182,16 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                 jsonrpc: "2.0", id,
                 result: {
                     tools: [
-                        GET_USER_CONTEXT_TOOL,
-                        GET_DAY_BLOCKS_TOOL,
-                        GET_DAY_PLAN_TOOL,
-                        PLAN_DAY_TOOL,
-                        CLEAR_DAY_PLAN_TOOL,
-                        LIST_PROJECTS_TOOL,
-                        GET_PROJECT_TOOL,
-                        PUSH_GANTT_MCP_TOOL,
-                        ARCHIVE_PROJECT_TOOL,
-                        DELETE_PROJECT_TOOL,
-                        UPDATE_ACTIVITY_GOAL_TOOL,
-                        CREATE_ROUTINE_TOOL,
-                        CREATE_RECURRING_ACTION_TOOL,
-                        DELETE_ROUTINE_TOOL,
-                        ADD_TO_DAY_PLAN_TOOL,
-                        DELETE_GOAL_TOOL,
-                        LINK_GOAL_TO_TASK_TOOL,
-                        CREATE_ACTIVITY_TOOL,
-                        UPDATE_ACTIVITY_TOOL,
-                        UPDATE_TASK_STATUS_TOOL,
-                        UPDATE_PROJECT_TOOL,
-                        DELETE_ACTIVITY_TOOL,
-                        DELETE_ACTION_TOOL,
-                        GET_DOCUMENT_TEMPLATE_TOOL,
-                        SAVE_DOCUMENT_TOOL,
-                        GET_DOCUMENTS_TOOL,
-                        GET_ARCHIVES_TOOL,
-                        RESTORE_ITEM_TOOL,
-                        CREATE_DOMAIN_TOOL,
-                        DELETE_DOMAIN_TOOL,
+                        tools_1.GET_USER_CONTEXT_TOOL, tools_1.GET_DAY_BLOCKS_TOOL, tools_1.GET_DAY_PLAN_TOOL, tools_1.PLAN_DAY_TOOL,
+                        tools_1.CLEAR_DAY_PLAN_TOOL, tools_1.LIST_PROJECTS_TOOL, tools_1.GET_PROJECT_TOOL, tools_1.PUSH_GANTT_MCP_TOOL,
+                        tools_1.ARCHIVE_PROJECT_TOOL, tools_1.DELETE_PROJECT_TOOL, tools_1.UPDATE_ACTIVITY_GOAL_TOOL,
+                        tools_1.CREATE_ROUTINE_TOOL, tools_1.CREATE_RECURRING_ACTION_TOOL, tools_1.DELETE_ROUTINE_TOOL,
+                        tools_1.ADD_TO_DAY_PLAN_TOOL, tools_1.DELETE_GOAL_TOOL, tools_1.LINK_GOAL_TO_TASK_TOOL,
+                        tools_1.CREATE_ACTIVITY_TOOL, tools_1.UPDATE_ACTIVITY_TOOL, tools_1.UPDATE_TASK_STATUS_TOOL,
+                        tools_1.UPDATE_PROJECT_TOOL, tools_1.DELETE_ACTIVITY_TOOL, tools_1.DELETE_ACTION_TOOL,
+                        tools_1.GET_DOCUMENT_TEMPLATE_TOOL, tools_1.SAVE_DOCUMENT_TOOL, tools_1.GET_DOCUMENTS_TOOL,
+                        tools_1.DELETE_DOCUMENT_TOOL, tools_1.GET_ARCHIVES_TOOL, tools_1.RESTORE_ITEM_TOOL,
+                        tools_1.CREATE_DOMAIN_TOOL, tools_1.DELETE_DOMAIN_TOOL, tools_1.PUSH_ASSISTANT_MESSAGE_TOOL,
                     ],
                 },
             });
@@ -1715,95 +201,110 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
             const args = (_k = (_j = rpc.params) === null || _j === void 0 ? void 0 : _j.arguments) !== null && _k !== void 0 ? _k : {};
             try {
                 let text = "";
-                if (toolName === "get_day_blocks") {
-                    text = await executeGetDayBlocks(uid);
+                if (toolName === "get_user_context") {
+                    text = await (0, execute_1.executeGetUserContext)(uid);
+                }
+                else if (toolName === "get_day_blocks") {
+                    text = await (0, execute_1.executeGetDayBlocks)(uid);
                 }
                 else if (toolName === "get_day_plan") {
-                    text = await executeGetDayPlan(uid, args.date);
+                    text = await (0, execute_1.executeGetDayPlan)(uid, args.date);
                 }
                 else if (toolName === "plan_day") {
-                    text = await executePlanDay(uid, args.date, args.items, (_l = args.clearExisting) !== null && _l !== void 0 ? _l : false);
-                }
-                else if (toolName === "create_activity") {
-                    text = await executeCreateActivity(uid, args);
-                }
-                else if (toolName === "update_activity") {
-                    text = await executeUpdateActivity(uid, args.activityId, args);
-                }
-                else if (toolName === "link_goal_to_task") {
-                    text = await executeLinkGoalToTask(uid, args.goalId, (_m = args.projectId) !== null && _m !== void 0 ? _m : null, (_o = args.projectTaskId) !== null && _o !== void 0 ? _o : null);
-                }
-                else if (toolName === "delete_routine") {
-                    text = await executeDeleteRoutine(uid, args.routineId);
-                }
-                else if (toolName === "delete_goal") {
-                    text = await executeDeleteGoal(uid, args.goalId, (_p = args.action) !== null && _p !== void 0 ? _p : "archive");
+                    text = await (0, execute_1.executePlanDay)(uid, args.date, args.items, (_l = args.clearExisting) !== null && _l !== void 0 ? _l : false);
                 }
                 else if (toolName === "clear_day_plan") {
-                    text = await executeClearDayPlan(uid, args.date);
-                }
-                else if (toolName === "archive_project") {
-                    text = await executeArchiveProject(uid, args.projectId, (_q = args.restore) !== null && _q !== void 0 ? _q : false);
-                }
-                else if (toolName === "delete_project") {
-                    text = await executeDeleteProject(uid, args.projectId, (_r = args.deleteObjective) !== null && _r !== void 0 ? _r : false);
-                }
-                else if (toolName === "get_user_context") {
-                    text = await executeGetUserContext(uid);
-                }
-                else if (toolName === "list_projects") {
-                    text = await executeListProjects(uid);
-                }
-                else if (toolName === "get_project") {
-                    text = await executeGetProject(uid, args.projectId);
-                }
-                else if (toolName === "push_gantt") {
-                    text = await executePushGantt(uid, Object.assign({ uid }, args));
-                }
-                else if (toolName === "update_activity_goal") {
-                    text = await executeUpdateActivityGoal(uid, args.activityId, args);
-                }
-                else if (toolName === "create_routine") {
-                    text = await executeCreateRoutine(uid, args);
-                }
-                else if (toolName === "create_recurring_action") {
-                    text = await executeCreateRecurringAction(uid, args);
+                    text = await (0, execute_1.executeClearDayPlan)(uid, args.date);
                 }
                 else if (toolName === "add_to_day_plan") {
-                    text = await executeAddToDayPlan(uid, args);
-                }
-                else if (toolName === "update_project") {
-                    text = await executeUpdateProject(uid, args.projectId, args);
-                }
-                else if (toolName === "update_task_status") {
-                    text = await executeUpdateTaskStatus(uid, args.projectId, args.taskId, args.status);
+                    text = await (0, execute_1.executeAddToDayPlan)(uid, args);
                 }
                 else if (toolName === "delete_action") {
-                    text = await executeDeleteAction(uid, args.actionId);
+                    text = await (0, execute_1.executeDeleteAction)(uid, args.actionId);
                 }
-                else if (toolName === "get_document_template") {
-                    text = executeGetDocumentTemplate();
+                else if (toolName === "list_projects") {
+                    text = await (0, execute_1.executeListProjects)(uid);
                 }
-                else if (toolName === "save_document") {
-                    text = await executeSaveDocument(uid, args);
+                else if (toolName === "get_project") {
+                    text = await (0, execute_1.executeGetProject)(uid, args.projectId);
                 }
-                else if (toolName === "get_documents") {
-                    text = await executeGetDocuments(uid, args.projectId);
+                else if (toolName === "push_gantt") {
+                    text = await (0, execute_1.executePushGantt)(uid, Object.assign({ uid }, args));
                 }
-                else if (toolName === "get_archives") {
-                    text = await executeGetArchives(uid);
+                else if (toolName === "update_project") {
+                    text = await (0, execute_1.executeUpdateProject)(uid, args.projectId, args);
                 }
-                else if (toolName === "restore_item") {
-                    text = await executeRestoreItem(uid, args.collection, args.itemId);
+                else if (toolName === "update_task_status") {
+                    text = await (0, execute_1.executeUpdateTaskStatus)(uid, args.projectId, args.taskId, args.status);
                 }
-                else if (toolName === "create_domain") {
-                    text = await executeCreateDomain(uid, args);
+                else if (toolName === "archive_project") {
+                    text = await (0, execute_1.executeArchiveProject)(uid, args.projectId, (_m = args.restore) !== null && _m !== void 0 ? _m : false);
                 }
-                else if (toolName === "delete_domain") {
-                    text = await executeDeleteDomain(uid, args.domainId);
+                else if (toolName === "delete_project") {
+                    text = await (0, execute_1.executeDeleteProject)(uid, args.projectId, (_o = args.deleteObjective) !== null && _o !== void 0 ? _o : false);
+                }
+                else if (toolName === "create_activity") {
+                    text = await (0, execute_1.executeCreateActivity)(uid, args);
+                }
+                else if (toolName === "update_activity") {
+                    text = await (0, execute_1.executeUpdateActivity)(uid, args.activityId, args);
+                }
+                else if (toolName === "update_activity_goal") {
+                    text = await (0, execute_1.executeUpdateActivityGoal)(uid, args.activityId, args);
                 }
                 else if (toolName === "delete_activity") {
-                    text = await executeDeleteActivity(uid, args.activityId);
+                    text = await (0, execute_1.executeDeleteActivity)(uid, args.activityId);
+                }
+                else if (toolName === "create_routine") {
+                    text = await (0, execute_1.executeCreateRoutine)(uid, args);
+                }
+                else if (toolName === "create_recurring_action") {
+                    text = await (0, execute_1.executeCreateRecurringAction)(uid, args);
+                }
+                else if (toolName === "delete_routine") {
+                    text = await (0, execute_1.executeDeleteRoutine)(uid, args.routineId);
+                }
+                else if (toolName === "create_domain") {
+                    text = await (0, execute_1.executeCreateDomain)(uid, args);
+                }
+                else if (toolName === "delete_domain") {
+                    text = await (0, execute_1.executeDeleteDomain)(uid, args.domainId);
+                }
+                else if (toolName === "link_goal_to_task") {
+                    text = await (0, execute_1.executeLinkGoalToTask)(uid, args.goalId, (_p = args.projectId) !== null && _p !== void 0 ? _p : null, (_q = args.projectTaskId) !== null && _q !== void 0 ? _q : null);
+                }
+                else if (toolName === "delete_goal") {
+                    text = await (0, execute_1.executeDeleteGoal)(uid, args.goalId, (_r = args.action) !== null && _r !== void 0 ? _r : "archive");
+                }
+                else if (toolName === "get_document_template") {
+                    text = (0, prompts_1.executeGetDocumentTemplate)();
+                }
+                else if (toolName === "save_document") {
+                    text = await (0, execute_1.executeSaveDocument)(uid, args);
+                }
+                else if (toolName === "get_documents") {
+                    text = await (0, execute_1.executeGetDocuments)(uid, args.projectId, args.taskId);
+                }
+                else if (toolName === "delete_document") {
+                    const ref = db_1.db.collection(`users/${uid}/documents`).doc(args.documentId);
+                    const snap = await ref.get();
+                    if (!snap.exists) {
+                        text = `Document introuvable : ${args.documentId}`;
+                    }
+                    else {
+                        const title = (_t = (_s = snap.data()) === null || _s === void 0 ? void 0 : _s.title) !== null && _t !== void 0 ? _t : args.documentId;
+                        await ref.delete();
+                        text = `✅ Document "${title}" supprimé.`;
+                    }
+                }
+                else if (toolName === "get_archives") {
+                    text = await (0, execute_1.executeGetArchives)(uid);
+                }
+                else if (toolName === "restore_item") {
+                    text = await (0, execute_1.executeRestoreItem)(uid, args.collection, args.itemId);
+                }
+                else if (toolName === "push_assistant_message") {
+                    text = await (0, execute_1.executePushAssistantMessage)(uid, args);
                 }
                 else {
                     responses.push({ jsonrpc: "2.0", id, error: { code: -32601, message: `Outil inconnu : ${toolName}` } });

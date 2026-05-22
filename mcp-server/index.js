@@ -10,6 +10,8 @@ const TOKEN = process.env.PRODUCTIVITWO_TOKEN;
 const UID   = process.env.PRODUCTIVITWO_UID;
 const API_URL = process.env.PRODUCTIVITWO_API_URL
   || "https://pushgantt-dzos75b65q-uc.a.run.app";
+const ASSISTANT_API_URL = process.env.PRODUCTIVITWO_ASSISTANT_API_URL
+  || "https://pushassistantmessage-dzos75b65q-uc.a.run.app";
 
 if (!TOKEN || !UID) {
   process.stderr.write(
@@ -85,6 +87,62 @@ const PUSH_GANTT_TOOL = {
   },
 };
 
+const PUSH_ASSISTANT_MESSAGE_TOOL = {
+  name: "push_assistant_message",
+  description:
+    "Écrit un message pour l'assistant Productivitwo — visible dans le web app sous forme de conseil animé. " +
+    "Utilise cet outil pour planifier des nudges proactifs sur des jours futurs. " +
+    "Le message ne s'affiche QUE si sa condition est vraie le jour J. " +
+    "Appelle get_user_context d'abord pour avoir les IDs nécessaires aux conditions.",
+  inputSchema: {
+    type: "object",
+    required: ["targetDate", "text", "condition"],
+    properties: {
+      targetDate: { type: "string", description: "Date cible YYYY-MM-DD" },
+      text: { type: "string", description: "Texte affiché par l'assistant (1-3 phrases max)" },
+      condition: {
+        type: "object",
+        required: ["type"],
+        properties: {
+          type: {
+            type: "string",
+            enum: [
+              "always", "overdue_count", "day_plan_empty", "project_inactive_days",
+              "activity_behind_target", "goal_undone_actions", "habit_streak_broken",
+              "inbox_overflow", "project_deadline_near", "no_now_focus",
+              "routine_completion_low", "day_plan_overloaded", "no_activity_logged_today",
+              "project_milestone_today", "week_start", "week_end",
+              "activity_streak", "goal_near_deadline", "first_open_of_day", "custom_date",
+            ],
+          },
+          min: { type: "number" },
+          projectId: { type: "string" },
+          days: { type: "number" },
+          daysBefore: { type: "number" },
+          activityId: { type: "string" },
+          habitId: { type: "string" },
+          beforeHour: { type: "number" },
+          maxPercent: { type: "number" },
+          minDays: { type: "number" },
+          goalId: { type: "string" },
+          date: { type: "string" },
+        },
+      },
+      expiresAfterDays: { type: "number", description: "Expiration après N jours (défaut: 2)" },
+      characterName: { type: "string", description: "Nom du personnage (défaut: ORION)" },
+      priority: { type: "number", description: "Ordre d'affichage (1=prioritaire)" },
+      action: {
+        type: "object",
+        properties: {
+          type: { type: "string", enum: ["open_day_plan", "open_project", "open_activity", "open_goals"] },
+          label: { type: "string" },
+          payload: { type: "object" },
+        },
+      },
+    },
+  },
+};
+
 // ── Serveur MCP ───────────────────────────────────────────────────────────────
 
 const server = new Server(
@@ -93,44 +151,33 @@ const server = new Server(
 );
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: [PUSH_GANTT_TOOL],
+  tools: [PUSH_GANTT_TOOL, PUSH_ASSISTANT_MESSAGE_TOOL],
 }));
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  if (request.params.name !== "push_gantt") {
-    return { content: [{ type: "text", text: "Outil inconnu." }], isError: true };
-  }
+  const { name, arguments: input } = request.params;
 
-  const input = request.params.arguments;
-
-  try {
-    const body = {
-      uid: UID,
-      project: input.project,
-      ...(input.strategicObjective ? { strategicObjective: input.strategicObjective } : {}),
-    };
-
-    const res = await fetch(API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${TOKEN}`,
-      },
-      body: JSON.stringify(body),
-    });
-
-    const json = await res.json();
-
-    if (!res.ok) {
-      return {
-        content: [{ type: "text", text: `Erreur API (${res.status}): ${JSON.stringify(json)}` }],
-        isError: true,
+  if (name === "push_gantt") {
+    try {
+      const body = {
+        uid: UID,
+        project: input.project,
+        ...(input.strategicObjective ? { strategicObjective: input.strategicObjective } : {}),
       };
-    }
 
-    return {
-      content: [
-        {
+      const res = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${TOKEN}` },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+
+      if (!res.ok) {
+        return { content: [{ type: "text", text: `Erreur API (${res.status}): ${JSON.stringify(json)}` }], isError: true };
+      }
+
+      return {
+        content: [{
           type: "text",
           text:
             `✅ Projet Gantt créé dans Productivitwo !\n` +
@@ -138,15 +185,44 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             `• ${input.project.tasks?.length ?? 0} tâche(s) · ${input.project.phases?.length ?? 0} phase(s)\n` +
             `• Voir sur : https://productivitwo-app.web.app\n` +
             `• projectId : ${json.projectId}`,
-        },
-      ],
-    };
-  } catch (err) {
-    return {
-      content: [{ type: "text", text: `Erreur réseau : ${err.message}` }],
-      isError: true,
-    };
+        }],
+      };
+    } catch (err) {
+      return { content: [{ type: "text", text: `Erreur réseau : ${err.message}` }], isError: true };
+    }
   }
+
+  if (name === "push_assistant_message") {
+    try {
+      const body = { uid: UID, ...input };
+
+      const res = await fetch(ASSISTANT_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${TOKEN}` },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+
+      if (!res.ok) {
+        return { content: [{ type: "text", text: `Erreur API (${res.status}): ${JSON.stringify(json)}` }], isError: true };
+      }
+
+      return {
+        content: [{
+          type: "text",
+          text:
+            `✅ Message assistant programmé pour le ${input.targetDate}.\n` +
+            `• Condition : ${input.condition?.type}\n` +
+            `• Texte : "${String(input.text).slice(0, 60)}${String(input.text).length > 60 ? "…" : ""}"\n` +
+            `• messageId : ${json.messageId}`,
+        }],
+      };
+    } catch (err) {
+      return { content: [{ type: "text", text: `Erreur réseau : ${err.message}` }], isError: true };
+    }
+  }
+
+  return { content: [{ type: "text", text: "Outil inconnu." }], isError: true };
 });
 
 const transport = new StdioServerTransport();

@@ -11,6 +11,9 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/web/gantt_screen.dart';
 import 'package:productivitwo_v1/web/help_sheet.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
+import 'package:productivitwo_v1/web/assistant_engine.dart';
+import 'package:productivitwo_v1/web/assistant_widget.dart';
+import 'package:productivitwo_v1/web/assistant_history_sheet.dart';
 
 Color? _parseTaskColor(String? hex) {
   if (hex == null || hex.isEmpty) return null;
@@ -40,6 +43,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   String? _selectedDomainId;
   bool _loading = true;
   late TabController _mainTabs;
+  List<AssistantMessageData> _assistantMessages = [];
 
   @override
   void initState() {
@@ -77,15 +81,27 @@ class _WebHomeScreenState extends State<WebHomeScreen>
           byProject.putIfAbsent(pid, () => []).add(doc);
         }
       }
+      final loadedProjects = results[0] as List<Project>;
+      final loadedDomains  = results[3] as List<Domain>;
+
       setState(() {
-        _projects = results[0] as List<Project>;
+        _projects = loadedProjects;
         _objectives = results[1] as List<StrategicObjective>;
-        _domains = results[3] as List<Domain>;
+        _domains = loadedDomains;
         _routines = results[4] as List<RecurringAction>;
         _documentsByProject = byProject;
         _hasIosData = tokens.isNotEmpty;
         _loading = false;
       });
+
+      // Évaluation de l'assistant après chargement
+      final messages = await AssistantEngine.evaluate(
+        projects: loadedProjects,
+        domains: loadedDomains,
+      );
+      if (mounted && messages.isNotEmpty) {
+        setState(() => _assistantMessages = messages);
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
@@ -156,6 +172,16 @@ class _WebHomeScreenState extends State<WebHomeScreen>
               ),
             ),
             const HelpButton(),
+            IconButton(
+              icon: Badge(
+                isLabelVisible: _assistantMessages.isNotEmpty,
+                smallSize: 7,
+                backgroundColor: const Color(0xFFe8c94a),
+                child: const Icon(Icons.smart_toy_outlined, size: 18),
+              ),
+              tooltip: 'Messages ORION',
+              onPressed: () => AssistantHistorySheet.show(context),
+            ),
             TextButton.icon(
               icon: const Icon(Icons.auto_awesome_outlined, size: 16),
               label: const Text('Connecter Claude'),
@@ -189,23 +215,37 @@ class _WebHomeScreenState extends State<WebHomeScreen>
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : TabBarView(
-              controller: _mainTabs,
+          : Stack(
               children: [
-                _buildBody(cs),
-                _FocusView(
-                  projects: _projects
-                      .where((p) => p.status != 'archived')
-                      .toList(),
-                  domains: _domains,
-                  routines: _routines,
-                  onTaskColorChange: (project, task, color) async {
-                    task.color = color;
-                    await _sync.saveProjectTasks(project.id, project.tasks);
-                    _load();
-                  },
+                TabBarView(
+                  controller: _mainTabs,
+                  children: [
+                    _buildBody(cs),
+                    _FocusView(
+                      projects: _projects
+                          .where((p) => p.status != 'archived')
+                          .toList(),
+                      domains: _domains,
+                      routines: _routines,
+                      onTaskColorChange: (project, task, color) async {
+                        task.color = color;
+                        await _sync.saveProjectTasks(project.id, project.tasks);
+                        _load();
+                      },
+                    ),
+                    _ArchivesView(sync: _sync),
+                  ],
                 ),
-                _ArchivesView(sync: _sync),
+                if (_assistantMessages.isNotEmpty)
+                  Positioned(
+                    right: 24,
+                    bottom: 24,
+                    child: AssistantOverlay(
+                      key: ValueKey(_assistantMessages.first.id),
+                      messages: _assistantMessages,
+                      onAction: _handleAssistantAction,
+                    ),
+                  ),
               ],
             ),
     );
@@ -456,6 +496,24 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   Future<void> _archiveProject(Project p, bool archive) async {
     await _sync.saveProject(p..status = archive ? 'archived' : 'active');
     _load();
+  }
+
+  void _handleAssistantAction(AssistantActionData action) {
+    switch (action.type) {
+      case 'open_day_plan':
+      case 'open_goals':
+        // Redirige vers l'onglet Focus (index 1)
+        _mainTabs.animateTo(1);
+      case 'open_project':
+        final projectId = action.payload?['projectId'] as String?;
+        if (projectId == null) return;
+        final p = _projects.where((p) => p.id == projectId).firstOrNull;
+        if (p == null) return;
+        Navigator.push(context,
+            MaterialPageRoute(builder: (_) => GanttScreen(project: p)));
+      case 'open_activity':
+        _mainTabs.animateTo(1);
+    }
   }
 }
 

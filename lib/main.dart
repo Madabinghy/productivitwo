@@ -48,6 +48,9 @@ import 'package:uuid/uuid.dart';
 import 'package:productivitwo_v1/widgets/paywall_sheet.dart';
 import 'package:productivitwo_v1/widgets/apple_sign_in_button.dart';
 import 'package:productivitwo_v1/widgets/programmes_sheet.dart';
+import 'package:productivitwo_v1/web/assistant_engine.dart';
+import 'package:productivitwo_v1/web/assistant_widget.dart';
+import 'package:productivitwo_v1/web/assistant_history_sheet.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -1576,6 +1579,7 @@ class _AppRootState extends State<AppRoot>
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   bool _wasOffline = false;
+  List<AssistantMessageData> _assistantMessages = [];
 
   late final ValueNotifier<int> _tick; // seconds
   late final ConfettiController _confettiController;
@@ -1864,6 +1868,19 @@ class _AppRootState extends State<AppRoot>
     logic.ensureDailyHabitsPlanned();
     normalizeToPlanActivityId();
 
+    // Évaluation assistant ORION (non bloquant)
+    unawaited(() async {
+      List<Project> projects = [];
+      try { projects = await _sync.fetchProjects(); } catch (_) {}
+      final messages = await AssistantEngine.evaluate(
+        projects: projects,
+        domains: _state!.domains,
+      );
+      if (mounted && messages.isNotEmpty) {
+        setState(() => _assistantMessages = messages);
+      }
+    }());
+
     // Notifications : demande permission + planifie rappel quotidien 9h
     unawaited(() async {
       await NotificationService.requestPermissions();
@@ -2146,6 +2163,18 @@ class _AppRootState extends State<AppRoot>
       ],
       ),
     );
+  }
+
+  void _handleAssistantAction(AssistantActionData action) {
+    switch (action.type) {
+      case 'open_day_plan':
+      case 'open_goals':
+        setState(() => _tab = _Tab.today);
+      case 'open_project':
+        setState(() => _tab = _Tab.dashboard);
+      case 'open_activity':
+        setState(() => _tab = _Tab.now);
+    }
   }
 
   // ---------- UI ----------
@@ -3327,6 +3356,16 @@ class _AppRootState extends State<AppRoot>
     // 2) App prête -> Scaffold complet
     return Stack(
       children: [
+        if (_assistantMessages.isNotEmpty)
+          Positioned(
+            right: 16,
+            bottom: 90,
+            child: AssistantOverlay(
+              key: ValueKey(_assistantMessages.first.id),
+              messages: _assistantMessages,
+              onAction: _handleAssistantAction,
+            ),
+          ),
         Scaffold(
       appBar: AppBar(
         titleSpacing: 5,
@@ -3428,6 +3467,16 @@ class _AppRootState extends State<AppRoot>
                   ),
                 );
               },
+            ),
+            IconButton(
+              icon: Badge(
+                isLabelVisible: _assistantMessages.isNotEmpty,
+                smallSize: 7,
+                backgroundColor: const Color(0xFFe8c94a),
+                child: const Icon(Icons.smart_toy_outlined, size: 20),
+              ),
+              tooltip: 'Messages ORION',
+              onPressed: () => AssistantHistorySheet.show(context),
             ),
             const SizedBox(width: 4),
             PopupMenuButton<String>(

@@ -8,6 +8,11 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('3.0', '21 mai 2026', [
+    (Icons.smart_toy_outlined, 'Assistant ORION : messages contextuels avec effet typewriter, planifiés par Claude'),
+    (Icons.notifications_outlined, 'Fallbacks autonomes : deadlines proches, jalons, retards — sans connexion Claude'),
+    (Icons.history, 'Historique ORION : accès aux messages passés et à venir via le bouton robot 🤖'),
+  ]),
   _Entry('2.9', '21 mai 2026', [
     (Icons.tune, 'Cibles de temps 100% manuelles — la progression automatique a été retirée'),
     (Icons.timer_outlined, 'Fiche activité : saisie directe de la cible quotidienne (en minutes)'),
