@@ -4397,6 +4397,7 @@ class _SimpleProjectsView extends StatefulWidget {
 
 class _SimpleProjectsViewState extends State<_SimpleProjectsView> {
   String? _selectedDomainId;
+  bool _showOutOfScope = false;
 
   Future<void> _archiveProject(Project p, bool archive) async {
     await widget.sync.saveProject(p..status = archive ? 'archived' : 'active');
@@ -4406,6 +4407,15 @@ class _SimpleProjectsViewState extends State<_SimpleProjectsView> {
   Future<void> _deleteProject(Project p) async {
     await widget.sync.deleteProject(p.id);
     widget.onRefresh();
+  }
+
+  bool _hasActiveTasks(Project p) {
+    final today = DateTime.now();
+    final todayD = DateTime(today.year, today.month, today.day);
+    return p.tasks.any((t) =>
+        t.status != 'done' &&
+        t.status != 'skipped' &&
+        !t.startDate.isAfter(todayD));
   }
 
   @override
@@ -4429,9 +4439,17 @@ class _SimpleProjectsViewState extends State<_SimpleProjectsView> {
         .where((p) => p.status == 'archived')
         .toList();
 
-    final active = _selectedDomainId == null
+    final filtered = _selectedDomainId == null
         ? allActive
         : allActive.where((p) => p.domainId == _selectedDomainId).toList();
+
+    // Séparer : avec tâches actives aujourd'hui vs hors scope
+    final inScope = filtered.where(_hasActiveTasks).toList();
+    final outOfScope = filtered.where((p) => !_hasActiveTasks(p)).toList();
+
+    void openGantt(Project p) => Navigator.push(context,
+        MaterialPageRoute(
+            builder: (_) => GanttScreen(project: p, domains: widget.domains)));
 
     return RefreshIndicator(
       onRefresh: () async => widget.onRefresh(),
@@ -4466,31 +4484,64 @@ class _SimpleProjectsViewState extends State<_SimpleProjectsView> {
             ),
             const SizedBox(height: 20),
           ],
-          // Projets actifs
-          for (final p in active) ...[
+
+          // Projets avec tâches actives aujourd'hui
+          for (final p in inScope) ...[
             _ProjectCard(
               project: p,
               domains: widget.domains,
               documents: const [],
               sync: widget.sync,
-              onTap: () => Navigator.push(context,
-                  MaterialPageRoute(
-                      builder: (_) =>
-                          GanttScreen(project: p, domains: widget.domains))),
+              onTap: () => openGantt(p),
               onArchive: () => _archiveProject(p, true),
             ),
             const SizedBox(height: 10),
           ],
+
+          // Hors scope (projets sans tâche active aujourd'hui)
+          if (outOfScope.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            InkWell(
+              onTap: () => setState(() => _showOutOfScope = !_showOutOfScope),
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(children: [
+                  Icon(
+                    _showOutOfScope ? Icons.expand_less : Icons.expand_more,
+                    size: 16, color: cs.onSurface.withOpacity(.4)),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Hors scope (${outOfScope.length})',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurface.withOpacity(.45)),
+                  ),
+                ]),
+              ),
+            ),
+            if (_showOutOfScope)
+              for (final p in outOfScope) ...[
+                _ProjectCard(
+                  project: p,
+                  domains: widget.domains,
+                  documents: const [],
+                  sync: widget.sync,
+                  onTap: () => openGantt(p),
+                  onArchive: () => _archiveProject(p, true),
+                ),
+                const SizedBox(height: 10),
+              ],
+          ],
+
           // En veille
           if (archived.isNotEmpty) ...[
             const SizedBox(height: 8),
             _ArchivedSection(
               projects: archived,
               onRestore: (p) => _archiveProject(p, false),
-              onTap: (p) => Navigator.push(context,
-                  MaterialPageRoute(
-                      builder: (_) =>
-                          GanttScreen(project: p, domains: widget.domains))),
+              onTap: (p) => openGantt(p),
               onDelete: _deleteProject,
             ),
           ],
