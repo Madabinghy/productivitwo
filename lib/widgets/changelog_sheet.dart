@@ -8,6 +8,15 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.3', '22 mai 2026', [
+    (Icons.timer_outlined, 'Dashboard : icônes dans les jauges (⏱ ↺ ⬡)'),
+    (Icons.account_tree_outlined, 'Projets iOS : tâches correctement groupées par phase (fix groupLabel)'),
+    (Icons.archive_outlined, 'Projets iOS : archiver/réactiver un projet depuis la fiche'),
+    (Icons.view_agenda_outlined, 'Projets iOS : sections Hors scope et En veille'),
+    (Icons.reorder, 'Projets iOS : appui long pour réordonner les sous-actions directement'),
+    (Icons.play_arrow_outlined, 'Sheet démarrer : affichage du temps loggué aujourd\'hui par activité'),
+    (Icons.link_outlined, 'Web : chemin MCP mis à jour (Paramètres → Personnaliser → Connecteurs)'),
+  ]),
   _Entry('5.2', '22 mai 2026', [
     (Icons.dashboard_outlined, 'Dashboard : 3ème jauge Projets (tâches Gantt actives du jour)'),
     (Icons.move_to_inbox_outlined, 'Projets : changer de domaine depuis iOS et le web'),

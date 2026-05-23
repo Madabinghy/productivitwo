@@ -107,11 +107,15 @@ class _ProjectSheetState extends State<_ProjectSheet> {
     final total = _project.tasks.length;
     final progress = total > 0 ? done / total : 0.0;
 
-    // Grouper tâches par phase (puis sans phase)
-    final phaseMap = { for (final p in _project.phases) p.id: p };
+    // Grouper tâches par phase (phaseId en priorité, groupLabel en fallback)
+    final phaseByLabel = { for (final p in _project.phases) p.label: p };
     final grouped = <String?, List<ProjectTask>>{};
     for (final t in _project.tasks) {
-      grouped.putIfAbsent(t.phaseId, () => []).add(t);
+      String? key = t.phaseId;
+      if (key == null && t.groupLabel != null) {
+        key = phaseByLabel[t.groupLabel]?.id;
+      }
+      grouped.putIfAbsent(key, () => []).add(t);
     }
 
     return DraggableScrollableSheet(
@@ -195,6 +199,20 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                             ],
                           ],
                         ),
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          _project.status == 'archived'
+                              ? Icons.unarchive_outlined
+                              : Icons.archive_outlined,
+                          size: 20,
+                          color: cs.onSurface.withOpacity(.4),
+                        ),
+                        tooltip: _project.status == 'archived'
+                            ? 'Réactiver le projet'
+                            : 'Mettre en veille',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => _toggleArchive(context, cs),
                       ),
                       IconButton(
                         icon: const Icon(Icons.close_outlined, size: 20),
@@ -336,6 +354,32 @@ class _ProjectSheetState extends State<_ProjectSheet> {
         ),
       ),
     );
+  }
+
+  Future<void> _toggleArchive(BuildContext context, ColorScheme cs) async {
+    final isArchived = _project.status == 'archived';
+    if (!isArchived) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Mettre en veille ?'),
+          content: Text(
+              'Le projet "${_project.title}" sera masqué de la vue principale. Tu pourras le réactiver depuis l\'onglet Projets.'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Annuler')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Mettre en veille')),
+          ],
+        ),
+      );
+      if (confirm != true) return;
+    }
+    setState(() => _project.status = isArchived ? 'active' : 'archived');
+    await _sync.saveProject(_project);
+    if (mounted) Navigator.pop(context);
   }
 
   Future<void> _changeDomain(BuildContext context, ColorScheme cs) async {

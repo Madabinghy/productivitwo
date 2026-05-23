@@ -27,6 +27,8 @@ class _GoalsViewState extends State<GoalsView> {
   List<Project> _projects = [];
   final _sync = FirestoreSync();
   StreamSubscription<List<Project>>? _projectsSub;
+  bool _showOutOfScope = false;
+  bool _showArchived = false;
 
   List<Domain> get domains => widget.domains;
 
@@ -51,8 +53,23 @@ class _GoalsViewState extends State<GoalsView> {
     final todayD = DateTime(now.year, now.month, now.day);
     final horizon = todayD.add(const Duration(days: 30));
 
-    final activeProjects = _projects
-        .where((p) => p.status != 'archived')
+    final activeProjects = _projects.where((p) => p.status != 'archived').toList();
+    final archivedProjects = _projects.where((p) => p.status == 'archived').toList()
+      ..sort((a, b) => a.title.compareTo(b.title));
+
+    // Projets sans tâche active aujourd'hui
+    final projectsWithTodayTasks = <String>{};
+    for (final p in activeProjects) {
+      for (final t in p.tasks) {
+        if (t.status == 'done' || t.status == 'skipped') continue;
+        if (!t.startDate.isAfter(todayD)) {
+          projectsWithTodayTasks.add(p.id);
+          break;
+        }
+      }
+    }
+    final outOfScope = activeProjects
+        .where((p) => !projectsWithTodayTasks.contains(p.id))
         .toList();
 
     return Scaffold(
@@ -60,11 +77,31 @@ class _GoalsViewState extends State<GoalsView> {
         title: const Text('Projets'),
         centerTitle: false,
       ),
-      body: activeProjects.isEmpty
+      body: activeProjects.isEmpty && archivedProjects.isEmpty
           ? _buildEmptyState(context, cs)
           : CustomScrollView(
               slivers: [
                 ..._buildProjectSections(context, activeProjects, todayD),
+                // Hors scope
+                if (outOfScope.isNotEmpty)
+                  ..._buildCollapsibleSection(
+                    context, cs,
+                    label: 'HORS SCOPE (${outOfScope.length})',
+                    expanded: _showOutOfScope,
+                    onToggle: () => setState(() => _showOutOfScope = !_showOutOfScope),
+                    projects: outOfScope,
+                    showArchiveButton: true,
+                  ),
+                // En veille
+                if (archivedProjects.isNotEmpty)
+                  ..._buildCollapsibleSection(
+                    context, cs,
+                    label: 'EN VEILLE (${archivedProjects.length})',
+                    expanded: _showArchived,
+                    onToggle: () => setState(() => _showArchived = !_showArchived),
+                    projects: archivedProjects,
+                    showRestoreButton: true,
+                  ),
                 const SliverToBoxAdapter(child: SizedBox(height: 100)),
               ],
             ),
@@ -290,6 +327,12 @@ class _GoalsViewState extends State<GoalsView> {
                     domains: domains,
                     targetTaskId: task.id,
                   ),
+                  onReorderActions: (oldIdx, newIdx) async {
+                    final action = task.actions.removeAt(oldIdx);
+                    task.actions.insert(newIdx, action);
+                    await _sync.saveProjectTasks(project.id, project.tasks);
+                    setState(() {});
+                  },
                   onPlay: widget.onStartTimer == null
                       ? null
                       : () => _onPlay(context, project, task, color),
@@ -378,6 +421,127 @@ class _GoalsViewState extends State<GoalsView> {
         ),
       ),
     );
+  }
+
+  List<Widget> _buildCollapsibleSection(
+    BuildContext context,
+    ColorScheme cs, {
+    required String label,
+    required bool expanded,
+    required VoidCallback onToggle,
+    required List<Project> projects,
+    bool showArchiveButton = false,
+    bool showRestoreButton = false,
+  }) {
+    return [
+      SliverToBoxAdapter(
+        child: InkWell(
+          onTap: onToggle,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Row(
+              children: [
+                Text(label,
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.2,
+                        color: cs.onSurface.withOpacity(.4))),
+                const Spacer(),
+                Icon(expanded ? Icons.expand_less : Icons.expand_more,
+                    size: 18, color: cs.onSurface.withOpacity(.3)),
+              ],
+            ),
+          ),
+        ),
+      ),
+      if (expanded)
+        SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (ctx, i) {
+              final p = projects[i];
+              final totalTasks = p.tasks.length;
+              final doneTasks = p.tasks.where((t) => t.status == 'done').length;
+              final progress = totalTasks > 0 ? doneTasks / totalTasks : 0.0;
+              final dColor = domainColor(p.domainId, domains) ?? cs.primary;
+
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest.withOpacity(.3),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: cs.outlineVariant.withOpacity(.25)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 8, height: 8,
+                        decoration: BoxDecoration(
+                            color: dColor.withOpacity(.5), shape: BoxShape.circle),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(p.title,
+                                style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: cs.onSurface.withOpacity(.6))),
+                            if (totalTasks > 0)
+                              Text('$doneTasks/$totalTasks tâches',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: cs.onSurface.withOpacity(.35))),
+                          ],
+                        ),
+                      ),
+                      if (totalTasks > 0)
+                        SizedBox(
+                          width: 30, height: 30,
+                          child: CircularProgressIndicator(
+                            value: progress,
+                            strokeWidth: 3,
+                            backgroundColor: cs.onSurface.withOpacity(.08),
+                            color: dColor.withOpacity(.5),
+                          ),
+                        ),
+                      if (showArchiveButton) ...[
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: () async {
+                            p.status = 'archived';
+                            await _sync.saveProject(p);
+                            setState(() {});
+                          },
+                          child: Icon(Icons.archive_outlined,
+                              size: 18, color: cs.onSurface.withOpacity(.3)),
+                        ),
+                      ],
+                      if (showRestoreButton) ...[
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: () async {
+                            p.status = 'active';
+                            await _sync.saveProject(p);
+                            setState(() {});
+                          },
+                          child: Icon(Icons.unarchive_outlined,
+                              size: 18, color: cs.onSurface.withOpacity(.3)),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              );
+            },
+            childCount: projects.length,
+          ),
+        ),
+    ];
   }
 
   Future<void> _onPlay(BuildContext context, Project project,
@@ -480,6 +644,7 @@ class _GanttTaskCard extends StatelessWidget {
   final Color color;
   final String projectTitle;
   final void Function(String taskId, int actionIdx, bool value) onTaskActionToggled;
+  final Future<void> Function(int oldIndex, int newIndex)? onReorderActions;
   final VoidCallback onTap;
   final VoidCallback? onPlay;
   final VoidCallback? onComplete;
@@ -494,6 +659,7 @@ class _GanttTaskCard extends StatelessWidget {
     required this.projectTitle,
     required this.onTaskActionToggled,
     required this.onTap,
+    this.onReorderActions,
     this.onPlay,
     this.onComplete,
     this.onAddAction,
@@ -648,43 +814,59 @@ class _GanttTaskCard extends StatelessWidget {
               ],
               if (hasActions) ...[
                 const SizedBox(height: 8),
-                for (int i = 0; i < task.actions.length; i++)
-                  GestureDetector(
-                    onTap: () =>
-                        onTaskActionToggled(task.id, i, !task.actions[i].done),
-                    behavior: HitTestBehavior.opaque,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 3),
-                      child: Row(
-                        children: [
-                          Icon(
-                            task.actions[i].done
-                                ? Icons.check_box_rounded
-                                : Icons.check_box_outline_blank,
-                            size: 16,
-                            color: task.actions[i].done
-                                ? Colors.green.shade500
-                                : cs.onSurface.withOpacity(.4),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              task.actions[i].title,
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: task.actions[i].done
-                                    ? cs.onSurface.withOpacity(.35)
-                                    : cs.onSurface.withOpacity(.8),
-                                decoration: task.actions[i].done
-                                    ? TextDecoration.lineThrough
-                                    : null,
+                ReorderableListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  buildDefaultDragHandles: false,
+                  itemCount: task.actions.length,
+                  onReorder: (oldIdx, newIdx) {
+                    if (newIdx > oldIdx) newIdx--;
+                    onReorderActions?.call(oldIdx, newIdx);
+                  },
+                  itemBuilder: (ctx, i) => ReorderableDelayedDragStartListener(
+                    key: ValueKey('${task.id}_action_$i'),
+                    index: i,
+                    child: GestureDetector(
+                      onTap: () =>
+                          onTaskActionToggled(task.id, i, !task.actions[i].done),
+                      behavior: HitTestBehavior.opaque,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 3),
+                        child: Row(
+                          children: [
+                            Icon(
+                              task.actions[i].done
+                                  ? Icons.check_box_rounded
+                                  : Icons.check_box_outline_blank,
+                              size: 16,
+                              color: task.actions[i].done
+                                  ? Colors.green.shade500
+                                  : cs.onSurface.withOpacity(.4),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                task.actions[i].title,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: task.actions[i].done
+                                      ? cs.onSurface.withOpacity(.35)
+                                      : cs.onSurface.withOpacity(.8),
+                                  decoration: task.actions[i].done
+                                      ? TextDecoration.lineThrough
+                                      : null,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                            Icon(Icons.drag_handle,
+                                size: 14,
+                                color: cs.onSurface.withOpacity(.2)),
+                          ],
+                        ),
                       ),
                     ),
                   ),
+                ),
               ],
               // Valider (100% ou pas de sous-actions) + bouton +
               const SizedBox(height: 8),

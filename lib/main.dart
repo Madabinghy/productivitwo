@@ -171,6 +171,7 @@ class MiniRing extends StatelessWidget {
 
 class GaugeRing extends StatelessWidget {
   final String label;
+  final IconData? labelIcon;
   final String? valueText;
   final double progress; // 0..1
   final double size;
@@ -193,6 +194,7 @@ class GaugeRing extends StatelessWidget {
   const GaugeRing({
     super.key,
     required this.label,
+    this.labelIcon,
     this.valueText,
     required this.progress,
     this.size = 130,
@@ -316,19 +318,22 @@ class GaugeRing extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        label,
-                        maxLines: 1,
-                        softWrap: false,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: cs.onSurface.withValues(alpha: 0.7),
-                        ),
-                      ),
-                    ),
+                    labelIcon != null
+                        ? Icon(labelIcon, size: 16,
+                            color: cs.onSurface.withValues(alpha: 0.55))
+                        : FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              label,
+                              maxLines: 1,
+                              softWrap: false,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: cs.onSurface.withValues(alpha: 0.7),
+                              ),
+                            ),
+                          ),
                   ],
                 ),
               ),
@@ -2336,41 +2341,83 @@ class _AppRootState extends State<AppRoot>
                             ),
                           ),
                         ),
-                        for (final a in byDomain[domId]!)
-                          ListTile(
-                            dense: true,
-                            leading: CircleAvatar(
-                              radius: 16,
-                              backgroundColor: domainColor(domId, logic.state.activeDomains)
-                                      ?.withOpacity(.15) ??
-                                  cs.surfaceContainerHighest,
-                              child: Icon(
-                                running?.id == a.id
-                                    ? Icons.stop_rounded
-                                    : Icons.play_arrow_rounded,
-                                size: 18,
-                                color: running?.id == a.id
-                                    ? cs.error
-                                    : domainColor(domId, logic.state.activeDomains) ??
-                                        cs.primary,
+                        for (final a in byDomain[domId]!) ...[
+                          Builder(builder: (ctx2) {
+                            final isRunning = running?.id == a.id;
+                            final dColor = domainColor(domId, logic.state.activeDomains) ?? cs.primary;
+                            final now2 = DateTime.now();
+                            final todayStart = DateTime(now2.year, now2.month, now2.day);
+                            final todayMin = logic.totalForRangeByActivity(a.id, todayStart, now2).inMinutes;
+                            final timeStr = todayMin == 0 ? null
+                                : todayMin < 60 ? '${todayMin}min'
+                                : '${(todayMin / 60).floor()}h${(todayMin % 60).toString().padLeft(2, '0')}';
+
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: () {
+                                  if (isRunning) {
+                                    logic.stopActive();
+                                  } else {
+                                    logic.start(a.id);
+                                    setState(() => _tab = _Tab.maintenant);
+                                  }
+                                  setState(() {});
+                                  Navigator.pop(ctx);
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                                  decoration: BoxDecoration(
+                                    color: isRunning
+                                        ? cs.errorContainer.withOpacity(.15)
+                                        : cs.surfaceContainerHighest.withOpacity(.4),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: isRunning
+                                          ? cs.error.withOpacity(.3)
+                                          : dColor.withOpacity(.2),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 10, height: 10,
+                                        decoration: BoxDecoration(
+                                          color: isRunning ? cs.error : dColor,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Text(
+                                          a.name,
+                                          style: TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w600,
+                                            color: isRunning ? cs.error : cs.onSurface,
+                                          ),
+                                        ),
+                                      ),
+                                      if (timeStr != null) ...[
+                                        Text(timeStr,
+                                            style: TextStyle(
+                                                fontSize: 12,
+                                                color: cs.onSurface.withOpacity(.45))),
+                                        const SizedBox(width: 8),
+                                      ],
+                                      Icon(
+                                        isRunning ? Icons.stop_rounded : Icons.play_arrow_rounded,
+                                        size: 22,
+                                        color: isRunning ? cs.error : dColor,
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
-                            ),
-                            title: Text(a.name,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  color: running?.id == a.id ? cs.error : null,
-                                )),
-                            onTap: () {
-                              if (running?.id == a.id) {
-                                logic.stopActive();
-                              } else {
-                                logic.start(a.id);
-                                setState(() => _tab = _Tab.maintenant);
-                              }
-                              setState(() {});
-                              Navigator.pop(ctx);
-                            },
-                          ),
+                            );
+                          }),
+                        ],
                       ],
                     const SizedBox(height: 16),
                   ],
@@ -4321,6 +4368,7 @@ class _AppRootState extends State<AppRoot>
                       children: [
                         GaugeRing(
                           label: 'Activités',
+                          labelIcon: Icons.timer_outlined,
                           progress: g.todayProgress,
                           centerText: g.centerText,
                           subText: g.subText,
@@ -4336,6 +4384,7 @@ class _AppRootState extends State<AppRoot>
                         ),
                         GaugeRing(
                           label: 'Routines',
+                          labelIcon: Icons.repeat_rounded,
                           progress: h.outerPrimary,
                           centerText: h.centerText,
                           subText: h.subText,
@@ -4347,6 +4396,7 @@ class _AppRootState extends State<AppRoot>
                         ),
                         GaugeRing(
                           label: 'Projets',
+                          labelIcon: Icons.account_tree_outlined,
                           progress: ganttProg,
                           centerText: ganttTotal == 0 ? '—' : '$ganttDone/$ganttTotal',
                           subText: ganttTotal == 0 ? 'aucune tâche' : 'tâches',

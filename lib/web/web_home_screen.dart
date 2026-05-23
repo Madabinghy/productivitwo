@@ -2555,7 +2555,7 @@ class _TokensPanelState extends State<_TokensPanel>
                                       _ConnectOption(
                                         icon: Icons.language_outlined,
                                         title: 'Claude.ai web',
-                                        description: 'Paramètres → Intégrations → Ajouter un serveur MCP → colle l\'URL',
+                                        description: 'Paramètres → Personnaliser → Connecteurs → colle l\'URL',
                                       ),
                                       const SizedBox(height: 8),
                                       // Option B : Claude Desktop

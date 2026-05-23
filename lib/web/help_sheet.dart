@@ -124,7 +124,7 @@ class _StartTab extends StatelessWidget {
           title: 'Connecte Claude.ai',
           body:
               'Dans cette page → "Connecter Claude" → copie l\'URL MCP.\n'
-              'Claude.ai → Paramètres → Intégrations → Ajouter → colle l\'URL.\n'
+              'Claude.ai → Paramètres → Personnaliser → Connecteurs → colle l\'URL.\n'
               'Reconnecte-toi si Claude ne voit pas les nouveaux outils.',
         ),
         SizedBox(height: 16),
