@@ -234,6 +234,8 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                           .toList(),
                       domains: _domains,
                       routines: _routines,
+                      sync: _sync,
+                      onRefresh: _load,
                       onTaskColorChange: (project, task, color) async {
                         task.color = color;
                         await _sync.saveProjectTasks(project.id, project.tasks);
@@ -314,12 +316,16 @@ class _FocusView extends StatelessWidget {
   final List<Project> projects;
   final List<Domain> domains;
   final List<RecurringAction> routines;
+  final FirestoreSync sync;
+  final VoidCallback? onRefresh;
   final Future<void> Function(Project, ProjectTask, String?) onTaskColorChange;
   const _FocusView({
     required this.projects,
     required this.domains,
     required this.routines,
+    required this.sync,
     required this.onTaskColorChange,
+    this.onRefresh,
   });
 
   // ── Helpers ──────────────────────────────────────────────────────────────
@@ -621,16 +627,19 @@ class _FocusView extends StatelessWidget {
 
     return InkWell(
       borderRadius: BorderRadius.circular(8),
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => GanttScreen(
+      onTap: () async {
+        await showDialog<void>(
+          context: context,
+          builder: (_) => _FocusTaskDialog(
             project: project,
-            targetTaskId: task.id,
+            task: task,
+            color: color,
             domains: domains,
+            sync: sync,
           ),
-        ),
-      ),
+        );
+        onRefresh?.call();
+      },
       child: Container(
         padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
         decoration: BoxDecoration(
@@ -1497,6 +1506,9 @@ class _FocusView extends StatelessWidget {
                     ],
                   ),
           ),
+          const SizedBox(height: 12),
+          // ── ORION ───────────────────────────────────────────────────────
+          _OrionSidebarSection(sync: sync, cs: cs),
         ],
       ),
     );
@@ -4717,6 +4729,547 @@ class _WebCollapsibleHeader extends StatelessWidget {
             ),
           ),
         ]),
+      ),
+    );
+  }
+}
+
+// ── Dialog gestion tâche (panneau Focus) ─────────────────────────────────────
+
+class _FocusTaskDialog extends StatefulWidget {
+  final Project project;
+  final ProjectTask task;
+  final Color color;
+  final List<Domain> domains;
+  final FirestoreSync sync;
+
+  const _FocusTaskDialog({
+    required this.project,
+    required this.task,
+    required this.color,
+    required this.domains,
+    required this.sync,
+  });
+
+  @override
+  State<_FocusTaskDialog> createState() => _FocusTaskDialogState();
+}
+
+class _FocusTaskDialogState extends State<_FocusTaskDialog> {
+  late ProjectTask _task;
+
+  @override
+  void initState() {
+    super.initState();
+    _task = widget.task;
+  }
+
+  Future<void> _toggleStatus() async {
+    setState(() => _task.status = _task.status == 'done' ? 'pending' : 'done');
+    await widget.sync.saveProjectTasks(widget.project.id, widget.project.tasks);
+  }
+
+  Future<void> _toggleAction(int idx) async {
+    setState(() => _task.actions[idx].done = !_task.actions[idx].done);
+    await widget.sync.saveProjectTasks(widget.project.id, widget.project.tasks);
+  }
+
+  static String _fmt(DateTime d) {
+    const m = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin',
+                'juil', 'aoû', 'sep', 'oct', 'nov', 'déc'];
+    return '${d.day} ${m[d.month - 1]}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDone = _task.status == 'done';
+    final today = DateTime.now();
+    final isLate = _task.endDate != null &&
+        _task.endDate!.isBefore(today) && !isDone;
+    final doneA = _task.actions.where((a) => a.done).length;
+    final totalA = _task.actions.length;
+
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 56, vertical: 56),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // ── Header ──────────────────────────────────────────────────────
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(
+                      color: cs.outlineVariant.withOpacity(.4)),
+                ),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(12)),
+              ),
+              child: Row(children: [
+                Container(
+                    width: 3, height: 22,
+                    decoration: BoxDecoration(
+                        color: widget.color,
+                        borderRadius: BorderRadius.circular(2))),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(widget.project.title,
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: widget.color)),
+                      Text(_task.title,
+                          style: const TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 18),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ]),
+            ),
+
+            // ── Body ────────────────────────────────────────────────────────
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Statut + date
+                    Row(children: [
+                      InkWell(
+                        onTap: _toggleStatus,
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 7),
+                          decoration: BoxDecoration(
+                            color: isDone
+                                ? Colors.green.withOpacity(.12)
+                                : cs.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: isDone
+                                  ? Colors.green.withOpacity(.4)
+                                  : cs.outlineVariant.withOpacity(.5),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                isDone
+                                    ? Icons.check_circle_outline
+                                    : Icons.radio_button_unchecked,
+                                size: 16,
+                                color: isDone
+                                    ? Colors.green.shade600
+                                    : cs.onSurface.withOpacity(.5),
+                              ),
+                              const SizedBox(width: 7),
+                              Text(
+                                isDone ? 'Terminée' : 'En cours',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDone
+                                      ? Colors.green.shade600
+                                      : cs.onSurface.withOpacity(.7),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      if (_task.endDate != null) ...[
+                        const SizedBox(width: 12),
+                        Icon(Icons.calendar_today_outlined,
+                            size: 13,
+                            color: isLate
+                                ? cs.error
+                                : cs.onSurface.withOpacity(.4)),
+                        const SizedBox(width: 5),
+                        Text(
+                          _fmt(_task.endDate!),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight:
+                                isLate ? FontWeight.w700 : FontWeight.normal,
+                            color: isLate
+                                ? cs.error
+                                : cs.onSurface.withOpacity(.5),
+                          ),
+                        ),
+                        if (isLate) ...[
+                          const SizedBox(width: 5),
+                          Text(
+                            '(${today.difference(_task.endDate!).inDays} j de retard)',
+                            style: TextStyle(
+                                fontSize: 11, color: cs.error.withOpacity(.7)),
+                          ),
+                        ],
+                      ],
+                    ]),
+
+                    // Sous-actions
+                    if (totalA > 0) ...[
+                      const SizedBox(height: 20),
+                      Row(children: [
+                        Text('Sous-actions',
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: cs.onSurface.withOpacity(.55))),
+                        const Spacer(),
+                        Text('$doneA / $totalA',
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: cs.onSurface.withOpacity(.4))),
+                      ]),
+                      const SizedBox(height: 6),
+                      LinearProgressIndicator(
+                        value: totalA > 0 ? doneA / totalA : 0,
+                        minHeight: 3,
+                        borderRadius: BorderRadius.circular(2),
+                        color: widget.color,
+                        backgroundColor: cs.onSurface.withOpacity(.08),
+                      ),
+                      const SizedBox(height: 10),
+                      for (int i = 0; i < _task.actions.length; i++)
+                        InkWell(
+                          onTap: () => _toggleAction(i),
+                          borderRadius: BorderRadius.circular(6),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 6, horizontal: 4),
+                            child: Row(children: [
+                              Icon(
+                                _task.actions[i].done
+                                    ? Icons.check_box_outlined
+                                    : Icons.check_box_outline_blank,
+                                size: 18,
+                                color: _task.actions[i].done
+                                    ? widget.color
+                                    : cs.onSurface.withOpacity(.4),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  _task.actions[i].title,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: cs.onSurface.withOpacity(
+                                        _task.actions[i].done ? .4 : .85),
+                                    decoration: _task.actions[i].done
+                                        ? TextDecoration.lineThrough
+                                        : null,
+                                  ),
+                                ),
+                              ),
+                            ]),
+                          ),
+                        ),
+                    ] else
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Text(
+                          'Aucune sous-action définie.',
+                          style: TextStyle(
+                              fontSize: 13,
+                              color: cs.onSurface.withOpacity(.35),
+                              fontStyle: FontStyle.italic),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+
+            // ── Footer ──────────────────────────────────────────────────────
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                border: Border(
+                    top: BorderSide(
+                        color: cs.outlineVariant.withOpacity(.4))),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton.icon(
+                    icon: const Icon(Icons.account_tree_outlined, size: 14),
+                    label: const Text('Voir dans le Gantt'),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => GanttScreen(
+                            project: widget.project,
+                            targetTaskId: _task.id,
+                            domains: widget.domains,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── ORION dans la sidebar Focus ───────────────────────────────────────────────
+
+class _OrionSidebarSection extends StatefulWidget {
+  final FirestoreSync sync;
+  final ColorScheme cs;
+  const _OrionSidebarSection({required this.sync, required this.cs});
+
+  @override
+  State<_OrionSidebarSection> createState() => _OrionSidebarSectionState();
+}
+
+class _OrionSidebarSectionState extends State<_OrionSidebarSection> {
+  bool _triggering = false;
+  String? _activeLabel;
+  final _ctrl = TextEditingController();
+
+  static const _quickActions = [
+    (icon: '📋', label: 'Analyser retards',    taskId: 'overdue_summary',  need: ''),
+    (icon: '📅', label: 'Deadlines semaine',   taskId: 'weekly_deadlines', need: ''),
+    (icon: '📊', label: 'Rapport progression', taskId: 'progress_report',  need: ''),
+    (icon: '🎯', label: 'Bilan semaine',        taskId: '',  need: 'Fais un bilan de ma semaine et propose des ajustements pour la suivante'),
+    (icon: '⚡', label: 'Optimiser plan',      taskId: '',  need: 'Optimise mon plan du jour en fonction de mes priorités et deadlines'),
+  ];
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _trigger({required String taskId, required String need, required String label}) async {
+    final uid = widget.sync.uid;
+    final tokens = await widget.sync.fetchApiTokens();
+    final token = tokens.where((t) => t.active).firstOrNull?.token;
+    if (uid == null || token == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Token API requis (Connecter Claude)')),
+        );
+      }
+      return;
+    }
+    setState(() { _triggering = true; _activeLabel = label; });
+    try {
+      final isDeterministic = taskId.isNotEmpty;
+      final body = isDeterministic
+          ? {'uid': uid, 'token': token, 'taskId': taskId}
+          : {'uid': uid, 'token': token, 'userNeeds': need};
+      final url = isDeterministic
+          ? 'https://orionwebhook-dzos75b65q-uc.a.run.app'
+          : 'https://orionsaveconfig-dzos75b65q-uc.a.run.app';
+      await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('ORION activé : $label'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (_) {}
+    if (mounted) setState(() { _triggering = false; _activeLabel = null; });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = widget.cs;
+    const orionColor = Color(0xFFe8c94a);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: orionColor.withOpacity(.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: orionColor.withOpacity(.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(children: [
+            Icon(Icons.smart_toy_outlined, size: 14, color: orionColor),
+            const SizedBox(width: 6),
+            Text(
+              'ORION',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.8,
+                color: orionColor,
+              ),
+            ),
+          ]),
+          const SizedBox(height: 10),
+
+          // Boutons actions rapides
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final action in _quickActions)
+                _OrionActionChip(
+                  icon: action.icon,
+                  label: action.label,
+                  loading: _triggering && _activeLabel == action.label,
+                  disabled: _triggering,
+                  onTap: () => _trigger(
+                    taskId: action.taskId,
+                    need: action.need,
+                    label: action.label,
+                  ),
+                  orionColor: orionColor,
+                  cs: cs,
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Champ libre
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _ctrl,
+                enabled: !_triggering,
+                style: const TextStyle(fontSize: 12),
+                decoration: InputDecoration(
+                  hintText: 'Demande libre à ORION…',
+                  hintStyle: TextStyle(
+                      fontSize: 12, color: cs.onSurface.withOpacity(.35)),
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 8),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide:
+                        BorderSide(color: orionColor.withOpacity(.3)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide:
+                        BorderSide(color: orionColor.withOpacity(.25)),
+                  ),
+                ),
+                onSubmitted: (v) {
+                  final t = v.trim();
+                  if (t.isEmpty) return;
+                  _trigger(taskId: '', need: t, label: t.substring(0, t.length.clamp(0, 30)));
+                  _ctrl.clear();
+                },
+              ),
+            ),
+            const SizedBox(width: 6),
+            IconButton(
+              icon: _triggering && _activeLabel != null && _quickActions.every((a) => a.label != _activeLabel)
+                  ? SizedBox(
+                      width: 16, height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: orionColor))
+                  : Icon(Icons.send_rounded, size: 16, color: orionColor),
+              onPressed: _triggering
+                  ? null
+                  : () {
+                      final t = _ctrl.text.trim();
+                      if (t.isEmpty) return;
+                      _trigger(taskId: '', need: t, label: t.substring(0, t.length.clamp(0, 30)));
+                      _ctrl.clear();
+                    },
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.all(8),
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+}
+
+class _OrionActionChip extends StatelessWidget {
+  final String icon;
+  final String label;
+  final bool loading;
+  final bool disabled;
+  final VoidCallback onTap;
+  final Color orionColor;
+  final ColorScheme cs;
+
+  const _OrionActionChip({
+    required this.icon,
+    required this.label,
+    required this.loading,
+    required this.disabled,
+    required this.onTap,
+    required this.orionColor,
+    required this.cs,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: disabled ? null : onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: BoxDecoration(
+          color: orionColor.withOpacity(loading ? .18 : .08),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: orionColor.withOpacity(.2)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (loading)
+              SizedBox(
+                width: 10, height: 10,
+                child: CircularProgressIndicator(
+                    strokeWidth: 1.5, color: orionColor),
+              )
+            else
+              Text(icon, style: const TextStyle(fontSize: 11)),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: disabled
+                    ? cs.onSurface.withOpacity(.35)
+                    : cs.onSurface.withOpacity(.75),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
