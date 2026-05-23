@@ -408,6 +408,7 @@ class _FocusView extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isNarrow = constraints.maxWidth < 700;
+        final isWide   = constraints.maxWidth >= 1100;
         if (isNarrow) {
           return _buildSidebar(
               cs, today, weekStart, weekEnd, overduePairs, allPairs, projects);
@@ -415,9 +416,9 @@ class _FocusView extends StatelessWidget {
         return Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Gantt column (70%) ─────────────────────────────────────────
+            // ── Gantt ──────────────────────────────────────────────────────
             Expanded(
-              flex: 8,
+              flex: isWide ? 5 : 7,
               child: _buildGantt(
                 context,
                 cs,
@@ -428,14 +429,26 @@ class _FocusView extends StatelessWidget {
                 domainGroups,
               ),
             ),
-            // ── Sidebar (20%) ──────────────────────────────────────────────
             SizedBox(
               width: 1,
               child: VerticalDivider(
                   color: cs.outlineVariant.withOpacity(0.4), width: 1),
             ),
+            // ── Panneau tâches actives (visible ≥ 1100px) ─────────────────
+            if (isWide) ...[
+              Expanded(
+                flex: 4,
+                child: _buildProjectsPanel(context, cs, today, allPairs),
+              ),
+              SizedBox(
+                width: 1,
+                child: VerticalDivider(
+                    color: cs.outlineVariant.withOpacity(0.4), width: 1),
+              ),
+            ],
+            // ── Sidebar ────────────────────────────────────────────────────
             Expanded(
-              flex: 2,
+              flex: 3,
               child: _buildSidebar(
                   cs, today, weekStart, weekEnd, overduePairs, allPairs, projects),
             ),
@@ -443,6 +456,265 @@ class _FocusView extends StatelessWidget {
         );
       },
     );
+  }
+
+  // ── Panneau tâches actives de la semaine ──────────────────────────────────
+
+  Widget _buildProjectsPanel(
+    BuildContext context,
+    ColorScheme cs,
+    DateTime today,
+    List<({ProjectTask task, Project project})> weekPairs,
+  ) {
+    // Grouper les tâches non-terminées par projet
+    final byProject = <String, List<ProjectTask>>{};
+    final projectMap = <String, Project>{};
+    for (final pair in weekPairs) {
+      if (pair.task.status == 'done' || pair.task.status == 'skipped') continue;
+      if (pair.task.isMilestone) continue;
+      byProject.putIfAbsent(pair.project.id, () => []).add(pair.task);
+      projectMap[pair.project.id] = pair.project;
+    }
+
+    if (byProject.isEmpty) {
+      return Center(
+        child: Text(
+          'Aucune tâche active cette semaine',
+          style: TextStyle(
+              fontSize: 13,
+              color: cs.onSurface.withOpacity(0.35),
+              fontStyle: FontStyle.italic),
+        ),
+      );
+    }
+
+    // Trier par ordre d'apparition dans la liste originale des projets
+    final orderedProjectIds = weekPairs
+        .map((e) => e.project.id)
+        .where(byProject.containsKey)
+        .toSet()
+        .toList();
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Icons.account_tree_outlined,
+                size: 13, color: cs.onSurface.withOpacity(.45)),
+            const SizedBox(width: 6),
+            Text(
+              'TÂCHES EN COURS',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.8,
+                color: cs.onSurface.withOpacity(.45),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 14),
+          for (final projectId in orderedProjectIds) ...[
+            _buildPanelProjectGroup(
+              context,
+              cs,
+              projectMap[projectId]!,
+              byProject[projectId]!,
+              today,
+            ),
+            const SizedBox(height: 14),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPanelProjectGroup(
+    BuildContext context,
+    ColorScheme cs,
+    Project project,
+    List<ProjectTask> tasks,
+    DateTime today,
+  ) {
+    // Couleur domaine
+    final domainIdx = domains.indexWhere((d) => d.id == project.domainId);
+    final domain = domainIdx >= 0 ? domains[domainIdx] : null;
+    final color = domain?.colorValue != null
+        ? Color(domain!.colorValue!)
+        : domainIdx >= 0
+            ? kDomainPalette[domainIdx % kDomainPalette.length]
+            : cs.primary;
+
+    // Grouper par phase
+    final phaseMap = {for (final ph in project.phases) ph.id: ph};
+    final byPhase = <String?, List<ProjectTask>>{};
+    for (final t in tasks) byPhase.putIfAbsent(t.phaseId, () => []).add(t);
+
+    final orderedPhaseIds = [
+      ...project.phases.map((ph) => ph.id).where(byPhase.containsKey),
+      if (byPhase.containsKey(null)) null,
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Titre projet
+        Row(children: [
+          Container(
+            width: 8, height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              project.title,
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: color),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ]),
+        const SizedBox(height: 6),
+
+        // Tâches par phase
+        for (final phaseId in orderedPhaseIds) ...[
+          if (phaseId != null && phaseMap[phaseId] != null) ...[
+            Padding(
+              padding: const EdgeInsets.only(left: 15, bottom: 3, top: 4),
+              child: Text(
+                phaseMap[phaseId]!.label.toUpperCase(),
+                style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.7,
+                    color: cs.onSurface.withOpacity(.35)),
+              ),
+            ),
+          ],
+          for (final task in byPhase[phaseId]!) ...[
+            _buildPanelTaskRow(context, cs, project, task, color, today),
+            const SizedBox(height: 4),
+          ],
+        ],
+      ],
+    );
+  }
+
+  Widget _buildPanelTaskRow(
+    BuildContext context,
+    ColorScheme cs,
+    Project project,
+    ProjectTask task,
+    Color color,
+    DateTime today,
+  ) {
+    final isLate = task.endDate != null &&
+        task.endDate!.isBefore(today);
+    final daysLate = isLate
+        ? today.difference(task.endDate!).inDays
+        : 0;
+    final doneActions = task.actions.where((a) => a.done).length;
+    final totalActions = task.actions.length;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => GanttScreen(
+            project: project,
+            targetTaskId: task.id,
+            domains: domains,
+          ),
+        ),
+      ),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withOpacity(.25),
+          borderRadius: BorderRadius.circular(8),
+          border: Border(
+            left: BorderSide(
+              color: isLate ? cs.error.withOpacity(.7) : color.withOpacity(.5),
+              width: 2,
+            ),
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    task.title,
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: cs.onSurface.withOpacity(.85)),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (isLate || totalActions > 0) ...[
+                    const SizedBox(height: 3),
+                    Row(children: [
+                      if (isLate)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: cs.errorContainer,
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                          child: Text(
+                            '−$daysLate j',
+                            style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                                color: cs.onErrorContainer),
+                          ),
+                        )
+                      else if (task.endDate != null) ...[
+                        Text(
+                          _fmtDate(task.endDate!),
+                          style: TextStyle(
+                              fontSize: 10,
+                              color: cs.onSurface.withOpacity(.35)),
+                        ),
+                      ],
+                      if (totalActions > 0) ...[
+                        const SizedBox(width: 6),
+                        Icon(Icons.checklist_outlined,
+                            size: 10,
+                            color: cs.onSurface.withOpacity(.35)),
+                        const SizedBox(width: 2),
+                        Text(
+                          '$doneActions/$totalActions',
+                          style: TextStyle(
+                              fontSize: 10,
+                              color: cs.onSurface.withOpacity(.35)),
+                        ),
+                      ],
+                    ]),
+                  ],
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right,
+                size: 14, color: cs.onSurface.withOpacity(.2)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _fmtDate(DateTime d) {
+    const m = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin',
+                'juil', 'aoû', 'sep', 'oct', 'nov', 'déc'];
+    return '${d.day} ${m[d.month - 1]}';
   }
 
   // ── GANTT ─────────────────────────────────────────────────────────────────
