@@ -3186,6 +3186,7 @@ class _OrionViewState extends State<_OrionView> {
   int _runCount = 0;
   bool _loading = true;
   bool _triggering = false;
+  final _customCtrl = TextEditingController();
 
   static const _webhookUrl = 'https://orionsaveconfig-dzos75b65q-uc.a.run.app';
 
@@ -3206,6 +3207,12 @@ class _OrionViewState extends State<_OrionView> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _customCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -3479,6 +3486,61 @@ class _OrionViewState extends State<_OrionView> {
                     : null,
                 onPressed: _triggering ? null : () => _triggerWithPreset(taskId: p.taskId, need: p.need),
               )).toList(),
+            ),
+
+            // ── Demande libre ────────────────────────────────────────────
+            const SizedBox(height: 24),
+            sectionLabel('DEMANDE LIBRE'),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _customCtrl,
+                    enabled: !_triggering,
+                    maxLines: 3,
+                    minLines: 1,
+                    style: const TextStyle(fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: 'Ex : Crée un projet "Lancement produit" avec 3 phases, analyse mes retards…',
+                      hintStyle: TextStyle(
+                          fontSize: 13, color: cs.onSurface.withOpacity(.4)),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
+                    ),
+                    onSubmitted: (v) {
+                      final t = v.trim();
+                      if (t.isEmpty) return;
+                      _triggerWithPreset(taskId: '', need: t);
+                      _customCtrl.clear();
+                    },
+                  ),
+                ),
+                const SizedBox(width: 10),
+                FilledButton.icon(
+                  icon: _triggering
+                      ? const SizedBox(
+                          width: 14, height: 14,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.send_rounded, size: 16),
+                  label: const Text('Envoyer'),
+                  onPressed: _triggering
+                      ? null
+                      : () {
+                          final t = _customCtrl.text.trim();
+                          if (t.isEmpty) return;
+                          _triggerWithPreset(taskId: '', need: t);
+                          _customCtrl.clear();
+                        },
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                  ),
+                ),
+              ],
             ),
 
             // ── Logs des cycles récents ───────────────────────────────────
