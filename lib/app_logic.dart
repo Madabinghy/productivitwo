@@ -3814,16 +3814,7 @@ class AppLogic {
   }
 
   double _dailyScoreFor(DateTime day) {
-    final ymd = yyyymmdd(day);
     final d = DateTime(day.year, day.month, day.day);
-    // Attribue chaque action à son jour d'origine (originalYmd si elle a été reportée)
-    final actions = state.dayPlan
-        .where((it) =>
-            (it.originalYmd ?? it.yyyymmdd) == ymd &&
-            it.kind == PlanKind.action &&
-            !it.archived)
-        .toList();
-    final actionsDone = actions.where((it) => it.done).length;
     int routinesDone = 0, routinesTotal = 0;
     for (final act in state.activeActivities.where((a) => a.isHabit)) {
       if (effectiveHabitFreq(act) != HabitFreq.daily) continue;
@@ -3832,14 +3823,13 @@ class AppLogic {
       routinesTotal++;
       if (habitValueOn(act.id, d) >= quota) routinesDone++;
     }
-    final done = actionsDone + routinesDone;
-    final total = actions.length + routinesTotal;
-    return total == 0 ? 0.0 : done / total;
+    return routinesTotal == 0 ? 0.0 : routinesDone / routinesTotal;
   }
 
   /// Vérifie tous les paliers et ajoute les badges manquants dans `state.earnedBadges`.
   /// Retourne la liste des badges nouvellement débloqués.
-  List<EarnedBadge> checkAndAwardBadges() {
+  /// [ganttDoneCount] = nombre total de tâches Gantt validées (passé depuis main).
+  List<EarnedBadge> checkAndAwardBadges({int ganttDoneCount = 0}) {
     final today = yyyymmdd(DateTime.now());
     final now = DateTime.now();
     final newBadges = <EarnedBadge>[];
@@ -3863,26 +3853,15 @@ class AppLogic {
       if (streak >= 100) award(BadgeId.streak100, habitId: act.id);
     }
 
-    // --- Volume d'actions complétées (historique total) ---
-    final totalDone =
-        state.dayPlan.where((it) => it.kind == PlanKind.action && it.done).length;
-    if (totalDone >= 10) award(BadgeId.actions10);
-    if (totalDone >= 50) award(BadgeId.actions50);
-    if (totalDone >= 100) award(BadgeId.actions100);
+    // --- Tâches Gantt validées (historique total) ---
+    if (ganttDoneCount >= 10) award(BadgeId.actions10);
+    if (ganttDoneCount >= 50) award(BadgeId.actions50);
+    if (ganttDoneCount >= 100) award(BadgeId.actions100);
 
-    // --- Score journalier (courses exclues) ---
-    final todayYmd = yyyymmdd(now);
-    final todayActions = state.dayPlan
-        .where((it) =>
-            it.yyyymmdd == todayYmd &&
-            it.kind == PlanKind.action &&
-            !it.archived &&
-            it.toPlan != true)
-        .toList();
-    final todayActionsDone = todayActions.where((it) => it.done).length;
+    // --- Score journalier (basé sur les routines uniquement) ---
     final routineSummary = routineProgressSummaryForCurrentPeriod();
-    final scoreDone = todayActionsDone + routineSummary.reached;
-    final scoreTotal = todayActions.length + routineSummary.total;
+    final scoreDone = routineSummary.reached;
+    final scoreTotal = routineSummary.total;
 
     if (scoreTotal > 0 && scoreDone >= scoreTotal) {
       award(BadgeId.scoreFirst100);

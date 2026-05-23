@@ -151,18 +151,31 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            if (widget.project.domainId != null)
-                              Text(
-                                widget.domains
-                                    .where((d) => d.id == widget.project.domainId)
-                                    .firstOrNull?.name ?? '',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: color,
-                                  letterSpacing: 0.5,
-                                ),
+                            GestureDetector(
+                              onTap: () => _changeDomain(context, cs),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    _project.domainId != null
+                                        ? (widget.domains
+                                                .where((d) => d.id == _project.domainId)
+                                                .firstOrNull
+                                                ?.name ??
+                                            'Domaine inconnu')
+                                        : 'Sans domaine',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: color,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Icon(Icons.edit_outlined, size: 11, color: color.withOpacity(.5)),
+                                ],
                               ),
+                            ),
                             const SizedBox(height: 3),
                             Text(
                               _project.title,
@@ -323,6 +336,64 @@ class _ProjectSheetState extends State<_ProjectSheet> {
         ),
       ),
     );
+  }
+
+  Future<void> _changeDomain(BuildContext context, ColorScheme cs) async {
+    final domains = widget.domains;
+
+    final selected = await showModalBottomSheet<String?>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+              child: Text('Changer de domaine',
+                  style: const TextStyle(
+                      fontSize: 17, fontWeight: FontWeight.bold)),
+            ),
+            ListTile(
+              leading: Icon(Icons.remove_circle_outline,
+                  color: cs.onSurface.withOpacity(.4)),
+              title: Text('Sans domaine',
+                  style: TextStyle(color: cs.onSurface.withOpacity(.5))),
+              onTap: () => Navigator.pop(ctx, ''),
+            ),
+            const Divider(height: 1),
+            for (final d in domains)
+              ListTile(
+                leading: Container(
+                  width: 12, height: 12,
+                  decoration: BoxDecoration(
+                    color: d.colorValue != null
+                        ? Color(d.colorValue!)
+                        : cs.primary,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                title: Text(d.name,
+                    style: TextStyle(
+                      fontWeight: _project.domainId == d.id
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                    )),
+                trailing: _project.domainId == d.id
+                    ? Icon(Icons.check, color: cs.primary)
+                    : null,
+                onTap: () => Navigator.pop(ctx, d.id),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+
+    if (selected == null) return;
+    setState(() => _project.domainId = selected.isEmpty ? null : selected);
+    await _sync.saveProject(_project);
   }
 
   Future<void> _openTaskDetail(ProjectTask task) async {

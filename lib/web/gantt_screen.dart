@@ -39,7 +39,13 @@ Color _gridColorAlt(BuildContext ctx) {
 class GanttScreen extends StatefulWidget {
   final Project project;
   final String? targetTaskId;
-  const GanttScreen({super.key, required this.project, this.targetTaskId});
+  final List<Domain> domains;
+  const GanttScreen({
+    super.key,
+    required this.project,
+    this.targetTaskId,
+    this.domains = const [],
+  });
 
   @override
   State<GanttScreen> createState() => _GanttScreenState();
@@ -80,6 +86,69 @@ class _GanttScreenState extends State<GanttScreen> {
         .where((t) => t.id == widget.targetTaskId)
         .firstOrNull;
     if (task != null) _onTaskTap(task);
+  }
+
+  Future<void> _changeDomain() async {
+    final domains = widget.domains;
+    if (domains.isEmpty) return;
+    final cs = Theme.of(context).colorScheme;
+
+    final selected = await showDialog<String?>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Changer de domaine'),
+        children: [
+          // Option "Aucun domaine"
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, ''),
+            child: Row(
+              children: [
+                Icon(Icons.remove_circle_outline,
+                    size: 14, color: cs.onSurface.withOpacity(.4)),
+                const SizedBox(width: 10),
+                Text('Aucun domaine',
+                    style:
+                        TextStyle(color: cs.onSurface.withOpacity(.5))),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          for (final d in domains)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, d.id),
+              child: Row(
+                children: [
+                  if (d.colorValue != null)
+                    Container(
+                      width: 10, height: 10,
+                      margin: const EdgeInsets.only(right: 10),
+                      decoration: BoxDecoration(
+                        color: Color(d.colorValue!),
+                        shape: BoxShape.circle,
+                      ),
+                    )
+                  else
+                    const SizedBox(width: 20),
+                  Text(d.name,
+                      style: TextStyle(
+                        fontWeight: _project.domainId == d.id
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                      )),
+                  if (_project.domainId == d.id) ...[
+                    const Spacer(),
+                    Icon(Icons.check, size: 16, color: cs.primary),
+                  ],
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+
+    if (selected == null) return; // annulé
+    setState(() => _project = _project..domainId = selected.isEmpty ? null : selected);
+    await _sync.saveProject(_project);
   }
 
   Future<void> _exportPdf() async {
@@ -141,13 +210,12 @@ class _GanttScreenState extends State<GanttScreen> {
         ),
         actions: [
           _ZoomHint(),
-          IconButton(
-            icon: Icon(isDark && _forceLight
-                ? Icons.dark_mode_outlined
-                : Icons.light_mode_outlined),
-            tooltip: _forceLight ? 'Revenir au thème sombre' : 'Mode clair',
-            onPressed: () => setState(() => _forceLight = !_forceLight),
-          ),
+          if (widget.domains.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.move_to_inbox_outlined),
+              tooltip: 'Changer de domaine',
+              onPressed: _changeDomain,
+            ),
           IconButton(
             icon: const Icon(Icons.picture_as_pdf_outlined),
             tooltip: 'Exporter en PDF',
@@ -163,7 +231,12 @@ class _GanttScreenState extends State<GanttScreen> {
       body: Column(
         children: [
           _GanttDashboard(project: _project),
-          Expanded(child: _GanttBody(project: _project, onTaskTap: _onTaskTap)),
+          Expanded(child: _GanttBody(
+            project: _project,
+            onTaskTap: _onTaskTap,
+            forceLight: _forceLight,
+            onToggleLight: () => setState(() => _forceLight = !_forceLight),
+          )),
         ],
       ),
     );
@@ -647,7 +720,14 @@ class _ZoomHint extends StatelessWidget {
 class _GanttBody extends StatefulWidget {
   final Project project;
   final void Function(ProjectTask)? onTaskTap;
-  const _GanttBody({required this.project, this.onTaskTap});
+  final bool forceLight;
+  final VoidCallback onToggleLight;
+  const _GanttBody({
+    required this.project,
+    this.onTaskTap,
+    required this.forceLight,
+    required this.onToggleLight,
+  });
 
   @override
   State<_GanttBody> createState() => _GanttBodyState();
@@ -705,7 +785,7 @@ class _GanttBodyState extends State<_GanttBody> {
 
     return Column(
       children: [
-        // Toggle Semaine / Jour + export PNG
+        // Toggle Semaine / Jour + thème + export PNG
         Container(
           color: cs.surface,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
@@ -725,6 +805,21 @@ class _GanttBodyState extends State<_GanttBody> {
                       ),
               ),
               const Spacer(),
+              // Toggle clair/sombre
+              Tooltip(
+                message: widget.forceLight ? 'Mode sombre' : 'Mode clair',
+                child: IconButton(
+                  icon: Icon(
+                    Theme.of(context).brightness == Brightness.dark && widget.forceLight
+                        ? Icons.dark_mode_outlined
+                        : Icons.light_mode_outlined,
+                    size: 18,
+                  ),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: widget.onToggleLight,
+                ),
+              ),
+              const SizedBox(width: 8),
               SegmentedButton<bool>(
                 segments: const [
                   ButtonSegment<bool>(value: false, label: Text('Semaine')),

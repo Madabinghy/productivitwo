@@ -1582,6 +1582,8 @@ class _AppRootState extends State<AppRoot>
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   StreamSubscription<List<Domain>>? _domainsSub;
+  StreamSubscription<List<Project>>? _projectsSub;
+  List<Project> _dashboardProjects = [];
   Project? _focusProject;
   ProjectTask? _focusTask;
   bool _wasOffline = false;
@@ -1673,6 +1675,7 @@ class _AppRootState extends State<AppRoot>
     _heartbeat?.cancel();
     _connectivitySub?.cancel();
     _domainsSub?.cancel();
+    _projectsSub?.cancel();
     _tick.dispose();
     _confettiController.dispose();
     _tabFadeController.dispose();
@@ -1714,6 +1717,16 @@ class _AppRootState extends State<AppRoot>
           await store.save(_state!);
         }
       }
+    }
+  }
+
+  void _purgeOldActions() {
+    if (_state == null) return;
+    final before = _state!.dayPlan.length;
+    _state!.dayPlan.removeWhere((it) => it.kind == PlanKind.action);
+    if (_state!.dayPlan.length != before && _sync.uid != null) {
+      // Supprime aussi côté Firestore via un push complet du dayPlan nettoyé
+      _sync.pushDeltas(_state!).catchError((_) {});
     }
   }
 
@@ -1876,12 +1889,17 @@ class _AppRootState extends State<AppRoot>
       _domainsSub = _sync.streamDomains().listen((domains) {
         if (mounted && _state != null) setState(() => _state!.domains = domains);
       });
+      _projectsSub?.cancel();
+      _projectsSub = _sync.streamProjects().listen((projects) {
+        if (mounted) setState(() => _dashboardProjects = projects);
+      });
     }
 
     // ✅ ICI (point unique au démarrage)
     logic.rolloverUndoneOncePerDay();
     logic.ensureDailyHabitsPlanned();
     normalizeToPlanActivityId();
+    _purgeOldActions();
 
     // Évaluation assistant ORION (non bloquant)
     unawaited(() async {
@@ -1989,7 +2007,11 @@ class _AppRootState extends State<AppRoot>
     // Vérification badges + célébration (pas après une suppression)
     final skipBadge = logic.skipBadgeCheck;
     logic.skipBadgeCheck = false;
-    final newBadges = skipBadge ? <EarnedBadge>[] : logic.checkAndAwardBadges();
+    final ganttDone = _dashboardProjects
+        .expand((p) => p.tasks)
+        .where((t) => t.status == 'done')
+        .length;
+    final newBadges = skipBadge ? <EarnedBadge>[] : logic.checkAndAwardBadges(ganttDoneCount: ganttDone);
     if (newBadges.isNotEmpty && mounted) {
       final meta = badgeMeta(newBadges.last.id);
       _confettiController.play();
@@ -4278,37 +4300,63 @@ class _AppRootState extends State<AppRoot>
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      GaugeRing(
-                        label: 'Activités',
-                        progress: g.todayProgress,
-                        centerText: g.centerText,
-                        subText: g.subText,
-                        color: _colorForProgress(g.todayProgress, context),
-                        size: 150,
-                        onTap: () async {
-                          final goNow = await _showDomainDetail(
+                  Builder(builder: (context) {
+                    final today2 = DateTime.now();
+                    final todayD2 = DateTime(today2.year, today2.month, today2.day);
+                    final activeProjects = _dashboardProjects
+                        .where((p) => p.status != 'archived')
+                        .toList();
+                    final ganttTasks = activeProjects
+                        .expand((p) => p.tasks)
+                        .where((t) =>
+                            t.startDate.isBefore(todayD2.add(const Duration(days: 1))) &&
+                            t.status != 'skipped')
+                        .toList();
+                    final ganttDone = ganttTasks.where((t) => t.status == 'done').length;
+                    final ganttTotal = ganttTasks.length;
+                    final ganttProg = ganttTotal == 0 ? 0.0 : (ganttDone / ganttTotal).clamp(0.0, 1.0);
+
+                    return Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        GaugeRing(
+                          label: 'Activités',
+                          progress: g.todayProgress,
+                          centerText: g.centerText,
+                          subText: g.subText,
+                          color: _colorForProgress(g.todayProgress, context),
+                          size: 115,
+                          onTap: () async {
+                            final goNow = await _showDomainDetail(
+                                null, startCal, endCal, days,
+                                focus: 'time');
+                            if (!mounted) return;
+                            if (goNow == true) setState(() => _tab = _Tab.maintenant);
+                          },
+                        ),
+                        GaugeRing(
+                          label: 'Routines',
+                          progress: h.outerPrimary,
+                          centerText: h.centerText,
+                          subText: h.subText,
+                          color: _colorForProgress(h.outerPrimary, context),
+                          size: 115,
+                          onTap: () => _showDomainDetail(
                               null, startCal, endCal, days,
-                              focus: 'time');
-                          if (!mounted) return;
-                          if (goNow == true) setState(() => _tab = _Tab.maintenant);
-                        },
-                      ),
-                      GaugeRing(
-                        label: 'Routines',
-                        progress: h.outerPrimary,
-                        centerText: h.centerText,
-                        subText: h.subText,
-                        color: _colorForProgress(h.outerPrimary, context),
-                        size: 150,
-                        onTap: () => _showDomainDetail(
-                            null, startCal, endCal, days,
-                            focus: 'habit'),
-                      ),
-                    ],
-                  ),
+                              focus: 'habit'),
+                        ),
+                        GaugeRing(
+                          label: 'Projets',
+                          progress: ganttProg,
+                          centerText: ganttTotal == 0 ? '—' : '$ganttDone/$ganttTotal',
+                          subText: ganttTotal == 0 ? 'aucune tâche' : 'tâches',
+                          color: _colorForProgress(ganttProg, context),
+                          size: 115,
+                          onTap: () => setState(() => _tab = _Tab.projets),
+                        ),
+                      ],
+                    );
+                  }),
                   const SizedBox(height: 16),
                   const Divider(height: 1),
                   const SizedBox(height: 8),

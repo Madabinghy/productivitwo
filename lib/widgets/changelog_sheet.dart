@@ -8,6 +8,13 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.2', '22 mai 2026', [
+    (Icons.dashboard_outlined, 'Dashboard : 3ème jauge Projets (tâches Gantt actives du jour)'),
+    (Icons.move_to_inbox_outlined, 'Projets : changer de domaine depuis iOS et le web'),
+    (Icons.light_mode_outlined, 'Gantt web : toggle clair/sombre déplacé dans la barre Semaine/Jour'),
+    (Icons.star_outlined, 'Badges : 🎯 10/50/100 tâches Gantt validées (remplace les actions)'),
+    (Icons.cleaning_services_outlined, 'Purge automatique des anciennes actions au démarrage'),
+  ]),
   _Entry('5.1', '22 mai 2026', [
     (Icons.repeat_rounded, 'App bar : bouton Routines — liste du jour avec progression et incrément'),
     (Icons.smart_toy_outlined, 'ORION : intégré comme onglet natif dans la nav principale'),

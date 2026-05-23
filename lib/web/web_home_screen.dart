@@ -446,7 +446,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                 sync: _sync,
                 onDocumentDeleted: _load,
                 onTap: () => Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => GanttScreen(project: p))),
+                    MaterialPageRoute(builder: (_) => GanttScreen(project: p, domains: _domains))),
                 onArchive: () => _archiveProject(p, true),
               ),
               const SizedBox(height: 10),
@@ -467,7 +467,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                 sync: _sync,
                 onDocumentDeleted: _load,
                 onTap: () => Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => GanttScreen(project: p))),
+                    MaterialPageRoute(builder: (_) => GanttScreen(project: p, domains: _domains))),
                 onArchive: () => _archiveProject(p, true),
               ),
               const SizedBox(height: 10),
@@ -481,7 +481,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
               projects: archived,
               onRestore: (p) => _archiveProject(p, false),
               onTap: (p) => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => GanttScreen(project: p))),
+                  MaterialPageRoute(builder: (_) => GanttScreen(project: p, domains: _domains))),
               onDelete: (p) => _deleteProject(p),
             ),
           ],
@@ -522,7 +522,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
         final p = _projects.where((p) => p.id == projectId).firstOrNull;
         if (p == null) return;
         Navigator.push(context,
-            MaterialPageRoute(builder: (_) => GanttScreen(project: p)));
+            MaterialPageRoute(builder: (_) => GanttScreen(project: p, domains: _domains)));
       case 'open_gantt_task':
         final projectId = action.payload?['projectId'] as String?;
         final taskId   = action.payload?['taskId']   as String?;
@@ -531,7 +531,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
         if (p == null) return;
         Navigator.push(context,
             MaterialPageRoute(
-              builder: (_) => GanttScreen(project: p, targetTaskId: taskId),
+              builder: (_) => GanttScreen(project: p, targetTaskId: taskId, domains: _domains),
             ));
       case 'open_activity':
         _mainTabs.animateTo(1);
