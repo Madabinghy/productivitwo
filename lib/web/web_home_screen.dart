@@ -4495,14 +4495,31 @@ class _WebProjectsListViewState extends State<_WebProjectsListView> {
         final project = projectMap[projectId]!;
         final tasks = byProject[projectId]!;
 
-        if (byProject.length > 1)
-          widgets.add(Padding(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 4),
-            child: Text(project.title,
-                style: TextStyle(
-                    fontSize: 12, fontWeight: FontWeight.w700,
-                    color: cs.onSurface.withOpacity(.55))),
-          ));
+        widgets.add(Padding(
+          padding: EdgeInsets.fromLTRB(24, byProject.length > 1 ? 12 : 4, 24, 4),
+          child: InkWell(
+            onTap: () => _openGantt(context, project),
+            borderRadius: BorderRadius.circular(6),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(children: [
+                Expanded(
+                  child: Text(project.title,
+                      style: TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.w700,
+                          color: cs.onSurface.withOpacity(.6))),
+                ),
+                Icon(Icons.account_tree_outlined,
+                    size: 13, color: cs.onSurface.withOpacity(.25)),
+                const SizedBox(width: 3),
+                Text('Gantt',
+                    style: TextStyle(
+                        fontSize: 10,
+                        color: cs.onSurface.withOpacity(.25))),
+              ]),
+            ),
+          ),
+        ));
 
         // Grouper par phase
         final phaseMap = {for (final ph in project.phases) ph.id: ph};
