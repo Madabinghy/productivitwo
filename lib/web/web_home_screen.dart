@@ -605,8 +605,125 @@ class _FocusView extends StatelessWidget {
             const SizedBox(height: 4),
           ],
         ],
+
+        // Bouton discret + Ajouter une tâche
+        const SizedBox(height: 2),
+        InkWell(
+          onTap: () => _addTaskToProject(context, project, color),
+          borderRadius: BorderRadius.circular(6),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.add, size: 12, color: color.withOpacity(.45)),
+                const SizedBox(width: 4),
+                Text('Ajouter une tâche',
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: color.withOpacity(.45))),
+              ],
+            ),
+          ),
+        ),
       ],
     );
+  }
+
+  Future<void> _addTaskToProject(
+      BuildContext context, Project project, Color color) async {
+    final titleCtrl = TextEditingController();
+    final today = DateTime.now();
+
+    // Choisir la phase par défaut = la première phase active du projet
+    String? defaultPhaseId = project.phases.isNotEmpty
+        ? project.phases.first.id
+        : null;
+
+    final result = await showDialog<String>(
+      context: context,
+      useRootNavigator: true,
+      builder: (ctx) => AlertDialog(
+        contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+        title: Row(children: [
+          Container(
+            width: 3, height: 18,
+            decoration: BoxDecoration(
+                color: color, borderRadius: BorderRadius.circular(2)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(project.title,
+                style: const TextStyle(
+                    fontSize: 15, fontWeight: FontWeight.w700),
+                overflow: TextOverflow.ellipsis),
+          ),
+        ]),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 4),
+            TextField(
+              controller: titleCtrl,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Titre de la tâche',
+                border: OutlineInputBorder(),
+              ),
+              onSubmitted: (v) {
+                if (v.trim().isNotEmpty) Navigator.pop(ctx, v.trim());
+              },
+            ),
+            if (project.phases.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              StatefulBuilder(
+                builder: (ctx2, setSt) => DropdownButtonFormField<String?>(
+                  value: defaultPhaseId,
+                  decoration: const InputDecoration(
+                    labelText: 'Phase (optionnel)',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text('Sans phase')),
+                    for (final ph in project.phases)
+                      DropdownMenuItem(value: ph.id, child: Text(ph.label)),
+                  ],
+                  onChanged: (v) {
+                    setSt(() => defaultPhaseId = v);
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
+          FilledButton(
+            onPressed: () {
+              final t = titleCtrl.text.trim();
+              if (t.isNotEmpty) Navigator.pop(ctx, t);
+            },
+            child: const Text('Ajouter'),
+          ),
+        ],
+      ),
+    );
+
+    titleCtrl.dispose();
+    if (result == null) return;
+
+    final newTask = ProjectTask(
+      title: result,
+      phaseId: defaultPhaseId,
+      startDate: today,
+      status: 'pending',
+    );
+    project.tasks.add(newTask);
+    await sync.saveProjectTasks(project.id, project.tasks);
+    onRefresh?.call();
   }
 
   Widget _buildPanelTaskRow(
