@@ -1584,6 +1584,106 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
               ),
             ),
 
+            // ── Statut ──────────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 4),
+              child: Row(
+                children: [
+                  for (final (status, label, icon) in [
+                    ('pending',  'En cours',  Icons.radio_button_unchecked),
+                    ('done',     'Terminée',  Icons.check_circle_outline),
+                    ('skipped',  'Ignorée',   Icons.block_outlined),
+                  ]) ...[
+                    InkWell(
+                      onTap: () {
+                        if (_task.status == status) return;
+                        setState(() => _task.status = status);
+                        _save();
+                      },
+                      borderRadius: BorderRadius.circular(8),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: _task.status == status
+                              ? (status == 'done'
+                                  ? Colors.green.withOpacity(.15)
+                                  : status == 'skipped'
+                                      ? Colors.orange.withOpacity(.12)
+                                      : Theme.of(context)
+                                          .colorScheme
+                                          .primaryContainer
+                                          .withOpacity(.6))
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: _task.status == status
+                                ? (status == 'done'
+                                    ? Colors.green.withOpacity(.4)
+                                    : status == 'skipped'
+                                        ? Colors.orange.withOpacity(.4)
+                                        : Theme.of(context)
+                                            .colorScheme
+                                            .primary
+                                            .withOpacity(.4))
+                                : Theme.of(context)
+                                    .colorScheme
+                                    .outlineVariant
+                                    .withOpacity(.4),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              icon,
+                              size: 14,
+                              color: _task.status == status
+                                  ? (status == 'done'
+                                      ? Colors.green.shade600
+                                      : status == 'skipped'
+                                          ? Colors.orange.shade700
+                                          : Theme.of(context)
+                                              .colorScheme
+                                              .primary)
+                                  : Theme.of(context)
+                                      .colorScheme
+                                      .onSurface
+                                      .withOpacity(.4),
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              label,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: _task.status == status
+                                    ? FontWeight.w600
+                                    : FontWeight.normal,
+                                color: _task.status == status
+                                    ? (status == 'done'
+                                        ? Colors.green.shade600
+                                        : status == 'skipped'
+                                            ? Colors.orange.shade700
+                                            : Theme.of(context)
+                                                .colorScheme
+                                                .primary)
+                                    : Theme.of(context)
+                                        .colorScheme
+                                        .onSurface
+                                        .withOpacity(.5),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                ],
+              ),
+            ),
+
             // Tab bar
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),

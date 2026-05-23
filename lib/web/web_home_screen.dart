@@ -222,7 +222,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                 TabBarView(
                   controller: _mainTabs,
                   children: [
-                    _WebProjectsListView(
+                    _SimpleProjectsView(
                       projects: _projects,
                       domains: _domains,
                       sync: _sync,
@@ -4251,6 +4251,128 @@ class _Arrow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 24),
       child: Icon(Icons.sync_alt_rounded,
           size: 18, color: cs.onSurface.withOpacity(0.2)),
+    );
+  }
+}
+
+// ── Vue Projets simple (cards → Gantt) ───────────────────────────────────────
+
+class _SimpleProjectsView extends StatefulWidget {
+  final List<Project> projects;
+  final List<Domain> domains;
+  final FirestoreSync sync;
+  final VoidCallback onRefresh;
+  const _SimpleProjectsView({
+    required this.projects,
+    required this.domains,
+    required this.sync,
+    required this.onRefresh,
+  });
+  @override
+  State<_SimpleProjectsView> createState() => _SimpleProjectsViewState();
+}
+
+class _SimpleProjectsViewState extends State<_SimpleProjectsView> {
+  String? _selectedDomainId;
+
+  Future<void> _archiveProject(Project p, bool archive) async {
+    await widget.sync.saveProject(p..status = archive ? 'archived' : 'active');
+    widget.onRefresh();
+  }
+
+  Future<void> _deleteProject(Project p) async {
+    await widget.sync.deleteProject(p.id);
+    widget.onRefresh();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    if (widget.projects.isEmpty) {
+      return Center(
+        child: Text('Aucun projet Gantt',
+            style: TextStyle(
+                fontSize: 16,
+                color: cs.onSurface.withOpacity(.4),
+                fontWeight: FontWeight.w500)),
+      );
+    }
+
+    final allActive = widget.projects
+        .where((p) => p.status != 'archived')
+        .toList();
+    final archived = widget.projects
+        .where((p) => p.status == 'archived')
+        .toList();
+
+    final active = _selectedDomainId == null
+        ? allActive
+        : allActive.where((p) => p.domainId == _selectedDomainId).toList();
+
+    return RefreshIndicator(
+      onRefresh: () async => widget.onRefresh(),
+      child: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          // Filtre domaine
+          if (widget.domains.isNotEmpty) ...[
+            Wrap(
+              spacing: 8, runSpacing: 4,
+              children: [
+                FilterChip(
+                  label: const Text('Tous'),
+                  selected: _selectedDomainId == null,
+                  onSelected: (_) => setState(() => _selectedDomainId = null),
+                ),
+                for (int i = 0; i < widget.domains.length; i++)
+                  FilterChip(
+                    label: Text(widget.domains[i].name),
+                    selected: _selectedDomainId == widget.domains[i].id,
+                    selectedColor: (widget.domains[i].colorValue != null
+                            ? Color(widget.domains[i].colorValue!)
+                            : kDomainPalette[i % kDomainPalette.length])
+                        .withOpacity(0.25),
+                    onSelected: (_) => setState(() =>
+                        _selectedDomainId =
+                            _selectedDomainId == widget.domains[i].id
+                                ? null
+                                : widget.domains[i].id),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 20),
+          ],
+          // Projets actifs
+          for (final p in active) ...[
+            _ProjectCard(
+              project: p,
+              domains: widget.domains,
+              documents: const [],
+              sync: widget.sync,
+              onTap: () => Navigator.push(context,
+                  MaterialPageRoute(
+                      builder: (_) =>
+                          GanttScreen(project: p, domains: widget.domains))),
+              onArchive: () => _archiveProject(p, true),
+            ),
+            const SizedBox(height: 10),
+          ],
+          // En veille
+          if (archived.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _ArchivedSection(
+              projects: archived,
+              onRestore: (p) => _archiveProject(p, false),
+              onTap: (p) => Navigator.push(context,
+                  MaterialPageRoute(
+                      builder: (_) =>
+                          GanttScreen(project: p, domains: widget.domains))),
+              onDelete: _deleteProject,
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
