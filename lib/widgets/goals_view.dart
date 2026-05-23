@@ -11,12 +11,15 @@ class GoalsView extends StatefulWidget {
   final List<Activity> activities;
   final void Function(Activity activity, Project project, ProjectTask task)?
       onStartTimer;
+  /// Appelé après chaque validation d'action ou de tâche, avec le total de points.
+  final void Function(int doneCount)? onBadgeCheck;
 
   const GoalsView({
     super.key,
     required this.domains,
     this.activities = const [],
     this.onStartTimer,
+    this.onBadgeCheck,
   });
 
   @override
@@ -32,6 +35,18 @@ class _GoalsViewState extends State<GoalsView> {
   bool _showArchived = false;
 
   List<Domain> get domains => widget.domains;
+
+  /// Total tâches done + sous-actions cochées — miroir de _ganttActionCount dans main.dart.
+  int _totalDoneCount() {
+    int total = 0;
+    for (final p in _projects) {
+      for (final t in p.tasks) {
+        if (t.status == 'done') total++;
+        total += t.stepsDone;
+      }
+    }
+    return total;
+  }
 
   @override
   void initState() {
@@ -343,6 +358,7 @@ class _GoalsViewState extends State<GoalsView> {
                         .done = value;
                     await _sync.saveProjectTasks(project.id, project.tasks);
                     setState(() {});
+                    if (value) widget.onBadgeCheck?.call(_totalDoneCount());
                   },
                   onTap: () => showProjectSheet(
                     context,
@@ -363,6 +379,7 @@ class _GoalsViewState extends State<GoalsView> {
                     task.status = task.status == 'done' ? 'pending' : 'done';
                     await _sync.saveProjectTasks(project.id, project.tasks);
                     setState(() {});
+                    if (task.status == 'done') widget.onBadgeCheck?.call(_totalDoneCount());
                   },
                   onAddAction: (title) async {
                     task.actions.add(TaskAction(title: title));
@@ -895,10 +912,10 @@ class _GanttTaskCard extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          // Titre — long press pour éditer
+                          // Titre — tap pour éditer, appui long géré par ReorderableDelayedDragStartListener
                           Expanded(
                             child: GestureDetector(
-                              onLongPress: () async {
+                              onTap: () async {
                                 final ctrl = TextEditingController(
                                     text: task.actions[i].title);
                                 final result = await showDialog<String>(

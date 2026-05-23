@@ -8,6 +8,14 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.9', '23 mai 2026', [
+    (Icons.touch_app_outlined, 'Projets iOS : tap action = éditer, appui long = réordonner, tap carte = ouvrir la tâche'),
+    (Icons.emoji_events_outlined, 'Gamification : sous-actions projet branchées aux badges (comptage immédiat + persistance)'),
+    (Icons.tune_outlined, 'Widget score : paliers basés sur les vraies actions Gantt + label "Actions du jour"'),
+    (Icons.play_arrow_rounded, 'FAB restauré : ▶ Lancer activité (groupé par domaine, scrollable) + mini Routine & Action'),
+    (Icons.radio_button_unchecked, 'Dashboard : anneaux épurés — chiffres + icône, sans texte'),
+    (Icons.smart_toy_outlined, 'ORION : "cycles" → "actions stratégiques aujourd\'hui"'),
+  ]),
   _Entry('5.8', '23 mai 2026', [
     (Icons.check_circle_outline, 'Projets iOS : section RÉALISÉ — projets avec toutes leurs tâches ok, au-dessus de Hors scope'),
   ]),

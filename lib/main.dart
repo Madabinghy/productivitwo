@@ -2023,6 +2023,7 @@ class _AppRootState extends State<AppRoot>
     final newBadges = logic.checkAndAwardBadges(
         ganttDoneCount: _ganttActionCount());
     if (newBadges.isNotEmpty) {
+      _doSave(); // persiste les nouveaux badges en local + Firestore
       final meta = badgeMeta(newBadges.last.id);
       _confettiController.play();
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -2203,6 +2204,18 @@ class _AppRootState extends State<AppRoot>
                 _focusTask = task;
                 _tab = _Tab.maintenant;
               });
+            },
+            onBadgeCheck: (doneCount) {
+              final newBadges = logic.checkAndAwardBadges(ganttDoneCount: doneCount);
+              if (newBadges.isNotEmpty && mounted) {
+                _doSave(); // persiste les nouveaux badges
+                final meta = badgeMeta(newBadges.last.id);
+                _confettiController.play();
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  duration: const Duration(seconds: 4),
+                  content: Text('${meta.emoji} Badge débloqué : ${meta.label}'),
+                ));
+              }
             },
           ),
           FocusView(
@@ -2669,23 +2682,46 @@ class _AppRootState extends State<AppRoot>
   }
 
   bool _shouldShowFab() {
-    if (_tab == _Tab.maintenant) {
-      return logic.runningActivity() == null;
-    }
-    return false;
+    return _tab == _Tab.dashboard || _tab == _Tab.maintenant;
   }
 
   Widget _buildFab() {
-    if (_tab == _Tab.maintenant) {
-      return FloatingActionButton.extended(
-        heroTag: 'fab_focus_start',
-        onPressed: () => _startFocusFromFab(context),
-        icon: const Icon(Icons.play_arrow_rounded),
-        label: const Text('Démarrer'),
-      );
-    }
-
-    return const SizedBox.shrink();
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        FloatingActionButton(
+          heroTag: 'fab_now_routine',
+          mini: true,
+          tooltip: 'Nouvelle routine',
+          onPressed: () async {
+            await _createRoutineFromNow(context);
+            if (!mounted) return;
+            setState(() {});
+          },
+          child: const Icon(Icons.repeat),
+        ),
+        const SizedBox(height: 8),
+        FloatingActionButton(
+          heroTag: 'fab_now_action',
+          mini: true,
+          tooltip: 'Nouvelle action',
+          onPressed: () async {
+            await _createActionFromNow(context);
+            if (!mounted) return;
+            setState(() {});
+          },
+          child: const Icon(Icons.add),
+        ),
+        const SizedBox(height: 12),
+        FloatingActionButton(
+          heroTag: 'fab_launch_activity',
+          tooltip: 'Lancer une activité',
+          onPressed: () => _showLaunchActivitySheet(context),
+          child: const Icon(Icons.play_arrow_rounded),
+        ),
+      ],
+    );
   }
 
   Future<void> _startFocusFromFab(BuildContext context) async {
@@ -3201,10 +3237,8 @@ class _AppRootState extends State<AppRoot>
       final actionsDone = actions.where((it) => it.done).length;
       final actionsTotal = actions.length;
       final routineSummary = logic.routineProgressSummaryForCurrentPeriod();
-      // Total historique actions complétées (tous les jours)
-      final totalHistoricalDone = logic.state.dayPlan
-          .where((it) => it.kind == PlanKind.action && it.done)
-          .length;
+      // Total tâches Gantt + sous-actions projet validées (même base que les badges)
+      final totalHistoricalDone = _ganttActionCount();
       final pct = total == 0 ? 0 : (done / total * 100).round();
 
       showModalBottomSheet<void>(
@@ -3547,7 +3581,7 @@ class _AppRootState extends State<AppRoot>
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.check_box_outlined),
-                    title: const Text('Actions'),
+                    title: const Text('Actions du jour'),
                     trailing: Text(
                       '$actionsDone / $actionsTotal',
                       style: theme.textTheme.titleMedium
@@ -4423,7 +4457,6 @@ class _AppRootState extends State<AppRoot>
                           labelIcon: Icons.timer_outlined,
                           progress: g.todayProgress,
                           centerText: g.centerText,
-                          subText: g.subText,
                           color: _colorForProgress(g.todayProgress, context),
                           size: 115,
                           onTap: () async {
@@ -4439,7 +4472,6 @@ class _AppRootState extends State<AppRoot>
                           labelIcon: Icons.repeat_rounded,
                           progress: h.outerPrimary,
                           centerText: h.centerText,
-                          subText: h.subText,
                           color: _colorForProgress(h.outerPrimary, context),
                           size: 115,
                           onTap: () => _showDomainDetail(
@@ -4451,7 +4483,6 @@ class _AppRootState extends State<AppRoot>
                           labelIcon: Icons.account_tree_outlined,
                           progress: ganttProg,
                           centerText: ganttTotal == 0 ? '—' : '$ganttDone/$ganttTotal',
-                          subText: ganttTotal == 0 ? 'aucune tâche' : 'tâches',
                           color: _colorForProgress(ganttProg, context),
                           size: 115,
                           onTap: () => setState(() => _tab = _Tab.projets),

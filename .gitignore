@@ -50,4 +50,10 @@ android/key.properties
 # Firebase — google-services.json Android (non configuré)
 google-services.json
 .claude/
+.claude_EE/
+node_modules/
+mcp-server/node_modules/
+mcp-server/package-lock.json
+scripts/node_modules/
+scripts/package-lock.json
 scripts/.env

@@ -496,8 +496,8 @@ class _StatusCard extends StatelessWidget {
               const Spacer(),
               Text(
                 isPro
-                    ? '$runCount / $_kLimitPro cycles aujourd\'hui'
-                    : 'Illimité · $runCount cycles aujourd\'hui',
+                    ? '$runCount / $_kLimitPro actions stratégiques aujourd\'hui'
+                    : 'Illimité · $runCount actions stratégiques aujourd\'hui',
                 style: const TextStyle(
                   fontFamily: 'monospace',
                   fontSize: 11,
