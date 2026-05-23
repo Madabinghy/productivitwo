@@ -851,14 +851,20 @@ class _FocusView extends StatelessWidget {
     List<({Domain? domain, List<({ProjectTask task, Project project})> pairs})> domainGroups,
   ) {
     const rowH = 30.0;
-    const labelW = 240.0;
     const dayW = 40.0;
     const headerH = 36.0;
     const domainHeaderH = 26.0;
+    const padding = 20.0;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // labelW remplit tout l'espace disponible moins les 7 colonnes jours et le padding
+        final labelW = (constraints.maxWidth - padding * 2 - 7 * dayW)
+            .clamp(180.0, 480.0);
 
     return SingleChildScrollView(
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(padding),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -931,6 +937,8 @@ class _FocusView extends StatelessWidget {
         ),
       ),
     );
+      }, // end LayoutBuilder.builder
+    ); // end LayoutBuilder
   }
 
   Widget _buildDayHeader(
