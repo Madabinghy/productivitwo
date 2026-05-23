@@ -8,6 +8,12 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.5', '23 mai 2026', [
+    (Icons.add_circle_outline, 'Gantt web : bouton + dans la barre pour ajouter une tâche (titre, phase, dates, jalon)'),
+    (Icons.layers_outlined, 'Gantt web : changer la phase d\'une tâche depuis la fiche (déplace visuellement la tâche)'),
+    (Icons.palette_outlined, 'Gantt web : color picker sur la barre de chaque tâche (palette + couleur de la phase)'),
+    (Icons.search_outlined, 'Archives web : recherche + filtre Tout / Actifs / Archivés'),
+  ]),
   _Entry('5.4', '22 mai 2026', [
     (Icons.format_list_bulleted, 'Maintenant : sous-actions scrollables quand la liste est longue'),
     (Icons.bolt_outlined, 'ORION : fix erreur index Firestore sur les messages'),

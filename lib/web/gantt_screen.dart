@@ -195,6 +195,166 @@ class _GanttScreenState extends State<GanttScreen> {
     );
   }
 
+  Future<void> _addTask() async {
+    final titleCtrl = TextEditingController();
+    String? selectedPhaseId;
+    var startDate = DateTime.now();
+    DateTime? endDate;
+    var isMilestone = false;
+
+    String fmt(DateTime d) {
+      const m = ['jan','fév','mar','avr','mai','juin','juil','aoû','sep','oct','nov','déc'];
+      return '${d.day} ${m[d.month - 1]} ${d.year}';
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSt) => AlertDialog(
+          title: const Text('Nouvelle tâche'),
+          content: SizedBox(
+            width: 460,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: titleCtrl,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Titre',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (_project.phases.isNotEmpty)
+                  DropdownButtonFormField<String?>(
+                    value: selectedPhaseId,
+                    decoration: const InputDecoration(
+                      labelText: 'Phase (optionnel)',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    items: [
+                      const DropdownMenuItem(value: null, child: Text('Aucune phase')),
+                      ..._project.phases.map((p) => DropdownMenuItem(
+                        value: p.id,
+                        child: Row(children: [
+                          Container(
+                            width: 10, height: 10,
+                            margin: const EdgeInsets.only(right: 8),
+                            decoration: BoxDecoration(
+                              color: _hex(p.color, const Color(0xFF6B57F0)),
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                          Text(p.label),
+                        ]),
+                      )),
+                    ],
+                    onChanged: (v) => setSt(() => selectedPhaseId = v),
+                  ),
+                if (_project.phases.isNotEmpty) const SizedBox(height: 12),
+                // Date début
+                InkWell(
+                  onTap: () async {
+                    final d = await showDatePicker(
+                      context: ctx,
+                      initialDate: startDate,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2032),
+                    );
+                    if (d != null) setSt(() => startDate = d);
+                  },
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Date de début',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                      suffixIcon: Icon(Icons.calendar_today_outlined, size: 16),
+                    ),
+                    child: Text(fmt(startDate), style: const TextStyle(fontSize: 14)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // Date fin (optionnel)
+                InkWell(
+                  onTap: () async {
+                    final d = await showDatePicker(
+                      context: ctx,
+                      initialDate: endDate ?? startDate.add(const Duration(days: 7)),
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2032),
+                    );
+                    if (d != null) setSt(() => endDate = d);
+                  },
+                  child: InputDecorator(
+                    decoration: InputDecoration(
+                      labelText: 'Date de fin (optionnel)',
+                      border: const OutlineInputBorder(),
+                      isDense: true,
+                      suffixIcon: endDate != null
+                          ? GestureDetector(
+                              onTap: () => setSt(() => endDate = null),
+                              child: const Icon(Icons.clear, size: 16),
+                            )
+                          : const Icon(Icons.calendar_today_outlined, size: 16),
+                    ),
+                    child: Text(
+                      endDate != null ? fmt(endDate!) : '—',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: endDate != null ? null : const Color(0xFFAAAAAA),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                CheckboxListTile(
+                  title: const Text('Jalon (milestone)', style: TextStyle(fontSize: 13)),
+                  value: isMilestone,
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  onChanged: (v) => setSt(() => isMilestone = v ?? false),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
+            FilledButton(
+              onPressed: () {
+                if (titleCtrl.text.trim().isEmpty) return;
+                Navigator.pop(ctx, true);
+              },
+              child: const Text('Ajouter'),
+            ),
+          ],
+        ),
+      ),
+    );
+    titleCtrl.dispose();
+    if (confirmed != true || !mounted) return;
+
+    final phase = _project.phases.where((p) => p.id == selectedPhaseId).firstOrNull;
+    final task = ProjectTask(
+      title: titleCtrl.text.trim().isNotEmpty ? titleCtrl.text.trim() : 'Nouvelle tâche',
+      phaseId: selectedPhaseId,
+      groupLabel: phase?.label, // synchronise le groupe visuel dans le Gantt
+      startDate: startDate,
+      endDate: endDate,
+      isMilestone: isMilestone,
+      color: phase?.color,
+    );
+    final updatedTasks = [..._project.tasks, task];
+    await _sync.saveProjectTasks(_project.id, updatedTasks);
+    setState(() {
+      _project.tasks
+        ..clear()
+        ..addAll(updatedTasks);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -257,6 +417,7 @@ class _GanttScreenState extends State<GanttScreen> {
             onTaskTap: _onTaskTap,
             forceLight: _forceLight,
             onToggleLight: () => setState(() => _forceLight = !_forceLight),
+            onAddTask: _addTask,
           )),
         ],
       ),
@@ -743,11 +904,13 @@ class _GanttBody extends StatefulWidget {
   final void Function(ProjectTask)? onTaskTap;
   final bool forceLight;
   final VoidCallback onToggleLight;
+  final VoidCallback? onAddTask;
   const _GanttBody({
     required this.project,
     this.onTaskTap,
     required this.forceLight,
     required this.onToggleLight,
+    this.onAddTask,
   });
 
   @override
@@ -826,6 +989,16 @@ class _GanttBodyState extends State<_GanttBody> {
                       ),
               ),
               const Spacer(),
+              // Ajouter une tâche
+              if (widget.onAddTask != null)
+                Tooltip(
+                  message: 'Ajouter une tâche',
+                  child: IconButton(
+                    icon: const Icon(Icons.add_circle_outline, size: 18),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: widget.onAddTask,
+                  ),
+                ),
               // Toggle clair/sombre
               Tooltip(
                 message: widget.forceLight ? 'Mode sombre' : 'Mode clair',
@@ -1494,6 +1667,136 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
     if (mounted) setState(() { _docs = docs; _loadingDocs = false; });
   }
 
+  ProjectPhase? get _currentPhase =>
+      widget.project.phases.where((p) => p.id == _task.phaseId).firstOrNull;
+
+  Future<void> _changePhase() async {
+    final cs = Theme.of(context).colorScheme;
+    final phases = widget.project.phases;
+    if (phases.isEmpty) return;
+
+    final selected = await showDialog<String?>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Changer de phase'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, ''),
+            child: Row(children: [
+              Icon(Icons.layers_clear_outlined, size: 14, color: cs.onSurface.withOpacity(.4)),
+              const SizedBox(width: 10),
+              Text('Aucune phase', style: TextStyle(color: cs.onSurface.withOpacity(.5))),
+            ]),
+          ),
+          const Divider(height: 1),
+          for (final p in phases)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, p.id),
+              child: Row(children: [
+                Container(
+                  width: 10, height: 10,
+                  margin: const EdgeInsets.only(right: 10),
+                  decoration: BoxDecoration(
+                    color: _hex(p.color, const Color(0xFF6B57F0)),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Text(p.label, style: TextStyle(
+                  fontWeight: _task.phaseId == p.id ? FontWeight.bold : FontWeight.normal,
+                )),
+                if (_task.phaseId == p.id) ...[
+                  const Spacer(),
+                  Icon(Icons.check, size: 16, color: cs.primary),
+                ],
+              ]),
+            ),
+        ],
+      ),
+    );
+    if (selected == null) return;
+    final newPhaseId = selected.isEmpty ? null : selected;
+    final newPhase = phases.where((p) => p.id == newPhaseId).firstOrNull;
+    setState(() {
+      _task.phaseId = newPhaseId;
+      _task.groupLabel = newPhase?.label; // synchronise le groupe visuel dans le Gantt
+    });
+    _save();
+  }
+
+  Future<void> _pickColor() async {
+    const presets = [
+      '#6B57F0', '#1D9E75', '#E53935', '#F4A01D',
+      '#2196F3', '#9C27B0', '#00BCD4', '#4CAF50',
+      '#FF5722', '#795548', '#607D8B', '#EC407A',
+    ];
+
+    final picked = await showDialog<String?>(
+      context: context,
+      builder: (ctx) {
+        final phase = _currentPhase;
+        return AlertDialog(
+          title: const Text('Couleur de la barre'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (phase?.color != null) ...[
+                InkWell(
+                  onTap: () => Navigator.pop(ctx, phase.color),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                    child: Row(children: [
+                      Container(
+                        width: 24, height: 24,
+                        decoration: BoxDecoration(
+                          color: _hex(phase!.color, Colors.grey),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text('Couleur de la phase "${phase.label}"',
+                          style: const TextStyle(fontSize: 13)),
+                    ]),
+                  ),
+                ),
+                const Divider(),
+              ],
+              Wrap(
+                spacing: 8, runSpacing: 8,
+                children: presets.map((hex) {
+                  final isSelected = _task.color == hex;
+                  return GestureDetector(
+                    onTap: () => Navigator.pop(ctx, hex),
+                    child: Container(
+                      width: 32, height: 32,
+                      decoration: BoxDecoration(
+                        color: _hex(hex, Colors.grey),
+                        borderRadius: BorderRadius.circular(6),
+                        border: isSelected
+                            ? Border.all(color: Colors.white, width: 2.5)
+                            : Border.all(color: Colors.black12),
+                        boxShadow: isSelected
+                            ? [const BoxShadow(color: Colors.black26, blurRadius: 4)]
+                            : null,
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+          ],
+        );
+      },
+    );
+    if (picked == null) return;
+    setState(() => _task.color = picked);
+    _save();
+  }
+
   Future<void> _save() async {
     setState(() => _saving = true);
     final updatedTasks = widget.project.tasks
@@ -1561,6 +1864,7 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 20, 16, 0),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
                     child: Column(
@@ -1581,15 +1885,69 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
                           style: TextStyle(
                               fontSize: 12, color: cs.onSurface.withOpacity(.5)),
                         ),
+                        // Phase (si le projet en a)
+                        if (widget.project.phases.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          GestureDetector(
+                            onTap: _changePhase,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (_currentPhase != null)
+                                  Container(
+                                    width: 8, height: 8,
+                                    margin: const EdgeInsets.only(right: 5),
+                                    decoration: BoxDecoration(
+                                      color: _hex(_currentPhase!.color, cs.primary),
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                  )
+                                else
+                                  Icon(Icons.layers_outlined, size: 12,
+                                      color: cs.onSurface.withOpacity(.35)),
+                                const SizedBox(width: 3),
+                                Text(
+                                  _currentPhase?.label ?? 'Assigner à une phase',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: _currentPhase != null
+                                        ? _hex(_currentPhase!.color, cs.primary)
+                                        : cs.onSurface.withOpacity(.35),
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Icon(Icons.edit_outlined, size: 10,
+                                    color: cs.onSurface.withOpacity(.25)),
+                              ],
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
                   if (_saving)
                     const Padding(
-                      padding: EdgeInsets.only(right: 8),
+                      padding: EdgeInsets.only(right: 8, top: 4),
                       child: SizedBox(width: 16, height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2)),
                     ),
+                  // Swatch couleur de la barre
+                  Tooltip(
+                    message: 'Couleur de la barre',
+                    child: GestureDetector(
+                      onTap: _pickColor,
+                      child: Container(
+                        width: 20, height: 20,
+                        margin: const EdgeInsets.only(top: 6, right: 4),
+                        decoration: BoxDecoration(
+                          color: _hex(_task.color, cs.primary),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                              color: cs.outlineVariant.withOpacity(.5), width: 1),
+                        ),
+                      ),
+                    ),
+                  ),
                   IconButton(
                     icon: Icon(Icons.delete_outline,
                         color: cs.onSurface.withOpacity(.4)),

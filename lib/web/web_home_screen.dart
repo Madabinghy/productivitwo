@@ -2976,6 +2976,16 @@ class _ArchivesViewState extends State<_ArchivesView> {
   List<RecurringAction> _routines = [];
   List<Project> _projects = [];
   bool _loading = true;
+  final _searchCtrl = TextEditingController();
+  String _search = '';
+  // Filtre : 'all' | 'active' | 'archived'
+  String _filter = 'all';
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -3050,23 +3060,43 @@ class _ArchivesViewState extends State<_ArchivesView> {
     final cs = Theme.of(context).colorScheme;
     if (_loading) return const Center(child: CircularProgressIndicator());
 
-    // ── Données ─────────────────────────────────────────────────────────────
-    final archivedProjects = _projects.where((p) => p.status == 'archived').toList()
-      ..sort((a, b) => a.title.compareTo(b.title));
-    final activeProjects = _projects.where((p) => p.status != 'archived').toList()
-      ..sort((a, b) => a.title.compareTo(b.title));
+    // ── Données avec filtres ─────────────────────────────────────────────────
+    final q = _search.toLowerCase().trim();
+
+    bool matchesSearch(String name) =>
+        q.isEmpty || name.toLowerCase().contains(q);
+
+    bool showActive(bool isArchived) =>
+        _filter == 'all' || (_filter == 'active' && !isArchived) || (_filter == 'archived' && isArchived);
+
+    final archivedProjects = _projects
+        .where((p) => p.status == 'archived' && matchesSearch(p.title) && showActive(true))
+        .toList()..sort((a, b) => a.title.compareTo(b.title));
+    final activeProjects = _projects
+        .where((p) => p.status != 'archived' && matchesSearch(p.title) && showActive(false))
+        .toList()..sort((a, b) => a.title.compareTo(b.title));
 
     // Domaines actifs + archivés triés
-    final activeDomains = _domains.where((d) => !d.deleted).toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
-    final archivedDomains = _domains.where((d) => d.deleted).toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
+    final activeDomains = _domains
+        .where((d) => !d.deleted && showActive(false))
+        .toList()..sort((a, b) => a.name.compareTo(b.name));
+    final archivedDomains = _domains
+        .where((d) => d.deleted && showActive(true))
+        .toList()..sort((a, b) => a.name.compareTo(b.name));
     final allDomains = [...activeDomains, ...archivedDomains];
+
+    // Activités et routines (filtrées)
+    final filteredActivities = _activities
+        .where((a) => matchesSearch(a.name) && showActive(a.deleted))
+        .toList();
+    final filteredRoutines = _routines
+        .where((r) => matchesSearch(r.title) && showActive(r.deleted))
+        .toList();
 
     // Activités et routines indexées
     final activitiesByDomain = <String, List<Activity>>{};
     final activitiesWithoutDomain = <Activity>[];
-    for (final a in _activities) {
+    for (final a in filteredActivities) {
       if (a.domainId.isEmpty) {
         activitiesWithoutDomain.add(a);
       } else {
@@ -3075,7 +3105,7 @@ class _ArchivesViewState extends State<_ArchivesView> {
     }
     final routinesByActivity = <String, List<RecurringAction>>{};
     final routinesWithoutActivity = <RecurringAction>[];
-    for (final r in _routines) {
+    for (final r in filteredRoutines) {
       if (r.activityId == null || r.activityId!.isEmpty) {
         routinesWithoutActivity.add(r);
       } else {
@@ -3195,11 +3225,50 @@ class _ArchivesViewState extends State<_ArchivesView> {
                 style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
               ),
             ]),
+            // Barre de recherche
+            TextField(
+              controller: _searchCtrl,
+              onChanged: (v) => setState(() => _search = v),
+              decoration: InputDecoration(
+                hintText: 'Rechercher…',
+                prefixIcon: const Icon(Icons.search_outlined, size: 18),
+                suffixIcon: _search.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 16),
+                        onPressed: () {
+                          _searchCtrl.clear();
+                          setState(() => _search = '');
+                        },
+                      )
+                    : null,
+                border: const OutlineInputBorder(),
+                isDense: true,
+                contentPadding:
+                    const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+              ),
+            ),
             const SizedBox(height: 8),
+            // Filtres actif / archivé / tout
+            Row(children: [
+              for (final (val, label) in [
+                ('all',      'Tout'),
+                ('active',   'Actifs'),
+                ('archived', 'Archivés'),
+              ]) ...[
+                ChoiceChip(
+                  label: Text(label, style: const TextStyle(fontSize: 12)),
+                  selected: _filter == val,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: (_) => setState(() => _filter = val),
+                ),
+                const SizedBox(width: 6),
+              ],
+            ]),
+            const SizedBox(height: 16),
 
             // ── PROJETS ─────────────────────────────────────────────────────
-            sectionLabel('PROJETS (${_projects.length})'),
-            if (_projects.isEmpty)
+            sectionLabel('PROJETS (${activeProjects.length + archivedProjects.length})'),
+            if (activeProjects.isEmpty && archivedProjects.isEmpty)
               Padding(
                 padding: const EdgeInsets.only(bottom: 16),
                 child: Text('Aucun projet',
