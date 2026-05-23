@@ -408,7 +408,7 @@ class _FocusView extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isNarrow = constraints.maxWidth < 700;
-        final isWide   = constraints.maxWidth >= 1100;
+        final isWide   = constraints.maxWidth >= 850;
         if (isNarrow) {
           return _buildSidebar(
               cs, today, weekStart, weekEnd, overduePairs, allPairs, projects);
