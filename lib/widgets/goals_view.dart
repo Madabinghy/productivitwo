@@ -57,11 +57,11 @@ class _GoalsViewState extends State<GoalsView> {
     final archivedProjects = _projects.where((p) => p.status == 'archived').toList()
       ..sort((a, b) => a.title.compareTo(b.title));
 
-    // Projets sans tâche active aujourd'hui
+    // Projets avec au moins une tâche démarrée (done incluses pour accès au toggle)
     final projectsWithTodayTasks = <String>{};
     for (final p in activeProjects) {
       for (final t in p.tasks) {
-        if (t.status == 'done' || t.status == 'skipped') continue;
+        if (t.status == 'skipped') continue;
         if (!t.startDate.isAfter(todayD)) {
           projectsWithTodayTasks.add(p.id);
           break;

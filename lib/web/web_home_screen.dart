@@ -4557,7 +4557,19 @@ class _WebProjectsListViewState extends State<_WebProjectsListView> {
                 projectTitle: byProject.length == 1 ? project.title : '',
                 today: todayD,
                 cs: cs,
-                onTap: () => _openGantt(context, project, taskId: task.id),
+                onTap: () async {
+                  await showDialog<void>(
+                    context: context,
+                    builder: (_) => _FocusTaskDialog(
+                      project: project,
+                      task: task,
+                      color: color,
+                      domains: widget.domains,
+                      sync: widget.sync,
+                    ),
+                  );
+                  widget.onRefresh();
+                },
               ),
             ));
           }
