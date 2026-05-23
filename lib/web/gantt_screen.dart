@@ -34,6 +34,26 @@ Color _gridColorAlt(BuildContext ctx) {
   return dark ? _kTealGrid.withOpacity(0.10) : const Color(0xFFF5F5F5);
 }
 
+// ── Entrée publique pour afficher la dialog tâche depuis d'autres écrans ──────
+
+Future<void> showGanttTaskDetailDialog(
+  BuildContext context, {
+  required Project project,
+  required ProjectTask task,
+  required FirestoreSync sync,
+  required void Function(Project) onProjectUpdated,
+}) {
+  return showDialog<void>(
+    context: context,
+    builder: (_) => _TaskDetailDialog(
+      project: project,
+      task: task,
+      sync: sync,
+      onProjectUpdated: onProjectUpdated,
+    ),
+  );
+}
+
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 class GanttScreen extends StatefulWidget {

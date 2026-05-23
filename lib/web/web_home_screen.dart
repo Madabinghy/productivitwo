@@ -476,7 +476,7 @@ class _FocusView extends StatelessWidget {
     final byProject = <String, List<ProjectTask>>{};
     final projectMap = <String, Project>{};
     for (final pair in weekPairs) {
-      if (pair.task.status == 'skipped') continue;
+      if (pair.task.status == 'done' || pair.task.status == 'skipped') continue;
       if (pair.task.isMilestone) continue;
       byProject.putIfAbsent(pair.project.id, () => []).add(pair.task);
       projectMap[pair.project.id] = pair.project;
@@ -628,17 +628,13 @@ class _FocusView extends StatelessWidget {
     return InkWell(
       borderRadius: BorderRadius.circular(8),
       onTap: () async {
-        await showDialog<void>(
-          context: context,
-          builder: (_) => _FocusTaskDialog(
-            project: project,
-            task: task,
-            color: color,
-            domains: domains,
-            sync: sync,
-          ),
+        await showGanttTaskDetailDialog(
+          context,
+          project: project,
+          task: task,
+          sync: sync,
+          onProjectUpdated: (_) => onRefresh?.call(),
         );
-        onRefresh?.call();
       },
       child: Container(
         padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
@@ -1280,15 +1276,25 @@ class _FocusView extends StatelessWidget {
             width: labelW,
             child: Padding(
               padding: const EdgeInsets.only(right: 8),
-              child: Text(
-                task.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: cs.onSurface.withOpacity(isDone ? 0.35 : 0.8),
-                  decoration: isDone ? TextDecoration.lineThrough : null,
-                ),
+              child: Row(
+                children: [
+                  if (isDone) ...[
+                    Icon(Icons.check_circle,
+                        size: 11, color: Colors.green.shade500),
+                    const SizedBox(width: 4),
+                  ],
+                  Expanded(
+                    child: Text(
+                      task.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: cs.onSurface.withOpacity(isDone ? 0.35 : 0.8),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
