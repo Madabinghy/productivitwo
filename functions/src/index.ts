@@ -369,9 +369,10 @@ export const orionSaveConfig = onRequest(
     if (req.method === "OPTIONS") { res.status(204).send(""); return; }
     if (req.method !== "POST") { res.status(405).json({ error: "Method Not Allowed" }); return; }
 
-    const { uid, token, userNeeds, userReply } = req.body as {
+    const { uid, token, userNeeds, userReply, isOnboarding } = req.body as {
       uid?: string; token?: string;
       userNeeds?: string; userReply?: string;
+      isOnboarding?: boolean;
     };
     if (!uid || !token) { res.status(400).json({ error: "uid et token requis" }); return; }
 
@@ -381,7 +382,7 @@ export const orionSaveConfig = onRequest(
     await saveOrionConfig(uid, { userNeeds, userReply });
 
     try {
-      const result = await runOrionCycle(uid);
+      const result = await runOrionCycle(uid, { skipCount: isOnboarding === true });
       res.status(200).json({ success: true, configSaved: true, ...result });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

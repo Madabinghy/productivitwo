@@ -36,7 +36,7 @@ const ORION_TOOLS = [
     { name: "update_task_status", description: "Change le statut d'une tâche (pending/done/skipped).", input_schema: { type: "object", properties: { projectId: { type: "string" }, taskId: { type: "string" }, status: { type: "string" } }, required: ["projectId", "taskId", "status"] } },
     { name: "archive_project", description: "Archive ou restaure un projet.", input_schema: { type: "object", properties: { projectId: { type: "string" }, restore: { type: "boolean" } }, required: ["projectId"] } },
     { name: "delete_project", description: "Supprime définitivement un projet.", input_schema: { type: "object", properties: { projectId: { type: "string" }, deleteObjective: { type: "boolean" } }, required: ["projectId"] } },
-    { name: "push_gantt", description: "Crée ou met à jour un projet Gantt complet (phases + tâches).", input_schema: { type: "object", properties: { project: { type: "object" } }, required: ["project"] } },
+    { name: "push_gantt", description: "Crée ou met à jour un projet Gantt. TOUJOURS inclure phases[] ET tasks[] — sans tasks le projet sera vide.", input_schema: { type: "object", required: ["project"], properties: { project: { type: "object", required: ["title", "startDate", "tasks"], properties: { title: { type: "string" }, description: { type: "string" }, domainId: { type: "string" }, startDate: { type: "string", description: "YYYY-MM-DD" }, endDate: { type: "string", description: "YYYY-MM-DD" }, phases: { type: "array", items: { type: "object", required: ["id", "label", "startDate", "endDate"], properties: { id: { type: "string", description: "ex: phase-1" }, label: { type: "string" }, startDate: { type: "string" }, endDate: { type: "string" }, color: { type: "string" } } } }, tasks: { type: "array", description: "OBLIGATOIRE : au moins 2 tâches par phase", items: { type: "object", required: ["id", "title", "startDate"], properties: { id: { type: "string", description: "ex: task-1" }, title: { type: "string" }, phaseId: { type: "string" }, startDate: { type: "string", description: "YYYY-MM-DD" }, endDate: { type: "string", description: "YYYY-MM-DD" }, isMilestone: { type: "boolean" }, status: { type: "string", enum: ["pending", "done", "skipped"] } } } } } } } } },
     { name: "link_goal_to_task", description: "Lie un objectif GTD à une tâche Gantt.", input_schema: { type: "object", properties: { goalId: { type: "string" }, projectId: { type: "string" }, projectTaskId: { type: "string" } }, required: ["goalId"] } },
     { name: "delete_goal", description: "Archive ou supprime un objectif GTD.", input_schema: { type: "object", properties: { goalId: { type: "string" }, action: { type: "string" } }, required: ["goalId"] } },
     { name: "save_document", description: "Sauvegarde un document HTML.", input_schema: { type: "object", properties: { title: { type: "string" }, content: { type: "string" } }, required: ["title", "content"] } },
@@ -88,7 +88,7 @@ async function writeCycleLog(uid, log) {
     await db_1.db.collection(`users/${uid}/orion_logs`).doc(uuidv4()).set(Object.assign(Object.assign({}, log), { cycleAt: db_1.FieldValue.serverTimestamp() }));
 }
 // ── Cycle ORION — accès complet à tous les tools ──────────────────────────────
-async function runOrionCycle(uid) {
+async function runOrionCycle(uid, opts) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q;
     const today = new Date().toISOString().slice(0, 10);
     const count = await getOrionRunCount(uid, today);
@@ -97,7 +97,10 @@ async function runOrionCycle(uid) {
         await writeCycleLog(uid, { userNeeds: "", userReply: "", actions: [], pushed: 0, skipped: true, skippedReason: reason });
         return { skipped: true, reason };
     }
-    await incrementOrionRunCount(uid, today);
+    // isOnboarding → on ne décompte pas cette action stratégique
+    if (!(opts === null || opts === void 0 ? void 0 : opts.skipCount)) {
+        await incrementOrionRunCount(uid, today);
+    }
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey)
         throw new Error("ANTHROPIC_API_KEY non configurée dans Firebase Secret Manager");
@@ -152,8 +155,20 @@ Même si tu n'as fait aucune action, même s'il n'y a rien d'urgent — pousse t
 → Appelle archive_project pour chacun
 → Pousse un message listant ce qui a été archivé
 
-**Instruction ambiguë ou destructive (delete)**
-→ Ne pas agir — pousse un message demandant confirmation
+**"Crée un projet [nom]" ou demande de création de projet**
+→ Utilise push_gantt pour créer le projet avec une structure raisonnable déduite du contexte : 3-4 phases, 2-4 tâches chacune, dates réalistes à partir d'aujourd'hui
+→ Si le domaine n'est pas précisé, choisis le plus cohérent parmi les domaines existants dans le contexte
+→ Pousse ensuite un push_assistant_message confirmant ce qui a été créé (titre du projet, nb de phases/tâches)
+
+**Instruction ambiguë (sans supression/delete)**
+→ Interprète au mieux, agis, puis pousse un message expliquant ce que tu as fait et demandant si c'est correct
+
+**Instruction destructive (delete, supprimer définitivement)**
+→ Ne pas agir — pousse un message demandant confirmation explicite
+
+## RAPPEL ABSOLU : ne jamais terminer sans push_assistant_message
+
+Tu dois TOUJOURS appeler push_assistant_message avant end_turn, quelle que soit la situation. Si tu n'as rien fait d'autre, pousse au moins un message de synthèse de ce que tu as observé.
 
 ## Format des messages
 - Courts (< 180 chars), bienveillants, actionnables

@@ -1876,6 +1876,7 @@ class _AppRootState extends State<AppRoot>
           fullscreenDialog: true,
           builder: (_) => OnboardingScreen(
             logic: logic,
+            sync: _sync,
             onDone: () {
               Navigator.of(context).pop();
               setState(() {

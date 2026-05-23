@@ -1,7 +1,10 @@
 // ignore_for_file: deprecated_member_use
 
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 
 // ── Modèles de suggestions ────────────────────────────────────────────────────
@@ -250,16 +253,22 @@ String _freqLabel(HabitFreq f) => switch (f) {
 
 class OnboardingScreen extends StatefulWidget {
   final AppLogic logic;
+  final FirestoreSync sync;
   final VoidCallback onDone;
 
-  const OnboardingScreen({super.key, required this.logic, required this.onDone});
+  const OnboardingScreen({
+    super.key,
+    required this.logic,
+    required this.sync,
+    required this.onDone,
+  });
 
   @override
   State<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
-  static const _totalPages = 5;
+  static const _totalPages = 6;
 
   final _pageCtrl = PageController();
   int _page = 0;
@@ -393,7 +402,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
     logic.state.onboardingDone = true;
     logic.onChange();
-    widget.onDone();
+    // → page ORION (page 5, index 5)
+    _goTo(5);
   }
 
   @override
@@ -476,6 +486,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     selectedActivities: _selectedActivities,
                     selectedRoutines: _selectedRoutines,
                     onFinish: _finish,
+                  ),
+
+                  // Page 6 — Premier projet avec ORION
+                  _OrionProjectPage(
+                    cs: cs,
+                    sync: widget.sync,
+                    onDone: widget.onDone,
                   ),
                 ],
               ),
@@ -1634,6 +1651,191 @@ class _CatalogChip extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Page 6 — Premier projet avec ORION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _OrionProjectPage extends StatefulWidget {
+  final ColorScheme cs;
+  final FirestoreSync sync;
+  final VoidCallback onDone;
+
+  const _OrionProjectPage({
+    required this.cs,
+    required this.sync,
+    required this.onDone,
+  });
+
+  @override
+  State<_OrionProjectPage> createState() => _OrionProjectPageState();
+}
+
+class _OrionProjectPageState extends State<_OrionProjectPage> {
+  final _ctrl = TextEditingController();
+  bool _loading = false;
+  bool _done = false;
+  String? _error;
+
+  static const _orionUrl = 'https://orionsaveconfig-dzos75b65q-uc.a.run.app';
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _createProject() async {
+    final desc = _ctrl.text.trim();
+    if (desc.isEmpty) return;
+
+    setState(() { _loading = true; _error = null; });
+
+    try {
+      final uid = widget.sync.uid;
+      if (uid == null) throw Exception('Non connecté');
+
+      // Token auto-créé si absent — transparent pour l'utilisateur
+      final apiToken = await widget.sync.ensureOnboardingToken();
+
+      final resp = await http.post(
+        Uri.parse(_orionUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'uid': uid,
+          'token': apiToken.token,
+          'userNeeds': 'ONBOARDING — Crée un projet Gantt pour ce besoin : $desc',
+          'isOnboarding': true,
+        }),
+      );
+
+      if (resp.statusCode == 200) {
+        setState(() { _done = true; _loading = false; });
+      } else {
+        final body = json.decode(resp.body) as Map<String, dynamic>;
+        setState(() {
+          _error = body['error']?.toString() ?? 'Erreur ${resp.statusCode}';
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      setState(() { _error = e.toString(); _loading = false; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = widget.cs;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Text('✦', style: TextStyle(fontSize: 28, color: cs.primary)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Votre premier projet',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: cs.onSurface),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'ORION va créer un projet Gantt structuré en quelques secondes. Décrivez simplement ce que vous voulez accomplir.',
+            style: TextStyle(fontSize: 14, color: cs.onSurface.withOpacity(.6), height: 1.5),
+          ),
+          const SizedBox(height: 28),
+
+          if (!_done) ...[
+            TextField(
+              controller: _ctrl,
+              enabled: !_loading,
+              maxLines: 4,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: InputDecoration(
+                hintText: 'Ex : lancer une boutique en ligne de vêtements durables d\'ici septembre',
+                hintStyle: TextStyle(color: cs.onSurface.withOpacity(.35), fontSize: 14),
+                filled: true,
+                fillColor: cs.surfaceContainerHighest.withOpacity(.4),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.all(16),
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(_error!, style: TextStyle(color: cs.error, fontSize: 13)),
+              ),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _loading ? null : _createProject,
+                icon: _loading
+                    ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: cs.onPrimary))
+                    : const Icon(Icons.auto_awesome, size: 18),
+                label: Text(_loading ? 'ORION travaille…' : 'Créer mon projet'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+            ),
+            const Spacer(),
+            Center(
+              child: TextButton(
+                onPressed: widget.onDone,
+                child: Text('Passer cette étape', style: TextStyle(color: cs.onSurface.withOpacity(.45))),
+              ),
+            ),
+          ] else ...[
+            // Succès
+            const Spacer(),
+            Center(
+              child: Column(
+                children: [
+                  Icon(Icons.check_circle_outline_rounded, size: 64, color: cs.primary),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Projet créé !',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: cs.onSurface),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Retrouvez-le dans l\'onglet Projets.',
+                    style: TextStyle(fontSize: 14, color: cs.onSurface.withOpacity(.55)),
+                  ),
+                ],
+              ),
+            ),
+            const Spacer(),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: widget.onDone,
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                child: const Text('Commencer →'),
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+        ],
       ),
     );
   }

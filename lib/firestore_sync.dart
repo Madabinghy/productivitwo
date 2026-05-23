@@ -464,6 +464,15 @@ class FirestoreSync {
     await _col('api_tokens').doc(tokenId).update({'active': false});
   }
 
+  /// Retourne le premier token actif existant, ou en crée un silencieusement.
+  /// Utilisé à l'onboarding pour éviter de demander au user de configurer un token.
+  Future<ApiToken> ensureOnboardingToken() async {
+    final tokens = await fetchApiTokens();
+    final active = tokens.where((t) => t.active).toList();
+    if (active.isNotEmpty) return active.first;
+    return createApiToken('ORION');
+  }
+
   // ── Debug helpers ────────────────────────────────────────────────────────────
 
   /// Retourne TOUS les domaines y compris ceux avec deleted:true (usage debug).

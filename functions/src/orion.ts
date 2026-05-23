@@ -118,7 +118,7 @@ export async function writeCycleLog(uid: string, log: {
 
 // ── Cycle ORION — accès complet à tous les tools ──────────────────────────────
 
-export async function runOrionCycle(uid: string): Promise<{
+export async function runOrionCycle(uid: string, opts?: { skipCount?: boolean }): Promise<{
   skipped: boolean;
   reason?: string;
   pushed?: number;
@@ -131,7 +131,10 @@ export async function runOrionCycle(uid: string): Promise<{
     return { skipped: true, reason };
   }
 
-  await incrementOrionRunCount(uid, today);
+  // isOnboarding → on ne décompte pas cette action stratégique
+  if (!opts?.skipCount) {
+    await incrementOrionRunCount(uid, today);
+  }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY non configurée dans Firebase Secret Manager");
