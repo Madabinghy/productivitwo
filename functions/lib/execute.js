@@ -1044,15 +1044,14 @@ async function executeGetAssistantMessages(uid) {
     const [pendingSnap, shownSnap] = await Promise.all([
         db_1.db.collection(`users/${uid}/assistant_messages`)
             .where("status", "==", "pending")
-            .orderBy("targetDate", "asc")
             .get(),
         db_1.db.collection(`users/${uid}/assistant_messages`)
             .where("status", "==", "shown")
-            .orderBy("shownAt", "desc")
             .limit(10)
             .get(),
     ]);
-    const pending = pendingSnap.docs.map((d) => {
+    const pending = pendingSnap.docs
+        .map((d) => {
         var _a, _b, _c, _d, _e, _f, _g, _h;
         const v = d.data();
         return {
@@ -1065,8 +1064,10 @@ async function executeGetAssistantMessages(uid) {
             expiresAfterDays: (_c = v.expiresAfterDays) !== null && _c !== void 0 ? _c : 2,
             createdAt: (_h = (_g = (_f = (_e = (_d = v.createdAt) === null || _d === void 0 ? void 0 : _d.toDate) === null || _e === void 0 ? void 0 : _e.call(_d)) === null || _f === void 0 ? void 0 : _f.toISOString) === null || _g === void 0 ? void 0 : _g.call(_f)) !== null && _h !== void 0 ? _h : null,
         };
-    });
-    const recentShown = shownSnap.docs.map((d) => {
+    })
+        .sort((a, b) => a.targetDate.localeCompare(b.targetDate));
+    const recentShown = shownSnap.docs
+        .map((d) => {
         var _a, _b, _c, _d, _e;
         const v = d.data();
         return {
@@ -1075,7 +1076,9 @@ async function executeGetAssistantMessages(uid) {
             text: v.text,
             shownAt: (_e = (_d = (_c = (_b = (_a = v.shownAt) === null || _a === void 0 ? void 0 : _a.toDate) === null || _b === void 0 ? void 0 : _b.call(_a)) === null || _c === void 0 ? void 0 : _c.toISOString) === null || _d === void 0 ? void 0 : _d.call(_c)) !== null && _e !== void 0 ? _e : null,
         };
-    });
+    })
+        .sort((a, b) => { var _a, _b; return ((_a = b.shownAt) !== null && _a !== void 0 ? _a : "").localeCompare((_b = a.shownAt) !== null && _b !== void 0 ? _b : ""); })
+        .slice(0, 10);
     if (!pending.length && !recentShown.length) {
         return "Aucun message ORION programmé ou récent.";
     }

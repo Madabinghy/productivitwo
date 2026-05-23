@@ -8,6 +8,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.4', '22 mai 2026', [
+    (Icons.scroll, 'Maintenant : sous-actions scrollables quand la liste est longue'),
+    (Icons.bolt_outlined, 'ORION : fix erreur index Firestore sur les messages'),
+  ]),
   _Entry('5.3', '22 mai 2026', [
     (Icons.timer_outlined, 'Dashboard : icônes dans les jauges (⏱ ↺ ⬡)'),
     (Icons.account_tree_outlined, 'Projets iOS : tâches correctement groupées par phase (fix groupLabel)'),

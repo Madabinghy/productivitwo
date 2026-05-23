@@ -1175,38 +1175,41 @@ async function executeGetAssistantMessages(uid: string): Promise<string> {
   const [pendingSnap, shownSnap] = await Promise.all([
     db.collection(`users/${uid}/assistant_messages`)
       .where("status", "==", "pending")
-      .orderBy("targetDate", "asc")
       .get(),
     db.collection(`users/${uid}/assistant_messages`)
       .where("status", "==", "shown")
-      .orderBy("shownAt", "desc")
       .limit(10)
       .get(),
   ]);
 
-  const pending = pendingSnap.docs.map((d) => {
-    const v = d.data();
-    return {
-      id: v.id,
-      targetDate: v.targetDate,
-      condition: v.condition,
-      text: v.text,
-      characterName: v.characterName ?? "ORION",
-      action: v.action ?? null,
-      expiresAfterDays: v.expiresAfterDays ?? 2,
-      createdAt: v.createdAt?.toDate?.()?.toISOString?.() ?? null,
-    };
-  });
+  const pending = pendingSnap.docs
+    .map((d) => {
+      const v = d.data();
+      return {
+        id: v.id,
+        targetDate: v.targetDate as string,
+        condition: v.condition,
+        text: v.text,
+        characterName: v.characterName ?? "ORION",
+        action: v.action ?? null,
+        expiresAfterDays: v.expiresAfterDays ?? 2,
+        createdAt: v.createdAt?.toDate?.()?.toISOString?.() ?? null,
+      };
+    })
+    .sort((a, b) => a.targetDate.localeCompare(b.targetDate));
 
-  const recentShown = shownSnap.docs.map((d) => {
-    const v = d.data();
-    return {
-      id: v.id,
-      targetDate: v.targetDate,
-      text: v.text,
-      shownAt: v.shownAt?.toDate?.()?.toISOString?.() ?? null,
-    };
-  });
+  const recentShown = shownSnap.docs
+    .map((d) => {
+      const v = d.data();
+      return {
+        id: v.id,
+        targetDate: v.targetDate as string,
+        text: v.text,
+        shownAt: v.shownAt?.toDate?.()?.toISOString?.() ?? null,
+      };
+    })
+    .sort((a, b) => (b.shownAt ?? "").localeCompare(a.shownAt ?? ""))
+    .slice(0, 10);
 
   if (!pending.length && !recentShown.length) {
     return "Aucun message ORION programmé ou récent.";

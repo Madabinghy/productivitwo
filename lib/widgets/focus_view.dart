@@ -275,7 +275,7 @@ class _FocusViewState extends State<FocusView> {
     final project = widget.focusProject;
 
     return SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -387,7 +387,7 @@ class _FocusViewState extends State<FocusView> {
             ],
 
             if (task == null) ...[
-              const Spacer(),
+              const SizedBox(height: 24),
               Center(
                 child: TextButton.icon(
                   icon: const Icon(Icons.account_tree_outlined, size: 16),
