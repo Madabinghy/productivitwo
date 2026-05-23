@@ -7,6 +7,9 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/web/gantt_pdf_exporter.dart';
+import 'package:uuid/uuid.dart';
+
+const _uuid = Uuid();
 
 // ── Constantes de layout ──────────────────────────────────────────────────────
 
@@ -1646,6 +1649,7 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
   // Fichiers
   List<Map<String, dynamic>> _docs = [];
   bool _loadingDocs = true;
+  bool _uploading = false;
 
   @override
   void initState() {
@@ -2103,31 +2107,47 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
             ),
 
             // Footer
-            if (!isFilesTab)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                child: Row(
-                  children: [
-                    TextButton.icon(
-                      icon: const Icon(Icons.add, size: 16),
-                      label: const Text('Ajouter une action'),
-                      onPressed: _addAction,
-                    ),
-                    const Spacer(),
-                    if (_task.actions.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+              child: isFilesTab
+                  ? Row(children: [
+                      _uploading
+                          ? const SizedBox(
+                              width: 18, height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2))
+                          : TextButton.icon(
+                              icon: const Icon(Icons.upload_file_outlined, size: 16),
+                              label: const Text('Déposer un fichier'),
+                              onPressed: _uploadFile,
+                            ),
+                      const Spacer(),
                       Text(
-                        'Appui long pour modifier',
+                        'txt · md · html · json · images…',
                         style: TextStyle(
                           fontSize: 11,
-                          color: Theme.of(context).colorScheme.onSurface.withOpacity(.3),
+                          color: cs.onSurface.withOpacity(.3),
                           fontStyle: FontStyle.italic,
                         ),
                       ),
-                  ],
-                ),
-              )
-            else
-              const SizedBox(height: 12),
+                    ])
+                  : Row(children: [
+                      TextButton.icon(
+                        icon: const Icon(Icons.add, size: 16),
+                        label: const Text('Ajouter une action'),
+                        onPressed: _addAction,
+                      ),
+                      const Spacer(),
+                      if (_task.actions.isNotEmpty)
+                        Text(
+                          'Appui long pour modifier',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: cs.onSurface.withOpacity(.3),
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                    ]),
+            ),
           ],
         ),
       ),
@@ -2163,6 +2183,89 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
     widget.onProjectUpdated(updatedProject);
     if (mounted) Navigator.pop(context);
   }
+
+  // ── Upload fichier ───────────────────────────────────────────────────────────
+
+  static const _textExts = {
+    'txt', 'md', 'html', 'htm', 'json', 'xml', 'csv',
+    'dart', 'js', 'ts', 'py', 'swift', 'kt', 'java',
+    'yaml', 'yml', 'toml', 'ini', 'cfg', 'log', 'sh',
+  };
+  static const _imageExts = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'};
+  static const _codeExts = {
+    'json', 'xml', 'dart', 'js', 'ts', 'py', 'swift', 'kt', 'java',
+    'yaml', 'yml', 'toml', 'sh',
+  };
+
+  Future<void> _uploadFile() async {
+    final input = html.FileUploadInputElement()..accept = '*/*';
+    input.click();
+    await input.onChange.first;
+    if (input.files == null || input.files!.isEmpty) return;
+
+    final file = input.files![0];
+    final name = file.name;
+    final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
+
+    setState(() => _uploading = true);
+    try {
+      final reader = html.FileReader();
+      String content;
+
+      if (_imageExts.contains(ext)) {
+        reader.readAsDataUrl(file);
+        await reader.onLoad.first;
+        final dataUrl = reader.result as String;
+        content = '<html><body style="margin:0;text-align:center;background:#111">'
+            '<img src="$dataUrl" style="max-width:100%;height:auto"></body></html>';
+      } else {
+        reader.readAsText(file);
+        await reader.onLoad.first;
+        final text = reader.result as String;
+        if (ext == 'html' || ext == 'htm') {
+          content = text;
+        } else {
+          final isCode = _codeExts.contains(ext);
+          final escaped = text
+              .replaceAll('&', '&amp;')
+              .replaceAll('<', '&lt;')
+              .replaceAll('>', '&gt;');
+          content = '<html><head><meta charset="utf-8"><style>'
+              'body{font-family:${isCode ? "monospace" : "system-ui"};'
+              'padding:24px;line-height:1.6;color:#1a1a1a;}'
+              'pre{white-space:pre-wrap;word-wrap:break-word;font-size:13px;}'
+              'h3{margin:0 0 12px;color:#888;font-size:11px;font-weight:700;letter-spacing:1px}'
+              '</style></head><body>'
+              '<h3>${_htmlEscape(name)}</h3>'
+              '<pre>$escaped</pre></body></html>';
+        }
+      }
+
+      final titleWithoutExt = name.contains('.')
+          ? name.substring(0, name.lastIndexOf('.'))
+          : name;
+      final now = DateTime.now().toIso8601String();
+      await widget.sync.saveDocument({
+        'id': _uuid.v4(),
+        'title': titleWithoutExt,
+        'subtitle': name,
+        'content': content,
+        'category': 'fichier',
+        'projectId': widget.project.id,
+        'taskId': _task.id,
+        'createdAt': now,
+        'updatedAt': now,
+      });
+      await _loadDocs();
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  String _htmlEscape(String s) => s
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;');
 
   // ── Onglet Actions ───────────────────────────────────────────────────────────
 
@@ -2317,7 +2420,7 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
     }
 
     // Grouper par catégorie
-    const catOrder = ['programme', 'livrable', 'brief', 'recherche', 'notes'];
+    const catOrder = ['fichier', 'programme', 'livrable', 'brief', 'recherche', 'notes'];
     final grouped = <String, List<Map<String, dynamic>>>{};
     for (final d in _docs) {
       final cat = d['category'] as String? ?? 'notes';
@@ -2361,6 +2464,7 @@ class _CatHeader extends StatelessWidget {
     'recherche': (Icons.search, Color(0xFF7C3AED), 'Recherche'),
     'livrable':  (Icons.task_alt_outlined, Color(0xFF059669), 'Livrable'),
     'notes':     (Icons.notes, Color(0xFF6B7280), 'Notes'),
+    'fichier':   (Icons.attach_file_outlined, Color(0xFF0891B2), 'Fichiers'),
   };
 
   @override

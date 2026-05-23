@@ -8,6 +8,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.6', '23 mai 2026', [
+    (Icons.touch_app_outlined, 'Focus : tap sur la tâche Gantt liée ouvre la fiche (appui long = délier)'),
+    (Icons.upload_file_outlined, 'Gantt web : upload de fichiers dans une tâche (txt, md, html, json, images…)'),
+  ]),
   _Entry('5.5', '23 mai 2026', [
     (Icons.add_circle_outline, 'Gantt web : bouton + dans la barre pour ajouter une tâche (titre, phase, dates, jalon)'),
     (Icons.layers_outlined, 'Gantt web : changer la phase d\'une tâche depuis la fiche (déplace visuellement la tâche)'),

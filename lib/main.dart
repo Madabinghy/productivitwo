@@ -2231,6 +2231,12 @@ class _AppRootState extends State<AppRoot>
                 _focusTask = null;
               });
             },
+            onTaskTap: (project, task) => showProjectSheet(
+              context,
+              project: project,
+              domains: _state?.domains ?? [],
+              targetTaskId: task.id,
+            ),
           ),
           OrionScreen(sync: _sync, embedded: true),
         ],

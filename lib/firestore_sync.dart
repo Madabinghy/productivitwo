@@ -357,6 +357,16 @@ class FirestoreSync {
     } catch (_) { return []; }
   }
 
+  Future<void> saveDocument(Map<String, dynamic> doc) async {
+    if (uid == null) return;
+    await _col('documents').doc(doc['id'] as String).set(doc);
+  }
+
+  Future<void> deleteDocument(String docId) async {
+    if (uid == null) return;
+    await _col('documents').doc(docId).delete();
+  }
+
   Future<List<Project>> fetchProjects() async {
     if (uid == null) return [];
     final snap = await _col('projects').get();

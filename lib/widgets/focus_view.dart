@@ -17,6 +17,7 @@ class FocusView extends StatefulWidget {
       onStartTimer;
   final VoidCallback onStopTimer;
   final void Function(Project project, ProjectTask task) onClearFocusTask;
+  final void Function(Project project, ProjectTask task)? onTaskTap;
 
   const FocusView({
     super.key,
@@ -28,6 +29,7 @@ class FocusView extends StatefulWidget {
     required this.onClearFocusTask,
     this.focusProject,
     this.focusTask,
+    this.onTaskTap,
   });
 
   @override
@@ -305,6 +307,7 @@ class _FocusViewState extends State<FocusView> {
             if (task != null && project != null) ...[
               InkWell(
                 borderRadius: BorderRadius.circular(12),
+                onTap: () => widget.onTaskTap?.call(project, task),
                 onLongPress: () => widget.onClearFocusTask(project, task),
                 child: Container(
                   width: double.infinity,
