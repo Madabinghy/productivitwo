@@ -476,7 +476,7 @@ class _FocusView extends StatelessWidget {
     final byProject = <String, List<ProjectTask>>{};
     final projectMap = <String, Project>{};
     for (final pair in weekPairs) {
-      if (pair.task.status == 'done' || pair.task.status == 'skipped') continue;
+      if (pair.task.status == 'skipped') continue;
       if (pair.task.isMilestone) continue;
       byProject.putIfAbsent(pair.project.id, () => []).add(pair.task);
       projectMap[pair.project.id] = pair.project;
@@ -4319,7 +4319,7 @@ class _WebProjectsListViewState extends State<_WebProjectsListView> {
     final byDomain = <String?, List<({Project project, ProjectTask task})>>{};
     for (final p in filtered) {
       for (final t in p.tasks) {
-        if (t.status == 'done' || t.status == 'skipped') continue;
+        if (t.status == 'skipped') continue;
         if (t.startDate.isAfter(todayD)) continue;
         byDomain.putIfAbsent(p.domainId, () => []).add((project: p, task: t));
       }

@@ -156,12 +156,12 @@ class _GoalsViewState extends State<GoalsView> {
   ) {
     final cs = Theme.of(context).colorScheme;
 
-    // Tâches actives aujourd'hui (startDate <= today, non terminées)
+    // Tâches démarrées aujourd'hui (done incluses pour pouvoir annuler)
     final byDomain = <String?, List<({Project project, ProjectTask task})>>{};
     for (final p in projects) {
       for (final t in p.tasks) {
-        if (t.status == 'done' || t.status == 'skipped') continue;
-        if (t.startDate.isAfter(todayD)) continue; // pas encore démarrée
+        if (t.status == 'skipped') continue;
+        if (t.startDate.isAfter(todayD)) continue;
         byDomain.putIfAbsent(p.domainId, () => []).add((project: p, task: t));
       }
     }
@@ -337,7 +337,7 @@ class _GoalsViewState extends State<GoalsView> {
                       ? null
                       : () => _onPlay(context, project, task, color),
                   onComplete: () async {
-                    task.status = 'done';
+                    task.status = task.status == 'done' ? 'pending' : 'done';
                     await _sync.saveProjectTasks(project.id, project.tasks);
                     setState(() {});
                   },
@@ -668,9 +668,10 @@ class _GanttTaskCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDone = task.status == 'done';
     final isOverdue = task.endDate != null &&
         task.endDate!.isBefore(today) &&
-        task.status != 'done';
+        !isDone;
     final hasActions = task.actions.isNotEmpty;
     final doneActions = task.actions.where((a) => a.done).length;
     final totalActions = task.actions.length;
@@ -678,16 +679,18 @@ class _GanttTaskCard extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-      child: InkWell(
+      child: Opacity(
+        opacity: isDone ? 0.55 : 1.0,
+        child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Container(
           decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest.withOpacity(.55),
+            color: cs.surfaceContainerHighest.withOpacity(isDone ? .3 : .55),
             borderRadius: BorderRadius.circular(12),
             border: Border(
               left: BorderSide(
-                color: isOverdue ? cs.error : color,
+                color: isDone ? Colors.green.withOpacity(.5) : isOverdue ? cs.error : color,
                 width: 3,
               ),
             ),
@@ -715,8 +718,10 @@ class _GanttTaskCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       task.title,
-                      style: const TextStyle(
-                          fontSize: 15, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          decoration: isDone ? TextDecoration.lineThrough : null),
                     ),
                   ),
                   if (progress != null) ...[
@@ -886,35 +891,59 @@ class _GanttTaskCard extends StatelessWidget {
                       ),
                     ),
                   const Spacer(),
-                  if (onComplete != null && (!hasActions || (progress != null && progress >= 1.0)))
+                  if (onComplete != null)
                     GestureDetector(
                       onTap: onComplete,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.green.withOpacity(.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.green.withOpacity(.3)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.check_rounded, size: 14, color: Colors.green.shade600),
-                            const SizedBox(width: 4),
-                            Text('Valider',
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.green.shade600)),
-                          ],
-                        ),
-                      ),
+                      child: task.status == 'done'
+                          ? Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.withOpacity(.08),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.orange.withOpacity(.3)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.undo_rounded, size: 14, color: Colors.orange.shade700),
+                                  const SizedBox(width: 4),
+                                  Text('Annuler',
+                                      style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.orange.shade700)),
+                                ],
+                              ),
+                            )
+                          : (!hasActions || (progress != null && progress >= 1.0))
+                              ? Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green.withOpacity(.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: Colors.green.withOpacity(.3)),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.check_rounded, size: 14, color: Colors.green.shade600),
+                                      const SizedBox(width: 4),
+                                      Text('Valider',
+                                          style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.green.shade600)),
+                                    ],
+                                  ),
+                                )
+                              : const SizedBox.shrink(),
                     ),
                 ],
               ),
             ],
           ),
         ),
+      ),
       ),
     );
   }
