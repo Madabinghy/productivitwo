@@ -254,7 +254,7 @@ class _GanttDashboard extends StatefulWidget {
 }
 
 class _GanttDashboardState extends State<_GanttDashboard> {
-  bool _expanded = true;
+  bool _expanded = false;
 
   Project get p => widget.project;
 
