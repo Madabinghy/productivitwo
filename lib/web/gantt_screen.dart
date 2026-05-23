@@ -1748,10 +1748,24 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
             if (!isFilesTab)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                child: TextButton.icon(
-                  icon: const Icon(Icons.add, size: 16),
-                  label: const Text('Ajouter une action'),
-                  onPressed: _addAction,
+                child: Row(
+                  children: [
+                    TextButton.icon(
+                      icon: const Icon(Icons.add, size: 16),
+                      label: const Text('Ajouter une action'),
+                      onPressed: _addAction,
+                    ),
+                    const Spacer(),
+                    if (_task.actions.isNotEmpty)
+                      Text(
+                        'Appui long pour modifier',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Theme.of(context).colorScheme.onSurface.withOpacity(.3),
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                  ],
                 ),
               )
             else

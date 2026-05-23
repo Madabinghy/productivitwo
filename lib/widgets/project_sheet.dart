@@ -700,6 +700,17 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet> {
                   label: const Text('Ajouter une action'),
                   onPressed: _addAction,
                 ),
+                if (_task.actions.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    'Appui long = modifier',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(.3),
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
                 const Spacer(),
                 if (!isDone && (allDone || _task.actions.isEmpty))
                   FilledButton.icon(

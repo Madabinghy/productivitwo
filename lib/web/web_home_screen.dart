@@ -417,7 +417,7 @@ class _FocusView extends StatelessWidget {
         final isWide   = constraints.maxWidth >= 850;
         if (isNarrow) {
           return _buildSidebar(
-              cs, today, weekStart, weekEnd, overduePairs, allPairs, projects);
+              context, cs, today, weekStart, weekEnd, overduePairs, allPairs, projects);
         }
         return Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -456,7 +456,7 @@ class _FocusView extends StatelessWidget {
             Expanded(
               flex: 3,
               child: _buildSidebar(
-                  cs, today, weekStart, weekEnd, overduePairs, allPairs, projects),
+                  context, cs, today, weekStart, weekEnd, overduePairs, allPairs, projects),
             ),
           ],
         );
@@ -742,11 +742,12 @@ class _FocusView extends StatelessWidget {
     final doneActions = task.actions.where((a) => a.done).length;
     final totalActions = task.actions.length;
 
-    return InkWell(
+    return Builder(
+      builder: (freshCtx) => InkWell(
       borderRadius: BorderRadius.circular(8),
       onTap: () async {
         await showGanttTaskDetailDialog(
-          context,
+          freshCtx,
           project: project,
           task: task,
           sync: sync,
@@ -830,7 +831,8 @@ class _FocusView extends StatelessWidget {
           ],
         ),
       ),
-    );
+      ), // InkWell
+    ); // Builder
   }
 
   static String _fmtDate(DateTime d) {
@@ -1496,6 +1498,7 @@ class _FocusView extends StatelessWidget {
   // ── SIDEBAR ───────────────────────────────────────────────────────────────
 
   Widget _buildSidebar(
+    BuildContext context,
     ColorScheme cs,
     DateTime today,
     DateTime weekStart,
@@ -1631,6 +1634,10 @@ class _FocusView extends StatelessWidget {
                           project: p,
                           domains: domains,
                           cs: cs,
+                          onTap: () => Navigator.push(context,
+                              MaterialPageRoute(
+                                  builder: (_) => GanttScreen(
+                                      project: p, domains: domains))),
                         ),
                         const SizedBox(height: 10),
                       ],
@@ -1767,11 +1774,13 @@ class _ProjectProgressItem extends StatelessWidget {
   final Project project;
   final List<Domain> domains;
   final ColorScheme cs;
+  final VoidCallback? onTap;
 
   const _ProjectProgressItem({
     required this.project,
     required this.domains,
     required this.cs,
+    this.onTap,
   });
 
   @override
@@ -1798,7 +1807,10 @@ class _ProjectProgressItem extends StatelessWidget {
       barColor = cs.primary;
     }
 
-    return Column(
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
@@ -1827,7 +1839,8 @@ class _ProjectProgressItem extends StatelessWidget {
           color: barColor,
         ),
       ],
-    );
+      ), // Column
+    ); // InkWell
   }
 }
 
