@@ -1707,6 +1707,7 @@ class _AppRootState extends State<AppRoot>
   void didChangeAppLifecycleState(AppLifecycleState state) async {
     if (_state == null) return; // pas encore initialisé
     if (state == AppLifecycleState.resumed) {
+      FcmService.clearOrionBadge();
       // évite de scanner trop souvent (ex: toutes les 6h)
       if (DateTime.now().difference(_lastGlobalScan) >
           const Duration(hours: 6)) {
@@ -2848,6 +2849,29 @@ class _AppRootState extends State<AppRoot>
                                           ),
                                         ),
                                         const SizedBox(width: 8),
+                                        if (value > 0)
+                                          GestureDetector(
+                                            onTap: () {
+                                              logic.incHabitWithAssocEvent(
+                                                  r.id, -1, todayD);
+                                              logic.onChange();
+                                              setS(() {});
+                                              setState(() {});
+                                            },
+                                            child: Container(
+                                              padding: const EdgeInsets.all(6),
+                                              decoration: BoxDecoration(
+                                                color: cs.onSurface
+                                                    .withOpacity(.08),
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: Icon(Icons.remove,
+                                                  size: 16,
+                                                  color: cs.onSurface
+                                                      .withOpacity(.4)),
+                                            ),
+                                          ),
+                                        const SizedBox(width: 6),
                                         GestureDetector(
                                           onTap: () {
                                             logic.incHabitWithAssocEvent(

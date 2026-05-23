@@ -621,6 +621,43 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet> {
                           key: ValueKey('tile_${a.title}_$i'),
                           dense: true,
                           contentPadding: const EdgeInsets.only(left: 0, right: 4),
+                          onLongPress: () async {
+                            final ctrl =
+                                TextEditingController(text: a.title);
+                            final result = await showDialog<String>(
+                              context: context,
+                              builder: (c) => AlertDialog(
+                                title: const Text('Modifier l\'action'),
+                                content: TextField(
+                                  controller: ctrl,
+                                  autofocus: true,
+                                  decoration: const InputDecoration(
+                                      border: OutlineInputBorder()),
+                                  onSubmitted: (v) {
+                                    if (v.trim().isNotEmpty)
+                                      Navigator.pop(c, v.trim());
+                                  },
+                                ),
+                                actions: [
+                                  TextButton(
+                                      onPressed: () => Navigator.pop(c),
+                                      child: const Text('Annuler')),
+                                  FilledButton(
+                                    onPressed: () {
+                                      final v = ctrl.text.trim();
+                                      if (v.isNotEmpty) Navigator.pop(c, v);
+                                    },
+                                    child: const Text('Enregistrer'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            ctrl.dispose();
+                            if (result != null) {
+                              setState(() => a.title = result);
+                              _save();
+                            }
+                          },
                           leading: Checkbox(
                             value: a.done,
                             onChanged: (v) {

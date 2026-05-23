@@ -123,4 +123,8 @@ class FcmService {
       onOrionNotificationTap?.call();
     }
   }
+
+  static Future<void> clearOrionBadge() async {
+    await _localNotifs.cancel(_kOrionNotifId);
+  }
 }

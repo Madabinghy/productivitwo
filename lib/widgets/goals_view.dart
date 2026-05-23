@@ -831,15 +831,15 @@ class _GanttTaskCard extends StatelessWidget {
                   itemBuilder: (ctx, i) => ReorderableDelayedDragStartListener(
                     key: ValueKey('${task.id}_action_$i'),
                     index: i,
-                    child: GestureDetector(
-                      onTap: () =>
-                          onTaskActionToggled(task.id, i, !task.actions[i].done),
-                      behavior: HitTestBehavior.opaque,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 3),
-                        child: Row(
-                          children: [
-                            Icon(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 3),
+                      child: Row(
+                        children: [
+                          // Checkbox — seul élément qui toggle
+                          GestureDetector(
+                            onTap: () => onTaskActionToggled(
+                                task.id, i, !task.actions[i].done),
+                            child: Icon(
                               task.actions[i].done
                                   ? Icons.check_box_rounded
                                   : Icons.check_box_outline_blank,
@@ -848,8 +848,50 @@ class _GanttTaskCard extends StatelessWidget {
                                   ? Colors.green.shade500
                                   : cs.onSurface.withOpacity(.4),
                             ),
-                            const SizedBox(width: 8),
-                            Expanded(
+                          ),
+                          const SizedBox(width: 8),
+                          // Titre — long press pour éditer
+                          Expanded(
+                            child: GestureDetector(
+                              onLongPress: () async {
+                                final ctrl = TextEditingController(
+                                    text: task.actions[i].title);
+                                final result = await showDialog<String>(
+                                  context: ctx,
+                                  builder: (c) => AlertDialog(
+                                    title: const Text('Modifier l\'action'),
+                                    content: TextField(
+                                      controller: ctrl,
+                                      autofocus: true,
+                                      decoration: const InputDecoration(
+                                          border: OutlineInputBorder()),
+                                      onSubmitted: (v) {
+                                        if (v.trim().isNotEmpty)
+                                          Navigator.pop(c, v.trim());
+                                      },
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                          onPressed: () => Navigator.pop(c),
+                                          child: const Text('Annuler')),
+                                      FilledButton(
+                                        onPressed: () {
+                                          final v = ctrl.text.trim();
+                                          if (v.isNotEmpty)
+                                            Navigator.pop(c, v);
+                                        },
+                                        child: const Text('Enregistrer'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                ctrl.dispose();
+                                if (result != null) {
+                                  task.actions[i].title = result;
+                                  onTaskActionToggled(task.id, i,
+                                      task.actions[i].done);
+                                }
+                              },
                               child: Text(
                                 task.actions[i].title,
                                 style: TextStyle(
@@ -857,21 +899,18 @@ class _GanttTaskCard extends StatelessWidget {
                                   color: task.actions[i].done
                                       ? cs.onSurface.withOpacity(.35)
                                       : cs.onSurface.withOpacity(.8),
-                                  decoration: task.actions[i].done
-                                      ? TextDecoration.lineThrough
-                                      : null,
                                 ),
                               ),
                             ),
-                            Icon(Icons.drag_handle,
-                                size: 14,
-                                color: cs.onSurface.withOpacity(.2)),
-                          ],
+                          ),
+                          Icon(Icons.drag_handle,
+                              size: 14,
+                              color: cs.onSurface.withOpacity(.2)),
+                        ],
                         ),
                       ),
                     ),
                   ),
-                ),
               ],
               // Valider (100% ou pas de sous-actions) + bouton +
               const SizedBox(height: 8),
