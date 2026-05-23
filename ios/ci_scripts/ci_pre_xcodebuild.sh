@@ -16,11 +16,18 @@ flutter pub get
 echo "=== Precaching Flutter iOS artifacts ==="
 flutter precache --ios
 
-echo "=== Configuring git for CocoaPods (bypass proxy for BoringSSL) ==="
+echo "=== Configuring git for CocoaPods ==="
 git config --global --unset http.proxy || true
 git config --global --unset https.proxy || true
-git config --global url."https://github.com/".insteadOf "git://github.com/"
 unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy
+
+# Forcer HTTPS pour tous les URLs GitHub (git:// et http://)
+git config --global url."https://github.com/".insteadOf "git://github.com/"
+git config --global url."https://github.com/".insteadOf "http://github.com/"
+
+# Désactiver osxkeychain — n'a pas accès au Keychain dans la VM Xcode Cloud
+# et réinterprète https:// en http://, causant "Device not configured"
+git config --global credential.helper ""
 
 echo "=== Installing CocoaPods dependencies ==="
 cd "$CI_PRIMARY_REPOSITORY_PATH/ios"

@@ -8,6 +8,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.10', '23 mai 2026', [
+    (Icons.build_outlined, 'Xcode Cloud : fix CocoaPods PurchasesHybridCommon (désactivation osxkeychain + forçage HTTPS)'),
+  ]),
   _Entry('5.9', '23 mai 2026', [
     (Icons.touch_app_outlined, 'Projets iOS : tap action = éditer, appui long = réordonner, tap carte = ouvrir la tâche'),
     (Icons.emoji_events_outlined, 'Gamification : sous-actions projet branchées aux badges (comptage immédiat + persistance)'),
