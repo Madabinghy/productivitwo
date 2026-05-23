@@ -1897,7 +1897,9 @@ class _AppRootState extends State<AppRoot>
       });
       _projectsSub?.cancel();
       _projectsSub = _sync.streamProjects().listen((projects) {
-        if (mounted) setState(() => _dashboardProjects = projects);
+        if (!mounted) return;
+        setState(() => _dashboardProjects = projects);
+        _checkGanttBadges(); // vérifie les badges à chaque changement Gantt
       });
     }
 
@@ -2007,17 +2009,37 @@ class _AppRootState extends State<AppRoot>
     }
   }
 
+  // Compte tâches + sous-actions Gantt validées
+  int _ganttActionCount() {
+    final tasks = _dashboardProjects.expand((p) => p.tasks);
+    final tasksDone = tasks.where((t) => t.status == 'done').length;
+    final stepsDone = tasks.fold<int>(0, (sum, t) => sum + t.stepsDone);
+    return tasksDone + stepsDone;
+  }
+
+  // Vérifie et déclenche les badges Gantt — appelé depuis le stream ET depuis saveAndRefresh
+  void _checkGanttBadges() {
+    if (_state == null || !mounted) return;
+    final newBadges = logic.checkAndAwardBadges(
+        ganttDoneCount: _ganttActionCount());
+    if (newBadges.isNotEmpty) {
+      final meta = badgeMeta(newBadges.last.id);
+      _confettiController.play();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        duration: const Duration(seconds: 4),
+        content: Text('${meta.emoji} Badge débloqué : ${meta.label}'),
+      ));
+    }
+  }
+
   Future<void> _saveAndRefresh() async {
     if (_state == null) return;
 
     // Vérification badges + célébration (pas après une suppression)
     final skipBadge = logic.skipBadgeCheck;
     logic.skipBadgeCheck = false;
-    final ganttDone = _dashboardProjects
-        .expand((p) => p.tasks)
-        .where((t) => t.status == 'done')
-        .length;
-    final newBadges = skipBadge ? <EarnedBadge>[] : logic.checkAndAwardBadges(ganttDoneCount: ganttDone);
+    if (!skipBadge) _checkGanttBadges();
+    final newBadges = <EarnedBadge>[];  // déjà géré dans _checkGanttBadges
     if (newBadges.isNotEmpty && mounted) {
       final meta = badgeMeta(newBadges.last.id);
       _confettiController.play();

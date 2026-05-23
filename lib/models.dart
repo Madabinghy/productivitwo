@@ -952,9 +952,9 @@ BadgeMeta badgeMeta(BadgeId id) {
     case BadgeId.scoreFirst100:return const BadgeMeta('⭐', 'Journée parfaite','Première journée à 100%');
     case BadgeId.score7dAt80:  return const BadgeMeta('🌟', 'Semaine solide', '7 jours consécutifs à 80%+');
     case BadgeId.score30dAt80: return const BadgeMeta('🌟', 'Mois solide',    '30 jours consécutifs à 80%+');
-    case BadgeId.actions10:    return const BadgeMeta('🎯', '10 tâches',      '10 tâches Gantt validées');
-    case BadgeId.actions50:    return const BadgeMeta('🎯', '50 tâches',      '50 tâches Gantt validées');
-    case BadgeId.actions100:   return const BadgeMeta('🏆', '100 tâches',     '100 tâches Gantt validées');
+    case BadgeId.actions10:    return const BadgeMeta('🎯', '10 actions',      '10 tâches ou sous-actions Gantt validées');
+    case BadgeId.actions50:    return const BadgeMeta('🎯', '50 actions',      '50 tâches ou sous-actions Gantt validées');
+    case BadgeId.actions100:   return const BadgeMeta('🏆', '100 actions',     '100 tâches ou sous-actions Gantt validées');
   }
 }
 
