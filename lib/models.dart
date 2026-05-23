@@ -933,6 +933,8 @@ enum BadgeId {
   streak3, streak7, streak21, streak66, streak100,
   scoreFirst100, score7dAt80, score30dAt80,
   actions10, actions50, actions100,
+  actions200, actions300, actions500, actions750, actions1000,
+  actions1500, actions2000, actions3000, actions5000, actions7500, actions10000,
 }
 
 class BadgeMeta {
@@ -952,9 +954,20 @@ BadgeMeta badgeMeta(BadgeId id) {
     case BadgeId.scoreFirst100:return const BadgeMeta('⭐', 'Journée parfaite','Première journée à 100%');
     case BadgeId.score7dAt80:  return const BadgeMeta('🌟', 'Semaine solide', '7 jours consécutifs à 80%+');
     case BadgeId.score30dAt80: return const BadgeMeta('🌟', 'Mois solide',    '30 jours consécutifs à 80%+');
-    case BadgeId.actions10:    return const BadgeMeta('🎯', '10 actions',      '10 tâches ou sous-actions Gantt validées');
-    case BadgeId.actions50:    return const BadgeMeta('🎯', '50 actions',      '50 tâches ou sous-actions Gantt validées');
-    case BadgeId.actions100:   return const BadgeMeta('🏆', '100 actions',     '100 tâches ou sous-actions Gantt validées');
+    case BadgeId.actions10:    return const BadgeMeta('🎯', '10 actions',   '10 tâches ou sous-actions Gantt validées');
+    case BadgeId.actions50:    return const BadgeMeta('🎯', '50 actions',   '50 tâches ou sous-actions Gantt validées');
+    case BadgeId.actions100:   return const BadgeMeta('🏆', '100 actions',  '100 tâches ou sous-actions Gantt validées');
+    case BadgeId.actions200:   return const BadgeMeta('🏆', '200 actions',  '200 tâches ou sous-actions Gantt validées');
+    case BadgeId.actions300:   return const BadgeMeta('💎', '300 actions',  '300 tâches ou sous-actions Gantt validées');
+    case BadgeId.actions500:   return const BadgeMeta('💎', '500 actions',  '500 tâches ou sous-actions Gantt validées');
+    case BadgeId.actions750:   return const BadgeMeta('👑', '750 actions',   '750 tâches ou sous-actions Gantt validées');
+    case BadgeId.actions1000:  return const BadgeMeta('👑', '1 000 actions',  '1 000 tâches ou sous-actions Gantt validées');
+    case BadgeId.actions1500:  return const BadgeMeta('🌠', '1 500 actions',  '1 500 tâches ou sous-actions Gantt validées');
+    case BadgeId.actions2000:  return const BadgeMeta('🌠', '2 000 actions',  '2 000 tâches ou sous-actions Gantt validées');
+    case BadgeId.actions3000:  return const BadgeMeta('🔮', '3 000 actions',  '3 000 tâches ou sous-actions Gantt validées');
+    case BadgeId.actions5000:  return const BadgeMeta('🔮', '5 000 actions',  '5 000 tâches ou sous-actions Gantt validées');
+    case BadgeId.actions7500:  return const BadgeMeta('🌌', '7 500 actions',  '7 500 tâches ou sous-actions Gantt validées');
+    case BadgeId.actions10000: return const BadgeMeta('🌌', '10 000 actions', 'Légende Productivitwo');
   }
 }
 

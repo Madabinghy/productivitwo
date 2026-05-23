@@ -3683,6 +3683,17 @@ class AppLogic {
       case BadgeId.actions10:    return 15;
       case BadgeId.actions50:    return 50;
       case BadgeId.actions100:   return 100;
+      case BadgeId.actions200:   return 150;
+      case BadgeId.actions300:   return 200;
+      case BadgeId.actions500:   return 300;
+      case BadgeId.actions750:   return 400;
+      case BadgeId.actions1000:  return 500;
+      case BadgeId.actions1500:  return 650;
+      case BadgeId.actions2000:  return 800;
+      case BadgeId.actions3000:  return 1000;
+      case BadgeId.actions5000:  return 1500;
+      case BadgeId.actions7500:  return 2000;
+      case BadgeId.actions10000: return 3000;
     }
   }
 
@@ -3854,9 +3865,20 @@ class AppLogic {
     }
 
     // --- Tâches Gantt validées (historique total) ---
-    if (ganttDoneCount >= 10) award(BadgeId.actions10);
-    if (ganttDoneCount >= 50) award(BadgeId.actions50);
-    if (ganttDoneCount >= 100) award(BadgeId.actions100);
+    if (ganttDoneCount >= 10)    award(BadgeId.actions10);
+    if (ganttDoneCount >= 50)    award(BadgeId.actions50);
+    if (ganttDoneCount >= 100)   award(BadgeId.actions100);
+    if (ganttDoneCount >= 200)   award(BadgeId.actions200);
+    if (ganttDoneCount >= 300)   award(BadgeId.actions300);
+    if (ganttDoneCount >= 500)   award(BadgeId.actions500);
+    if (ganttDoneCount >= 750)   award(BadgeId.actions750);
+    if (ganttDoneCount >= 1000)  award(BadgeId.actions1000);
+    if (ganttDoneCount >= 1500)  award(BadgeId.actions1500);
+    if (ganttDoneCount >= 2000)  award(BadgeId.actions2000);
+    if (ganttDoneCount >= 3000)  award(BadgeId.actions3000);
+    if (ganttDoneCount >= 5000)  award(BadgeId.actions5000);
+    if (ganttDoneCount >= 7500)  award(BadgeId.actions7500);
+    if (ganttDoneCount >= 10000) award(BadgeId.actions10000);
 
     // --- Score journalier (basé sur les routines uniquement) ---
     final routineSummary = routineProgressSummaryForCurrentPeriod();
