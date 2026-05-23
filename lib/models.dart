@@ -1421,6 +1421,7 @@ class ProjectPhase {
 class ProjectTask {
   String id;
   String title;
+  String? description;
   String? phaseId;
   String? groupLabel;
   DateTime startDate;
@@ -1435,6 +1436,7 @@ class ProjectTask {
   ProjectTask({
     String? id,
     required this.title,
+    this.description,
     this.phaseId,
     this.groupLabel,
     required this.startDate,
@@ -1454,6 +1456,7 @@ class ProjectTask {
   Map<String, dynamic> toJson() => {
         'id': id,
         'title': title,
+        'description': description,
         'phaseId': phaseId,
         'groupLabel': groupLabel,
         'startDate': startDate.toIso8601String(),
@@ -1469,6 +1472,7 @@ class ProjectTask {
   static ProjectTask from(Map j) => ProjectTask(
         id: j['id'],
         title: j['title'] ?? '',
+        description: j['description'],
         phaseId: j['phaseId'],
         groupLabel: j['groupLabel'],
         startDate: _parseDate(j['startDate']),

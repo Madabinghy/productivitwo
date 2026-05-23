@@ -8,6 +8,12 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.7', '23 mai 2026', [
+    (Icons.delete_outline, 'Gantt web : suppression d\'un fichier depuis la fiche tâche'),
+    (Icons.picture_as_pdf_outlined, 'Gantt web : upload PDF (< 700 Ko) avec aperçu intégré'),
+    (Icons.notes_outlined, 'Gantt web : description de tâche éditable (tap sur le champ)'),
+    (Icons.drive_file_rename_outline, 'Gantt web : renommer une phase en tapant sur la bande'),
+  ]),
   _Entry('5.6', '23 mai 2026', [
     (Icons.touch_app_outlined, 'Focus : tap sur la tâche Gantt liée ouvre la fiche (appui long = délier)'),
     (Icons.upload_file_outlined, 'Gantt web : upload de fichiers dans une tâche (txt, md, html, json, images…)'),

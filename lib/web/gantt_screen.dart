@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:html' as html;
 import 'dart:math';
 import 'dart:ui' as ui;
@@ -196,6 +197,50 @@ class _GanttScreenState extends State<GanttScreen> {
         onProjectUpdated: (p) => setState(() => _project = p),
       ),
     );
+  }
+
+  Future<void> _editPhase(ProjectPhase phase) async {
+    final labelCtrl = TextEditingController(text: phase.label);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Renommer la phase'),
+        content: TextField(
+          controller: labelCtrl,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Nom de la phase',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (_) => Navigator.pop(ctx, true),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
+          FilledButton(
+            onPressed: () {
+              if (labelCtrl.text.trim().isEmpty) return;
+              Navigator.pop(ctx, true);
+            },
+            child: const Text('Renommer'),
+          ),
+        ],
+      ),
+    );
+    final newLabel = labelCtrl.text.trim();
+    labelCtrl.dispose();
+    if (confirmed != true || newLabel.isEmpty || !mounted) return;
+
+    setState(() {
+      for (final p in _project.phases) {
+        if (p.id == phase.id) p.label = newLabel;
+      }
+      // Synchronise le groupLabel des tâches liées
+      for (final t in _project.tasks) {
+        if (t.phaseId == phase.id) t.groupLabel = newLabel;
+      }
+    });
+    await _sync.saveProject(_project);
+    await _sync.saveProjectTasks(_project.id, _project.tasks);
   }
 
   Future<void> _addTask() async {
@@ -421,6 +466,7 @@ class _GanttScreenState extends State<GanttScreen> {
             forceLight: _forceLight,
             onToggleLight: () => setState(() => _forceLight = !_forceLight),
             onAddTask: _addTask,
+            onPhaseTap: _editPhase,
           )),
         ],
       ),
@@ -905,12 +951,14 @@ class _ZoomHint extends StatelessWidget {
 class _GanttBody extends StatefulWidget {
   final Project project;
   final void Function(ProjectTask)? onTaskTap;
+  final void Function(ProjectPhase)? onPhaseTap;
   final bool forceLight;
   final VoidCallback onToggleLight;
   final VoidCallback? onAddTask;
   const _GanttBody({
     required this.project,
     this.onTaskTap,
+    this.onPhaseTap,
     required this.forceLight,
     required this.onToggleLight,
     this.onAddTask,
@@ -1054,6 +1102,7 @@ class _GanttBodyState extends State<_GanttBody> {
                   totalWeeks: weeks,
                   dayView: _dayView,
                   onTaskTap: widget.onTaskTap,
+                  onPhaseTap: widget.onPhaseTap,
                 ),
               ),
             ),
@@ -1072,6 +1121,7 @@ class _GanttGrid extends StatelessWidget {
   final int totalWeeks;
   final bool dayView;
   final void Function(ProjectTask)? onTaskTap;
+  final void Function(ProjectPhase)? onPhaseTap;
 
   const _GanttGrid({
     required this.project,
@@ -1079,6 +1129,7 @@ class _GanttGrid extends StatelessWidget {
     required this.totalWeeks,
     this.dayView = false,
     this.onTaskTap,
+    this.onPhaseTap,
   });
 
   int get totalDays {
@@ -1104,6 +1155,7 @@ class _GanttGrid extends StatelessWidget {
           totalDays: totalDays,
           dayView: dayView,
           timeW: timeW,
+          onPhaseTap: onPhaseTap,
         ),
         // ── Week header ───────────────────────────────────────
         _WeekHeaderRow(
@@ -1150,6 +1202,7 @@ class _PhaseHeaderRow extends StatelessWidget {
   final int totalDays;
   final bool dayView;
   final double timeW;
+  final void Function(ProjectPhase)? onPhaseTap;
 
   const _PhaseHeaderRow({
     required this.project,
@@ -1158,6 +1211,7 @@ class _PhaseHeaderRow extends StatelessWidget {
     required this.totalDays,
     required this.dayView,
     required this.timeW,
+    this.onPhaseTap,
   });
 
   double _toX(int inDays) =>
@@ -1195,22 +1249,36 @@ class _PhaseHeaderRow extends StatelessWidget {
                   top: 0,
                   width: w,
                   height: _kPhaseH,
-                  child: Container(
-                    margin: const EdgeInsets.only(right: 1),
-                    decoration: BoxDecoration(
-                      color: bg,
-                      borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(4)),
-                    ),
-                    alignment: Alignment.center,
-                    padding: const EdgeInsets.symmetric(horizontal: 6),
-                    child: Text(
-                      phase.label,
-                      style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: fg),
-                      overflow: TextOverflow.ellipsis,
+                  child: GestureDetector(
+                    onTap: onPhaseTap != null ? () => onPhaseTap!(phase) : null,
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 1),
+                      decoration: BoxDecoration(
+                        color: bg,
+                        borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(4)),
+                      ),
+                      alignment: Alignment.center,
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              phase.label,
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: fg),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (onPhaseTap != null) ...[
+                            const SizedBox(width: 3),
+                            Icon(Icons.edit_outlined, size: 9, color: fg.withOpacity(.6)),
+                          ],
+                        ],
+                      ),
                     ),
                   ),
                 );
@@ -2066,6 +2134,47 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
               ),
             ),
 
+            // Description (éditable au tap)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+              child: GestureDetector(
+                onTap: _editDescription,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerLowest,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: cs.outlineVariant.withOpacity(.3)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _task.description?.isNotEmpty == true
+                              ? _task.description!
+                              : 'Ajouter une description…',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: _task.description?.isNotEmpty == true
+                                ? cs.onSurface.withOpacity(.75)
+                                : cs.onSurface.withOpacity(.35),
+                            fontStyle: _task.description?.isNotEmpty == true
+                                ? FontStyle.normal
+                                : FontStyle.italic,
+                          ),
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Icon(Icons.edit_outlined, size: 12, color: cs.onSurface.withOpacity(.25)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
             // Tab bar
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
@@ -2184,6 +2293,44 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
     if (mounted) Navigator.pop(context);
   }
 
+  // ── Description ─────────────────────────────────────────────────────────────
+
+  Future<void> _editDescription() async {
+    final ctrl = TextEditingController(text: _task.description ?? '');
+    final result = await showDialog<String?>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Description'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          maxLines: 6,
+          minLines: 3,
+          decoration: const InputDecoration(
+            hintText: 'Contexte, objectifs, notes…',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+          if (_task.description?.isNotEmpty == true)
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, ''),
+              child: Text('Effacer', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+            ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text),
+            child: const Text('Enregistrer'),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (result == null) return;
+    setState(() => _task.description = result.isEmpty ? null : result);
+    _save();
+  }
+
   // ── Upload fichier ───────────────────────────────────────────────────────────
 
   static const _textExts = {
@@ -2212,7 +2359,22 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
       final reader = html.FileReader();
       String content;
 
-      if (_imageExts.contains(ext)) {
+      if (ext == 'pdf') {
+        // Vérifie la taille (Firestore limite à 1 Mo, base64 ×1.33)
+        if (file.size > 700 * 1024) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('PDF trop grand (max ~700 Ko). Compresse-le d\'abord.'),
+            ));
+          }
+          setState(() => _uploading = false);
+          return;
+        }
+        reader.readAsDataUrl(file);
+        await reader.onLoad.first;
+        // Stocker le data URL brut — le viewer détecte et crée un Blob URL
+        content = reader.result as String;
+      } else if (_imageExts.contains(ext)) {
         reader.readAsDataUrl(file);
         await reader.onLoad.first;
         final dataUrl = reader.result as String;
@@ -2612,11 +2774,42 @@ class _DocCard extends StatelessWidget {
                 tooltip: 'Ouvrir',
                 onPressed: () => _openViewer(context),
               ),
+              IconButton(
+                icon: Icon(Icons.delete_outline,
+                    size: 18, color: cs.onSurface.withOpacity(.35)),
+                tooltip: 'Supprimer',
+                onPressed: () => _confirmDelete(context),
+              ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    final cs = Theme.of(context).colorScheme;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer ce fichier ?'),
+        content: Text('Supprimer "${doc['title']}" ? Cette action est irréversible.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: cs.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await sync.deleteDocument(doc['id'] as String);
+    onRefresh();
   }
 }
 
@@ -2742,11 +2935,22 @@ class _GanttHtmlViewerState extends State<_GanttHtmlViewer> {
     _viewId = 'gantt-doc-${widget.docId}';
     // ignore: undefined_prefixed_name
     ui_web.platformViewRegistry.registerViewFactory(_viewId, (_) {
-      return html.IFrameElement()
-        ..srcdoc = widget.htmlContent
+      final iframe = html.IFrameElement()
         ..style.border = 'none'
         ..style.width = '100%'
         ..style.height = '100%';
+
+      final content = widget.htmlContent;
+      if (content.startsWith('data:application/pdf;base64,')) {
+        // Créer un Blob URL pour que le PDF s'affiche dans le viewer
+        final base64Data = content.substring('data:application/pdf;base64,'.length);
+        final bytes = base64Decode(base64Data);
+        final blob = html.Blob([bytes], 'application/pdf');
+        iframe.src = html.Url.createObjectUrl(blob);
+      } else {
+        iframe.srcdoc = content;
+      }
+      return iframe;
     });
   }
 
