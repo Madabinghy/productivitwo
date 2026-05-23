@@ -222,7 +222,12 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                 TabBarView(
                   controller: _mainTabs,
                   children: [
-                    _buildBody(cs),
+                    _WebProjectsListView(
+                      projects: _projects,
+                      domains: _domains,
+                      sync: _sync,
+                      onRefresh: _load,
+                    ),
                     _FocusView(
                       projects: _projects
                           .where((p) => p.status != 'archived')
@@ -251,242 +256,6 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                   ),
               ],
             ),
-    );
-  }
-
-  Widget _buildBody(ColorScheme cs) {
-    if (_projects.isEmpty) {
-      return Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.account_tree_outlined,
-                    size: 56, color: cs.onSurface.withOpacity(0.15)),
-                const SizedBox(height: 20),
-                Text('Aucun projet Gantt',
-                    style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: cs.onSurface.withOpacity(0.4))),
-                const SizedBox(height: 8),
-
-                if (_hasIosData) ...[
-                  // ── Connecté iOS — invite à créer avec Claude ─────────
-                  Text(
-                    'Ton compte iOS est connecté ✓\nDemande à Claude de créer ton premier Gantt.',
-                    style: TextStyle(
-                        fontSize: 14,
-                        color: cs.primary.withOpacity(0.8),
-                        height: 1.5),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 20),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: cs.surfaceContainerHighest.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color: cs.outlineVariant.withOpacity(0.4)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Exemple de prompt Claude',
-                            style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: cs.onSurface.withOpacity(0.45),
-                                letterSpacing: 0.5)),
-                        const SizedBox(height: 8),
-                        Text(
-                          '"Crée un plan de lancement pour mon projet '
-                          'sur 3 mois avec des phases et des jalons"',
-                          style: TextStyle(
-                              fontSize: 13,
-                              fontStyle: FontStyle.italic,
-                              color: cs.primary,
-                              height: 1.4),
-                        ),
-                      ],
-                    ),
-                  ),
-                ] else ...[
-                  // ── Pas connecté — invite à connecter iOS ─────────────
-                  const SizedBox(height: 16),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: cs.primaryContainer.withOpacity(0.35),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                          color: cs.primary.withOpacity(0.2), width: 1),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(Icons.smartphone_outlined,
-                                size: 18, color: cs.primary),
-                            const SizedBox(width: 8),
-                            Text('Tu as Productivitwo sur iPhone ?',
-                                style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700,
-                                    color: cs.primary)),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Connecte ton compte iOS pour que Claude '
-                          'accède à tes activités, routines et objectifs.',
-                          style: TextStyle(
-                              fontSize: 13,
-                              color: cs.onSurface.withOpacity(0.65),
-                              height: 1.4),
-                        ),
-                        const SizedBox(height: 14),
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton.icon(
-                            icon: const Icon(Icons.link_outlined, size: 16),
-                            label: const Text('Connecter mon compte iOS'),
-                            onPressed: () => _showLinkIosDialog(context),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'ou génère ton premier Gantt avec Claude',
-                    style: TextStyle(
-                        fontSize: 13,
-                        color: cs.onSurface.withOpacity(0.35)),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    // Séparer actifs et archivés
-    final allActive = _projects.where((p) => p.status != 'archived').toList();
-    final archived = _projects.where((p) => p.status == 'archived').toList();
-
-    // Filtre par domaine
-    final active = _selectedDomainId == null
-        ? allActive
-        : allActive.where((p) => p.domainId == _selectedDomainId).toList();
-
-    // Grouper les actifs filtrés par objectif stratégique
-    final withObj = <StrategicObjective, List<Project>>{};
-    final withoutObj = <Project>[];
-    for (final p in active) {
-      final obj = _objectiveFor(p);
-      if (obj != null) {
-        withObj.putIfAbsent(obj, () => []).add(p);
-      } else {
-        withoutObj.add(p);
-      }
-    }
-
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          // ── Filtre par domaine ─────────────────────────────────────────
-          if (_domains.isNotEmpty) ...[
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children: [
-                FilterChip(
-                  label: const Text('Tous'),
-                  selected: _selectedDomainId == null,
-                  onSelected: (_) => setState(() => _selectedDomainId = null),
-                ),
-                for (int i = 0; i < _domains.length; i++)
-                  FilterChip(
-                    label: Text(_domains[i].name),
-                    selected: _selectedDomainId == _domains[i].id,
-                    selectedColor: (_domains[i].colorValue != null
-                        ? Color(_domains[i].colorValue!)
-                        : kDomainPalette[i % kDomainPalette.length])
-                        .withOpacity(0.25),
-                    onSelected: (_) => setState(() =>
-                        _selectedDomainId =
-                            _selectedDomainId == _domains[i].id ? null : _domains[i].id),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 20),
-          ],
-
-          // Projets actifs avec objectif stratégique
-          for (final entry in withObj.entries) ...[
-            _ObjectiveHeader(objective: entry.key),
-            const SizedBox(height: 12),
-            for (final p in entry.value) ...[
-              _ProjectCard(
-                project: p,
-                domains: _domains,
-                documents: _documentsByProject[p.id] ?? [],
-                sync: _sync,
-                onDocumentDeleted: _load,
-                onTap: () => Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => GanttScreen(project: p, domains: _domains))),
-                onArchive: () => _archiveProject(p, true),
-              ),
-              const SizedBox(height: 10),
-            ],
-            const SizedBox(height: 20),
-          ],
-          // Projets actifs sans objectif
-          if (withoutObj.isNotEmpty) ...[
-            if (withObj.isNotEmpty) ...[
-              Divider(color: cs.outlineVariant.withOpacity(0.4)),
-              const SizedBox(height: 16),
-            ],
-            for (final p in withoutObj) ...[
-              _ProjectCard(
-                project: p,
-                domains: _domains,
-                documents: _documentsByProject[p.id] ?? [],
-                sync: _sync,
-                onDocumentDeleted: _load,
-                onTap: () => Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => GanttScreen(project: p, domains: _domains))),
-                onArchive: () => _archiveProject(p, true),
-              ),
-              const SizedBox(height: 10),
-            ],
-          ],
-
-          // ── Section En veille ─────────────────────────────────────────
-          if (archived.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            _ArchivedSection(
-              projects: archived,
-              onRestore: (p) => _archiveProject(p, false),
-              onTap: (p) => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => GanttScreen(project: p, domains: _domains))),
-              onDelete: (p) => _deleteProject(p),
-            ),
-          ],
-        ],
-      ),
     );
   }
 
@@ -648,7 +417,7 @@ class _FocusView extends StatelessWidget {
           children: [
             // ── Gantt column (70%) ─────────────────────────────────────────
             Expanded(
-              flex: 7,
+              flex: 8,
               child: _buildGantt(
                 context,
                 cs,
@@ -659,14 +428,14 @@ class _FocusView extends StatelessWidget {
                 domainGroups,
               ),
             ),
-            // ── Sidebar (30%) ──────────────────────────────────────────────
+            // ── Sidebar (20%) ──────────────────────────────────────────────
             SizedBox(
               width: 1,
               child: VerticalDivider(
                   color: cs.outlineVariant.withOpacity(0.4), width: 1),
             ),
             Expanded(
-              flex: 3,
+              flex: 2,
               child: _buildSidebar(
                   cs, today, weekStart, weekEnd, overduePairs, allPairs, projects),
             ),
@@ -4136,6 +3905,547 @@ class _Arrow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 24),
       child: Icon(Icons.sync_alt_rounded,
           size: 18, color: cs.onSurface.withOpacity(0.2)),
+    );
+  }
+}
+
+// ── Vue Projets style iOS ─────────────────────────────────────────────────────
+
+class _WebProjectsListView extends StatefulWidget {
+  final List<Project> projects;
+  final List<Domain> domains;
+  final FirestoreSync sync;
+  final VoidCallback onRefresh;
+
+  const _WebProjectsListView({
+    required this.projects,
+    required this.domains,
+    required this.sync,
+    required this.onRefresh,
+  });
+
+  @override
+  State<_WebProjectsListView> createState() => _WebProjectsListViewState();
+}
+
+class _WebProjectsListViewState extends State<_WebProjectsListView> {
+  bool _showOutOfScope = false;
+  bool _showArchived = false;
+  String? _selectedDomainId;
+
+  Color _domainColor(String? domainId, ColorScheme cs) {
+    if (domainId == null) return cs.primary;
+    final idx = widget.domains.indexWhere((d) => d.id == domainId);
+    if (idx < 0) return cs.primary;
+    final d = widget.domains[idx];
+    if (d.colorValue != null) return Color(d.colorValue!);
+    return kDomainPalette[idx % kDomainPalette.length];
+  }
+
+  void _openGantt(BuildContext context, Project project, {String? taskId}) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GanttScreen(
+          project: project,
+          targetTaskId: taskId,
+          domains: widget.domains,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final now = DateTime.now();
+    final todayD = DateTime(now.year, now.month, now.day);
+
+    final allActive = widget.projects.where((p) => p.status != 'archived').toList();
+    final archived = widget.projects.where((p) => p.status == 'archived').toList()
+      ..sort((a, b) => a.title.compareTo(b.title));
+
+    final filtered = _selectedDomainId == null
+        ? allActive
+        : allActive.where((p) => p.domainId == _selectedDomainId).toList();
+
+    // Tâches actives aujourd'hui par domaine
+    final byDomain = <String?, List<({Project project, ProjectTask task})>>{};
+    for (final p in filtered) {
+      for (final t in p.tasks) {
+        if (t.status == 'done' || t.status == 'skipped') continue;
+        if (t.startDate.isAfter(todayD)) continue;
+        byDomain.putIfAbsent(p.domainId, () => []).add((project: p, task: t));
+      }
+    }
+
+    // Hors scope
+    final projectsWithTodayTasks = <String>{};
+    for (final pair in byDomain.values.expand((l) => l)) {
+      projectsWithTodayTasks.add(pair.project.id);
+    }
+    final outOfScope = filtered
+        .where((p) => !projectsWithTodayTasks.contains(p.id))
+        .toList();
+
+    return RefreshIndicator(
+      onRefresh: () async => widget.onRefresh(),
+      child: ListView(
+        padding: const EdgeInsets.only(bottom: 48),
+        children: [
+          // Filtres domaine
+          if (widget.domains.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  FilterChip(
+                    label: const Text('Tous'),
+                    selected: _selectedDomainId == null,
+                    onSelected: (_) => setState(() => _selectedDomainId = null),
+                  ),
+                  for (int i = 0; i < widget.domains.length; i++)
+                    FilterChip(
+                      label: Text(widget.domains[i].name),
+                      selected: _selectedDomainId == widget.domains[i].id,
+                      selectedColor: _domainColor(widget.domains[i].id, cs)
+                          .withOpacity(0.25),
+                      onSelected: (_) => setState(() =>
+                          _selectedDomainId =
+                              _selectedDomainId == widget.domains[i].id
+                                  ? null
+                                  : widget.domains[i].id),
+                    ),
+                ],
+              ),
+            ),
+
+          // Tâches actives ou résumé projets
+          if (byDomain.isEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+              child: Text(
+                'AUCUNE TÂCHE DÉMARRÉE AUJOURD\'HUI',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.2,
+                  color: cs.onSurface.withOpacity(.4),
+                ),
+              ),
+            ),
+            for (final p in filtered)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+                child: _WebProjectSummaryCard(
+                  project: p,
+                  color: _domainColor(p.domainId, cs),
+                  cs: cs,
+                  onTap: () => _openGantt(context, p),
+                ),
+              ),
+          ] else
+            ..._buildDomainSections(context, cs, byDomain, todayD),
+
+          // Hors scope
+          if (outOfScope.isNotEmpty) ...[
+            _WebCollapsibleHeader(
+              label: 'HORS SCOPE (${outOfScope.length})',
+              expanded: _showOutOfScope,
+              onToggle: () =>
+                  setState(() => _showOutOfScope = !_showOutOfScope),
+              cs: cs,
+            ),
+            if (_showOutOfScope)
+              for (final p in outOfScope)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+                  child: _WebProjectSummaryCard(
+                    project: p,
+                    color: _domainColor(p.domainId, cs),
+                    cs: cs,
+                    onTap: () => _openGantt(context, p),
+                  ),
+                ),
+          ],
+
+          // En veille
+          if (archived.isNotEmpty) ...[
+            _WebCollapsibleHeader(
+              label: 'EN VEILLE (${archived.length})',
+              expanded: _showArchived,
+              onToggle: () =>
+                  setState(() => _showArchived = !_showArchived),
+              cs: cs,
+            ),
+            if (_showArchived)
+              for (final p in archived)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+                  child: _WebProjectSummaryCard(
+                    project: p,
+                    color: _domainColor(p.domainId, cs),
+                    cs: cs,
+                    onTap: () => _openGantt(context, p),
+                  ),
+                ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildDomainSections(
+    BuildContext context,
+    ColorScheme cs,
+    Map<String?, List<({Project project, ProjectTask task})>> byDomain,
+    DateTime todayD,
+  ) {
+    final widgets = <Widget>[];
+    final knownIds = widget.domains.map((d) => d.id).toSet();
+    final orderedIds = [
+      ...widget.domains.map((d) => d.id).where(byDomain.containsKey),
+      ...byDomain.keys.where((k) => k != null && !knownIds.contains(k)),
+      if (byDomain.containsKey(null)) null,
+    ];
+
+    for (final domainId in orderedIds) {
+      final pairs = byDomain[domainId]!;
+      final domain = domainId != null
+          ? widget.domains.where((d) => d.id == domainId).firstOrNull
+          : null;
+      final color = _domainColor(domainId, cs);
+
+      // Header domaine
+      widgets.add(Padding(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+        child: Row(children: [
+          Container(
+            width: 8, height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            (domain?.name ?? 'Sans domaine').toUpperCase(),
+            style: TextStyle(
+              fontSize: 11, fontWeight: FontWeight.bold,
+              letterSpacing: 1, color: color,
+            ),
+          ),
+        ]),
+      ));
+
+      // Grouper par projet
+      final byProject = <String, List<ProjectTask>>{};
+      final projectMap = <String, Project>{};
+      for (final pair in pairs) {
+        byProject.putIfAbsent(pair.project.id, () => []).add(pair.task);
+        projectMap[pair.project.id] = pair.project;
+      }
+
+      for (final projectId in byProject.keys) {
+        final project = projectMap[projectId]!;
+        final tasks = byProject[projectId]!;
+
+        if (byProject.length > 1)
+          widgets.add(Padding(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 4),
+            child: Text(project.title,
+                style: TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w700,
+                    color: cs.onSurface.withOpacity(.55))),
+          ));
+
+        // Grouper par phase
+        final phaseMap = {for (final ph in project.phases) ph.id: ph};
+        final byPhase = <String?, List<ProjectTask>>{};
+        for (final t in tasks) byPhase.putIfAbsent(t.phaseId, () => []).add(t);
+
+        final orderedPhaseIds = [
+          ...project.phases.map((ph) => ph.id).where(byPhase.containsKey),
+          if (byPhase.containsKey(null)) null,
+        ];
+
+        for (final phaseId in orderedPhaseIds) {
+          final phaseTasks = byPhase[phaseId]!;
+          final phase = phaseId != null ? phaseMap[phaseId] : null;
+
+          if (phase != null) {
+            Color phaseColor = color;
+            if (phase.color != null) {
+              try {
+                final hex = phase.color!.replaceAll('#', '');
+                phaseColor = Color(int.parse('FF$hex', radix: 16));
+              } catch (_) {}
+            }
+            widgets.add(Padding(
+              padding: const EdgeInsets.fromLTRB(24, 10, 24, 4),
+              child: Row(children: [
+                Container(
+                  width: 6, height: 6,
+                  decoration: BoxDecoration(
+                      color: phaseColor, shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  phase.label.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 10, fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8,
+                    color: cs.onSurface.withOpacity(.45),
+                  ),
+                ),
+              ]),
+            ));
+          }
+
+          for (final task in phaseTasks) {
+            widgets.add(Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+              child: _WebTaskCard(
+                project: project,
+                task: task,
+                color: color,
+                projectTitle: byProject.length == 1 ? project.title : '',
+                today: todayD,
+                cs: cs,
+                onTap: () => _openGantt(context, project, taskId: task.id),
+              ),
+            ));
+          }
+        }
+      }
+    }
+
+    return widgets;
+  }
+}
+
+// ── Carte tâche (style iOS GoalsView) ────────────────────────────────────────
+
+class _WebTaskCard extends StatelessWidget {
+  final Project project;
+  final ProjectTask task;
+  final Color color;
+  final String projectTitle;
+  final DateTime today;
+  final ColorScheme cs;
+  final VoidCallback onTap;
+
+  const _WebTaskCard({
+    required this.project,
+    required this.task,
+    required this.color,
+    required this.projectTitle,
+    required this.today,
+    required this.cs,
+    required this.onTap,
+  });
+
+  String _fmt(DateTime d) {
+    const m = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin',
+                'juil', 'aoû', 'sep', 'oct', 'nov', 'déc'];
+    return '${d.day} ${m[d.month - 1]}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDone = task.status == 'done';
+    final isLate = task.endDate != null &&
+        task.endDate!.isBefore(today) &&
+        !isDone;
+    final daysLate = isLate ? today.difference(task.endDate!).inDays : 0;
+    final doneActions = task.actions.where((a) => a.done).length;
+    final totalActions = task.actions.length;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withOpacity(.35),
+          borderRadius: BorderRadius.circular(12),
+          border: Border(
+            left: BorderSide(color: isLate ? cs.error : color, width: 3),
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (projectTitle.isNotEmpty)
+                    Text(
+                      projectTitle,
+                      style: TextStyle(
+                        fontSize: 11, fontWeight: FontWeight.w600,
+                        color: color,
+                      ),
+                    ),
+                  Text(
+                    task.title,
+                    style: TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w600,
+                      color: cs.onSurface.withOpacity(isDone ? .4 : .9),
+                      decoration: isDone ? TextDecoration.lineThrough : null,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(children: [
+                    if (isLate)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: cs.errorContainer,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '−$daysLate j',
+                          style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: cs.onErrorContainer),
+                        ),
+                      )
+                    else if (task.endDate != null)
+                      Text(
+                        _fmt(task.endDate!),
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: cs.onSurface.withOpacity(.4)),
+                      ),
+                    if (totalActions > 0) ...[
+                      const SizedBox(width: 8),
+                      Icon(Icons.checklist_outlined,
+                          size: 12,
+                          color: cs.onSurface.withOpacity(.4)),
+                      const SizedBox(width: 3),
+                      Text(
+                        '$doneActions/$totalActions',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: cs.onSurface.withOpacity(.4)),
+                      ),
+                    ],
+                  ]),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right,
+                size: 16, color: cs.onSurface.withOpacity(.25)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Carte résumé projet ───────────────────────────────────────────────────────
+
+class _WebProjectSummaryCard extends StatelessWidget {
+  final Project project;
+  final Color color;
+  final ColorScheme cs;
+  final VoidCallback onTap;
+
+  const _WebProjectSummaryCard({
+    required this.project,
+    required this.color,
+    required this.cs,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final total = project.tasks.length;
+    final done = project.tasks.where((t) => t.status == 'done').length;
+    final progress = total > 0 ? done / total : 0.0;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withOpacity(.4),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(project.title,
+                    style: const TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
+                LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 3,
+                  borderRadius: BorderRadius.circular(2),
+                  backgroundColor: cs.onSurface.withOpacity(.08),
+                  color: color,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '$done / $total tâches',
+                  style: TextStyle(
+                      fontSize: 11, color: cs.onSurface.withOpacity(.4)),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Icon(Icons.chevron_right,
+              size: 16, color: cs.onSurface.withOpacity(.25)),
+        ]),
+      ),
+    );
+  }
+}
+
+// ── Header section repliable ──────────────────────────────────────────────────
+
+class _WebCollapsibleHeader extends StatelessWidget {
+  final String label;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final ColorScheme cs;
+
+  const _WebCollapsibleHeader({
+    required this.label,
+    required this.expanded,
+    required this.onToggle,
+    required this.cs,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onToggle,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+        child: Row(children: [
+          Icon(
+            expanded ? Icons.expand_less : Icons.expand_more,
+            size: 16, color: cs.onSurface.withOpacity(.4),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11, fontWeight: FontWeight.bold,
+              letterSpacing: 1.1,
+              color: cs.onSurface.withOpacity(.45),
+            ),
+          ),
+        ]),
+      ),
     );
   }
 }
