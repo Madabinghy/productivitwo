@@ -45,6 +45,7 @@ Future<void> showGanttTaskDetailDialog(
 }) {
   return showDialog<void>(
     context: context,
+    useRootNavigator: true,
     builder: (_) => _TaskDetailDialog(
       project: project,
       task: task,
@@ -1257,7 +1258,6 @@ class _TaskRow extends StatelessWidget {
                           color: isDone
                               ? Theme.of(context).colorScheme.onSurface.withOpacity(0.35)
                               : Theme.of(context).colorScheme.onSurface.withOpacity(0.85),
-                          decoration: isDone ? TextDecoration.lineThrough : null,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
