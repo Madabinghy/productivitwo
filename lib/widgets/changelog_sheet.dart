@@ -8,6 +8,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.8', '23 mai 2026', [
+    (Icons.check_circle_outline, 'Projets iOS : section RÉALISÉ — projets avec toutes leurs tâches ok, au-dessus de Hors scope'),
+  ]),
   _Entry('5.7', '23 mai 2026', [
     (Icons.delete_outline, 'Gantt web : suppression d\'un fichier depuis la fiche tâche'),
     (Icons.picture_as_pdf_outlined, 'Gantt web : upload PDF (< 700 Ko) avec aperçu intégré'),

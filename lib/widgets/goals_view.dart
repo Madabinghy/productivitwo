@@ -27,6 +27,7 @@ class _GoalsViewState extends State<GoalsView> {
   List<Project> _projects = [];
   final _sync = FirestoreSync();
   StreamSubscription<List<Project>>? _projectsSub;
+  bool _showRealized = false;
   bool _showOutOfScope = false;
   bool _showArchived = false;
 
@@ -57,9 +58,21 @@ class _GoalsViewState extends State<GoalsView> {
     final archivedProjects = _projects.where((p) => p.status == 'archived').toList()
       ..sort((a, b) => a.title.compareTo(b.title));
 
+    // Projets où TOUTES les tâches démarrées (non-skippées) sont done → RÉALISÉ
+    final doneInScopeProjects = activeProjects.where((p) {
+      final inScope = p.tasks
+          .where((t) => t.status != 'skipped' && !t.startDate.isAfter(todayD))
+          .toList();
+      return inScope.isNotEmpty && inScope.every((t) => t.status == 'done');
+    }).toList()..sort((a, b) => a.title.compareTo(b.title));
+    final doneIds = doneInScopeProjects.map((p) => p.id).toSet();
+
+    // Projets affichés dans la liste principale (excluant ceux entièrement réalisés)
+    final mainProjects = activeProjects.where((p) => !doneIds.contains(p.id)).toList();
+
     // Projets avec au moins une tâche démarrée (done incluses pour accès au toggle)
     final projectsWithTodayTasks = <String>{};
-    for (final p in activeProjects) {
+    for (final p in mainProjects) {
       for (final t in p.tasks) {
         if (t.status == 'skipped') continue;
         if (!t.startDate.isAfter(todayD)) {
@@ -68,7 +81,7 @@ class _GoalsViewState extends State<GoalsView> {
         }
       }
     }
-    final outOfScope = activeProjects
+    final outOfScope = mainProjects
         .where((p) => !projectsWithTodayTasks.contains(p.id))
         .toList();
 
@@ -81,7 +94,17 @@ class _GoalsViewState extends State<GoalsView> {
           ? _buildEmptyState(context, cs)
           : CustomScrollView(
               slivers: [
-                ..._buildProjectSections(context, activeProjects, todayD),
+                ..._buildProjectSections(context, mainProjects, todayD),
+                // Réalisé
+                if (doneInScopeProjects.isNotEmpty)
+                  ..._buildCollapsibleSection(
+                    context, cs,
+                    label: 'RÉALISÉ (${doneInScopeProjects.length})',
+                    expanded: _showRealized,
+                    onToggle: () => setState(() => _showRealized = !_showRealized),
+                    projects: doneInScopeProjects,
+                    checkmark: true,
+                  ),
                 // Hors scope
                 if (outOfScope.isNotEmpty)
                   ..._buildCollapsibleSection(
@@ -432,6 +455,7 @@ class _GoalsViewState extends State<GoalsView> {
     required List<Project> projects,
     bool showArchiveButton = false,
     bool showRestoreButton = false,
+    bool checkmark = false,
   }) {
     return [
       SliverToBoxAdapter(
@@ -465,23 +489,40 @@ class _GoalsViewState extends State<GoalsView> {
               final progress = totalTasks > 0 ? doneTasks / totalTasks : 0.0;
               final dColor = domainColor(p.domainId, domains) ?? cs.primary;
 
-              return Padding(
+              return InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => showProjectSheet(context, project: p, domains: domains),
+                child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 child: Container(
                   padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
                   decoration: BoxDecoration(
-                    color: cs.surfaceContainerHighest.withOpacity(.3),
+                    color: checkmark
+                        ? Colors.green.withOpacity(.06)
+                        : cs.surfaceContainerHighest.withOpacity(.3),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: cs.outlineVariant.withOpacity(.25)),
+                    border: Border.all(
+                      color: checkmark
+                          ? Colors.green.withOpacity(.25)
+                          : cs.outlineVariant.withOpacity(.25),
+                    ),
                   ),
                   child: Row(
                     children: [
-                      Container(
-                        width: 8, height: 8,
-                        decoration: BoxDecoration(
-                            color: dColor.withOpacity(.5), shape: BoxShape.circle),
-                      ),
-                      const SizedBox(width: 10),
+                      if (checkmark)
+                        const Padding(
+                          padding: EdgeInsets.only(right: 10),
+                          child: Icon(Icons.check_circle_outline,
+                              size: 16, color: Colors.green),
+                        )
+                      else ...[
+                        Container(
+                          width: 8, height: 8,
+                          decoration: BoxDecoration(
+                              color: dColor.withOpacity(.5), shape: BoxShape.circle),
+                        ),
+                        const SizedBox(width: 10),
+                      ],
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -490,16 +531,20 @@ class _GoalsViewState extends State<GoalsView> {
                                 style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600,
-                                    color: cs.onSurface.withOpacity(.6))),
+                                    color: checkmark
+                                        ? Colors.green.withOpacity(.8)
+                                        : cs.onSurface.withOpacity(.6))),
                             if (totalTasks > 0)
                               Text('$doneTasks/$totalTasks tâches',
                                   style: TextStyle(
                                       fontSize: 11,
-                                      color: cs.onSurface.withOpacity(.35))),
+                                      color: checkmark
+                                          ? Colors.green.withOpacity(.5)
+                                          : cs.onSurface.withOpacity(.35))),
                           ],
                         ),
                       ),
-                      if (totalTasks > 0)
+                      if (totalTasks > 0 && !checkmark)
                         SizedBox(
                           width: 30, height: 30,
                           child: CircularProgressIndicator(
@@ -536,7 +581,7 @@ class _GoalsViewState extends State<GoalsView> {
                     ],
                   ),
                 ),
-              );
+              ));
             },
             childCount: projects.length,
           ),
