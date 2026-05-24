@@ -95,7 +95,6 @@ class FirestoreSync {
         _pushCollection(st.habitHits.map((e) => e.toJson()).toList(), 'habitHits'),
         _pushCollection(st.dayPlan.map((e) => e.toJson()).toList(), 'dayPlan'),
         _pushCollection(st.goals.map((e) => e.toJson()).toList(), 'goals'),
-        _pushCollection(st.recurringActions.map((e) => e.toJson()).toList(), 'recurringActions'),
         _pushCollection(st.blocks.map((e) => e.toJson()).toList(), 'blocks'),
         _pushCollection(st.earnedBadges.map((e) => e.toJson()).toList(), 'badges'),
         _meta().set(_encodeMeta(st), SetOptions(merge: true)),
@@ -140,7 +139,6 @@ class FirestoreSync {
         _col('habitHits').get(),
         _col('dayPlan').get(),
         _col('goals').get(),
-        _col('recurringActions').get(),
         _col('blocks').get(),
         _col('badges').get(),
       ]);
@@ -166,9 +164,8 @@ class FirestoreSync {
         habitHits: docs(5).map(HabitHit.from).toList(),
         dayPlan: docs(6).map(DayPlanItem.from).toList(),
         goals: docs(7).map(Goal.from).toList(),
-        recurringActions: docs(8).map(RecurringAction.from).toList(),
-        blocks: docs(9).map(DayBlock.from).toList(),
-        earnedBadges: docs(10)
+        blocks: docs(8).map(DayBlock.from).toList(),
+        earnedBadges: docs(9)
             .map(EarnedBadge.tryFrom)
             .whereType<EarnedBadge>()
             .toList(),
@@ -258,16 +255,6 @@ class FirestoreSync {
       }(),
       sessions:      union(local.sessions,      remote.sessions,      (s) => s.id),
       habitHits:     union(local.habitHits,     remote.habitHits,     (h) => h.id),
-      // RecurringActions : remote gagne. deleted:true → retiré du local
-      recurringActions: () {
-        final remoteMap = byId(remote.recurringActions, (r) => r.id);
-        final merged = Map.of(remoteMap);
-        for (final r in local.recurringActions) {
-          if (!remoteMap.containsKey(r.id)) merged[r.id] = r;
-        }
-        merged.removeWhere((_, r) => r.deleted);
-        return merged.values.toList();
-      }(),
       // Goals : remote est la source de vérité (MCP peut archiver/supprimer)
       // On garde en plus les goals locaux absents du remote (créés offline)
       goals: () {
@@ -436,10 +423,10 @@ class FirestoreSync {
     });
   }
 
-  /// Bascule le todayFlag d'une routine.
-  Future<void> toggleRoutineTodayFlag(String routineId, bool value) async {
+  /// Bascule le todayFlag d'une activité (routine).
+  Future<void> toggleActivityTodayFlag(String activityId, bool value) async {
     if (uid == null) return;
-    await _col('recurringActions').doc(routineId).update({
+    await _col('activities').doc(activityId).update({
       'todayFlag': value,
     });
   }
@@ -523,16 +510,6 @@ class FirestoreSync {
     try {
       final snap = await _col('activities').get();
       return snap.docs.map((d) => Activity.from(d.data() as Map)).toList();
-    } catch (_) {
-      return [];
-    }
-  }
-
-  Future<List<RecurringAction>> fetchRoutines() async {
-    if (uid == null) return [];
-    try {
-      final snap = await _col('recurringActions').get();
-      return snap.docs.map((d) => RecurringAction.from(d.data() as Map)).toList();
     } catch (_) {
       return [];
     }

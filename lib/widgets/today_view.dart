@@ -12,7 +12,6 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:collection/collection.dart';
 import 'package:productivitwo_v1/widgets/assign_activity_sheet.dart';
 import 'package:productivitwo_v1/widgets/day_block_sheet.dart';
-import 'package:productivitwo_v1/widgets/recurring_actions_sheet.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
 import 'package:productivitwo_v1/widgets/now_habit_tile_full.dart';
 import 'package:productivitwo_v1/widgets/tiny_bar.dart';
@@ -2137,17 +2136,6 @@ class _TodayViewState extends State<TodayView> {
                   style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
                 ),
               ),
-              if (isTodayTab && widget.logic.state.recurringActions.isNotEmpty)
-                TextButton.icon(
-                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                  icon: const Icon(Icons.repeat, size: 16),
-                  label: const Text('Récurrentes'),
-                  onPressed: () => showRecurringActionsSheet(context, logic: widget.logic).then((_) => setState(() {})),
-                ),
-              TextButton(
-                onPressed: () => setState(() => _showAll = !_showAll),
-                child: Text(_showAll ? "Masquer" : "Voir tout"),
-              ),
             ],
           ),
           if (_showAll) ...[
@@ -2746,8 +2734,6 @@ class _TodayViewState extends State<TodayView> {
         showDragHandle: true,
         isScrollControlled: true,
         builder: (ctx) {
-          RecurrenceType? recurringType;
-          List<int> recurringWeekdays = [];
           return StatefulBuilder(builder: (ctx, setS) {
           return Padding(
             padding: EdgeInsets.only(
@@ -2922,43 +2908,6 @@ class _TodayViewState extends State<TodayView> {
                   ],
                 ),
 
-                // ---- Récurrence ----------------------------------------
-                const Divider(height: 24),
-                if (it.recurringActionId != null)
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.repeat_outlined),
-                    title: const Text('Action récurrente'),
-                    subtitle: const Text('Appuie pour arrêter la récurrence'),
-                    onTap: () => Navigator.pop(
-                        ctx, _ActionSheetResult(stopRecurring: true)),
-                  )
-                else
-                  _RecurrenceRowInline(
-                    type: recurringType,
-                    weekdays: recurringWeekdays,
-                    onTypeChanged: (t) => setS(() {
-                      recurringType = t;
-                      recurringWeekdays = [];
-                    }),
-                    onWeekdayToggled: (d) => setS(() {
-                      if (recurringWeekdays.contains(d)) {
-                        recurringWeekdays.remove(d);
-                      } else {
-                        recurringWeekdays.add(d);
-                      }
-                    }),
-                    onConfirm: recurringType == null
-                        ? null
-                        : () => Navigator.pop(
-                              ctx,
-                              _ActionSheetResult(
-                                recurringType: recurringType,
-                                recurringWeekdays: List.from(recurringWeekdays),
-                              ),
-                            ),
-                  ),
-
                 // ---- Supprimer (optionnel)
                 TextButton(
                   style: TextButton.styleFrom(
@@ -3003,36 +2952,11 @@ class _TodayViewState extends State<TodayView> {
         widget.logic.removeGoalActionFromToday(it.goalActionId!);
       }
 
-      if (res.stopRecurring == true && it.recurringActionId != null) {
-        widget.logic.deleteRecurringAction(it.recurringActionId!);
-        setState(() => it.recurringActionId = null);
-      }
-
-      if (res.recurringType != null) {
-        final ra = widget.logic.createRecurringAction(
-          title: it.title,
-          domainId: it.domainId,
-          activityId: it.activityId,
-          blockId: it.blockId,
-          type: res.recurringType!,
-          weekdays: res.recurringWeekdays ?? [],
-        );
-        setState(() => it.recurringActionId = ra.id);
-        final today = DateTime.now();
-        for (int i = 1; i < 8; i++) {
-          final d = today.add(Duration(days: i));
-          widget.logic.ensureRecurringActionsForDay(
-            '${d.year}${d.month.toString().padLeft(2, '0')}${d.day.toString().padLeft(2, '0')}',
-          );
-        }
-      }
-
       widget.logic.onChange();
     }
 
     Widget buildTitle(String title, {bool struck = false, bool dim = false}) {
-      final isRecurring = it.recurringActionId != null;
-      final text = Text(
+      return Text(
         title,
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
@@ -3042,16 +2966,6 @@ class _TodayViewState extends State<TodayView> {
           decoration: struck ? TextDecoration.lineThrough : null,
           color: dim ? Colors.white.withValues(alpha: 0.55) : null,
         ),
-      );
-      if (!isRecurring) return text;
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(child: text),
-          const SizedBox(width: 6),
-          Icon(Icons.repeat, size: 14,
-              color: Colors.white.withValues(alpha: dim ? 0.3 : 0.5)),
-        ],
       );
     }
 
@@ -4084,15 +3998,6 @@ class _NowTabState extends State<NowTab> {
                     ),
                   ),
                 ),
-                if (it.recurringActionId != null) ...[
-                  const SizedBox(width: 8),
-                  Icon(Icons.repeat,
-                      size: 14,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withOpacity(.4)),
-                ],
               ],
             ),
 
@@ -5493,10 +5398,6 @@ class _ActionSheetResult {
   final bool? markDone;
   final bool? delete;
   final bool? deactivate;
-  // Récurrence
-  final RecurrenceType? recurringType;
-  final List<int>? recurringWeekdays;
-  final bool? stopRecurring;
 
   _ActionSheetResult({
     this.rename,
@@ -5506,122 +5407,7 @@ class _ActionSheetResult {
     this.markDone,
     this.delete,
     this.deactivate,
-    this.recurringType,
-    this.recurringWeekdays,
-    this.stopRecurring,
   });
-}
-
-class _RecurrenceRowInline extends StatelessWidget {
-  final RecurrenceType? type;
-  final List<int> weekdays;
-  final void Function(RecurrenceType?) onTypeChanged;
-  final void Function(int) onWeekdayToggled;
-  final VoidCallback? onConfirm;
-
-  const _RecurrenceRowInline({
-    required this.type,
-    required this.weekdays,
-    required this.onTypeChanged,
-    required this.onWeekdayToggled,
-    required this.onConfirm,
-  });
-
-  static const _dayLabels = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.repeat, size: 18, color: cs.onSurface.withOpacity(.5)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                type == null
-                    ? 'Rendre récurrente'
-                    : type == RecurrenceType.daily
-                        ? 'Chaque jour'
-                        : 'Jours spécifiques',
-                style: TextStyle(
-                  color: type != null ? cs.primary : cs.onSurface.withOpacity(.5),
-                  fontWeight: type != null ? FontWeight.w600 : FontWeight.normal,
-                ),
-              ),
-            ),
-            if (type != null) ...[
-              if (onConfirm != null)
-                FilledButton(
-                  style: FilledButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(horizontal: 12)),
-                  onPressed: onConfirm,
-                  child: const Text('Confirmer'),
-                ),
-              const SizedBox(width: 8),
-              TextButton(
-                style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    padding: EdgeInsets.zero),
-                onPressed: () => onTypeChanged(null),
-                child: const Text('Annuler'),
-              ),
-            ] else ...[
-              TextButton(
-                style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(horizontal: 8)),
-                onPressed: () => onTypeChanged(RecurrenceType.daily),
-                child: const Text('Chaque jour'),
-              ),
-              TextButton(
-                style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(horizontal: 8)),
-                onPressed: () => onTypeChanged(RecurrenceType.specificDays),
-                child: const Text('Jours…'),
-              ),
-            ],
-          ],
-        ),
-        if (type == RecurrenceType.specificDays) ...[
-          const SizedBox(height: 10),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: List.generate(7, (i) {
-              final day = i + 1;
-              final selected = weekdays.contains(day);
-              return GestureDetector(
-                onTap: () => onWeekdayToggled(day),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: selected ? cs.primary : cs.primary.withOpacity(.08),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Center(
-                    child: Text(
-                      _dayLabels[i],
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: selected ? cs.onPrimary : cs.primary.withOpacity(.7),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }),
-          ),
-        ],
-      ],
-    );
-  }
 }
 
 // ── Donut répartition temps du jour ──────────────────────────────────────────

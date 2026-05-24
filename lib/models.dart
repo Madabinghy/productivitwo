@@ -64,7 +64,6 @@ class DayPlanItem {
   ActionStatus status;
   DateTime createdAt;
   String? blockId;
-  String? recurringActionId; // id de RecurringAction si généré automatiquement
   String? originalYmd; // date où l'action a été planifiée pour la première fois
   String? projectId;     // projet Gantt associé
   String? projectTaskId; // tâche Gantt associée
@@ -93,7 +92,6 @@ class DayPlanItem {
     this.snoozeUntil,
     ActionStatus? status,
     this.blockId,
-    this.recurringActionId,
     this.originalYmd,
     this.projectId,
     this.projectTaskId,
@@ -127,7 +125,6 @@ class DayPlanItem {
         'status': status.name,
         'createdAt': createdAt.toIso8601String(),
         'blockId': blockId,
-        'recurringActionId': recurringActionId,
         'originalYmd': originalYmd,
         'projectId': projectId,
         'projectTaskId': projectTaskId,
@@ -181,7 +178,6 @@ class DayPlanItem {
       ),
       createdAt: _parseDate(j['createdAt']),
       blockId: j['blockId'] as String?,
-      recurringActionId: j['recurringActionId'] as String?,
       originalYmd: j['originalYmd'] as String?,
       projectId: j['projectId'] as String?,
       projectTaskId: j['projectTaskId'] as String?,
@@ -210,116 +206,6 @@ class DayPlanItem {
     }
     return defaultValue;
   }
-}
-
-enum RecurrenceType { daily, specificDays }
-
-class RecurringAction {
-  final String id;
-  String title;
-  String? domainId;
-  String? activityId;
-  String? blockId;
-  RecurrenceType type;
-  List<int> weekdays; // 1=Lun..7=Dim, utilisé pour specificDays
-  bool active;
-  final DateTime createdAt;
-
-  // Routines temporelles (liées à un projet Gantt)
-  DateTime? startDate;    // date d'activation (null = immédiatement)
-  DateTime? endDate;      // date d'expiration (null = pas de limite)
-  String? projectTaskId;  // id de la tâche Gantt associée
-  bool deleted;
-
-  List<ChecklistItem> checklist;
-  bool todayFlag; // priorité du jour
-
-  RecurringAction({
-    String? id,
-    required this.title,
-    this.domainId,
-    this.activityId,
-    this.blockId,
-    this.type = RecurrenceType.daily,
-    List<int>? weekdays,
-    this.active = true,
-    DateTime? createdAt,
-    this.startDate,
-    this.endDate,
-    this.projectTaskId,
-    this.deleted = false,
-    List<ChecklistItem>? checklist,
-    this.todayFlag = false,
-  })  : id = id ?? _uuid.v4(),
-        weekdays = weekdays ?? [],
-        createdAt = createdAt ?? DateTime.now(),
-        checklist = checklist ?? [];
-
-  /// Vrai si la routine est dans sa fenêtre d'activité pour le jour donné.
-  bool isActiveOn(DateTime day) {
-    if (!active) return false;
-    final d = DateTime(day.year, day.month, day.day);
-    if (startDate != null) {
-      final s = DateTime(startDate!.year, startDate!.month, startDate!.day);
-      if (d.isBefore(s)) return false;
-    }
-    if (endDate != null) {
-      final e = DateTime(endDate!.year, endDate!.month, endDate!.day);
-      if (d.isAfter(e)) return false;
-    }
-    return true;
-  }
-
-  /// Vrai si la routine a une date de fin dépassée.
-  bool get isExpired {
-    if (endDate == null) return false;
-    final today = DateTime.now();
-    final e = DateTime(endDate!.year, endDate!.month, endDate!.day);
-    return DateTime(today.year, today.month, today.day).isAfter(e);
-  }
-
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'title': title,
-        'domainId': domainId,
-        'activityId': activityId,
-        'blockId': blockId,
-        'type': type.name,
-        'weekdays': weekdays,
-        'active': active,
-        'createdAt': createdAt.toIso8601String(),
-        'startDate': startDate?.toIso8601String(),
-        'endDate': endDate?.toIso8601String(),
-        'projectTaskId': projectTaskId,
-        'deleted': deleted,
-        'checklist': checklist.map((c) => c.toJson()).toList(),
-        'todayFlag': todayFlag,
-      };
-
-  static RecurringAction from(Map j) => RecurringAction(
-        id: j['id'],
-        title: j['title'] ?? '',
-        domainId: j['domainId'],
-        activityId: j['activityId'],
-        blockId: j['blockId'],
-        type: RecurrenceType.values.firstWhere(
-          (t) => t.name == j['type'],
-          orElse: () => RecurrenceType.daily,
-        ),
-        weekdays:
-            (j['weekdays'] as List?)?.map((e) => e as int).toList() ?? [],
-        active: j['active'] as bool? ?? true,
-        createdAt: _parseDateOrNull(j['createdAt']),
-        startDate: _parseDateOrNull(j['startDate']),
-        endDate: _parseDateOrNull(j['endDate']),
-        projectTaskId: j['projectTaskId'] as String?,
-        deleted: j['deleted'] as bool? ?? false,
-        checklist: (j['checklist'] as List?)
-            ?.map((e) => ChecklistItem.from(e as Map))
-            .toList() ??
-            [],
-        todayFlag: j['todayFlag'] as bool? ?? false,
-      );
 }
 
 class DayBlock {
@@ -630,6 +516,7 @@ class Activity {
   int? iconCode;
 
   bool deleted;
+  bool todayFlag; // priorité du jour (routines)
 
   Activity({
     String? id,
@@ -649,6 +536,7 @@ class Activity {
     this.order = 0,
     this.iconCode,
     this.deleted = false,
+    this.todayFlag = false,
   })  : id = id ?? _uuid.v4(), // <-- sans const ici
         createdAt = createdAt ?? DateTime.now();
 
@@ -681,6 +569,7 @@ class Activity {
         'order': order,
         'iconCode': iconCode,
         'deleted': deleted,
+        'todayFlag': todayFlag,
       };
 
   /// Migration douce :
@@ -724,6 +613,7 @@ class Activity {
       order: (j['order'] as num?)?.toInt() ?? 0,
       iconCode: (j['iconCode'] as num?)?.toInt(),
       deleted: j['deleted'] as bool? ?? false,
+      todayFlag: j['todayFlag'] as bool? ?? false,
     );
   }
 
@@ -1062,11 +952,9 @@ class AppState {
 
   // Blocs journaliers
   List<DayBlock> blocks;
-  List<RecurringAction> recurringActions;
 
   // Priorités libres du jour
   List<TodayItem> todayItems;
-  List<RecurringAction> get activeRecurringActions => recurringActions.where((r) => !r.deleted).toList();
   Map<String, List<String>> disabledBlocksByYmd; // ymd -> [blockIds désactivés]
 
   // Gamification
@@ -1110,7 +998,6 @@ class AppState {
     Map<String, String>? habitPinnedActivity,
     Map<String, List<String>>? habitChecklistByHabitId,
     List<DayBlock>? blocks,
-    List<RecurringAction>? recurringActions,
     List<TodayItem>? todayItems,
     Map<String, List<String>>? disabledBlocksByYmd,
     List<EarnedBadge>? earnedBadges,
@@ -1160,7 +1047,6 @@ class AppState {
         activityLogs = activityLogs ?? <ActivityLog>[],
         filters = filters ?? FilterState(),
         blocks = blocks ?? <DayBlock>[],
-        recurringActions = recurringActions ?? <RecurringAction>[],
         todayItems = todayItems ?? <TodayItem>[],
         disabledBlocksByYmd = disabledBlocksByYmd ?? <String, List<String>>{},
         earnedBadges = earnedBadges ?? <EarnedBadge>[],
@@ -1202,7 +1088,6 @@ class AppState {
         'linkedActivitiesMigratedOnce': linkedActivitiesMigratedOnce,
         'voitureMigratedOnce': voitureMigratedOnce,
         'blocks': blocks.map((e) => e.toJson()).toList(),
-        'recurringActions': recurringActions.map((e) => e.toJson()).toList(),
         'todayItems': todayItems.map((e) => e.toJson()).toList(),
         'disabledBlocksByYmd': disabledBlocksByYmd,
         'earnedBadges': earnedBadges.map((e) => e.toJson()).toList(),
@@ -1295,7 +1180,6 @@ class AppState {
       linkedActivitiesMigratedOnce: (j['linkedActivitiesMigratedOnce'] as bool?) ?? false,
       voitureMigratedOnce: (j['voitureMigratedOnce'] as bool?) ?? false,
       blocks: _list(j['blocks'], (e) => DayBlock.from(e)),
-      recurringActions: _list(j['recurringActions'], (e) => RecurringAction.from(e)),
       todayItems: _list(j['todayItems'], (e) => TodayItem.from(e)),
       disabledBlocksByYmd: _mapSL(j['disabledBlocksByYmd']),
       earnedBadges: _list(j['earnedBadges'], (e) => EarnedBadge.tryFrom(e))
@@ -1451,7 +1335,6 @@ class ProjectTask {
   String? color;
   String? barLabel;
   String status; // pending | done | skipped
-  String? recurringActionId;
   List<TaskAction> actions; // détail opérationnel
   bool todayFlag; // priorité du jour
 
@@ -1467,7 +1350,6 @@ class ProjectTask {
     this.color,
     this.barLabel,
     this.status = 'pending',
-    this.recurringActionId,
     List<TaskAction>? actions,
     this.todayFlag = false,
   })  : id = id ?? _uuid.v4(),
@@ -1488,7 +1370,6 @@ class ProjectTask {
         'color': color,
         'barLabel': barLabel,
         'status': status,
-        'recurringActionId': recurringActionId,
         'actions': actions.map((a) => a.toJson()).toList(),
         'todayFlag': todayFlag,
       };
@@ -1505,7 +1386,6 @@ class ProjectTask {
         color: j['color'],
         barLabel: j['barLabel'],
         status: j['status'] ?? 'pending',
-        recurringActionId: j['recurringActionId'],
         actions: (j['actions'] as List?)
                 ?.map((a) => TaskAction.from(a))
                 .toList() ??

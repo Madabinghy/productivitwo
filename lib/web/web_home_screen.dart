@@ -39,7 +39,6 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   List<Project> _projects = [];
   List<StrategicObjective> _objectives = [];
   List<Domain> _domains = [];
-  List<RecurringAction> _routines = [];
   Map<String, List<Map<String, dynamic>>> _documentsByProject = {};
   String? _selectedDomainId;
   bool _loading = true;
@@ -68,12 +67,11 @@ class _WebHomeScreenState extends State<WebHomeScreen>
         _sync.fetchStrategicObjectives(),
         _sync.fetchApiTokens(),
         _sync.fetchDomains(),
-        _sync.fetchRoutines(),
         _sync.fetchDocuments(),
       ]);
       if (!mounted) return;
       final tokens = results[2] as List;
-      final allDocs = results[5] as List<Map<String, dynamic>>;
+      final allDocs = results[4] as List<Map<String, dynamic>>;
       // Group documents by projectId
       final byProject = <String, List<Map<String, dynamic>>>{};
       for (final doc in allDocs) {
@@ -89,7 +87,6 @@ class _WebHomeScreenState extends State<WebHomeScreen>
         _projects = loadedProjects;
         _objectives = results[1] as List<StrategicObjective>;
         _domains = loadedDomains;
-        _routines = results[4] as List<RecurringAction>;
         _documentsByProject = byProject;
         _hasIosData = tokens.isNotEmpty;
         _loading = false;
@@ -233,7 +230,6 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                           .where((p) => p.status != 'archived')
                           .toList(),
                       domains: _domains,
-                      routines: _routines,
                       sync: _sync,
                       onRefresh: _load,
                       onTaskColorChange: (project, task, color) async {
@@ -315,14 +311,12 @@ class _WebHomeScreenState extends State<WebHomeScreen>
 class _FocusView extends StatelessWidget {
   final List<Project> projects;
   final List<Domain> domains;
-  final List<RecurringAction> routines;
   final FirestoreSync sync;
   final VoidCallback? onRefresh;
   final Future<void> Function(Project, ProjectTask, String?) onTaskColorChange;
   const _FocusView({
     required this.projects,
     required this.domains,
-    required this.routines,
     required this.sync,
     required this.onTaskColorChange,
     this.onRefresh,
@@ -385,24 +379,17 @@ class _FocusView extends StatelessWidget {
     }
 
     // Build ordered domain groups: known domains first (sorted), then null
-    // Inclut les domaines qui ont des routines même sans tâches Gantt cette semaine
     final domainGroups = <({Domain? domain, List<({ProjectTask task, Project project})> pairs})>[];
-    final seenDomainIds = <String?>{};
     for (final domain in domains) {
       if (domain.deleted) continue;
       final pairs = byDomain[domain.id] ?? [];
-      final hasRoutines = routines.any((r) => r.domainId == domain.id && !r.deleted && r.active);
-      if (pairs.isNotEmpty || hasRoutines) {
+      if (pairs.isNotEmpty) {
         domainGroups.add((domain: domain, pairs: pairs));
-        seenDomainIds.add(domain.id);
       }
     }
-    // Tâches/routines sans domaine ou domaine inconnu
+    // Tâches sans domaine ou domaine inconnu
     final noDomainPairs = byDomain[null] ?? [];
-    final nodomainRoutines = routines.where((r) =>
-        !r.deleted && r.active &&
-        (r.domainId == null || !seenDomainIds.contains(r.domainId))).toList();
-    if (noDomainPairs.isNotEmpty || nodomainRoutines.isNotEmpty) {
+    if (noDomainPairs.isNotEmpty) {
       domainGroups.add((domain: null, pairs: noDomainPairs));
     }
 
@@ -930,7 +917,6 @@ class _FocusView extends StatelessWidget {
                       dayW,
                       rowH,
                       domainHeaderH,
-                      routines,
                     ),
                   ],
               ],
@@ -991,22 +977,11 @@ class _FocusView extends StatelessWidget {
     double dayW,
     double rowH,
     double domainHeaderH,
-    List<RecurringAction> allRoutines,
   ) {
     final color = _domainColor(domain, cs, domains);
     final domainName = domain?.name ?? 'Sans domaine';
     // Total width = labelW + 7 * dayW
     final totalW = labelW + 7 * dayW;
-
-    // Routines actives pour ce domaine
-    final domainRoutines = allRoutines
-        .where((r) =>
-            r.domainId == domain?.id &&
-            !r.deleted &&
-            r.active)
-        .toList();
-
-    final hasRoutines = domainRoutines.isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1046,39 +1021,6 @@ class _FocusView extends StatelessWidget {
             ),
           ),
         ),
-        // Routine rows (first)
-        for (final routine in domainRoutines) ...[
-          _buildRoutineRow(
-            cs,
-            routine,
-            today,
-            weekStart,
-            labelW,
-            dayW,
-            rowH,
-            color,
-          ),
-        ],
-        // Separator between routines and tasks
-        if (hasRoutines && pairs.isNotEmpty)
-          SizedBox(
-            width: totalW,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Row(
-                children: [
-                  SizedBox(width: labelW),
-                  Expanded(
-                    child: CustomPaint(
-                      painter: _DashedLinePainter(
-                          color: cs.outlineVariant.withOpacity(0.5)),
-                      child: const SizedBox(height: 1),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
         // Task rows (Gantt bars)
         for (final pair in pairs) ...[
           _buildTaskBarRow(
@@ -1177,181 +1119,6 @@ class _FocusView extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-
-  /// Ligne routine : cases à cocher par jour (cercle radio selon planification)
-  Widget _buildRoutineRow(
-    ColorScheme cs,
-    RecurringAction routine,
-    DateTime today,
-    DateTime weekStart,
-    double labelW,
-    double dayW,
-    double rowH,
-    Color domainColor,
-  ) {
-    final todayN = DateTime(today.year, today.month, today.day);
-
-    return SizedBox(
-      height: rowH,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // Label avec petit cercle domaine à gauche
-          SizedBox(
-            width: labelW,
-            child: Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Row(
-                children: [
-                  Container(
-                    width: 6,
-                    height: 6,
-                    margin: const EdgeInsets.only(right: 5),
-                    decoration: BoxDecoration(
-                      color: domainColor.withOpacity(0.7),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  Expanded(
-                    child: Text(
-                      routine.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: cs.onSurface.withOpacity(0.75),
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          // 7 day cells
-          for (int d = 0; d < 7; d++) ...[
-            _buildRoutineDayCell(
-              cs,
-              routine,
-              weekStart.add(Duration(days: d)),
-              todayN,
-              dayW,
-              rowH,
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  /// Cellule jour pour une routine
-  Widget _buildRoutineDayCell(
-    ColorScheme cs,
-    RecurringAction routine,
-    DateTime day,
-    DateTime todayN,
-    double dayW,
-    double rowH,
-  ) {
-    final cellDay = DateTime(day.year, day.month, day.day);
-
-    // Divider vertical léger
-    final divider = Positioned(
-      left: 0,
-      top: 4,
-      bottom: 4,
-      width: 1,
-      child: Container(color: cs.outlineVariant.withOpacity(0.1)),
-    );
-
-    // Vérifier si la routine est planifiée ce jour
-    bool isScheduled = false;
-    bool daysUnknown = false;
-    if (routine.type == RecurrenceType.daily) {
-      isScheduled = true;
-    } else if (routine.type == RecurrenceType.specificDays) {
-      if (routine.weekdays.isEmpty) {
-        // Jours non définis → afficher sur tous les jours avec indicateur "?"
-        isScheduled = true;
-        daysUnknown = true;
-      } else {
-        isScheduled = routine.weekdays.contains(cellDay.weekday);
-      }
-    }
-
-    // Vérifier les bornes startDate/endDate
-    if (isScheduled) {
-      if (routine.startDate != null) {
-        final s = DateTime(routine.startDate!.year, routine.startDate!.month, routine.startDate!.day);
-        if (cellDay.isBefore(s)) isScheduled = false;
-      }
-      if (isScheduled && routine.endDate != null) {
-        final e = DateTime(routine.endDate!.year, routine.endDate!.month, routine.endDate!.day);
-        if (cellDay.isAfter(e)) isScheduled = false;
-      }
-    }
-
-    if (!isScheduled) {
-      return SizedBox(
-        width: dayW,
-        height: rowH,
-        child: Stack(children: [divider]),
-      );
-    }
-
-    final isToday = cellDay == todayN;
-    final isPast = cellDay.isBefore(todayN);
-
-    // Jours non définis → afficher "?" en orange sur toutes les cellules
-    if (daysUnknown) {
-      return SizedBox(
-        width: dayW, height: rowH,
-        child: Stack(children: [
-          divider,
-          Center(child: Text('?', style: TextStyle(fontSize: 11, color: Colors.orange.shade300, fontWeight: FontWeight.w600))),
-        ]),
-      );
-    }
-
-    IconData icon;
-    Color iconColor;
-    double opacity;
-    double iconSize;
-
-    if (isToday) {
-      icon = Icons.radio_button_unchecked;
-      iconColor = Colors.teal;
-      opacity = 1.0;
-      iconSize = 16;
-    } else if (isPast) {
-      icon = Icons.radio_button_unchecked;
-      iconColor = Colors.red.shade300;
-      opacity = 0.4;
-      iconSize = 14;
-    } else {
-      // futur
-      icon = Icons.radio_button_unchecked;
-      iconColor = cs.onSurface.withOpacity(0.3);
-      opacity = 0.5;
-      iconSize = 14;
-    }
-
-    return SizedBox(
-      width: dayW,
-      height: rowH,
-      child: Stack(
-        children: [
-          divider,
-          Center(
-            child: Opacity(
-              opacity: opacity,
-              child: Icon(icon, size: iconSize, color: iconColor),
-            ),
-          ),
-        ],
-      ),
     );
   }
 

@@ -1133,10 +1133,10 @@ class AppLogic {
     onChange();
   }
 
-  void setRoutineTodayFlag(String routineId, bool value) {
-    final idx = state.recurringActions.indexWhere((r) => r.id == routineId);
+  void setActivityTodayFlag(String activityId, bool value) {
+    final idx = state.activities.indexWhere((a) => a.id == activityId);
     if (idx < 0) return;
-    state.recurringActions[idx].todayFlag = value;
+    state.activities[idx].todayFlag = value;
     onChange();
   }
 
@@ -1603,82 +1603,6 @@ class AppLogic {
     final g = state.goals.firstWhere((x) => x.id == goalId);
     g.status = 'archived';
     onChange();
-  }
-
-  // ─── Actions récurrentes ──────────────────────────────────────────────────
-
-  RecurringAction createRecurringAction({
-    required String title,
-    String? domainId,
-    String? activityId,
-    String? blockId,
-    required RecurrenceType type,
-    List<int> weekdays = const [],
-  }) {
-    final ra = RecurringAction(
-      title: title,
-      domainId: domainId,
-      activityId: activityId,
-      blockId: blockId,
-      type: type,
-      weekdays: [...weekdays],
-    );
-    state.recurringActions.add(ra);
-    onChange();
-    return ra;
-  }
-
-  void deleteRecurringAction(String id) {
-    state.recurringActions.removeWhere((a) => a.id == id);
-    // Supprime les occurrences futures non cochées (pas aujourd'hui)
-    final todayYmd = yyyymmdd(DateTime.now());
-    state.dayPlan.removeWhere((it) =>
-        it.recurringActionId == id &&
-        !it.done &&
-        it.yyyymmdd.compareTo(todayYmd) > 0);
-    onChange();
-  }
-
-  /// Injecte les actions récurrentes dans le plan pour un jour donné.
-  /// Appeler au démarrage pour aujourd'hui + les N prochains jours.
-  void ensureRecurringActionsForDay(String ymd) {
-    final parts = [
-      int.parse(ymd.substring(0, 4)),
-      int.parse(ymd.substring(4, 6)),
-      int.parse(ymd.substring(6, 8)),
-    ];
-    final day = DateTime(parts[0], parts[1], parts[2]);
-    final weekday = day.weekday; // 1=Lun..7=Dim
-
-    bool changed = false;
-    for (final ra in state.recurringActions.where((a) => a.isActiveOn(day))) {
-      if (state.dayPlan.any((it) =>
-          it.recurringActionId == ra.id && it.yyyymmdd == ymd)) continue;
-
-      final shouldAdd = ra.type == RecurrenceType.daily ||
-          (ra.type == RecurrenceType.specificDays &&
-              ra.weekdays.contains(weekday));
-      if (!shouldAdd) continue;
-
-      final plan = planFor(ymd);
-      final ord = plan.isEmpty ? 0 : plan.last.order + 1;
-      state.dayPlan.add(DayPlanItem(
-        id: _uuid.v4(),
-        yyyymmdd: ymd,
-        title: ra.title,
-        kind: PlanKind.action,
-        domainId: ra.domainId,
-        activityId: ra.activityId,
-        blockId: ra.blockId,
-        recurringActionId: ra.id,
-        order: ord,
-        checklist: ra.checklist
-            .map((c) => ChecklistItem(id: _uuid.v4(), title: c.title))
-            .toList(),
-      ));
-      changed = true;
-    }
-    if (changed) onChange();
   }
 
   void reorderDailyRoutines(int oldIndex, int newIndex) {

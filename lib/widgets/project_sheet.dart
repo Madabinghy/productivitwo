@@ -51,6 +51,7 @@ class _ProjectSheetState extends State<_ProjectSheet> {
   void initState() {
     super.initState();
     _project = widget.project;
+    _healOrphanedPhaseIds();
     for (final t in _project.tasks) {
       _taskKeys[t.id] = GlobalKey();
     }
@@ -58,6 +59,31 @@ class _ProjectSheetState extends State<_ProjectSheet> {
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToTarget());
     }
     _loadDocs();
+  }
+
+  /// Corrige les phaseId orphelins en utilisant le groupLabel (insensible à la casse).
+  /// Sauvegarde silencieusement si des corrections ont été faites.
+  void _healOrphanedPhaseIds() {
+    final phaseIds = { for (final p in _project.phases) p.id };
+    final phaseByLabelLower = {
+      for (final p in _project.phases) p.label.toLowerCase().trim(): p
+    };
+    var changed = false;
+    for (final t in _project.tasks) {
+      if (t.phaseId != null && phaseIds.contains(t.phaseId)) continue;
+      if (t.groupLabel == null) continue;
+      final matched = phaseByLabelLower[t.groupLabel!.toLowerCase().trim()];
+      if (matched != null) {
+        t.phaseId = matched.id;
+        t.groupLabel = matched.label;
+        changed = true;
+      }
+    }
+    if (changed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _sync.saveProjectTasks(_project.id, _project.tasks);
+      });
+    }
   }
 
   Future<void> _loadDocs() async {
@@ -109,15 +135,18 @@ class _ProjectSheetState extends State<_ProjectSheet> {
 
     // Grouper tâches par phase (phaseId en priorité, groupLabel en fallback)
     final phaseByLabel = { for (final p in _project.phases) p.label: p };
+    final phaseByLabelLower = { for (final p in _project.phases) p.label.toLowerCase().trim(): p };
     final phaseIds = { for (final p in _project.phases) p.id };
     final grouped = <String?, List<ProjectTask>>{};
     for (final t in _project.tasks) {
       String? key = t.phaseId;
       // phaseId orphelin (phase supprimée ou désynchronisée) → on efface
       if (key != null && !phaseIds.contains(key)) key = null;
-      // Fallback : groupLabel — permet de retrouver la phase même sans phaseId valide
+      // Fallback : groupLabel — insensible à la casse
       if (key == null && t.groupLabel != null) {
-        key = phaseByLabel[t.groupLabel]?.id;
+        final matched = phaseByLabel[t.groupLabel]
+            ?? phaseByLabelLower[t.groupLabel!.toLowerCase().trim()];
+        key = matched?.id;
       }
       grouped.putIfAbsent(key, () => []).add(t);
     }

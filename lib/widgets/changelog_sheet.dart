@@ -8,6 +8,11 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.25', '24 mai 2026', [
+    (Icons.star_rounded, 'Étoile ⭐ routines : stockée sur Activity.todayFlag (Firestore) — plus robuste, survit aux relancements'),
+    (Icons.delete_sweep_outlined, 'RecurringAction entièrement supprimé du code — modèle, logique, sync et UI nettoyés'),
+    (Icons.bug_report_outlined, 'Projets iOS : tâches sans phase reconnectées à leur phase via groupLabel insensible à la casse'),
+  ]),
   _Entry('5.24', '24 mai 2026', [
     (Icons.repeat_rounded, 'FAB routines → "Lancer une routine" (log rapide) — création déplacée dans l\'AppBar et dans le bouton + du sheet'),
   ]),

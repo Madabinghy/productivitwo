@@ -15,12 +15,10 @@ import 'package:productivitwo_v1/widgets/filters_sheet.dart';
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
 import 'package:productivitwo_v1/widgets/habit_tile_full.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
-import 'package:productivitwo_v1/widgets/today_view.dart';
 import 'package:productivitwo_v1/widgets/goals_view.dart';
 import 'package:productivitwo_v1/widgets/day_block_sheet.dart';
 import 'package:productivitwo_v1/widgets/new_routine_sheet.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
-import 'package:productivitwo_v1/widgets/weekly_view.dart';
 import 'package:productivitwo_v1/widgets/day_review_sheet.dart';
 import 'package:productivitwo_v1/widgets/productivity_stats_card.dart';
 import 'package:productivitwo_v1/widgets/onboarding_screen.dart';
@@ -2014,14 +2012,6 @@ class _AppRootState extends State<AppRoot>
         });
       }
 
-      // Injecte les actions récurrentes pour aujourd'hui + 7 prochains jours
-      final now2 = DateTime.now();
-      for (int i = 0; i < 8; i++) {
-        final d = now2.add(Duration(days: i));
-        logic.ensureRecurringActionsForDay(
-          '${d.year}${d.month.toString().padLeft(2, '0')}${d.day.toString().padLeft(2, '0')}',
-        );
-      }
     }());
 
     if (mounted) {
@@ -2961,7 +2951,28 @@ class _AppRootState extends State<AppRoot>
                                         ],
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
+                                    // Étoile priorité du jour
+                                    GestureDetector(
+                                      onTap: () async {
+                                        final newVal = !r.todayFlag;
+                                        logic.setActivityTodayFlag(r.id, newVal);
+                                        await _sync.toggleActivityTodayFlag(r.id, newVal);
+                                        setS(() {});
+                                        setState(() {});
+                                      },
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                                        child: Icon(
+                                          r.todayFlag
+                                              ? Icons.star_rounded
+                                              : Icons.star_outline_rounded,
+                                          size: 18,
+                                          color: r.todayFlag
+                                              ? Colors.amber.shade600
+                                              : cs.onSurface.withOpacity(.25),
+                                        ),
+                                      ),
+                                    ),
                                     // Score + incrément
                                     Row(
                                       mainAxisSize: MainAxisSize.min,
@@ -4579,19 +4590,19 @@ class _AppRootState extends State<AppRoot>
       }
     }
 
-    final todayRoutines = logic.state.recurringActions
-        .where((r) => r.todayFlag && r.active && !r.deleted && r.isActiveOn(todayD))
+    final todayActivities = logic.state.activities
+        .where((a) => a.isHabit && !a.deleted && a.todayFlag)
         .toList();
 
     final freeItems = logic.state.todayItems
         .where((i) => i.date == todayKey)
         .toList();
 
-    if (todayTasks.isEmpty && todayRoutines.isEmpty && freeItems.isEmpty) {
+    if (todayTasks.isEmpty && todayActivities.isEmpty && freeItems.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    final total = todayTasks.length + todayRoutines.length + freeItems.length;
+    final total = todayTasks.length + todayActivities.length + freeItems.length;
 
     return Card(
       elevation: 1,
@@ -4644,8 +4655,8 @@ class _AppRootState extends State<AppRoot>
           for (final entry in todayTasks)
             _buildPriorityTaskTile(context, cs, entry.project, entry.task),
           // ── Routines ────────────────────────────────────────────────────────
-          for (final routine in todayRoutines)
-            _buildPriorityRoutineTile(context, cs, routine, today),
+          for (final activity in todayActivities)
+            _buildPriorityActivityTile(context, cs, activity, today),
           // ── Items libres ─────────────────────────────────────────────────────
           for (final item in freeItems)
             _buildPriorityFreeTile(context, cs, item),
@@ -4801,22 +4812,17 @@ class _AppRootState extends State<AppRoot>
     );
   }
 
-  Widget _buildPriorityRoutineTile(
-      BuildContext context, ColorScheme cs, RecurringAction routine, DateTime today) {
-    final activityId = routine.activityId;
-    final activity = activityId != null
-        ? logic.state.activities.where((a) => a.id == activityId).firstOrNull
-        : null;
-    final value = activityId != null ? logic.habitValueOn(activityId, today) : 0;
+  Widget _buildPriorityActivityTile(
+      BuildContext context, ColorScheme cs, Activity activity, DateTime today) {
+    final value = logic.habitValueOn(activity.id, today);
     final isDone = value >= 1;
     return ListTile(
       dense: true,
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
       leading: GestureDetector(
         onTap: () {
-          if (activityId == null) return;
           HapticFeedback.lightImpact();
-          logic.incHabitWithAssocEvent(activityId, isDone ? -1 : 1, today);
+          logic.incHabitWithAssocEvent(activity.id, isDone ? -1 : 1, today);
           logic.onChange();
           setState(() {});
         },
@@ -4827,7 +4833,7 @@ class _AppRootState extends State<AppRoot>
         ),
       ),
       title: Text(
-        routine.title,
+        activity.name,
         style: TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w600,
@@ -4835,18 +4841,13 @@ class _AppRootState extends State<AppRoot>
           color: cs.onSurface.withOpacity(isDone ? .4 : .9),
         ),
       ),
-      subtitle: (activity != null && activity.name.isNotEmpty)
-          ? Text(
-              activity.name,
-              style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(.4)),
-            )
-          : null,
       trailing: IconButton(
         icon: const Icon(Icons.star_rounded, size: 18),
         color: Colors.amber.shade600,
         visualDensity: VisualDensity.compact,
-        onPressed: () {
-          logic.setRoutineTodayFlag(routine.id, false);
+        onPressed: () async {
+          logic.setActivityTodayFlag(activity.id, false);
+          await _sync.toggleActivityTodayFlag(activity.id, false);
           setState(() {});
         },
       ),
