@@ -4446,8 +4446,18 @@ class _AppRootState extends State<AppRoot>
                             t.startDate.isBefore(todayD2.add(const Duration(days: 1))) &&
                             t.status != 'skipped')
                         .toList();
-                    final ganttDone = ganttTasks.where((t) => t.status == 'done').length;
-                    final ganttTotal = ganttTasks.length;
+                    // Tâches sans sous-actions : comptées au niveau tâche.
+                    // Tâches avec sous-actions : comptées au niveau sous-action.
+                    int ganttDone = 0, ganttTotal = 0;
+                    for (final t in ganttTasks) {
+                      if (t.actions.isEmpty) {
+                        ganttTotal += 1;
+                        if (t.status == 'done') ganttDone += 1;
+                      } else {
+                        ganttTotal += t.actions.length;
+                        ganttDone += t.stepsDone;
+                      }
+                    }
                     final ganttProg = ganttTotal == 0 ? 0.0 : (ganttDone / ganttTotal).clamp(0.0, 1.0);
 
                     return Row(

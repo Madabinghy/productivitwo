@@ -10,4 +10,10 @@ import Flutter
     GeneratedPluginRegistrant.register(with: self)
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
+
+  override func applicationDidBecomeActive(_ application: UIApplication) {
+    super.applicationDidBecomeActive(application)
+    // Efface le badge de l'icône dès que l'app passe au premier plan.
+    UIApplication.shared.applicationIconBadgeNumber = 0
+  }
 }

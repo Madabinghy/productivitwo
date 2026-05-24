@@ -218,9 +218,11 @@ class FirestoreSync {
       }
     }
 
-    // habitProgress : garder la valeur max par activityId
-    final remoteHp = byId(remote.habitProgress, (h) => h.activityId);
-    final mergedHp = byId(local.habitProgress, (h) => h.activityId);
+    // habitProgress : clé composite (activityId + yyyymmdd) pour préserver chaque jour.
+    // En cas de conflit sur le même (activité, jour), on garde la valeur max.
+    String hpKey(HabitProgress h) => '${h.activityId}_${h.yyyymmdd}';
+    final remoteHp = byId(remote.habitProgress, hpKey);
+    final mergedHp = byId(local.habitProgress, hpKey);
     for (final entry in remoteHp.entries) {
       final loc = mergedHp[entry.key];
       if (loc == null || entry.value.value > loc.value) {

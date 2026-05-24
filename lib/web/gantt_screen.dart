@@ -1723,7 +1723,7 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
   void initState() {
     super.initState();
     _task = widget.task;
-    _tabCtrl = TabController(length: 2, vsync: this);
+    _tabCtrl = TabController(length: 3, vsync: this);
     _tabCtrl.addListener(() => setState(() {}));
     _loadDocs();
   }
@@ -1922,7 +1922,8 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
     final cs = Theme.of(context).colorScheme;
     final pending = _task.actions.where((a) => !a.done).toList();
     final done = _task.actions.where((a) => a.done).toList();
-    final isFilesTab = _tabCtrl.index == 1;
+    final isFilesTab   = _tabCtrl.index == 2;
+    final isDoneTab    = _tabCtrl.index == 1;
 
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -2186,9 +2187,9 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.checklist_outlined, size: 14),
-                        const SizedBox(width: 6),
-                        Text('Actions (${_task.actions.length})'),
+                        const Icon(Icons.radio_button_unchecked, size: 13),
+                        const SizedBox(width: 5),
+                        Text('À faire${pending.isNotEmpty ? ' (${pending.length})' : ''}'),
                       ],
                     ),
                   ),
@@ -2196,8 +2197,22 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.folder_outlined, size: 14),
-                        const SizedBox(width: 6),
+                        Icon(Icons.check_circle_outline,
+                            size: 13,
+                            color: done.isNotEmpty ? Colors.green.shade600 : null),
+                        const SizedBox(width: 5),
+                        Text('Fait${done.isNotEmpty ? ' (${done.length})' : ''}',
+                            style: TextStyle(
+                                color: done.isNotEmpty ? Colors.green.shade600 : null)),
+                      ],
+                    ),
+                  ),
+                  Tab(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.folder_outlined, size: 13),
+                        const SizedBox(width: 5),
                         Text('Fichiers${_docs.isNotEmpty ? ' (${_docs.length})' : ''}'),
                       ],
                     ),
@@ -2212,7 +2227,9 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
               constraints: const BoxConstraints(maxHeight: 360),
               child: isFilesTab
                   ? _buildFilesTab(cs)
-                  : _buildActionsTab(cs, pending, done),
+                  : isDoneTab
+                      ? _buildDoneActionsTab(cs, done)
+                      : _buildPendingActionsTab(cs, pending),
             ),
 
             // Footer
@@ -2239,23 +2256,25 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
                         ),
                       ),
                     ])
-                  : Row(children: [
-                      TextButton.icon(
-                        icon: const Icon(Icons.add, size: 16),
-                        label: const Text('Ajouter une action'),
-                        onPressed: _addAction,
-                      ),
-                      const Spacer(),
-                      if (_task.actions.isNotEmpty)
-                        Text(
-                          'Appui long pour modifier',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: cs.onSurface.withOpacity(.3),
-                            fontStyle: FontStyle.italic,
+                  : isDoneTab
+                      ? const SizedBox.shrink()
+                      : Row(children: [
+                          TextButton.icon(
+                            icon: const Icon(Icons.add, size: 16),
+                            label: const Text('Ajouter une action'),
+                            onPressed: _addAction,
                           ),
-                        ),
-                    ]),
+                          const Spacer(),
+                          if (pending.isNotEmpty)
+                            Text(
+                              'Appui long pour modifier',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: cs.onSurface.withOpacity(.3),
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                        ]),
             ),
           ],
         ),
@@ -2431,40 +2450,49 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
 
   // ── Onglet Actions ───────────────────────────────────────────────────────────
 
-  Widget _buildActionsTab(ColorScheme cs,
-      List<TaskAction> pending, List<TaskAction> done) {
-    if (pending.isEmpty && done.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.all(24),
-        child: Text(
-          'Aucune action. Clique + pour en ajouter.',
-          style: TextStyle(
-              fontSize: 13,
-              fontStyle: FontStyle.italic,
-              color: cs.onSurface.withOpacity(.4)),
+  // ── Onglet À faire ───────────────────────────────────────────────────────────
+
+  Widget _buildPendingActionsTab(ColorScheme cs, List<TaskAction> pending) {
+    if (pending.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            _task.actions.isEmpty
+                ? 'Aucune action. Clique + pour en ajouter.'
+                : 'Tout est fait 🎉',
+            style: TextStyle(
+                fontSize: 13,
+                fontStyle: FontStyle.italic,
+                color: cs.onSurface.withOpacity(.4)),
+          ),
         ),
       );
     }
 
-    // Liste complète dans l'ordre (pending en haut, done en bas)
-    final allActions = _task.actions;
-
     return ReorderableListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       buildDefaultDragHandles: false,
-      itemCount: allActions.length,
+      itemCount: pending.length,
       onReorder: (oldIndex, newIndex) {
         setState(() {
           if (newIndex > oldIndex) newIndex--;
-          final item = allActions.removeAt(oldIndex);
-          allActions.insert(newIndex, item);
+          final movedItem = pending[oldIndex];
+          final targetItem = newIndex < pending.length ? pending[newIndex] : null;
+          _task.actions.remove(movedItem);
+          if (targetItem == null) {
+            _task.actions.add(movedItem);
+          } else {
+            final targetIdx = _task.actions.indexOf(targetItem);
+            _task.actions.insert(targetIdx, movedItem);
+          }
         });
         _save();
       },
       itemBuilder: (ctx, i) {
-        final a = allActions[i];
+        final a = pending[i];
         return ListTile(
-          key: ValueKey(a.title + i.toString()),
+          key: ValueKey('pending_${a.title}_$i'),
           dense: true,
           contentPadding: const EdgeInsets.only(left: 0, right: 4),
           onLongPress: () async {
@@ -2503,23 +2531,16 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
             }
           },
           leading: Checkbox(
-            value: a.done,
+            value: false,
             onChanged: (v) {
               setState(() {
-                a.done = v ?? false;
-                a.doneAt = a.done ? DateTime.now() : null;
+                a.done = true;
+                a.doneAt = DateTime.now();
               });
               _save();
             },
           ),
-          title: Text(
-            a.title,
-            style: TextStyle(
-              fontSize: 13,
-              color: a.done ? cs.onSurface.withOpacity(.4) : null,
-              decoration: a.done ? TextDecoration.lineThrough : null,
-            ),
-          ),
+          title: Text(a.title, style: const TextStyle(fontSize: 13)),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -2529,7 +2550,7 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
                 visualDensity: VisualDensity.compact,
                 tooltip: 'Supprimer',
                 onPressed: () {
-                  setState(() => allActions.removeAt(i));
+                  setState(() => _task.actions.remove(a));
                   _save();
                 },
               ),
@@ -2539,6 +2560,67 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
                     size: 18, color: cs.onSurface.withOpacity(.3)),
               ),
             ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ── Onglet Fait ───────────────────────────────────────────────────────────────
+
+  Widget _buildDoneActionsTab(ColorScheme cs, List<TaskAction> done) {
+    if (done.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'Aucune action réalisée.',
+            style: TextStyle(
+                fontSize: 13,
+                fontStyle: FontStyle.italic,
+                color: cs.onSurface.withOpacity(.4)),
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      itemCount: done.length,
+      itemBuilder: (ctx, i) {
+        final a = done[i];
+        return ListTile(
+          key: ValueKey('done_${a.title}_$i'),
+          dense: true,
+          contentPadding: const EdgeInsets.only(left: 0, right: 4),
+          leading: Checkbox(
+            value: true,
+            activeColor: Colors.green.shade600,
+            onChanged: (v) {
+              setState(() {
+                a.done = false;
+                a.doneAt = null;
+              });
+              _save();
+            },
+          ),
+          title: Text(
+            a.title,
+            style: TextStyle(
+              fontSize: 13,
+              color: cs.onSurface.withOpacity(.4),
+              decoration: TextDecoration.lineThrough,
+            ),
+          ),
+          trailing: IconButton(
+            icon: Icon(Icons.delete_outline,
+                size: 16, color: cs.onSurface.withOpacity(.3)),
+            visualDensity: VisualDensity.compact,
+            tooltip: 'Supprimer',
+            onPressed: () {
+              setState(() => _task.actions.remove(a));
+              _save();
+            },
           ),
         );
       },

@@ -481,14 +481,24 @@ class _TaskDetailSheet extends StatefulWidget {
   State<_TaskDetailSheet> createState() => _TaskDetailSheetState();
 }
 
-class _TaskDetailSheetState extends State<_TaskDetailSheet> {
+class _TaskDetailSheetState extends State<_TaskDetailSheet>
+    with TickerProviderStateMixin {
   late ProjectTask _task;
   bool _saving = false;
+  late TabController _actionTabs;
 
   @override
   void initState() {
     super.initState();
     _task = widget.task;
+    _actionTabs = TabController(length: 2, vsync: this);
+    _actionTabs.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _actionTabs.dispose();
+    super.dispose();
   }
 
   Future<void> _save() async {
@@ -533,9 +543,12 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final todoActions = _task.actions.where((a) => !a.done).toList();
+    final doneActions = _task.actions.where((a) => a.done).toList();
     final allDone = _task.actions.isNotEmpty &&
         _task.actions.every((a) => a.done);
     final isDone = _task.status == 'done';
+    final isOnFaitTab = _actionTabs.index == 1;
 
     return DraggableScrollableSheet(
       initialChildSize: 0.6,
@@ -579,137 +592,257 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet> {
           ),
           Divider(height: 1, color: cs.outlineVariant.withOpacity(.3)),
 
-          // Actions
-          Expanded(
-            child: _task.actions.isEmpty
-                ? Center(
-                    child: Text('Aucune action.',
-                        style: TextStyle(
-                            color: cs.onSurface.withOpacity(.35),
-                            fontStyle: FontStyle.italic)),
-                  )
-                : ReorderableListView.builder(
-                    scrollController: scroll,
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                    buildDefaultDragHandles: false,
-                    itemCount: _task.actions.length,
-                    onReorder: (oldIndex, newIndex) {
-                      setState(() {
-                        if (newIndex > oldIndex) newIndex--;
-                        final item = _task.actions.removeAt(oldIndex);
-                        _task.actions.insert(newIndex, item);
-                      });
-                      _save();
-                    },
-                    itemBuilder: (ctx, i) {
-                      final a = _task.actions[i];
-                      return Dismissible(
-                        key: ValueKey('${a.title}_$i'),
-                        direction: DismissDirection.endToStart,
-                        background: Container(
-                          alignment: Alignment.centerRight,
-                          padding: const EdgeInsets.only(right: 16),
-                          color: cs.errorContainer,
-                          child: Icon(Icons.delete_outline,
-                              color: cs.error),
+          // Onglets À faire / Fait
+          TabBar(
+            controller: _actionTabs,
+            tabs: [
+              Tab(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('À faire'),
+                    if (todoActions.isNotEmpty) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: cs.primary.withOpacity(.12),
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                        onDismissed: (_) {
-                          setState(() => _task.actions.removeAt(i));
-                          _save();
-                        },
-                        child: ListTile(
-                          key: ValueKey('tile_${a.title}_$i'),
-                          dense: true,
-                          contentPadding: const EdgeInsets.only(left: 0, right: 4),
-                          onLongPress: () async {
-                            final ctrl =
-                                TextEditingController(text: a.title);
-                            final result = await showDialog<String>(
-                              context: context,
-                              builder: (c) => AlertDialog(
-                                title: const Text('Modifier l\'action'),
-                                content: TextField(
-                                  controller: ctrl,
-                                  autofocus: true,
-                                  decoration: const InputDecoration(
-                                      border: OutlineInputBorder()),
-                                  onSubmitted: (v) {
-                                    if (v.trim().isNotEmpty)
-                                      Navigator.pop(c, v.trim());
-                                  },
-                                ),
-                                actions: [
-                                  TextButton(
-                                      onPressed: () => Navigator.pop(c),
-                                      child: const Text('Annuler')),
-                                  FilledButton(
-                                    onPressed: () {
-                                      final v = ctrl.text.trim();
-                                      if (v.isNotEmpty) Navigator.pop(c, v);
-                                    },
-                                    child: const Text('Enregistrer'),
-                                  ),
-                                ],
-                              ),
-                            );
-                            ctrl.dispose();
-                            if (result != null) {
-                              setState(() => a.title = result);
-                              _save();
-                            }
-                          },
-                          leading: Checkbox(
-                            value: a.done,
-                            onChanged: (v) {
-                              setState(() {
-                                a.done = v ?? false;
-                                a.doneAt = a.done ? DateTime.now() : null;
-                              });
+                        child: Text(
+                          '${todoActions.length}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: cs.primary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              Tab(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('Fait'),
+                    if (doneActions.isNotEmpty) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withOpacity(.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '${doneActions.length}',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.green,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+            indicatorSize: TabBarIndicatorSize.tab,
+            dividerColor: Colors.transparent,
+            labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+          ),
+          Divider(height: 1, color: cs.outlineVariant.withOpacity(.2)),
+
+          // Liste des actions (filtrée par onglet)
+          Expanded(
+            child: isOnFaitTab
+                // ── Onglet Fait ──────────────────────────────────────────
+                ? (doneActions.isEmpty
+                    ? Center(
+                        child: Text('Aucune action réalisée.',
+                            style: TextStyle(
+                                color: cs.onSurface.withOpacity(.35),
+                                fontStyle: FontStyle.italic)),
+                      )
+                    : ListView.builder(
+                        controller: scroll,
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                        itemCount: doneActions.length,
+                        itemBuilder: (ctx, i) {
+                          final a = doneActions[i];
+                          return Dismissible(
+                            key: ValueKey('done_${a.title}_$i'),
+                            direction: DismissDirection.endToStart,
+                            background: Container(
+                              alignment: Alignment.centerRight,
+                              padding: const EdgeInsets.only(right: 16),
+                              color: cs.errorContainer,
+                              child: Icon(Icons.delete_outline, color: cs.error),
+                            ),
+                            onDismissed: (_) {
+                              setState(() => _task.actions.remove(a));
                               _save();
                             },
-                          ),
-                          title: Text(a.title,
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: a.done
-                                    ? cs.onSurface.withOpacity(.35)
-                                    : cs.onSurface,
-                                decoration: a.done
-                                    ? TextDecoration.lineThrough
-                                    : null,
-                              )),
-                          trailing: ReorderableDragStartListener(
-                            index: i,
-                            child: Icon(Icons.drag_handle,
-                                color: cs.onSurface.withOpacity(.3)),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+                            child: ListTile(
+                              dense: true,
+                              contentPadding: const EdgeInsets.only(left: 0, right: 4),
+                              leading: Checkbox(
+                                value: true,
+                                activeColor: Colors.green,
+                                onChanged: (v) {
+                                  setState(() {
+                                    a.done = false;
+                                    a.doneAt = null;
+                                  });
+                                  _save();
+                                },
+                              ),
+                              title: Text(a.title,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: cs.onSurface.withOpacity(.35),
+                                    decoration: TextDecoration.lineThrough,
+                                  )),
+                            ),
+                          );
+                        },
+                      ))
+                // ── Onglet À faire ───────────────────────────────────────
+                : (todoActions.isEmpty
+                    ? Center(
+                        child: Text('Aucune action à faire.',
+                            style: TextStyle(
+                                color: cs.onSurface.withOpacity(.35),
+                                fontStyle: FontStyle.italic)),
+                      )
+                    : ReorderableListView.builder(
+                        scrollController: scroll,
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                        buildDefaultDragHandles: false,
+                        itemCount: todoActions.length,
+                        onReorder: (oldIndex, newIndex) {
+                          setState(() {
+                            if (newIndex > oldIndex) newIndex--;
+                            final movedItem = todoActions[oldIndex];
+                            final targetItem = newIndex < todoActions.length
+                                ? todoActions[newIndex]
+                                : null;
+                            _task.actions.remove(movedItem);
+                            if (targetItem == null) {
+                              _task.actions.add(movedItem);
+                            } else {
+                              final targetIdx = _task.actions.indexOf(targetItem);
+                              _task.actions.insert(targetIdx, movedItem);
+                            }
+                          });
+                          _save();
+                        },
+                        itemBuilder: (ctx, i) {
+                          final a = todoActions[i];
+                          return Dismissible(
+                            key: ValueKey('todo_${a.title}_$i'),
+                            direction: DismissDirection.endToStart,
+                            background: Container(
+                              alignment: Alignment.centerRight,
+                              padding: const EdgeInsets.only(right: 16),
+                              color: cs.errorContainer,
+                              child: Icon(Icons.delete_outline, color: cs.error),
+                            ),
+                            onDismissed: (_) {
+                              setState(() => _task.actions.remove(a));
+                              _save();
+                            },
+                            child: ListTile(
+                              key: ValueKey('tile_todo_${a.title}_$i'),
+                              dense: true,
+                              contentPadding: const EdgeInsets.only(left: 0, right: 4),
+                              onLongPress: () async {
+                                final ctrl = TextEditingController(text: a.title);
+                                final result = await showDialog<String>(
+                                  context: context,
+                                  builder: (c) => AlertDialog(
+                                    title: const Text('Modifier l\'action'),
+                                    content: TextField(
+                                      controller: ctrl,
+                                      autofocus: true,
+                                      decoration: const InputDecoration(
+                                          border: OutlineInputBorder()),
+                                      onSubmitted: (v) {
+                                        if (v.trim().isNotEmpty)
+                                          Navigator.pop(c, v.trim());
+                                      },
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                          onPressed: () => Navigator.pop(c),
+                                          child: const Text('Annuler')),
+                                      FilledButton(
+                                        onPressed: () {
+                                          final v = ctrl.text.trim();
+                                          if (v.isNotEmpty) Navigator.pop(c, v);
+                                        },
+                                        child: const Text('Enregistrer'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                ctrl.dispose();
+                                if (result != null) {
+                                  setState(() => a.title = result);
+                                  _save();
+                                }
+                              },
+                              leading: Checkbox(
+                                value: false,
+                                onChanged: (v) {
+                                  setState(() {
+                                    a.done = v ?? false;
+                                    a.doneAt = a.done ? DateTime.now() : null;
+                                  });
+                                  _save();
+                                },
+                              ),
+                              title: Text(a.title,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: cs.onSurface,
+                                  )),
+                              trailing: ReorderableDragStartListener(
+                                index: i,
+                                child: Icon(Icons.drag_handle,
+                                    color: cs.onSurface.withOpacity(.3)),
+                              ),
+                            ),
+                          );
+                        },
+                      )),
           ),
 
-          // Footer
+          // Footer (uniquement sur l'onglet À faire)
           Padding(
             padding: EdgeInsets.fromLTRB(
                 16, 8, 16, MediaQuery.of(context).padding.bottom + 12),
             child: Row(
               children: [
-                TextButton.icon(
-                  icon: const Icon(Icons.add, size: 16),
-                  label: const Text('Ajouter une action'),
-                  onPressed: _addAction,
-                ),
-                if (_task.actions.isNotEmpty) ...[
-                  const SizedBox(width: 8),
-                  Text(
-                    'Appui long = modifier',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(.3),
-                      fontStyle: FontStyle.italic,
-                    ),
+                if (!isOnFaitTab) ...[
+                  TextButton.icon(
+                    icon: const Icon(Icons.add, size: 16),
+                    label: const Text('Ajouter une action'),
+                    onPressed: _addAction,
                   ),
+                  if (_task.actions.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      'Appui long = modifier',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: cs.onSurface.withOpacity(.3),
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ],
                 ],
                 const Spacer(),
                 if (!isDone && (allDone || _task.actions.isEmpty))

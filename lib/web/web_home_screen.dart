@@ -49,7 +49,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   @override
   void initState() {
     super.initState();
-    _mainTabs = TabController(length: 4, vsync: this);
+    _mainTabs = TabController(length: 4, vsync: this, initialIndex: 1);
     _load();
   }
 
@@ -5232,13 +5232,23 @@ class _FocusTaskDialog extends StatefulWidget {
   State<_FocusTaskDialog> createState() => _FocusTaskDialogState();
 }
 
-class _FocusTaskDialogState extends State<_FocusTaskDialog> {
+class _FocusTaskDialogState extends State<_FocusTaskDialog>
+    with TickerProviderStateMixin {
   late ProjectTask _task;
+  late TabController _actionTabs;
 
   @override
   void initState() {
     super.initState();
     _task = widget.task;
+    _actionTabs = TabController(length: 2, vsync: this);
+    _actionTabs.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _actionTabs.dispose();
+    super.dispose();
   }
 
   Future<void> _toggleStatus() async {
@@ -5246,8 +5256,11 @@ class _FocusTaskDialogState extends State<_FocusTaskDialog> {
     await widget.sync.saveProjectTasks(widget.project.id, widget.project.tasks);
   }
 
-  Future<void> _toggleAction(int idx) async {
-    setState(() => _task.actions[idx].done = !_task.actions[idx].done);
+  Future<void> _toggleAction(TaskAction action) async {
+    setState(() {
+      action.done = !action.done;
+      action.doneAt = action.done ? DateTime.now() : null;
+    });
     await widget.sync.saveProjectTasks(widget.project.id, widget.project.tasks);
   }
 
@@ -5400,6 +5413,7 @@ class _FocusTaskDialogState extends State<_FocusTaskDialog> {
                     // Sous-actions
                     if (totalA > 0) ...[
                       const SizedBox(height: 20),
+                      // Barre de progression globale
                       Row(children: [
                         Text('Sous-actions',
                             style: TextStyle(
@@ -5420,33 +5434,144 @@ class _FocusTaskDialogState extends State<_FocusTaskDialog> {
                         color: widget.color,
                         backgroundColor: cs.onSurface.withOpacity(.08),
                       ),
-                      const SizedBox(height: 10),
-                      for (int i = 0; i < _task.actions.length; i++)
-                        InkWell(
-                          onTap: () => _toggleAction(i),
+                      const SizedBox(height: 12),
+                      // Onglets À faire / Fait
+                      Container(
+                        decoration: BoxDecoration(
+                          color: cs.surfaceContainerHighest.withOpacity(.5),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: TabBar(
+                          controller: _actionTabs,
+                          indicator: BoxDecoration(
+                            color: cs.surface,
+                            borderRadius: BorderRadius.circular(7),
+                            boxShadow: [
+                              BoxShadow(
+                                color: cs.shadow.withOpacity(.08),
+                                blurRadius: 4,
+                                offset: const Offset(0, 1),
+                              ),
+                            ],
+                          ),
+                          indicatorSize: TabBarIndicatorSize.tab,
+                          indicatorPadding: const EdgeInsets.all(3),
+                          dividerColor: Colors.transparent,
+                          labelStyle: const TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.w600),
+                          unselectedLabelStyle:
+                              const TextStyle(fontSize: 12),
+                          tabs: [
+                            Tab(
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Text('À faire'),
+                                  if (totalA - doneA > 0) ...[
+                                    const SizedBox(width: 5),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 5, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: widget.color.withOpacity(.12),
+                                        borderRadius:
+                                            BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        '${totalA - doneA}',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w700,
+                                          color: widget.color,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            Tab(
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Text('Fait'),
+                                  if (doneA > 0) ...[
+                                    const SizedBox(width: 5),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 5, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: Colors.green.withOpacity(.12),
+                                        borderRadius:
+                                            BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        '$doneA',
+                                        style: const TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w700,
+                                          color: Colors.green,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      // Liste filtrée
+                      ...() {
+                        final filtered = _actionTabs.index == 0
+                            ? _task.actions.where((a) => !a.done).toList()
+                            : _task.actions.where((a) => a.done).toList();
+                        if (filtered.isEmpty) {
+                          return [
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 14),
+                              child: Center(
+                                child: Text(
+                                  _actionTabs.index == 0
+                                      ? 'Tout est fait 🎉'
+                                      : 'Aucune action réalisée.',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: cs.onSurface.withOpacity(.35),
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ];
+                        }
+                        return filtered.map((a) => InkWell(
+                          onTap: () => _toggleAction(a),
                           borderRadius: BorderRadius.circular(6),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
                                 vertical: 6, horizontal: 4),
                             child: Row(children: [
                               Icon(
-                                _task.actions[i].done
+                                a.done
                                     ? Icons.check_box_outlined
                                     : Icons.check_box_outline_blank,
                                 size: 18,
-                                color: _task.actions[i].done
-                                    ? widget.color
+                                color: a.done
+                                    ? Colors.green.shade500
                                     : cs.onSurface.withOpacity(.4),
                               ),
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
-                                  _task.actions[i].title,
+                                  a.title,
                                   style: TextStyle(
                                     fontSize: 13,
-                                    color: cs.onSurface.withOpacity(
-                                        _task.actions[i].done ? .4 : .85),
-                                    decoration: _task.actions[i].done
+                                    color: cs.onSurface
+                                        .withOpacity(a.done ? .4 : .85),
+                                    decoration: a.done
                                         ? TextDecoration.lineThrough
                                         : null,
                                   ),
@@ -5454,7 +5579,8 @@ class _FocusTaskDialogState extends State<_FocusTaskDialog> {
                               ),
                             ]),
                           ),
-                        ),
+                        )).toList();
+                      }(),
                     ] else
                       Padding(
                         padding: const EdgeInsets.only(top: 12),
