@@ -1,16 +1,10 @@
 workflows:
 
-  # ── iOS — TestFlight (auto sur push main) ────────────────────────────────────
+  # ── iOS — TestFlight (déclenchement manuel uniquement) ───────────────────────
   ios-testflight:
     name: iOS → TestFlight
     max_build_duration: 60
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: main
-          include: true
-          source: true
+    # Pas de triggering → déclenchement manuel depuis Codemagic uniquement
     environment:
       flutter: stable
       groups:
@@ -28,14 +22,6 @@ workflows:
           keychain add-certificates \
             --certificate /tmp/certificate.p12 \
             --certificate-password "$CERTIFICATE_PASSWORD"
-          # Autorise codesign à accéder au certificat (password Codemagic par défaut = "test")
-          KEYCHAIN=$(security default-keychain | xargs)
-          echo "=== Keychain actif : $KEYCHAIN ==="
-          security set-key-partition-list \
-            -S apple-tool:,apple:,codesign: \
-            -s -k "test" "$KEYCHAIN" 2>&1 || true
-          echo "=== Identités de signature disponibles ==="
-          security find-identity -v -p codesigning
 
       - name: Install provisioning profile
         script: |
