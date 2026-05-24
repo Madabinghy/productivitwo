@@ -8,6 +8,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.14', '23 mai 2026', [
+    (Icons.auto_awesome, 'Nouveau projet iOS : ORION structure tes idées brutes en phases + tâches (1 action stratégique)'),
+    (Icons.folder_outlined, 'Projets : FAB "Nouveau projet" → formulaire mobile (titre, domaine, date cible, idées libres)'),
+  ]),
   _Entry('5.13', '23 mai 2026', [
     (Icons.local_fire_department, 'Routines : indicateur de série inline 🔥→⭐ (1 étoile par tranche de 5 jours, badge violet au-delà de 25j)'),
   ]),

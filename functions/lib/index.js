@@ -1,10 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.orionCron = exports.orionRunCount = exports.orionSaveConfig = exports.orionWebhook = exports.mcpHandler = exports.getCustomToken = exports.pushAssistantMessage = exports.pushGantt = void 0;
+exports.structureProject = exports.orionCron = exports.orionRunCount = exports.orionSaveConfig = exports.orionWebhook = exports.mcpHandler = exports.getCustomToken = exports.pushAssistantMessage = exports.pushGantt = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
 const orion_1 = require("./orion");
+const sdk_1 = require("@anthropic-ai/sdk");
 const orion_tasks_1 = require("./orion_tasks");
 const uuid_1 = require("uuid");
 const db_1 = require("./db");
@@ -389,7 +390,7 @@ exports.orionSaveConfig = (0, https_1.onRequest)({ cors: true, invoker: "public"
         res.status(405).json({ error: "Method Not Allowed" });
         return;
     }
-    const { uid, token, userNeeds, userReply } = req.body;
+    const { uid, token, userNeeds, userReply, isOnboarding } = req.body;
     if (!uid || !token) {
         res.status(400).json({ error: "uid et token requis" });
         return;
@@ -401,7 +402,7 @@ exports.orionSaveConfig = (0, https_1.onRequest)({ cors: true, invoker: "public"
     }
     await (0, orion_1.saveOrionConfig)(uid, { userNeeds, userReply });
     try {
-        const result = await (0, orion_1.runOrionCycle)(uid);
+        const result = await (0, orion_1.runOrionCycle)(uid, { skipCount: isOnboarding === true });
         res.status(200).json(Object.assign({ success: true, configSaved: true }, result));
     }
     catch (e) {
@@ -442,5 +443,148 @@ exports.orionCron = (0, scheduler_1.onSchedule)({ schedule: "every 6 hours", tim
     const executed = results.filter((r) => r.status === "fulfilled" && !r.value.skipped).length;
     const skipped = results.length - executed;
     console.log(`ORION cron terminé : ${executed} cycles exécutés, ${skipped} skippés`);
+});
+// ── structureProject ──────────────────────────────────────────────────────────
+//
+// POST https://structureproject-dzos75b65q-uc.a.run.app
+// Headers: Authorization: Bearer <firebase-id-token>
+// Body: { title, domainName?, domainId?, endDate (YYYY-MM-DD), ideas }
+//
+// Consomme 1 action stratégique ORION. Crée le projet structuré dans Firestore.
+const STRUCTURE_MAX_RUNS = 5; // quota journalier dédié création de projets (partagé avec ORION)
+exports.structureProject = (0, https_1.onRequest)({ cors: true, invoker: "public", secrets: ["ANTHROPIC_API_KEY"] }, async (req, res) => {
+    var _a;
+    if (req.method === "OPTIONS") {
+        res.status(204).send("");
+        return;
+    }
+    if (req.method !== "POST") {
+        res.status(405).json({ error: "Method Not Allowed" });
+        return;
+    }
+    // Auth via Firebase ID token
+    const authHeader = (_a = req.headers.authorization) !== null && _a !== void 0 ? _a : "";
+    if (!authHeader.startsWith("Bearer ")) {
+        res.status(401).json({ error: "Missing Authorization header" });
+        return;
+    }
+    const idToken = authHeader.slice(7).trim();
+    let uid;
+    try {
+        const decoded = await admin.auth().verifyIdToken(idToken);
+        uid = decoded.uid;
+    }
+    catch (_b) {
+        res.status(401).json({ error: "Token invalide ou expiré" });
+        return;
+    }
+    const { title, domainName, domainId, endDate, ideas } = req.body;
+    if (!title || !endDate || !ideas) {
+        res.status(400).json({ error: "Champs requis : title, endDate, ideas" });
+        return;
+    }
+    // Quota journalier
+    const today = new Date().toISOString().slice(0, 10);
+    const count = await (0, orion_1.getOrionRunCount)(uid, today);
+    if (count >= STRUCTURE_MAX_RUNS) {
+        res.status(429).json({ error: `Limite journalière atteinte (${count}/${STRUCTURE_MAX_RUNS} actions stratégiques)` });
+        return;
+    }
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+        res.status(500).json({ error: "ANTHROPIC_API_KEY non configurée" });
+        return;
+    }
+    // Appel Claude
+    const client = new sdk_1.default({ apiKey });
+    const prompt = `Tu es ORION, l'assistant stratégique de Productivitwo.
+L'utilisateur crée un nouveau projet. Transforme ses idées brutes en plan structuré.
+
+Titre : ${title}
+${domainName ? `Domaine : ${domainName}` : ""}
+Date cible : ${endDate}
+Aujourd'hui : ${today}
+
+Idées de l'utilisateur :
+${ideas}
+
+Génère un plan réaliste en JSON. Règles :
+- 2 à 4 phases couvrant la période ${today} → ${endDate}
+- 3 à 6 tâches par phase, formulées en verbe + objet
+- isMilestone: true uniquement pour les livrables ou validations clés
+- Toutes les dates entre ${today} et ${endDate}
+
+Retourne UNIQUEMENT ce JSON valide, sans aucun texte autour :
+{
+  "phases": [
+    { "label": "Nom de la phase", "startDate": "YYYY-MM-DD", "endDate": "YYYY-MM-DD" }
+  ],
+  "tasks": [
+    { "title": "Verbe + action concrète", "phaseIndex": 0, "startDate": "YYYY-MM-DD", "endDate": "YYYY-MM-DD", "isMilestone": false }
+  ]
+}`;
+    const message = await client.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 2048,
+        messages: [{ role: "user", content: prompt }],
+    });
+    const raw = message.content[0].text.trim();
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+        res.status(500).json({ error: "ORION n'a pas retourné de JSON valide" });
+        return;
+    }
+    const structured = JSON.parse(jsonMatch[0]);
+    // Construire le projet avec IDs
+    const projectId = (0, uuid_1.v4)();
+    const phases = structured.phases.map((p) => ({
+        id: (0, uuid_1.v4)(),
+        label: p.label,
+        color: null,
+        startDate: p.startDate,
+        endDate: p.endDate,
+    }));
+    const tasks = structured.tasks.map((t) => {
+        var _a, _b, _c;
+        return ({
+            id: (0, uuid_1.v4)(),
+            title: t.title,
+            description: null,
+            phaseId: (_b = (_a = phases[t.phaseIndex]) === null || _a === void 0 ? void 0 : _a.id) !== null && _b !== void 0 ? _b : null,
+            groupLabel: null,
+            startDate: t.startDate,
+            endDate: t.endDate,
+            isMilestone: (_c = t.isMilestone) !== null && _c !== void 0 ? _c : false,
+            color: null,
+            barLabel: null,
+            status: "pending",
+            recurringActionId: null,
+            actions: [],
+        });
+    });
+    await db_1.db.collection(`users/${uid}/projects`).doc(projectId).set({
+        id: projectId,
+        title,
+        description: null,
+        strategicObjectiveId: null,
+        domainId: domainId !== null && domainId !== void 0 ? domainId : null,
+        startDate: today,
+        endDate,
+        status: "active",
+        phases,
+        tasks,
+        createdBy: uid,
+        sourceType: "orion_mobile",
+        createdAt: db_1.FieldValue.serverTimestamp(),
+        updatedAt: db_1.FieldValue.serverTimestamp(),
+    });
+    // Consommer 1 action stratégique
+    await (0, orion_1.incrementOrionRunCount)(uid, today);
+    res.status(200).json({
+        success: true,
+        projectId,
+        phasesCount: phases.length,
+        tasksCount: tasks.length,
+    });
 });
 //# sourceMappingURL=index.js.map

@@ -1,7 +1,8 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as admin from "firebase-admin";
-import { runOrionCycle, getAllActiveUserIds, getOrionRunCount, saveOrionConfig, writeCycleLog } from "./orion";
+import { runOrionCycle, getAllActiveUserIds, getOrionRunCount, incrementOrionRunCount, saveOrionConfig, writeCycleLog } from "./orion";
+import Anthropic from "@anthropic-ai/sdk";
 import { runDeterministicTask } from "./orion_tasks";
 import { v4 as uuidv4 } from "uuid";
 import { db, FieldValue } from "./db";
@@ -426,5 +427,158 @@ export const orionCron = onSchedule(
     const skipped = results.length - executed;
 
     console.log(`ORION cron terminé : ${executed} cycles exécutés, ${skipped} skippés`);
+  }
+);
+
+// ── structureProject ──────────────────────────────────────────────────────────
+//
+// POST https://structureproject-dzos75b65q-uc.a.run.app
+// Headers: Authorization: Bearer <firebase-id-token>
+// Body: { title, domainName?, domainId?, endDate (YYYY-MM-DD), ideas }
+//
+// Consomme 1 action stratégique ORION. Crée le projet structuré dans Firestore.
+
+const STRUCTURE_MAX_RUNS = 5; // quota journalier dédié création de projets (partagé avec ORION)
+
+export const structureProject = onRequest(
+  { cors: true, invoker: "public", secrets: ["ANTHROPIC_API_KEY"] },
+  async (req, res) => {
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST") { res.status(405).json({ error: "Method Not Allowed" }); return; }
+
+    // Auth via Firebase ID token
+    const authHeader = req.headers.authorization ?? "";
+    if (!authHeader.startsWith("Bearer ")) {
+      res.status(401).json({ error: "Missing Authorization header" }); return;
+    }
+    const idToken = authHeader.slice(7).trim();
+
+    let uid: string;
+    try {
+      const decoded = await admin.auth().verifyIdToken(idToken);
+      uid = decoded.uid;
+    } catch {
+      res.status(401).json({ error: "Token invalide ou expiré" }); return;
+    }
+
+    const { title, domainName, domainId, endDate, ideas } = req.body as {
+      title?: string;
+      domainName?: string;
+      domainId?: string;
+      endDate?: string;
+      ideas?: string;
+    };
+
+    if (!title || !endDate || !ideas) {
+      res.status(400).json({ error: "Champs requis : title, endDate, ideas" }); return;
+    }
+
+    // Quota journalier
+    const today = new Date().toISOString().slice(0, 10);
+    const count = await getOrionRunCount(uid, today);
+    if (count >= STRUCTURE_MAX_RUNS) {
+      res.status(429).json({ error: `Limite journalière atteinte (${count}/${STRUCTURE_MAX_RUNS} actions stratégiques)` }); return;
+    }
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) { res.status(500).json({ error: "ANTHROPIC_API_KEY non configurée" }); return; }
+
+    // Appel Claude
+    const client = new Anthropic({ apiKey });
+    const prompt = `Tu es ORION, l'assistant stratégique de Productivitwo.
+L'utilisateur crée un nouveau projet. Transforme ses idées brutes en plan structuré.
+
+Titre : ${title}
+${domainName ? `Domaine : ${domainName}` : ""}
+Date cible : ${endDate}
+Aujourd'hui : ${today}
+
+Idées de l'utilisateur :
+${ideas}
+
+Génère un plan réaliste en JSON. Règles :
+- 2 à 4 phases couvrant la période ${today} → ${endDate}
+- 3 à 6 tâches par phase, formulées en verbe + objet
+- isMilestone: true uniquement pour les livrables ou validations clés
+- Toutes les dates entre ${today} et ${endDate}
+
+Retourne UNIQUEMENT ce JSON valide, sans aucun texte autour :
+{
+  "phases": [
+    { "label": "Nom de la phase", "startDate": "YYYY-MM-DD", "endDate": "YYYY-MM-DD" }
+  ],
+  "tasks": [
+    { "title": "Verbe + action concrète", "phaseIndex": 0, "startDate": "YYYY-MM-DD", "endDate": "YYYY-MM-DD", "isMilestone": false }
+  ]
+}`;
+
+    const message = await client.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 2048,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const raw = (message.content[0] as { type: string; text: string }).text.trim();
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      res.status(500).json({ error: "ORION n'a pas retourné de JSON valide" }); return;
+    }
+
+    const structured: {
+      phases: Array<{ label: string; startDate: string; endDate: string }>;
+      tasks: Array<{ title: string; phaseIndex: number; startDate: string; endDate: string; isMilestone: boolean }>;
+    } = JSON.parse(jsonMatch[0]);
+
+    // Construire le projet avec IDs
+    const projectId = uuidv4();
+    const phases = structured.phases.map((p) => ({
+      id: uuidv4(),
+      label: p.label,
+      color: null,
+      startDate: p.startDate,
+      endDate: p.endDate,
+    }));
+    const tasks = structured.tasks.map((t) => ({
+      id: uuidv4(),
+      title: t.title,
+      description: null,
+      phaseId: phases[t.phaseIndex]?.id ?? null,
+      groupLabel: null,
+      startDate: t.startDate,
+      endDate: t.endDate,
+      isMilestone: t.isMilestone ?? false,
+      color: null,
+      barLabel: null,
+      status: "pending",
+      recurringActionId: null,
+      actions: [],
+    }));
+
+    await db.collection(`users/${uid}/projects`).doc(projectId).set({
+      id: projectId,
+      title,
+      description: null,
+      strategicObjectiveId: null,
+      domainId: domainId ?? null,
+      startDate: today,
+      endDate,
+      status: "active",
+      phases,
+      tasks,
+      createdBy: uid,
+      sourceType: "orion_mobile",
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    // Consommer 1 action stratégique
+    await incrementOrionRunCount(uid, today);
+
+    res.status(200).json({
+      success: true,
+      projectId,
+      phasesCount: phases.length,
+      tasksCount: tasks.length,
+    });
   }
 );

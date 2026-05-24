@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
+import 'package:productivitwo_v1/widgets/new_project_sheet.dart';
 import 'package:productivitwo_v1/widgets/project_sheet.dart';
 
 class GoalsView extends StatefulWidget {
@@ -145,9 +146,15 @@ class _GoalsViewState extends State<GoalsView> {
               ],
             ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showWebHint(context),
-        icon: const Icon(Icons.add),
+        onPressed: () => showNewProjectSheet(
+          context,
+          domains: domains,
+          onCreated: () {},
+        ),
+        icon: const Icon(Icons.auto_awesome, size: 18),
         label: const Text('Nouveau projet'),
+        backgroundColor: Colors.deepPurple.shade500,
+        foregroundColor: Colors.white,
       ),
     );
   }
@@ -171,16 +178,23 @@ class _GoalsViewState extends State<GoalsView> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Crée tes projets depuis l\'app web\npuis ils apparaîtront ici.',
+              'Décris tes idées et ORION structure le projet pour toi.',
               textAlign: TextAlign.center,
               style: TextStyle(
                   fontSize: 14, color: cs.onSurface.withOpacity(.35)),
             ),
             const SizedBox(height: 24),
             FilledButton.icon(
-              onPressed: () => _showWebHint(context),
-              icon: const Icon(Icons.open_in_browser, size: 18),
-              label: const Text('Ouvrir l\'app web'),
+              onPressed: () => showNewProjectSheet(
+                context,
+                domains: domains,
+                onCreated: () {},
+              ),
+              icon: const Icon(Icons.auto_awesome, size: 18),
+              label: const Text('Nouveau projet'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.deepPurple.shade500,
+              ),
             ),
           ],
         ),

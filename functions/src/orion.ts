@@ -92,7 +92,7 @@ export async function getOrionRunCount(uid: string, date: string): Promise<numbe
   return snap.exists ? ((snap.data()?.count as number) ?? 0) : 0;
 }
 
-async function incrementOrionRunCount(uid: string, date: string): Promise<void> {
+export async function incrementOrionRunCount(uid: string, date: string): Promise<void> {
   await db
     .collection("orion_runs")
     .doc(`${uid}_${date}`)
