@@ -15,33 +15,35 @@ workflows:
       flutter: stable
       groups:
         - ios_credentials        # APP_STORE_CONNECT_PRIVATE_KEY, _KEY_IDENTIFIER, _ISSUER_ID
+        - ios_manual_signing     # CERTIFICATE_P12, CERTIFICATE_PASSWORD, PROVISIONING_PROFILE
       vars:
         BUNDLE_ID: "com.madabinghy.productivitwo"
     scripts:
       - name: Set up keychain
         script: keychain initialize
 
-      - name: Fetch signing files (App Store Distribution)
+      - name: Import distribution certificate (P12)
         script: |
-          set -x
-          echo "=== BUNDLE_ID: $BUNDLE_ID ==="
-          echo "=== KEY_ID: $APP_STORE_CONNECT_KEY_IDENTIFIER ==="
-          echo "=== ISSUER_ID: $APP_STORE_CONNECT_ISSUER_ID ==="
-          echo "=== KEY length: ${#APP_STORE_CONNECT_PRIVATE_KEY} ==="
-          # Écrit la clé via printf pour préserver les newlines
-          printf "%s" "$APP_STORE_CONNECT_PRIVATE_KEY" > /tmp/auth_key.p8
-          echo "=== p8 file written, size: $(wc -c < /tmp/auth_key.p8) bytes ==="
-          echo "=== p8 first line: $(head -1 /tmp/auth_key.p8) ==="
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
-            --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
-            --key-id "$APP_STORE_CONNECT_KEY_IDENTIFIER" \
-            --private-key "@file:/tmp/auth_key.p8" \
-            --type IOS_APP_STORE \
-            --create \
-            --verbose 2>&1
+          echo "$CERTIFICATE_P12" | base64 --decode > /tmp/certificate.p12
+          security import /tmp/certificate.p12 \
+            -k ~/Library/Keychains/login.keychain-db \
+            -P "$CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "" ~/Library/Keychains/login.keychain-db 2>/dev/null || true
 
-      - name: Add certificates to keychain
-        script: keychain add-certificates
+      - name: Install provisioning profile
+        script: |
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          echo "$PROVISIONING_PROFILE" | base64 --decode > /tmp/profile.mobileprovision
+          # Installe avec l'UUID comme nom de fichier (requis par Xcode)
+          UUID=$(security cms -D -i /tmp/profile.mobileprovision 2>/dev/null \
+            | plutil -extract UUID raw - 2>/dev/null \
+            || grep -o '[0-9A-F]\{8\}-[0-9A-F]\{4\}-[0-9A-F]\{4\}-[0-9A-F]\{4\}-[0-9A-F]\{12\}' /tmp/profile.mobileprovision | head -1)
+          cp /tmp/profile.mobileprovision "$HOME/Library/MobileDevice/Provisioning Profiles/${UUID}.mobileprovision"
+          echo "Profile installé : $UUID"
 
       - name: Apply signing profiles to Xcode project
         script: xcode-project use-profiles
