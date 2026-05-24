@@ -13,6 +13,7 @@ import {
   executeLinkGoalToTask, executeDeleteGoal, executeDeleteRoutine,
   executeGetDocuments, executeSaveDocument, executeGetDocumentTemplate,
   executeGetArchives, executeRestoreItem,
+  executeGetInbox, executeProcessInboxItem,
 } from "./execute";
 // Descriptions compactes pour ORION — ~10x moins de tokens que les tools MCP complets
 const ORION_TOOLS: PromptCachingBetaTool[] = [
@@ -48,7 +49,9 @@ const ORION_TOOLS: PromptCachingBetaTool[] = [
   { name: "delete_document",          description: "Supprime un document.",                                                                                                               input_schema: { type: "object", properties: { documentId: { type: "string" } }, required: ["documentId"] } },
   { name: "restore_item",             description: "Restaure un élément archivé.",                                                                                                        input_schema: { type: "object", properties: { collection: { type: "string" }, itemId: { type: "string" } }, required: ["collection", "itemId"] } },
   { name: "push_assistant_message",   description: "Planifie un message ORION contextuel.",                                                                                               input_schema: { type: "object", properties: { targetDate: { type: "string" }, text: { type: "string" }, condition: { type: "object" }, expiresAfterDays: { type: "number" }, priority: { type: "number" } }, required: ["targetDate", "text", "condition"] } },
-  { name: "delete_assistant_message", description: "Supprime un message ORION.",                                                                                                          input_schema: { type: "object", properties: { messageId: { type: "string" } }, required: ["messageId"] }, cache_control: { type: "ephemeral" } },
+  { name: "delete_assistant_message", description: "Supprime un message ORION.",                                                                                                          input_schema: { type: "object", properties: { messageId: { type: "string" } }, required: ["messageId"] } },
+  { name: "get_inbox",               description: "Idées et notes capturées par l'utilisateur en attente de traitement.",                                                                  input_schema: { type: "object", properties: {}, required: [] } },
+  { name: "process_inbox_item",      description: "Marque une idée inbox comme traitée avec une note expliquant l'action prise.",                                                          input_schema: { type: "object", properties: { itemId: { type: "string" }, note: { type: "string", description: "Ce qu'ORION a fait : ex: 'ajouté comme tâche dans Projet X' ou 'message reminder planifié'" } }, required: ["itemId", "note"], }, cache_control: { type: "ephemeral" } },
 ];
 import type { PushGanttBody } from "./types";
 
@@ -162,9 +165,21 @@ Le contexte utilisateur et les messages ORION existants sont fournis directement
 ## Workflow OBLIGATOIRE
 
 1. Lis le contexte et les messages existants dans le message fourni.
-2. Si l'utilisateur a donné une instruction spécifique → exécute-la avec les outils appropriés.
-3. TOUJOURS terminer par push_assistant_message — MINIMUM 1 message, MAXIMUM 3.
-4. Si plusieurs push, appelle-les dans la MÊME réponse (tool use parallèle) pour économiser des tokens.
+2. Appelle get_inbox — si des idées sont en attente, traite-les (voir règles inbox ci-dessous).
+3. Si l'utilisateur a donné une instruction spécifique → exécute-la avec les outils appropriés.
+4. TOUJOURS terminer par push_assistant_message — MINIMUM 1 message, MAXIMUM 3.
+5. Si plusieurs push, appelle-les dans la MÊME réponse (tool use parallèle) pour économiser des tokens.
+
+## Traitement de l'inbox
+
+L'utilisateur peut capturer des idées rapides dans son inbox. À chaque cycle, tu lis ces idées et tu les traites selon leur nature :
+
+- **Note ponctuelle** ("acheter du lait", "appeler X", rappel) → push_assistant_message avec condition always pour aujourd'hui ou demain + process_inbox_item(note: "message reminder planifié pour le [date]")
+- **Idée liée à un projet existant** → ajoute une sous-action à la tâche pertinente ou mets à jour le projet + process_inbox_item(note: "ajouté comme sous-action dans [projet > tâche]")
+- **Nouvelle initiative / projet** → push_gantt pour créer le projet + process_inbox_item(note: "projet '[titre]' créé")
+- **Idée vague ou hors scope** → process_inbox_item(note: "noté — pas d'action immédiate") + optionnel: push_assistant_message pour demander de clarifier
+
+Appelle toujours process_inbox_item après avoir traité une idée. Ne laisse jamais une idée pending non traitée.
 
 ## RÈGLE ABSOLUE : tu DOIS pousser au moins 1 message avant de terminer
 
@@ -396,6 +411,11 @@ Tu dois TOUJOURS appeler push_assistant_message avant end_turn, quelle que soit 
               break;
             }
             case "delete_assistant_message": result = await executeDeleteAssistantMessage(uid, args.messageId as string); break;
+            // ── Inbox ─────────────────────────────────────────────────────
+            case "get_inbox":           result = await executeGetInbox(uid); break;
+            case "process_inbox_item":  result = await executeProcessInboxItem(uid, args.itemId as string, args.note as string);
+              actionLog.push(`💡 Idée traitée depuis l'inbox`);
+              break;
             default:
               result = `Outil inconnu dans ORION : ${block.name}`;
           }

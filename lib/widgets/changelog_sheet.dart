@@ -8,6 +8,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.20', '24 mai 2026', [
+    (Icons.lightbulb_outline, 'Inbox idées : FAB 💡 pour capturer une idée en 2 secondes, bouton appbar avec badge pour gérer (éditer, supprimer) et voir le log de traitement ORION'),
+    (Icons.auto_awesome, 'ORION traite automatiquement l\'inbox à chaque cycle : note ponctuelle → reminder, idée projet → tâche ou nouveau projet'),
+  ]),
   _Entry('5.19', '24 mai 2026', [
     (Icons.delete_sweep_outlined, 'Actions libres supprimées — FAB "Nouvelle action", carte Courses et données de démo retirés (modèle simplifié : toute action vient d\'un projet ou d\'une routine)'),
   ]),

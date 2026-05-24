@@ -48,6 +48,7 @@ import 'package:productivitwo_v1/widgets/paywall_sheet.dart';
 import 'package:productivitwo_v1/widgets/apple_sign_in_button.dart';
 import 'package:productivitwo_v1/widgets/programmes_sheet.dart';
 import 'package:productivitwo_v1/widgets/project_sheet.dart';
+import 'package:productivitwo_v1/widgets/inbox_sheet.dart';
 import 'package:productivitwo_v1/widgets/orion_screen.dart';
 import 'package:productivitwo_v1/widgets/focus_view.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
@@ -1625,6 +1626,8 @@ class _AppRootState extends State<AppRoot>
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   StreamSubscription<List<Domain>>? _domainsSub;
   StreamSubscription<List<Project>>? _projectsSub;
+  StreamSubscription<List<CaptureItem>>? _inboxSub;
+  int _inboxPendingCount = 0;
   List<Project> _dashboardProjects = [];
   Project? _focusProject;
   ProjectTask? _focusTask;
@@ -1721,6 +1724,7 @@ class _AppRootState extends State<AppRoot>
     _connectivitySub?.cancel();
     _domainsSub?.cancel();
     _projectsSub?.cancel();
+    _inboxSub?.cancel();
     _tick.dispose();
     _confettiController.dispose();
     _tabFadeController.dispose();
@@ -2002,6 +2006,12 @@ class _AppRootState extends State<AppRoot>
         };
         unawaited(FcmService.init(uid));
         _sync.registerOrionSubscription();
+        _inboxSub = _sync.streamCaptures().listen((items) {
+          if (mounted) {
+            setState(() => _inboxPendingCount =
+                items.where((i) => i.status == 'pending').length);
+          }
+        });
       }
 
       // Injecte les actions récurrentes pour aujourd'hui + 7 prochains jours
@@ -2646,8 +2656,76 @@ class _AppRootState extends State<AppRoot>
     }
   }
 
+  Future<void> _showCaptureSheet(BuildContext context) async {
+    final ctrl = TextEditingController();
+    final submitted = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Icon(Icons.lightbulb_outline,
+                        color: Colors.amber.shade600, size: 20),
+                    const SizedBox(width: 8),
+                    Text('Capturer une idée',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold,
+                            color: Theme.of(ctx).colorScheme.onSurface)),
+                  ]),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: ctrl,
+                    autofocus: true,
+                    maxLines: 3,
+                    minLines: 1,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: InputDecoration(
+                      hintText: 'Ton idée, note rapide...',
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
+                    ),
+                    onSubmitted: (_) => Navigator.pop(ctx, true),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      icon: const Icon(Icons.send_outlined, size: 16),
+                      label: const Text('Capturer'),
+                      onPressed: () => Navigator.pop(ctx, true),
+                      style: FilledButton.styleFrom(
+                          backgroundColor: Colors.amber.shade600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    final text = ctrl.text.trim();
+    if (submitted == true && text.isNotEmpty) {
+      final item = CaptureItem(text: text, createdAt: DateTime.now());
+      await _sync.saveCaptureItem(item);
+    }
+    ctrl.dispose();
+  }
+
   bool _shouldShowFab() {
-    return _tab == _Tab.dashboard || _tab == _Tab.maintenant;
+    return _tab == _Tab.dashboard || _tab == _Tab.maintenant || _tab == _Tab.orion;
   }
 
   Widget _buildFab() {
@@ -2656,23 +2734,35 @@ class _AppRootState extends State<AppRoot>
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         FloatingActionButton(
-          heroTag: 'fab_now_routine',
+          heroTag: 'fab_capture',
           mini: true,
-          tooltip: 'Nouvelle routine',
-          onPressed: () async {
-            await _createRoutineFromNow(context);
-            if (!mounted) return;
-            setState(() {});
-          },
-          child: const Icon(Icons.repeat),
+          tooltip: 'Capturer une idée',
+          backgroundColor: Colors.amber.shade600,
+          foregroundColor: Colors.white,
+          onPressed: () => _showCaptureSheet(context),
+          child: const Icon(Icons.lightbulb_outline, size: 20),
         ),
-        const SizedBox(height: 12),
-        FloatingActionButton(
-          heroTag: 'fab_launch_activity',
-          tooltip: 'Lancer une activité',
-          onPressed: () => _showLaunchActivitySheet(context),
-          child: const Icon(Icons.play_arrow_rounded),
-        ),
+        if (_tab != _Tab.orion) ...[
+          const SizedBox(height: 8),
+          FloatingActionButton(
+            heroTag: 'fab_now_routine',
+            mini: true,
+            tooltip: 'Nouvelle routine',
+            onPressed: () async {
+              await _createRoutineFromNow(context);
+              if (!mounted) return;
+              setState(() {});
+            },
+            child: const Icon(Icons.repeat),
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton(
+            heroTag: 'fab_launch_activity',
+            tooltip: 'Lancer une activité',
+            onPressed: () => _showLaunchActivitySheet(context),
+            child: const Icon(Icons.play_arrow_rounded),
+          ),
+        ],
       ],
     );
   }
@@ -3782,6 +3872,28 @@ class _AppRootState extends State<AppRoot>
               icon: const Icon(Icons.repeat_rounded, size: 20),
               tooltip: 'Routines',
               onPressed: () => _showRoutinesSheet(context),
+            ),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.lightbulb_outline, size: 20),
+                  tooltip: 'Inbox',
+                  onPressed: () => showInboxSheet(context, _sync),
+                ),
+                if (_inboxPendingCount > 0)
+                  Positioned(
+                    right: 6,
+                    top: 6,
+                    child: Container(
+                      width: 8, height: 8,
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade600,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(width: 4),
             PopupMenuButton<String>(

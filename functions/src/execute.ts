@@ -1313,6 +1313,31 @@ async function executeGetOrionContext(uid: string): Promise<string> {
   return JSON.stringify({ today, domains, activities, routines, goals, planSummary, habitStats, timeStats, projects }, null, 2);
 }
 
+async function executeGetInbox(uid: string): Promise<string> {
+  const snap = await db.collection(`users/${uid}/captures`)
+    .where("status", "==", "pending")
+    .orderBy("createdAt", "asc")
+    .get();
+  if (snap.empty) return "Aucune idée en attente dans l'inbox.";
+  const items = snap.docs.map((d) => {
+    const v = d.data();
+    return { id: v.id, text: v.text, createdAt: v.createdAt?.toDate?.()?.toISOString?.() ?? null };
+  });
+  return JSON.stringify(items, null, 2);
+}
+
+async function executeProcessInboxItem(uid: string, itemId: string, note: string): Promise<string> {
+  const ref = db.collection(`users/${uid}/captures`).doc(itemId);
+  const snap = await ref.get();
+  if (!snap.exists) return `Item inbox introuvable : ${itemId}`;
+  await ref.update({
+    status: "processed",
+    orionNote: note,
+    processedAt: FieldValue.serverTimestamp(),
+  });
+  return `✅ Idée traitée : "${snap.data()?.text}" → ${note}`;
+}
+
 export {
 executePushAssistantMessage,
 validateToken,
@@ -1350,6 +1375,8 @@ executeGetProject,
 executePushGantt,
 executeGetAssistantMessages,
 executeDeleteAssistantMessage,
+executeGetInbox,
+executeProcessInboxItem,
   normalizePhases,
   normalizeTasks,
 };

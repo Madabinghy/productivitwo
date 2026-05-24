@@ -1673,3 +1673,41 @@ class ApiToken {
                 : (j['lastUsedAt'] as dynamic).toDate() as DateTime),
       );
 }
+
+// ── Captures (idées rapides traitées par ORION) ───────────────────────────────
+
+class CaptureItem {
+  String id;
+  String text;
+  DateTime createdAt;
+  String status; // pending | processed
+  String? orionNote;
+  DateTime? processedAt;
+
+  CaptureItem({
+    String? id,
+    required this.text,
+    required this.createdAt,
+    this.status = 'pending',
+    this.orionNote,
+    this.processedAt,
+  }) : id = id ?? _uuid.v4();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'text': text,
+        'createdAt': createdAt.toIso8601String(),
+        'status': status,
+        'orionNote': orionNote,
+        'processedAt': processedAt?.toIso8601String(),
+      };
+
+  static CaptureItem from(Map j) => CaptureItem(
+        id: j['id'] ?? _uuid.v4(),
+        text: j['text'] ?? '',
+        createdAt: _parseDate(j['createdAt']),
+        status: j['status'] ?? 'pending',
+        orionNote: j['orionNote'],
+        processedAt: _parseDateOrNull(j['processedAt']),
+      );
+}

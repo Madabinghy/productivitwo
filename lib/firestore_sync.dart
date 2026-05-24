@@ -529,6 +529,32 @@ class FirestoreSync {
     await _col(collection).doc(docId).update({'deleted': true});
   }
 
+  // ── Captures (idées rapides) ──────────────────────────────────────────────
+
+  Stream<List<CaptureItem>> streamCaptures() {
+    if (uid == null) return const Stream.empty();
+    return _col('captures')
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snap) =>
+            snap.docs.map((d) => CaptureItem.from(d.data() as Map)).toList());
+  }
+
+  Future<void> saveCaptureItem(CaptureItem item) async {
+    if (uid == null) return;
+    await _col('captures').doc(item.id).set(item.toJson());
+  }
+
+  Future<void> updateCaptureItem(String id, Map<String, dynamic> data) async {
+    if (uid == null) return;
+    await _col('captures').doc(id).update(data);
+  }
+
+  Future<void> deleteCaptureItem(String id) async {
+    if (uid == null) return;
+    await _col('captures').doc(id).delete();
+  }
+
   /// Inscrit l'utilisateur au cron ORION (fire-and-forget).
   /// Appelé au démarrage — permet au backend de l'inclure dans runOrionCycle
   /// même sans token MCP.
