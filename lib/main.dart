@@ -1807,6 +1807,13 @@ class _AppRootState extends State<AppRoot>
     // Sync Firestore pour tous les users (anonymes inclus) — l'UID anonyme
     // est stable dans le Keychain iOS, et Claude écrit via cet UID.
     final onMobile = !kIsWeb && !Platform.isMacOS && !Platform.isWindows && !Platform.isLinux;
+
+    // Garantit une session Firebase Auth — crée une session anonyme si nécessaire
+    // (cas : première installation ou après suppression de compte)
+    if (onMobile && _sync.uid == null) {
+      try { await _sync.signInAnonymously(); } catch (_) {}
+    }
+
     final firestoreEnabled = onMobile && _sync.uid != null;
 
     AppState? remote;

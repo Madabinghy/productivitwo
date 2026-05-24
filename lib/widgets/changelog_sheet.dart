@@ -10,6 +10,7 @@ class _Entry {
 const _changelog = [
   _Entry('5.28', '24 mai 2026', [
     (Icons.delete_forever_outlined, 'Suppression compte : spinner pendant la suppression, fonctionne aussi pour les comptes anonymes, robuste aux erreurs Auth'),
+    (Icons.login_rounded, 'Onboarding après suppression : session Firebase Auth créée automatiquement — création de projet ne renvoie plus "Non connecté"'),
   ]),
   _Entry('5.27', '24 mai 2026', [
     (Icons.palette_outlined, 'Bande activité en cours : couleur du domaine (bande, point pulsant, timer, bouton Stop)'),
