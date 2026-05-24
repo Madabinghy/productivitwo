@@ -756,6 +756,8 @@ class _GanttTaskCard extends StatelessWidget {
     final doneActions = task.actions.where((a) => a.done).length;
     final totalActions = task.actions.length;
     final progress = totalActions > 0 ? doneActions / totalActions : null;
+    // Seules les sous-actions non cochées sont affichées dans la carte
+    final undoneSubActions = task.actions.where((a) => !a.done).toList();
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
@@ -899,96 +901,127 @@ class _GanttTaskCard extends StatelessWidget {
               ],
               if (hasActions) ...[
                 const SizedBox(height: 8),
-                ReorderableListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  buildDefaultDragHandles: false,
-                  itemCount: task.actions.length,
-                  onReorder: (oldIdx, newIdx) {
-                    if (newIdx > oldIdx) newIdx--;
-                    onReorderActions?.call(oldIdx, newIdx);
-                  },
-                  itemBuilder: (ctx, i) => ReorderableDelayedDragStartListener(
-                    key: ValueKey('${task.id}_action_$i'),
-                    index: i,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 3),
-                      child: Row(
-                        children: [
-                          // Checkbox — seul élément qui toggle
-                          GestureDetector(
-                            onTap: () => onTaskActionToggled(
-                                task.id, i, !task.actions[i].done),
-                            child: Icon(
-                              task.actions[i].done
-                                  ? Icons.check_box_rounded
-                                  : Icons.check_box_outline_blank,
-                              size: 16,
-                              color: task.actions[i].done
-                                  ? Colors.green.shade500
-                                  : cs.onSurface.withOpacity(.4),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          // Titre — tap pour éditer, appui long géré par ReorderableDelayedDragStartListener
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: () async {
-                                final ctrl = TextEditingController(
-                                    text: task.actions[i].title);
-                                final result = await showDialog<String>(
-                                  context: ctx,
-                                  builder: (c) => AlertDialog(
-                                    title: const Text('Modifier l\'action'),
-                                    content: TextField(
-                                      controller: ctrl,
-                                      autofocus: true,
-                                      decoration: const InputDecoration(
-                                          border: OutlineInputBorder()),
-                                      onSubmitted: (v) {
-                                        if (v.trim().isNotEmpty)
-                                          Navigator.pop(c, v.trim());
-                                      },
-                                    ),
-                                    actions: [
-                                      TextButton(
-                                          onPressed: () => Navigator.pop(c),
-                                          child: const Text('Annuler')),
-                                      FilledButton(
-                                        onPressed: () {
-                                          final v = ctrl.text.trim();
-                                          if (v.isNotEmpty)
-                                            Navigator.pop(c, v);
-                                        },
-                                        child: const Text('Enregistrer'),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                                ctrl.dispose();
-                                if (result != null) {
-                                  task.actions[i].title = result;
-                                  onTaskActionToggled(task.id, i,
-                                      task.actions[i].done);
-                                }
-                              },
-                              child: Text(
-                                task.actions[i].title,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: task.actions[i].done
-                                      ? cs.onSurface.withOpacity(.35)
-                                      : cs.onSurface.withOpacity(.8),
+                // Seules les sous-actions non cochées sont affichées
+                if (undoneSubActions.isNotEmpty)
+                  ReorderableListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    buildDefaultDragHandles: false,
+                    itemCount: undoneSubActions.length,
+                    onReorder: (oldIdx, newIdx) {
+                      // Convertir les indices display (undone) → indices originaux
+                      final origOld =
+                          task.actions.indexOf(undoneSubActions[oldIdx]);
+                      final origNewPre = newIdx < undoneSubActions.length
+                          ? task.actions.indexOf(undoneSubActions[newIdx])
+                          : task.actions.length;
+                      // Ajustement post-suppression dans l'espace original
+                      final origNew =
+                          origNewPre > origOld ? origNewPre - 1 : origNewPre;
+                      onReorderActions?.call(origOld, origNew);
+                    },
+                    itemBuilder: (ctx, i) {
+                      final action = undoneSubActions[i];
+                      final origIdx = task.actions.indexOf(action);
+                      return ReorderableDelayedDragStartListener(
+                        key: ValueKey('${task.id}_undone_action_$i'),
+                        index: i,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 3),
+                          child: Row(
+                            children: [
+                              // Checkbox
+                              GestureDetector(
+                                onTap: () => onTaskActionToggled(
+                                    task.id, origIdx, true),
+                                child: Icon(
+                                  Icons.check_box_outline_blank,
+                                  size: 16,
+                                  color: cs.onSurface.withOpacity(.4),
                                 ),
                               ),
-                            ),
+                              const SizedBox(width: 8),
+                              // Titre — tap pour éditer
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () async {
+                                    final ctrl = TextEditingController(
+                                        text: action.title);
+                                    final result = await showDialog<String>(
+                                      context: ctx,
+                                      builder: (c) => AlertDialog(
+                                        title:
+                                            const Text('Modifier l\'action'),
+                                        content: TextField(
+                                          controller: ctrl,
+                                          autofocus: true,
+                                          decoration: const InputDecoration(
+                                              border: OutlineInputBorder()),
+                                          onSubmitted: (v) {
+                                            if (v.trim().isNotEmpty)
+                                              Navigator.pop(c, v.trim());
+                                          },
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(c),
+                                              child: const Text('Annuler')),
+                                          FilledButton(
+                                            onPressed: () {
+                                              final v = ctrl.text.trim();
+                                              if (v.isNotEmpty)
+                                                Navigator.pop(c, v);
+                                            },
+                                            child:
+                                                const Text('Enregistrer'),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    ctrl.dispose();
+                                    if (result != null) {
+                                      action.title = result;
+                                      onTaskActionToggled(
+                                          task.id, origIdx, action.done);
+                                    }
+                                  },
+                                  child: Text(
+                                    action.title,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: cs.onSurface.withOpacity(.8),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Icon(Icons.drag_handle,
+                                  size: 14,
+                                  color: cs.onSurface.withOpacity(.2)),
+                            ],
                           ),
-                          Icon(Icons.drag_handle,
-                              size: 14,
-                              color: cs.onSurface.withOpacity(.2)),
-                        ],
                         ),
-                      ),
+                      );
+                    },
+                  ),
+                // Indicateur sous-actions cochées
+                if (doneActions > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Row(
+                      children: [
+                        Icon(Icons.check_circle_outline,
+                            size: 12,
+                            color: Colors.green.withOpacity(.65)),
+                        const SizedBox(width: 4),
+                        Text(
+                          '$doneActions réalisée${doneActions > 1 ? 's' : ''}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: cs.onSurface.withOpacity(.35),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
               ],

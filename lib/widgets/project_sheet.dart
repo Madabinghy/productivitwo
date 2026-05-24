@@ -46,7 +46,6 @@ class _ProjectSheetState extends State<_ProjectSheet> {
   final _scrollCtrl = ScrollController();
   final _taskKeys = <String, GlobalKey>{};
   List<Map<String, dynamic>> _docs = [];
-  bool _doneExpanded = false;
 
   @override
   void initState() {
@@ -55,12 +54,7 @@ class _ProjectSheetState extends State<_ProjectSheet> {
     for (final t in _project.tasks) {
       _taskKeys[t.id] = GlobalKey();
     }
-    // Si la tâche cible est terminée, ouvrir la section "Terminées" d'emblée
     if (widget.targetTaskId != null) {
-      final target = _project.tasks
-          .where((t) => t.id == widget.targetTaskId)
-          .firstOrNull;
-      if (target?.status == 'done') _doneExpanded = true;
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToTarget());
     }
     _loadDocs();
@@ -268,24 +262,22 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                 controller: _scrollCtrl,
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
                 children: [
-                  // Phases dans l'ordre — tâches non terminées uniquement
+                  // Phases dans l'ordre, puis tâches sans phase
                   for (final phase in _project.phases) ...[
-                    if ((grouped[phase.id] ?? []).any((t) => t.status != 'done')) ...[
-                      _PhaseHeader(phase: phase),
-                      for (final task in (grouped[phase.id] ?? []).where((t) => t.status != 'done'))
-                        _TaskTile(
-                          key: _taskKeys[task.id],
-                          task: task,
-                          isTarget: task.id == widget.targetTaskId,
-                          today: today,
-                          cs: cs,
-                          onToggle: () => _toggleStatus(task),
-                          onOpenDetail: _openTaskDetail,
-                        ),
-                    ],
+                    _PhaseHeader(phase: phase),
+                    for (final task in grouped[phase.id] ?? [])
+                      _TaskTile(
+                        key: _taskKeys[task.id],
+                        task: task,
+                        isTarget: task.id == widget.targetTaskId,
+                        today: today,
+                        cs: cs,
+                        onToggle: () => _toggleStatus(task),
+                        onOpenDetail: _openTaskDetail,
+                      ),
                   ],
-                  // Tâches sans phase (non terminées)
-                  if ((grouped[null] ?? []).any((t) => t.status != 'done')) ...[
+                  // Tâches sans phase
+                  if ((grouped[null] ?? []).isNotEmpty) ...[
                     if (_project.phases.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(0, 12, 0, 4),
@@ -299,7 +291,7 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                           ),
                         ),
                       ),
-                    for (final task in (grouped[null] ?? []).where((t) => t.status != 'done'))
+                    for (final task in grouped[null] ?? [])
                       _TaskTile(
                         key: _taskKeys[task.id],
                         task: task,
@@ -309,58 +301,6 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                         onToggle: () => _toggleStatus(task),
                         onOpenDetail: _openTaskDetail,
                       ),
-                  ],
-
-                  // Section tâches terminées (repliée par défaut)
-                  if (done > 0) ...[
-                    const SizedBox(height: 8),
-                    Theme(
-                      data: Theme.of(context)
-                          .copyWith(dividerColor: Colors.transparent),
-                      child: ExpansionTile(
-                        initiallyExpanded: _doneExpanded,
-                        onExpansionChanged: (v) =>
-                            setState(() => _doneExpanded = v),
-                        tilePadding: EdgeInsets.zero,
-                        childrenPadding: EdgeInsets.zero,
-                        leading: Icon(Icons.check_circle_outline,
-                            size: 16,
-                            color: Colors.green.withOpacity(.65)),
-                        title: Text(
-                          'Terminées · $done',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: cs.onSurface.withOpacity(.45),
-                          ),
-                        ),
-                        children: [
-                          for (final phase in _project.phases)
-                            for (final task in (grouped[phase.id] ?? [])
-                                .where((t) => t.status == 'done'))
-                              _TaskTile(
-                                key: _taskKeys[task.id],
-                                task: task,
-                                isTarget: task.id == widget.targetTaskId,
-                                today: today,
-                                cs: cs,
-                                onToggle: () => _toggleStatus(task),
-                                onOpenDetail: _openTaskDetail,
-                              ),
-                          for (final task in (grouped[null] ?? [])
-                              .where((t) => t.status == 'done'))
-                            _TaskTile(
-                              key: _taskKeys[task.id],
-                              task: task,
-                              isTarget: task.id == widget.targetTaskId,
-                              today: today,
-                              cs: cs,
-                              onToggle: () => _toggleStatus(task),
-                              onOpenDetail: _openTaskDetail,
-                            ),
-                        ],
-                      ),
-                    ),
                   ],
 
                   // ── Documents liés au projet ─────────────────────────
@@ -882,54 +822,6 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                                 },
                               ),
                       ),
-                      // ── Section Faits dépliable ──────────────────────────
-                      if (doneActions.isNotEmpty)
-                        Theme(
-                          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-                          child: ExpansionTile(
-                            tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-                            childrenPadding: EdgeInsets.zero,
-                            initiallyExpanded: false,
-                            leading: Icon(Icons.check_circle_outline,
-                                size: 16, color: Colors.green.withOpacity(.6)),
-                            title: Text(
-                              'Faits · ${doneActions.length}',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: cs.onSurface.withOpacity(.45),
-                              ),
-                            ),
-                            children: [
-                              Divider(height: 1, color: cs.outlineVariant.withOpacity(.2)),
-                              for (final a in doneActions)
-                                ListTile(
-                                  dense: true,
-                                  contentPadding: const EdgeInsets.only(left: 16, right: 4),
-                                  leading: Checkbox(
-                                    value: true,
-                                    activeColor: Colors.green,
-                                    onChanged: (v) {
-                                      setState(() {
-                                        a.done = false;
-                                        a.doneAt = null;
-                                      });
-                                      _save();
-                                    },
-                                  ),
-                                  title: Text(
-                                    a.title,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: cs.onSurface.withOpacity(.35),
-                                      decoration: TextDecoration.lineThrough,
-                                    ),
-                                  ),
-                                ),
-                              const SizedBox(height: 4),
-                            ],
-                          ),
-                        ),
                     ],
                   ),
           ),

@@ -11,7 +11,8 @@ const _changelog = [
   _Entry('5.15', '24 mai 2026', [
     (Icons.bar_chart_rounded, 'Statistiques : graphes temps et habitudes colorés selon le domaine sélectionné'),
     (Icons.group_work_outlined, 'Routines "Tous les domaines" : routines groupées par domaine (avec point coloré)'),
-    (Icons.radio_button_unchecked, 'Fiche projet : seules les tâches actives sont affichées — terminées repliées en bas ("Terminées · N")'),
+    (Icons.check_box_outline_blank, 'Vue projets : sous-actions non cochées uniquement dans les cartes — indicateur "✓ N réalisée(s)" en bas'),
+    (Icons.check_circle_outline, 'Détail tâche : doublon "Faits" supprimé de l\'onglet "À faire" — onglet "Fait" conservé'),
   ]),
   _Entry('5.14', '23 mai 2026', [
     (Icons.auto_awesome, 'Nouveau projet iOS : ORION structure tes idées brutes en phases + tâches (1 action stratégique)'),
