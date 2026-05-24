@@ -3173,37 +3173,71 @@ class _ArchivesViewState extends State<_ArchivesView> {
           ]),
         );
 
-    List<Widget> buildActivityBlock(Activity a) {
-      final routines = (routinesByActivity[a.id] ?? [])
-        ..sort((x, y) => x.title.compareTo(y.title));
-      return [
-        // Activité
-        Padding(
-          padding: const EdgeInsets.only(left: 16, bottom: 6),
-          child: _ArchiveItemRow(
-            label: a.name,
-            isArchived: a.deleted,
-            subtitle: a.isHabit ? 'Routine' : 'Activité temps',
-            onArchive: () => _archive('activities', a.id),
-            onRestore: () => _restore('activities', a.id),
-            onDelete: () => _confirmHardDelete('activities', a.id),
-            cs: cs,
-          ),
-        ),
-        // Routines de cette activité
-        for (final r in routines)
-          Padding(
-            padding: const EdgeInsets.only(left: 40, bottom: 4),
-            child: _ArchiveItemRow(
-              label: r.title,
-              isArchived: r.deleted,
-              onArchive: () => _archive('recurringActions', r.id),
-              onRestore: () => _restore('recurringActions', r.id),
-              onDelete: () => _confirmHardDelete('recurringActions', r.id),
-              cs: cs,
+    Widget subsectionLabel(String text) => Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 0, 6),
+          child: Text(
+            text.toUpperCase(),
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.9,
+              color: cs.onSurface.withOpacity(0.3),
             ),
           ),
-        if (routines.isNotEmpty) const SizedBox(height: 4),
+        );
+
+    List<Widget> buildDomainSection(String? domainId) {
+      final activities = domainId == null
+          ? activitiesWithoutDomain
+          : (activitiesByDomain[domainId] ?? []);
+      final sortedActs = [...activities]..sort((x, y) => x.name.compareTo(y.name));
+
+      final routines = domainId == null
+          ? routinesWithoutActivity
+          : sortedActs.expand((a) => routinesByActivity[a.id] ?? []).toList();
+      final sortedRoutines = [...routines]..sort((x, y) => x.title.compareTo(y.title));
+
+      return [
+        // ── Activités ──
+        if (sortedActs.isNotEmpty) ...[
+          subsectionLabel('Activités'),
+          for (final a in sortedActs)
+            Padding(
+              padding: const EdgeInsets.only(left: 16, bottom: 4),
+              child: _ArchiveItemRow(
+                label: a.name,
+                isArchived: a.deleted,
+                subtitle: a.isHabit ? 'Habit' : 'Temps',
+                onArchive: () => _archive('activities', a.id),
+                onRestore: () => _restore('activities', a.id),
+                onDelete: () => _confirmHardDelete('activities', a.id),
+                cs: cs,
+              ),
+            ),
+        ],
+        // ── Routines ──
+        if (sortedRoutines.isNotEmpty) ...[
+          subsectionLabel('Routines'),
+          for (final r in sortedRoutines)
+            Padding(
+              padding: const EdgeInsets.only(left: 16, bottom: 4),
+              child: _ArchiveItemRow(
+                label: r.title,
+                isArchived: r.deleted,
+                onArchive: () => _archive('recurringActions', r.id),
+                onRestore: () => _restore('recurringActions', r.id),
+                onDelete: () => _confirmHardDelete('recurringActions', r.id),
+                cs: cs,
+              ),
+            ),
+        ],
+        if (sortedActs.isEmpty && sortedRoutines.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(left: 16, bottom: 8),
+            child: Text('Aucun élément',
+                style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.35), fontStyle: FontStyle.italic)),
+          ),
+        const SizedBox(height: 4),
       ];
     }
 
@@ -3333,17 +3367,7 @@ class _ArchivesViewState extends State<_ArchivesView> {
 
             for (final d in allDomains) ...[
               domainHeader(d),
-              if ((activitiesByDomain[d.id] ?? []).isEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(left: 16, bottom: 8),
-                  child: Text('Aucune activité dans ce domaine',
-                      style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.35), fontStyle: FontStyle.italic)),
-                )
-              else
-                for (final a in [...(activitiesByDomain[d.id] ?? [])
-                    ..sort((x, y) => x.name.compareTo(y.name))])
-                  ...buildActivityBlock(a),
-              const SizedBox(height: 4),
+              ...buildDomainSection(d.id),
             ],
 
             // Sans domaine
@@ -3360,20 +3384,7 @@ class _ArchivesViewState extends State<_ArchivesView> {
                   Expanded(child: Divider(color: cs.outlineVariant.withOpacity(0.3))),
                 ]),
               ),
-              for (final a in activitiesWithoutDomain..sort((x, y) => x.name.compareTo(y.name)))
-                ...buildActivityBlock(a),
-              for (final r in routinesWithoutActivity..sort((x, y) => x.title.compareTo(y.title)))
-                Padding(
-                  padding: const EdgeInsets.only(left: 16, bottom: 4),
-                  child: _ArchiveItemRow(
-                    label: r.title,
-                    isArchived: r.deleted,
-                    onArchive: () => _archive('recurringActions', r.id),
-                    onRestore: () => _restore('recurringActions', r.id),
-                    onDelete: () => _confirmHardDelete('recurringActions', r.id),
-                    cs: cs,
-                  ),
-                ),
+              ...buildDomainSection(null),
             ],
           ],
         ),
