@@ -8,6 +8,16 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.11', '23 mai 2026', [
+    (Icons.settings_outlined, 'Menu : épuré — 6 entrées principales + sous-menu Paramètres (Compte, Tokens API, Confidentialité, Suggestions…)'),
+    (Icons.check_circle_outline, 'Projets iOS : liste "Faits" dépliable dans l\'onglet À faire d\'une tâche'),
+    (Icons.emoji_events_outlined, 'Résumé du jour : actions Gantt réalisées aujourd\'hui (via doneAt) — masqué si zéro'),
+    (Icons.wifi_off_outlined, 'ORION hors ligne : message clair au lieu d\'une SocketException brute'),
+    (Icons.view_column_outlined, 'Web Organisation : activités et routines en deux colonnes par domaine, avec icônes et bouton éditer'),
+    (Icons.label_outlined, 'Web : onglet "Archives" renommé "Organisation"'),
+    (Icons.repeat_rounded, 'Routines : fix persistance du +1 (clé composite activityId_yyyymmdd dans Firestore)'),
+    (Icons.notifications_none_outlined, 'iOS : badge de notification réinitialisé à 0 au premier plan'),
+  ]),
   _Entry('5.10', '23 mai 2026', [
     (Icons.build_outlined, 'Xcode Cloud : fix CocoaPods PurchasesHybridCommon (désactivation osxkeychain + forçage HTTPS)'),
   ]),

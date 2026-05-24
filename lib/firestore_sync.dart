@@ -396,6 +396,11 @@ class FirestoreSync {
         .toList());
   }
 
+  Future<void> saveActivity(Activity activity) async {
+    if (uid == null) return;
+    await _col('activities').doc(activity.id).set(activity.toJson());
+  }
+
   Future<void> saveProject(Project project) async {
     if (uid == null) return;
     await _col('projects').doc(project.id).set(project.toJson());

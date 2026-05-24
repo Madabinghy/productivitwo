@@ -710,114 +710,168 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                         },
                       ))
                 // ── Onglet À faire ───────────────────────────────────────
-                : (todoActions.isEmpty
-                    ? Center(
-                        child: Text('Aucune action à faire.',
-                            style: TextStyle(
-                                color: cs.onSurface.withOpacity(.35),
-                                fontStyle: FontStyle.italic)),
-                      )
-                    : ReorderableListView.builder(
-                        scrollController: scroll,
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                        buildDefaultDragHandles: false,
-                        itemCount: todoActions.length,
-                        onReorder: (oldIndex, newIndex) {
-                          setState(() {
-                            if (newIndex > oldIndex) newIndex--;
-                            final movedItem = todoActions[oldIndex];
-                            final targetItem = newIndex < todoActions.length
-                                ? todoActions[newIndex]
-                                : null;
-                            _task.actions.remove(movedItem);
-                            if (targetItem == null) {
-                              _task.actions.add(movedItem);
-                            } else {
-                              final targetIdx = _task.actions.indexOf(targetItem);
-                              _task.actions.insert(targetIdx, movedItem);
-                            }
-                          });
-                          _save();
-                        },
-                        itemBuilder: (ctx, i) {
-                          final a = todoActions[i];
-                          return Dismissible(
-                            key: ValueKey('todo_${a.title}_$i'),
-                            direction: DismissDirection.endToStart,
-                            background: Container(
-                              alignment: Alignment.centerRight,
-                              padding: const EdgeInsets.only(right: 16),
-                              color: cs.errorContainer,
-                              child: Icon(Icons.delete_outline, color: cs.error),
-                            ),
-                            onDismissed: (_) {
-                              setState(() => _task.actions.remove(a));
-                              _save();
-                            },
-                            child: ListTile(
-                              key: ValueKey('tile_todo_${a.title}_$i'),
-                              dense: true,
-                              contentPadding: const EdgeInsets.only(left: 0, right: 4),
-                              onLongPress: () async {
-                                final ctrl = TextEditingController(text: a.title);
-                                final result = await showDialog<String>(
-                                  context: context,
-                                  builder: (c) => AlertDialog(
-                                    title: const Text('Modifier l\'action'),
-                                    content: TextField(
-                                      controller: ctrl,
-                                      autofocus: true,
-                                      decoration: const InputDecoration(
-                                          border: OutlineInputBorder()),
-                                      onSubmitted: (v) {
-                                        if (v.trim().isNotEmpty)
-                                          Navigator.pop(c, v.trim());
-                                      },
-                                    ),
-                                    actions: [
-                                      TextButton(
-                                          onPressed: () => Navigator.pop(c),
-                                          child: const Text('Annuler')),
-                                      FilledButton(
-                                        onPressed: () {
-                                          final v = ctrl.text.trim();
-                                          if (v.isNotEmpty) Navigator.pop(c, v);
-                                        },
-                                        child: const Text('Enregistrer'),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                                ctrl.dispose();
-                                if (result != null) {
-                                  setState(() => a.title = result);
-                                  _save();
-                                }
-                              },
-                              leading: Checkbox(
-                                value: false,
-                                onChanged: (v) {
+                : Column(
+                    children: [
+                      Expanded(
+                        child: todoActions.isEmpty
+                            ? Center(
+                                child: Text('Aucune action à faire.',
+                                    style: TextStyle(
+                                        color: cs.onSurface.withOpacity(.35),
+                                        fontStyle: FontStyle.italic)),
+                              )
+                            : ReorderableListView.builder(
+                                scrollController: scroll,
+                                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                                buildDefaultDragHandles: false,
+                                itemCount: todoActions.length,
+                                onReorder: (oldIndex, newIndex) {
                                   setState(() {
-                                    a.done = v ?? false;
-                                    a.doneAt = a.done ? DateTime.now() : null;
+                                    if (newIndex > oldIndex) newIndex--;
+                                    final movedItem = todoActions[oldIndex];
+                                    final targetItem = newIndex < todoActions.length
+                                        ? todoActions[newIndex]
+                                        : null;
+                                    _task.actions.remove(movedItem);
+                                    if (targetItem == null) {
+                                      _task.actions.add(movedItem);
+                                    } else {
+                                      final targetIdx = _task.actions.indexOf(targetItem);
+                                      _task.actions.insert(targetIdx, movedItem);
+                                    }
                                   });
                                   _save();
                                 },
+                                itemBuilder: (ctx, i) {
+                                  final a = todoActions[i];
+                                  return Dismissible(
+                                    key: ValueKey('todo_${a.title}_$i'),
+                                    direction: DismissDirection.endToStart,
+                                    background: Container(
+                                      alignment: Alignment.centerRight,
+                                      padding: const EdgeInsets.only(right: 16),
+                                      color: cs.errorContainer,
+                                      child: Icon(Icons.delete_outline, color: cs.error),
+                                    ),
+                                    onDismissed: (_) {
+                                      setState(() => _task.actions.remove(a));
+                                      _save();
+                                    },
+                                    child: ListTile(
+                                      key: ValueKey('tile_todo_${a.title}_$i'),
+                                      dense: true,
+                                      contentPadding: const EdgeInsets.only(left: 0, right: 4),
+                                      onLongPress: () async {
+                                        final ctrl = TextEditingController(text: a.title);
+                                        final result = await showDialog<String>(
+                                          context: context,
+                                          builder: (c) => AlertDialog(
+                                            title: const Text('Modifier l\'action'),
+                                            content: TextField(
+                                              controller: ctrl,
+                                              autofocus: true,
+                                              decoration: const InputDecoration(
+                                                  border: OutlineInputBorder()),
+                                              onSubmitted: (v) {
+                                                if (v.trim().isNotEmpty)
+                                                  Navigator.pop(c, v.trim());
+                                              },
+                                            ),
+                                            actions: [
+                                              TextButton(
+                                                  onPressed: () => Navigator.pop(c),
+                                                  child: const Text('Annuler')),
+                                              FilledButton(
+                                                onPressed: () {
+                                                  final v = ctrl.text.trim();
+                                                  if (v.isNotEmpty) Navigator.pop(c, v);
+                                                },
+                                                child: const Text('Enregistrer'),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                        ctrl.dispose();
+                                        if (result != null) {
+                                          setState(() => a.title = result);
+                                          _save();
+                                        }
+                                      },
+                                      leading: Checkbox(
+                                        value: false,
+                                        onChanged: (v) {
+                                          setState(() {
+                                            a.done = v ?? false;
+                                            a.doneAt = a.done ? DateTime.now() : null;
+                                          });
+                                          _save();
+                                        },
+                                      ),
+                                      title: Text(a.title,
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: cs.onSurface,
+                                          )),
+                                      trailing: ReorderableDragStartListener(
+                                        index: i,
+                                        child: Icon(Icons.drag_handle,
+                                            color: cs.onSurface.withOpacity(.3)),
+                                      ),
+                                    ),
+                                  );
+                                },
                               ),
-                              title: Text(a.title,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: cs.onSurface,
-                                  )),
-                              trailing: ReorderableDragStartListener(
-                                index: i,
-                                child: Icon(Icons.drag_handle,
-                                    color: cs.onSurface.withOpacity(.3)),
+                      ),
+                      // ── Section Faits dépliable ──────────────────────────
+                      if (doneActions.isNotEmpty)
+                        Theme(
+                          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                          child: ExpansionTile(
+                            tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+                            childrenPadding: EdgeInsets.zero,
+                            initiallyExpanded: false,
+                            leading: Icon(Icons.check_circle_outline,
+                                size: 16, color: Colors.green.withOpacity(.6)),
+                            title: Text(
+                              'Faits · ${doneActions.length}',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: cs.onSurface.withOpacity(.45),
                               ),
                             ),
-                          );
-                        },
-                      )),
+                            children: [
+                              Divider(height: 1, color: cs.outlineVariant.withOpacity(.2)),
+                              for (final a in doneActions)
+                                ListTile(
+                                  dense: true,
+                                  contentPadding: const EdgeInsets.only(left: 16, right: 4),
+                                  leading: Checkbox(
+                                    value: true,
+                                    activeColor: Colors.green,
+                                    onChanged: (v) {
+                                      setState(() {
+                                        a.done = false;
+                                        a.doneAt = null;
+                                      });
+                                      _save();
+                                    },
+                                  ),
+                                  title: Text(
+                                    a.title,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: cs.onSurface.withOpacity(.35),
+                                      decoration: TextDecoration.lineThrough,
+                                    ),
+                                  ),
+                                ),
+                              const SizedBox(height: 4),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
           ),
 
           // Footer (uniquement sur l'onglet À faire)

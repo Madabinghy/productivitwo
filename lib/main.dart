@@ -3227,16 +3227,22 @@ class _AppRootState extends State<AppRoot>
     }
 
     void _showDailyScoreSheet(BuildContext context, int done, int total) {
-      final today = yyyymmdd(DateTime.now());
-      final actions = logic.state.dayPlan
-          .where((it) =>
-              it.yyyymmdd == today &&
-              it.kind == PlanKind.action &&
-              !it.archived &&
-              it.toPlan != true)
-          .toList();
-      final actionsDone = actions.where((it) => it.done).length;
-      final actionsTotal = actions.length;
+      final now = DateTime.now();
+      final todayStart = DateTime(now.year, now.month, now.day);
+      final todayEnd   = todayStart.add(const Duration(days: 1));
+
+      // Sous-actions Gantt cochées aujourd'hui (via doneAt)
+      final ganttDoneToday = _dashboardProjects
+          .where((p) => p.status != 'archived')
+          .expand((p) => p.tasks)
+          .expand((t) => t.actions)
+          .where((a) =>
+              a.done &&
+              a.doneAt != null &&
+              !a.doneAt!.isBefore(todayStart) &&
+              a.doneAt!.isBefore(todayEnd))
+          .length;
+
       final routineSummary = logic.routineProgressSummaryForCurrentPeriod();
       // Total tâches Gantt + sous-actions projet validées (même base que les badges)
       final totalHistoricalDone = _ganttActionCount();
@@ -3579,16 +3585,17 @@ class _AppRootState extends State<AppRoot>
                   }),
 
                   const SizedBox(height: 24),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.check_box_outlined),
-                    title: const Text('Actions du jour'),
-                    trailing: Text(
-                      '$actionsDone / $actionsTotal',
-                      style: theme.textTheme.titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w700),
+                  if (ganttDoneToday > 0)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.account_tree_outlined),
+                      title: const Text('Actions Gantt · aujourd\'hui'),
+                      trailing: Text(
+                        '$ganttDoneToday cochée${ganttDoneToday > 1 ? 's' : ''}',
+                        style: theme.textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                      ),
                     ),
-                  ),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.emoji_events_rounded),
@@ -3729,18 +3736,9 @@ class _AppRootState extends State<AppRoot>
     }
 
     Widget _buildDailyScoreChip(BuildContext context) {
-      final today = yyyymmdd(DateTime.now());
-      final actions = logic.state.dayPlan
-          .where((it) =>
-              it.yyyymmdd == today &&
-              it.kind == PlanKind.action &&
-              !it.archived &&
-              it.toPlan != true)
-          .toList();
-      final actionsDone = actions.where((it) => it.done).length;
       final routineSummary = logic.routineProgressSummaryForCurrentPeriod();
-      final done = actionsDone + routineSummary.reached;
-      final total = actions.length + routineSummary.total;
+      final done  = routineSummary.reached;
+      final total = routineSummary.total;
       if (total == 0) return const SizedBox.shrink();
       return DailyScoreChip(
         done: done,
@@ -3864,52 +3862,6 @@ class _AppRootState extends State<AppRoot>
                   _openFiltersSheet(context);
                 } else if (v == 'changelog') {
                   showChangelogSheet(context);
-                } else if (v == 'privacy') {
-                  Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => const PrivacyPolicyScreen(),
-                  ));
-                } else if (v == 'api_tokens') {
-                  Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => ApiTokensScreen(sync: _sync, uid: _sync.uid ?? ''),
-                  ));
-                } else if (v == 'apple_account') {
-                  showModalBottomSheet(
-                    context: context,
-                    showDragHandle: true,
-                    builder: (_) => Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Compte',
-                              style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w800,
-                                  color: Theme.of(context).colorScheme.onSurface)),
-                          const SizedBox(height: 12),
-                          AppleSignInTile(
-                            sync: _sync,
-                            state: _state!,
-                            onDataChanged: () {
-                              Navigator.pop(context);
-                              _init();
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                } else if (v == 'feedback') {
-                  final uri = Uri(
-                    scheme: 'mailto',
-                    path: 'emeric.edmond@gmail.com',
-                    queryParameters: {
-                      'subject': '[Productivitwo] Suggestion',
-                      'body': 'Bonjour,\n\nVoici ma suggestion :\n\n',
-                    },
-                  );
-                  launchUrl(uri);
                 } else if (v == 'catalogue') {
                   await showModalBottomSheet(
                     context: context,
@@ -3926,46 +3878,8 @@ class _AppRootState extends State<AppRoot>
                       ),
                     ),
                   );
-                } else if (v == 'demo_data') {
-                  await _loadDemoData();
-                } else if (v == 'delete_account') {
-                  final confirm = await showDialog<bool>(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      title: const Text('Supprimer mon compte'),
-                      content: const Text(
-                        'Toutes vos données seront supprimées définitivement '
-                        '(activités, routines, sessions, objectifs).\n\n'
-                        'Cette action est irréversible.',
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(ctx, false),
-                          child: const Text('Annuler'),
-                        ),
-                        FilledButton(
-                          style: FilledButton.styleFrom(
-                            backgroundColor: Theme.of(context).colorScheme.error,
-                          ),
-                          onPressed: () => Navigator.pop(ctx, true),
-                          child: const Text('Supprimer définitivement'),
-                        ),
-                      ],
-                    ),
-                  );
-                  if (confirm == true) {
-                    // Si connecté avec Apple : supprimer les données Firestore + déconnecter
-                    if (!_sync.isAnonymous) {
-                      try { await _sync.deleteAccount(); } catch (_) {}
-                    }
-                    await store.wipe();
-                    await ProManager.deactivate();
-                    exit(0);
-                  }
-                } else if (v == 'dev') {
-                  Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => const DevConsoleScreen(),
-                  ));
+                } else if (v == 'settings') {
+                  _showSettingsSheet(context);
                 }
               },
               itemBuilder: (_) => [
@@ -3999,129 +3913,50 @@ class _AppRootState extends State<AppRoot>
                 const PopupMenuDivider(),
                 const PopupMenuItem(
                   value: 'stats',
-                  child: Row(
-                    children: [
-                      Icon(Icons.bar_chart_outlined, size: 18),
-                      SizedBox(width: 12),
-                      Text('Statistiques'),
-                    ],
-                  ),
+                  child: Row(children: [
+                    Icon(Icons.bar_chart_outlined, size: 18),
+                    SizedBox(width: 12),
+                    Text('Statistiques'),
+                  ]),
                 ),
                 PopupMenuItem(
                   value: 'filters',
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.tune,
-                        size: 18,
-                        color: filtersOn
-                            ? Theme.of(context).colorScheme.primary
-                            : null,
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        'Filtres',
+                  child: Row(children: [
+                    Icon(Icons.tune, size: 18,
+                        color: filtersOn ? Theme.of(context).colorScheme.primary : null),
+                    const SizedBox(width: 12),
+                    Text('Filtres',
                         style: filtersOn
-                            ? TextStyle(
-                                color: Theme.of(context).colorScheme.primary,
-                                fontWeight: FontWeight.w600,
-                              )
-                            : null,
-                      ),
-                    ],
-                  ),
+                            ? TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w600)
+                            : null),
+                  ]),
                 ),
                 const PopupMenuItem(
                   value: 'changelog',
-                  child: Row(
-                    children: [
-                      Icon(Icons.new_releases_outlined, size: 18),
-                      SizedBox(width: 12),
-                      Text('Nouveautés'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'privacy',
-                  child: Row(
-                    children: [
-                      Icon(Icons.privacy_tip_outlined, size: 18),
-                      SizedBox(width: 12),
-                      Text('Confidentialité'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'api_tokens',
-                  child: Row(
-                    children: [
-                      Icon(Icons.key_outlined, size: 18),
-                      SizedBox(width: 12),
-                      Text('Tokens API'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'apple_account',
-                  child: Row(
-                    children: [
-                      Icon(Icons.apple, size: 18),
-                      SizedBox(width: 12),
-                      Text('Compte Apple'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'feedback',
-                  child: Row(
-                    children: [
-                      Icon(Icons.mail_outline, size: 18),
-                      SizedBox(width: 12),
-                      Text('Suggérer une feature'),
-                    ],
-                  ),
+                  child: Row(children: [
+                    Icon(Icons.new_releases_outlined, size: 18),
+                    SizedBox(width: 12),
+                    Text('Nouveautés'),
+                  ]),
                 ),
                 const PopupMenuItem(
                   value: 'catalogue',
-                  child: Row(
-                    children: [
-                      Icon(Icons.library_add_outlined, size: 18),
-                      SizedBox(width: 12),
-                      Text('Parcourir le catalogue'),
-                    ],
-                  ),
+                  child: Row(children: [
+                    Icon(Icons.library_add_outlined, size: 18),
+                    SizedBox(width: 12),
+                    Text('Catalogue'),
+                  ]),
                 ),
+                const PopupMenuDivider(),
                 const PopupMenuItem(
-                  value: 'demo_data',
-                  child: Row(
-                    children: [
-                      Icon(Icons.auto_awesome_outlined, size: 18),
-                      SizedBox(width: 12),
-                      Text('Charger des données de démo'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'delete_account',
-                  child: Row(
-                    children: [
-                      Icon(Icons.delete_forever_outlined, size: 18,
-                          color: Colors.red),
-                      SizedBox(width: 12),
-                      Text('Supprimer mon compte',
-                          style: TextStyle(color: Colors.red)),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'dev',
-                  child: Row(
-                    children: [
-                      Icon(Icons.bug_report_outlined, size: 18),
-                      SizedBox(width: 12),
-                      Text('Console dev'),
-                    ],
-                  ),
+                  value: 'settings',
+                  child: Row(children: [
+                    Icon(Icons.settings_outlined, size: 18),
+                    SizedBox(width: 12),
+                    Text('Paramètres'),
+                    Spacer(),
+                    Icon(Icons.chevron_right, size: 16),
+                  ]),
                 ),
               ],
             ),
@@ -4233,6 +4068,186 @@ class _AppRootState extends State<AppRoot>
         onChanged: () {
           setState(() {}); // refresh écran après changement filtres
         },
+      ),
+    );
+  }
+
+  void _showSettingsSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetCtx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  'Paramètres',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+              ),
+              // Compte Apple
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.person_outline),
+                title: const Text('Compte Apple'),
+                trailing: const Icon(Icons.chevron_right, size: 18),
+                onTap: () {
+                  Navigator.pop(sheetCtx);
+                  showModalBottomSheet(
+                    context: context,
+                    showDragHandle: true,
+                    builder: (_) => Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Compte',
+                              style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  color: Theme.of(context).colorScheme.onSurface)),
+                          const SizedBox(height: 12),
+                          AppleSignInTile(
+                            sync: _sync,
+                            state: _state!,
+                            onDataChanged: () {
+                              Navigator.pop(context);
+                              _init();
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+              // Tokens API
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.vpn_key_outlined),
+                title: const Text('Tokens API'),
+                trailing: const Icon(Icons.chevron_right, size: 18),
+                onTap: () {
+                  Navigator.pop(sheetCtx);
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => ApiTokensScreen(sync: _sync, uid: _sync.uid ?? ''),
+                  ));
+                },
+              ),
+              // Confidentialité
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.privacy_tip_outlined),
+                title: const Text('Confidentialité'),
+                trailing: const Icon(Icons.chevron_right, size: 18),
+                onTap: () {
+                  Navigator.pop(sheetCtx);
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const PrivacyPolicyScreen(),
+                  ));
+                },
+              ),
+              // Suggérer une feature
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.lightbulb_outline),
+                title: const Text('Suggérer une feature'),
+                onTap: () {
+                  Navigator.pop(sheetCtx);
+                  final uri = Uri(
+                    scheme: 'mailto',
+                    path: 'emeric.edmond@gmail.com',
+                    queryParameters: {
+                      'subject': '[Productivitwo] Suggestion',
+                      'body': 'Bonjour,\n\nVoici ma suggestion :\n\n',
+                    },
+                  );
+                  launchUrl(uri);
+                },
+              ),
+              // Données de démo
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.science_outlined),
+                title: const Text('Charger des données de démo'),
+                onTap: () async {
+                  Navigator.pop(sheetCtx);
+                  await _loadDemoData();
+                },
+              ),
+              // Console dev
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.terminal_outlined),
+                title: const Text('Console dev'),
+                trailing: const Icon(Icons.chevron_right, size: 18),
+                onTap: () {
+                  Navigator.pop(sheetCtx);
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const DevConsoleScreen(),
+                  ));
+                },
+              ),
+              const Divider(height: 24),
+              // Supprimer le compte — zone danger
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.delete_forever_outlined,
+                    color: Theme.of(context).colorScheme.error),
+                title: Text(
+                  'Supprimer mon compte',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+                onTap: () async {
+                  Navigator.pop(sheetCtx);
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Supprimer mon compte'),
+                      content: const Text(
+                        'Toutes vos données seront supprimées définitivement '
+                        '(activités, routines, sessions, objectifs).\n\n'
+                        'Cette action est irréversible.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('Annuler'),
+                        ),
+                        FilledButton(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Theme.of(context).colorScheme.error,
+                          ),
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('Supprimer définitivement'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirm == true) {
+                    if (!_sync.isAnonymous) {
+                      try { await _sync.deleteAccount(); } catch (_) {}
+                    }
+                    await store.wipe();
+                    await ProManager.deactivate();
+                    exit(0);
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

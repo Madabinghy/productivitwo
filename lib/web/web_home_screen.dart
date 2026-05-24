@@ -206,7 +206,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                 tabs: const [
                   Tab(text: 'Projets'),
                   Tab(text: 'Focus'),
-                  Tab(text: 'Archives'),
+                  Tab(text: 'Organisation'),
                   Tab(text: 'ORION'),
                 ],
               ),
@@ -2973,7 +2973,6 @@ class _ArchivesView extends StatefulWidget {
 class _ArchivesViewState extends State<_ArchivesView> {
   List<Domain> _domains = [];
   List<Activity> _activities = [];
-  List<RecurringAction> _routines = [];
   List<Project> _projects = [];
   bool _loading = true;
   final _searchCtrl = TextEditingController();
@@ -2999,15 +2998,13 @@ class _ArchivesViewState extends State<_ArchivesView> {
       final results = await Future.wait([
         widget.sync.fetchAllDomains(),
         widget.sync.fetchActivities(),
-        widget.sync.fetchRoutines(),
         widget.sync.fetchProjects(),
       ]);
       if (!mounted) return;
       setState(() {
         _domains    = results[0] as List<Domain>;
         _activities = results[1] as List<Activity>;
-        _routines   = results[2] as List<RecurringAction>;
-        _projects   = results[3] as List<Project>;
+        _projects   = results[2] as List<Project>;
         _loading = false;
       });
     } catch (_) {
@@ -3055,6 +3052,77 @@ class _ArchivesViewState extends State<_ArchivesView> {
     }
   }
 
+  Future<void> _editActivity(Activity activity) async {
+    final nameCtrl = TextEditingController(text: activity.name);
+    String? domainId = activity.domainId.isEmpty ? null : activity.domainId;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        return StatefulBuilder(builder: (ctx, setLocal) {
+          return AlertDialog(
+            title: Text(activity.isHabit ? 'Modifier la routine' : 'Modifier l\'activité'),
+            content: SizedBox(
+              width: 360,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Nom',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text('Domaine', style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.6))),
+                  const SizedBox(height: 6),
+                  DropdownButtonFormField<String?>(
+                    value: domainId,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                    items: [
+                      const DropdownMenuItem(value: null, child: Text('— Aucun domaine —')),
+                      for (final d in ([..._domains.where((d) => !d.deleted)]
+                          ..sort((a, b) => a.name.compareTo(b.name))))
+                        DropdownMenuItem(value: d.id, child: Text(d.name)),
+                    ],
+                    onChanged: (v) => setLocal(() => domainId = v),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Annuler'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Enregistrer'),
+              ),
+            ],
+          );
+        });
+      },
+    );
+
+    if (confirmed == true) {
+      activity.name = nameCtrl.text.trim();
+      activity.domainId = domainId ?? '';
+      await widget.sync.saveActivity(activity);
+      _load();
+    }
+    nameCtrl.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -3085,15 +3153,11 @@ class _ArchivesViewState extends State<_ArchivesView> {
         .toList()..sort((a, b) => a.name.compareTo(b.name));
     final allDomains = [...activeDomains, ...archivedDomains];
 
-    // Activités et routines (filtrées)
+    // Activités filtrées et indexées par domaine
     final filteredActivities = _activities
         .where((a) => matchesSearch(a.name) && showActive(a.deleted))
         .toList();
-    final filteredRoutines = _routines
-        .where((r) => matchesSearch(r.title) && showActive(r.deleted))
-        .toList();
 
-    // Activités et routines indexées
     final activitiesByDomain = <String, List<Activity>>{};
     final activitiesWithoutDomain = <Activity>[];
     for (final a in filteredActivities) {
@@ -3101,15 +3165,6 @@ class _ArchivesViewState extends State<_ArchivesView> {
         activitiesWithoutDomain.add(a);
       } else {
         activitiesByDomain.putIfAbsent(a.domainId, () => []).add(a);
-      }
-    }
-    final routinesByActivity = <String, List<RecurringAction>>{};
-    final routinesWithoutActivity = <RecurringAction>[];
-    for (final r in filteredRoutines) {
-      if (r.activityId == null || r.activityId!.isEmpty) {
-        routinesWithoutActivity.add(r);
-      } else {
-        routinesByActivity.putIfAbsent(r.activityId!, () => []).add(r);
       }
     }
 
@@ -3186,59 +3241,81 @@ class _ArchivesViewState extends State<_ArchivesView> {
           ),
         );
 
-    List<Widget> buildDomainSection(String? domainId) {
-      final activities = domainId == null
+    Widget actRow(Activity a) => Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: _ArchiveItemRow(
+        label: a.name,
+        isArchived: a.deleted,
+        onEdit: () => _editActivity(a),
+        onArchive: () => _archive('activities', a.id),
+        onRestore: () => _restore('activities', a.id),
+        onDelete: () => _confirmHardDelete('activities', a.id),
+        cs: cs,
+      ),
+    );
+
+    Widget buildDomainSection(String? domainId) {
+      final all = domainId == null
           ? activitiesWithoutDomain
           : (activitiesByDomain[domainId] ?? []);
-      final sortedActs = [...activities]..sort((x, y) => x.name.compareTo(y.name));
 
-      final routines = domainId == null
-          ? routinesWithoutActivity
-          : sortedActs.expand((a) => routinesByActivity[a.id] ?? []).toList();
-      final sortedRoutines = [...routines]..sort((x, y) => x.title.compareTo(y.title));
+      final timeActs = [...all.where((a) => !a.isHabit)]
+        ..sort((x, y) => x.name.compareTo(y.name));
+      final habitActs = [...all.where((a) => a.isHabit)]
+        ..sort((x, y) => x.name.compareTo(y.name));
 
-      return [
-        // ── Activités ──
-        if (sortedActs.isNotEmpty) ...[
-          subsectionLabel('Activités'),
-          for (final a in sortedActs)
+      if (timeActs.isEmpty && habitActs.isEmpty) {
+        return Padding(
+          padding: const EdgeInsets.only(left: 16, bottom: 8),
+          child: Text('Aucun élément',
+              style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.35), fontStyle: FontStyle.italic)),
+        );
+      }
+
+      Widget column(String label, IconData icon, List<Activity> items) => Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Padding(
-              padding: const EdgeInsets.only(left: 16, bottom: 4),
-              child: _ArchiveItemRow(
-                label: a.name,
-                isArchived: a.deleted,
-                subtitle: a.isHabit ? 'Habit' : 'Temps',
-                onArchive: () => _archive('activities', a.id),
-                onRestore: () => _restore('activities', a.id),
-                onDelete: () => _confirmHardDelete('activities', a.id),
-                cs: cs,
+              padding: const EdgeInsets.fromLTRB(0, 8, 0, 6),
+              child: Row(
+                children: [
+                  Icon(icon, size: 12, color: cs.onSurface.withOpacity(0.35)),
+                  const SizedBox(width: 5),
+                  Text(
+                    label.toUpperCase(),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.9,
+                      color: cs.onSurface.withOpacity(0.3),
+                    ),
+                  ),
+                ],
               ),
             ),
-        ],
-        // ── Routines ──
-        if (sortedRoutines.isNotEmpty) ...[
-          subsectionLabel('Routines'),
-          for (final r in sortedRoutines)
-            Padding(
-              padding: const EdgeInsets.only(left: 16, bottom: 4),
-              child: _ArchiveItemRow(
-                label: r.title,
-                isArchived: r.deleted,
-                onArchive: () => _archive('recurringActions', r.id),
-                onRestore: () => _restore('recurringActions', r.id),
-                onDelete: () => _confirmHardDelete('recurringActions', r.id),
-                cs: cs,
-              ),
-            ),
-        ],
-        if (sortedActs.isEmpty && sortedRoutines.isEmpty)
-          Padding(
-            padding: const EdgeInsets.only(left: 16, bottom: 8),
-            child: Text('Aucun élément',
-                style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.35), fontStyle: FontStyle.italic)),
-          ),
-        const SizedBox(height: 4),
-      ];
+            if (items.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text('—', style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.3))),
+              )
+            else
+              for (final a in items) actRow(a),
+          ],
+        ),
+      );
+
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            column('Activités', Icons.timer_outlined, timeActs),
+            const SizedBox(width: 16),
+            column('Routines', Icons.repeat_rounded, habitActs),
+          ],
+        ),
+      );
     }
 
     // ── Rendu ────────────────────────────────────────────────────────────────
@@ -3367,11 +3444,11 @@ class _ArchivesViewState extends State<_ArchivesView> {
 
             for (final d in allDomains) ...[
               domainHeader(d),
-              ...buildDomainSection(d.id),
+              buildDomainSection(d.id),
             ],
 
             // Sans domaine
-            if (activitiesWithoutDomain.isNotEmpty || routinesWithoutActivity.isNotEmpty) ...[
+            if (activitiesWithoutDomain.isNotEmpty) ...[
               Padding(
                 padding: const EdgeInsets.fromLTRB(0, 16, 0, 8),
                 child: Row(children: [
@@ -3384,7 +3461,7 @@ class _ArchivesViewState extends State<_ArchivesView> {
                   Expanded(child: Divider(color: cs.outlineVariant.withOpacity(0.3))),
                 ]),
               ),
-              ...buildDomainSection(null),
+              buildDomainSection(null),
             ],
           ],
         ),
@@ -3882,6 +3959,7 @@ class _ArchiveItemRow extends StatelessWidget {
   final String label;
   final String? subtitle;
   final bool isArchived;
+  final VoidCallback? onEdit;
   final VoidCallback onArchive;
   final VoidCallback onRestore;
   final VoidCallback? onDelete;
@@ -3894,6 +3972,7 @@ class _ArchiveItemRow extends StatelessWidget {
     required this.onRestore,
     required this.cs,
     this.subtitle,
+    this.onEdit,
     this.onDelete,
   });
 
@@ -3953,7 +4032,17 @@ class _ArchiveItemRow extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 8),
+          // Bouton édition
+          if (onEdit != null) ...[
+            const SizedBox(width: 4),
+            IconButton(
+              icon: Icon(Icons.edit_outlined, size: 15, color: cs.onSurface.withOpacity(0.4)),
+              tooltip: 'Modifier',
+              visualDensity: VisualDensity.compact,
+              onPressed: onEdit,
+            ),
+          ],
+          const SizedBox(width: 4),
           // Badge statut
           Container(
             padding:
