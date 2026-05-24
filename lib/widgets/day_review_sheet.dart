@@ -8,18 +8,20 @@ import 'package:productivitwo_v1/widgets/tomorrow_plan_sheet.dart';
 Future<void> showDayReviewSheet(
   BuildContext context, {
   required AppLogic logic,
+  List<Project> projects = const [],
 }) async {
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
-    builder: (_) => _DayReviewSheet(logic: logic),
+    builder: (_) => _DayReviewSheet(logic: logic, projects: projects),
   );
 }
 
 class _DayReviewSheet extends StatefulWidget {
   final AppLogic logic;
-  const _DayReviewSheet({required this.logic});
+  final List<Project> projects;
+  const _DayReviewSheet({required this.logic, this.projects = const []});
 
   @override
   State<_DayReviewSheet> createState() => _DayReviewSheetState();
@@ -29,8 +31,6 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
   AppLogic get logic => widget.logic;
   AppState get st => logic.state;
 
-  bool _showMissed = true;
-  bool _showDoneActions = false;
   bool _showRoutines = true;
 
   @override
@@ -46,16 +46,20 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
     final score = logic.dailyScore(ymd);
     final scorePct = (score * 100).round();
 
-    // ── Actions ────────────────────────────────────────────────────────────
-    final allActions = st.dayPlan
-        .where((it) =>
-            it.yyyymmdd == ymd &&
-            it.kind == PlanKind.action &&
-            !it.archived)
-        .toList()
-      ..sort((a, b) => a.order.compareTo(b.order));
-    final doneActions = allActions.where((it) => it.done).toList();
-    final missedActions = allActions.where((it) => !it.done).toList();
+    // ── Sous-actions Gantt cochées aujourd'hui ─────────────────────────────
+    final List<({String taskTitle, String actionTitle})> ganttDone = [];
+    for (final project in widget.projects) {
+      for (final task in project.tasks) {
+        for (final action in task.actions) {
+          if (action.done && action.doneAt != null) {
+            final d = action.doneAt!;
+            if (d.year == today.year && d.month == today.month && d.day == today.day) {
+              ganttDone.add((taskTitle: task.title, actionTitle: action.title));
+            }
+          }
+        }
+      }
+    }
 
     // ── Routines ───────────────────────────────────────────────────────────
     final routines = st.activities
@@ -100,44 +104,45 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
           _ScoreCard(score: score, scorePct: scorePct, cs: cs),
           const SizedBox(height: 20),
 
-          // ── Actions ───────────────────────────────────────────────────────
-          _sectionHeader(
-            cs,
-            icon: Icons.check_box_outlined,
-            title:
-                'Actions  ${doneActions.length}/${allActions.length}',
-          ),
-          const SizedBox(height: 8),
-          if (missedActions.isNotEmpty) ...[
-            _expandable(
+          // ── Sous-actions Gantt cochées aujourd'hui ────────────────────────
+          if (ganttDone.isNotEmpty) ...[
+            _sectionHeader(
               cs,
-              label:
-                  '${missedActions.length} non faite${missedActions.length > 1 ? 's' : ''}',
-              color: cs.error.withOpacity(.8),
-              expanded: _showMissed,
-              onTap: () => setState(() => _showMissed = !_showMissed),
-              children: missedActions
-                  .map((it) => _actionRow(cs, it.title, done: false))
-                  .toList(),
+              icon: Icons.account_tree_outlined,
+              title: 'Projets  ${ganttDone.length} sous-action${ganttDone.length > 1 ? 's' : ''}',
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
+            for (final item in ganttDone)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.check_circle_outline,
+                        size: 16, color: Colors.green.shade400),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: RichText(
+                        text: TextSpan(
+                          style: TextStyle(
+                              fontSize: 13, color: cs.onSurface.withOpacity(.8)),
+                          children: [
+                            TextSpan(
+                              text: '${item.taskTitle} · ',
+                              style: TextStyle(
+                                  color: cs.onSurface.withOpacity(.45),
+                                  fontSize: 12),
+                            ),
+                            TextSpan(text: item.actionTitle),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 20),
           ],
-          if (doneActions.isNotEmpty)
-            _expandable(
-              cs,
-              label:
-                  '${doneActions.length} faite${doneActions.length > 1 ? 's' : ''}',
-              color: Colors.green,
-              expanded: _showDoneActions,
-              onTap: () =>
-                  setState(() => _showDoneActions = !_showDoneActions),
-              children: doneActions
-                  .map((it) => _actionRow(cs, it.title, done: true))
-                  .toList(),
-            ),
-          if (allActions.isEmpty)
-            _emptyHint(cs, 'Aucune action planifiée aujourd\'hui.'),
-          const SizedBox(height: 20),
 
           // ── Routines ──────────────────────────────────────────────────────
           _sectionHeader(

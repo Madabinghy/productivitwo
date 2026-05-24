@@ -1694,6 +1694,8 @@ class _OrionProjectPageState extends State<_OrionProjectPage> {
     try {
       final uid = widget.sync.uid;
       if (uid != null) {
+        // Domaine Test — pour s'entraîner à créer activités/routines et le supprimer
+        await widget.sync.saveDomain(Domain(name: 'Domaine Test'));
         await widget.sync.saveProject(buildDiscoveryProject(uid));
       }
     } catch (_) {
@@ -1868,6 +1870,11 @@ Project buildDiscoveryProject(String createdBy) {
     startDate: t,
     endDate: t.add(const Duration(days: 7)),
   );
+  final pActivites = ProjectPhase(
+    label: 'Activités & Routines',
+    startDate: t,
+    endDate: t.add(const Duration(days: 7)),
+  );
   final pOrion = ProjectPhase(
     label: 'ORION & IA',
     startDate: t,
@@ -1903,12 +1910,70 @@ Project buildDiscoveryProject(String createdBy) {
       ],
     ),
     ProjectTask(
-      title: 'Supprimer une sous-action (swipe gauche)',
+      title: 'Supprimer une sous-action',
       phaseId: pTaches.id,
       startDate: t,
+      actions: [
+        TaskAction(title: 'Ouvre cette tâche (appuie sur son titre)'),
+        TaskAction(title: 'Swipe gauche sur « Supprime moi » ci-dessous'),
+        TaskAction(title: 'Supprime moi'),
+      ],
     ),
 
-    // Phase 2 — ORION & IA
+    // Phase 2 — Activités & Routines
+    ProjectTask(
+      title: 'Créer une activité',
+      phaseId: pActivites.id,
+      startDate: t,
+      actions: [
+        TaskAction(title: 'Appuie sur un domaine sur l\'écran principal'),
+        TaskAction(title: 'Appuie sur « Nouvelle activité »'),
+        TaskAction(title: 'Nomme l\'activité et valide'),
+      ],
+    ),
+    ProjectTask(
+      title: 'Créer une routine',
+      phaseId: pActivites.id,
+      startDate: t,
+      actions: [
+        TaskAction(title: 'Appuie sur un domaine sur l\'écran principal'),
+        TaskAction(title: 'Bascule vers l\'onglet « Routines »'),
+        TaskAction(title: 'Appuie sur « Nouvelle routine »'),
+        TaskAction(title: 'Configure et valide'),
+      ],
+    ),
+    ProjectTask(
+      title: 'Supprimer une activité',
+      phaseId: pActivites.id,
+      startDate: t,
+      actions: [
+        TaskAction(title: 'Appuie sur le domaine « Domaine Test »'),
+        TaskAction(title: 'Appui long sur l\'activité créée'),
+        TaskAction(title: 'Appuie sur Supprimer'),
+      ],
+    ),
+    ProjectTask(
+      title: 'Supprimer une routine',
+      phaseId: pActivites.id,
+      startDate: t,
+      actions: [
+        TaskAction(title: 'Sur l\'écran principal, repère la carte Routines'),
+        TaskAction(title: 'Appui long sur ta routine'),
+        TaskAction(title: 'Appuie sur Supprimer'),
+      ],
+    ),
+    ProjectTask(
+      title: 'Supprimer le domaine « Domaine Test »',
+      phaseId: pActivites.id,
+      startDate: t,
+      actions: [
+        TaskAction(title: 'Appuie sur ⚙ en haut à droite'),
+        TaskAction(title: 'Appui long sur « Domaine Test »'),
+        TaskAction(title: 'Appuie sur Supprimer'),
+      ],
+    ),
+
+    // Phase 3 — ORION & IA
     ProjectTask(
       title: 'Explorer ORION',
       phaseId: pOrion.id,
@@ -1916,7 +1981,7 @@ Project buildDiscoveryProject(String createdBy) {
       actions: [
         TaskAction(title: 'Aller sur l\'onglet ✦ ORION'),
         TaskAction(title: 'Lire le rapport hebdomadaire'),
-        TaskAction(title: 'Capturer une idée avec le 💡'),
+        TaskAction(title: 'Capturer une idée via 💡 (icône en haut à droite)'),
       ],
     ),
     ProjectTask(
@@ -1930,7 +1995,7 @@ Project buildDiscoveryProject(String createdBy) {
       ],
     ),
 
-    // Phase 3 — App web
+    // Phase 4 — App web
     ProjectTask(
       title: 'Ouvrir l\'app web Gantt',
       phaseId: pWeb.id,
@@ -1950,7 +2015,7 @@ Project buildDiscoveryProject(String createdBy) {
     startDate: t,
     endDate: t.add(const Duration(days: 21)),
     status: 'active',
-    phases: [pTaches, pOrion, pWeb],
+    phases: [pTaches, pActivites, pOrion, pWeb],
     tasks: tasks,
     createdBy: createdBy,
     sourceType: 'onboarding',

@@ -401,6 +401,11 @@ class FirestoreSync {
     await _col('activities').doc(activity.id).set(activity.toJson());
   }
 
+  Future<void> saveDomain(Domain domain) async {
+    if (uid == null) return;
+    await _col('domains').doc(domain.id).set(domain.toJson());
+  }
+
   Future<void> saveProject(Project project) async {
     if (uid == null) return;
     await _col('projects').doc(project.id).set(project.toJson());

@@ -1689,12 +1689,12 @@ class _AppRootState extends State<AppRoot>
       if (ctx == null) return;
       switch (id) {
         case 2: // Résumé du jour
-          showDayReviewSheet(ctx, logic: logic);
+          showDayReviewSheet(ctx, logic: logic, projects: _dashboardProjects);
         case 3: // Streak en danger → onglet À faire
         case 4: // Défi du jour → onglet À faire
           setState(() => _tab = _Tab.projets);
         case 5: // Score mi-journée → résumé du jour
-          showDayReviewSheet(ctx, logic: logic);
+          showDayReviewSheet(ctx, logic: logic, projects: _dashboardProjects);
       }
     };
 
@@ -2730,7 +2730,7 @@ class _AppRootState extends State<AppRoot>
   }
 
   bool _shouldShowFab() {
-    return _tab == _Tab.dashboard || _tab == _Tab.maintenant || _tab == _Tab.orion;
+    return _tab == _Tab.dashboard || _tab == _Tab.maintenant;
   }
 
   Widget _buildFab() {
@@ -2747,23 +2747,21 @@ class _AppRootState extends State<AppRoot>
           onPressed: () => _showCaptureSheet(context),
           child: const Icon(Icons.lightbulb_outline, size: 20),
         ),
-        if (_tab != _Tab.orion) ...[
-          const SizedBox(height: 8),
-          FloatingActionButton(
-            heroTag: 'fab_now_routine',
-            mini: true,
-            tooltip: 'Lancer une routine',
-            onPressed: () => _showRoutinesSheet(context),
-            child: const Icon(Icons.repeat_rounded),
-          ),
-          const SizedBox(height: 12),
-          FloatingActionButton(
-            heroTag: 'fab_launch_activity',
-            tooltip: 'Lancer une activité',
-            onPressed: () => _showLaunchActivitySheet(context),
-            child: const Icon(Icons.play_arrow_rounded),
-          ),
-        ],
+        const SizedBox(height: 8),
+        FloatingActionButton(
+          heroTag: 'fab_now_routine',
+          mini: true,
+          tooltip: 'Lancer une routine',
+          onPressed: () => _showRoutinesSheet(context),
+          child: const Icon(Icons.repeat_rounded),
+        ),
+        const SizedBox(height: 12),
+        FloatingActionButton(
+          heroTag: 'fab_launch_activity',
+          tooltip: 'Lancer une activité',
+          onPressed: () => _showLaunchActivitySheet(context),
+          child: const Icon(Icons.play_arrow_rounded),
+        ),
       ],
     );
   }
@@ -5660,7 +5658,7 @@ class _AppRootState extends State<AppRoot>
           side: BorderSide(color: cs.primary.withOpacity(.4)),
           foregroundColor: cs.primary,
         ),
-        onPressed: () => showDayReviewSheet(context, logic: logic),
+        onPressed: () => showDayReviewSheet(context, logic: logic, projects: _dashboardProjects),
       ),
     );
   }

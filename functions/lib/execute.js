@@ -36,6 +36,8 @@ exports.executeGetProject = executeGetProject;
 exports.executePushGantt = executePushGantt;
 exports.executeGetAssistantMessages = executeGetAssistantMessages;
 exports.executeDeleteAssistantMessage = executeDeleteAssistantMessage;
+exports.executeGetInbox = executeGetInbox;
+exports.executeProcessInboxItem = executeProcessInboxItem;
 exports.normalizePhases = normalizePhases;
 exports.normalizeTasks = normalizeTasks;
 const db_1 = require("./db");
@@ -1169,5 +1171,32 @@ async function executeGetOrionContext(uid) {
         };
     });
     return JSON.stringify({ today, domains, activities, routines, goals, planSummary, habitStats, timeStats, projects }, null, 2);
+}
+async function executeGetInbox(uid) {
+    const snap = await db_1.db.collection(`users/${uid}/captures`)
+        .where("status", "==", "pending")
+        .orderBy("createdAt", "asc")
+        .get();
+    if (snap.empty)
+        return "Aucune idée en attente dans l'inbox.";
+    const items = snap.docs.map((d) => {
+        var _a, _b, _c, _d, _e;
+        const v = d.data();
+        return { id: v.id, text: v.text, createdAt: (_e = (_d = (_c = (_b = (_a = v.createdAt) === null || _a === void 0 ? void 0 : _a.toDate) === null || _b === void 0 ? void 0 : _b.call(_a)) === null || _c === void 0 ? void 0 : _c.toISOString) === null || _d === void 0 ? void 0 : _d.call(_c)) !== null && _e !== void 0 ? _e : null };
+    });
+    return JSON.stringify(items, null, 2);
+}
+async function executeProcessInboxItem(uid, itemId, note) {
+    var _a;
+    const ref = db_1.db.collection(`users/${uid}/captures`).doc(itemId);
+    const snap = await ref.get();
+    if (!snap.exists)
+        return `Item inbox introuvable : ${itemId}`;
+    await ref.update({
+        status: "processed",
+        orionNote: note,
+        processedAt: db_1.FieldValue.serverTimestamp(),
+    });
+    return `✅ Idée traitée : "${(_a = snap.data()) === null || _a === void 0 ? void 0 : _a.text}" → ${note}`;
 }
 //# sourceMappingURL=execute.js.map

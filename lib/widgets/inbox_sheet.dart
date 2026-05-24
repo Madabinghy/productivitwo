@@ -27,6 +27,38 @@ class _InboxSheetState extends State<_InboxSheet> {
   String? _editingId;
   final _editCtrl = TextEditingController();
 
+  Future<void> _addItem() async {
+    final ctrl = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Nouvelle idée'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          maxLines: 3,
+          minLines: 1,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(hintText: 'Ton idée, note rapide...'),
+          onSubmitted: (_) => Navigator.pop(ctx, true),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Capturer')),
+        ],
+      ),
+    );
+    final text = ctrl.text.trim();
+    ctrl.dispose();
+    if (confirmed == true && text.isNotEmpty) {
+      await widget.sync.saveCaptureItem(CaptureItem(text: text, createdAt: DateTime.now()));
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -101,6 +133,11 @@ class _InboxSheetState extends State<_InboxSheet> {
                             fontWeight: FontWeight.bold,
                             color: Colors.white)),
                   ),
+                IconButton(
+                  icon: const Icon(Icons.add_rounded, size: 22),
+                  tooltip: 'Nouvelle idée',
+                  onPressed: _addItem,
+                ),
               ],
             ),
           ),
