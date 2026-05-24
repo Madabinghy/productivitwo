@@ -2895,6 +2895,9 @@ class _AppRootState extends State<AppRoot>
                                         ),
                                       ),
                                     ),
+                                    // Série (flammes → étoiles)
+                                    _buildStreakBadge(
+                                        logic.habitCurrentStreak(r.id)),
                                     // Score + incrément
                                     Row(
                                       mainAxisSize: MainAxisSize.min,
@@ -4066,6 +4069,56 @@ class _AppRootState extends State<AppRoot>
         onChanged: () {
           setState(() {}); // refresh écran après changement filtres
         },
+      ),
+    );
+  }
+
+  /// Indicateur de série : 🔥🔥🔥 → ⭐🔥🔥 → ⭐⭐ … ⭐⭐⭐⭐⭐ → badge violet au-delà de 25j
+  Widget _buildStreakBadge(int streak) {
+    if (streak == 0) return const SizedBox.shrink();
+
+    if (streak > 25) {
+      return Padding(
+        padding: const EdgeInsets.only(right: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (int i = 0; i < 5; i++)
+              Icon(Icons.star_rounded, size: 13, color: Colors.amber.shade500),
+            const SizedBox(width: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              decoration: BoxDecoration(
+                color: Colors.deepPurple.shade400,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '${streak}j',
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final stars  = streak ~/ 5;
+    final flames = streak % 5;
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (int i = 0; i < stars; i++)
+            Icon(Icons.star_rounded, size: 13, color: Colors.amber.shade500),
+          for (int i = 0; i < flames; i++)
+            Icon(Icons.local_fire_department,
+                size: 13, color: Colors.deepOrange.shade400),
+        ],
       ),
     );
   }

@@ -8,6 +8,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.13', '23 mai 2026', [
+    (Icons.local_fire_department, 'Routines : indicateur de série inline 🔥→⭐ (1 étoile par tranche de 5 jours, badge violet au-delà de 25j)'),
+  ]),
   _Entry('5.12', '23 mai 2026', [
     (Icons.celebration_outlined, 'Confetti : plus de répétition au démarrage — score 100% max 1 fois/jour'),
     (Icons.emoji_events_outlined, 'Badges streak : fix perte multi-activités (clé composite id+habitId en Firestore)'),
