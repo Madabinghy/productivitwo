@@ -113,11 +113,12 @@ class _ProjectSheetState extends State<_ProjectSheet> {
     final grouped = <String?, List<ProjectTask>>{};
     for (final t in _project.tasks) {
       String? key = t.phaseId;
+      // phaseId orphelin (phase supprimée ou désynchronisée) → on efface
+      if (key != null && !phaseIds.contains(key)) key = null;
+      // Fallback : groupLabel — permet de retrouver la phase même sans phaseId valide
       if (key == null && t.groupLabel != null) {
         key = phaseByLabel[t.groupLabel]?.id;
       }
-      // phaseId orphelin (phase supprimée) → traité comme sans phase
-      if (key != null && !phaseIds.contains(key)) key = null;
       grouped.putIfAbsent(key, () => []).add(t);
     }
 

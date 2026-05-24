@@ -9,7 +9,7 @@ class _Entry {
 
 const _changelog = [
   _Entry('5.18', '24 mai 2026', [
-    (Icons.view_agenda_outlined, 'Projets : tâches dont la phase a été supprimée apparaissent maintenant dans "Sans phase" au lieu de disparaître'),
+    (Icons.view_agenda_outlined, 'Projets : tâches avec phaseId désynchronisé retrouvent leur phase via le groupLabel — plus de section "Sans phase" fantôme'),
   ]),
   _Entry('5.17', '24 mai 2026', [
     (Icons.notifications_active_outlined, 'ORION : messages automatiques toutes les 6h maintenant actifs pour les utilisateurs iOS (inscription automatique au cron au démarrage)'),
