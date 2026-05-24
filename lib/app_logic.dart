@@ -1133,6 +1133,13 @@ class AppLogic {
     onChange();
   }
 
+  void setRoutineTodayFlag(String routineId, bool value) {
+    final idx = state.recurringActions.indexWhere((r) => r.id == routineId);
+    if (idx < 0) return;
+    state.recurringActions[idx].todayFlag = value;
+    onChange();
+  }
+
   void appendToTomorrowIfLastIsDifferent(
     PlanKind kind,
     String refId,

@@ -4544,6 +4544,164 @@ class _AppRootState extends State<AppRoot>
     );
   }
 
+  // ── Priorités du jour ──────────────────────────────────────────────────────
+
+  Widget _buildTodayPrioritiesSection(BuildContext context, ColorScheme cs) {
+    final today = DateTime.now();
+    final todayD = DateTime(today.year, today.month, today.day);
+
+    final List<({Project project, ProjectTask task})> todayTasks = [];
+    for (final project in _dashboardProjects) {
+      if (project.status == 'archived') continue;
+      for (final task in project.tasks) {
+        if (task.todayFlag && task.status != 'skipped') {
+          todayTasks.add((project: project, task: task));
+        }
+      }
+    }
+
+    final todayRoutines = logic.state.recurringActions
+        .where((r) => r.todayFlag && r.active && !r.deleted && r.isActiveOn(todayD))
+        .toList();
+
+    if (todayTasks.isEmpty && todayRoutines.isEmpty) return const SizedBox.shrink();
+
+    return Card(
+      elevation: 1,
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Row(
+              children: [
+                Icon(Icons.star_rounded, size: 14, color: Colors.amber.shade600),
+                const SizedBox(width: 6),
+                Text(
+                  'PRIORITÉS DU JOUR',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1,
+                    color: cs.onSurface.withOpacity(.5),
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  '${todayTasks.length + todayRoutines.length}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.amber.shade600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Divider(height: 1, color: cs.outlineVariant.withOpacity(.3)),
+          for (final entry in todayTasks)
+            _buildPriorityTaskTile(context, cs, entry.project, entry.task),
+          for (final routine in todayRoutines)
+            _buildPriorityRoutineTile(context, cs, routine, today),
+          const SizedBox(height: 4),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPriorityTaskTile(
+      BuildContext context, ColorScheme cs, Project project, ProjectTask task) {
+    final isDone = task.status == 'done';
+    return ListTile(
+      dense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+      leading: GestureDetector(
+        onTap: () async {
+          setState(() => task.status = isDone ? 'pending' : 'done');
+          await _sync.saveProjectTasks(project.id, project.tasks);
+        },
+        child: Icon(
+          isDone ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+          size: 20,
+          color: isDone ? Colors.green.shade500 : cs.onSurface.withOpacity(.4),
+        ),
+      ),
+      title: Text(
+        task.title,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          decoration: isDone ? TextDecoration.lineThrough : null,
+          color: cs.onSurface.withOpacity(isDone ? .4 : .9),
+        ),
+      ),
+      subtitle: Text(
+        project.title,
+        style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(.4)),
+      ),
+      trailing: IconButton(
+        icon: const Icon(Icons.star_rounded, size: 18),
+        color: Colors.amber.shade600,
+        visualDensity: VisualDensity.compact,
+        onPressed: () => _sync.toggleTaskTodayFlag(project.id, task.id, false),
+      ),
+    );
+  }
+
+  Widget _buildPriorityRoutineTile(
+      BuildContext context, ColorScheme cs, RecurringAction routine, DateTime today) {
+    final activityId = routine.activityId;
+    final activity = activityId != null
+        ? logic.state.activities.where((a) => a.id == activityId).firstOrNull
+        : null;
+    final value = activityId != null ? logic.habitValueOn(activityId, today) : 0;
+    final isDone = value >= 1;
+    return ListTile(
+      dense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+      leading: GestureDetector(
+        onTap: () {
+          if (activityId == null) return;
+          HapticFeedback.lightImpact();
+          logic.incHabitWithAssocEvent(activityId, isDone ? -1 : 1, today);
+          logic.onChange();
+          setState(() {});
+        },
+        child: Icon(
+          isDone ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+          size: 20,
+          color: isDone ? Colors.green.shade500 : cs.onSurface.withOpacity(.4),
+        ),
+      ),
+      title: Text(
+        routine.title,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          decoration: isDone ? TextDecoration.lineThrough : null,
+          color: cs.onSurface.withOpacity(isDone ? .4 : .9),
+        ),
+      ),
+      subtitle: (activity != null && activity.name.isNotEmpty)
+          ? Text(
+              activity.name,
+              style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(.4)),
+            )
+          : null,
+      trailing: IconButton(
+        icon: const Icon(Icons.star_rounded, size: 18),
+        color: Colors.amber.shade600,
+        visualDensity: VisualDensity.compact,
+        onPressed: () {
+          logic.setRoutineTodayFlag(routine.id, false);
+          setState(() {});
+        },
+      ),
+    );
+  }
+
   Widget _buildDashboardBody(BuildContext context) {
     // 1) Temps “de contexte” (scope/range). OK de recalculer au build.
     final now = DateTime.now();
@@ -4567,6 +4725,7 @@ class _AppRootState extends State<AppRoot>
 
         return ListView(
           children: [
+        _buildTodayPrioritiesSection(context, cs),
         SectionCard(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
           child: Builder(

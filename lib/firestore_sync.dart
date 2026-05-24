@@ -420,6 +420,30 @@ class FirestoreSync {
     });
   }
 
+  /// Bascule le todayFlag d'une tâche Gantt sans recharger tout le projet.
+  Future<void> toggleTaskTodayFlag(
+      String projectId, String taskId, bool value) async {
+    if (uid == null) return;
+    final snap = await _col('projects').doc(projectId).get();
+    if (!snap.exists) return;
+    final project = Project.from(snap.data() as Map);
+    final tasks = project.tasks.map((t) {
+      if (t.id == taskId) t.todayFlag = value;
+      return t;
+    }).toList();
+    await _col('projects').doc(projectId).update({
+      'tasks': tasks.map((t) => t.toJson()).toList(),
+    });
+  }
+
+  /// Bascule le todayFlag d'une routine.
+  Future<void> toggleRoutineTodayFlag(String routineId, bool value) async {
+    if (uid == null) return;
+    await _col('recurringActions').doc(routineId).update({
+      'todayFlag': value,
+    });
+  }
+
   // ── Strategic objectives ────────────────────────────────────────────────────
 
   Future<List<StrategicObjective>> fetchStrategicObjectives() async {

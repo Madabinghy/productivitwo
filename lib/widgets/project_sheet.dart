@@ -278,6 +278,11 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                         cs: cs,
                         onToggle: () => _toggleStatus(task),
                         onOpenDetail: _openTaskDetail,
+                        onToggleTodayFlag: () async {
+                          setState(() => task.todayFlag = !task.todayFlag);
+                          await _sync.saveProjectTasks(
+                              _project.id, _project.tasks);
+                        },
                       ),
                   ],
                   // Tâches sans phase
@@ -304,6 +309,11 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                         cs: cs,
                         onToggle: () => _toggleStatus(task),
                         onOpenDetail: _openTaskDetail,
+                        onToggleTodayFlag: () async {
+                          setState(() => task.todayFlag = !task.todayFlag);
+                          await _sync.saveProjectTasks(
+                              _project.id, _project.tasks);
+                        },
                       ),
                   ],
 
@@ -931,6 +941,7 @@ class _TaskTile extends StatelessWidget {
   final ColorScheme cs;
   final VoidCallback onToggle;
   final Future<void> Function(ProjectTask)? onOpenDetail;
+  final VoidCallback? onToggleTodayFlag;
 
   const _TaskTile({
     super.key,
@@ -940,6 +951,7 @@ class _TaskTile extends StatelessWidget {
     required this.cs,
     required this.onToggle,
     this.onOpenDetail,
+    this.onToggleTodayFlag,
   });
 
   @override
@@ -1100,6 +1112,22 @@ class _TaskTile extends StatelessWidget {
                     ),
                   ),
                 ),
+              // Étoile priorité du jour
+              GestureDetector(
+                onTap: onToggleTodayFlag,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 6, top: 1),
+                  child: Icon(
+                    task.todayFlag
+                        ? Icons.star_rounded
+                        : Icons.star_outline_rounded,
+                    size: 16,
+                    color: task.todayFlag
+                        ? Colors.amber.shade600
+                        : cs.onSurface.withOpacity(.25),
+                  ),
+                ),
+              ),
             ],
           ),
         ),

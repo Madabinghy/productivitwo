@@ -404,6 +404,10 @@ class _GoalsViewState extends State<GoalsView> {
                     await _sync.saveProjectTasks(project.id, project.tasks);
                     setState(() {});
                   },
+                  onToggleTodayFlag: () async {
+                    await _sync.toggleTaskTodayFlag(
+                        project.id, task.id, !task.todayFlag);
+                  },
                 );
               },
               childCount: phaseTasks.length,
@@ -729,6 +733,7 @@ class _GanttTaskCard extends StatelessWidget {
   final VoidCallback? onPlay;
   final VoidCallback? onComplete;
   final Future<void> Function(String title)? onAddAction;
+  final VoidCallback? onToggleTodayFlag;
 
   const _GanttTaskCard({
     required this.project,
@@ -743,6 +748,7 @@ class _GanttTaskCard extends StatelessWidget {
     this.onPlay,
     this.onComplete,
     this.onAddAction,
+    this.onToggleTodayFlag,
   });
 
   @override
@@ -817,6 +823,21 @@ class _GanttTaskCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 4),
                   ],
+                  // Étoile priorité du jour
+                  GestureDetector(
+                    onTap: onToggleTodayFlag,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: Icon(
+                        task.todayFlag ? Icons.star_rounded : Icons.star_outline_rounded,
+                        size: 18,
+                        color: task.todayFlag
+                            ? Colors.amber.shade600
+                            : cs.onSurface.withOpacity(.25),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 2),
                   if (onPlay != null)
                     GestureDetector(
                       onTap: onPlay,

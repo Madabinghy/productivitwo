@@ -8,6 +8,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.21', '24 mai 2026', [
+    (Icons.star_rounded, 'Priorités du jour : étoile ⭐ sur les tâches Gantt et routines récurrentes → checklist combinée en haut du dashboard'),
+    (Icons.star_outline_rounded, 'Étoile sur les tâches depuis la vue Projets et le sheet projet, étoile sur les routines depuis le sheet Actions récurrentes'),
+  ]),
   _Entry('5.20', '24 mai 2026', [
     (Icons.lightbulb_outline, 'Inbox idées : FAB 💡 pour capturer une idée en 2 secondes, bouton appbar avec badge pour gérer (éditer, supprimer) et voir le log de traitement ORION'),
     (Icons.auto_awesome, 'ORION traite automatiquement l\'inbox à chaque cycle : note ponctuelle → reminder, idée projet → tâche ou nouveau projet'),

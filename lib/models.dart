@@ -232,6 +232,7 @@ class RecurringAction {
   bool deleted;
 
   List<ChecklistItem> checklist;
+  bool todayFlag; // priorité du jour
 
   RecurringAction({
     String? id,
@@ -248,6 +249,7 @@ class RecurringAction {
     this.projectTaskId,
     this.deleted = false,
     List<ChecklistItem>? checklist,
+    this.todayFlag = false,
   })  : id = id ?? _uuid.v4(),
         weekdays = weekdays ?? [],
         createdAt = createdAt ?? DateTime.now(),
@@ -291,6 +293,7 @@ class RecurringAction {
         'projectTaskId': projectTaskId,
         'deleted': deleted,
         'checklist': checklist.map((c) => c.toJson()).toList(),
+        'todayFlag': todayFlag,
       };
 
   static RecurringAction from(Map j) => RecurringAction(
@@ -315,6 +318,7 @@ class RecurringAction {
             ?.map((e) => ChecklistItem.from(e as Map))
             .toList() ??
             [],
+        todayFlag: j['todayFlag'] as bool? ?? false,
       );
 }
 
@@ -1442,6 +1446,7 @@ class ProjectTask {
   String status; // pending | done | skipped
   String? recurringActionId;
   List<TaskAction> actions; // détail opérationnel
+  bool todayFlag; // priorité du jour
 
   ProjectTask({
     String? id,
@@ -1457,6 +1462,7 @@ class ProjectTask {
     this.status = 'pending',
     this.recurringActionId,
     List<TaskAction>? actions,
+    this.todayFlag = false,
   })  : id = id ?? _uuid.v4(),
         actions = actions ?? [];
 
@@ -1477,6 +1483,7 @@ class ProjectTask {
         'status': status,
         'recurringActionId': recurringActionId,
         'actions': actions.map((a) => a.toJson()).toList(),
+        'todayFlag': todayFlag,
       };
 
   static ProjectTask from(Map j) => ProjectTask(
@@ -1496,6 +1503,7 @@ class ProjectTask {
                 ?.map((a) => TaskAction.from(a))
                 .toList() ??
             [],
+        todayFlag: j['todayFlag'] as bool? ?? false,
       );
 }
 

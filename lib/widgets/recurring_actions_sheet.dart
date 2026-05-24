@@ -366,6 +366,25 @@ class _RecurringActionsSheetState extends State<_RecurringActionsSheet> {
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            // Priorité du jour
+                            IconButton(
+                              tooltip: ra.todayFlag
+                                  ? 'Retirer des priorités'
+                                  : 'Ajouter aux priorités',
+                              icon: Icon(
+                                ra.todayFlag
+                                    ? Icons.star_rounded
+                                    : Icons.star_outline_rounded,
+                                size: 20,
+                                color: ra.todayFlag
+                                    ? Colors.amber.shade600
+                                    : cs.onSurface.withOpacity(.3),
+                              ),
+                              onPressed: () {
+                                logic.setRoutineTodayFlag(ra.id, !ra.todayFlag);
+                                setState(() {});
+                              },
+                            ),
                             // Pause / Réactiver
                             IconButton(
                               tooltip:
