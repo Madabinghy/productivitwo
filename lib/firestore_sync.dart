@@ -290,17 +290,22 @@ class FirestoreSync {
 
   Future<void> deleteAccount() async {
     if (uid == null) return;
-    // 1) Supprime toutes les données Firestore
+    // 1) Supprime toutes les données Firestore (toutes les collections connues)
     for (final col in [
       'domains', 'activities', 'sessions', 'habitProgress',
-      'habitHits', 'dayPlan', 'goals', 'blocks', 'badges'
+      'habitHits', 'dayPlan', 'goals', 'blocks', 'badges',
+      'projects', 'strategic_objectives', 'documents', 'api_tokens',
+      'captures', 'assistant_messages', 'recurringActions',
     ]) {
       final docs = await _col(col).get();
+      if (docs.docs.isEmpty) continue;
       final batch = _db.batch();
       for (final d in docs.docs) batch.delete(d.reference);
       await batch.commit();
     }
-    await _meta().delete();
+    // Sous-documents singleton
+    await _col('orion_subscription').doc('main').delete().catchError((_) {});
+    await _meta().delete().catchError((_) {});
     // 2) Supprime le compte Firebase Auth
     await _auth.currentUser?.delete();
   }

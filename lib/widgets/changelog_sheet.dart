@@ -8,6 +8,17 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.27', '24 mai 2026', [
+    (Icons.palette_outlined, 'Bande activité en cours : couleur du domaine (bande, point pulsant, timer, bouton Stop)'),
+    (Icons.checklist_rounded, 'Priorités du jour : 3 premières sous-actions de chaque tâche focus, cochables et réorganisables par glisser-déposer'),
+    (Icons.filter_list_rounded, 'Lancer une routine : filtre automatique sur le domaine de l\'activité en cours'),
+  ]),
+  _Entry('5.26', '24 mai 2026', [
+    (Icons.star_rounded, 'Priorités du jour : section toujours visible même vide — le + reste accessible pour ajouter manuellement'),
+    (Icons.grid_view_rounded, 'Heatmap : labels des lignes corrigés (V=Vendredi, D=Dimanche au lieu de J/S)'),
+    (Icons.repeat_rounded, 'Lancer une routine : si une activité est en cours, affiche uniquement les routines de son domaine'),
+    (Icons.delete_outline_rounded, 'Suppression de compte : toutes les collections Firestore effacées (projets, documents, assistant, captures…)'),
+  ]),
   _Entry('5.25', '24 mai 2026', [
     (Icons.star_rounded, 'Étoile ⭐ routines : stockée sur Activity.todayFlag (Firestore) — plus robuste, survit aux relancements'),
     (Icons.delete_sweep_outlined, 'RecurringAction entièrement supprimé du code — modèle, logique, sync et UI nettoyés'),

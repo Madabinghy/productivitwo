@@ -1128,13 +1128,13 @@ class _RunningChipAppBarState extends State<RunningChipAppBar> {
     final dur = DateTime.now().difference(s.startAt);
     final label = "${a.name} · ${_fmt(dur)}";
     final cs = Theme.of(context).colorScheme;
-    final runningColor = cs.primary; // ou cs.tertiary si tu veux plus vert
+    final runningColor = domainColor(a.domainId, st.activeDomains) ?? cs.primary;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        color: Theme.of(context).colorScheme.surface.withOpacity(0.08),
+        color: runningColor.withOpacity(0.12),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1229,12 +1229,13 @@ class _RunningActivityBannerState extends State<RunningActivityBanner>
 
     final elapsed = DateTime.now().difference(session.startAt);
     final cs = Theme.of(context).colorScheme;
+    final bandColor = domainColor(activity.domainId, st.activeDomains) ?? cs.primary;
 
     return GestureDetector(
       onTap: widget.onTap,
       child: Container(
         height: 38,
-        color: cs.primaryContainer.withOpacity(0.6),
+        color: bandColor.withOpacity(0.18),
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Row(
           children: [
@@ -1245,8 +1246,7 @@ class _RunningActivityBannerState extends State<RunningActivityBanner>
                 height: 7,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: cs.primary
-                      .withOpacity(0.4 + 0.6 * _pulse.value),
+                  color: bandColor.withOpacity(0.4 + 0.6 * _pulse.value),
                 ),
               ),
             ),
@@ -1257,7 +1257,7 @@ class _RunningActivityBannerState extends State<RunningActivityBanner>
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: cs.onPrimaryContainer,
+                  color: cs.onSurface,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -1269,7 +1269,7 @@ class _RunningActivityBannerState extends State<RunningActivityBanner>
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
                 fontFeatures: const [FontFeature.tabularFigures()],
-                color: cs.onPrimaryContainer,
+                color: bandColor,
               ),
             ),
             const SizedBox(width: 12),
@@ -1286,7 +1286,7 @@ class _RunningActivityBannerState extends State<RunningActivityBanner>
                 }
               },
               child: Icon(Icons.stop_rounded,
-                  size: 20, color: cs.onPrimaryContainer),
+                  size: 20, color: bandColor),
             ),
           ],
         ),
@@ -1368,6 +1368,9 @@ class _RunningBannerGlobalState extends State<RunningBannerGlobal> {
     );
 
     final dur = DateTime.now().difference(s.startAt);
+    final cs = Theme.of(context).colorScheme;
+    final domainCol = domainColor(a.domainId, st.activeDomains);
+    final runColor = domainCol ?? Colors.green;
 
     return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 84),
@@ -1375,13 +1378,14 @@ class _RunningBannerGlobalState extends State<RunningBannerGlobal> {
         margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface.withOpacity(0.08),
+          color: runColor.withOpacity(0.10),
           borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: runColor.withOpacity(0.25), width: 1),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            const Icon(Icons.play_arrow_rounded, color: Colors.green, size: 24),
+            Icon(Icons.play_arrow_rounded, color: runColor, size: 24),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
@@ -1426,7 +1430,11 @@ class _RunningBannerGlobalState extends State<RunningBannerGlobal> {
                     widget.logic.stopActive(), // pas besoin de setState ici
                 icon: const Icon(Icons.stop, size: 18),
                 label: const Text("Stop"),
-                style: FilledButton.styleFrom(shape: const StadiumBorder()),
+                style: FilledButton.styleFrom(
+                  backgroundColor: runColor,
+                  foregroundColor: Colors.white,
+                  shape: const StadiumBorder(),
+                ),
               ),
             ),
           ],
@@ -2807,13 +2815,19 @@ class _AppRootState extends State<AppRoot>
   }
 
   void _showRoutinesSheet(BuildContext context) {
-    final routines = logic.state.activities
+    final allRoutines = logic.state.activities
         .where((a) =>
             a.isHabit &&
             logic.effectiveHabitFreq(a) == HabitFreq.daily &&
             !a.deleted)
         .toList()
       ..sort((a, b) => a.order.compareTo(b.order));
+
+    final runningDomainId = logic.runningDomainId();
+    // Si une activité tourne, pré-filtrer sur son domaine
+    final routines = runningDomainId != null
+        ? allRoutines.where((a) => a.domainId == runningDomainId).toList()
+        : allRoutines;
 
     final today = DateTime.now();
     final todayD = DateTime(today.year, today.month, today.day);
@@ -2842,7 +2856,9 @@ class _AppRootState extends State<AppRoot>
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Lancer une routine',
+                            runningDomainId != null
+                                ? 'Routines — ${logic.state.activeDomains.firstWhere((d) => d.id == runningDomainId, orElse: () => Domain(name: 'Ce domaine')).name}'
+                                : 'Lancer une routine',
                             style: const TextStyle(
                                 fontSize: 17, fontWeight: FontWeight.bold),
                           ),
@@ -4598,10 +4614,6 @@ class _AppRootState extends State<AppRoot>
         .where((i) => i.date == todayKey)
         .toList();
 
-    if (todayTasks.isEmpty && todayActivities.isEmpty && freeItems.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
     final total = todayTasks.length + todayActivities.length + freeItems.length;
 
     return Card(
@@ -4628,15 +4640,17 @@ class _AppRootState extends State<AppRoot>
                   ),
                 ),
                 const Spacer(),
-                Text(
-                  '$total',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.amber.shade600,
+                if (total > 0) ...[
+                  Text(
+                    '$total',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.amber.shade600,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 4),
+                  const SizedBox(width: 4),
+                ],
                 // Bouton + ajout rapide
                 InkWell(
                   borderRadius: BorderRadius.circular(20),
@@ -4660,6 +4674,19 @@ class _AppRootState extends State<AppRoot>
           // ── Items libres ─────────────────────────────────────────────────────
           for (final item in freeItems)
             _buildPriorityFreeTile(context, cs, item),
+          // ── État vide ────────────────────────────────────────────────────────
+          if (total == 0)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+              child: Text(
+                'Aucune priorité — appuie sur + pour en ajouter une',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: cs.onSurface.withOpacity(.35),
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
           const SizedBox(height: 4),
         ],
       ),
@@ -4776,39 +4803,114 @@ class _AppRootState extends State<AppRoot>
   Widget _buildPriorityTaskTile(
       BuildContext context, ColorScheme cs, Project project, ProjectTask task) {
     final isDone = task.status == 'done';
-    return ListTile(
-      dense: true,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
-      leading: GestureDetector(
-        onTap: () async {
-          setState(() => task.status = isDone ? 'pending' : 'done');
-          await _sync.saveProjectTasks(project.id, project.tasks);
-        },
-        child: Icon(
-          isDone ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
-          size: 20,
-          color: isDone ? Colors.green.shade500 : cs.onSurface.withOpacity(.4),
+
+    // 3 premières sous-actions non cochées, dans leur ordre actuel
+    final pendingActions = task.actions
+        .where((a) => !a.done)
+        .take(3)
+        .toList();
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── En-tête tâche ────────────────────────────────────────────────────
+        ListTile(
+          dense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+          leading: GestureDetector(
+            onTap: () async {
+              setState(() => task.status = isDone ? 'pending' : 'done');
+              await _sync.saveProjectTasks(project.id, project.tasks);
+            },
+            child: Icon(
+              isDone ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+              size: 20,
+              color: isDone ? Colors.green.shade500 : cs.onSurface.withOpacity(.4),
+            ),
+          ),
+          title: Text(
+            task.title,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              decoration: isDone ? TextDecoration.lineThrough : null,
+              color: cs.onSurface.withOpacity(isDone ? .4 : .9),
+            ),
+          ),
+          subtitle: Text(
+            project.title,
+            style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(.4)),
+          ),
+          trailing: IconButton(
+            icon: const Icon(Icons.star_rounded, size: 18),
+            color: Colors.amber.shade600,
+            visualDensity: VisualDensity.compact,
+            onPressed: () async {
+              await _sync.toggleTaskTodayFlag(project.id, task.id, false);
+              setState(() {});
+            },
+          ),
         ),
-      ),
-      title: Text(
-        task.title,
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-          decoration: isDone ? TextDecoration.lineThrough : null,
-          color: cs.onSurface.withOpacity(isDone ? .4 : .9),
-        ),
-      ),
-      subtitle: Text(
-        project.title,
-        style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(.4)),
-      ),
-      trailing: IconButton(
-        icon: const Icon(Icons.star_rounded, size: 18),
-        color: Colors.amber.shade600,
-        visualDensity: VisualDensity.compact,
-        onPressed: () => _sync.toggleTaskTodayFlag(project.id, task.id, false),
-      ),
+        // ── Sous-actions (si tâche pas encore done et qu'il y en a) ─────────
+        if (!isDone && pendingActions.isNotEmpty)
+          ReorderableListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            buildDefaultDragHandles: false,
+            itemCount: pendingActions.length,
+            onReorder: (oldIdx, newIdx) {
+              setState(() {
+                // Retrouver les indices réels dans task.actions (parmi les non-done)
+                final pendingIndices = task.actions
+                    .asMap()
+                    .entries
+                    .where((e) => !e.value.done)
+                    .map((e) => e.key)
+                    .take(3)
+                    .toList();
+                if (newIdx > oldIdx) newIdx--;
+                final from = pendingIndices[oldIdx];
+                final to = pendingIndices[newIdx];
+                final item = task.actions.removeAt(from);
+                task.actions.insert(to, item);
+              });
+              _sync.saveProjectTasks(project.id, project.tasks);
+            },
+            itemBuilder: (ctx, i) {
+              final action = pendingActions[i];
+              return ListTile(
+                key: ValueKey(action.id),
+                dense: true,
+                minLeadingWidth: 0,
+                contentPadding: const EdgeInsets.only(left: 40, right: 8),
+                leading: ReorderableDragStartListener(
+                  index: i,
+                  child: Icon(Icons.drag_handle_rounded,
+                      size: 16, color: cs.onSurface.withOpacity(.25)),
+                ),
+                title: Text(
+                  action.title,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: cs.onSurface.withOpacity(.75),
+                  ),
+                ),
+                trailing: GestureDetector(
+                  onTap: () async {
+                    setState(() {
+                      action.done = true;
+                      action.doneAt = DateTime.now();
+                    });
+                    await _sync.saveProjectTasks(project.id, project.tasks);
+                  },
+                  child: Icon(Icons.radio_button_unchecked,
+                      size: 16, color: cs.onSurface.withOpacity(.35)),
+                ),
+              );
+            },
+          ),
+      ],
     );
   }
 

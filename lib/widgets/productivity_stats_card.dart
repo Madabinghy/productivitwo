@@ -129,7 +129,7 @@ class _HeatmapSection extends StatelessWidget {
                   height: cellSize,
                   child: Center(
                     child: Text(
-                      row.isEven ? ['L', 'M', 'J', 'S'][row ~/ 2] : '',
+                      row.isEven ? ['L', 'M', 'V', 'D'][row ~/ 2] : '',
                       style: TextStyle(
                           fontSize: 9,
                           color: cs.onSurface.withOpacity(.35)),
