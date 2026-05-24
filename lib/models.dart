@@ -1265,15 +1265,23 @@ class TaskAction {
   String title;
   bool done;
   DateTime? doneAt;
+  DateTime createdAt;
 
-  TaskAction({String? id, required this.title, this.done = false, this.doneAt})
-      : id = id ?? _uuid.v4();
+  TaskAction({
+    String? id,
+    required this.title,
+    this.done = false,
+    this.doneAt,
+    DateTime? createdAt,
+  })  : id = id ?? _uuid.v4(),
+        createdAt = createdAt ?? DateTime.now();
 
   Map<String, dynamic> toJson() => {
         'id': id,
         'title': title,
         'done': done,
         'doneAt': doneAt?.toIso8601String(),
+        'createdAt': createdAt.toIso8601String(),
       };
 
   static TaskAction from(Map j) => TaskAction(
@@ -1281,6 +1289,9 @@ class TaskAction {
         title: j['title'] ?? '',
         done: j['done'] as bool? ?? (j['doneAt'] != null),
         doneAt: j['doneAt'] != null ? DateTime.tryParse(j['doneAt']) : null,
+        createdAt: j['createdAt'] != null
+            ? DateTime.tryParse(j['createdAt']) ?? DateTime.now()
+            : DateTime.now(),
       );
 }
 

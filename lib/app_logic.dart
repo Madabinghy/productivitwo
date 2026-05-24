@@ -123,12 +123,18 @@ class AppLogic {
           final d = int.parse(ymd.substring(6, 8));
           final nextDay = DateTime(y, m, d + 1);
 
+          // Sous-actions existantes à la fin de ce jour (dénominateur propre)
+          final existingOnDay = task.actions
+              .where((a) => a.createdAt.isBefore(nextDay))
+              .length;
+          if (existingOnDay == 0) continue;
+
           // Progression de la tâche à la fin de ce jour (sans pollution future)
           final doneOnOrBefore = task.actions
               .where((a) =>
                   a.done && a.doneAt != null && a.doneAt!.isBefore(nextDay))
               .length;
-          final progress = doneOnOrBefore / task.actions.length;
+          final progress = doneOnOrBefore / existingOnDay;
           progressionsByDay.putIfAbsent(ymd, () => []).add(progress);
         }
       }
