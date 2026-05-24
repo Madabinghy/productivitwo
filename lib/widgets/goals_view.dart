@@ -116,7 +116,7 @@ class _GoalsViewState extends State<GoalsView> {
                 if (doneInScopeProjects.isNotEmpty)
                   ..._buildCollapsibleSection(
                     context, cs,
-                    label: 'RÉALISÉ (${doneInScopeProjects.length})',
+                    label: 'À JOUR (${doneInScopeProjects.length})',
                     expanded: _showRealized,
                     onToggle: () => setState(() => _showRealized = !_showRealized),
                     projects: doneInScopeProjects,

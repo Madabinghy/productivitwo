@@ -466,13 +466,31 @@ class _StatsViewState extends State<StatsView> {
                     items: [
                       const DropdownMenuItem<String?>(
                           value: null, child: Text('Tous')),
-                      ...widget.state.activeDomains.map(
-                        (d) => DropdownMenuItem<String?>(
-                            value: d.id, child: Text(d.name)),
-                      ),
+                      ...widget.state.activeDomains.map((d) {
+                        final dColor = domainColor(
+                                d.id, widget.state.activeDomains) ??
+                            Theme.of(context).colorScheme.primary;
+                        return DropdownMenuItem<String?>(
+                          value: d.id,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                    color: dColor,
+                                    shape: BoxShape.circle),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(d.name),
+                            ],
+                          ),
+                        );
+                      }),
                     ],
                     onChanged: (v) =>
-                        setState(() => statsDomainId = v), // v peut être null
+                        setState(() => statsDomainId = v),
                   )
                 ],
               ),

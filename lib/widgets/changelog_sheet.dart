@@ -8,6 +8,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.16', '24 mai 2026', [
+    (Icons.circle_outlined, 'Statistiques : point coloré dans le sélecteur de domaine pour identifier la couleur du graphe'),
+    (Icons.check_circle_outline, 'Projets : section "RÉALISÉ" renommée "À JOUR" — évite la confusion avec la fin du projet'),
+  ]),
   _Entry('5.15', '24 mai 2026', [
     (Icons.bar_chart_rounded, 'Statistiques : graphes temps et habitudes colorés selon le domaine sélectionné'),
     (Icons.group_work_outlined, 'Routines "Tous les domaines" : routines groupées par domaine (avec point coloré)'),
