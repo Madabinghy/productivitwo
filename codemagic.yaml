@@ -1,10 +1,72 @@
 workflows:
 
-  # ── iOS — vérification régression (no codesign) ───────────────────────────
+  # ── iOS — TestFlight (auto sur push main) ────────────────────────────────────
+  ios-testflight:
+    name: iOS → TestFlight
+    max_build_duration: 60
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+          source: true
+    environment:
+      flutter: stable
+      groups:
+        - ios_credentials        # APP_STORE_CONNECT_PRIVATE_KEY, _KEY_IDENTIFIER, _ISSUER_ID
+      vars:
+        BUNDLE_ID: "com.madabinghy.productivitwo"
+    scripts:
+      - name: Set up keychain
+        script: keychain initialize
+
+      - name: Fetch signing files (App Store Distribution)
+        script: |
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+
+      - name: Add certificates to keychain
+        script: keychain add-certificates
+
+      - name: Apply signing profiles to Xcode project
+        script: xcode-project use-profiles
+
+      - name: Get Flutter dependencies
+        script: flutter pub get
+
+      - name: Build IPA
+        script: |
+          # Offset pour continuer la numérotation depuis Xcode Cloud (dernier build : 309)
+          BUILD_NUM=$((BUILD_NUMBER + 309))
+          flutter build ipa --release \
+            --no-tree-shake-icons \
+            --build-number="$BUILD_NUM"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+
+    publishing:
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        submit_to_testflight: true
+        beta_groups:
+          - "Testeurs productivitwo"
+      email:
+        recipients:
+          - emeric.edmond@gmail.com
+        notify:
+          success: true
+          failure: true
+
+  # ── iOS — vérification régression (no codesign, manuel) ──────────────────────
   ios-check:
     name: iOS Regression Check
     max_build_duration: 30
-    # Pas de triggering → déclenchement manuel uniquement (iOS géré via Xcode Cloud)
+    # Pas de triggering → déclenchement manuel uniquement
     environment:
       flutter: stable
     scripts:
@@ -20,7 +82,7 @@ workflows:
           success: true
           failure: true
 
-  # ── Android — release AAB (auto sur push main) ────────────────────────────
+  # ── Android — release AAB (manuel) ───────────────────────────────────────────
   android-release:
     name: Android Release → AAB
     max_build_duration: 60
