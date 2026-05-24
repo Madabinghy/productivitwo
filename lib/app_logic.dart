@@ -95,6 +95,24 @@ class AppLogic {
   String? nowHabitId; // habitId actuellement affichée dans Maintenant (routine)
   String? _checkYmd; // pour reset journalier
 
+  // Comptage des sous-actions Gantt validées par jour (ymd -> count)
+  // Mis à jour depuis main.dart à chaque changement du stream projets
+  final Map<String, int> _ganttDailyCounts = {};
+
+  void updateGanttCounts(List<Project> projects) {
+    _ganttDailyCounts.clear();
+    for (final project in projects) {
+      for (final task in project.tasks) {
+        for (final action in task.actions) {
+          if (action.done && action.doneAt != null) {
+            final ymd = yyyymmdd(action.doneAt!);
+            _ganttDailyCounts[ymd] = (_ganttDailyCounts[ymd] ?? 0) + 1;
+          }
+        }
+      }
+    }
+  }
+
   /// Positionner à true avant une suppression pour éviter que le badge
   /// "journée parfaite" se déclenche sur un score artificiellement à 100%.
   bool skipBadgeCheck = false;
@@ -3789,7 +3807,14 @@ class AppLogic {
       routinesTotal++;
       if (habitValueOn(act.id, d) >= quota) routinesDone++;
     }
-    return routinesTotal == 0 ? 0.0 : routinesDone / routinesTotal;
+    final routineScore = routinesTotal == 0 ? 0.0 : routinesDone / routinesTotal;
+
+    // Journées deep work : 5 sous-actions Gantt = score 100%
+    final ganttCount = _ganttDailyCounts[yyyymmdd(d)] ?? 0;
+    final ganttScore = math.min(ganttCount / 5.0, 1.0);
+
+    // On retient le meilleur des deux scores
+    return math.max(routineScore, ganttScore);
   }
 
   /// Vérifie tous les paliers et ajoute les badges manquants dans `state.earnedBadges`.
