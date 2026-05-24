@@ -8,6 +8,12 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.12', '23 mai 2026', [
+    (Icons.celebration_outlined, 'Confetti : plus de répétition au démarrage — score 100% max 1 fois/jour'),
+    (Icons.emoji_events_outlined, 'Badges streak : fix perte multi-activités (clé composite id+habitId en Firestore)'),
+    (Icons.check_circle_outline, 'Projets iOS : tâches done retirées de la liste active'),
+    (Icons.label_outlined, 'Projets iOS : tâches avec phase supprimée visibles (sans header) au lieu de disparaître'),
+  ]),
   _Entry('5.11', '23 mai 2026', [
     (Icons.settings_outlined, 'Menu : épuré — 6 entrées principales + sous-menu Paramètres (Compte, Tokens API, Confidentialité, Suggestions…)'),
     (Icons.check_circle_outline, 'Projets iOS : liste "Faits" dépliable dans l\'onglet À faire d\'une tâche'),

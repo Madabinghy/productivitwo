@@ -282,7 +282,7 @@ class FirestoreSync {
         return merged.values.toList();
       }(),
       blocks:        union(local.blocks,        remote.blocks,        (b) => b.id),
-      earnedBadges:  union(local.earnedBadges,  remote.earnedBadges,  (b) => b.id.name),
+      earnedBadges:  union(local.earnedBadges,  remote.earnedBadges,  (b) => '${b.id.name}_${b.habitId ?? ""}'),
       // Merge spécifique
       dayPlan:       mergedPlan.values.toList(),
       habitProgress: mergedHp.values.toList(),

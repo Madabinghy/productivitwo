@@ -85,11 +85,12 @@ class _GoalsViewState extends State<GoalsView> {
     // Projets affichés dans la liste principale (excluant ceux entièrement réalisés)
     final mainProjects = activeProjects.where((p) => !doneIds.contains(p.id)).toList();
 
-    // Projets avec au moins une tâche démarrée (done incluses pour accès au toggle)
+    // Projets avec au moins une tâche active (non-done) démarrée → affichés dans les sections du haut
     final projectsWithTodayTasks = <String>{};
     for (final p in mainProjects) {
       for (final t in p.tasks) {
         if (t.status == 'skipped') continue;
+        if (t.status == 'done') continue;
         if (!t.startDate.isAfter(todayD)) {
           projectsWithTodayTasks.add(p.id);
           break;
@@ -194,11 +195,12 @@ class _GoalsViewState extends State<GoalsView> {
   ) {
     final cs = Theme.of(context).colorScheme;
 
-    // Tâches démarrées aujourd'hui (done incluses pour pouvoir annuler)
+    // Tâches actives démarrées aujourd'hui (done exclues → section RÉALISÉ projet)
     final byDomain = <String?, List<({Project project, ProjectTask task})>>{};
     for (final p in projects) {
       for (final t in p.tasks) {
         if (t.status == 'skipped') continue;
+        if (t.status == 'done') continue;
         if (t.startDate.isAfter(todayD)) continue;
         byDomain.putIfAbsent(p.domainId, () => []).add((project: p, task: t));
       }
@@ -297,9 +299,11 @@ class _GoalsViewState extends State<GoalsView> {
           byPhase.putIfAbsent(t.phaseId, () => []).add(t);
         }
 
-        // Afficher dans l'ordre des phases, puis sans phase
+        // Afficher dans l'ordre des phases, puis phaseId orphelin (phase supprimée), puis sans phase
         final orderedPhaseIds = [
           ...project.phases.map((ph) => ph.id).where(byPhase.containsKey),
+          // Tâches avec un phaseId qui n'existe plus dans les phases → affichées sans en-tête
+          ...byPhase.keys.where((k) => k != null && !phaseMap.containsKey(k)),
           if (byPhase.containsKey(null)) null,
         ];
 

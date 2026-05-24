@@ -1599,6 +1599,9 @@ class _AppRootState extends State<AppRoot>
   late final AnimationController _tabFadeController;
   late final Animation<double> _tabFade;
 
+  // Garde anti-doublon confetti : score 100% → max 1 fois par jour
+  String _lastConfettiDate = '';
+
   @override
   void initState() {
     super.initState();
@@ -2050,21 +2053,16 @@ class _AppRootState extends State<AppRoot>
         content: Text('${meta.emoji} Badge débloqué : ${meta.label}'),
       ));
     } else if (mounted) {
-      // Célébration score 100% (même si badge déjà acquis)
+      // Célébration score 100% — max 1 fois par jour pour éviter le confetti au démarrage
       final today = yyyymmdd(DateTime.now());
-      final acts = logic.state.dayPlan
-          .where((it) =>
-              it.yyyymmdd == today &&
-              it.kind == PlanKind.action &&
-              !it.archived &&
-              it.toPlan != true)
-          .toList();
-      final actsDone = acts.where((it) => it.done).length;
-      final rs = logic.routineProgressSummaryForCurrentPeriod();
-      final done = actsDone + rs.reached;
-      final total = acts.length + rs.total;
-      if (total > 0 && done >= total) {
-        _confettiController.play();
+      if (_lastConfettiDate != today) {
+        final rs = logic.routineProgressSummaryForCurrentPeriod();
+        final done  = rs.reached;
+        final total = rs.total;
+        if (total > 0 && done >= total) {
+          _lastConfettiDate = today;
+          _confettiController.play();
+        }
       }
     }
 

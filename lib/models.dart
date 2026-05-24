@@ -978,8 +978,12 @@ class EarnedBadge {
 
   EarnedBadge({required this.id, this.habitId, required this.earnedAt});
 
+  /// ID composite utilisé comme clé Firestore : "streak3_activityId" ou "actions10_"
+  String get docId => '${id.name}_${habitId ?? ""}';
+
   Map<String, dynamic> toJson() => {
-    'id': id.name,
+    'id': docId,       // clé Firestore unique (compatible habitId multiple)
+    'badgeId': id.name, // type de badge pour la désérialisation
     if (habitId != null) 'habitId': habitId,
     'earnedAt': earnedAt,
   };
@@ -987,7 +991,13 @@ class EarnedBadge {
   static EarnedBadge? tryFrom(dynamic j) {
     try {
       final m = j as Map;
-      final id = BadgeId.values.firstWhere((b) => b.name == m['id'] as String);
+      // Supporte l'ancien format (id = badgeName) et le nouveau (id = composite, badgeId = badgeName)
+      final badgeName = (m['badgeId'] ?? m['id']) as String;
+      // Pour l'ancien format, le badgeName peut contenir "_activityId" — extraire la partie badge
+      final cleanName = badgeName.contains('_') && !BadgeId.values.any((b) => b.name == badgeName)
+          ? badgeName.split('_').first
+          : badgeName;
+      final id = BadgeId.values.firstWhere((b) => b.name == cleanName);
       return EarnedBadge(
         id: id,
         habitId: m['habitId'] as String?,
