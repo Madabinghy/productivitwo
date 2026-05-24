@@ -1,7 +1,9 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'dart:convert';
 
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -150,7 +152,7 @@ class _OrionScreenState extends State<OrionScreen>
         }
       }
     } catch (e) {
-      _error = e.toString();
+      _error = _friendlyError(e);
     }
     if (mounted) setState(() => _loading = false);
   }
@@ -207,7 +209,7 @@ class _OrionScreenState extends State<OrionScreen>
             () => _error = data['error']?.toString() ?? 'Erreur inconnue');
       }
     } catch (e) {
-      setState(() => _error = e.toString());
+      setState(() => _error = _friendlyError(e));
     }
     if (mounted) setState(() => _activating = false);
   }
@@ -874,6 +876,22 @@ class _SectionLabel extends StatelessWidget {
       ),
     );
   }
+}
+
+String _friendlyError(Object e) {
+  if (e is SocketException ||
+      e is HandshakeException ||
+      e.toString().contains('SocketException') ||
+      e.toString().contains('Failed host lookup') ||
+      e.toString().contains('Connection refused')) {
+    return 'Connexion impossible — vérifie ta connexion internet.\n'
+        'ORION a besoin d\'accès au réseau pour générer ta prochaine action stratégique.';
+  }
+  if (e.toString().contains('TimeoutException') ||
+      e.toString().contains('timed out')) {
+    return 'La requête a expiré — connexion trop lente ou serveur indisponible.\nRéessaie dans un instant.';
+  }
+  return e.toString();
 }
 
 class _ErrorBanner extends StatelessWidget {
