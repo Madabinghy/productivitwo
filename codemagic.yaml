@@ -28,6 +28,14 @@ workflows:
           keychain add-certificates \
             --certificate /tmp/certificate.p12 \
             --certificate-password "$CERTIFICATE_PASSWORD"
+          # Autorise codesign à accéder au certificat (password Codemagic par défaut = "test")
+          KEYCHAIN=$(security default-keychain | xargs)
+          echo "=== Keychain actif : $KEYCHAIN ==="
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "test" "$KEYCHAIN" 2>&1 || true
+          echo "=== Identités de signature disponibles ==="
+          security find-identity -v -p codesigning
 
       - name: Install provisioning profile
         script: |
