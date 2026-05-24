@@ -188,7 +188,7 @@ class _DonutSection extends StatelessWidget {
       final dur = totals[d.id] ?? Duration.zero;
       if (dur.inMinutes == 0) continue;
       final ratio = dur.inMinutes / grandTotal.inMinutes;
-      final color = kDomainPalette[i % kDomainPalette.length];
+      final color = domainColor(d.id, domains) ?? kDomainPalette[i % kDomainPalette.length];
 
       sections.add(PieChartSectionData(
         value: dur.inMinutes.toDouble(),
@@ -306,7 +306,7 @@ class _WeeklyBarsSection extends StatelessWidget {
         final minutes = weekData[wi][d.id] ?? 0;
         if (minutes == 0) continue;
         final hours = minutes / 60;
-        final color = kDomainPalette[di % kDomainPalette.length];
+        final color = domainColor(d.id, domains) ?? kDomainPalette[di % kDomainPalette.length];
         rodSegments.add(BarChartRodStackItem(cursor, cursor + hours, color));
         cursor += hours;
       }
@@ -560,7 +560,8 @@ class _DomainHeatmapSectionState extends State<_DomainHeatmapSection> {
                               minutesMap[activeDomains[di].id]?[ymd] ?? 0;
                           final intensity =
                               mins == 0 ? 0.0 : (mins / referenceMinutes).clamp(0.12, 1.0);
-                          final domColor =
+                          final domColor = domainColor(
+                                  activeDomains[di].id, domains) ??
                               kDomainPalette[di % kDomainPalette.length];
                           final color = mins == 0
                               ? cs.onSurface.withOpacity(.07)
