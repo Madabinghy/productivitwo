@@ -57,7 +57,8 @@ workflows:
           BUILD_NUM=$((BUILD_NUMBER + 309))
           flutter build ipa --release \
             --no-tree-shake-icons \
-            --build-number="$BUILD_NUM"
+            --build-number="$BUILD_NUM" \
+            --export-options-plist=ios/ExportOptions.plist
 
     artifacts:
       - build/ios/ipa/*.ipa
