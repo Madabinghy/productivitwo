@@ -561,6 +561,16 @@ class _StatsViewState extends State<StatsView> {
                         LineChartBarData(
                           isCurved: true,
                           barWidth: 3,
+                          color: domainColor(statsDomainId,
+                              widget.state.activeDomains) ??
+                              Theme.of(context).colorScheme.primary,
+                          belowBarData: BarAreaData(
+                            show: true,
+                            color: (domainColor(statsDomainId,
+                                        widget.state.activeDomains) ??
+                                    Theme.of(context).colorScheme.primary)
+                                .withOpacity(.10),
+                          ),
                           spots: List.generate(
                               days, (i) => FlSpot(i.toDouble(), hours[i])),
                           dotData: const FlDotData(show: false),
@@ -646,7 +656,14 @@ class _StatsViewState extends State<StatsView> {
                         days,
                         (i) => BarChartGroupData(
                           x: i,
-                          barRods: [BarChartRodData(toY: habits[i].toDouble())],
+                          barRods: [
+                            BarChartRodData(
+                              toY: habits[i].toDouble(),
+                              color: domainColor(statsDomainId,
+                                      widget.state.activeDomains) ??
+                                  Theme.of(context).colorScheme.primary,
+                            )
+                          ],
                         ),
                       ),
                       extraLinesData: ExtraLinesData(
@@ -654,6 +671,10 @@ class _StatsViewState extends State<StatsView> {
                           if (habitDailyTarget > 0)
                             HorizontalLine(
                                 y: habitDailyTarget.toDouble(),
+                                color: (domainColor(statsDomainId,
+                                            widget.state.activeDomains) ??
+                                        Theme.of(context).colorScheme.primary)
+                                    .withOpacity(.6),
                                 dashArray: [6, 4]),
                         ],
                       ),
@@ -2879,25 +2900,32 @@ class _AppRootState extends State<AppRoot>
                                       ),
                                       const SizedBox(width: 10),
                                     ],
-                                    // Nom
+                                    // Nom + série (sur deux lignes si streak > 0)
                                     Expanded(
-                                      child: Text(
-                                        r.name,
-                                        style: TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w600,
-                                          color: isDone
-                                              ? cs.onSurface.withOpacity(.45)
-                                              : cs.onSurface,
-                                          decoration: isDone
-                                              ? TextDecoration.lineThrough
-                                              : null,
-                                        ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            r.name,
+                                            style: TextStyle(
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.w600,
+                                              color: isDone
+                                                  ? cs.onSurface.withOpacity(.45)
+                                                  : cs.onSurface,
+                                              decoration: isDone
+                                                  ? TextDecoration.lineThrough
+                                                  : null,
+                                            ),
+                                          ),
+                                          _buildStreakBadge(
+                                              logic.habitCurrentStreak(r.id)),
+                                        ],
                                       ),
                                     ),
-                                    // Série (flammes → étoiles)
-                                    _buildStreakBadge(
-                                        logic.habitCurrentStreak(r.id)),
+                                    const SizedBox(width: 8),
                                     // Score + incrément
                                     Row(
                                       mainAxisSize: MainAxisSize.min,
@@ -4073,53 +4101,54 @@ class _AppRootState extends State<AppRoot>
     );
   }
 
-  /// Indicateur de série : 🔥🔥🔥 → ⭐🔥🔥 → ⭐⭐ … ⭐⭐⭐⭐⭐ → badge violet au-delà de 25j
+  /// Indicateur de série affiché sous le nom de la routine.
+  /// 🔥×N → ⭐ par tranche de 5j → badge violet au-delà de 25j.
   Widget _buildStreakBadge(int streak) {
     if (streak == 0) return const SizedBox.shrink();
 
+    final Widget icons;
     if (streak > 25) {
-      return Padding(
-        padding: const EdgeInsets.only(right: 6),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (int i = 0; i < 5; i++)
-              Icon(Icons.star_rounded, size: 13, color: Colors.amber.shade500),
-            const SizedBox(width: 4),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-              decoration: BoxDecoration(
-                color: Colors.deepPurple.shade400,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                '${streak}j',
-                style: const TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
+      icons = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (int i = 0; i < 5; i++)
+            Icon(Icons.star_rounded, size: 12, color: Colors.amber.shade500),
+          const SizedBox(width: 4),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            decoration: BoxDecoration(
+              color: Colors.deepPurple.shade400,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              '${streak}j',
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       );
-    }
-
-    final stars  = streak ~/ 5;
-    final flames = streak % 5;
-    return Padding(
-      padding: const EdgeInsets.only(right: 6),
-      child: Row(
+    } else {
+      final stars  = streak ~/ 5;
+      final flames = streak % 5;
+      icons = Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           for (int i = 0; i < stars; i++)
-            Icon(Icons.star_rounded, size: 13, color: Colors.amber.shade500),
+            Icon(Icons.star_rounded, size: 12, color: Colors.amber.shade500),
           for (int i = 0; i < flames; i++)
             Icon(Icons.local_fire_department,
-                size: 13, color: Colors.deepOrange.shade400),
+                size: 12, color: Colors.deepOrange.shade400),
         ],
-      ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 3),
+      child: icons,
     );
   }
 
@@ -7107,83 +7136,144 @@ class _AppRootState extends State<AppRoot>
 
 
           // ---------- Rendu des sections ----------
+          final bool isGlobalHabits = isHabitsTab && domain == null;
+
+          // Vue "Tous les domaines" : routines regroupées par domaine
+          List<Widget> _buildGlobalHabitsGrouped() {
+            final widgets = <Widget>[];
+            final domains = logic.state.activeDomains;
+            final cs = Theme.of(context).colorScheme;
+
+            for (final d in domains) {
+              final group =
+                  baseVisible.where((a) => a.domainId == d.id).toList();
+              if (group.isEmpty) continue;
+              final dColor = domainColor(d.id, domains) ?? cs.primary;
+              widgets.add(Padding(
+                padding: const EdgeInsets.fromLTRB(12, 14, 12, 4),
+                child: Row(children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration:
+                        BoxDecoration(color: dColor, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(d.name,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: cs.onSurface.withOpacity(.6),
+                      )),
+                ]),
+              ));
+              for (int i = 0; i < group.length; i++) {
+                final a = group[i];
+                final tile = _buildHabitTile(a);
+                final wrapped = _wrapTile(a, i, group.length, tile);
+                widgets.add(_dismissibleActivityTile(a, wrapped));
+              }
+            }
+
+            // Routines sans domaine assigné
+            final noDomain = baseVisible
+                .where((a) =>
+                    a.domainId == null ||
+                    !domains.any((d) => d.id == a.domainId))
+                .toList();
+            if (noDomain.isNotEmpty) {
+              widgets.add(_sectionTitle("Sans domaine"));
+              for (int i = 0; i < noDomain.length; i++) {
+                final a = noDomain[i];
+                final tile = _buildHabitTile(a);
+                final wrapped = _wrapTile(a, i, noDomain.length, tile);
+                widgets.add(_dismissibleActivityTile(a, wrapped));
+              }
+            }
+
+            if (widgets.isEmpty) {
+              widgets.add(const Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(child: Text("Rien à afficher.")),
+              ));
+            }
+            return widgets;
+          }
+
           final list = ListView(
             controller: scrollCtrl,
             padding: const EdgeInsets.only(bottom: 16),
-            children: [
-              if (visibleUnder.isNotEmpty) _sectionTitle("À rattraper"),
-              ...List.generate(visibleUnder.length, (i) {
-                final a = visibleUnder[i];
-                final tile = a.isHabit ? _buildHabitTile(a) : _buildTimeTile(a);
-
-                final wrapped = _wrapTile(a, i, visibleUnder.length, tile);
-
-                return _dismissibleActivityTile(a, wrapped);
-              }),
-              if (visibleOver.isNotEmpty && visibleUnder.isNotEmpty)
-                const SizedBox(height: 8),
-              if (visibleOver.isNotEmpty) _sectionTitle("Déjà atteint"),
-              ...List.generate(visibleOver.length, (i) {
-                final a = visibleOver[i];
-                final tile = a.isHabit ? _buildHabitTile(a) : _buildTimeTile(a);
-
-                final wrapped = _wrapTile(a, i, visibleOver.length, tile);
-
-                return _dismissibleActivityTile(a, wrapped);
-              }),
-              if (hiddenActivities.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                ListTile(
-                  leading: const Icon(Icons.snooze, size: 20),
-                  title: Text(
-                    "Cachées (${hiddenActivities.length})",
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  trailing: Icon(
-                    hiddenExpanded ? Icons.expand_less : Icons.expand_more,
-                  ),
-                  onTap: () {
-                    setSB(() {
-                      hiddenExpanded = !hiddenExpanded;
-                    });
-                  },
-                ),
-                if (hiddenExpanded)
-                  ...hiddenActivities.map((a) {
-                    final content = ListTile(
-                      title: Text(
-                        a.name,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.75),
-                          fontWeight: FontWeight.w600,
+            children: isGlobalHabits
+                ? _buildGlobalHabitsGrouped()
+                : [
+                    if (visibleUnder.isNotEmpty) _sectionTitle("À rattraper"),
+                    ...List.generate(visibleUnder.length, (i) {
+                      final a = visibleUnder[i];
+                      final tile =
+                          a.isHabit ? _buildHabitTile(a) : _buildTimeTile(a);
+                      final wrapped =
+                          _wrapTile(a, i, visibleUnder.length, tile);
+                      return _dismissibleActivityTile(a, wrapped);
+                    }),
+                    if (visibleOver.isNotEmpty && visibleUnder.isNotEmpty)
+                      const SizedBox(height: 8),
+                    if (visibleOver.isNotEmpty) _sectionTitle("Déjà atteint"),
+                    ...List.generate(visibleOver.length, (i) {
+                      final a = visibleOver[i];
+                      final tile =
+                          a.isHabit ? _buildHabitTile(a) : _buildTimeTile(a);
+                      final wrapped =
+                          _wrapTile(a, i, visibleOver.length, tile);
+                      return _dismissibleActivityTile(a, wrapped);
+                    }),
+                    if (hiddenActivities.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      ListTile(
+                        leading: const Icon(Icons.snooze, size: 20),
+                        title: Text(
+                          "Cachées (${hiddenActivities.length})",
+                          style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
-                      ),
-                      subtitle: const Text("Activité masquée"),
-                      trailing: TextButton(
-                        child: const Text("Afficher"),
-                        onPressed: () {
-                          logic.unsnoozeActivity(a.id);
-                          setSB(() {});
-/*                           ScaffoldMessenger.of(context).clearSnackBars();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text("Activité réaffichée"),
-                            ),
-                          ); */
+                        trailing: Icon(
+                          hiddenExpanded
+                              ? Icons.expand_less
+                              : Icons.expand_more,
+                        ),
+                        onTap: () {
+                          setSB(() {
+                            hiddenExpanded = !hiddenExpanded;
+                          });
                         },
                       ),
-                      onTap: () => _openActivityBottomSheet(a),
-                    );
-
-                    return _dismissibleActivityTile(a, content);
-                  }),
-              ],
-              if (under.isEmpty && over.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Center(child: Text("Rien à afficher.")),
-                ),
-            ],
+                      if (hiddenExpanded)
+                        ...hiddenActivities.map((a) {
+                          final content = ListTile(
+                            title: Text(
+                              a.name,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.75),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            subtitle: const Text("Activité masquée"),
+                            trailing: TextButton(
+                              child: const Text("Afficher"),
+                              onPressed: () {
+                                logic.unsnoozeActivity(a.id);
+                                setSB(() {});
+                              },
+                            ),
+                            onTap: () => _openActivityBottomSheet(a),
+                          );
+                          return _dismissibleActivityTile(a, content);
+                        }),
+                    ],
+                    if (under.isEmpty && over.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Center(child: Text("Rien à afficher.")),
+                      ),
+                  ],
           );
 
           final body = Padding(
