@@ -23,9 +23,22 @@ workflows:
 
       - name: Fetch signing files (App Store Distribution)
         script: |
+          set -x
+          echo "=== BUNDLE_ID: $BUNDLE_ID ==="
+          echo "=== KEY_ID: $APP_STORE_CONNECT_KEY_IDENTIFIER ==="
+          echo "=== ISSUER_ID: $APP_STORE_CONNECT_ISSUER_ID ==="
+          echo "=== KEY length: ${#APP_STORE_CONNECT_PRIVATE_KEY} ==="
+          # Écrit la clé via printf pour préserver les newlines
+          printf "%s" "$APP_STORE_CONNECT_PRIVATE_KEY" > /tmp/auth_key.p8
+          echo "=== p8 file written, size: $(wc -c < /tmp/auth_key.p8) bytes ==="
+          echo "=== p8 first line: $(head -1 /tmp/auth_key.p8) ==="
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
+            --key-id "$APP_STORE_CONNECT_KEY_IDENTIFIER" \
+            --private-key "@file:/tmp/auth_key.p8" \
             --type IOS_APP_STORE \
-            --create
+            --create \
+            --verbose 2>&1
 
       - name: Add certificates to keychain
         script: keychain add-certificates
