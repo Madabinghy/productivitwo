@@ -95,21 +95,49 @@ class AppLogic {
   String? nowHabitId; // habitId actuellement affichée dans Maintenant (routine)
   String? _checkYmd; // pour reset journalier
 
-  // Comptage des sous-actions Gantt validées par jour (ymd -> count)
+  // Score Gantt par jour (ymd -> 0.0..1.0) : progression moyenne des tâches travaillées ce jour
   // Mis à jour depuis main.dart à chaque changement du stream projets
-  final Map<String, int> _ganttDailyCounts = {};
+  final Map<String, double> _ganttDailyScores = {};
 
   void updateGanttCounts(List<Project> projects) {
-    _ganttDailyCounts.clear();
+    _ganttDailyScores.clear();
+
+    // Pour chaque tâche, trouver les jours où elle a été travaillée
+    final Map<String, List<double>> progressionsByDay = {};
+
     for (final project in projects) {
       for (final task in project.tasks) {
+        if (task.actions.isEmpty) continue;
+
+        // Jours où au moins une sous-action a été cochée
+        final Set<String> daysWorked = {};
         for (final action in task.actions) {
           if (action.done && action.doneAt != null) {
-            final ymd = yyyymmdd(action.doneAt!);
-            _ganttDailyCounts[ymd] = (_ganttDailyCounts[ymd] ?? 0) + 1;
+            daysWorked.add(yyyymmdd(action.doneAt!));
           }
         }
+
+        for (final ymd in daysWorked) {
+          final y = int.parse(ymd.substring(0, 4));
+          final m = int.parse(ymd.substring(4, 6));
+          final d = int.parse(ymd.substring(6, 8));
+          final nextDay = DateTime(y, m, d + 1);
+
+          // Progression de la tâche à la fin de ce jour (sans pollution future)
+          final doneOnOrBefore = task.actions
+              .where((a) =>
+                  a.done && a.doneAt != null && a.doneAt!.isBefore(nextDay))
+              .length;
+          final progress = doneOnOrBefore / task.actions.length;
+          progressionsByDay.putIfAbsent(ymd, () => []).add(progress);
+        }
       }
+    }
+
+    // Moyenne des progressions par jour
+    for (final entry in progressionsByDay.entries) {
+      final avg = entry.value.reduce((a, b) => a + b) / entry.value.length;
+      _ganttDailyScores[entry.key] = avg;
     }
   }
 
@@ -3809,9 +3837,8 @@ class AppLogic {
     }
     final routineScore = routinesTotal == 0 ? 0.0 : routinesDone / routinesTotal;
 
-    // Journées deep work : 5 sous-actions Gantt = score 100%
-    final ganttCount = _ganttDailyCounts[yyyymmdd(d)] ?? 0;
-    final ganttScore = math.min(ganttCount / 5.0, 1.0);
+    // Journées deep work : progression moyenne des tâches Gantt travaillées ce jour
+    final ganttScore = _ganttDailyScores[yyyymmdd(d)] ?? 0.0;
 
     // On retient le meilleur des deux scores
     return math.max(routineScore, ganttScore);
