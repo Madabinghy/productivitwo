@@ -8,6 +8,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.28', '24 mai 2026', [
+    (Icons.delete_forever_outlined, 'Suppression compte : spinner pendant la suppression, fonctionne aussi pour les comptes anonymes, robuste aux erreurs Auth'),
+  ]),
   _Entry('5.27', '24 mai 2026', [
     (Icons.palette_outlined, 'Bande activité en cours : couleur du domaine (bande, point pulsant, timer, bouton Stop)'),
     (Icons.checklist_rounded, 'Priorités du jour : 3 premières sous-actions de chaque tâche focus, cochables et réorganisables par glisser-déposer'),

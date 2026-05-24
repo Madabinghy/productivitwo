@@ -4405,9 +4405,20 @@ class _AppRootState extends State<AppRoot>
                     ),
                   );
                   if (confirm == true) {
-                    if (!_sync.isAnonymous) {
-                      try { await _sync.deleteAccount(); } catch (_) {}
+                    // Spinner pendant la suppression
+                    if (context.mounted) {
+                      showDialog(
+                        context: context,
+                        barrierDismissible: false,
+                        builder: (_) => const PopScope(
+                          canPop: false,
+                          child: Center(
+                            child: CircularProgressIndicator(),
+                          ),
+                        ),
+                      );
                     }
+                    try { await _sync.deleteAccount(); } catch (_) {}
                     await store.wipe();
                     await ProManager.deactivate();
                     exit(0);

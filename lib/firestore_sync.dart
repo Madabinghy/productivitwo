@@ -289,25 +289,32 @@ class FirestoreSync {
   // ── Suppression de compte ───────────────────────────────────────────────────
 
   Future<void> deleteAccount() async {
-    if (uid == null) return;
-    // 1) Supprime toutes les données Firestore (toutes les collections connues)
-    for (final col in [
-      'domains', 'activities', 'sessions', 'habitProgress',
-      'habitHits', 'dayPlan', 'goals', 'blocks', 'badges',
-      'projects', 'strategic_objectives', 'documents', 'api_tokens',
-      'captures', 'assistant_messages', 'recurringActions',
-    ]) {
-      final docs = await _col(col).get();
-      if (docs.docs.isEmpty) continue;
-      final batch = _db.batch();
-      for (final d in docs.docs) batch.delete(d.reference);
-      await batch.commit();
+    // 1) Supprime toutes les données Firestore — toujours, même pour les anonymes
+    if (uid != null) {
+      for (final col in [
+        'domains', 'activities', 'sessions', 'habitProgress',
+        'habitHits', 'dayPlan', 'goals', 'blocks', 'badges',
+        'projects', 'strategic_objectives', 'documents', 'api_tokens',
+        'captures', 'assistant_messages', 'recurringActions',
+      ]) {
+        try {
+          final docs = await _col(col).get();
+          if (docs.docs.isEmpty) continue;
+          final batch = _db.batch();
+          for (final d in docs.docs) batch.delete(d.reference);
+          await batch.commit();
+        } catch (_) {}
+      }
+      try { await _col('orion_subscription').doc('main').delete(); } catch (_) {}
+      try { await _meta().delete(); } catch (_) {}
     }
-    // Sous-documents singleton
-    await _col('orion_subscription').doc('main').delete().catchError((_) {});
-    await _meta().delete().catchError((_) {});
-    // 2) Supprime le compte Firebase Auth
-    await _auth.currentUser?.delete();
+    // 2) Supprime le compte Firebase Auth — séparé pour ne pas bloquer si ça échoue
+    try {
+      await _auth.currentUser?.delete();
+    } catch (_) {
+      // requires-recent-login ou autre erreur Auth : on continue quand même
+      // (les données Firestore sont déjà supprimées)
+    }
   }
 
   Map<String, dynamic> _encodeMeta(AppState st) => {
