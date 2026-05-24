@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
@@ -526,5 +527,20 @@ class FirestoreSync {
   Future<void> archiveItem(String collection, String docId) async {
     if (uid == null) return;
     await _col(collection).doc(docId).update({'deleted': true});
+  }
+
+  /// Inscrit l'utilisateur au cron ORION (fire-and-forget).
+  /// Appelé au démarrage — permet au backend de l'inclure dans runOrionCycle
+  /// même sans token MCP.
+  void registerOrionSubscription() {
+    if (uid == null) return;
+    _col('orion_subscription').doc('main').set(
+      {
+        'enabled': true,
+        'platform': Platform.isIOS ? 'ios' : Platform.isAndroid ? 'android' : 'other',
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    ).ignore();
   }
 }

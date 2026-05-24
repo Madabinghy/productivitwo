@@ -2003,6 +2003,7 @@ class _AppRootState extends State<AppRoot>
           if (mounted) OrionScreen.show(context, _sync);
         };
         unawaited(FcmService.init(uid));
+        _sync.registerOrionSubscription();
       }
 
       // Injecte les actions récurrentes pour aujourd'hui + 7 prochains jours

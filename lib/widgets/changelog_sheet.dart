@@ -8,6 +8,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.17', '24 mai 2026', [
+    (Icons.notifications_active_outlined, 'ORION : messages automatiques toutes les 6h maintenant actifs pour les utilisateurs iOS (inscription automatique au cron au démarrage)'),
+  ]),
   _Entry('5.16', '24 mai 2026', [
     (Icons.circle_outlined, 'Statistiques : point coloré dans le sélecteur de domaine pour identifier la couleur du graphe'),
     (Icons.check_circle_outline, 'Projets : section "RÉALISÉ" renommée "À JOUR" — évite la confusion avec la fin du projet'),

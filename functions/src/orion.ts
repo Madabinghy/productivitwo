@@ -426,14 +426,27 @@ Tu dois TOUJOURS appeler push_assistant_message avant end_turn, quelle que soit 
 // ── Itération sur tous les users actifs (pour le cron) ────────────────────────
 
 export async function getAllActiveUserIds(): Promise<string[]> {
-  const snap = await db
+  const uids = new Set<string>();
+
+  // Utilisateurs MCP (avec token API actif)
+  const tokenSnap = await db
     .collectionGroup("api_tokens")
     .where("active", "==", true)
     .get();
-  const uids = new Set<string>();
-  for (const doc of snap.docs) {
+  for (const doc of tokenSnap.docs) {
     const parts = doc.ref.path.split("/");
     if (parts.length >= 2) uids.add(parts[1]);
   }
+
+  // Utilisateurs app (iOS/Android) inscrits au cron ORION
+  const subSnap = await db
+    .collectionGroup("orion_subscription")
+    .where("enabled", "==", true)
+    .get();
+  for (const doc of subSnap.docs) {
+    const parts = doc.ref.path.split("/");
+    if (parts.length >= 2) uids.add(parts[1]);
+  }
+
   return [...uids];
 }
