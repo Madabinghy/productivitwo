@@ -2747,13 +2747,9 @@ class _AppRootState extends State<AppRoot>
           FloatingActionButton(
             heroTag: 'fab_now_routine',
             mini: true,
-            tooltip: 'Nouvelle routine',
-            onPressed: () async {
-              await _createRoutineFromNow(context);
-              if (!mounted) return;
-              setState(() {});
-            },
-            child: const Icon(Icons.repeat),
+            tooltip: 'Lancer une routine',
+            onPressed: () => _showRoutinesSheet(context),
+            child: const Icon(Icons.repeat_rounded),
           ),
           const SizedBox(height: 12),
           FloatingActionButton(
@@ -2849,15 +2845,32 @@ class _AppRootState extends State<AppRoot>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                    padding: const EdgeInsets.fromLTRB(20, 4, 12, 12),
                     child: Row(
                       children: [
                         const Icon(Icons.repeat_rounded, size: 18),
                         const SizedBox(width: 8),
-                        Text(
-                          'Routines du jour (${routines.length})',
-                          style: const TextStyle(
-                              fontSize: 17, fontWeight: FontWeight.bold),
+                        Expanded(
+                          child: Text(
+                            'Lancer une routine',
+                            style: const TextStyle(
+                                fontSize: 17, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        TextButton.icon(
+                          style: TextButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            foregroundColor: Theme.of(ctx).colorScheme.primary,
+                          ),
+                          icon: const Icon(Icons.add, size: 16),
+                          label: const Text('Nouvelle',
+                              style: TextStyle(fontSize: 13)),
+                          onPressed: () async {
+                            Navigator.pop(ctx);
+                            await _createRoutineFromNow(context);
+                            if (!mounted) return;
+                            setState(() {});
+                          },
                         ),
                       ],
                     ),
@@ -3870,8 +3883,12 @@ class _AppRootState extends State<AppRoot>
             _buildDailyScoreChip(context),
             IconButton(
               icon: const Icon(Icons.repeat_rounded, size: 20),
-              tooltip: 'Routines',
-              onPressed: () => _showRoutinesSheet(context),
+              tooltip: 'Nouvelle routine',
+              onPressed: () async {
+                await _createRoutineFromNow(context);
+                if (!mounted) return;
+                setState(() {});
+              },
             ),
             Stack(
               clipBehavior: Clip.none,

@@ -8,6 +8,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.24', '24 mai 2026', [
+    (Icons.repeat_rounded, 'FAB routines → "Lancer une routine" (log rapide) — création déplacée dans l\'AppBar et dans le bouton + du sheet'),
+  ]),
   _Entry('5.23', '24 mai 2026', [
     (Icons.add_circle_outline, 'Priorités du jour : bouton + pour ajouter une priorité libre "Faire X" sans projet ni routine'),
     (Icons.radio_button_unchecked, 'Items libres cochables (rayés) + bouton × pour supprimer, filtrés par date (reset automatique le lendemain)'),
