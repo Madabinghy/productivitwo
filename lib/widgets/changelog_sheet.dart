@@ -8,6 +8,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.19', '24 mai 2026', [
+    (Icons.delete_sweep_outlined, 'Actions libres supprimées — FAB "Nouvelle action", carte Courses et données de démo retirés (modèle simplifié : toute action vient d\'un projet ou d\'une routine)'),
+  ]),
   _Entry('5.18', '24 mai 2026', [
     (Icons.view_agenda_outlined, 'Projets : tâches avec phaseId désynchronisé retrouvent leur phase via le groupLabel — plus de section "Sans phase" fantôme'),
   ]),

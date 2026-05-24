@@ -18,14 +18,12 @@ import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/widgets/today_view.dart';
 import 'package:productivitwo_v1/widgets/goals_view.dart';
 import 'package:productivitwo_v1/widgets/day_block_sheet.dart';
-import 'package:productivitwo_v1/widgets/new_action_sheet.dart';
 import 'package:productivitwo_v1/widgets/new_routine_sheet.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
 import 'package:productivitwo_v1/widgets/weekly_view.dart';
 import 'package:productivitwo_v1/widgets/day_review_sheet.dart';
 import 'package:productivitwo_v1/widgets/productivity_stats_card.dart';
 import 'package:productivitwo_v1/widgets/onboarding_screen.dart';
-import 'package:productivitwo_v1/widgets/courses_sheet.dart';
 import 'package:confetti/confetti.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -2173,13 +2171,6 @@ class _AppRootState extends State<AppRoot>
     }
   }
 
-  bool isInbox(DayPlanItem a) {
-    final noDomain = (a.domainId == null || a.domainId!.isEmpty);
-    final noAct = (a.activityId == null || a.activityId!.isEmpty);
-    final notCourses = a.toPlan != true;
-    return noDomain && noAct && notCourses;
-  }
-
 // 2) Body : route correctement vers TodayView
   Widget _buildBody(BuildContext context) {
     final st = _state!;
@@ -2204,28 +2195,6 @@ class _AppRootState extends State<AppRoot>
 
       return until.isAfter(DateTime.now());
     }
-
-    bool passesEffective(DayPlanItem it) {
-      final itAct = logic.effectiveActivityId(it);
-
-      // ✅ masquer les items liés à une activité cachée
-      if (isActivitySnoozedNow(itAct)) return false;
-
-      if (manualActive) return logic.passesFilters(it);
-
-      if (runningId != null) {
-        // Items liés à l'activité en cours → toujours visibles
-        if (itAct != null && itAct.isNotEmpty) return itAct == runningId;
-        // Actions sans activité et sans bloc → toujours visibles dans Maintenant
-        if (it.kind == PlanKind.action &&
-            (logic.effectiveBlockId(it) ?? '').isEmpty) return true;
-        return isInbox(it);
-      }
-
-      return true;
-    }
-
-    final filteredTodo = sections.todo.where(passesEffective).toList();
 
     return FadeTransition(
       opacity: _tabFade,
@@ -2531,22 +2500,6 @@ class _AppRootState extends State<AppRoot>
     );
   }
 
-  Future<void> _createActionFromNow(BuildContext context) async {
-    final result = await showNewActionSheet(context, logic: logic);
-    if (result == null) return;
-
-    await logic.addPlanAction(
-      ymd: yyyymmdd(DateTime.now()),
-      title: result.title,
-      domainId: result.domainId,
-      activityId: result.activityId,
-      blockId: result.blockId,
-      goalId: result.goalId,
-    );
-
-    logic.onChange();
-  }
-
   Future<String?> _pickDomainId(BuildContext context) async {
     final domains = logic.state.activeDomains;
 
@@ -2683,33 +2636,6 @@ class _AppRootState extends State<AppRoot>
       }
     }
 
-    // ── Bloc + actions du jour ────────────────────────────────────────────────
-    final bloc = DayBlock(name: 'Bloc matin', emoji: '🌅', order: 0);
-    st.blocks.add(bloc);
-
-    st.dayPlan.addAll([
-      DayPlanItem(
-        id: const Uuid().v4(), kind: PlanKind.action,
-        title: 'Préparer la journée', yyyymmdd: today,
-        done: true, order: 0, blockId: bloc.id, domainId: dBusiness.id,
-      ),
-      DayPlanItem(
-        id: const Uuid().v4(), kind: PlanKind.action,
-        title: 'Répondre aux emails', yyyymmdd: today,
-        done: true, order: 1, blockId: bloc.id, domainId: dBusiness.id,
-      ),
-      DayPlanItem(
-        id: const Uuid().v4(), kind: PlanKind.action,
-        title: 'Travailler sur le projet principal', yyyymmdd: today,
-        done: false, order: 2, blockId: bloc.id, domainId: dBusiness.id,
-      ),
-      DayPlanItem(
-        id: const Uuid().v4(), kind: PlanKind.action,
-        title: 'Revue de la journée', yyyymmdd: today,
-        done: false, order: 3, blockId: bloc.id, domainId: dBusiness.id,
-      ),
-    ]);
-
     logic.onChange();
     if (mounted) setState(() {});
 
@@ -2739,18 +2665,6 @@ class _AppRootState extends State<AppRoot>
             setState(() {});
           },
           child: const Icon(Icons.repeat),
-        ),
-        const SizedBox(height: 8),
-        FloatingActionButton(
-          heroTag: 'fab_now_action',
-          mini: true,
-          tooltip: 'Nouvelle action',
-          onPressed: () async {
-            await _createActionFromNow(context);
-            if (!mounted) return;
-            setState(() {});
-          },
-          child: const Icon(Icons.add),
         ),
         const SizedBox(height: 12),
         FloatingActionButton(
@@ -4707,40 +4621,6 @@ class _AppRootState extends State<AppRoot>
         SectionCard(
           child: RoutineFreqCard(logic: logic),
         ),
-        Builder(builder: (context) {
-          final reserveCount = logic.state.dayPlan
-              .where((a) =>
-                  a.kind == PlanKind.action &&
-                  a.toPlan == true &&
-                  a.archived == true &&
-                  !a.done)
-              .length;
-          final activeCount = logic.state.dayPlan
-              .where((a) =>
-                  a.kind == PlanKind.action &&
-                  a.toPlan == true &&
-                  a.archived != true &&
-                  !a.done)
-              .length;
-          if (reserveCount == 0 && activeCount == 0) {
-            return const SizedBox.shrink();
-          }
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-            child: Card(
-              child: ListTile(
-                leading: const Icon(Icons.shopping_cart_outlined),
-                title: const Text('Courses',
-                    style: TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: Text(activeCount > 0
-                    ? '$activeCount en liste · $reserveCount en réserve'
-                    : '$reserveCount article${reserveCount > 1 ? 's' : ''} en réserve'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => showCoursesSheet(context, logic: logic),
-              ),
-            ),
-          );
-        }),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 4, 16, 0),
           child: Row(
