@@ -1689,6 +1689,19 @@ class _OrionProjectPageState extends State<_OrionProjectPage> {
     super.dispose();
   }
 
+  Future<void> _finishOnboarding() async {
+    setState(() => _loading = true);
+    try {
+      final uid = widget.sync.uid;
+      if (uid != null) {
+        await widget.sync.saveProject(buildDiscoveryProject(uid));
+      }
+    } catch (_) {
+      // Le projet de découverte est optionnel — on continue même en cas d'erreur
+    }
+    widget.onDone();
+  }
+
   Future<void> _createProject() async {
     final desc = _ctrl.text.trim();
     if (desc.isEmpty) return;
@@ -1797,7 +1810,7 @@ class _OrionProjectPageState extends State<_OrionProjectPage> {
             const Spacer(),
             Center(
               child: TextButton(
-                onPressed: widget.onDone,
+                onPressed: _loading ? null : () => _finishOnboarding(),
                 child: Text('Passer cette étape', style: TextStyle(color: cs.onSurface.withOpacity(.45))),
               ),
             ),
@@ -1825,7 +1838,7 @@ class _OrionProjectPageState extends State<_OrionProjectPage> {
             SizedBox(
               width: double.infinity,
               child: FilledButton(
-                onPressed: widget.onDone,
+                onPressed: _loading ? null : () => _finishOnboarding(),
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -1839,4 +1852,107 @@ class _OrionProjectPageState extends State<_OrionProjectPage> {
       ),
     );
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Projet de prise en main — créé automatiquement en fin d'onboarding
+// ═══════════════════════════════════════════════════════════════════════════════
+
+Project buildDiscoveryProject(String createdBy) {
+  final today = DateTime.now();
+  final t = DateTime(today.year, today.month, today.day);
+
+  // ── Phases ──────────────────────────────────────────────────────────────────
+  final pTaches = ProjectPhase(
+    label: 'Tâches & sous-actions',
+    startDate: t,
+    endDate: t.add(const Duration(days: 7)),
+  );
+  final pOrion = ProjectPhase(
+    label: 'ORION & IA',
+    startDate: t,
+    endDate: t.add(const Duration(days: 14)),
+  );
+  final pWeb = ProjectPhase(
+    label: 'App web',
+    startDate: t,
+    endDate: t.add(const Duration(days: 21)),
+  );
+
+  // ── Tâches ──────────────────────────────────────────────────────────────────
+  final tasks = [
+    // Phase 1 — Tâches & sous-actions
+    ProjectTask(
+      title: 'Ajouter des sous-actions à cette tâche',
+      phaseId: pTaches.id,
+      startDate: t,
+      todayFlag: true,
+      actions: [
+        TaskAction(title: 'Appuyer sur ⊕ sous cette tâche'),
+        TaskAction(title: 'Écrire une sous-action et valider'),
+        TaskAction(title: 'Cocher cette case ✓'),
+      ],
+    ),
+    ProjectTask(
+      title: 'Réordonner les sous-actions',
+      phaseId: pTaches.id,
+      startDate: t,
+      actions: [
+        TaskAction(title: 'Maintenir appuyé sur une sous-action'),
+        TaskAction(title: 'Glisser vers le haut ou le bas'),
+      ],
+    ),
+    ProjectTask(
+      title: 'Supprimer une sous-action (swipe gauche)',
+      phaseId: pTaches.id,
+      startDate: t,
+    ),
+
+    // Phase 2 — ORION & IA
+    ProjectTask(
+      title: 'Explorer ORION',
+      phaseId: pOrion.id,
+      startDate: t,
+      actions: [
+        TaskAction(title: 'Aller sur l\'onglet ✦ ORION'),
+        TaskAction(title: 'Lire le rapport hebdomadaire'),
+        TaskAction(title: 'Capturer une idée avec le 💡'),
+      ],
+    ),
+    ProjectTask(
+      title: 'Créer un vrai projet avec ORION',
+      phaseId: pOrion.id,
+      startDate: t,
+      actions: [
+        TaskAction(title: 'Aller sur l\'onglet Projets'),
+        TaskAction(title: 'Appuyer sur + Nouveau projet'),
+        TaskAction(title: 'Décrire ton idée en langage naturel'),
+      ],
+    ),
+
+    // Phase 3 — App web
+    ProjectTask(
+      title: 'Ouvrir l\'app web Gantt',
+      phaseId: pWeb.id,
+      startDate: t,
+      actions: [
+        TaskAction(title: 'Aller dans Paramètres (⚙ en haut à droite)'),
+        TaskAction(title: 'Créer un token API'),
+        TaskAction(title: 'Ouvrir productivitwo.web.app'),
+        TaskAction(title: 'Entrer le token pour te connecter'),
+      ],
+    ),
+  ];
+
+  return Project(
+    title: 'Prise en main de Productivitwo',
+    description: 'Découvre les fonctionnalités essentielles — coche les sous-actions au fur et à mesure !',
+    startDate: t,
+    endDate: t.add(const Duration(days: 21)),
+    status: 'active',
+    phases: [pTaches, pOrion, pWeb],
+    tasks: tasks,
+    createdBy: createdBy,
+    sourceType: 'onboarding',
+  );
 }

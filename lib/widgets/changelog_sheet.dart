@@ -8,6 +8,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.22', '24 mai 2026', [
+    (Icons.rocket_launch_outlined, 'Onboarding : projet "Prise en main" créé automatiquement — 3 phases, 6 tâches avec sous-actions pour découvrir toutes les fonctionnalités'),
+    (Icons.star_rounded, 'Première priorité du jour pré-cochée dans le projet de découverte'),
+  ]),
   _Entry('5.21', '24 mai 2026', [
     (Icons.star_rounded, 'Priorités du jour : étoile ⭐ sur les tâches Gantt et routines récurrentes → checklist combinée en haut du dashboard'),
     (Icons.star_outline_rounded, 'Étoile sur les tâches depuis la vue Projets et le sheet projet, étoile sur les routines depuis le sheet Actions récurrentes'),
