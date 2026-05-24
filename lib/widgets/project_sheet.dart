@@ -109,12 +109,15 @@ class _ProjectSheetState extends State<_ProjectSheet> {
 
     // Grouper tâches par phase (phaseId en priorité, groupLabel en fallback)
     final phaseByLabel = { for (final p in _project.phases) p.label: p };
+    final phaseIds = { for (final p in _project.phases) p.id };
     final grouped = <String?, List<ProjectTask>>{};
     for (final t in _project.tasks) {
       String? key = t.phaseId;
       if (key == null && t.groupLabel != null) {
         key = phaseByLabel[t.groupLabel]?.id;
       }
+      // phaseId orphelin (phase supprimée) → traité comme sans phase
+      if (key != null && !phaseIds.contains(key)) key = null;
       grouped.putIfAbsent(key, () => []).add(t);
     }
 
