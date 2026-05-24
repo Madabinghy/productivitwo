@@ -25,14 +25,9 @@ workflows:
       - name: Import distribution certificate (P12)
         script: |
           echo "$CERTIFICATE_P12" | base64 --decode > /tmp/certificate.p12
-          security import /tmp/certificate.p12 \
-            -k ~/Library/Keychains/login.keychain-db \
-            -P "$CERTIFICATE_PASSWORD" \
-            -T /usr/bin/codesign \
-            -T /usr/bin/security
-          security set-key-partition-list \
-            -S apple-tool:,apple:,codesign: \
-            -s -k "" ~/Library/Keychains/login.keychain-db 2>/dev/null || true
+          keychain add-certificates \
+            --certificate /tmp/certificate.p12 \
+            --certificate-password "$CERTIFICATE_PASSWORD"
 
       - name: Install provisioning profile
         script: |
