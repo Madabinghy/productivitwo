@@ -3915,15 +3915,6 @@ class _AppRootState extends State<AppRoot>
             ),
             const Spacer(),
             _buildDailyScoreChip(context),
-            IconButton(
-              icon: const Icon(Icons.repeat_rounded, size: 20),
-              tooltip: 'Nouvelle routine',
-              onPressed: () async {
-                await _createRoutineFromNow(context);
-                if (!mounted) return;
-                setState(() {});
-              },
-            ),
             Stack(
               clipBehavior: Clip.none,
               children: [
@@ -5162,7 +5153,29 @@ class _AppRootState extends State<AppRoot>
           ),
         ),
         SectionCard(
-          child: RoutineFreqCard(logic: logic),
+          child: RoutineFreqCard(
+            logic: logic,
+            onCreateRoutine: () async {
+              await _createRoutineFromNow(context);
+              setState(() {});
+            },
+            onEditRoutine: (activity) async {
+              final res = await showHabitSettingsSheet(
+                context,
+                act: activity,
+                applyDirectly: true,
+                onSaved: () => setState(() {}),
+              );
+              if (res == null) return;
+              logic.onChange();
+              setState(() {});
+            },
+            onDeleteRoutine: (activity) {
+              activity.deleted = true;
+              logic.onChange();
+              setState(() {});
+            },
+          ),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 4, 16, 0),

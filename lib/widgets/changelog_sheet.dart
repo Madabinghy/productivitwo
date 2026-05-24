@@ -8,6 +8,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.29', '24 mai 2026', [
+    (Icons.repeat_rounded, 'Widget Routines : hub CRUD complet — +/- inline, créer depuis le +, modifier/supprimer via appui long'),
+    (Icons.remove_circle_outline, 'AppBar : bouton "Nouvelle routine" retiré — création accessible depuis le widget Routines'),
+  ]),
   _Entry('5.28', '24 mai 2026', [
     (Icons.delete_forever_outlined, 'Suppression compte : spinner pendant la suppression, fonctionne aussi pour les comptes anonymes, robuste aux erreurs Auth'),
     (Icons.login_rounded, 'Onboarding après suppression : session Firebase Auth créée automatiquement — création de projet ne renvoie plus "Non connecté"'),
