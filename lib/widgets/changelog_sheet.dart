@@ -8,6 +8,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.23', '24 mai 2026', [
+    (Icons.add_circle_outline, 'Priorités du jour : bouton + pour ajouter une priorité libre "Faire X" sans projet ni routine'),
+    (Icons.radio_button_unchecked, 'Items libres cochables (rayés) + bouton × pour supprimer, filtrés par date (reset automatique le lendemain)'),
+  ]),
   _Entry('5.22', '24 mai 2026', [
     (Icons.rocket_launch_outlined, 'Onboarding : projet "Prise en main" créé automatiquement — 3 phases, 6 tâches avec sous-actions pour découvrir toutes les fonctionnalités'),
     (Icons.star_rounded, 'Première priorité du jour pré-cochée dans le projet de découverte'),

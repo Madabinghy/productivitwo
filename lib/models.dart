@@ -1063,6 +1063,9 @@ class AppState {
   // Blocs journaliers
   List<DayBlock> blocks;
   List<RecurringAction> recurringActions;
+
+  // Priorités libres du jour
+  List<TodayItem> todayItems;
   List<RecurringAction> get activeRecurringActions => recurringActions.where((r) => !r.deleted).toList();
   Map<String, List<String>> disabledBlocksByYmd; // ymd -> [blockIds désactivés]
 
@@ -1108,6 +1111,7 @@ class AppState {
     Map<String, List<String>>? habitChecklistByHabitId,
     List<DayBlock>? blocks,
     List<RecurringAction>? recurringActions,
+    List<TodayItem>? todayItems,
     Map<String, List<String>>? disabledBlocksByYmd,
     List<EarnedBadge>? earnedBadges,
     List<String>? skippedChallengeDates,
@@ -1157,6 +1161,7 @@ class AppState {
         filters = filters ?? FilterState(),
         blocks = blocks ?? <DayBlock>[],
         recurringActions = recurringActions ?? <RecurringAction>[],
+        todayItems = todayItems ?? <TodayItem>[],
         disabledBlocksByYmd = disabledBlocksByYmd ?? <String, List<String>>{},
         earnedBadges = earnedBadges ?? <EarnedBadge>[],
         skippedChallengeDates = skippedChallengeDates ?? <String>[];
@@ -1198,6 +1203,7 @@ class AppState {
         'voitureMigratedOnce': voitureMigratedOnce,
         'blocks': blocks.map((e) => e.toJson()).toList(),
         'recurringActions': recurringActions.map((e) => e.toJson()).toList(),
+        'todayItems': todayItems.map((e) => e.toJson()).toList(),
         'disabledBlocksByYmd': disabledBlocksByYmd,
         'earnedBadges': earnedBadges.map((e) => e.toJson()).toList(),
         'skippedChallengeDates': skippedChallengeDates,
@@ -1290,6 +1296,7 @@ class AppState {
       voitureMigratedOnce: (j['voitureMigratedOnce'] as bool?) ?? false,
       blocks: _list(j['blocks'], (e) => DayBlock.from(e)),
       recurringActions: _list(j['recurringActions'], (e) => RecurringAction.from(e)),
+      todayItems: _list(j['todayItems'], (e) => TodayItem.from(e)),
       disabledBlocksByYmd: _mapSL(j['disabledBlocksByYmd']),
       earnedBadges: _list(j['earnedBadges'], (e) => EarnedBadge.tryFrom(e))
           .whereType<EarnedBadge>()
@@ -1717,5 +1724,30 @@ class CaptureItem {
         status: j['status'] ?? 'pending',
         orionNote: j['orionNote'],
         processedAt: _parseDateOrNull(j['processedAt']),
+      );
+}
+
+// ── Priorités du jour libres (hors projet / routine) ──────────────────────────
+class TodayItem {
+  String id;
+  String text;
+  bool done;
+  String date; // YYYY-MM-DD
+
+  TodayItem({
+    String? id,
+    required this.text,
+    this.done = false,
+    required this.date,
+  }) : id = id ?? _uuid.v4();
+
+  Map<String, dynamic> toJson() =>
+      {'id': id, 'text': text, 'done': done, 'date': date};
+
+  static TodayItem from(Map j) => TodayItem(
+        id: j['id'] ?? _uuid.v4(),
+        text: j['text'] ?? '',
+        done: j['done'] as bool? ?? false,
+        date: j['date'] ?? '',
       );
 }

@@ -4549,6 +4549,8 @@ class _AppRootState extends State<AppRoot>
   Widget _buildTodayPrioritiesSection(BuildContext context, ColorScheme cs) {
     final today = DateTime.now();
     final todayD = DateTime(today.year, today.month, today.day);
+    final todayKey =
+        '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
 
     final List<({Project project, ProjectTask task})> todayTasks = [];
     for (final project in _dashboardProjects) {
@@ -4564,7 +4566,15 @@ class _AppRootState extends State<AppRoot>
         .where((r) => r.todayFlag && r.active && !r.deleted && r.isActiveOn(todayD))
         .toList();
 
-    if (todayTasks.isEmpty && todayRoutines.isEmpty) return const SizedBox.shrink();
+    final freeItems = logic.state.todayItems
+        .where((i) => i.date == todayKey)
+        .toList();
+
+    if (todayTasks.isEmpty && todayRoutines.isEmpty && freeItems.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final total = todayTasks.length + todayRoutines.length + freeItems.length;
 
     return Card(
       elevation: 1,
@@ -4573,8 +4583,9 @@ class _AppRootState extends State<AppRoot>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Header ──────────────────────────────────────────────────────────
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
             child: Row(
               children: [
                 Icon(Icons.star_rounded, size: 14, color: Colors.amber.shade600),
@@ -4590,23 +4601,146 @@ class _AppRootState extends State<AppRoot>
                 ),
                 const Spacer(),
                 Text(
-                  '${todayTasks.length + todayRoutines.length}',
+                  '$total',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
                     color: Colors.amber.shade600,
                   ),
                 ),
+                const SizedBox(width: 4),
+                // Bouton + ajout rapide
+                InkWell(
+                  borderRadius: BorderRadius.circular(20),
+                  onTap: () => _showAddTodayItemSheet(context),
+                  child: Padding(
+                    padding: const EdgeInsets.all(6),
+                    child: Icon(Icons.add_circle_outline,
+                        size: 18, color: cs.onSurface.withOpacity(.45)),
+                  ),
+                ),
               ],
             ),
           ),
           Divider(height: 1, color: cs.outlineVariant.withOpacity(.3)),
+          // ── Items Gantt ──────────────────────────────────────────────────────
           for (final entry in todayTasks)
             _buildPriorityTaskTile(context, cs, entry.project, entry.task),
+          // ── Routines ────────────────────────────────────────────────────────
           for (final routine in todayRoutines)
             _buildPriorityRoutineTile(context, cs, routine, today),
+          // ── Items libres ─────────────────────────────────────────────────────
+          for (final item in freeItems)
+            _buildPriorityFreeTile(context, cs, item),
           const SizedBox(height: 4),
         ],
+      ),
+    );
+  }
+
+  void _showAddTodayItemSheet(BuildContext context) {
+    final ctrl = TextEditingController();
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+              20, 8, 20, 16 + MediaQuery.of(ctx).viewInsets.bottom),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Ajouter une priorité',
+                  style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: cs.onSurface)),
+              const SizedBox(height: 12),
+              TextField(
+                controller: ctrl,
+                autofocus: true,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: InputDecoration(
+                  hintText: 'Faire…',
+                  hintStyle:
+                      TextStyle(color: cs.onSurface.withOpacity(.35)),
+                  filled: true,
+                  fillColor: cs.surfaceContainerHighest.withOpacity(.4),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 12),
+                ),
+                onSubmitted: (v) {
+                  final text = v.trim();
+                  if (text.isEmpty) return;
+                  logic.addTodayItem(text);
+                  setState(() {});
+                  Navigator.pop(ctx);
+                },
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () {
+                    final text = ctrl.text.trim();
+                    if (text.isEmpty) return;
+                    logic.addTodayItem(text);
+                    setState(() {});
+                    Navigator.pop(ctx);
+                  },
+                  child: const Text('Ajouter'),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPriorityFreeTile(
+      BuildContext context, ColorScheme cs, TodayItem item) {
+    return ListTile(
+      dense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+      leading: GestureDetector(
+        onTap: () {
+          HapticFeedback.lightImpact();
+          logic.toggleTodayItem(item.id);
+          setState(() {});
+        },
+        child: Icon(
+          item.done ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+          size: 20,
+          color: item.done
+              ? Colors.green.shade500
+              : cs.onSurface.withOpacity(.4),
+        ),
+      ),
+      title: Text(
+        item.text,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          decoration: item.done ? TextDecoration.lineThrough : null,
+          color: cs.onSurface.withOpacity(item.done ? .4 : .9),
+        ),
+      ),
+      trailing: IconButton(
+        icon: Icon(Icons.close, size: 16, color: cs.onSurface.withOpacity(.3)),
+        visualDensity: VisualDensity.compact,
+        onPressed: () {
+          logic.removeTodayItem(item.id);
+          setState(() {});
+        },
       ),
     );
   }

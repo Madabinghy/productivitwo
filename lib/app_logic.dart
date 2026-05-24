@@ -1140,6 +1140,30 @@ class AppLogic {
     onChange();
   }
 
+  // ── Priorités libres du jour ────────────────────────────────────────────────
+
+  void addTodayItem(String text) {
+    final today = DateTime.now();
+    final date =
+        '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+    // Purge les items de jours précédents (garde uniquement aujourd'hui)
+    state.todayItems.removeWhere((i) => i.date != date);
+    state.todayItems.add(TodayItem(text: text, date: date));
+    onChange();
+  }
+
+  void toggleTodayItem(String id) {
+    final idx = state.todayItems.indexWhere((i) => i.id == id);
+    if (idx < 0) return;
+    state.todayItems[idx].done = !state.todayItems[idx].done;
+    onChange();
+  }
+
+  void removeTodayItem(String id) {
+    state.todayItems.removeWhere((i) => i.id == id);
+    onChange();
+  }
+
   void appendToTomorrowIfLastIsDifferent(
     PlanKind kind,
     String refId,
