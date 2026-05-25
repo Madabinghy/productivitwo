@@ -370,10 +370,11 @@ class _GoalsViewState extends State<GoalsView> {
                   color: color,
                   projectTitle: byProject.length == 1 ? project.title : '',
                   onTaskActionToggled: (taskId, actionIdx, value) async {
-                    project.tasks
+                    final action = project.tasks
                         .firstWhere((t) => t.id == taskId)
-                        .actions[actionIdx]
-                        .done = value;
+                        .actions[actionIdx];
+                    action.done = value;
+                    action.doneAt = value ? DateTime.now() : null;
                     await _sync.saveProjectTasks(project.id, project.tasks);
                     setState(() {});
                     if (value) widget.onBadgeCheck?.call(_totalDoneCount());
