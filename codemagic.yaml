@@ -26,13 +26,22 @@ workflows:
       - name: Install provisioning profile
         script: |
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
-          echo "$PROVISIONING_PROFILE" | base64 --decode > /tmp/profile.mobileprovision
-          # Installe avec l'UUID comme nom de fichier (requis par Xcode)
-          UUID=$(security cms -D -i /tmp/profile.mobileprovision 2>/dev/null \
-            | plutil -extract UUID raw - 2>/dev/null \
-            || grep -o '[0-9A-F]\{8\}-[0-9A-F]\{4\}-[0-9A-F]\{4\}-[0-9A-F]\{4\}-[0-9A-F]\{12\}' /tmp/profile.mobileprovision | head -1)
-          cp /tmp/profile.mobileprovision "$HOME/Library/MobileDevice/Provisioning Profiles/${UUID}.mobileprovision"
-          echo "Profile installé : $UUID"
+
+          install_profile() {
+            local VAR_VALUE="$1"
+            local TMP_FILE="$2"
+            echo "$VAR_VALUE" | base64 --decode > "$TMP_FILE"
+            UUID=$(security cms -D -i "$TMP_FILE" 2>/dev/null \
+              | plutil -extract UUID raw - 2>/dev/null \
+              || grep -o '[0-9A-F]\{8\}-[0-9A-F]\{4\}-[0-9A-F]\{4\}-[0-9A-F]\{4\}-[0-9A-F]\{12\}' "$TMP_FILE" | head -1)
+            cp "$TMP_FILE" "$HOME/Library/MobileDevice/Provisioning Profiles/${UUID}.mobileprovision"
+            echo "Profile installé : $UUID"
+          }
+
+          # App principale
+          install_profile "$PROVISIONING_PROFILE" /tmp/profile.mobileprovision
+          # Widget extension
+          install_profile "$PROVISIONING_PROFILE_WIDGET" /tmp/profile_widget.mobileprovision
 
       - name: Apply signing profiles to Xcode project
         script: xcode-project use-profiles
