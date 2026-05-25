@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.34', '25 mai 2026', [
+    (Icons.rocket_launch_outlined, 'Paywall : essai gratuit 7 jours détecté via RevenueCat — CTA, badge carte Annuel et note légale Apple'),
+  ]),
   _Entry('5.33', '25 mai 2026', [
     (Icons.smart_toy_outlined, 'ORION : astuce MCP — connexion directe à l\'app web pour des actions stratégiques illimitées'),
     (Icons.bar_chart_outlined, 'Données de démo : heatmap 12 semaines avec routines réalistes (Lecture, Hydratation, Revue)'),

@@ -95,6 +95,34 @@ class _PaywallSheetState extends State<_PaywallSheet> {
     return '$amount / mois';
   }
 
+  // Offre d'essai gratuit sur le plan annuel (introductoryPrice avec price == 0)
+  IntroductoryPrice? get _annualTrial {
+    final intro = _offerings?.current?.annual?.storeProduct.introductoryPrice;
+    if (intro == null || intro.price > 0) return null;
+    return intro;
+  }
+
+  // Durée de l'essai en texte lisible (ex: "7 jours", "1 mois")
+  String _trialDurationLabel() {
+    final trial = _annualTrial;
+    if (trial == null) return '7 jours'; // fallback si offres non chargées
+    final n = trial.periodNumberOfUnits;
+    switch (trial.periodUnit) {
+      case PeriodUnit.day:
+        return '$n jour${n > 1 ? 's' : ''}';
+      case PeriodUnit.week:
+        return '$n semaine${n > 1 ? 's' : ''}';
+      case PeriodUnit.month:
+        return '$n mois';
+      default:
+        return '$n jour${n > 1 ? 's' : ''}';
+    }
+  }
+
+  // True si le plan annuel est sélectionné ET qu'un essai gratuit est disponible
+  // (ou que les offres ne sont pas encore chargées → on affiche le trial par défaut)
+  bool get _hasTrial => _yearly && (_annualTrial != null || _offerings == null);
+
   Future<void> _subscribe() async {
     final pkg = _selectedPackage;
     if (pkg == null) return;
@@ -159,9 +187,13 @@ class _PaywallSheetState extends State<_PaywallSheet> {
                   style: TextStyle(
                       fontSize: 22, fontWeight: FontWeight.w900, color: cs.onSurface)),
               const SizedBox(height: 6),
-              Text('Débloque toutes les fonctionnalités',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 14, color: cs.onSurface.withOpacity(.5))),
+              Text(
+                _hasTrial
+                    ? 'Essaye Pro gratuitement pendant ${_trialDurationLabel()}'
+                    : 'Débloque toutes les fonctionnalités',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14, color: cs.onSurface.withOpacity(.5)),
+              ),
               const SizedBox(height: 24),
 
               // Bénéfices
@@ -222,6 +254,9 @@ class _PaywallSheetState extends State<_PaywallSheet> {
                     price: _annualPriceLabel(),
                     sub: _annualPerMonthLabel(),
                     badge: '−50 %',
+                    trialLabel: _annualTrial != null || _offerings == null
+                        ? '${_trialDurationLabel()} gratuits'
+                        : null,
                     selected: _yearly,
                     onTap: () => setState(() => _yearly = true),
                   )),
@@ -239,13 +274,26 @@ class _PaywallSheetState extends State<_PaywallSheet> {
                         width: 20,
                         child: CircularProgressIndicator(strokeWidth: 2))
                     : Text(
-                        _yearly
-                            ? 'Essai gratuit 7 jours — puis ${_priceLabel()} / an'
-                            : 'S\'abonner pour ${_priceLabel()} / mois',
+                        _hasTrial
+                            ? 'Essayer gratuitement — ${_trialDurationLabel()}'
+                            : _yearly
+                                ? 'S\'abonner — ${_priceLabel()} / an'
+                                : 'S\'abonner — ${_priceLabel()} / mois',
                         style: const TextStyle(
                             fontSize: 15, fontWeight: FontWeight.w700)),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
+              // Note légale (obligatoire Apple pour les trials)
+              Text(
+                _hasTrial
+                    ? 'Essai gratuit ${_trialDurationLabel()}, puis ${_priceLabel()} / an. Sans engagement — annulable à tout moment.'
+                    : _yearly
+                        ? 'Abonnement annuel — annulable à tout moment.'
+                        : 'Abonnement mensuel — annulable à tout moment.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(.38)),
+              ),
+              const SizedBox(height: 4),
               Center(
                 child: TextButton(
                   onPressed: _loading ? null : _restore,
@@ -311,6 +359,7 @@ class _PlanCard extends StatelessWidget {
   final String price;
   final String sub;
   final String? badge;
+  final String? trialLabel;
   final bool selected;
   final VoidCallback onTap;
 
@@ -320,6 +369,7 @@ class _PlanCard extends StatelessWidget {
     required this.price,
     required this.sub,
     required this.badge,
+    this.trialLabel,
     required this.selected,
     required this.onTap,
   });
@@ -359,6 +409,23 @@ class _PlanCard extends StatelessWidget {
                     style: TextStyle(
                         fontSize: 11,
                         color: cs.onSurface.withOpacity(.45))),
+                if (trialLabel != null) ...[
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: cs.primary.withOpacity(.15),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      trialLabel!,
+                      style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: cs.primary),
+                    ),
+                  ),
+                ],
               ],
             ),
             if (badge != null)
