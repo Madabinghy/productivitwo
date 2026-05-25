@@ -63,13 +63,24 @@ class _WebAuthScreenState extends State<WebAuthScreen>
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'uid': uid, 'token': token}),
       );
-      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      final body = (jsonDecode(res.body) as Map).cast<String, dynamic>();
       if (res.statusCode != 200) {
         throw Exception(body['error'] ?? 'Erreur serveur (${res.statusCode})');
       }
-      final customToken = body['customToken'] as String?;
-      if (customToken == null) throw Exception('Token Firebase manquant');
-      await FirebaseAuth.instance.signInWithCustomToken(customToken);
+      final customToken = body['customToken']?.toString();
+      if (customToken == null || customToken.isEmpty) {
+        throw Exception('Token Firebase manquant');
+      }
+      // firebase_auth web peut lancer un TypeError JS-interop sur le UserCredential
+      // même quand l'auth réussit — on vérifie currentUser comme fallback.
+      try {
+        await FirebaseAuth.instance.signInWithCustomToken(customToken);
+      } on TypeError catch (_) {
+        await Future.delayed(const Duration(milliseconds: 400));
+        if (FirebaseAuth.instance.currentUser == null) {
+          throw Exception('Connexion Firebase échouée');
+        }
+      }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {
