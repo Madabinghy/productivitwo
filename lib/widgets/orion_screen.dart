@@ -499,8 +499,9 @@ class _TipCard extends StatelessWidget {
           const SizedBox(width: 8),
           const Expanded(
             child: Text(
-              'ASTUCE — Connecte Claude directement à l\'app web via l\'onglet Tokens API '
-              '(menu ⋮) pour lancer autant d\'actions stratégiques que tu veux, sans limite.',
+              'ASTUCE — Connecte Claude Desktop à Productivitwo via MCP '
+              '(menu ⋮ → Tokens API) pour lancer autant d\'actions stratégiques '
+              'que tu veux, sans limite quotidienne.',
               style: TextStyle(
                 fontFamily: 'monospace',
                 fontSize: 11,
