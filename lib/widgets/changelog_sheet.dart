@@ -8,6 +8,13 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.30', '24 mai 2026', [
+    (Icons.bar_chart_outlined, 'Score journalier : intègre la progression des tâches Gantt — les journées deep work sont valorisées'),
+    (Icons.task_alt_outlined, 'Sous-actions Gantt : champ createdAt ajouté pour un calcul de progression historique précis'),
+    (Icons.rocket_launch_outlined, 'ORION : lien "Passer à Pro" visible directement dans l\'onglet ORION pour les utilisateurs gratuits'),
+    (Icons.link_rounded, 'Paywall : liens CGU et Confidentialité plus visibles (soulignés, contraste amélioré)'),
+    (Icons.lightbulb_outline, 'Inbox : bouton + dans le header pour capturer une idée directement depuis le sheet'),
+  ]),
   _Entry('5.29', '24 mai 2026', [
     (Icons.repeat_rounded, 'Widget Routines : hub CRUD complet — +/- inline, créer depuis le +, modifier/supprimer via appui long'),
     (Icons.remove_circle_outline, 'AppBar : bouton "Nouvelle routine" retiré — création accessible depuis le widget Routines'),
