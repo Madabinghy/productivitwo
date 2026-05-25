@@ -100,67 +100,42 @@ class AppLogic {
   final Map<String, double> _ganttDailyScores = {};
 
   void updateGanttCounts(List<Project> projects) {
-    // Ratchet intra-session : le score d'aujourd'hui ne peut que monter
-    final today = yyyymmdd(DateTime.now());
-    final prevToday = _ganttDailyScores[today];
-
     _ganttDailyScores.clear();
 
-    // Pour chaque tâche, trouver les jours où elle a été travaillée
-    // Utilise moyenne pondérée (total fait / total existant) pour éviter
-    // que commencer une nouvelle grosse tâche fasse baisser le score.
+    // Score du jour D = actions cochées ce jour / actions qui existaient fin du jour D
+    // Le dénominateur inclut TOUTES les tâches actives, même celles non touchées ce jour.
+    // createdAt est utilisé pour que les actions ajoutées APRÈS le jour D ne réduisent
+    // pas rétrospectivement le score de D.
     final Map<String, int> donePerDay = {};
-    final Map<String, int> totalPerDay = {};
+    final List<DateTime> allCreatedAts = [];
 
     for (final project in projects) {
+      if (project.status == 'archived') continue;
       for (final task in project.tasks) {
-        if (task.actions.isEmpty) continue;
-
-        // Jours où au moins une sous-action a été cochée
-        final Set<String> daysWorked = {};
+        if (task.status == 'skipped') continue;
         for (final action in task.actions) {
+          allCreatedAts.add(action.createdAt);
           if (action.done && action.doneAt != null) {
-            daysWorked.add(yyyymmdd(action.doneAt!));
+            final ymd = yyyymmdd(action.doneAt!);
+            donePerDay[ymd] = (donePerDay[ymd] ?? 0) + 1;
           }
         }
-
-        for (final ymd in daysWorked) {
-          final y = int.parse(ymd.substring(0, 4));
-          final m = int.parse(ymd.substring(4, 6));
-          final d = int.parse(ymd.substring(6, 8));
-          final nextDay = DateTime(y, m, d + 1);
-
-          // Sous-actions existantes à la fin de ce jour (dénominateur propre)
-          final existingOnDay = task.actions
-              .where((a) => a.createdAt.isBefore(nextDay))
-              .length;
-          if (existingOnDay == 0) continue;
-
-          // Sous-actions cochées à la fin de ce jour
-          final doneOnOrBefore = task.actions
-              .where((a) =>
-                  a.done && a.doneAt != null && a.doneAt!.isBefore(nextDay))
-              .length;
-
-          donePerDay[ymd] = (donePerDay[ymd] ?? 0) + doneOnOrBefore;
-          totalPerDay[ymd] = (totalPerDay[ymd] ?? 0) + existingOnDay;
-        }
       }
     }
 
-    // Progression pondérée : total fait / total existant (évite l'oscillation)
     for (final ymd in donePerDay.keys) {
-      final total = totalPerDay[ymd]!;
-      if (total > 0) {
-        _ganttDailyScores[ymd] =
-            (donePerDay[ymd]! / total).clamp(0.0, 1.0);
-      }
-    }
+      final y = int.parse(ymd.substring(0, 4));
+      final m = int.parse(ymd.substring(4, 6));
+      final d = int.parse(ymd.substring(6, 8));
+      final endOfDay = DateTime(y, m, d + 1); // fin du jour J = début du J+1
 
-    // Ratchet : le score d'aujourd'hui ne peut que monter dans la même session
-    if (prevToday != null) {
-      final newToday = _ganttDailyScores[today] ?? 0.0;
-      if (newToday < prevToday) _ganttDailyScores[today] = prevToday;
+      // Dénominateur : actions existantes à la fin du jour J (pas les futures)
+      final totalOnDay =
+          allCreatedAts.where((c) => c.isBefore(endOfDay)).length;
+      if (totalOnDay == 0) continue;
+
+      _ganttDailyScores[ymd] =
+          (donePerDay[ymd]! / totalOnDay).clamp(0.0, 1.0);
     }
   }
 
