@@ -1931,6 +1931,9 @@ class _AppRootState extends State<AppRoot>
       }
     });
 
+    // Alimentation initiale des widgets home screen (données dispo après le merge)
+    WidgetService.update(logic);
+
     // Affiche l'onboarding pour les nouveaux utilisateurs
     if (!_state!.onboardingDone) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
