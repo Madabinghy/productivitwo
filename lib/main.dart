@@ -1934,6 +1934,14 @@ class _AppRootState extends State<AppRoot>
     // Alimentation initiale des widgets home screen (données dispo après le merge)
     WidgetService.update(logic);
 
+    // Token widget iOS : généré une fois, stocké dans l'App Group pour le widget interactif
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      _sync.ensureWidgetToken().then((t) {
+        WidgetService.storeCredentials(t.token, uid);
+      }).catchError((_) {});
+    }
+
     // Affiche l'onboarding pour les nouveaux utilisateurs
     if (!_state!.onboardingDone) {
       WidgetsBinding.instance.addPostFrameCallback((_) {

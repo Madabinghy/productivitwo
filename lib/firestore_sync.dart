@@ -295,7 +295,7 @@ class FirestoreSync {
         'domains', 'activities', 'sessions', 'habitProgress',
         'habitHits', 'dayPlan', 'goals', 'blocks', 'badges',
         'projects', 'strategic_objectives', 'documents', 'api_tokens',
-        'captures', 'assistant_messages', 'recurringActions',
+        'captures', 'assistant_messages',
       ]) {
         try {
           final docs = await _col(col).get();
@@ -507,6 +507,15 @@ class FirestoreSync {
     final active = tokens.where((t) => t.active).toList();
     if (active.isNotEmpty) return active.first;
     return createApiToken('ORION');
+  }
+
+  /// Retourne (ou crée) le token dédié aux widgets iOS.
+  /// Stocke automatiquement token + uid dans l'App Group UserDefaults via WidgetService.
+  Future<ApiToken> ensureWidgetToken() async {
+    final tokens = await fetchApiTokens();
+    final existing = tokens.where((t) => t.active && t.label == 'Widget iOS').firstOrNull;
+    if (existing != null) return existing;
+    return createApiToken('Widget iOS');
   }
 
   // ── Debug helpers ────────────────────────────────────────────────────────────

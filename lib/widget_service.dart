@@ -9,11 +9,27 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 
 const _kAppGroup = 'group.com.madabinghy.productivitwo';
+const kMarkPlanItemDoneUrl =
+    'https://markplanitemdone-dzos75b65q-uc.a.run.app';
 
 class WidgetService {
   WidgetService._();
 
-  /// Appelé depuis _saveAndRefresh() et au chargement initial.
+  /// Stocke le token widget + uid dans l'App Group.
+  /// Appelé une fois après ensureWidgetToken() au chargement.
+  static Future<void> storeCredentials(String token, String uid) async {
+    if (!Platform.isIOS) return;
+    try {
+      await HomeWidget.setAppGroupId(_kAppGroup);
+      await Future.wait([
+        HomeWidget.saveWidgetData<String>('widget_token', token),
+        HomeWidget.saveWidgetData<String>('widget_uid', uid),
+      ]);
+    } catch (_) {}
+  }
+
+  /// Pousse l'état courant vers tous les widgets home screen.
+  /// Appelé depuis _saveAndRefresh(), au chargement initial, et sur le stream projets.
   static Future<void> update(AppLogic logic) async {
     if (!Platform.isIOS) return;
 
@@ -36,7 +52,9 @@ class WidgetService {
           .toList()
         ..sort((a, b) => a.order.compareTo(b.order));
 
+      // itemId = ID Firestore, nécessaire pour le widget interactif
       final top4 = planItems.take(4).map((it) => {
+            'itemId': it.id,
             'title': it.title,
             'done': it.done,
           }).toList();
@@ -72,10 +90,7 @@ class WidgetService {
         qualifiedAndroidName:
             'com.madabinghy.productivitwo.ProductivitwoWidget',
       );
-    } catch (_) {
-      // Le widget n'est pas installé ou l'App Group n'est pas encore configuré —
-      // on avale silencieusement pour ne pas crasher l'app.
-    }
+    } catch (_) {}
   }
 
   static String _todayYmd() {

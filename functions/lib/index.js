@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.structureProject = exports.orionCron = exports.orionRunCount = exports.orionSaveConfig = exports.orionWebhook = exports.mcpHandler = exports.getCustomToken = exports.pushAssistantMessage = exports.pushGantt = void 0;
+exports.structureProject = exports.orionCron = exports.orionRunCount = exports.orionSaveConfig = exports.orionWebhook = exports.mcpHandler = exports.getCustomToken = exports.pushAssistantMessage = exports.markPlanItemDone = exports.pushGantt = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
@@ -63,6 +63,53 @@ exports.pushGantt = (0, https_1.onRequest)({ cors: true, invoker: "public" }, as
             .update({ projectIds: db_1.FieldValue.arrayUnion(projectId) });
     }
     res.status(200).json({ success: true, projectId, strategicObjectiveId: strategicObjectiveId !== null && strategicObjectiveId !== void 0 ? strategicObjectiveId : null });
+});
+// ── markPlanItemDone ─────────────────────────────────────────────────────────
+//
+// POST https://markplanitemdone-dzos75b65q-uc.a.run.app
+// Headers: Authorization: Bearer <widget_token>
+// Body: { uid, planItemId, done }
+// Utilisé par le widget iOS interactif pour cocher/décocher une action sans ouvrir l'app.
+exports.markPlanItemDone = (0, https_1.onRequest)({ cors: true, invoker: "public" }, async (req, res) => {
+    var _a;
+    if (req.method === "OPTIONS") {
+        res.status(204).send("");
+        return;
+    }
+    if (req.method !== "POST") {
+        res.status(405).json({ error: "Method Not Allowed" });
+        return;
+    }
+    const authHeader = (_a = req.headers.authorization) !== null && _a !== void 0 ? _a : "";
+    if (!authHeader.startsWith("Bearer ")) {
+        res.status(401).json({ error: "Missing Authorization header" });
+        return;
+    }
+    const rawToken = authHeader.slice(7).trim();
+    const { uid, planItemId, done } = req.body;
+    if (!uid || !planItemId || typeof done !== "boolean") {
+        res.status(400).json({ error: "Missing required fields: uid, planItemId, done" });
+        return;
+    }
+    const tokenQuery = await db_1.db
+        .collection(`users/${uid}/api_tokens`)
+        .where("token", "==", rawToken)
+        .where("active", "==", true)
+        .limit(1)
+        .get();
+    if (tokenQuery.empty) {
+        res.status(401).json({ error: "Invalid or revoked token" });
+        return;
+    }
+    tokenQuery.docs[0].ref.update({ lastUsedAt: db_1.FieldValue.serverTimestamp() });
+    const ref = db_1.db.collection(`users/${uid}/dayPlan`).doc(planItemId);
+    const snap = await ref.get();
+    if (!snap.exists) {
+        res.status(404).json({ error: "Plan item not found" });
+        return;
+    }
+    await ref.update({ done, updatedAt: db_1.FieldValue.serverTimestamp() });
+    res.status(200).json({ ok: true });
 });
 // ── pushAssistantMessage ──────────────────────────────────────────────────────
 //

@@ -1,20 +1,23 @@
 // ProductivitwoWidget.swift
-// Widget iOS home screen — Small (anneau routines) + Medium (plan du jour)
+// Widget iOS home screen — Small (anneau routines) + Medium (plan du jour) + Large (projets Gantt)
 
 import WidgetKit
 import SwiftUI
+import AppIntents
 
 // MARK: - Constantes
 
-private let appGroup = "group.com.madabinghy.productivitwo"
+private let appGroup  = "group.com.madabinghy.productivitwo"
+private let markDoneURL = "https://markplanitemdone-dzos75b65q-uc.a.run.app"
 
 // MARK: - Modèles de données
 
 struct PlanItem: Identifiable, Decodable {
     let id = UUID()
+    let itemId: String   // ID Firestore — utilisé par TogglePlanItemIntent
     let title: String
     let done: Bool
-    enum CodingKeys: String, CodingKey { case title, done }
+    enum CodingKeys: String, CodingKey { case itemId, title, done }
 }
 
 struct GanttTask: Identifiable, Decodable {
@@ -59,6 +62,57 @@ struct WidgetData {
     }
 }
 
+// MARK: - AppIntent : cocher/décocher une action du plan du jour
+
+struct TogglePlanItemIntent: AppIntent {
+    static var title: LocalizedStringResource = "Cocher une action"
+
+    @Parameter(title: "Item ID") var itemId: String
+    @Parameter(title: "Nouveau statut") var newDone: Bool
+
+    init() { itemId = ""; newDone = false }
+    init(itemId: String, newDone: Bool) { self.itemId = itemId; self.newDone = newDone }
+
+    func perform() async throws -> some IntentResult {
+        let defaults = UserDefaults(suiteName: appGroup)
+
+        // 1. Mise à jour optimiste de plan_json dans UserDefaults
+        if let raw = defaults?.string(forKey: "plan_json"),
+           let data = raw.data(using: .utf8),
+           let items = try? JSONDecoder().decode([PlanItem].self, from: data) {
+            let updated: [[String: Any]] = items.map { item in
+                let isDone = item.itemId == itemId ? newDone : item.done
+                return ["itemId": item.itemId, "title": item.title, "done": isDone]
+            }
+            if let newData = try? JSONSerialization.data(withJSONObject: updated),
+               let newStr = String(data: newData, encoding: .utf8) {
+                defaults?.set(newStr, forKey: "plan_json")
+            }
+        }
+
+        // 2. Rechargement immédiat du widget
+        WidgetCenter.shared.reloadTimelines(ofKind: "ProductivitwoWidget")
+
+        // 3. Sync Firestore via Cloud Function (si credentials disponibles)
+        guard let token = defaults?.string(forKey: "widget_token"),
+              let uid   = defaults?.string(forKey: "widget_uid"),
+              !token.isEmpty, !uid.isEmpty else {
+            return .result()
+        }
+
+        guard let url = URL(string: markDoneURL) else { return .result() }
+        var request = URLRequest(url: url, timeoutInterval: 10)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = ["uid": uid, "planItemId": itemId, "done": newDone]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        _ = try? await URLSession.shared.data(for: request)
+
+        return .result()
+    }
+}
+
 // MARK: - Timeline provider
 
 struct ProductivitwoEntry: TimelineEntry {
@@ -71,10 +125,10 @@ struct ProductivitwoProvider: TimelineProvider {
         ProductivitwoEntry(date: Date(), data: WidgetData(
             routinesDone: 3, routinesTotal: 5,
             planItems: [
-                PlanItem(title: "Méditation", done: true),
-                PlanItem(title: "Sport 30 min", done: false),
-                PlanItem(title: "Revue emails", done: false),
-                PlanItem(title: "Deep work", done: false),
+                PlanItem(itemId: "1", title: "Méditation", done: true),
+                PlanItem(itemId: "2", title: "Sport 30 min", done: false),
+                PlanItem(itemId: "3", title: "Revue emails", done: false),
+                PlanItem(itemId: "4", title: "Deep work", done: false),
             ],
             ganttTasks: [
                 GanttTask(project: "Mon App", task: "Développer le backend", done: 2, total: 5),
@@ -99,7 +153,6 @@ struct ProductivitwoProvider: TimelineProvider {
 // MARK: - Couleurs de marque
 
 private let brandPurple   = Color(red: 0.42, green: 0.18, blue: 0.88)
-private let brandPurpleFg = Color(red: 0.85, green: 0.75, blue: 1.00)
 
 // MARK: - Widget Small : anneau de routines
 
@@ -110,9 +163,7 @@ struct SmallWidgetView: View {
     var body: some View {
         ZStack {
             ContainerRelativeShape()
-                .fill(colorScheme == .dark
-                      ? Color(white: 0.10)
-                      : Color(white: 0.97))
+                .fill(colorScheme == .dark ? Color(white: 0.10) : Color(white: 0.97))
 
             VStack(spacing: 6) {
                 ZStack {
@@ -122,7 +173,6 @@ struct SmallWidgetView: View {
                         .trim(from: 0, to: data.routineRatio)
                         .stroke(brandPurple, style: StrokeStyle(lineWidth: 10, lineCap: .round))
                         .rotationEffect(.degrees(-90))
-                        .animation(.easeOut(duration: 0.6), value: data.routineRatio)
 
                     VStack(spacing: 1) {
                         Text("\(Int(data.routineRatio * 100))%")
@@ -146,7 +196,7 @@ struct SmallWidgetView: View {
     }
 }
 
-// MARK: - Widget Medium : plan du jour
+// MARK: - Widget Medium : plan du jour interactif
 
 struct MediumWidgetView: View {
     let data: WidgetData
@@ -155,9 +205,7 @@ struct MediumWidgetView: View {
     var body: some View {
         ZStack {
             ContainerRelativeShape()
-                .fill(colorScheme == .dark
-                      ? Color(white: 0.10)
-                      : Color(white: 0.97))
+                .fill(colorScheme == .dark ? Color(white: 0.10) : Color(white: 0.97))
 
             HStack(alignment: .top, spacing: 14) {
                 // Colonne gauche : anneau compact
@@ -169,11 +217,9 @@ struct MediumWidgetView: View {
                             .trim(from: 0, to: data.routineRatio)
                             .stroke(brandPurple, style: StrokeStyle(lineWidth: 7, lineCap: .round))
                             .rotationEffect(.degrees(-90))
-                        VStack(spacing: 0) {
-                            Text("\(Int(data.routineRatio * 100))%")
-                                .font(.system(size: 13, weight: .bold, design: .rounded))
-                                .foregroundColor(brandPurple)
-                        }
+                        Text("\(Int(data.routineRatio * 100))%")
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .foregroundColor(brandPurple)
                     }
                     .frame(width: 54, height: 54)
 
@@ -182,7 +228,7 @@ struct MediumWidgetView: View {
                         .foregroundColor(.secondary)
 
                     Text("routines")
-                        .font(.system(size: 9, weight: .regular))
+                        .font(.system(size: 9))
                         .foregroundColor(.secondary.opacity(0.7))
                 }
                 .frame(width: 58)
@@ -192,7 +238,7 @@ struct MediumWidgetView: View {
                     .frame(width: 1)
                     .padding(.vertical, 4)
 
-                // Colonne droite : plan du jour
+                // Colonne droite : plan du jour (boutons interactifs)
                 VStack(alignment: .leading, spacing: 0) {
                     Text("Aujourd'hui")
                         .font(.system(size: 10, weight: .semibold))
@@ -207,9 +253,12 @@ struct MediumWidgetView: View {
                             .foregroundColor(.secondary.opacity(0.6))
                             .italic()
                     } else {
-                        ForEach(Array(data.planItems.prefix(4).enumerated()), id: \.offset) { _, item in
-                            PlanRowView(item: item)
-                                .padding(.bottom, 5)
+                        ForEach(data.planItems.prefix(4)) { item in
+                            Button(intent: TogglePlanItemIntent(itemId: item.itemId, newDone: !item.done)) {
+                                PlanRowView(item: item)
+                                    .padding(.bottom, 5)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                     Spacer(minLength: 0)
@@ -234,7 +283,6 @@ struct PlanRowView: View {
                         item.done ? brandPurple : Color.secondary.opacity(0.35),
                         lineWidth: 1.2))
                     .frame(width: 14, height: 14)
-
                 if item.done {
                     Image(systemName: "checkmark")
                         .font(.system(size: 7, weight: .bold))
@@ -257,15 +305,11 @@ struct LargeWidgetView: View {
     let data: WidgetData
     @Environment(\.colorScheme) var colorScheme
 
-    // Regrouper les tâches par projet
     private var grouped: [(project: String, tasks: [GanttTask])] {
         var order: [String] = []
         var dict: [String: [GanttTask]] = [:]
         for t in data.ganttTasks {
-            if dict[t.project] == nil {
-                order.append(t.project)
-                dict[t.project] = []
-            }
+            if dict[t.project] == nil { order.append(t.project); dict[t.project] = [] }
             dict[t.project]!.append(t)
         }
         return order.map { (project: $0, tasks: dict[$0]!) }
@@ -274,12 +318,9 @@ struct LargeWidgetView: View {
     var body: some View {
         ZStack {
             ContainerRelativeShape()
-                .fill(colorScheme == .dark
-                      ? Color(white: 0.10)
-                      : Color(white: 0.97))
+                .fill(colorScheme == .dark ? Color(white: 0.10) : Color(white: 0.97))
 
             VStack(alignment: .leading, spacing: 0) {
-                // En-tête : anneau compact + titre
                 HStack(spacing: 10) {
                     ZStack {
                         Circle()
@@ -297,8 +338,7 @@ struct LargeWidgetView: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Projets actifs")
                             .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(.primary)
-                        Text("\(data.ganttTasks.count) tâche\(data.ganttTasks.count > 1 ? "s" : "") en cours · \(data.routinesDone)/\(data.routinesTotal) routines")
+                        Text("\(data.ganttTasks.count) tâche\(data.ganttTasks.count > 1 ? "s" : "") · \(data.routinesDone)/\(data.routinesTotal) routines")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
                     }
@@ -320,21 +360,18 @@ struct LargeWidgetView: View {
                     }
                     Spacer()
                 } else {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 0) {
-                            ForEach(grouped, id: \.project) { group in
-                                // Nom du projet
-                                Text(group.project.uppercased())
-                                    .font(.system(size: 9, weight: .semibold))
-                                    .foregroundColor(brandPurple.opacity(0.8))
-                                    .tracking(0.8)
-                                    .padding(.bottom, 4)
-                                    .padding(.top, 6)
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(grouped, id: \.project) { group in
+                            Text(group.project.uppercased())
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundColor(brandPurple.opacity(0.8))
+                                .tracking(0.8)
+                                .padding(.bottom, 4)
+                                .padding(.top, 6)
 
-                                ForEach(group.tasks) { task in
-                                    GanttTaskRow(task: task)
-                                        .padding(.bottom, 5)
-                                }
+                            ForEach(group.tasks) { task in
+                                GanttTaskRow(task: task)
+                                    .padding(.bottom, 5)
                             }
                         }
                     }
@@ -351,7 +388,6 @@ struct GanttTaskRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            // Icône statut
             ZStack {
                 Circle()
                     .fill(task.isDone ? brandPurple : Color.clear)
@@ -420,30 +456,23 @@ struct ProductivitwoWidgetEntryView: View {
 
     var body: some View {
         switch family {
-        case .systemSmall:
-            SmallWidgetView(data: entry.data)
-        case .systemMedium:
-            MediumWidgetView(data: entry.data)
-        case .systemLarge:
-            LargeWidgetView(data: entry.data)
-        default:
-            SmallWidgetView(data: entry.data)
+        case .systemSmall:  SmallWidgetView(data: entry.data)
+        case .systemMedium: MediumWidgetView(data: entry.data)
+        case .systemLarge:  LargeWidgetView(data: entry.data)
+        default:            SmallWidgetView(data: entry.data)
         }
     }
 }
-
-// MARK: - Bundle
-// L'entry point @main est dans ProductivitwoWidgetBundle.swift (généré par Xcode)
 
 // MARK: - Preview
 
 private let _previewData = WidgetData(
     routinesDone: 3, routinesTotal: 5,
     planItems: [
-        PlanItem(title: "Méditation", done: true),
-        PlanItem(title: "Sport 30 min", done: false),
-        PlanItem(title: "Deep work", done: false),
-        PlanItem(title: "Revue emails", done: false),
+        PlanItem(itemId: "1", title: "Méditation", done: true),
+        PlanItem(itemId: "2", title: "Sport 30 min", done: false),
+        PlanItem(itemId: "3", title: "Deep work", done: false),
+        PlanItem(itemId: "4", title: "Revue emails", done: false),
     ],
     ganttTasks: [
         GanttTask(project: "Mon App", task: "Développer le backend", done: 2, total: 5),
@@ -453,20 +482,6 @@ private let _previewData = WidgetData(
     ]
 )
 
-#Preview(as: .systemSmall) {
-    ProductivitwoWidget()
-} timeline: {
-    ProductivitwoEntry(date: .now, data: _previewData)
-}
-
-#Preview(as: .systemMedium) {
-    ProductivitwoWidget()
-} timeline: {
-    ProductivitwoEntry(date: .now, data: _previewData)
-}
-
-#Preview(as: .systemLarge) {
-    ProductivitwoWidget()
-} timeline: {
-    ProductivitwoEntry(date: .now, data: _previewData)
-}
+#Preview(as: .systemSmall)  { ProductivitwoWidget() } timeline: { ProductivitwoEntry(date: .now, data: _previewData) }
+#Preview(as: .systemMedium) { ProductivitwoWidget() } timeline: { ProductivitwoEntry(date: .now, data: _previewData) }
+#Preview(as: .systemLarge)  { ProductivitwoWidget() } timeline: { ProductivitwoEntry(date: .now, data: _previewData) }

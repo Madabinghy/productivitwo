@@ -103,6 +103,45 @@ export const pushGantt = onRequest({ cors: true, invoker: "public" }, async (req
   res.status(200).json({ success: true, projectId, strategicObjectiveId: strategicObjectiveId ?? null });
 });
 
+// ── markPlanItemDone ─────────────────────────────────────────────────────────
+//
+// POST https://markplanitemdone-dzos75b65q-uc.a.run.app
+// Headers: Authorization: Bearer <widget_token>
+// Body: { uid, planItemId, done }
+// Utilisé par le widget iOS interactif pour cocher/décocher une action sans ouvrir l'app.
+
+export const markPlanItemDone = onRequest({ cors: true, invoker: "public" }, async (req, res) => {
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") { res.status(405).json({ error: "Method Not Allowed" }); return; }
+
+  const authHeader = req.headers.authorization ?? "";
+  if (!authHeader.startsWith("Bearer ")) {
+    res.status(401).json({ error: "Missing Authorization header" }); return;
+  }
+  const rawToken = authHeader.slice(7).trim();
+
+  const { uid, planItemId, done } = req.body as { uid: string; planItemId: string; done: boolean };
+  if (!uid || !planItemId || typeof done !== "boolean") {
+    res.status(400).json({ error: "Missing required fields: uid, planItemId, done" }); return;
+  }
+
+  const tokenQuery = await db
+    .collection(`users/${uid}/api_tokens`)
+    .where("token", "==", rawToken)
+    .where("active", "==", true)
+    .limit(1)
+    .get();
+  if (tokenQuery.empty) { res.status(401).json({ error: "Invalid or revoked token" }); return; }
+  tokenQuery.docs[0].ref.update({ lastUsedAt: FieldValue.serverTimestamp() });
+
+  const ref = db.collection(`users/${uid}/dayPlan`).doc(planItemId);
+  const snap = await ref.get();
+  if (!snap.exists) { res.status(404).json({ error: "Plan item not found" }); return; }
+
+  await ref.update({ done, updatedAt: FieldValue.serverTimestamp() });
+  res.status(200).json({ ok: true });
+});
+
 // ── pushAssistantMessage ──────────────────────────────────────────────────────
 //
 // POST https://us-central1-productivitwo-app.cloudfunctions.net/pushAssistantMessage

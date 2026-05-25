@@ -10,6 +10,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.37', '25 mai 2026', [
+    (Icons.widgets_outlined, 'Widget Medium interactif : cocher une action depuis l\'écran d\'accueil sans ouvrir l\'app (iOS 17+)'),
+    (Icons.widgets_outlined, 'Widget Large : tâches Gantt actives groupées par projet'),
+  ]),
   _Entry('5.36', '25 mai 2026', [
     (Icons.widgets_outlined, 'Widgets iOS : anneau de routines (Small) et plan du jour (Medium) sur l\'écran d\'accueil'),
   ]),
