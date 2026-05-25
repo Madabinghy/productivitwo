@@ -92,10 +92,14 @@ class _OrionScreenState extends State<OrionScreen>
       if (uid == null) throw Exception('Non connecté');
 
       final tokens = await widget.sync.fetchApiTokens();
-      _activeToken = tokens
-          .firstWhere((t) => t.active,
-              orElse: () => tokens.isEmpty ? ApiToken(label: '') : tokens.first)
-          .token;
+      final activeTokens = tokens.where((t) => t.active).toList();
+      if (activeTokens.isEmpty) {
+        // Aucun token actif — on en crée un automatiquement
+        final created = await widget.sync.ensureOnboardingToken();
+        _activeToken = created.token;
+      } else {
+        _activeToken = activeTokens.first.token;
+      }
 
       final futures = <Future>[
         FirebaseFirestore.instance
