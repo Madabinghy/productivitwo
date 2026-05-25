@@ -100,10 +100,17 @@ class AppLogic {
   final Map<String, double> _ganttDailyScores = {};
 
   void updateGanttCounts(List<Project> projects) {
+    // Ratchet intra-session : le score d'aujourd'hui ne peut que monter
+    final today = yyyymmdd(DateTime.now());
+    final prevToday = _ganttDailyScores[today];
+
     _ganttDailyScores.clear();
 
     // Pour chaque tâche, trouver les jours où elle a été travaillée
-    final Map<String, List<double>> progressionsByDay = {};
+    // Utilise moyenne pondérée (total fait / total existant) pour éviter
+    // que commencer une nouvelle grosse tâche fasse baisser le score.
+    final Map<String, int> donePerDay = {};
+    final Map<String, int> totalPerDay = {};
 
     for (final project in projects) {
       for (final task in project.tasks) {
@@ -129,21 +136,31 @@ class AppLogic {
               .length;
           if (existingOnDay == 0) continue;
 
-          // Progression de la tâche à la fin de ce jour (sans pollution future)
+          // Sous-actions cochées à la fin de ce jour
           final doneOnOrBefore = task.actions
               .where((a) =>
                   a.done && a.doneAt != null && a.doneAt!.isBefore(nextDay))
               .length;
-          final progress = doneOnOrBefore / existingOnDay;
-          progressionsByDay.putIfAbsent(ymd, () => []).add(progress);
+
+          donePerDay[ymd] = (donePerDay[ymd] ?? 0) + doneOnOrBefore;
+          totalPerDay[ymd] = (totalPerDay[ymd] ?? 0) + existingOnDay;
         }
       }
     }
 
-    // Moyenne des progressions par jour
-    for (final entry in progressionsByDay.entries) {
-      final avg = entry.value.reduce((a, b) => a + b) / entry.value.length;
-      _ganttDailyScores[entry.key] = avg;
+    // Progression pondérée : total fait / total existant (évite l'oscillation)
+    for (final ymd in donePerDay.keys) {
+      final total = totalPerDay[ymd]!;
+      if (total > 0) {
+        _ganttDailyScores[ymd] =
+            (donePerDay[ymd]! / total).clamp(0.0, 1.0);
+      }
+    }
+
+    // Ratchet : le score d'aujourd'hui ne peut que monter dans la même session
+    if (prevToday != null) {
+      final newToday = _ganttDailyScores[today] ?? 0.0;
+      if (newToday < prevToday) _ganttDailyScores[today] = prevToday;
     }
   }
 

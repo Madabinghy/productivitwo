@@ -23,8 +23,8 @@ class RoutineFreqCard extends StatefulWidget {
 }
 
 class _RoutineFreqCardState extends State<RoutineFreqCard> {
-  // Sections dépliées par défaut
-  final Set<HabitFreq> _expanded = {HabitFreq.daily};
+  // Sections fermées par défaut au démarrage
+  final Set<HabitFreq> _expanded = {};
 
   AppLogic get logic => widget.logic;
 

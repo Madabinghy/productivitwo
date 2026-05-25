@@ -14,6 +14,8 @@ class GoalsView extends StatefulWidget {
       onStartTimer;
   /// Appelé après chaque validation d'action ou de tâche, avec le total de points.
   final void Function(int doneCount)? onBadgeCheck;
+  /// Widget optionnel affiché en tête de la liste (ex. Priorités du jour).
+  final Widget? header;
 
   const GoalsView({
     super.key,
@@ -21,6 +23,7 @@ class GoalsView extends StatefulWidget {
     this.activities = const [],
     this.onStartTimer,
     this.onBadgeCheck,
+    this.header,
   });
 
   @override
@@ -107,10 +110,16 @@ class _GoalsViewState extends State<GoalsView> {
         title: const Text('Projets'),
         centerTitle: false,
       ),
-      body: activeProjects.isEmpty && archivedProjects.isEmpty
-          ? _buildEmptyState(context, cs)
-          : CustomScrollView(
+      body: CustomScrollView(
               slivers: [
+                if (widget.header != null)
+                  SliverToBoxAdapter(child: widget.header!),
+                if (activeProjects.isEmpty && archivedProjects.isEmpty)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _buildEmptyState(context, cs),
+                  )
+                else ...[
                 ..._buildProjectSections(context, mainProjects, todayD),
                 // Réalisé
                 if (doneInScopeProjects.isNotEmpty)
@@ -143,6 +152,7 @@ class _GoalsViewState extends State<GoalsView> {
                     showRestoreButton: true,
                   ),
                 const SliverToBoxAdapter(child: SizedBox(height: 100)),
+                ],
               ],
             ),
       floatingActionButton: FloatingActionButton.extended(

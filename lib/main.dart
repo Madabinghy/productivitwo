@@ -2221,6 +2221,8 @@ class _AppRootState extends State<AppRoot>
           GoalsView(
             domains: _state?.domains ?? [],
             activities: _state?.activities ?? [],
+            header: _buildTodayPrioritiesSection(
+                context, Theme.of(context).colorScheme),
             onStartTimer: (activity, project, task) {
               logic.start(activity.id);
               setState(() {
@@ -5001,7 +5003,6 @@ class _AppRootState extends State<AppRoot>
 
         return ListView(
           children: [
-        _buildTodayPrioritiesSection(context, cs),
         SectionCard(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
           child: Builder(
