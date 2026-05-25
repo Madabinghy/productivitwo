@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/pro_manager.dart';
 
 class _Entry {
   final String version;
@@ -320,8 +322,42 @@ void showChangelogSheet(BuildContext context) {
   );
 }
 
-class _ChangelogSheet extends StatelessWidget {
+class _ChangelogSheet extends StatefulWidget {
   const _ChangelogSheet();
+
+  @override
+  State<_ChangelogSheet> createState() => _ChangelogSheetState();
+}
+
+class _ChangelogSheetState extends State<_ChangelogSheet> {
+  int _tapCount = 0;
+  Timer? _resetTimer;
+
+  void _onTitleTap() {
+    _resetTimer?.cancel();
+    _tapCount++;
+    if (_tapCount >= 7) {
+      _tapCount = 0;
+      final nowPro = ProManager.isPro;
+      if (nowPro) {
+        ProManager.deactivate();
+      } else {
+        ProManager.notifier.value = true;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(nowPro ? '🔓 Mode Non-Pro activé' : '⭐ Mode Pro activé'),
+        duration: const Duration(seconds: 2),
+      ));
+    } else {
+      _resetTimer = Timer(const Duration(seconds: 2), () => _tapCount = 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _resetTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -335,12 +371,15 @@ class _ChangelogSheet extends StatelessWidget {
         controller: sc,
         padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
         children: [
-          Text(
-            'Nouveautés',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              color: cs.onSurface,
+          GestureDetector(
+            onTap: _onTitleTap,
+            child: Text(
+              'Nouveautés',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: cs.onSurface,
+              ),
             ),
           ),
           const SizedBox(height: 20),
