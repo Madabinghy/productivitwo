@@ -99,7 +99,11 @@ class AppLogic {
   // Mis à jour depuis main.dart à chaque changement du stream projets
   final Map<String, double> _ganttDailyScores = {};
 
+  // Snapshot des projets actifs — mis à jour par updateGanttCounts()
+  List<Project> currentProjects = [];
+
   void updateGanttCounts(List<Project> projects) {
+    currentProjects = projects;
     _ganttDailyScores.clear();
 
     // Score du jour D = actions cochées ce jour / actions qui existaient fin du jour D

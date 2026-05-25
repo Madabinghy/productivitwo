@@ -1965,9 +1965,10 @@ class _AppRootState extends State<AppRoot>
       _projectsSub?.cancel();
       _projectsSub = _sync.streamProjects().listen((projects) {
         if (!mounted) return;
-        logic.updateGanttCounts(projects); // met à jour les compteurs pour le score journalier
+        logic.updateGanttCounts(projects); // met à jour les compteurs + currentProjects
         setState(() => _dashboardProjects = projects);
-        _checkGanttBadges(); // vérifie les badges à chaque changement Gantt
+        _checkGanttBadges();
+        WidgetService.update(logic); // widget Large : tâches Gantt fraîches
       });
     }
 

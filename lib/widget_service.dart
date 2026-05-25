@@ -9,12 +9,11 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 
 const _kAppGroup = 'group.com.madabinghy.productivitwo';
-const _kAppId = 'com.madabinghy.productivitwo';
 
 class WidgetService {
   WidgetService._();
 
-  /// Appelé depuis _saveAndRefresh() dans main.dart après chaque changement d'état.
+  /// Appelé depuis _saveAndRefresh() et au chargement initial.
   static Future<void> update(AppLogic logic) async {
     if (!Platform.isIOS) return;
 
@@ -42,11 +41,29 @@ class WidgetService {
             'done': it.done,
           }).toList();
 
+      // --- Tâches Gantt actives (projets non archivés, tâches non terminées) ---
+      final ganttTasks = <Map<String, dynamic>>[];
+      for (final project in logic.currentProjects) {
+        if (project.status == 'archived' || project.status == 'done') continue;
+        for (final task in project.tasks) {
+          if (task.status == 'done' || task.status == 'skipped') continue;
+          ganttTasks.add({
+            'project': project.title,
+            'task': task.title,
+            'done': task.stepsDone,
+            'total': task.stepsTotal,
+          });
+          if (ganttTasks.length >= 12) break;
+        }
+        if (ganttTasks.length >= 12) break;
+      }
+
       // --- Écriture UserDefaults via App Group ---
       await Future.wait([
         HomeWidget.saveWidgetData<int>('routines_done', routinesDone),
         HomeWidget.saveWidgetData<int>('routines_total', routinesTotal),
         HomeWidget.saveWidgetData<String>('plan_json', jsonEncode(top4)),
+        HomeWidget.saveWidgetData<String>('gantt_json', jsonEncode(ganttTasks)),
       ]);
 
       await HomeWidget.updateWidget(
