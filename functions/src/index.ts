@@ -11,7 +11,7 @@ import {
   GET_USER_CONTEXT_TOOL, GET_DAY_BLOCKS_TOOL, GET_DAY_PLAN_TOOL, PLAN_DAY_TOOL,
   CLEAR_DAY_PLAN_TOOL, LIST_PROJECTS_TOOL, GET_PROJECT_TOOL, PUSH_GANTT_MCP_TOOL,
   ARCHIVE_PROJECT_TOOL, DELETE_PROJECT_TOOL, UPDATE_ACTIVITY_GOAL_TOOL,
-  CREATE_ROUTINE_TOOL, CREATE_RECURRING_ACTION_TOOL, DELETE_ROUTINE_TOOL,
+  CREATE_ROUTINE_TOOL, DELETE_ROUTINE_TOOL,
   ADD_TO_DAY_PLAN_TOOL, DELETE_GOAL_TOOL, LINK_GOAL_TO_TASK_TOOL,
   CREATE_ACTIVITY_TOOL, UPDATE_ACTIVITY_TOOL, UPDATE_TASK_STATUS_TOOL,
   UPDATE_PROJECT_TOOL, DELETE_ACTIVITY_TOOL, DELETE_ACTION_TOOL,
@@ -24,7 +24,7 @@ import {
   validateToken, normalizePhases, normalizeTasks,
   executePushAssistantMessage, executeGetAssistantMessages, executeDeleteAssistantMessage,
   executeGetUserContext, executeUpdateActivityGoal,
-  executeCreateRoutine, executeCreateRecurringAction, executeAddToDayPlan,
+  executeCreateRoutine, executeAddToDayPlan,
   executeGetDayBlocks, executeGetDayPlan, executePlanDay, executeCreateActivity,
   executeDeleteAction, executeSaveDocument, executeGetDocuments, executeGetArchives,
   executeRestoreItem, executeCreateDomain, executeDeleteDomain, executeDeleteActivity,
@@ -212,7 +212,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
             GET_USER_CONTEXT_TOOL, GET_DAY_BLOCKS_TOOL, GET_DAY_PLAN_TOOL, PLAN_DAY_TOOL,
             CLEAR_DAY_PLAN_TOOL, LIST_PROJECTS_TOOL, GET_PROJECT_TOOL, PUSH_GANTT_MCP_TOOL,
             ARCHIVE_PROJECT_TOOL, DELETE_PROJECT_TOOL, UPDATE_ACTIVITY_GOAL_TOOL,
-            CREATE_ROUTINE_TOOL, CREATE_RECURRING_ACTION_TOOL, DELETE_ROUTINE_TOOL,
+            CREATE_ROUTINE_TOOL, DELETE_ROUTINE_TOOL,
             ADD_TO_DAY_PLAN_TOOL, DELETE_GOAL_TOOL, LINK_GOAL_TO_TASK_TOOL,
             CREATE_ACTIVITY_TOOL, UPDATE_ACTIVITY_TOOL, UPDATE_TASK_STATUS_TOOL,
             UPDATE_PROJECT_TOOL, DELETE_ACTIVITY_TOOL, DELETE_ACTION_TOOL,
@@ -267,8 +267,6 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
           text = await executeDeleteActivity(uid, args.activityId as string);
         } else if (toolName === "create_routine") {
           text = await executeCreateRoutine(uid, args as Parameters<typeof executeCreateRoutine>[1]);
-        } else if (toolName === "create_recurring_action") {
-          text = await executeCreateRecurringAction(uid, args as Parameters<typeof executeCreateRecurringAction>[1]);
         } else if (toolName === "delete_routine") {
           text = await executeDeleteRoutine(uid, args.routineId as string);
         } else if (toolName === "create_domain") {

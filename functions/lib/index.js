@@ -189,7 +189,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                         tools_1.GET_USER_CONTEXT_TOOL, tools_1.GET_DAY_BLOCKS_TOOL, tools_1.GET_DAY_PLAN_TOOL, tools_1.PLAN_DAY_TOOL,
                         tools_1.CLEAR_DAY_PLAN_TOOL, tools_1.LIST_PROJECTS_TOOL, tools_1.GET_PROJECT_TOOL, tools_1.PUSH_GANTT_MCP_TOOL,
                         tools_1.ARCHIVE_PROJECT_TOOL, tools_1.DELETE_PROJECT_TOOL, tools_1.UPDATE_ACTIVITY_GOAL_TOOL,
-                        tools_1.CREATE_ROUTINE_TOOL, tools_1.CREATE_RECURRING_ACTION_TOOL, tools_1.DELETE_ROUTINE_TOOL,
+                        tools_1.CREATE_ROUTINE_TOOL, tools_1.DELETE_ROUTINE_TOOL,
                         tools_1.ADD_TO_DAY_PLAN_TOOL, tools_1.DELETE_GOAL_TOOL, tools_1.LINK_GOAL_TO_TASK_TOOL,
                         tools_1.CREATE_ACTIVITY_TOOL, tools_1.UPDATE_ACTIVITY_TOOL, tools_1.UPDATE_TASK_STATUS_TOOL,
                         tools_1.UPDATE_PROJECT_TOOL, tools_1.DELETE_ACTIVITY_TOOL, tools_1.DELETE_ACTION_TOOL,
@@ -262,9 +262,6 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                 }
                 else if (toolName === "create_routine") {
                     text = await (0, execute_1.executeCreateRoutine)(uid, args);
-                }
-                else if (toolName === "create_recurring_action") {
-                    text = await (0, execute_1.executeCreateRecurringAction)(uid, args);
                 }
                 else if (toolName === "delete_routine") {
                     text = await (0, execute_1.executeDeleteRoutine)(uid, args.routineId);

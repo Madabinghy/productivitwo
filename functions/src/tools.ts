@@ -28,11 +28,7 @@ const GET_USER_CONTEXT_TOOL = {
     "4. Sauvegarder le programme HTML avec save_document lié au projectId créé. " +
     "   Toujours renseigner domainId et subtitle. " +
     "   Si un document existe déjà pour ce projet (get_documents avant), passer son documentId pour éviter les doublons.\n" +
-    "5. Créer les routines (create_routine) et actions récurrentes (create_recurring_action) " +
-    "   TOUTES liées à l'activityId de l'étape 2.\n" +
-    "   → Pour chaque séance du programme (ex: Push Lundi, Pull Mercredi…), renseigne le paramètre checklist " +
-    "     avec le détail des exercices extraits du programme HTML (ex: 'Développé couché barre — 4×8 · 2 min'). " +
-    "     Ces items seront copiés automatiquement dans le plan du jour à chaque occurrence.\n" +
+    "5. Créer les routines (create_routine) — TOUTES liées à l'activityId de l'étape 2.\n" +
     "6. Envoyer une push_notification : \"[Titre du programme] créé ✅\"\n\n" +
     "Structure garantie : Domaine → Activités temps → Projet Gantt (+ KPI + Bilan dim.) → Programme HTML sauvegardé → Routines & Actions liées.\n" +
     "Ne jamais créer une routine ou action sans activityId et sans projet associé.",
@@ -61,7 +57,6 @@ const CREATE_ROUTINE_TOOL = {
   description:
     "Crée une **routine** : habitude trackée avec compteur ou fréquence (ex: Méditation, Gainage, Eau). " +
     "⚠️ activityId OBLIGATOIRE — créer d'abord l'activité temps avec create_activity si elle n'existe pas. " +
-    "⚠️ NE PAS confondre avec create_recurring_action (case à cocher sans tracking). " +
     "⚠️ NE PAS confondre avec create_activity (tracking de temps/chrono).",
   inputSchema: {
     type: "object",
@@ -73,53 +68,6 @@ const CREATE_ROUTINE_TOOL = {
       unit:        { type: "string", description: "Unité comptée (ex: fois, verres, séries)" },
       habitFreq:   { type: "number", description: "Fréquence : 0=daily, 1=weekly, 2=monthly" },
       habitTarget: { type: "number", description: "Cible par période (ex: 3 fois/semaine)" },
-    },
-  },
-};
-
-const CREATE_RECURRING_ACTION_TOOL = {
-  name: "create_recurring_action",
-  description:
-    "Crée une **action récurrente** : tâche qui apparaît dans le plan du jour sans tracking. " +
-    "Simple case à cocher (ex: Faire la vaisselle, Revue journalière, Arroser les plantes). " +
-    "⚠️ activityId OBLIGATOIRE — créer d'abord l'activité temps avec create_activity si elle n'existe pas. " +
-    "⚠️ NE PAS utiliser si l'utilisateur veut tracker une fréquence → create_routine. " +
-    "⚠️ NE PAS utiliser si l'utilisateur veut tracker du temps → create_activity. " +
-    "Si liée à une phase Gantt, renseigne startDate/endDate pour qu'elle expire en fin de phase. " +
-    "Pour les séances sportives ou toute action avec un détail de contenu (exercices, étapes…), " +
-    "utilise le paramètre checklist pour lister les éléments à cocher — ils apparaîtront dans l'app " +
-    "et seront copiés à chaque occurrence (ex: Développé couché 4×8 · 2 min).",
-  inputSchema: {
-    type: "object",
-    required: ["title", "activityId"],
-    properties: {
-      title: { type: "string", description: "Intitulé de l'action (ex: Push — Pectoraux / Épaules / Triceps)" },
-      activityId: { type: "string", description: "id de l'activité temps associée (OBLIGATOIRE)" },
-      domainId: { type: "string", description: "id du domaine" },
-      recurrenceType: {
-        type: "string",
-        enum: ["daily", "specificDays"],
-        description: "'daily' = tous les jours, 'specificDays' = jours choisis",
-      },
-      weekdays: {
-        type: "array",
-        items: { type: "number" },
-        description: "Jours actifs si specificDays : 1=Lun, 2=Mar … 7=Dim",
-      },
-      startDate: { type: "string", description: "Date d'activation ISO YYYY-MM-DD (optionnel)" },
-      endDate: { type: "string", description: "Date d'expiration ISO YYYY-MM-DD (optionnel)" },
-      projectTaskId: { type: "string", description: "id de la tâche Gantt liée (optionnel)" },
-      checklist: {
-        type: "array",
-        description: "Détail de la séance : liste d'exercices ou d'étapes à cocher. Copiée à chaque occurrence dans le plan du jour.",
-        items: {
-          type: "object",
-          required: ["title"],
-          properties: {
-            title: { type: "string", description: "Ex: 'Développé couché barre — 4×8 · 2 min repos'" },
-          },
-        },
-      },
     },
   },
 };
@@ -766,7 +714,6 @@ export {
 GET_USER_CONTEXT_TOOL,
 UPDATE_ACTIVITY_GOAL_TOOL,
 CREATE_ROUTINE_TOOL,
-CREATE_RECURRING_ACTION_TOOL,
 ADD_TO_DAY_PLAN_TOOL,
 CREATE_ACTIVITY_TOOL,
 CREATE_DOMAIN_TOOL,
