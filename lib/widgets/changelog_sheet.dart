@@ -10,6 +10,15 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.31', '24 mai 2026', [
+    (Icons.smart_toy_outlined, 'ORION : 1 activation/jour en gratuit, 5/jour en Pro (barre de progression visible)'),
+    (Icons.rocket_launch_outlined, 'Paywall : features mises à jour (ORION, stats, rapport de temps, app web)'),
+    (Icons.attach_money_rounded, 'Paywall : prix des cartes maintenant dynamiques depuis RevenueCat (fin des € codés en dur)'),
+    (Icons.star_rounded, 'Priorités du jour : déplacées dans l\'onglet Projets (en-tête de la liste)'),
+    (Icons.expand_more_rounded, 'Widget Routines : sections fermées par défaut au démarrage'),
+    (Icons.show_chart_rounded, 'Score Gantt : dénominateur = toutes les tâches actives — score strictement croissant dans la journée'),
+    (Icons.privacy_tip_outlined, 'Confidentialité : page politique de confidentialité accessible depuis le paywall'),
+  ]),
   _Entry('5.30', '24 mai 2026', [
     (Icons.bar_chart_outlined, 'Score journalier : intègre la progression des tâches Gantt — les journées deep work sont valorisées'),
     (Icons.task_alt_outlined, 'Sous-actions Gantt : champ createdAt ajouté pour un calcul de progression historique précis'),
