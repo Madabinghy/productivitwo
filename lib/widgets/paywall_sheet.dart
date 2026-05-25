@@ -32,8 +32,8 @@ class _PaywallSheetState extends State<_PaywallSheet> {
   Offerings? _offerings;
 
   static const _benefits = [
-    (Icons.smart_toy_outlined, 'ORION illimité',
-        'Activations illimitées (3/jour en version gratuite)'),
+    (Icons.smart_toy_outlined, 'ORION Pro',
+        '5 activations/jour (1/jour en version gratuite)'),
     (Icons.bar_chart_outlined, 'Statistiques avancées',
         'Heatmap 12 semaines, scores de productivité'),
     (Icons.timer_outlined, 'Rapport de temps',

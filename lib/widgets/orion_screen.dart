@@ -23,8 +23,8 @@ const _text = Color(0xFFf0ece0);
 const _webhookBase = 'https://orionsaveconfig-dzos75b65q-uc.a.run.app';
 const _countUrl = 'https://orionruncount-dzos75b65q-uc.a.run.app';
 
-// Limite gratuite : 3 activations/jour. Pro = illimité.
-const _kLimitFree = 3;
+const _kLimitFree = 1;  // Gratuit : 1 activation/jour
+const _kLimitPro  = 5;  // Pro : 5 activations/jour
 
 class OrionScreen extends StatefulWidget {
   final FirestoreSync sync;
@@ -170,8 +170,11 @@ class _OrionScreenState extends State<OrionScreen>
     }
 
     final isPro = ProManager.isPro;
-    if (!isPro && _runCount >= _kLimitFree) {
-      setState(() => _error = 'Limite journalière atteinte ($_runCount/$_kLimitFree). Passe à Pro pour continuer.');
+    final limit = isPro ? _kLimitPro : _kLimitFree;
+    if (_runCount >= limit) {
+      setState(() => _error = isPro
+          ? 'Limite journalière atteinte ($limit/jour).'
+          : 'Limite journalière atteinte ($limit/jour). Passe à Pro pour continuer.');
       return;
     }
 
@@ -481,11 +484,9 @@ class _StatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final progress =
-        !isPro ? (runCount / _kLimitFree).clamp(0.0, 1.0) : null;
-    final barColor = progress != null && progress >= 1.0
-        ? const Color(0xFFcf6679)
-        : _gold;
+    final limit = isPro ? _kLimitPro : _kLimitFree;
+    final progress = (runCount / limit).clamp(0.0, 1.0);
+    final barColor = progress >= 1.0 ? const Color(0xFFcf6679) : _gold;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -502,9 +503,7 @@ class _StatusCard extends StatelessWidget {
               _PlanBadge(isPro: isPro),
               const Spacer(),
               Text(
-                isPro
-                    ? 'Illimité · $runCount activations aujourd\'hui'
-                    : '$runCount / $_kLimitFree activations aujourd\'hui',
+                '$runCount / $limit activations aujourd\'hui',
                 style: const TextStyle(
                   fontFamily: 'monospace',
                   fontSize: 11,
@@ -513,24 +512,21 @@ class _StatusCard extends StatelessWidget {
               ),
             ],
           ),
-          if (progress != null) ...[
-            const SizedBox(height: 10),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: progress,
-                minHeight: 3,
-                backgroundColor: _border,
-                valueColor: AlwaysStoppedAnimation<Color>(barColor),
-              ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 3,
+              backgroundColor: _border,
+              valueColor: AlwaysStoppedAnimation<Color>(barColor),
             ),
-          ] else
-            const SizedBox(height: 6),
+          ),
           const SizedBox(height: 10),
           Text(
             isPro
-                ? 'ORION tourne automatiquement toutes les 6h.\nActivation manuelle depuis cette page.'
-                : '$_kLimitFree activations/jour en version gratuite.\nPasse à Pro pour des activations illimitées.',
+                ? '$_kLimitPro activations/jour · ORION tourne toutes les 6h.'
+                : '$_kLimitFree activation/jour en version gratuite.\nPasse à Pro pour $_kLimitPro activations/jour.',
             style: const TextStyle(
               fontFamily: 'monospace',
               fontSize: 11,
