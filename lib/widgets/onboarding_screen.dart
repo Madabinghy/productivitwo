@@ -1864,158 +1864,75 @@ Project buildDiscoveryProject(String createdBy) {
   final today = DateTime.now();
   final t = DateTime(today.year, today.month, today.day);
 
-  // ── Phases ──────────────────────────────────────────────────────────────────
-  final pTaches = ProjectPhase(
-    label: 'Tâches & sous-actions',
+  // ── Phase unique ─────────────────────────────────────────────────────────────
+  final pDecouverte = ProjectPhase(
+    label: 'Découverte',
     startDate: t,
     endDate: t.add(const Duration(days: 7)),
-  );
-  final pActivites = ProjectPhase(
-    label: 'Activités & Routines',
-    startDate: t,
-    endDate: t.add(const Duration(days: 7)),
-  );
-  final pOrion = ProjectPhase(
-    label: 'ORION & IA',
-    startDate: t,
-    endDate: t.add(const Duration(days: 14)),
-  );
-  final pWeb = ProjectPhase(
-    label: 'App web',
-    startDate: t,
-    endDate: t.add(const Duration(days: 21)),
   );
 
-  // ── Tâches ──────────────────────────────────────────────────────────────────
+  // ── 5 tâches essentielles ────────────────────────────────────────────────────
   final tasks = [
-    // Phase 1 — Tâches & sous-actions
     ProjectTask(
-      title: 'Ajouter des sous-actions à cette tâche',
-      phaseId: pTaches.id,
+      title: 'Ajouter et cocher une sous-action',
+      phaseId: pDecouverte.id,
       startDate: t,
       todayFlag: true,
       actions: [
-        TaskAction(title: 'Va dans l\'onglet Projets'),
         TaskAction(title: 'Appuie sur ⊕ sous cette tâche'),
-        TaskAction(title: 'Écrire une sous-action et valider'),
-        TaskAction(title: 'Cocher cette case ✓'),
+        TaskAction(title: 'Écris une sous-action et valide'),
+        TaskAction(title: 'Coche-la ✓'),
       ],
     ),
     ProjectTask(
-      title: 'Réordonner les sous-actions',
-      phaseId: pTaches.id,
+      title: 'Lancer un timer sur une activité',
+      phaseId: pDecouverte.id,
       startDate: t,
       actions: [
-        TaskAction(title: 'Maintenir appuyé sur une sous-action'),
-        TaskAction(title: 'Glisser vers le haut ou le bas'),
+        TaskAction(title: 'Sur l\'écran principal, appuie sur « Activités » du domaine Test'),
+        TaskAction(title: 'Appuie sur « Nouvelle activité » et nomme-la'),
+        TaskAction(title: 'Appuie sur ▶ pour démarrer le timer'),
+        TaskAction(title: 'Appuie sur ⏹ pour arrêter'),
       ],
     ),
     ProjectTask(
-      title: 'Supprimer une sous-action',
-      phaseId: pTaches.id,
+      title: 'Cocher une routine du jour',
+      phaseId: pDecouverte.id,
       startDate: t,
       actions: [
-        TaskAction(title: 'Ouvre cette tâche (appuie sur son titre)'),
-        TaskAction(title: 'Swipe gauche sur « Supprime moi » ci-dessous'),
-        TaskAction(title: 'Supprime moi'),
+        TaskAction(title: 'Sur l\'écran principal, repère tes routines du jour'),
+        TaskAction(title: 'Appuie sur une routine pour la cocher ✓'),
       ],
     ),
-
-    // Phase 2 — Activités & Routines
-    ProjectTask(
-      title: 'Créer une activité',
-      phaseId: pActivites.id,
-      startDate: t,
-      actions: [
-        TaskAction(title: 'Appuie sur « Activités » du domaine Test sur l\'écran principal'),
-        TaskAction(title: 'Appuie sur « Nouvelle activité »'),
-        TaskAction(title: 'Nomme l\'activité et valide'),
-      ],
-    ),
-    ProjectTask(
-      title: 'Créer une routine',
-      phaseId: pActivites.id,
-      startDate: t,
-      actions: [
-        TaskAction(title: 'Appuie sur « Activités » du domaine Test sur l\'écran principal'),
-        TaskAction(title: 'Bascule vers l\'onglet « Routines »'),
-        TaskAction(title: 'Appuie sur « Nouvelle routine »'),
-        TaskAction(title: 'Configure et valide'),
-      ],
-    ),
-    ProjectTask(
-      title: 'Supprimer une activité',
-      phaseId: pActivites.id,
-      startDate: t,
-      actions: [
-        TaskAction(title: 'Appuie sur « Activités » du domaine Test sur l\'écran principal'),
-        TaskAction(title: 'Swipe gauche sur l\'activité créée'),
-        TaskAction(title: 'Confirme la suppression'),
-      ],
-    ),
-    ProjectTask(
-      title: 'Supprimer une routine',
-      phaseId: pActivites.id,
-      startDate: t,
-      actions: [
-        TaskAction(title: 'Appuie sur « Routines » du domaine Test sur l\'écran principal'),
-        TaskAction(title: 'Swipe gauche sur ta routine'),
-        TaskAction(title: 'Confirme la suppression'),
-      ],
-    ),
-    ProjectTask(
-      title: 'Supprimer le domaine « Domaine Test »',
-      phaseId: pActivites.id,
-      startDate: t,
-      actions: [
-        TaskAction(title: 'Sur l\'écran principal, appuie sur « Gérer » en haut à droite'),
-        TaskAction(title: 'Appuie sur le bouton supprimer à côté de « Domaine Test »'),
-      ],
-    ),
-
-    // Phase 3 — ORION & IA
     ProjectTask(
       title: 'Explorer ORION',
-      phaseId: pOrion.id,
+      phaseId: pDecouverte.id,
       startDate: t,
       actions: [
-        TaskAction(title: 'Aller sur l\'onglet ✦ ORION'),
-        TaskAction(title: 'Lire le rapport hebdomadaire'),
-        TaskAction(title: 'Capturer une idée via 💡 (icône en haut à droite)'),
+        TaskAction(title: 'Appuie sur l\'onglet ✦ ORION'),
+        TaskAction(title: 'Lis le rapport hebdomadaire'),
+        TaskAction(title: 'Capture une idée via 💡 en haut à droite'),
       ],
     ),
     ProjectTask(
-      title: 'Créer un vrai projet avec ORION',
-      phaseId: pOrion.id,
+      title: 'Créer ton premier vrai projet',
+      phaseId: pDecouverte.id,
       startDate: t,
       actions: [
         TaskAction(title: 'Aller sur l\'onglet Projets'),
         TaskAction(title: 'Appuyer sur + Nouveau projet'),
-        TaskAction(title: 'Décrire ton idée en langage naturel'),
-      ],
-    ),
-
-    // Phase 4 — App web
-    ProjectTask(
-      title: 'Ouvrir l\'app web Gantt',
-      phaseId: pWeb.id,
-      startDate: t,
-      actions: [
-        TaskAction(title: 'Aller dans Paramètres (⚙ en haut à droite)'),
-        TaskAction(title: 'Créer un token API'),
-        TaskAction(title: 'Ouvrir productivitwo.web.app'),
-        TaskAction(title: 'Entrer le token pour te connecter'),
+        TaskAction(title: 'Décrire ton objectif en langage naturel — ORION s\'occupe du reste'),
       ],
     ),
   ];
 
   return Project(
     title: 'Prise en main de Productivitwo',
-    description: 'Découvre les fonctionnalités essentielles — coche les sous-actions au fur et à mesure !',
+    description: 'Découvre l\'essentiel en 5 étapes — coche les sous-actions au fur et à mesure !',
     startDate: t,
-    endDate: t.add(const Duration(days: 21)),
+    endDate: t.add(const Duration(days: 7)),
     status: 'active',
-    phases: [pTaches, pActivites, pOrion, pWeb],
+    phases: [pDecouverte],
     tasks: tasks,
     createdBy: createdBy,
     sourceType: 'onboarding',
