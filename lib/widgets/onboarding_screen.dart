@@ -1895,7 +1895,8 @@ Project buildDiscoveryProject(String createdBy) {
       startDate: t,
       todayFlag: true,
       actions: [
-        TaskAction(title: 'Appuyer sur ⊕ sous cette tâche'),
+        TaskAction(title: 'Va dans l\'onglet Projets'),
+        TaskAction(title: 'Appuie sur ⊕ sous cette tâche'),
         TaskAction(title: 'Écrire une sous-action et valider'),
         TaskAction(title: 'Cocher cette case ✓'),
       ],
@@ -1926,7 +1927,7 @@ Project buildDiscoveryProject(String createdBy) {
       phaseId: pActivites.id,
       startDate: t,
       actions: [
-        TaskAction(title: 'Appuie sur un domaine sur l\'écran principal'),
+        TaskAction(title: 'Appuie sur « Activités » du domaine Test sur l\'écran principal'),
         TaskAction(title: 'Appuie sur « Nouvelle activité »'),
         TaskAction(title: 'Nomme l\'activité et valide'),
       ],
@@ -1936,7 +1937,7 @@ Project buildDiscoveryProject(String createdBy) {
       phaseId: pActivites.id,
       startDate: t,
       actions: [
-        TaskAction(title: 'Appuie sur un domaine sur l\'écran principal'),
+        TaskAction(title: 'Appuie sur « Activités » du domaine Test sur l\'écran principal'),
         TaskAction(title: 'Bascule vers l\'onglet « Routines »'),
         TaskAction(title: 'Appuie sur « Nouvelle routine »'),
         TaskAction(title: 'Configure et valide'),
@@ -1947,9 +1948,9 @@ Project buildDiscoveryProject(String createdBy) {
       phaseId: pActivites.id,
       startDate: t,
       actions: [
-        TaskAction(title: 'Appuie sur le domaine « Domaine Test »'),
-        TaskAction(title: 'Appui long sur l\'activité créée'),
-        TaskAction(title: 'Appuie sur Supprimer'),
+        TaskAction(title: 'Appuie sur « Activités » du domaine Test sur l\'écran principal'),
+        TaskAction(title: 'Swipe gauche sur l\'activité créée'),
+        TaskAction(title: 'Confirme la suppression'),
       ],
     ),
     ProjectTask(
@@ -1957,9 +1958,9 @@ Project buildDiscoveryProject(String createdBy) {
       phaseId: pActivites.id,
       startDate: t,
       actions: [
-        TaskAction(title: 'Sur l\'écran principal, repère la carte Routines'),
-        TaskAction(title: 'Appui long sur ta routine'),
-        TaskAction(title: 'Appuie sur Supprimer'),
+        TaskAction(title: 'Appuie sur « Routines » du domaine Test sur l\'écran principal'),
+        TaskAction(title: 'Swipe gauche sur ta routine'),
+        TaskAction(title: 'Confirme la suppression'),
       ],
     ),
     ProjectTask(
@@ -1967,9 +1968,8 @@ Project buildDiscoveryProject(String createdBy) {
       phaseId: pActivites.id,
       startDate: t,
       actions: [
-        TaskAction(title: 'Appuie sur ⚙ en haut à droite'),
-        TaskAction(title: 'Appui long sur « Domaine Test »'),
-        TaskAction(title: 'Appuie sur Supprimer'),
+        TaskAction(title: 'Sur l\'écran principal, appuie sur « Gérer » en haut à droite'),
+        TaskAction(title: 'Appuie sur le bouton supprimer à côté de « Domaine Test »'),
       ],
     ),
 

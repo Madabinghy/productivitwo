@@ -3837,10 +3837,23 @@ class _AppRootState extends State<AppRoot>
       final routineSummary = logic.routineProgressSummaryForCurrentPeriod();
       final done  = routineSummary.reached;
       final total = routineSummary.total;
-      if (total == 0) return const SizedBox.shrink();
+
+      // Score combiné routines + Gantt
+      final now = DateTime.now();
+      final ymd = yyyymmdd(now);
+      final combinedScore = logic.dailyScore(ymd);
+
+      if (total == 0 && combinedScore == 0.0) return const SizedBox.shrink();
+
+      // Exprimer le score combiné en done/displayTotal pour le chip
+      final displayDone  = total > 0
+          ? math.max(done, (combinedScore * total).round())
+          : (combinedScore * 100).round();
+      final displayTotal = total > 0 ? total : 100;
+
       return DailyScoreChip(
-        done: done,
-        total: total,
+        done: displayDone,
+        total: displayTotal,
         onTap: () => _showDailyScoreSheet(context, done, total),
       );
     }
