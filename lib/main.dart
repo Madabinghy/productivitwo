@@ -5777,6 +5777,7 @@ class _AppRootState extends State<AppRoot>
   }
 
   List<Widget> _buildDomainListLive(BuildContext context, DateTime now) {
+    final cs = Theme.of(context).colorScheme;
     final today0 = DateTime(now.year, now.month, now.day);
     final tomorrow = today0.add(const Duration(days: 1));
 
@@ -5863,56 +5864,148 @@ class _AppRootState extends State<AppRoot>
           final share = domainShare90(d.id);
           final timeLabel = _fmtHoursHM(doneTodayHoursD);
 
-          final dColor = domainColor(d.id, _state!.activeDomains);
+          final dColor = domainColor(d.id, _state!.activeDomains) ?? cs.primary;
+          final hasTarget = dailyTargetMinD > 0;
+          final hasTimeLogged = done7HoursD >= 0.017; // > 1 min sur la semaine
+          final showTimeSection = hasTarget || hasTimeLogged;
+          final week7Str = done7HoursD >= 0.017 ? _fmtHoursHM(done7HoursD) : '—';
+          final pct7 = hasTarget
+              ? '${(bigProgressTime * 100).round()}%'
+              : null;
+
           return SectionCard(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    if (dColor != null) ...[
+                // ── Row 1 : nom + temps aujourd'hui ─────────────────────────
+                InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () async {
+                    final goNow = await _showDomainDetail(
+                        d, startCal, endCal, days, focus: 'time');
+                    if (!mounted) return;
+                    if (goNow == true) setState(() => _tab = _Tab.maintenant);
+                  },
+                  child: Row(
+                    children: [
                       Container(
-                        width: 4,
-                        height: 18,
+                        width: 9,
+                        height: 9,
                         decoration: BoxDecoration(
+                          shape: BoxShape.circle,
                           color: dColor,
-                          borderRadius: BorderRadius.circular(2),
                         ),
                       ),
                       const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          d.name.toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.2,
+                            color: cs.onSurface.withOpacity(.8),
+                          ),
+                        ),
+                      ),
+                      if (doneTodayHoursD >= 0.017)
+                        Text(
+                          timeLabel,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: dColor,
+                          ),
+                        ),
                     ],
-                    Text(d.name,
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
-                  ],
+                  ),
                 ),
-                const SizedBox(height: 8),
-                Column(
-                  children: [
-                    _buildProgressRow(
-                      icon: Icons.timer_outlined,
-                      label: 'Activités · $timeLabel',
-                      progress: bigProgressTime,
-                      color: _colorForProgress(bigProgressTime, context),
-                      onTap: () async {
-                        final goNow = await _showDomainDetail(
-                            d, startCal, endCal, days,
-                            focus: 'time');
-                        if (!mounted) return;
-                        if (goNow == true) setState(() => _tab = _Tab.maintenant);
-                      },
+
+                if (showTimeSection || routinesTotal > 0) ...[
+                  const SizedBox(height: 10),
+
+                  // ── Row 2 : barre de progression semaine ─────────────────
+                  if (hasTarget) ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: LinearProgressIndicator(
+                              value: bigProgressTime.clamp(0.0, 1.0),
+                              minHeight: 7,
+                              backgroundColor: dColor.withOpacity(.12),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                bigProgressTime >= 1.0
+                                    ? Colors.green
+                                    : dColor,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '$pct7 · 7j',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: cs.onSurface.withOpacity(.4),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 6),
-                    _buildProgressRow(
-                      icon: Icons.repeat,
-                      label: 'Routines · $routinesLabelD',
-                      progress: routinesProgress,
-                      color: dColor ?? _colorForProgress(routinesProgress, context),
-                      onTap: () => _showDomainDetail(
-                          d, startCal, endCal, days,
-                          focus: 'habit'),
-                    ),
+                    const SizedBox(height: 8),
                   ],
-                ),
+
+                  // ── Row 3 : stats footer ─────────────────────────────────
+                  Row(
+                    children: [
+                      if (showTimeSection) ...[
+                        Icon(Icons.timer_outlined,
+                            size: 12, color: cs.onSurface.withOpacity(.4)),
+                        const SizedBox(width: 4),
+                        Text(
+                          week7Str,
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: cs.onSurface.withOpacity(.5)),
+                        ),
+                      ],
+                      if (routinesTotal > 0) ...[
+                        if (showTimeSection) const SizedBox(width: 14),
+                        GestureDetector(
+                          onTap: () => _showDomainDetail(
+                              d, startCal, endCal, days,
+                              focus: 'habit'),
+                          child: Row(
+                            children: [
+                              Icon(
+                                routinesReached == routinesTotal
+                                    ? Icons.check_circle_rounded
+                                    : Icons.radio_button_unchecked,
+                                size: 12,
+                                color: routinesReached == routinesTotal
+                                    ? Colors.green
+                                    : cs.onSurface.withOpacity(.35),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '$routinesReached / $routinesTotal routines',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: routinesReached == routinesTotal
+                                      ? Colors.green.withOpacity(.75)
+                                      : cs.onSurface.withOpacity(.5),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
               ],
             ),
           );
