@@ -126,6 +126,8 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
     final freq = act.habitFreq ?? HabitFreq.daily;
     final target = act.habitTarget ?? 1;
 
+    final accentColor = dColor ?? cs.primary;
+
     return SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
@@ -135,55 +137,39 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
             // ── Header ──────────────────────────────────────────────────────
             Row(
               children: [
-                if (dColor != null)
-                  Container(
-                    width: 10,
-                    height: 10,
-                    margin: const EdgeInsets.only(right: 8),
-                    decoration: BoxDecoration(
-                      color: dColor,
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                  ),
+                Container(
+                  width: 9, height: 9,
+                  margin: const EdgeInsets.only(right: 10),
+                  decoration: BoxDecoration(
+                    color: accentColor, shape: BoxShape.circle),
+                ),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        act.name,
-                        style: theme.textTheme.titleLarge
-                            ?.copyWith(fontWeight: FontWeight.w800),
-                      ),
+                      Text(act.name,
+                          style: theme.textTheme.titleLarge
+                              ?.copyWith(fontWeight: FontWeight.w800)),
                       if (domain != null)
-                        Text(
-                          domain.name,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: dColor ?? cs.onSurface.withOpacity(.5),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                        Text(domain.name,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: accentColor,
+                              fontWeight: FontWeight.w600,
+                            )),
                     ],
                   ),
                 ),
                 IconButton(
                   icon: act.iconCode != null
-                      ? Icon(
-                          IconData(act.iconCode!, fontFamily: 'MaterialIcons'),
-                          size: 18,
-                          color: Theme.of(context).colorScheme.primary,
-                        )
+                      ? Icon(IconData(act.iconCode!, fontFamily: 'MaterialIcons'),
+                          size: 18, color: accentColor)
                       : const Icon(Icons.emoji_emotions_outlined, size: 18),
                   tooltip: 'Choisir une icône',
                   onPressed: () async {
-                    final picked = await showIconPickerSheet(
-                      context,
-                      current: act.iconCode,
-                    );
+                    final picked = await showIconPickerSheet(context, current: act.iconCode);
                     if (picked == null) return;
-                    setState(() {
-                      act.iconCode = picked == -1 ? null : picked;
-                    });
+                    setState(() => act.iconCode = picked == -1 ? null : picked);
                     widget.logic.onChange();
                   },
                 ),
@@ -211,46 +197,90 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
 
             // ── Streak ──────────────────────────────────────────────────────
             if (currentStreak > 0 || bestStreak > 1) ...[
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  if (currentStreak > 0) ...[
-                    const Text('🔥', style: TextStyle(fontSize: 18)),
-                    const SizedBox(width: 6),
-                    Text(
-                      '$currentStreak jour${currentStreak > 1 ? 's' : ''} d\'affilée',
-                      style: theme.textTheme.titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w800),
-                    ),
-                  ],
-                  const Spacer(),
-                  if (bestStreak > 1)
-                    Text(
-                      'Record : $bestStreak j',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: cs.onSurface.withOpacity(.45),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                decoration: BoxDecoration(
+                  color: accentColor.withOpacity(.07),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: accentColor.withOpacity(.15)),
+                ),
+                child: Row(
+                  children: [
+                    if (currentStreak > 0) ...[
+                      const Text('🔥', style: TextStyle(fontSize: 20)),
+                      const SizedBox(width: 8),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'SÉRIE',
+                            style: TextStyle(
+                              fontSize: 10, fontWeight: FontWeight.w700,
+                              letterSpacing: 1.1,
+                              color: cs.onSurface.withOpacity(.4),
+                            ),
+                          ),
+                          RichText(
+                            text: TextSpan(
+                              children: [
+                                TextSpan(
+                                  text: '$currentStreak',
+                                  style: TextStyle(
+                                    fontSize: 26, fontWeight: FontWeight.w900,
+                                    color: accentColor, height: 1.0,
+                                  ),
+                                ),
+                                TextSpan(
+                                  text: '  jour${currentStreak > 1 ? 's' : ''}',
+                                  style: TextStyle(
+                                    fontSize: 13, fontWeight: FontWeight.w600,
+                                    color: cs.onSurface.withOpacity(.6),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                ],
+                    ],
+                    const Spacer(),
+                    if (bestStreak > 1)
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text('RECORD',
+                              style: TextStyle(
+                                fontSize: 10, fontWeight: FontWeight.w700,
+                                letterSpacing: 1.1,
+                                color: cs.onSurface.withOpacity(.35),
+                              )),
+                          Text('$bestStreak j',
+                              style: TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.w800,
+                                color: cs.onSurface.withOpacity(.55),
+                              )),
+                        ],
+                      ),
+                  ],
+                ),
               ),
             ],
 
             // ── Paliers ──────────────────────────────────────────────────────
             if (logic.effectiveHabitFreq(act) == HabitFreq.daily) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               Text(
-                'Paliers',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: cs.onSurface.withOpacity(.5),
+                'PALIERS',
+                style: TextStyle(
+                  fontSize: 10, fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2,
+                  color: cs.onSurface.withOpacity(.35),
                 ),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 8),
               Wrap(
-                spacing: 6,
-                runSpacing: 6,
+                spacing: 6, runSpacing: 6,
                 children: [
                   MapEntry(3, BadgeId.streak3),
                   MapEntry(7, BadgeId.streak7),
@@ -264,36 +294,59 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                       .any((b) => b.id == id && b.habitId == habitId);
                   final meta = badgeMeta(id);
                   if (isEarned) {
-                    return Chip(
-                      backgroundColor: cs.primaryContainer,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      label: Text(
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: accentColor.withOpacity(.15),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: accentColor.withOpacity(.3)),
+                      ),
+                      child: Text(
                         '${meta.emoji} ${meta.label}',
                         style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                          color: cs.onPrimaryContainer,
+                          fontWeight: FontWeight.w700, fontSize: 12,
+                          color: accentColor,
                         ),
                       ),
                     );
                   }
                   final progress = currentStreak.clamp(0, days);
-                  return Chip(
-                    backgroundColor:
-                        cs.surfaceContainerHighest.withOpacity(.35),
-                    side: BorderSide(color: cs.outlineVariant.withOpacity(.4)),
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    label: Text(
-                      '${meta.emoji} $progress / ${days}j',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 12,
-                        color: cs.onSurface.withOpacity(.45),
-                      ),
+                  final pct = progress / days;
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHighest.withOpacity(.35),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: cs.onSurface.withOpacity(.1)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('${meta.emoji}',
+                            style: const TextStyle(fontSize: 12)),
+                        const SizedBox(width: 5),
+                        Text(
+                          '${days}j',
+                          style: TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.w700,
+                            color: cs.onSurface.withOpacity(pct >= 0.5 ? .7 : .4),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        SizedBox(
+                          width: 32,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(2),
+                            child: LinearProgressIndicator(
+                              value: pct.clamp(0.0, 1.0),
+                              minHeight: 4,
+                              backgroundColor: cs.onSurface.withOpacity(.1),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                  accentColor.withOpacity(.6)),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   );
                 }).toList(),
@@ -302,23 +355,19 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
 
             // ── Activité liée ────────────────────────────────────────────────
             if (hasLinked) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               FilledButton.icon(
-                icon: Icon(
-                  isRunningThis ? Icons.stop : Icons.play_arrow,
-                  size: 20,
-                ),
+                icon: Icon(isRunningThis ? Icons.stop : Icons.play_arrow, size: 20),
                 label: Text(
                   isRunningThis ? 'Stop' : linkedAct.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
                 ),
                 style: isRunningThis
                     ? FilledButton.styleFrom(
                         backgroundColor: Colors.red.withOpacity(0.85),
                         foregroundColor: Colors.white,
                       )
-                    : null,
+                    : FilledButton.styleFrom(backgroundColor: accentColor),
                 onPressed: () {
                   if (isRunningThis) {
                     logic.stopActive();
@@ -335,110 +384,159 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
 
             // ── Checklist ────────────────────────────────────────────────────
             if (checkItems.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
+              const SizedBox(height: 14),
+              Container(
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest.withOpacity(.35),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+                      child: Row(
                         children: [
-                          Expanded(
-                            child: Text(
-                              'Checklist',
+                          Text('Checklist',
                               style: theme.textTheme.titleSmall
-                                  ?.copyWith(fontWeight: FontWeight.w700),
-                            ),
-                          ),
+                                  ?.copyWith(fontWeight: FontWeight.w700)),
+                          const Spacer(),
                           Text(
                             '${doneSet.length} / ${checkItems.length}',
                             style: TextStyle(
                               fontSize: 12,
-                              color: cs.onSurface.withOpacity(.6),
+                              color: cs.onSurface.withOpacity(.55),
                               fontWeight: FontWeight.w600,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 4),
-                      for (int i = 0; i < checkItems.length; i++)
-                        CheckboxListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          value: doneSet.contains(i),
-                          title: Text(checkItems[i]),
-                          onChanged: (_) {
-                            logic.toggleChecklistItem(habitId, today, i);
-                            logic.onChange();
-                            setState(() {});
-                          },
-                        ),
+                    ),
+                    for (int i = 0; i < checkItems.length; i++) ...[
+                      if (i > 0)
+                        Divider(height: 1, indent: 14,
+                            color: cs.onSurface.withOpacity(.07)),
+                      CheckboxListTile(
+                        dense: true,
+                        contentPadding:
+                            const EdgeInsets.symmetric(horizontal: 14),
+                        value: doneSet.contains(i),
+                        title: Text(checkItems[i]),
+                        onChanged: (_) {
+                          logic.toggleChecklistItem(habitId, today, i);
+                          logic.onChange();
+                          setState(() {});
+                        },
+                      ),
                     ],
-                  ),
+                    const SizedBox(height: 4),
+                  ],
                 ),
               ),
             ],
 
             // ── Réglages ─────────────────────────────────────────────────────
+            const SizedBox(height: 18),
+            const Divider(height: 1),
             const SizedBox(height: 16),
-            const Divider(),
-            const SizedBox(height: 8),
             Text(
-              'Réglages',
-              style: theme.textTheme.labelMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: cs.onSurface.withOpacity(.5),
-                letterSpacing: 0.5,
+              'RÉGLAGES',
+              style: TextStyle(
+                fontSize: 10, fontWeight: FontWeight.w700,
+                letterSpacing: 1.2,
+                color: cs.onSurface.withOpacity(.35),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
 
-            // Fréquence
+            // Fréquence — chips segmentées
             Row(
-              children: [
-                const Text('Fréquence',
-                    style: TextStyle(fontWeight: FontWeight.w600)),
-                const Spacer(),
-                DropdownButton<HabitFreq>(
-                  value: freq,
-                  items: HabitFreq.values
-                      .map((f) => DropdownMenuItem(
-                            value: f,
-                            child: Text(freqLabel(f)),
-                          ))
-                      .toList(),
-                  onChanged: (v) {
-                    if (v == null) return;
-                    act.habitFreq = v;
-                    _applySetting();
-                  },
-                ),
-              ],
+              children: HabitFreq.values.map((f) {
+                final selected = freq == f;
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: () { act.habitFreq = f; _applySetting(); },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      margin: EdgeInsets.only(
+                        left: f == HabitFreq.values.first ? 0 : 4,
+                        right: f == HabitFreq.values.last ? 0 : 4,
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? accentColor
+                            : accentColor.withOpacity(.07),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: selected
+                              ? Colors.transparent
+                              : accentColor.withOpacity(.18),
+                        ),
+                      ),
+                      child: Text(
+                        freqLabel(f),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.w700,
+                          color: selected
+                              ? Colors.white
+                              : accentColor.withOpacity(.8),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 14),
 
-            // Cible
+            // Cible — stepper stylisé
             Row(
               children: [
-                const Text('Cible',
-                    style: TextStyle(fontWeight: FontWeight.w600)),
+                Text('Cible par période',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurface.withOpacity(.75),
+                    )),
                 const Spacer(),
-                IconButton(
-                  onPressed: () {
-                    act.habitTarget = (target - 1).clamp(1, 999);
-                    _applySetting();
-                  },
-                  icon: const Icon(Icons.remove_circle_outline),
-                ),
-                Text('$target',
-                    style: const TextStyle(fontWeight: FontWeight.w800)),
-                IconButton(
-                  onPressed: () {
-                    act.habitTarget = (target + 1).clamp(1, 999);
-                    _applySetting();
-                  },
-                  icon: const Icon(Icons.add_circle_outline),
+                Container(
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest.withOpacity(.5),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        onPressed: () {
+                          act.habitTarget = (target - 1).clamp(1, 999);
+                          _applySetting();
+                        },
+                        icon: const Icon(Icons.remove_rounded, size: 18),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      SizedBox(
+                        width: 36,
+                        child: Text(
+                          '$target',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 18,
+                            color: accentColor,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () {
+                          act.habitTarget = (target + 1).clamp(1, 999);
+                          _applySetting();
+                        },
+                        icon: const Icon(Icons.add_rounded, size: 18),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
