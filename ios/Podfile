@@ -45,4 +45,19 @@ post_install do |installer|
       end
     end
   end
+
+  # Fix cycle de build Flutter + CocoaPods + Widget Extension
+  # "[CP] Embed Pods Frameworks" et "Thin Binary" se bloquent mutuellement
+  # quand une extension (widget) est embarquée. On marque le script toujours
+  # out-of-date pour casser la dépendance circulaire.
+  installer.aggregate_targets.each do |aggregate_target|
+    aggregate_target.user_project.targets.each do |target|
+      next unless target.name == 'Runner'
+      target.build_phases.each do |phase|
+        next unless phase.respond_to?(:name) && phase.name == '[CP] Embed Pods Frameworks'
+        phase.always_out_of_date = '1'
+      end
+    end
+    aggregate_target.user_project.save
+  end
 end
