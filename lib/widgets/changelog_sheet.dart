@@ -10,6 +10,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.35', '25 mai 2026', [
+    (Icons.bar_chart_outlined, 'Heatmap démo : 5 routines + vague sinusoïdale — toute la palette de couleurs visible'),
+    (Icons.smart_toy_outlined, 'ORION astuce : précision "sans passer par ORION"'),
+  ]),
   _Entry('5.34', '25 mai 2026', [
     (Icons.rocket_launch_outlined, 'Paywall : essai gratuit 7 jours détecté via RevenueCat — CTA, badge carte Annuel et note légale Apple'),
   ]),

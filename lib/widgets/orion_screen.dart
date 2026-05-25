@@ -500,8 +500,8 @@ class _TipCard extends StatelessWidget {
           const Expanded(
             child: Text(
               'ASTUCE — Connecte Claude Desktop à Productivitwo via MCP '
-              '(menu ⋮ → Tokens API) pour lancer autant d\'actions stratégiques '
-              'que tu veux, sans limite quotidienne.',
+              '(menu ⋮ → Tokens API) pour piloter tes projets directement depuis '
+              'Claude, sans passer par ORION et sans limite quotidienne.',
               style: TextStyle(
                 fontFamily: 'monospace',
                 fontSize: 11,

@@ -2611,6 +2611,7 @@ class _AppRootState extends State<AppRoot>
     st.activities.addAll([aMeditation, aMusculation, aRunning, aDeepWork]);
 
     // ── Routines quotidiennes (type habit) — alimentent la heatmap ────────────
+    // 5 habits → 6 niveaux de score (0/5 à 5/5) couvrant toute la palette de couleurs
     final hLecture = Activity(
       domainId: dSante.id, name: 'Lecture', type: 'habit',
       habitFreq: HabitFreq.daily, habitTarget: 1, order: 2,
@@ -2623,7 +2624,15 @@ class _AppRootState extends State<AppRoot>
       domainId: dBusiness.id, name: 'Revue quotidienne', type: 'habit',
       habitFreq: HabitFreq.daily, habitTarget: 1, order: 1,
     );
-    st.activities.addAll([hLecture, hEau, hRevue]);
+    final hSport = Activity(
+      domainId: dSport.id, name: 'Sport', type: 'habit',
+      habitFreq: HabitFreq.daily, habitTarget: 1, order: 2,
+    );
+    final hVeille = Activity(
+      domainId: dBusiness.id, name: 'Veille', type: 'habit',
+      habitFreq: HabitFreq.daily, habitTarget: 1, order: 2,
+    );
+    st.activities.addAll([hLecture, hEau, hRevue, hSport, hVeille]);
 
     // ── Sessions : aujourd'hui + 12 semaines d'historique ────────────────────
     // Aujourd'hui
@@ -2673,15 +2682,24 @@ class _AppRootState extends State<AppRoot>
         st.sessions.add(Session(activityId: aDeepWork.id,
             startAt: t(9, 30), endAt: t(9, 30).add(Duration(minutes: dur))));
       }
-      // Routines quotidiennes (heatmap) : taux variables et réalistes
-      if (rng.nextDouble() < 0.80) {
+      // Heatmap : vague de productivité sinusoïdale sur 12 semaines
+      // → semaines vertes (wave ≈ 0.9) et semaines creuses orange (wave ≈ 0.1)
+      final weekIndex = daysAgo ~/ 7;
+      final wave = (0.5 + 0.38 * sin(weekIndex * 0.9)).clamp(0.05, 0.95);
+      if (rng.nextDouble() < wave * 0.92) {
         st.habitProgress.add(HabitProgress(activityId: hLecture.id, yyyymmdd: ymd, value: 1));
       }
-      if (rng.nextDouble() < 0.88) {
+      if (rng.nextDouble() < (wave + 0.12).clamp(0.0, 1.0)) {
         st.habitProgress.add(HabitProgress(activityId: hEau.id, yyyymmdd: ymd, value: 1));
       }
-      if (!isWeekend && rng.nextDouble() < 0.68) {
+      if (rng.nextDouble() < wave * 0.78) {
         st.habitProgress.add(HabitProgress(activityId: hRevue.id, yyyymmdd: ymd, value: 1));
+      }
+      if (rng.nextDouble() < wave * 0.70) {
+        st.habitProgress.add(HabitProgress(activityId: hSport.id, yyyymmdd: ymd, value: 1));
+      }
+      if (rng.nextDouble() < wave * 0.62) {
+        st.habitProgress.add(HabitProgress(activityId: hVeille.id, yyyymmdd: ymd, value: 1));
       }
     }
 
