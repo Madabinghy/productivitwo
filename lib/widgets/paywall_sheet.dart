@@ -32,14 +32,14 @@ class _PaywallSheetState extends State<_PaywallSheet> {
   Offerings? _offerings;
 
   static const _benefits = [
+    (Icons.smart_toy_outlined, 'ORION illimité',
+        'Activations illimitées (3/jour en version gratuite)'),
     (Icons.bar_chart_outlined, 'Statistiques avancées',
-        'Heatmap 12 semaines, rapports de temps détaillés'),
-    (Icons.history_outlined, 'Historique illimité',
-        'Toutes tes données conservées indéfiniment'),
-    (Icons.new_releases_outlined, 'Nouvelles fonctionnalités',
-        'Accès prioritaire à chaque mise à jour'),
-    (Icons.support_agent_outlined, 'Support prioritaire',
-        'Accès direct pour toute question ou retour'),
+        'Heatmap 12 semaines, scores de productivité'),
+    (Icons.timer_outlined, 'Rapport de temps',
+        'Analyse par domaine, hebdomadaire et mensuelle'),
+    (Icons.language_outlined, 'App web',
+        'Vue Gantt complète sur navigateur'),
   ];
 
   @override

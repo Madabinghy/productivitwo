@@ -23,8 +23,8 @@ const _text = Color(0xFFf0ece0);
 const _webhookBase = 'https://orionsaveconfig-dzos75b65q-uc.a.run.app';
 const _countUrl = 'https://orionruncount-dzos75b65q-uc.a.run.app';
 
-// Limite Pro : 50 en test, sera 5 en prod
-const _kLimitPro = 50;
+// Limite gratuite : 3 activations/jour. Pro = illimité.
+const _kLimitFree = 3;
 
 class OrionScreen extends StatefulWidget {
   final FirestoreSync sync;
@@ -170,8 +170,8 @@ class _OrionScreenState extends State<OrionScreen>
     }
 
     final isPro = ProManager.isPro;
-    if (isPro && _runCount >= _kLimitPro) {
-      setState(() => _error = 'Limite journalière atteinte ($_runCount/$_kLimitPro).');
+    if (!isPro && _runCount >= _kLimitFree) {
+      setState(() => _error = 'Limite journalière atteinte ($_runCount/$_kLimitFree). Passe à Pro pour continuer.');
       return;
     }
 
@@ -231,7 +231,7 @@ class _OrionScreenState extends State<OrionScreen>
     return ValueListenableBuilder<bool>(
       valueListenable: ProManager.notifier,
       builder: (context, isPro, _) {
-        final limitReached = isPro && _runCount >= _kLimitPro;
+        final limitReached = !isPro && _runCount >= _kLimitFree;
 
         final content = _loading
             ? const Center(child: CircularProgressIndicator(color: _gold))
@@ -482,7 +482,7 @@ class _StatusCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final progress =
-        isPro ? (runCount / _kLimitPro).clamp(0.0, 1.0) : null;
+        !isPro ? (runCount / _kLimitFree).clamp(0.0, 1.0) : null;
     final barColor = progress != null && progress >= 1.0
         ? const Color(0xFFcf6679)
         : _gold;
@@ -503,8 +503,8 @@ class _StatusCard extends StatelessWidget {
               const Spacer(),
               Text(
                 isPro
-                    ? '$runCount / $_kLimitPro actions stratégiques aujourd\'hui'
-                    : 'Illimité · $runCount actions stratégiques aujourd\'hui',
+                    ? 'Illimité · $runCount activations aujourd\'hui'
+                    : '$runCount / $_kLimitFree activations aujourd\'hui',
                 style: const TextStyle(
                   fontFamily: 'monospace',
                   fontSize: 11,
@@ -530,7 +530,7 @@ class _StatusCard extends StatelessWidget {
           Text(
             isPro
                 ? 'ORION tourne automatiquement toutes les 6h.\nActivation manuelle depuis cette page.'
-                : 'Gratuit : cycles ORION illimités inclus.\nORION tourne automatiquement toutes les 6h.',
+                : '$_kLimitFree activations/jour en version gratuite.\nPasse à Pro pour des activations illimitées.',
             style: const TextStyle(
               fontFamily: 'monospace',
               fontSize: 11,
