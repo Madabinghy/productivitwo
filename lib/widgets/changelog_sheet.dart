@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.36', '25 mai 2026', [
+    (Icons.widgets_outlined, 'Widgets iOS : anneau de routines (Small) et plan du jour (Medium) sur l\'écran d\'accueil'),
+  ]),
   _Entry('5.35', '25 mai 2026', [
     (Icons.bar_chart_outlined, 'Heatmap démo : 5 routines + vague sinusoïdale — toute la palette de couleurs visible'),
     (Icons.smart_toy_outlined, 'ORION astuce : précision "sans passer par ORION"'),

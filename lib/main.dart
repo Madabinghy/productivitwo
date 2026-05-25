@@ -53,6 +53,7 @@ import 'package:productivitwo_v1/web/assistant_engine.dart';
 import 'package:productivitwo_v1/web/assistant_widget.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:productivitwo_v1/widget_service.dart';
 
 enum _Tab { dashboard, projets, maintenant, orion }
 
@@ -2130,6 +2131,9 @@ class _AppRootState extends State<AppRoot>
     _saveDebounce = Timer(const Duration(milliseconds: 500), () {
       _doSave();
     });
+
+    // Mise à jour des widgets home screen iOS
+    WidgetService.update(logic);
 
     // ✅ Refresh UI (ton code, inchangé)
     if (!mounted) return;
