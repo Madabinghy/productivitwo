@@ -63,10 +63,36 @@ class _PaywallSheetState extends State<_PaywallSheet> {
     return _yearly ? current.annual : current.monthly;
   }
 
+  // Prix du plan sélectionné pour le bouton CTA
   String _priceLabel() {
     final pkg = _selectedPackage;
     if (pkg != null) return pkg.storeProduct.priceString;
     return _yearly ? '29,99 €' : '4,99 €';
+  }
+
+  // Prix mensuel pour la carte Mensuel
+  String _monthlyPriceLabel() =>
+      _offerings?.current?.monthly?.storeProduct.priceString ?? '4,99 €';
+
+  // Prix annuel pour la carte Annuel
+  String _annualPriceLabel() =>
+      _offerings?.current?.annual?.storeProduct.priceString ?? '29,99 €';
+
+  // Équivalent mensuel du plan annuel (annuel / 12), dans la bonne devise
+  String _annualPerMonthLabel() {
+    final pkg = _offerings?.current?.annual;
+    if (pkg == null) return '2,50 € / mois';
+    final perMonth = pkg.storeProduct.price / 12;
+    final code = pkg.storeProduct.currencyCode;
+    final String amount;
+    if (code == 'EUR') {
+      amount = '${perMonth.toStringAsFixed(2).replaceAll('.', ',')} €';
+    } else if (code == 'USD') {
+      amount = '\$${perMonth.toStringAsFixed(2)}';
+    } else {
+      amount = '${perMonth.toStringAsFixed(2)} $code';
+    }
+    return '$amount / mois';
   }
 
   Future<void> _subscribe() async {
@@ -183,7 +209,7 @@ class _PaywallSheetState extends State<_PaywallSheet> {
                   Expanded(child: _PlanCard(
                     cs: cs,
                     label: 'Mensuel',
-                    price: '4,99 €',
+                    price: _monthlyPriceLabel(),
                     sub: 'par mois',
                     badge: null,
                     selected: !_yearly,
@@ -193,8 +219,8 @@ class _PaywallSheetState extends State<_PaywallSheet> {
                   Expanded(child: _PlanCard(
                     cs: cs,
                     label: 'Annuel',
-                    price: '29,99 €',
-                    sub: '2,50 € / mois',
+                    price: _annualPriceLabel(),
+                    sub: _annualPerMonthLabel(),
                     badge: '−50 %',
                     selected: _yearly,
                     onTap: () => setState(() => _yearly = true),
