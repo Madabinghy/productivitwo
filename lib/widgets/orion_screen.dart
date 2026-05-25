@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/pro_manager.dart';
+import 'package:productivitwo_v1/widgets/paywall_sheet.dart';
 
 // Palette ORION
 const _bg = Color(0xFF0f0f0f);
@@ -533,6 +534,23 @@ class _StatusCard extends StatelessWidget {
               height: 1.65,
             ),
           ),
+          if (!isPro) ...[
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: () => showPaywallSheet(context),
+              child: const Text(
+                'Passer à Pro →',
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: _gold,
+                  decoration: TextDecoration.underline,
+                  decorationColor: _gold,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

@@ -245,11 +245,13 @@ class _PaywallSheetState extends State<_PaywallSheet> {
                     ),
                     child: Text('Confidentialité',
                         style: TextStyle(
-                            fontSize: 11, color: cs.onSurface.withOpacity(.35))),
+                            fontSize: 12,
+                            color: cs.onSurface.withOpacity(.6),
+                            decoration: TextDecoration.underline)),
                   ),
                   Text('·',
                       style: TextStyle(
-                          fontSize: 11, color: cs.onSurface.withOpacity(.25))),
+                          fontSize: 11, color: cs.onSurface.withOpacity(.4))),
                   TextButton(
                     onPressed: () => launchUrl(
                       Uri.parse('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/'),
@@ -262,7 +264,9 @@ class _PaywallSheetState extends State<_PaywallSheet> {
                     ),
                     child: Text('Conditions d\'utilisation',
                         style: TextStyle(
-                            fontSize: 11, color: cs.onSurface.withOpacity(.35))),
+                            fontSize: 12,
+                            color: cs.onSurface.withOpacity(.6),
+                            decoration: TextDecoration.underline)),
                   ),
                 ],
               ),
