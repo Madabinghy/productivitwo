@@ -312,6 +312,8 @@ class _OrionScreenState extends State<OrionScreen>
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
       children: [
         _StatusCard(isPro: isPro, runCount: _runCount),
+        const SizedBox(height: 10),
+        const _TipCard(),
 
         if (isFirstLaunch) ...[
           const SizedBox(height: 16),
@@ -475,6 +477,45 @@ class _OrionScreenState extends State<OrionScreen>
 }
 
 // ── Status card ────────────────────────────────────────────────────────────────
+
+// ── Astuce MCP ────────────────────────────────────────────────────────────────
+
+class _TipCard extends StatelessWidget {
+  const _TipCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: _surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _goldDim.withOpacity(0.5)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('✦', style: TextStyle(color: _gold, fontSize: 11)),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text(
+              'ASTUCE — Connecte Claude directement à l\'app web via l\'onglet Tokens API '
+              '(menu ⋮) pour lancer autant d\'actions stratégiques que tu veux, sans limite.',
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 11,
+                color: _muted,
+                height: 1.55,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Carte de statut ────────────────────────────────────────────────────────────
 
 class _StatusCard extends StatelessWidget {
   final bool isPro;

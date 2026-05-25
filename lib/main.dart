@@ -2603,12 +2603,27 @@ class _AppRootState extends State<AppRoot>
     final dBusiness = Domain(name: 'Business');
     st.domains.addAll([dSante, dSport, dBusiness]);
 
-    // ── Activités ─────────────────────────────────────────────────────────────
+    // ── Activités (suivi temps) ────────────────────────────────────────────────
     final aMeditation = Activity(domainId: dSante.id, name: 'Méditation', goalMin: 20, order: 0);
     final aMusculation = Activity(domainId: dSport.id, name: 'Musculation', goalMin: 60, order: 0);
     final aRunning = Activity(domainId: dSport.id, name: 'Running', goalMin: 30, order: 1);
     final aDeepWork = Activity(domainId: dBusiness.id, name: 'Deep Work', goalMin: 120, order: 0);
     st.activities.addAll([aMeditation, aMusculation, aRunning, aDeepWork]);
+
+    // ── Routines quotidiennes (type habit) — alimentent la heatmap ────────────
+    final hLecture = Activity(
+      domainId: dSante.id, name: 'Lecture', type: 'habit',
+      habitFreq: HabitFreq.daily, habitTarget: 1, order: 2,
+    );
+    final hEau = Activity(
+      domainId: dSante.id, name: 'Hydratation', type: 'habit',
+      habitFreq: HabitFreq.daily, habitTarget: 1, order: 3,
+    );
+    final hRevue = Activity(
+      domainId: dBusiness.id, name: 'Revue quotidienne', type: 'habit',
+      habitFreq: HabitFreq.daily, habitTarget: 1, order: 1,
+    );
+    st.activities.addAll([hLecture, hEau, hRevue]);
 
     // ── Sessions : aujourd'hui + 12 semaines d'historique ────────────────────
     // Aujourd'hui
@@ -2632,6 +2647,7 @@ class _AppRootState extends State<AppRoot>
     for (int daysAgo = 83; daysAgo >= 1; daysAgo--) {
       final day = todayDt.subtract(Duration(days: daysAgo));
       final isWeekend = day.weekday >= 6;
+      final ymd = yyyymmdd(day);
       DateTime t(int h, int m) => DateTime(day.year, day.month, day.day, h, m);
       // Méditation : 75% des jours
       if (rng.nextDouble() < 0.75) {
@@ -2656,6 +2672,16 @@ class _AppRootState extends State<AppRoot>
         final dur = 90 + rng.nextInt(90);
         st.sessions.add(Session(activityId: aDeepWork.id,
             startAt: t(9, 30), endAt: t(9, 30).add(Duration(minutes: dur))));
+      }
+      // Routines quotidiennes (heatmap) : taux variables et réalistes
+      if (rng.nextDouble() < 0.80) {
+        st.habitProgress.add(HabitProgress(activityId: hLecture.id, yyyymmdd: ymd, value: 1));
+      }
+      if (rng.nextDouble() < 0.88) {
+        st.habitProgress.add(HabitProgress(activityId: hEau.id, yyyymmdd: ymd, value: 1));
+      }
+      if (!isWeekend && rng.nextDouble() < 0.68) {
+        st.habitProgress.add(HabitProgress(activityId: hRevue.id, yyyymmdd: ymd, value: 1));
       }
     }
 

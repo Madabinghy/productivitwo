@@ -10,6 +10,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.33', '25 mai 2026', [
+    (Icons.smart_toy_outlined, 'ORION : astuce MCP — connexion directe à l\'app web pour des actions stratégiques illimitées'),
+    (Icons.bar_chart_outlined, 'Données de démo : heatmap 12 semaines avec routines réalistes (Lecture, Hydratation, Revue)'),
+  ]),
   _Entry('5.32', '25 mai 2026', [
     (Icons.language_outlined, 'App web : page blanche Safari corrigée — désactivation du service worker obsolète'),
     (Icons.language_outlined, 'App web : compatible Firefox et Chrome — timeout Firebase 8s'),

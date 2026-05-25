@@ -51,7 +51,8 @@
       "Bash(curl -sI \"https://productivitwo-app.web.app/canvaskit/canvaskit.wasm\")",
       "Bash(curl -sI \"https://productivitwo-app.web.app/\")",
       "Bash(curl -sI \"https://www.gstatic.com/flutter-canvaskit/d2913632a4578ee4d0b8b1c4a69888c8a0672c4b/canvaskit.js\")",
-      "Bash(md5 /Users/emericedmond/workspace/flutter/apps/Productivitwo/productivitwo_v1_starter/build/web/flutter_bootstrap.js)"
+      "Bash(md5 /Users/emericedmond/workspace/flutter/apps/Productivitwo/productivitwo_v1_starter/build/web/flutter_bootstrap.js)",
+      "Bash(awk -F: '$2>=2598 && $2<=2700')"
     ]
   }
 }
