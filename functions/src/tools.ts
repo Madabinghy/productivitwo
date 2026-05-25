@@ -324,14 +324,14 @@ const RESTORE_ITEM_TOOL = {
   description:
     "Restaure un élément archivé (annule la suppression). " +
     "Utilise get_archives pour obtenir l'id. " +
-    "collection: 'domains', 'activities' ou 'recurringActions'.",
+    "collection: 'domains' ou 'activities'.",
   inputSchema: {
     type: "object",
     required: ["collection", "itemId"],
     properties: {
       collection: {
         type: "string",
-        enum: ["domains", "activities", "recurringActions"],
+        enum: ["domains", "activities"],
         description: "La collection Firestore",
       },
       itemId: { type: "string", description: "id de l'élément à restaurer" },

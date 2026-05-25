@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.PLAN_DAY_TOOL = exports.GET_DAY_PLAN_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.CLEAR_DAY_PLAN_TOOL = exports.DELETE_GOAL_TOOL = exports.DELETE_ROUTINE_TOOL = exports.LINK_GOAL_TO_TASK_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.DELETE_ACTION_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.ADD_TO_DAY_PLAN_TOOL = exports.CREATE_RECURRING_ACTION_TOOL = exports.CREATE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
+exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.PLAN_DAY_TOOL = exports.GET_DAY_PLAN_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.CLEAR_DAY_PLAN_TOOL = exports.DELETE_GOAL_TOOL = exports.DELETE_ROUTINE_TOOL = exports.LINK_GOAL_TO_TASK_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.DELETE_ACTION_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.ADD_TO_DAY_PLAN_TOOL = exports.CREATE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
 const GET_USER_CONTEXT_TOOL = {
     name: "get_user_context",
     description: "APPELLE CET OUTIL EN PREMIER dans toute conversation liée à la productivité. " +
@@ -30,11 +30,7 @@ const GET_USER_CONTEXT_TOOL = {
         "4. Sauvegarder le programme HTML avec save_document lié au projectId créé. " +
         "   Toujours renseigner domainId et subtitle. " +
         "   Si un document existe déjà pour ce projet (get_documents avant), passer son documentId pour éviter les doublons.\n" +
-        "5. Créer les routines (create_routine) et actions récurrentes (create_recurring_action) " +
-        "   TOUTES liées à l'activityId de l'étape 2.\n" +
-        "   → Pour chaque séance du programme (ex: Push Lundi, Pull Mercredi…), renseigne le paramètre checklist " +
-        "     avec le détail des exercices extraits du programme HTML (ex: 'Développé couché barre — 4×8 · 2 min'). " +
-        "     Ces items seront copiés automatiquement dans le plan du jour à chaque occurrence.\n" +
+        "5. Créer les routines (create_routine) — TOUTES liées à l'activityId de l'étape 2.\n" +
         "6. Envoyer une push_notification : \"[Titre du programme] créé ✅\"\n\n" +
         "Structure garantie : Domaine → Activités temps → Projet Gantt (+ KPI + Bilan dim.) → Programme HTML sauvegardé → Routines & Actions liées.\n" +
         "Ne jamais créer une routine ou action sans activityId et sans projet associé.",
@@ -61,7 +57,6 @@ const CREATE_ROUTINE_TOOL = {
     name: "create_routine",
     description: "Crée une **routine** : habitude trackée avec compteur ou fréquence (ex: Méditation, Gainage, Eau). " +
         "⚠️ activityId OBLIGATOIRE — créer d'abord l'activité temps avec create_activity si elle n'existe pas. " +
-        "⚠️ NE PAS confondre avec create_recurring_action (case à cocher sans tracking). " +
         "⚠️ NE PAS confondre avec create_activity (tracking de temps/chrono).",
     inputSchema: {
         type: "object",
@@ -77,52 +72,6 @@ const CREATE_ROUTINE_TOOL = {
     },
 };
 exports.CREATE_ROUTINE_TOOL = CREATE_ROUTINE_TOOL;
-const CREATE_RECURRING_ACTION_TOOL = {
-    name: "create_recurring_action",
-    description: "Crée une **action récurrente** : tâche qui apparaît dans le plan du jour sans tracking. " +
-        "Simple case à cocher (ex: Faire la vaisselle, Revue journalière, Arroser les plantes). " +
-        "⚠️ activityId OBLIGATOIRE — créer d'abord l'activité temps avec create_activity si elle n'existe pas. " +
-        "⚠️ NE PAS utiliser si l'utilisateur veut tracker une fréquence → create_routine. " +
-        "⚠️ NE PAS utiliser si l'utilisateur veut tracker du temps → create_activity. " +
-        "Si liée à une phase Gantt, renseigne startDate/endDate pour qu'elle expire en fin de phase. " +
-        "Pour les séances sportives ou toute action avec un détail de contenu (exercices, étapes…), " +
-        "utilise le paramètre checklist pour lister les éléments à cocher — ils apparaîtront dans l'app " +
-        "et seront copiés à chaque occurrence (ex: Développé couché 4×8 · 2 min).",
-    inputSchema: {
-        type: "object",
-        required: ["title", "activityId"],
-        properties: {
-            title: { type: "string", description: "Intitulé de l'action (ex: Push — Pectoraux / Épaules / Triceps)" },
-            activityId: { type: "string", description: "id de l'activité temps associée (OBLIGATOIRE)" },
-            domainId: { type: "string", description: "id du domaine" },
-            recurrenceType: {
-                type: "string",
-                enum: ["daily", "specificDays"],
-                description: "'daily' = tous les jours, 'specificDays' = jours choisis",
-            },
-            weekdays: {
-                type: "array",
-                items: { type: "number" },
-                description: "Jours actifs si specificDays : 1=Lun, 2=Mar … 7=Dim",
-            },
-            startDate: { type: "string", description: "Date d'activation ISO YYYY-MM-DD (optionnel)" },
-            endDate: { type: "string", description: "Date d'expiration ISO YYYY-MM-DD (optionnel)" },
-            projectTaskId: { type: "string", description: "id de la tâche Gantt liée (optionnel)" },
-            checklist: {
-                type: "array",
-                description: "Détail de la séance : liste d'exercices ou d'étapes à cocher. Copiée à chaque occurrence dans le plan du jour.",
-                items: {
-                    type: "object",
-                    required: ["title"],
-                    properties: {
-                        title: { type: "string", description: "Ex: 'Développé couché barre — 4×8 · 2 min repos'" },
-                    },
-                },
-            },
-        },
-    },
-};
-exports.CREATE_RECURRING_ACTION_TOOL = CREATE_RECURRING_ACTION_TOOL;
 const ADD_TO_DAY_PLAN_TOOL = {
     name: "add_to_day_plan",
     description: "Ajoute une action au plan quotidien de l'utilisateur pour une date donnée. " +
@@ -363,14 +312,14 @@ const RESTORE_ITEM_TOOL = {
     name: "restore_item",
     description: "Restaure un élément archivé (annule la suppression). " +
         "Utilise get_archives pour obtenir l'id. " +
-        "collection: 'domains', 'activities' ou 'recurringActions'.",
+        "collection: 'domains' ou 'activities'.",
     inputSchema: {
         type: "object",
         required: ["collection", "itemId"],
         properties: {
             collection: {
                 type: "string",
-                enum: ["domains", "activities", "recurringActions"],
+                enum: ["domains", "activities"],
                 description: "La collection Firestore",
             },
             itemId: { type: "string", description: "id de l'élément à restaurer" },

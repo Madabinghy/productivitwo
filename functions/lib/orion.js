@@ -29,7 +29,6 @@ const ORION_TOOLS = [
     { name: "delete_activity", description: "Supprime (soft-delete) une activité.", input_schema: { type: "object", properties: { activityId: { type: "string" } }, required: ["activityId"] } },
     { name: "create_routine", description: "Crée une routine récurrente.", input_schema: { type: "object", properties: { title: { type: "string" }, activityId: { type: "string" } }, required: ["title", "activityId"] } },
     { name: "delete_routine", description: "Supprime une routine.", input_schema: { type: "object", properties: { routineId: { type: "string" } }, required: ["routineId"] } },
-    { name: "create_recurring_action", description: "Crée une action récurrente (sans tracking).", input_schema: { type: "object", properties: { title: { type: "string" }, activityId: { type: "string" } }, required: ["title", "activityId"] } },
     { name: "delete_action", description: "Supprime une action récurrente.", input_schema: { type: "object", properties: { actionId: { type: "string" } }, required: ["actionId"] } },
     { name: "create_domain", description: "Crée un domaine de vie.", input_schema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] } },
     { name: "delete_domain", description: "Supprime un domaine.", input_schema: { type: "object", properties: { domainId: { type: "string" } }, required: ["domainId"] } },
@@ -92,7 +91,7 @@ async function writeCycleLog(uid, log) {
 }
 // ── Cycle ORION — accès complet à tous les tools ──────────────────────────────
 async function runOrionCycle(uid, opts) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p;
     const today = new Date().toISOString().slice(0, 10);
     const count = await getOrionRunCount(uid, today);
     if (count >= ORION_MAX_RUNS) {
@@ -306,10 +305,6 @@ Tu dois TOUJOURS appeler push_assistant_message avant end_turn, quelle que soit 
                             result = await (0, execute_1.executeDeleteRoutine)(uid, args.routineId);
                             actionLog.push(`🗑 Routine supprimée`);
                             break;
-                        case "create_recurring_action":
-                            result = await (0, execute_1.executeCreateRecurringAction)(uid, args);
-                            actionLog.push(`✅ Action récurrente créée : ${(_e = args.title) !== null && _e !== void 0 ? _e : ""}`);
-                            break;
                         case "delete_action":
                             result = await (0, execute_1.executeDeleteAction)(uid, args.actionId);
                             actionLog.push(`🗑 Action supprimée`);
@@ -317,7 +312,7 @@ Tu dois TOUJOURS appeler push_assistant_message avant end_turn, quelle que soit 
                         // ── Domaines ─────────────────────────────────────────────────
                         case "create_domain":
                             result = await (0, execute_1.executeCreateDomain)(uid, args);
-                            actionLog.push(`✅ Domaine créé : ${(_f = args.name) !== null && _f !== void 0 ? _f : ""}`);
+                            actionLog.push(`✅ Domaine créé : ${(_e = args.name) !== null && _e !== void 0 ? _e : ""}`);
                             break;
                         case "delete_domain":
                             result = await (0, execute_1.executeDeleteDomain)(uid, args.domainId);
@@ -333,30 +328,30 @@ Tu dois TOUJOURS appeler push_assistant_message avant end_turn, quelle que soit 
                             actionLog.push(`✏️ Statut tâche → ${args.status} (${args.taskId})`);
                             break;
                         case "archive_project":
-                            result = await (0, execute_1.executeArchiveProject)(uid, args.projectId, (_g = args.restore) !== null && _g !== void 0 ? _g : false);
+                            result = await (0, execute_1.executeArchiveProject)(uid, args.projectId, (_f = args.restore) !== null && _f !== void 0 ? _f : false);
                             actionLog.push(args.restore ? `♻️ Projet restauré` : `🗄 Projet archivé`);
                             break;
                         case "delete_project":
-                            result = await (0, execute_1.executeDeleteProject)(uid, args.projectId, (_h = args.deleteObjective) !== null && _h !== void 0 ? _h : false);
+                            result = await (0, execute_1.executeDeleteProject)(uid, args.projectId, (_g = args.deleteObjective) !== null && _g !== void 0 ? _g : false);
                             actionLog.push(`🗑 Projet supprimé`);
                             break;
                         case "push_gantt":
                             result = await (0, execute_1.executePushGantt)(uid, Object.assign({ uid }, args));
-                            actionLog.push(`🗂 Projet Gantt créé : ${(_k = (_j = args.project) === null || _j === void 0 ? void 0 : _j.title) !== null && _k !== void 0 ? _k : ""}`);
+                            actionLog.push(`🗂 Projet Gantt créé : ${(_j = (_h = args.project) === null || _h === void 0 ? void 0 : _h.title) !== null && _j !== void 0 ? _j : ""}`);
                             break;
                         // ── Objectifs ────────────────────────────────────────────────
                         case "link_goal_to_task":
-                            result = await (0, execute_1.executeLinkGoalToTask)(uid, args.goalId, (_l = args.projectId) !== null && _l !== void 0 ? _l : null, (_m = args.projectTaskId) !== null && _m !== void 0 ? _m : null);
+                            result = await (0, execute_1.executeLinkGoalToTask)(uid, args.goalId, (_k = args.projectId) !== null && _k !== void 0 ? _k : null, (_l = args.projectTaskId) !== null && _l !== void 0 ? _l : null);
                             actionLog.push(`🔗 Objectif lié à une tâche Gantt`);
                             break;
                         case "delete_goal":
-                            result = await (0, execute_1.executeDeleteGoal)(uid, args.goalId, (_o = args.action) !== null && _o !== void 0 ? _o : "archive");
+                            result = await (0, execute_1.executeDeleteGoal)(uid, args.goalId, (_m = args.action) !== null && _m !== void 0 ? _m : "archive");
                             actionLog.push(`🗑 Objectif archivé/supprimé`);
                             break;
                         // ── Documents ────────────────────────────────────────────────
                         case "save_document":
                             result = await (0, execute_1.executeSaveDocument)(uid, args);
-                            actionLog.push(`📄 Document sauvegardé : ${(_p = args.title) !== null && _p !== void 0 ? _p : ""}`);
+                            actionLog.push(`📄 Document sauvegardé : ${(_o = args.title) !== null && _o !== void 0 ? _o : ""}`);
                             break;
                         case "delete_document": {
                             const ref = db_1.db.collection(`users/${uid}/documents`).doc(args.documentId);
@@ -375,7 +370,7 @@ Tu dois TOUJOURS appeler push_assistant_message avant end_turn, quelle que soit 
                         // ── Messages ORION ───────────────────────────────────────────
                         case "push_assistant_message": {
                             result = await (0, execute_1.executePushAssistantMessage)(uid, args);
-                            const msgText = ((_q = args.text) !== null && _q !== void 0 ? _q : "").slice(0, 80);
+                            const msgText = ((_p = args.text) !== null && _p !== void 0 ? _p : "").slice(0, 80);
                             actionLog.push(`💬 Message ORION planifié : "${msgText}${msgText.length >= 80 ? "…" : ""}"`);
                             pushedCount++;
                             break;

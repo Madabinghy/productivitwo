@@ -4,7 +4,7 @@ import { db, FieldValue } from "./db";
 import {
   executeGetOrionContext, executeGetAssistantMessages, executePushAssistantMessage,
   executeDeleteAssistantMessage, executeUpdateActivityGoal, executeCreateRoutine,
-  executeCreateRecurringAction, executeAddToDayPlan, executeGetDayBlocks,
+  executeAddToDayPlan, executeGetDayBlocks,
   executeGetDayPlan, executePlanDay, executeClearDayPlan, executeCreateActivity,
   executeUpdateActivity, executeUpdateActivityGoal as _uag, executeDeleteActivity,
   executeDeleteAction, executeCreateDomain, executeDeleteDomain,
@@ -34,7 +34,7 @@ const ORION_TOOLS: PromptCachingBetaTool[] = [
   { name: "delete_activity",          description: "Supprime (soft-delete) une activité.",                                                                                               input_schema: { type: "object", properties: { activityId: { type: "string" } }, required: ["activityId"] } },
   { name: "create_routine",           description: "Crée une routine récurrente.",                                                                                                        input_schema: { type: "object", properties: { title: { type: "string" }, activityId: { type: "string" } }, required: ["title", "activityId"] } },
   { name: "delete_routine",           description: "Supprime une routine.",                                                                                                               input_schema: { type: "object", properties: { routineId: { type: "string" } }, required: ["routineId"] } },
-  { name: "create_recurring_action",  description: "Crée une action récurrente (sans tracking).",                                                                                        input_schema: { type: "object", properties: { title: { type: "string" }, activityId: { type: "string" } }, required: ["title", "activityId"] } },
+
   { name: "delete_action",            description: "Supprime une action récurrente.",                                                                                                     input_schema: { type: "object", properties: { actionId: { type: "string" } }, required: ["actionId"] } },
   { name: "create_domain",            description: "Crée un domaine de vie.",                                                                                                             input_schema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] } },
   { name: "delete_domain",            description: "Supprime un domaine.",                                                                                                                input_schema: { type: "object", properties: { domainId: { type: "string" } }, required: ["domainId"] } },
@@ -341,10 +341,7 @@ Tu dois TOUJOURS appeler push_assistant_message avant end_turn, quelle que soit 
               result = await executeDeleteRoutine(uid, args.routineId as string);
               actionLog.push(`🗑 Routine supprimée`);
               break;
-            case "create_recurring_action":
-              result = await executeCreateRecurringAction(uid, args as Parameters<typeof executeCreateRecurringAction>[1]);
-              actionLog.push(`✅ Action récurrente créée : ${args.title ?? ""}`);
-              break;
+
             case "delete_action":
               result = await executeDeleteAction(uid, args.actionId as string);
               actionLog.push(`🗑 Action supprimée`);

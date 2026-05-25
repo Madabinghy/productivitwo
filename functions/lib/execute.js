@@ -6,7 +6,6 @@ exports.executeGetUserContext = executeGetUserContext;
 exports.executeGetOrionContext = executeGetOrionContext;
 exports.executeUpdateActivityGoal = executeUpdateActivityGoal;
 exports.executeCreateRoutine = executeCreateRoutine;
-exports.executeCreateRecurringAction = executeCreateRecurringAction;
 exports.executeAddToDayPlan = executeAddToDayPlan;
 exports.executeGetDayBlocks = executeGetDayBlocks;
 exports.executeGetDayPlan = executeGetDayPlan;
@@ -18,7 +17,6 @@ exports.executeSaveDocument = executeSaveDocument;
 exports.executeGetDocuments = executeGetDocuments;
 exports.executeGetArchives = executeGetArchives;
 exports.executeRestoreItem = executeRestoreItem;
-exports.archivePlanItemsForRoutine = archivePlanItemsForRoutine;
 exports.executeCreateDomain = executeCreateDomain;
 exports.executeDeleteDomain = executeDeleteDomain;
 exports.executeDeleteActivity = executeDeleteActivity;
@@ -146,10 +144,9 @@ async function executeGetUserContext(uid) {
     const now = new Date();
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const ymdFrom = sevenDaysAgo.toISOString().slice(0, 10).replace(/-/g, "");
-    const [domainsSnap, activitiesSnap, routinesSnap, goalsSnap, dayPlanSnap, habitHitsSnap, sessionsSnap] = await Promise.all([
+    const [domainsSnap, activitiesSnap, goalsSnap, dayPlanSnap, habitHitsSnap, sessionsSnap] = await Promise.all([
         db_1.db.collection(`users/${uid}/domains`).get(),
         db_1.db.collection(`users/${uid}/activities`).get(),
-        db_1.db.collection(`users/${uid}/recurringActions`).get(),
         db_1.db.collection(`users/${uid}/goals`).where("status", "==", "active").get(),
         // Actions planifiées et réalisées sur 7 jours
         db_1.db.collection(`users/${uid}/dayPlan`)
@@ -188,19 +185,6 @@ async function executeGetUserContext(uid) {
             habitTarget: v.habitTarget,
         };
     });
-    const activeRoutines = routinesSnap.docs
-        .map((d) => d.data())
-        .filter((r) => r.active)
-        .map((r) => ({
-        id: r.id,
-        title: r.title,
-        type: r.type,
-        weekdays: r.weekdays || [],
-        startDate: r.startDate || null,
-        endDate: r.endDate || null,
-        domainId: r.domainId || null,
-        activityId: r.activityId || null,
-    }));
     const activeGoals = goalsSnap.docs.map((d) => {
         const v = d.data();
         const actions = (v.actions || []);
@@ -223,21 +207,10 @@ async function executeGetUserContext(uid) {
         domainId: it.domainId || null,
     }));
     // Actions planifiées non faites (pour identifier les écarts)
-    // Déduplique les routines daily (même recurringActionId sur 7 jours → une seule entrée)
-    const pendingRaw = dayPlanSnap.docs
+    const pendingActions = dayPlanSnap.docs
         .map((d) => d.data())
-        .filter((it) => !it.done && !it.archived && it.status !== "archived");
-    const seenRoutines = new Set();
-    const pendingActions = pendingRaw
-        .filter((it) => {
-        if (!it.recurringActionId)
-            return true;
-        if (seenRoutines.has(it.recurringActionId))
-            return false;
-        seenRoutines.add(it.recurringActionId);
-        return true;
-    })
-        .map((it) => (Object.assign({ title: it.title, date: it.yyyymmdd }, (it.recurringActionId ? { isRoutine: true } : {}))));
+        .filter((it) => !it.done && !it.archived && it.status !== "archived")
+        .map((it) => ({ title: it.title, date: it.yyyymmdd }));
     // Taux de complétion des habitudes/routines (habitHits groupés par habitId)
     const hitsByHabit = new Map();
     for (const doc of habitHitsSnap.docs) {
@@ -306,7 +279,7 @@ async function executeGetUserContext(uid) {
                 "Ne programme jamais deux messages avec la même condition pour la même période.",
         ],
     };
-    return JSON.stringify(Object.assign(Object.assign({}, coachingRules), { domains, activities, activeRoutines, activeGoals, recentActivity }), null, 2);
+    return JSON.stringify(Object.assign(Object.assign({}, coachingRules), { domains, activities, activeGoals, recentActivity }), null, 2);
 }
 async function executeUpdateActivityGoal(uid, activityId, updates) {
     var _a, _b;
@@ -347,66 +320,6 @@ async function executeCreateRoutine(uid, args) {
         deleted: false,
     });
     return `✅ Routine "${args.name}" créée (tracking habitude). Elle apparaîtra dans Productivitwo à la prochaine synchronisation.`;
-}
-async function executeCreateRecurringAction(uid, args) {
-    const id = (0, uuid_1.v4)();
-    // Si specificDays sans jours définis → fallback daily pour éviter une action invisible
-    const hasSpecificDays = args.recurrenceType === "specificDays" && (args.weekdays || []).length > 0;
-    const recurrenceType = hasSpecificDays ? "specificDays" : "daily";
-    const checklistItems = (args.checklist || []).map((c) => ({
-        id: (0, uuid_1.v4)(),
-        title: c.title,
-        done: false,
-    }));
-    await db_1.db.collection(`users/${uid}/recurringActions`).doc(id).set({
-        id,
-        title: args.title,
-        domainId: args.domainId || null,
-        activityId: args.activityId || null,
-        blockId: null,
-        type: recurrenceType,
-        weekdays: args.weekdays || [],
-        active: true,
-        createdAt: db_1.FieldValue.serverTimestamp(),
-        startDate: args.startDate || null,
-        endDate: args.endDate || null,
-        projectTaskId: args.projectTaskId || null,
-        checklist: checklistItems,
-    });
-    // Ajouter automatiquement au plan d'aujourd'hui si la routine est active ce jour
-    const today = new Date();
-    const yyyymmdd = today.toISOString().slice(0, 10).replace(/-/g, "");
-    const todayWeekday = today.getDay() === 0 ? 7 : today.getDay(); // 1=Lun..7=Dim
-    const activeToday = recurrenceType === "daily" ||
-        (args.weekdays || []).includes(todayWeekday);
-    if (activeToday) {
-        const planId = (0, uuid_1.v4)();
-        await db_1.db.collection(`users/${uid}/dayPlan`).doc(planId).set({
-            id: planId,
-            kind: "action",
-            title: args.title,
-            yyyymmdd,
-            done: false,
-            doneCount: 0,
-            allDay: false,
-            isNowFocus: false,
-            order: 9999,
-            toPlan: false,
-            archived: false,
-            status: "active",
-            createdAt: db_1.FieldValue.serverTimestamp(),
-            recurringActionId: id,
-            domainId: args.domainId || null,
-            activityId: args.activityId || null,
-            checklist: checklistItems.map((c) => (Object.assign(Object.assign({}, c), { id: (0, uuid_1.v4)(), done: false }))),
-        });
-    }
-    const period = args.startDate && args.endDate
-        ? ` du ${args.startDate} au ${args.endDate}`
-        : args.startDate ? ` à partir du ${args.startDate}`
-            : args.endDate ? ` jusqu'au ${args.endDate}`
-                : "";
-    return `✅ Routine "${args.title}" créée${period}.${activeToday ? " Ajoutée au plan d'aujourd'hui." : " Apparaîtra dans le plan demain."}`;
 }
 async function executeAddToDayPlan(uid, args) {
     // Valider le format de date
@@ -711,10 +624,9 @@ async function executeGetDocuments(uid, projectId, taskId) {
     return JSON.stringify(docs, null, 2);
 }
 async function executeGetArchives(uid) {
-    const [domainsSnap, activitiesSnap, routinesSnap] = await Promise.all([
+    const [domainsSnap, activitiesSnap] = await Promise.all([
         db_1.db.collection(`users/${uid}/domains`).where("deleted", "==", true).get(),
         db_1.db.collection(`users/${uid}/activities`).where("deleted", "==", true).get(),
-        db_1.db.collection(`users/${uid}/recurringActions`).where("deleted", "==", true).get(),
     ]);
     const domains = domainsSnap.docs.map((d) => ({ id: d.id, name: d.data().name }));
     const activities = activitiesSnap.docs.map((d) => {
@@ -723,15 +635,9 @@ async function executeGetArchives(uid) {
             id: d.id, name: d.data().name, domainId: (_a = d.data().domainId) !== null && _a !== void 0 ? _a : null,
         });
     });
-    const routines = routinesSnap.docs.map((d) => {
-        var _a;
-        return ({
-            id: d.id, title: d.data().title, activityId: (_a = d.data().activityId) !== null && _a !== void 0 ? _a : null,
-        });
-    });
-    if (!domains.length && !activities.length && !routines.length)
+    if (!domains.length && !activities.length)
         return "Aucun élément archivé — tout est propre.";
-    return JSON.stringify({ domains, activities, routines }, null, 2);
+    return JSON.stringify({ domains, activities }, null, 2);
 }
 async function executeRestoreItem(uid, collection, itemId) {
     var _a, _b, _c, _d;
@@ -742,19 +648,6 @@ async function executeRestoreItem(uid, collection, itemId) {
     const label = (_d = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : (_c = snap.data()) === null || _c === void 0 ? void 0 : _c.title) !== null && _d !== void 0 ? _d : itemId;
     await ref.update({ deleted: false });
     return `✅ "${label}" restauré dans ${collection}.`;
-}
-async function archivePlanItemsForRoutine(uid, routineId) {
-    const planSnap = await db_1.db.collection(`users/${uid}/dayPlan`)
-        .where("recurringActionId", "==", routineId)
-        .where("done", "==", false)
-        .get();
-    if (!planSnap.empty) {
-        const batch = db_1.db.batch();
-        for (const doc of planSnap.docs)
-            batch.update(doc.ref, { archived: true, status: "archived" });
-        await batch.commit();
-    }
-    return planSnap.size;
 }
 async function executeCreateDomain(uid, args) {
     var _a, _b, _c;
@@ -782,32 +675,15 @@ async function executeDeleteDomain(uid, domainId) {
         .where("domainId", "==", domainId)
         .get();
     let deletedActivities = 0;
-    let deletedRoutines = 0;
     if (!activitiesSnap.empty) {
         const actBatch = db_1.db.batch();
         for (const doc of activitiesSnap.docs)
             actBatch.update(doc.ref, { deleted: true });
         await actBatch.commit();
         deletedActivities = activitiesSnap.size;
-        // Cascade : soft-delete les routines liées à ces activités
-        for (const actDoc of activitiesSnap.docs) {
-            const routinesSnap = await db_1.db.collection(`users/${uid}/recurringActions`)
-                .where("activityId", "==", actDoc.id)
-                .get();
-            if (!routinesSnap.empty) {
-                const rBatch = db_1.db.batch();
-                for (const r of routinesSnap.docs)
-                    rBatch.update(r.ref, { deleted: true, active: false });
-                await rBatch.commit();
-                for (const r of routinesSnap.docs)
-                    await archivePlanItemsForRoutine(uid, r.id);
-                deletedRoutines += routinesSnap.size;
-            }
-        }
     }
     const details = [
         deletedActivities > 0 ? `${deletedActivities} activité(s)` : null,
-        deletedRoutines > 0 ? `${deletedRoutines} routine(s)` : null,
     ].filter(Boolean).join(", ");
     return `✅ Domaine "${name}" supprimé${details ? ` (cascade : ${details})` : ""}.`;
 }
@@ -819,18 +695,6 @@ async function executeDeleteActivity(uid, activityId) {
         return `Activité introuvable : ${activityId}`;
     const name = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : activityId;
     await ref.update({ deleted: true });
-    // Cascade : soft-delete routines liées + archive leurs items du plan
-    const routinesSnap = await db_1.db.collection(`users/${uid}/recurringActions`)
-        .where("activityId", "==", activityId)
-        .get();
-    if (!routinesSnap.empty) {
-        const rBatch = db_1.db.batch();
-        for (const r of routinesSnap.docs)
-            rBatch.update(r.ref, { deleted: true, active: false });
-        await rBatch.commit();
-        for (const r of routinesSnap.docs)
-            await archivePlanItemsForRoutine(uid, r.id);
-    }
     // Délie les day plan items non faits
     const planSnap = await db_1.db.collection(`users/${uid}/dayPlan`)
         .where("activityId", "==", activityId)
@@ -842,10 +706,7 @@ async function executeDeleteActivity(uid, activityId) {
             batch.update(doc.ref, { activityId: null });
         await batch.commit();
     }
-    const details = [
-        routinesSnap.size > 0 ? `${routinesSnap.size} routine(s)` : null,
-        planSnap.size > 0 ? `${planSnap.size} action(s) du plan déliée(s)` : null,
-    ].filter(Boolean).join(", ");
+    const details = planSnap.size > 0 ? `${planSnap.size} action(s) du plan déliée(s)` : null;
     return `✅ Activité "${name}" supprimée${details ? ` (cascade : ${details})` : ""}.`;
 }
 async function executeUpdateProject(uid, projectId, updates) {
@@ -921,24 +782,14 @@ async function executeLinkGoalToTask(uid, goalId, projectId, projectTaskId) {
 }
 async function executeDeleteRoutine(uid, routineId) {
     var _a, _b;
-    const ref = db_1.db.collection(`users/${uid}/recurringActions`).doc(routineId);
+    const ref = db_1.db.collection(`users/${uid}/activities`).doc(routineId);
     const snap = await ref.get();
     if (!snap.exists)
         return `Routine introuvable : ${routineId}`;
-    const title = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.title) !== null && _b !== void 0 ? _b : routineId;
+    const title = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : routineId;
     // Soft-delete pour que le merge Flutter respecte la suppression
-    await ref.update({ deleted: true, active: false });
-    const planSnap = await db_1.db.collection(`users/${uid}/dayPlan`)
-        .where("recurringActionId", "==", routineId)
-        .where("done", "==", false)
-        .get();
-    if (!planSnap.empty) {
-        const batch = db_1.db.batch();
-        for (const doc of planSnap.docs)
-            batch.update(doc.ref, { archived: true, status: "archived" });
-        await batch.commit();
-    }
-    return `✅ Routine "${title}" supprimée (${planSnap.size} occurrence(s) future(s) retirée(s) du plan).`;
+    await ref.update({ deleted: true });
+    return `✅ Routine "${title}" supprimée.`;
 }
 async function executeDeleteGoal(uid, goalId, action) {
     var _a, _b;
@@ -1103,10 +954,9 @@ async function executeGetOrionContext(uid) {
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const ymdFrom = sevenDaysAgo.toISOString().slice(0, 10).replace(/-/g, "");
     const ymdToday = today.replace(/-/g, "");
-    const [domainsSnap, activitiesSnap, routinesSnap, goalsSnap, dayPlanSnap, habitHitsSnap, sessionsSnap, projectsSnap] = await Promise.all([
+    const [domainsSnap, activitiesSnap, goalsSnap, dayPlanSnap, habitHitsSnap, sessionsSnap, projectsSnap] = await Promise.all([
         db_1.db.collection(`users/${uid}/domains`).get(),
         db_1.db.collection(`users/${uid}/activities`).get(),
-        db_1.db.collection(`users/${uid}/recurringActions`).get(),
         db_1.db.collection(`users/${uid}/goals`).where("status", "==", "active").get(),
         db_1.db.collection(`users/${uid}/dayPlan`).where("yyyymmdd", ">=", ymdFrom).get(),
         db_1.db.collection(`users/${uid}/habitHits`).where("ts", ">=", sevenDaysAgo).get(),
@@ -1120,8 +970,6 @@ async function executeGetOrionContext(uid) {
     activitiesSnap.docs.forEach((d) => { const v = d.data(); activityMap.set(v.id, v.name); });
     const activities = activitiesSnap.docs.map((d) => d.data()).filter((v) => !v.deleted)
         .map((v) => { var _a; return ({ id: v.id, name: v.name, type: v.type, domainId: v.domainId, goalMin: (_a = v.goalMin) !== null && _a !== void 0 ? _a : null }); });
-    const routines = routinesSnap.docs.map((d) => d.data()).filter((r) => r.active && !r.deleted)
-        .map((r) => { var _a, _b; return ({ id: r.id, title: r.title, activityId: (_a = r.activityId) !== null && _a !== void 0 ? _a : null, weekdays: (_b = r.weekdays) !== null && _b !== void 0 ? _b : [] }); });
     const goals = goalsSnap.docs.map((d) => {
         var _a;
         const v = d.data();
@@ -1170,7 +1018,7 @@ async function executeGetOrionContext(uid) {
             urgentTasks,
         };
     });
-    return JSON.stringify({ today, domains, activities, routines, goals, planSummary, habitStats, timeStats, projects }, null, 2);
+    return JSON.stringify({ today, domains, activities, goals, planSummary, habitStats, timeStats, projects }, null, 2);
 }
 async function executeGetInbox(uid) {
     const snap = await db_1.db.collection(`users/${uid}/captures`)
