@@ -11,7 +11,8 @@ class _Entry {
 
 const _changelog = [
   _Entry('5.32', '25 mai 2026', [
-    (Icons.language_outlined, 'App web : compatible Firefox et Safari — l\'écran de connexion s\'affiche même si Firebase s\'initialise lentement'),
+    (Icons.language_outlined, 'App web : page blanche Safari corrigée — désactivation du service worker obsolète'),
+    (Icons.language_outlined, 'App web : compatible Firefox et Chrome — timeout Firebase 8s'),
   ]),
   _Entry('5.31', '24 mai 2026', [
     (Icons.smart_toy_outlined, 'ORION : 1 activation/jour en gratuit, 5/jour en Pro (barre de progression visible)'),

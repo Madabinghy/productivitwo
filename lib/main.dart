@@ -730,13 +730,18 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   if (kIsWeb) {
-    // Web : Firebase uniquement, pas de RevenueCat ni de notifications
+    // Web : Firebase uniquement — timeout 10s pour éviter un blocage sur Firefox/Safari
     try {
       if (Firebase.apps.isEmpty) {
         await Firebase.initializeApp(
-            options: DefaultFirebaseOptions.currentPlatform);
+                options: DefaultFirebaseOptions.currentPlatform)
+            .timeout(const Duration(seconds: 10),
+                onTimeout: () =>
+                    throw TimeoutException('Firebase init timeout on web'));
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      devLog.error('Firebase.initializeApp FAIL on web', tag: 'MAIN', error: e);
+    }
     runApp(const WebApp());
     return;
   }

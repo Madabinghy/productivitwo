@@ -33,8 +33,26 @@
   <title>Productivitwo — Projects</title>
   <link rel="manifest" href="manifest.json">
 
+  <!-- Safari : déregistre tout service worker existant avant le chargement Flutter
+       (évite que des fichiers obsolètes en cache bloquent le rendu CanvasKit) -->
+  <script>
+    if (/apple/i.test(navigator.vendor) && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(regs) {
+        regs.forEach(function(r) { r.unregister(); });
+      });
+    }
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </head>
 <body>
+  <!-- Écran de chargement — masqué au premier frame Flutter -->
+  <div id="_fl_load" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#07100D">
+    <span style="color:#27C48F;font-family:sans-serif;font-size:15px">Chargement…</span>
+  </div>
+  <script>
+    window.addEventListener('flutter-first-frame', function() {
+      var d = document.getElementById('_fl_load'); if (d) d.remove();
+    });
+  </script>
 </body>
 </html>

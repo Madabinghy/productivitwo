@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:ui';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -106,15 +105,11 @@ class _WebAuthScreenState extends State<WebAuthScreen>
                     constraints: const BoxConstraints(maxWidth: 440),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(24),
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                          child: Container(
+                      child: Container(
                             decoration: BoxDecoration(
                               color: dark
-                                  ? Colors.white.withOpacity(0.07)
-                                  : Colors.white.withOpacity(0.88),
+                                  ? Colors.white.withOpacity(0.10)
+                                  : Colors.white.withOpacity(0.92),
                               borderRadius: BorderRadius.circular(24),
                               border: Border.all(
                                 color: dark
@@ -184,8 +179,6 @@ class _WebAuthScreenState extends State<WebAuthScreen>
                         ),
                       ),
                     ),
-                  ),
-                ),
 
                 const Spacer(flex: 2),
 

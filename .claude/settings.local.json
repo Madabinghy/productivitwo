@@ -27,7 +27,31 @@
       "Bash(grep -o \"Activit.\\\\{0,40\\\\}\" /Users/emericedmond/workspace/flutter/apps/Productivitwo/productivitwo_v1_starter/build/web/main.dart.js)",
       "Bash(awk 'NR<=20')",
       "Bash(pbcopy)",
-      "Bash(security export *)"
+      "Bash(security export *)",
+      "Bash(xargs -I{} git show {}:lib/widgets/paywall_sheet.dart)",
+      "Bash(grep -n 'S'\\\\''abonner\\\\|abonner\\\\|priceString\\\\|price\\\\|priceAmountMicros\\\\|currencyCode\\\\|localizedPrice\\\\|$US\\\\|button.*text\\\\|_selected' /Users/emericedmond/workspace/flutter/apps/Productivitwo/productivitwo_v1_starter/lib/widgets/paywall_sheet.dart)",
+      "Bash(flutter --version)",
+      "Bash(curl -s -I \"https://productivitwo-app.web.app/canvaskit/canvaskit.js\")",
+      "Bash(curl -s -I \"https://productivitwo-app.web.app/\")",
+      "Bash(curl -s -I \"https://productivitwo-app.web.app/index.html\")",
+      "Bash(curl -s \"https://productivitwo-app.web.app/flutter_bootstrap.js\")",
+      "Bash(curl -s -I \"https://productivitwo-app.web.app/canvaskit/canvaskit.wasm\")",
+      "Bash(curl -s -I \"https://productivitwo-app.web.app/main.dart.js\")",
+      "Bash(curl -s -I \"https://productivitwo-app.web.app/flutter_service_worker.js\")",
+      "Bash(curl -s \"https://productivitwo-app.web.app/\")",
+      "Bash(flutter pub *)",
+      "Bash(xargs -I{} grep -A3 \"flutter:\" {})",
+      "Bash(xargs cat)",
+      "Bash(curl -s -I \"https://productivitwo-app.web.app/flutter.js\")",
+      "Bash(curl -s -I \"https://www.gstatic.com/flutter-canvaskit/d2913632a4578ee4d0b8b1c4a69888c8a0672c4b/canvaskit.js\")",
+      "Bash(curl -s -I \"https://www.gstatic.com/flutter-canvaskit/d2913632a4578ee4d0b8b1c4a69888c8a0672c4b/canvaskit.wasm\")",
+      "Bash(curl -s \"https://productivitwo-app.web.app/flutter_service_worker.js\")",
+      "Bash(curl -s -I \"https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js\")",
+      "Bash(curl -s -I \"https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js\")",
+      "Bash(curl -sI \"https://productivitwo-app.web.app/canvaskit/canvaskit.wasm\")",
+      "Bash(curl -sI \"https://productivitwo-app.web.app/\")",
+      "Bash(curl -sI \"https://www.gstatic.com/flutter-canvaskit/d2913632a4578ee4d0b8b1c4a69888c8a0672c4b/canvaskit.js\")",
+      "Bash(md5 /Users/emericedmond/workspace/flutter/apps/Productivitwo/productivitwo_v1_starter/build/web/flutter_bootstrap.js)"
     ]
   }
 }
