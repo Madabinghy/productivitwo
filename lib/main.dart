@@ -3846,8 +3846,9 @@ class _AppRootState extends State<AppRoot>
       if (total == 0 && combinedScore == 0.0) return const SizedBox.shrink();
 
       // Exprimer le score combiné en done/displayTotal pour le chip
+      final ganttAsDone  = total > 0 ? (combinedScore * total).round() : 0;
       final displayDone  = total > 0
-          ? math.max(done, (combinedScore * total).round())
+          ? (done > ganttAsDone ? done : ganttAsDone)
           : (combinedScore * 100).round();
       final displayTotal = total > 0 ? total : 100;
 
