@@ -130,7 +130,8 @@ class _WebHomeScreenState extends State<WebHomeScreen>
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
+    User? user;
+    try { user = FirebaseAuth.instance.currentUser; } catch (_) {}
     final cs = Theme.of(context).colorScheme;
 
     return Scaffold(

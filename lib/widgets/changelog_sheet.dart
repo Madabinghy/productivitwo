@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.32', '25 mai 2026', [
+    (Icons.language_outlined, 'App web : compatible Firefox et Safari — l\'écran de connexion s\'affiche même si Firebase s\'initialise lentement'),
+  ]),
   _Entry('5.31', '24 mai 2026', [
     (Icons.smart_toy_outlined, 'ORION : 1 activation/jour en gratuit, 5/jour en Pro (barre de progression visible)'),
     (Icons.rocket_launch_outlined, 'Paywall : features mises à jour (ORION, stats, rapport de temps, app web)'),

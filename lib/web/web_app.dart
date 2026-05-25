@@ -1,7 +1,23 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/web/web_auth_screen.dart';
 import 'package:productivitwo_v1/web/web_home_screen.dart';
+
+/// Retourne le stream d'auth ou Stream.value(null) si Firebase n'est pas init.
+/// Timeout 8s : si authStateChanges() ne répond pas (Firebase partiellement init
+/// sur Safari/Firefox), on émet null → écran de connexion sans spinner infini.
+Stream<User?> _authStream() {
+  try {
+    if (Firebase.apps.isEmpty) return Stream.value(null);
+    return FirebaseAuth.instance.authStateChanges().timeout(
+      const Duration(seconds: 8),
+      onTimeout: (sink) => sink.add(null),
+    );
+  } catch (_) {
+    return Stream.value(null);
+  }
+}
 
 // ── Couleurs Productivitwo ────────────────────────────────────────────────────
 
@@ -55,14 +71,16 @@ class WebApp extends StatelessWidget {
       themeMode: ThemeMode.system,
 
       home: StreamBuilder<User?>(
-        stream: FirebaseAuth.instance.authStateChanges(),
+        // Firebase peut ne pas être initialisé (ex: timeout sur Firefox/Safari)
+        // → on utilise un stream vide qui émet null directement
+        stream: _authStream(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Scaffold(
               body: Center(child: CircularProgressIndicator()),
             );
           }
-          if (snapshot.data == null) return const WebAuthScreen();
+          if (snapshot.hasError || snapshot.data == null) return const WebAuthScreen();
           return const WebHomeScreen();
         },
       ),
