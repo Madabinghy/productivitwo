@@ -4,27 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/web/web_auth_screen.dart';
 import 'package:productivitwo_v1/web/web_home_screen.dart';
 
-/// Retourne le stream d'auth ou Stream.value(null) si Firebase n'est pas init.
-/// Timeout 8s : si authStateChanges() ne répond pas (Firebase partiellement init
-/// sur Safari/Firefox), on émet null → écran de connexion sans spinner infini.
-Stream<User?> _authStream() {
-  try {
-    if (Firebase.apps.isEmpty) return Stream.value(null);
-    return FirebaseAuth.instance.authStateChanges().timeout(
-      const Duration(seconds: 8),
-      onTimeout: (sink) => sink.add(null),
-    );
-  } catch (_) {
-    return Stream.value(null);
-  }
-}
-
 // ── Couleurs Productivitwo ────────────────────────────────────────────────────
 
-const _kPrimary   = Color(0xFF1D9E75); // vert teal Productivitwo
-const _kDark      = Color(0xFF155F47); // vert foncé
+const _kPrimary   = Color(0xFF1D9E75);
+const _kDark      = Color(0xFF155F47);
 const _kSeedLight = _kPrimary;
-const _kSeedDark  = Color(0xFF27C48F); // vert éclairci pour fond sombre
+const _kSeedDark  = Color(0xFF27C48F);
+
+// ── WebApp ────────────────────────────────────────────────────────────────────
 
 class WebApp extends StatelessWidget {
   const WebApp({super.key});
@@ -35,7 +22,6 @@ class WebApp extends StatelessWidget {
       title: 'Productivitwo — Projects',
       debugShowCheckedModeBanner: false,
 
-      // ── Thème clair ────────────────────────────────────────────────────────
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: _kSeedLight,
@@ -51,7 +37,6 @@ class WebApp extends StatelessWidget {
         useMaterial3: true,
       ),
 
-      // ── Thème sombre ───────────────────────────────────────────────────────
       darkTheme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: _kSeedDark,
@@ -67,23 +52,57 @@ class WebApp extends StatelessWidget {
         useMaterial3: true,
       ),
 
-      // Suit la préférence système de l'utilisateur
       themeMode: ThemeMode.system,
 
-      home: StreamBuilder<User?>(
-        // Firebase peut ne pas être initialisé (ex: timeout sur Firefox/Safari)
-        // → on utilise un stream vide qui émet null directement
-        stream: _authStream(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
-            );
-          }
-          if (snapshot.hasError || snapshot.data == null) return const WebAuthScreen();
-          return const WebHomeScreen();
-        },
-      ),
+      home: _AuthGate(),
+    );
+  }
+}
+
+/// Widget stateful dédié à la gate d'authentification.
+/// Le stream Firebase est créé une seule fois dans initState et
+/// réutilisé sans recréation à chaque rebuild du MaterialApp.
+class _AuthGate extends StatefulWidget {
+  @override
+  State<_AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<_AuthGate> {
+  Stream<User?>? _stream;
+
+  @override
+  void initState() {
+    super.initState();
+    _stream = _buildStream();
+  }
+
+  Stream<User?>? _buildStream() {
+    try {
+      if (Firebase.apps.isEmpty) return null;
+      return FirebaseAuth.instance.authStateChanges();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final stream = _stream;
+    if (stream == null) return const WebAuthScreen();
+
+    return StreamBuilder<User?>(
+      stream: stream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (snapshot.hasError || snapshot.data == null) {
+          return const WebAuthScreen();
+        }
+        return const WebHomeScreen();
+      },
     );
   }
 }
