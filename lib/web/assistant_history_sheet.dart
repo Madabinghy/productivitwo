@@ -51,8 +51,10 @@ class AssistantHistorySheet extends StatefulWidget {
 }
 
 class _AssistantHistorySheetState extends State<AssistantHistorySheet> {
-  List<_HistoryItem> _items = [];
+  List<_HistoryItem> _shown = [];
+  List<_HistoryItem> _pending = [];
   bool _loading = true;
+  bool _advancedExpanded = false;
 
   @override
   void initState() {
@@ -69,11 +71,11 @@ class _AssistantHistorySheetState extends State<AssistantHistorySheet> {
 
     final snap = await FirebaseFirestore.instance
         .collection('users/$uid/assistant_messages')
-        .where('status', whereIn: ['shown', 'pending'])
-        .limit(30)
+        .where('status', whereIn: ['shown', 'dismissed', 'pending'])
+        .limit(50)
         .get();
 
-    final items = snap.docs.map((doc) {
+    final all = snap.docs.map((doc) {
       final d = doc.data();
       return _HistoryItem(
         id: d['id'] as String? ?? doc.id,
@@ -86,16 +88,21 @@ class _AssistantHistorySheetState extends State<AssistantHistorySheet> {
       );
     }).toList();
 
-    // Triés : shown en premier (les plus récents), puis pending
-    items.sort((a, b) {
-      if (a.status == 'shown' && b.status != 'shown') return -1;
-      if (b.status == 'shown' && a.status != 'shown') return 1;
-      final dateA = a.shownAt ?? a.createdAt ?? DateTime(0);
-      final dateB = b.shownAt ?? b.createdAt ?? DateTime(0);
-      return dateB.compareTo(dateA);
-    });
+    final shown = all.where((i) => i.status == 'shown' || i.status == 'dismissed').toList()
+      ..sort((a, b) {
+        final dateA = a.shownAt ?? a.createdAt ?? DateTime(0);
+        final dateB = b.shownAt ?? b.createdAt ?? DateTime(0);
+        return dateB.compareTo(dateA);
+      });
 
-    if (mounted) setState(() { _items = items; _loading = false; });
+    final pending = all.where((i) => i.status == 'pending').toList()
+      ..sort((a, b) {
+        final dateA = a.createdAt ?? DateTime(0);
+        final dateB = b.createdAt ?? DateTime(0);
+        return dateB.compareTo(dateA);
+      });
+
+    if (mounted) setState(() { _shown = shown; _pending = pending; _loading = false; });
   }
 
   static DateTime? _toDate(dynamic v) {
@@ -159,45 +166,81 @@ class _AssistantHistorySheetState extends State<AssistantHistorySheet> {
             // ── Contenu ──────────────────────────────────────────────────
             Expanded(
               child: _loading
-                  ? const Center(
-                      child: CircularProgressIndicator(color: _gold),
-                    )
-                  : _items.isEmpty
+                  ? const Center(child: CircularProgressIndicator(color: _gold))
+                  : _shown.isEmpty && _pending.isEmpty
                       ? Center(
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.smart_toy_outlined,
-                                  size: 40, color: _muted),
+                              const Icon(Icons.smart_toy_outlined, size: 40, color: _muted),
                               const SizedBox(height: 12),
-                              Text(
+                              const Text(
                                 'Aucun message pour l\'instant.',
-                                style: const TextStyle(
-                                  fontFamily: 'monospace',
-                                  fontSize: 12,
-                                  color: _muted,
-                                ),
+                                style: TextStyle(fontFamily: 'monospace', fontSize: 12, color: _muted),
                               ),
                               const SizedBox(height: 6),
                               const Text(
                                 'Connecte Claude pour recevoir des conseils.',
-                                style: TextStyle(
-                                  fontFamily: 'monospace',
-                                  fontSize: 11,
-                                  color: _muted,
-                                ),
+                                style: TextStyle(fontFamily: 'monospace', fontSize: 11, color: _muted),
                               ),
                             ],
                           ),
                         )
-                      : ListView.separated(
+                      : ListView(
                           controller: scroll,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 12),
-                          itemCount: _items.length,
-                          separatorBuilder: (_, __) =>
-                              const Divider(color: _border, height: 1),
-                          itemBuilder: (_, i) => _HistoryTile(item: _items[i]),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          children: [
+                            // Messages affichés
+                            if (_shown.isNotEmpty) ...[
+                              for (int i = 0; i < _shown.length; i++) ...[
+                                _HistoryTile(item: _shown[i]),
+                                if (i < _shown.length - 1)
+                                  const Divider(color: _border, height: 1),
+                              ],
+                            ],
+
+                            // Section avancée — messages en attente (visible uniquement sur web)
+                            if (_pending.isNotEmpty) ...[
+                              const SizedBox(height: 12),
+                              GestureDetector(
+                                onTap: () => setState(() => _advancedExpanded = !_advancedExpanded),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: _surface,
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: _border),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Text('⚙', style: TextStyle(fontSize: 11, color: _muted)),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'AVANCÉ — ${_pending.length} message${_pending.length > 1 ? 's' : ''} en attente',
+                                        style: const TextStyle(
+                                          fontFamily: 'monospace', fontSize: 10,
+                                          letterSpacing: 1.5, color: _muted,
+                                        ),
+                                      ),
+                                      const Spacer(),
+                                      Icon(
+                                        _advancedExpanded ? Icons.expand_less : Icons.expand_more,
+                                        size: 16, color: _muted,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              if (_advancedExpanded) ...[
+                                const SizedBox(height: 8),
+                                for (int i = 0; i < _pending.length; i++) ...[
+                                  _HistoryTile(item: _pending[i]),
+                                  if (i < _pending.length - 1)
+                                    const Divider(color: _border, height: 1),
+                                ],
+                              ],
+                            ],
+                          ],
                         ),
             ),
           ],

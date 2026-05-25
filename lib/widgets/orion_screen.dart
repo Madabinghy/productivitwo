@@ -499,9 +499,10 @@ class _TipCard extends StatelessWidget {
           const SizedBox(width: 8),
           const Expanded(
             child: Text(
-              'ASTUCE — Connecte Claude Desktop à Productivitwo via MCP '
-              '(menu ⋮ → Tokens API) pour piloter tes projets directement depuis '
-              'Claude, sans passer par ORION et sans limite quotidienne.',
+              'ASTUCE — Connecte Claude Desktop à Productivitwo Web via MCP '
+              '(menu ⋮ → Tokens API) pour piloter tes projets directement '
+              'depuis claude.ai/Productivitwo Web, sans passer par ORION et '
+              'sans limite quotidienne.',
               style: TextStyle(
                 fontFamily: 'monospace',
                 fontSize: 11,

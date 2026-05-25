@@ -508,6 +508,7 @@ ${ideas}
 Génère un plan réaliste en JSON. Règles :
 - 2 à 4 phases couvrant la période ${today} → ${endDate}
 - 3 à 6 tâches par phase, formulées en verbe + objet
+- 2 à 4 sous-actions par tâche (étapes concrètes et séquentielles, formulées comme des instructions courtes)
 - isMilestone: true uniquement pour les livrables ou validations clés
 - Toutes les dates entre ${today} et ${endDate}
 
@@ -517,7 +518,7 @@ Retourne UNIQUEMENT ce JSON valide, sans aucun texte autour :
     { "label": "Nom de la phase", "startDate": "YYYY-MM-DD", "endDate": "YYYY-MM-DD" }
   ],
   "tasks": [
-    { "title": "Verbe + action concrète", "phaseIndex": 0, "startDate": "YYYY-MM-DD", "endDate": "YYYY-MM-DD", "isMilestone": false }
+    { "title": "Verbe + action concrète", "phaseIndex": 0, "startDate": "YYYY-MM-DD", "endDate": "YYYY-MM-DD", "isMilestone": false, "actions": ["Étape 1", "Étape 2", "Étape 3"] }
   ]
 }`;
     const message = await client.messages.create({
@@ -542,7 +543,7 @@ Retourne UNIQUEMENT ce JSON valide, sans aucun texte autour :
         endDate: p.endDate,
     }));
     const tasks = structured.tasks.map((t) => {
-        var _a, _b, _c;
+        var _a, _b, _c, _d;
         return ({
             id: (0, uuid_1.v4)(),
             title: t.title,
@@ -556,7 +557,13 @@ Retourne UNIQUEMENT ce JSON valide, sans aucun texte autour :
             barLabel: null,
             status: "pending",
             recurringActionId: null,
-            actions: [],
+            actions: ((_d = t.actions) !== null && _d !== void 0 ? _d : []).map((a) => ({
+                id: (0, uuid_1.v4)(),
+                title: a,
+                done: false,
+                doneAt: null,
+                createdAt: new Date().toISOString(),
+            })),
         });
     });
     await db_1.db.collection(`users/${uid}/projects`).doc(projectId).set({

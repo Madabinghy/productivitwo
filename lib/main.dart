@@ -5427,6 +5427,54 @@ class _AppRootState extends State<AppRoot>
                       ],
                     ),
                   ),
+                  // Pastille catalogue
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      showModalBottomSheet(
+                        context: context,
+                        isScrollControlled: true,
+                        showDragHandle: true,
+                        builder: (_) => SizedBox(
+                          height: MediaQuery.of(context).size.height * 0.85,
+                          child: CatalogueSheet(
+                            logic: logic,
+                            onChanged: () => setState(() {}),
+                          ),
+                        ),
+                      );
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                      decoration: BoxDecoration(
+                        color: Theme.of(ctx).colorScheme.primaryContainer.withOpacity(.35),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                            color: Theme.of(ctx).colorScheme.primary.withOpacity(.2)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.auto_awesome_outlined,
+                              size: 14,
+                              color: Theme.of(ctx).colorScheme.primary),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Découvre les domaines et activités préconfigurés dans le catalogue',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  height: 1.4,
+                                  color: Theme.of(ctx).colorScheme.onSurface.withOpacity(.65)),
+                            ),
+                          ),
+                          Icon(Icons.arrow_forward_ios_rounded,
+                              size: 11,
+                              color: Theme.of(ctx).colorScheme.primary.withOpacity(.5)),
+                        ],
+                      ),
+                    ),
+                  ),
                   const Divider(height: 1),
                   ListView.separated(
                     shrinkWrap: true,

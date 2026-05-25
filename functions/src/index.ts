@@ -497,6 +497,7 @@ ${ideas}
 Génère un plan réaliste en JSON. Règles :
 - 2 à 4 phases couvrant la période ${today} → ${endDate}
 - 3 à 6 tâches par phase, formulées en verbe + objet
+- 2 à 4 sous-actions par tâche (étapes concrètes et séquentielles, formulées comme des instructions courtes)
 - isMilestone: true uniquement pour les livrables ou validations clés
 - Toutes les dates entre ${today} et ${endDate}
 
@@ -506,7 +507,7 @@ Retourne UNIQUEMENT ce JSON valide, sans aucun texte autour :
     { "label": "Nom de la phase", "startDate": "YYYY-MM-DD", "endDate": "YYYY-MM-DD" }
   ],
   "tasks": [
-    { "title": "Verbe + action concrète", "phaseIndex": 0, "startDate": "YYYY-MM-DD", "endDate": "YYYY-MM-DD", "isMilestone": false }
+    { "title": "Verbe + action concrète", "phaseIndex": 0, "startDate": "YYYY-MM-DD", "endDate": "YYYY-MM-DD", "isMilestone": false, "actions": ["Étape 1", "Étape 2", "Étape 3"] }
   ]
 }`;
 
@@ -524,7 +525,7 @@ Retourne UNIQUEMENT ce JSON valide, sans aucun texte autour :
 
     const structured: {
       phases: Array<{ label: string; startDate: string; endDate: string }>;
-      tasks: Array<{ title: string; phaseIndex: number; startDate: string; endDate: string; isMilestone: boolean }>;
+      tasks: Array<{ title: string; phaseIndex: number; startDate: string; endDate: string; isMilestone: boolean; actions?: string[] }>;
     } = JSON.parse(jsonMatch[0]);
 
     // Construire le projet avec IDs
@@ -549,7 +550,13 @@ Retourne UNIQUEMENT ce JSON valide, sans aucun texte autour :
       barLabel: null,
       status: "pending",
       recurringActionId: null,
-      actions: [],
+      actions: (t.actions ?? []).map((a: string) => ({
+        id: uuidv4(),
+        title: a,
+        done: false,
+        doneAt: null,
+        createdAt: new Date().toISOString(),
+      })),
     }));
 
     await db.collection(`users/${uid}/projects`).doc(projectId).set({

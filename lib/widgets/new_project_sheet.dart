@@ -166,7 +166,36 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
                   fontSize: 12,
                   color: cs.onSurface.withOpacity(.45)),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 10),
+            // Pastille info philosophie
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              decoration: BoxDecoration(
+                color: Colors.deepPurple.withOpacity(.07),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.deepPurple.withOpacity(.18)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info_outline, size: 14,
+                      color: Colors.deepPurple.shade300),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Productivitwo ne crée pas de projets manuellement — '
+                      'ORION les structure pour toi en quelques secondes. '
+                      'Tu passes ton temps à exécuter, pas à planifier.',
+                      style: TextStyle(
+                          fontSize: 12,
+                          height: 1.5,
+                          color: cs.onSurface.withOpacity(.55)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
 
             // Titre
             TextField(
