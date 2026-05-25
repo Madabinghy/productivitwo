@@ -6300,6 +6300,36 @@ class _AppRootState extends State<AppRoot>
         final maxActivity = countByYmd.values.fold(0, (m, v) => v > m ? v : m);
         final referenceCount = maxActivity.clamp(1, 10); // 1 unité min, 10 = 5h max
 
+        // Helper chips masquage
+        Widget snoozeChip(String label, VoidCallback onTap) => GestureDetector(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withOpacity(.5),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: cs.onSurface.withOpacity(.1)),
+            ),
+            child: Text(label,
+                style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.65))),
+          ),
+        );
+
+        String fmtGoal(int min) {
+          if (min <= 0) return 'Pas de cible';
+          if (min < 60) return '${min} min/j';
+          final h = min ~/ 60;
+          final m = min % 60;
+          return m == 0 ? '${h}h / j' : '${h}h${m.toString().padLeft(2, '0')} / j';
+        }
+
+        final accentColor = dColor ?? cs.primary;
+        final weeklyTargetMin = (logic.timeSliding(a.id, 7).targetMin);
+        final weeklyTargetH = weeklyTargetMin / 60.0;
+        final weekProgress = weeklyTargetH > 0
+            ? (durWeek.inMinutes / 60.0 / weeklyTargetH).clamp(0.0, 1.0)
+            : 0.0;
+
         return SafeArea(
           child: SingleChildScrollView(
             child: Column(
@@ -6307,354 +6337,382 @@ class _AppRootState extends State<AppRoot>
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // ── Header ──────────────────────────────────────────────────
-                Container(
-                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 8, 12),
+                  child: Row(
                     children: [
-                      Row(
-                        children: [
-                          if (dColor != null)
-                            Container(
-                              width: 10,
-                              height: 10,
-                              margin: const EdgeInsets.only(right: 8),
-                              decoration: BoxDecoration(
-                                color: dColor,
-                                borderRadius: BorderRadius.circular(3),
-                              ),
-                            ),
-                          Expanded(
-                            child: Text(
-                              a.name,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 20,
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.edit_outlined, size: 18),
-                            onPressed: () async {
-                              final s = await _askText(ctx, "Renommer", initial: a.name);
-                              if (s == null || s.trim().isEmpty) return;
-                              setState(() => a.name = s.trim());
-                              logic.onChange();
-                              Navigator.pop(ctx, true);
-                            },
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.close, size: 18),
-                            onPressed: () => Navigator.pop(ctx, false),
-                          ),
-                        ],
+                      Container(
+                        width: 10, height: 10,
+                        margin: const EdgeInsets.only(right: 10),
+                        decoration: BoxDecoration(
+                          color: accentColor, shape: BoxShape.circle),
                       ),
-                      if (domain != null)
-                        Text(
-                          domain.name,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: dColor ?? cs.onSurface.withOpacity(.5),
-                            fontWeight: FontWeight.w600,
-                          ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(a.name,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w800, fontSize: 20)),
+                            if (domain != null)
+                              Text(domain.name,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: accentColor,
+                                    fontWeight: FontWeight.w600,
+                                  )),
+                          ],
                         ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.edit_outlined, size: 18),
+                        onPressed: () async {
+                          final s = await _askText(ctx, 'Renommer', initial: a.name);
+                          if (s == null || s.trim().isEmpty) return;
+                          setState(() => a.name = s.trim());
+                          logic.onChange();
+                          Navigator.pop(ctx, true);
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 18),
+                        onPressed: () => Navigator.pop(ctx, false),
+                      ),
                     ],
                   ),
                 ),
 
-                // ── Stats ────────────────────────────────────────────────────
+                // ── Stats hero ───────────────────────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      // Semaine — stat principale
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('SEMAINE',
+                                style: TextStyle(
+                                  fontSize: 10, fontWeight: FontWeight.w700,
+                                  letterSpacing: 1.2,
+                                  color: cs.onSurface.withOpacity(.4),
+                                )),
+                            const SizedBox(height: 2),
+                            Text(fmtDur(durWeek),
+                                style: TextStyle(
+                                  fontSize: 28, fontWeight: FontWeight.w800,
+                                  color: accentColor,
+                                  height: 1.0,
+                                )),
+                            if (weeklyTargetH > 0) ...[
+                              const SizedBox(height: 8),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: LinearProgressIndicator(
+                                  value: weekProgress,
+                                  minHeight: 6,
+                                  backgroundColor: accentColor.withOpacity(.12),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    weekProgress >= 1.0 ? Colors.green : accentColor),
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                '${(weekProgress * 100).round()}% de l\'objectif',
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    color: cs.onSurface.withOpacity(.4)),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      // Stats secondaires
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          _miniStat('Aujourd\'hui', fmtDur(durDay), cs),
+                          const SizedBox(height: 6),
+                          _miniStat('Ce mois', fmtDur(durMonth), cs),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+
+                // ── Graphe ───────────────────────────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                  child: SizedBox(
+                    height: 80,
+                    child: () {
+                      final start = today.subtract(const Duration(days: 59));
+                      final end = today.add(const Duration(days: 1));
+                      final mbd = timeByDayForActivity(
+                        sessions: _state!.sessions,
+                        activityId: a.id,
+                        start: start,
+                        end: end,
+                        now: now,
+                      );
+                      final s7 = movingAvgHoursSeries(
+                          minutesByDay: mbd, today: now, windowDays: 7, points: 30);
+                      final s30 = movingAvgHoursSeries(
+                          minutesByDay: mbd, today: now, windowDays: 30, points: 30);
+                      final goalH = (logic.timeSliding(a.id, 7).targetMin / 7.0) / 60.0;
+                      return MiniAvgLineChart(
+                        series7: s7,
+                        series30: s30,
+                        goalHoursPerDay: goalH,
+                        color: dColor,
+                      );
+                    }(),
+                  ),
+                ),
+
+                // ── Heatmap 12 semaines ──────────────────────────────────────
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
                   child: Row(
-                    children: [
-                      _statChip('Aujourd\'hui', fmtDur(durDay), cs),
-                      const SizedBox(width: 8),
-                      _statChip('Cette semaine', fmtDur(durWeek), cs),
-                      const SizedBox(width: 8),
-                      _statChip('Ce mois', fmtDur(durMonth), cs),
-                    ],
-                  ),
-                ),
-
-                // ── Graphe moyenne mobile ─────────────────────────────────────
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Moyenne mobile',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: cs.onSurface.withOpacity(.4),
-                          )),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        height: 56,
-                        child: () {
-                          final start = today.subtract(const Duration(days: 59));
-                          final end = today.add(const Duration(days: 1));
-                          final mbd = timeByDayForActivity(
-                            sessions: _state!.sessions,
-                            activityId: a.id,
-                            start: start,
-                            end: end,
-                            now: now,
-                          );
-                          final s7 = movingAvgHoursSeries(
-                              minutesByDay: mbd, today: now, windowDays: 7, points: 30);
-                          final s30 = movingAvgHoursSeries(
-                              minutesByDay: mbd, today: now, windowDays: 30, points: 30);
-                          final goalH = (logic.timeSliding(a.id, 7).targetMin / 7.0) / 60.0;
-                          return MiniAvgLineChart(
-                            series7: s7,
-                            series30: s30,
-                            goalHoursPerDay: goalH,
-                            color: dColor,
-                          );
-                        }(),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // ── Heatmap 12 semaines ───────────────────────────────────────
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('12 semaines',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: cs.onSurface.withOpacity(.4),
-                          )),
-                      const SizedBox(height: 8),
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: List.generate(weeks, (col) => Padding(
-                            padding: const EdgeInsets.only(right: gap),
-                            child: Column(
-                              children: List.generate(7, (row) {
-                                final d = startMonday.add(Duration(days: col * 7 + row));
-                                if (d.isAfter(today)) {
-                                  return SizedBox(height: cellSize + gap, width: cellSize);
-                                }
-                                final ymd = '${d.year}${d.month.toString().padLeft(2, '0')}${d.day.toString().padLeft(2, '0')}';
-                                final count = countByYmd[ymd] ?? 0;
-                                final intensity = count == 0 ? 0.0 : (count / referenceCount).clamp(0.15, 1.0);
-                                final emptyColor = cs.onSurface.withOpacity(.10);
-                                final fullColor = dColor ?? cs.primary;
-                                final color = count == 0
-                                    ? emptyColor
-                                    : Color.lerp(emptyColor, fullColor, intensity)!;
-                                return Padding(
-                                  padding: const EdgeInsets.only(bottom: gap),
-                                  child: Container(
-                                    width: cellSize,
-                                    height: cellSize,
-                                    decoration: BoxDecoration(
-                                      color: color,
-                                      borderRadius: BorderRadius.circular(2),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: List.generate(weeks, (col) => Padding(
+                              padding: const EdgeInsets.only(right: gap),
+                              child: Column(
+                                children: List.generate(7, (row) {
+                                  final d = startMonday.add(Duration(days: col * 7 + row));
+                                  if (d.isAfter(today)) {
+                                    return SizedBox(height: cellSize + gap, width: cellSize);
+                                  }
+                                  final ymd = '${d.year}${d.month.toString().padLeft(2, '0')}${d.day.toString().padLeft(2, '0')}';
+                                  final count = countByYmd[ymd] ?? 0;
+                                  final intensity = count == 0 ? 0.0 : (count / referenceCount).clamp(0.15, 1.0);
+                                  final emptyColor = cs.onSurface.withOpacity(.10);
+                                  final fullColor = accentColor;
+                                  final color = count == 0
+                                      ? emptyColor
+                                      : Color.lerp(emptyColor, fullColor, intensity)!;
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: gap),
+                                    child: Container(
+                                      width: cellSize, height: cellSize,
+                                      decoration: BoxDecoration(
+                                        color: color,
+                                        borderRadius: BorderRadius.circular(2),
+                                      ),
                                     ),
-                                  ),
-                                );
-                              }),
-                            ),
-                          )),
+                                  );
+                                }),
+                              ),
+                            )),
+                          ),
                         ),
                       ),
+                      const SizedBox(width: 10),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text('12 sem.',
+                            style: TextStyle(
+                              fontSize: 10, fontWeight: FontWeight.w600,
+                              color: cs.onSurface.withOpacity(.35),
+                            )),
+                      ),
                     ],
                   ),
                 ),
 
                 const Divider(height: 1),
 
-                // ── Lancer ───────────────────────────────────────────────────
-                ListTile(
-                  leading: Icon(Icons.play_arrow_rounded, color: dColor ?? cs.primary),
-                  title: const Text('Lancer', style: TextStyle(fontWeight: FontWeight.w600)),
-                  onTap: () {
-                    logic.start(a.id);
-                    Navigator.pop(ctx, true);
-                    setState(() => _tab = _Tab.maintenant);
-                  },
+                // ── Lancer (CTA principal) ───────────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                  child: FilledButton.icon(
+                    onPressed: () {
+                      logic.start(a.id);
+                      Navigator.pop(ctx, true);
+                      setState(() => _tab = _Tab.maintenant);
+                    },
+                    icon: const Icon(Icons.play_arrow_rounded, size: 20),
+                    label: const Text('Lancer',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(48),
+                      backgroundColor: accentColor,
+                    ),
+                  ),
                 ),
 
-                const Divider(height: 1),
-
-                // ── Changer de domaine ────────────────────────────────────────
-                ListTile(
-                  leading: Icon(Icons.folder_outlined,
-                      color: dColor ?? cs.onSurface.withOpacity(.6)),
-                  title: const Text('Changer de domaine',
-                      style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: domain != null ? Text(domain.name) : null,
-                  onTap: () async {
-                    final domains = logic.state.activeDomains;
-                    final picked = await showModalBottomSheet<String>(
-                      context: ctx,
-                      showDragHandle: true,
-                      builder: (_) => ListView(
-                        shrinkWrap: true,
-                        children: [
-                          const Padding(
-                            padding: EdgeInsets.fromLTRB(16, 8, 16, 8),
-                            child: Text('Choisir un domaine',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.w700, fontSize: 16)),
-                          ),
-                          for (final d in domains)
-                            ListTile(
-                              leading: CircleAvatar(
-                                radius: 8,
-                                backgroundColor:
-                                    domainColor(d.id, domains) ?? cs.primary,
+                // ── Actions secondaires : Domaine + Cible ────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: Row(
+                    children: [
+                      // Changer de domaine
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final domains = logic.state.activeDomains;
+                            final picked = await showModalBottomSheet<String>(
+                              context: ctx,
+                              showDragHandle: true,
+                              builder: (_) => ListView(
+                                shrinkWrap: true,
+                                children: [
+                                  const Padding(
+                                    padding: EdgeInsets.fromLTRB(16, 8, 16, 8),
+                                    child: Text('Choisir un domaine',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.w700, fontSize: 16)),
+                                  ),
+                                  for (final d in domains)
+                                    ListTile(
+                                      leading: CircleAvatar(
+                                        radius: 8,
+                                        backgroundColor:
+                                            domainColor(d.id, domains) ?? cs.primary,
+                                      ),
+                                      title: Text(d.name),
+                                      trailing: d.id == a.domainId
+                                          ? Icon(Icons.check, color: cs.primary)
+                                          : null,
+                                      onTap: () => Navigator.pop(_, d.id),
+                                    ),
+                                  const SizedBox(height: 16),
+                                ],
                               ),
-                              title: Text(d.name),
-                              trailing: d.id == a.domainId
-                                  ? Icon(Icons.check, color: cs.primary)
-                                  : null,
-                              onTap: () => Navigator.pop(_, d.id),
-                            ),
-                          const SizedBox(height: 16),
+                            );
+                            if (picked == null || picked == a.domainId) return;
+                            setState(() => a.domainId = picked);
+                            logic.onChange();
+                            Navigator.pop(ctx, true);
+                          },
+                          icon: const Icon(Icons.folder_outlined, size: 14),
+                          label: Text(
+                            domain?.name ?? 'Domaine',
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 10),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Cible quotidienne
+                      StatefulBuilder(builder: (ctx2, setGoal) => Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final ctrl = TextEditingController(
+                                text: a.goalMin > 0 ? '${a.goalMin}' : '');
+                            final result = await showDialog<int>(
+                              context: ctx,
+                              builder: (d) => AlertDialog(
+                                title: const Text('Cible quotidienne'),
+                                content: TextField(
+                                  controller: ctrl,
+                                  autofocus: true,
+                                  keyboardType: TextInputType.number,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Minutes par jour',
+                                    suffixText: 'min',
+                                    border: OutlineInputBorder(),
+                                    helperText: 'ex : 45 pour 45 min, 90 pour 1h30',
+                                  ),
+                                  onSubmitted: (_) {
+                                    final v = int.tryParse(ctrl.text.trim()) ?? 0;
+                                    Navigator.pop(d, v.clamp(0, 720));
+                                  },
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(d),
+                                    child: const Text('Annuler'),
+                                  ),
+                                  FilledButton(
+                                    onPressed: () {
+                                      final v = int.tryParse(ctrl.text.trim()) ?? 0;
+                                      Navigator.pop(d, v.clamp(0, 720));
+                                    },
+                                    child: const Text('Enregistrer'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (result == null) return;
+                            setGoal(() => a.goalMin = result);
+                            logic.onChange();
+                          },
+                          icon: const Icon(Icons.timer_outlined, size: 14),
+                          label: Text(
+                            fmtGoal(a.goalMin),
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 10),
+                          ),
+                        ),
+                      )),
+                    ],
+                  ),
+                ),
+
+                // ── Masquer jusqu'à (chips) ──────────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Masquer jusqu\'à',
+                          style: TextStyle(
+                            fontSize: 11, fontWeight: FontWeight.w700,
+                            letterSpacing: 0.5,
+                            color: cs.onSurface.withOpacity(.35),
+                          )),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8, runSpacing: 8,
+                        children: [
+                          snoozeChip('Demain',
+                              () => hideUntil(_endOfDay(now.add(const Duration(days: 1))))),
+                          snoozeChip('3 jours',
+                              () => hideUntil(_endOfDay(now.add(const Duration(days: 3))))),
+                          snoozeChip('7 jours',
+                              () => hideUntil(_endOfDay(now.add(const Duration(days: 7))))),
+                          snoozeChip('Date…', () async {
+                            final picked = await showDatePicker(
+                              context: ctx,
+                              initialDate: DateTime.now().add(const Duration(days: 1)),
+                              firstDate: DateTime.now(),
+                              lastDate: DateTime.now().add(const Duration(days: 365)),
+                            );
+                            if (picked == null) return;
+                            await hideUntil(_endOfDay(picked));
+                          }),
+                          snoozeChip('↩ Annuler', () {
+                            logic.clearSnooze(a.id);
+                            Navigator.pop(ctx, true);
+                          }),
                         ],
                       ),
-                    );
-                    if (picked == null || picked == a.domainId) return;
-                    setState(() => a.domainId = picked);
-                    logic.onChange();
-                    Navigator.pop(ctx, true);
-                  },
+                    ],
+                  ),
                 ),
-
-                const Divider(height: 1),
-
-                // ── Cible quotidienne ─────────────────────────────────────────
-                StatefulBuilder(builder: (ctx2, setGoal) {
-                  String fmtGoal(int min) {
-                    if (min <= 0) return 'Non définie';
-                    if (min < 60) return '${min}min/j';
-                    final h = min ~/ 60;
-                    final m = min % 60;
-                    return m == 0 ? '${h}h/j' : '${h}h${m.toString().padLeft(2, '0')}/j';
-                  }
-
-                  return ListTile(
-                    leading: Icon(Icons.timer_outlined,
-                        color: dColor ?? cs.onSurface.withOpacity(.6)),
-                    title: const Text('Cible quotidienne',
-                        style: TextStyle(fontWeight: FontWeight.w600)),
-                    subtitle: Text(fmtGoal(a.goalMin)),
-                    trailing: Icon(Icons.edit_outlined,
-                        size: 16, color: cs.onSurface.withOpacity(.4)),
-                    onTap: () async {
-                      final ctrl = TextEditingController(
-                          text: a.goalMin > 0 ? '${a.goalMin}' : '');
-                      final result = await showDialog<int>(
-                        context: ctx,
-                        builder: (d) => AlertDialog(
-                          title: const Text('Cible quotidienne'),
-                          content: TextField(
-                            controller: ctrl,
-                            autofocus: true,
-                            keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(
-                              labelText: 'Minutes par jour',
-                              suffixText: 'min',
-                              border: OutlineInputBorder(),
-                              helperText: 'ex : 45 pour 45 min, 90 pour 1h30',
-                            ),
-                            onSubmitted: (_) {
-                              final v = int.tryParse(ctrl.text.trim()) ?? 0;
-                              Navigator.pop(d, v.clamp(0, 720));
-                            },
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(d),
-                              child: const Text('Annuler'),
-                            ),
-                            FilledButton(
-                              onPressed: () {
-                                final v = int.tryParse(ctrl.text.trim()) ?? 0;
-                                Navigator.pop(d, v.clamp(0, 720));
-                              },
-                              child: const Text('Enregistrer'),
-                            ),
-                          ],
-                        ),
-                      );
-                      if (result == null) return;
-                      setGoal(() => a.goalMin = result);
-                      logic.onChange();
-                    },
-                  );
-                }),
-
-                const Divider(height: 1),
-
-                // ── Masquer jusqu'à ───────────────────────────────────────────
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-                  child: Text('Masquer jusqu\'à',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: cs.onSurface.withOpacity(.4),
-                        letterSpacing: 0.5,
-                      )),
-                ),
-                ListTile(
-                  dense: true,
-                  leading: const Icon(Icons.calendar_today_outlined),
-                  title: const Text("Demain"),
-                  onTap: () => hideUntil(_endOfDay(now.add(const Duration(days: 1)))),
-                ),
-                ListTile(
-                  dense: true,
-                  leading: const Icon(Icons.calendar_view_week_outlined),
-                  title: const Text("Dans 3 jours"),
-                  onTap: () => hideUntil(_endOfDay(now.add(const Duration(days: 3)))),
-                ),
-                ListTile(
-                  dense: true,
-                  leading: const Icon(Icons.event_repeat_outlined),
-                  title: const Text("Dans 7 jours"),
-                  onTap: () => hideUntil(_endOfDay(now.add(const Duration(days: 7)))),
-                ),
-                ListTile(
-                  dense: true,
-                  leading: const Icon(Icons.edit_calendar_outlined),
-                  title: const Text("Choisir une date…"),
-                  onTap: () async {
-                  final picked = await showDatePicker(
-                    context: ctx,
-                    initialDate: DateTime.now().add(const Duration(days: 1)),
-                    firstDate: DateTime.now(),
-                    lastDate: DateTime.now().add(const Duration(days: 365)),
-                  );
-                  if (picked == null) return;
-                  await hideUntil(_endOfDay(picked)); // pop(true)
-                },
-              ),
-              const Divider(height: 1),
-              ListTile(
-                dense: true,
-                leading: const Icon(Icons.restore),
-                title: const Text("Annuler le masquage"),
-                onTap: () {
-                  logic.clearSnooze(a.id);
-                  Navigator.pop(ctx, true);
-                },
-              ),
-              const SizedBox(height: 16),
-            ],
+              ],
+            ),
           ),
-        ),
-      );
+        );
       },
     );
 
@@ -6681,6 +6739,23 @@ class _AppRootState extends State<AppRoot>
           ],
         ),
       ),
+    );
+  }
+
+  Widget _miniStat(String label, String value, ColorScheme cs) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(label,
+            style: TextStyle(
+                fontSize: 10, color: cs.onSurface.withOpacity(.4))),
+        const SizedBox(width: 6),
+        Text(value,
+            style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: cs.onSurface.withOpacity(.75))),
+      ],
     );
   }
 
