@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/models.dart' show yyyymmdd;
-import 'package:productivitwo_v1/widgets/new_action_sheet.dart';
-import 'package:productivitwo_v1/widgets/tomorrow_plan_sheet.dart';
 
 Future<void> showDayReviewSheet(
   BuildContext context, {
@@ -39,8 +36,6 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final ymd = yyyymmdd(today);
-    final tomorrow = today.add(const Duration(days: 1));
-    final tomorrowYmd = yyyymmdd(tomorrow);
 
     // ── Score ──────────────────────────────────────────────────────────────
     final score = logic.dailyScore(ymd);
@@ -74,15 +69,6 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
     final todayBadges =
         st.earnedBadges.where((b) => b.earnedAt == ymd).toList();
     final lv = logic.userLevelData();
-
-    // ── Demain ─────────────────────────────────────────────────────────────
-    final tomorrowActions = st.dayPlan
-        .where((it) =>
-            it.yyyymmdd == tomorrowYmd &&
-            it.kind == PlanKind.action &&
-            !it.archived &&
-            !it.done)
-        .toList();
 
     return DraggableScrollableSheet(
       initialChildSize: 0.85,
@@ -223,25 +209,6 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
                 ),
               );
             }),
-          const SizedBox(height: 20),
-
-          // ── Demain ────────────────────────────────────────────────────────
-          _sectionHeader(cs, icon: Icons.calendar_today_outlined, title: 'Demain'),
-          const SizedBox(height: 8),
-          if (tomorrowActions.isNotEmpty)
-            ...tomorrowActions.map((it) =>
-                _actionRow(cs, it.title, done: false, muted: true))
-          else
-            _emptyHint(cs, 'Rien de planifié pour demain.'),
-          const SizedBox(height: 12),
-          FilledButton.icon(
-            icon: const Icon(Icons.edit_calendar_outlined, size: 16),
-            label: const Text('Planifier demain'),
-            onPressed: () async {
-              await showTomorrowPlanSheet(context, logic: logic);
-              setState(() {});
-            },
-          ),
         ],
       ),
     );

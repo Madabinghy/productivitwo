@@ -389,7 +389,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         linkedActivityId: linkedAct?.id,
       );
       logic.state.activities.add(habit);
-      logic.ensureHabitPlannedForDay(yyyymmdd(DateTime.now()), habit.id);
+      
     }
 
     // 4. Blocs par défaut si absents
@@ -1364,7 +1364,7 @@ class _CatalogueSheetState extends State<CatalogueSheet> {
         linkedActivityId: linkedAct?.id,
       );
       state.activities.add(habit);
-      logic.ensureHabitPlannedForDay(yyyymmdd(DateTime.now()), habit.id);
+      
     }
 
     if (hasNew) {

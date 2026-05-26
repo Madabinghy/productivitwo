@@ -62,11 +62,9 @@ class AssistantEngine {
     // Aucun message Claude → fallbacks autonomes
     if (snap.docs.isEmpty) {
       if (_fallbackShownThisSession) return [];
-      final dayPlan = await _fetchTodayPlan(uid, todayStr);
       final fallbacks = _buildFallbacks(
         projects: projects,
         today: today,
-        dayPlan: dayPlan,
       );
       if (fallbacks.isNotEmpty) {
         _fallbackShownThisSession = true;
@@ -100,15 +98,12 @@ class AssistantEngine {
         .map((d) => ((d.data()['condition'] as Map?)?.cast<String, dynamic>() ?? {})['type'] as String? ?? '')
         .toSet();
 
-    List<Map<String, dynamic>>? dayPlanCache;
     List<Map<String, dynamic>>? goalsCache;
     List<Map<String, dynamic>>? sessionsCache;
     List<Map<String, dynamic>>? habitHitsCache;
     List<Map<String, dynamic>>? activitiesCache;
 
     await Future.wait([
-      if (conditionTypes.any(_needsDayPlan))
-        _fetchTodayPlan(uid, todayStr).then((v) => dayPlanCache = v),
       if (conditionTypes.any(_needsGoals))
         _fetchGoals(uid).then((v) => goalsCache = v),
       if (conditionTypes.any(_needsSessions))
@@ -144,7 +139,6 @@ class AssistantEngine {
         projects: projects,
         domains: domains,
         today: today,
-        dayPlan: dayPlanCache,
         goals: goalsCache,
         sessions: sessionsCache,
         habitHits: habitHitsCache,
@@ -175,7 +169,6 @@ class AssistantEngine {
   static List<AssistantMessageData> _buildFallbacks({
     required List<Project> projects,
     required DateTime today,
-    List<Map<String, dynamic>>? dayPlan,
   }) {
     final messages = <AssistantMessageData>[];
     final todayD = DateTime(today.year, today.month, today.day);
@@ -237,21 +230,6 @@ class AssistantEngine {
       ));
     }
 
-    // Plan du jour vide
-    if (dayPlan != null) {
-      final active = dayPlan
-          .where((it) => it['archived'] != true && it['status'] != 'archived')
-          .toList();
-      if (active.isEmpty) {
-        messages.add(AssistantMessageData(
-          id: 'fallback_plan_empty',
-          text: 'Ton plan du jour est vide. Tu n\'as encore rien prévu pour aujourd\'hui.',
-          characterName: 'ORION',
-          priority: 3,
-          action: const AssistantActionData(type: 'open_day_plan', label: 'Voir le plan'),
-        ));
-      }
-    }
 
     // Message de début de semaine
     if (today.weekday == DateTime.monday && messages.isEmpty) {
@@ -284,7 +262,6 @@ class AssistantEngine {
     required List<Project> projects,
     required List<Domain> domains,
     required DateTime today,
-    List<Map<String, dynamic>>? dayPlan,
     List<Map<String, dynamic>>? goals,
     List<Map<String, dynamic>>? sessions,
     List<Map<String, dynamic>>? habitHits,
@@ -354,37 +331,16 @@ class AssistantEngine {
         final started = p.startDate.isBefore(cutoff);
         return started && doneTasks == 0;
 
-      // ── Conditions plan journalier ────────────────────────────────────────
+      // ── Conditions plan journalier (non utilisées — dayPlan supprimé) ───────
 
       case 'day_plan_empty':
-        final plan = dayPlan ?? [];
-        final active = plan.where((it) =>
-            it['archived'] != true && it['status'] != 'archived').toList();
-        return active.isEmpty;
-
       case 'day_plan_overloaded':
-        final min = (condition['min'] as num?)?.toInt() ?? 10;
-        final plan = dayPlan ?? [];
-        final active = plan.where((it) =>
-            it['archived'] != true && it['status'] != 'archived').toList();
-        return active.length >= min;
-
       case 'no_now_focus':
-        final beforeHour = (condition['beforeHour'] as num?)?.toInt() ?? 10;
-        if (today.hour >= beforeHour) return false;
-        final plan = dayPlan ?? [];
-        return !plan.any((it) =>
-            it['isNowFocus'] == true &&
-            it['archived'] != true &&
-            it['status'] != 'archived');
+        return false;
 
       case 'inbox_overflow':
-        final min = (condition['min'] as num?)?.toInt() ?? 5;
-        final plan = dayPlan ?? [];
-        final inbox = plan.where((it) =>
-            (it['status'] == 'inbox' || it['kind'] == 'inbox') &&
-            it['archived'] != true).toList();
-        return inbox.length >= min;
+        // Non implémenté — inbox dans collection séparée (captures)
+        return false;
 
       // ── Conditions objectifs ──────────────────────────────────────────────
 
@@ -534,10 +490,6 @@ class AssistantEngine {
     return count;
   }
 
-  static bool _needsDayPlan(String type) => const {
-    'day_plan_empty', 'day_plan_overloaded', 'no_now_focus', 'inbox_overflow',
-  }.contains(type);
-
   static bool _needsGoals(String type) => const {
     'goal_near_deadline', 'goal_undone_actions',
   }.contains(type);
@@ -553,16 +505,6 @@ class AssistantEngine {
   static bool _needsActivities(String type) => const {
     'activity_behind_target', 'routine_completion_low',
   }.contains(type);
-
-  static Future<List<Map<String, dynamic>>> _fetchTodayPlan(
-      String uid, String todayStr) async {
-    final yyyymmdd = todayStr.replaceAll('-', '');
-    final snap = await _db
-        .collection('users/$uid/dayPlan')
-        .where('yyyymmdd', isEqualTo: yyyymmdd)
-        .get();
-    return snap.docs.map((d) => d.data()).toList();
-  }
 
   static Future<List<Map<String, dynamic>>> _fetchRecentSessions(
       String uid, DateTime today) async {

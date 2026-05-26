@@ -1784,33 +1784,6 @@ class _AppRootState extends State<AppRoot>
     }
   }
 
-  void _purgeOldActions() {
-    if (_state == null) return;
-    final before = _state!.dayPlan.length;
-    _state!.dayPlan.removeWhere((it) => it.kind == PlanKind.action);
-    if (_state!.dayPlan.length != before && _sync.uid != null) {
-      // Supprime aussi côté Firestore via un push complet du dayPlan nettoyé
-      _sync.pushDeltas(_state!).catchError((_) {});
-    }
-  }
-
-  int normalizeToPlanActivityId() {
-    final shopId = logic.shoppingActivity()?.id;
-    if (shopId == null) return 0;
-
-    var fixed = 0;
-    for (final a in _state!.dayPlan) {
-      if (a.kind != PlanKind.action) continue;
-      if (a.toPlan != true) continue;
-      if (a.activityId == null) {
-        a.activityId = shopId;
-        fixed++;
-      }
-    }
-    if (fixed > 0) store.save(_state!); // ou onChange()
-    return fixed;
-  }
-
   Future<void> _init() async {
     // Sync Firestore pour tous les users (anonymes inclus) — l'UID anonyme
     // est stable dans le Keychain iOS, et Claude écrit via cet UID.
@@ -1905,18 +1878,6 @@ class _AppRootState extends State<AppRoot>
         }
       }
 
-      // Migration : garantit que toutes les routines déjà dans des blocs
-      // ont un DayPlanItem pour aujourd'hui (sinon blockItemsForDay ne les trouve pas).
-      final todayYmd = yyyymmdd(DateTime.now());
-      for (final b in _state!.blocks) {
-        for (final actId in b.activityIds) {
-          final a = _state!.activeActivities.firstWhereOrNull((x) => x.id == actId);
-          if (a != null && a.isHabit) {
-            logic.ensureHabitPlannedForDay(todayYmd, actId);
-          }
-        }
-      }
-
       // Migration : assigne l'icône water_drop aux routines "Boire de l'eau" existantes
       for (final a in _state!.activeActivities) {
         if (a.iconCode == null &&
@@ -1973,12 +1934,6 @@ class _AppRootState extends State<AppRoot>
         WidgetService.update(logic); // widget Large : tâches Gantt fraîches
       });
     }
-
-    // ✅ ICI (point unique au démarrage)
-    logic.rolloverUndoneOncePerDay();
-    logic.ensureDailyHabitsPlanned();
-    normalizeToPlanActivityId();
-    _purgeOldActions();
 
     // Évaluation assistant ORION (non bloquant)
     unawaited(() async {
@@ -2223,11 +2178,8 @@ class _AppRootState extends State<AppRoot>
     }
   }
 
-// 2) Body : route correctement vers TodayView
   Widget _buildBody(BuildContext context) {
     final st = _state!;
-    final ymd = yyyymmdd(DateTime.now());
-    final sections = logic.todaySections(yyyymmdd: ymd);
 
     final f = logic.state.filters;
     final manualActive = f.domainIds.isNotEmpty || f.activityIds.isNotEmpty;
@@ -2606,10 +2558,6 @@ class _AppRootState extends State<AppRoot>
     if ((result.blockId ?? '').isNotEmpty) {
       logic.addActivityToBlock(result.blockId!, a.id);
     }
-
-    final ymd = yyyymmdd(DateTime.now());
-    logic.ensurePlannedOnce(ymd, PlanKind.habit, a.id, a.name,
-        domainId: a.domainId);
 
     logic.onChange();
 
@@ -3217,25 +3165,6 @@ class _AppRootState extends State<AppRoot>
       final over = items.where((e) => e.isReached).toList();
 
       void _openRoutineInNowTab(Activity activity) {
-        final ymd = yyyymmdd(DateTime.now());
-        final sections = logic.todaySections(yyyymmdd: ymd);
-
-        // IMPORTANT : chercher dans la source brute, sans passesEffective
-        final items = sections.todo.toList();
-
-        DayPlanItem? match;
-        for (final it in items) {
-          if ((it.refId ?? '') == activity.id) {
-            match = it;
-            break;
-          }
-        }
-
-        if (match != null) {
-          logic.movePlanItemToTop(ymd, match.id);
-          logic.onChange();
-        }
-
         setState(() {
           _tab = _Tab.maintenant;
         });
@@ -6302,19 +6231,9 @@ class _AppRootState extends State<AppRoot>
         final startMonday = thisMonday.subtract(const Duration(days: 77));
         const weeks = 12;
 
-        // Précalcul des complétions par jour pour cette activité (dayPlan + sessions timer)
+        // Complétions par jour pour cette activité (sessions timer)
         final Map<String, int> countByYmd = {};
-        // 1) Items activityTime cochés dans le day plan (refId == a.id)
-        final startMondayYmd = '${startMonday.year}${startMonday.month.toString().padLeft(2, '0')}${startMonday.day.toString().padLeft(2, '0')}';
-        for (final item in logic.state.dayPlan.where((it) =>
-            it.kind == PlanKind.activityTime &&
-            it.refId == a.id &&
-            it.done &&
-            !it.archived &&
-            it.yyyymmdd.compareTo(startMondayYmd) >= 0)) {
-          countByYmd[item.yyyymmdd] = (countByYmd[item.yyyymmdd] ?? 0) + 1;
-        }
-        // 2) Sessions timer (en minutes, normalisées sur 30 min = 1 unité)
+        // Sessions timer (en minutes, normalisées sur 30 min = 1 unité)
         for (final s in logic.state.sessions.where((s) => s.activityId == a.id)) {
           final sEnd = s.endAt ?? now;
           if (s.startAt.isAfter(now) || sEnd.isBefore(startMonday)) continue;
@@ -7552,13 +7471,6 @@ class _AppRootState extends State<AppRoot>
               final thisMonday = today.subtract(Duration(days: today.weekday - 1));
               final startMonday = thisMonday.subtract(const Duration(days: 77));
               final Map<String, int> countByYmd = {};
-              final startMondayYmd = '${startMonday.year}${startMonday.month.toString().padLeft(2, '0')}${startMonday.day.toString().padLeft(2, '0')}';
-              for (final item in _state!.dayPlan.where((it) =>
-                  it.kind == PlanKind.activityTime && it.refId == a.id &&
-                  it.done && !it.archived &&
-                  it.yyyymmdd.compareTo(startMondayYmd) >= 0)) {
-                countByYmd[item.yyyymmdd] = (countByYmd[item.yyyymmdd] ?? 0) + 1;
-              }
               for (final s in _state!.sessions.where((s) => s.activityId == a.id)) {
                 final sEnd = s.endAt ?? now;
                 if (s.startAt.isAfter(now) || sEnd.isBefore(startMonday)) continue;
