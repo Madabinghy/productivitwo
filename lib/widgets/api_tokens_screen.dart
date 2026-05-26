@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/widget_service.dart';
 
 class ApiTokensScreen extends StatefulWidget {
   final FirestoreSync sync;
@@ -273,6 +274,9 @@ class _ApiTokensScreenState extends State<ApiTokensScreen> {
                   ),
                 ),
 
+                // ── Widget iOS diag ────────────────────────────────────────
+                _WidgetDiagTile(),
+
                 // ── Tokens actifs ───────────────────────────────────────────
                 if (active.isEmpty)
                   Padding(
@@ -395,6 +399,56 @@ class _TokenTile extends StatelessWidget {
                     padding: EdgeInsets.zero,
                     visualDensity: VisualDensity.compact,
                   ),
+      ),
+    );
+  }
+}
+
+// ── Diagnostic Widget iOS ─────────────────────────────────────────────────────
+
+class _WidgetDiagTile extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final diag = WidgetService.lastDiag;
+    final isError = diag?.error != null;
+    final color = diag == null
+        ? cs.onSurface.withOpacity(0.4)
+        : isError
+            ? cs.error
+            : Colors.green;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withOpacity(0.2)),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              diag == null
+                  ? Icons.widgets_outlined
+                  : isError
+                      ? Icons.error_outline
+                      : Icons.check_circle_outline,
+              size: 16,
+              color: color,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                diag == null
+                    ? 'Widget iOS : pas encore mis à jour cette session'
+                    : diag.toString(),
+                style: TextStyle(fontSize: 12, color: color),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

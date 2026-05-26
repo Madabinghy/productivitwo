@@ -9,8 +9,33 @@ import 'package:productivitwo_v1/app_logic.dart';
 
 const _kAppGroup = 'group.com.madabinghy.productivitwo';
 
+/// Résultat du dernier appel à WidgetService.update — visible dans l'UI de debug.
+class WidgetDiag {
+  final int routinesDone;
+  final int routinesTotal;
+  final int ganttCount;
+  final String? error;
+  final DateTime ts;
+
+  WidgetDiag({
+    required this.routinesDone,
+    required this.routinesTotal,
+    required this.ganttCount,
+    this.error,
+    required this.ts,
+  });
+
+  @override
+  String toString() {
+    if (error != null) return '❌ $error';
+    return '✅ routines $routinesDone/$routinesTotal · gantt $ganttCount · ${ts.hour}:${ts.minute.toString().padLeft(2, '0')}';
+  }
+}
+
 class WidgetService {
   WidgetService._();
+
+  static WidgetDiag? lastDiag;
 
   /// Pousse l'état courant vers tous les widgets home screen.
   /// Appelé depuis _saveAndRefresh(), au chargement initial, et sur le stream projets.
@@ -27,7 +52,6 @@ class WidgetService {
       final int routinesTotal = routineItems.length;
 
       // --- Tâches Gantt actives (projets non archivés, tâches non terminées) ---
-      // Partagées entre le widget Medium (top 4) et le Large (jusqu'à 12, groupé)
       final ganttTasks = <Map<String, dynamic>>[];
       for (final project in logic.currentProjects) {
         if (project.status == 'archived' || project.status == 'done') continue;
@@ -57,6 +81,21 @@ class WidgetService {
         qualifiedAndroidName:
             'com.madabinghy.productivitwo.ProductivitwoWidget',
       );
-    } catch (_) {}
+
+      lastDiag = WidgetDiag(
+        routinesDone: routinesDone,
+        routinesTotal: routinesTotal,
+        ganttCount: ganttTasks.length,
+        ts: DateTime.now(),
+      );
+    } catch (e) {
+      lastDiag = WidgetDiag(
+        routinesDone: 0,
+        routinesTotal: 0,
+        ganttCount: 0,
+        error: e.toString(),
+        ts: DateTime.now(),
+      );
+    }
   }
 }
