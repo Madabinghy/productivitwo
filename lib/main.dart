@@ -1178,12 +1178,14 @@ class RunningActivityBanner extends StatefulWidget {
   final AppState? state;
   final AppLogic logic;
   final VoidCallback? onTap;
+  final DateTime? countdownEndsAt;
 
   const RunningActivityBanner({
     super.key,
     required this.state,
     required this.logic,
     this.onTap,
+    this.countdownEndsAt,
   });
 
   @override
@@ -1237,6 +1239,14 @@ class _RunningActivityBannerState extends State<RunningActivityBanner>
     final cs = Theme.of(context).colorScheme;
     final bandColor = domainColor(activity.domainId, st.activeDomains) ?? cs.primary;
 
+    // Countdown : calcul du temps restant
+    final endsAt = widget.countdownEndsAt;
+    final remaining = endsAt != null ? endsAt.difference(DateTime.now()) : null;
+    final isCountdown = remaining != null && remaining > Duration.zero;
+    final timeColor = isCountdown
+        ? (remaining.inSeconds < 60 ? Colors.red.shade400 : Colors.orange.shade600)
+        : bandColor;
+
     return GestureDetector(
       onTap: widget.onTap,
       child: Container(
@@ -1269,13 +1279,16 @@ class _RunningActivityBannerState extends State<RunningActivityBanner>
                 overflow: TextOverflow.ellipsis,
               ),
             ),
+            if (isCountdown)
+              Icon(Icons.timer_outlined, size: 13, color: timeColor),
+            if (isCountdown) const SizedBox(width: 4),
             Text(
-              _fmt(elapsed),
+              isCountdown ? _fmt(remaining!) : _fmt(elapsed),
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
                 fontFeatures: const [FontFeature.tabularFigures()],
-                color: bandColor,
+                color: timeColor,
               ),
             ),
             const SizedBox(width: 12),
@@ -1633,6 +1646,7 @@ class _AppRootState extends State<AppRoot>
 
   Timer? _saveDebounce;
   Timer? _countdownTimer;
+  DateTime? _countdownEndsAt;
   bool _saveQueued = false;
   bool _saving = false;
 
@@ -1939,6 +1953,12 @@ class _AppRootState extends State<AppRoot>
     unawaited(() async {
       List<Project> projects = [];
       try { projects = await _sync.fetchProjects(); } catch (_) {}
+      // Alimente les widgets avec les données Gantt réelles dès que disponibles
+      // (le stream Firestore peut tarder ; fetchProjects() retourne le cache local en premier)
+      if (projects.isNotEmpty && mounted) {
+        logic.updateGanttCounts(projects);
+        WidgetService.update(logic);
+      }
       final messages = await AssistantEngine.evaluate(
         projects: projects,
         domains: _state!.domains,
@@ -2094,6 +2114,10 @@ class _AppRootState extends State<AppRoot>
     });
 
     // Mise à jour des widgets home screen iOS
+    // Si le stream Gantt n'a pas encore tiré, on s'assure d'avoir les projets à jour
+    if (logic.currentProjects.isEmpty && _dashboardProjects.isNotEmpty) {
+      logic.updateGanttCounts(_dashboardProjects);
+    }
     WidgetService.update(logic);
 
     // ✅ Refresh UI (ton code, inchangé)
@@ -2113,6 +2137,7 @@ class _AppRootState extends State<AppRoot>
   /// Lance un minuteur N minutes → auto-stop + notification à la fin.
   void _startCountdown(int minutes, String activityName) {
     _countdownTimer?.cancel();
+    _countdownEndsAt = DateTime.now().add(Duration(minutes: minutes));
     NotificationService.scheduleTimerEnd(activityName: activityName, minutes: minutes);
     _countdownTimer = Timer(Duration(minutes: minutes), () {
       if (!mounted) return;
@@ -2126,7 +2151,15 @@ class _AppRootState extends State<AppRoot>
       }
       NotificationService.cancelTimerEnd();
       _countdownTimer = null;
+      setState(() => _countdownEndsAt = null);
     });
+  }
+
+  void _cancelCountdown() {
+    _countdownTimer?.cancel();
+    _countdownTimer = null;
+    NotificationService.cancelTimerEnd();
+    setState(() => _countdownEndsAt = null);
   }
 
   // ---------- UTIL DATES ----------
@@ -2361,9 +2394,7 @@ class _AppRootState extends State<AppRoot>
                             foregroundColor: cs.error,
                             visualDensity: VisualDensity.compact),
                         onPressed: () async {
-                          _countdownTimer?.cancel();
-                          _countdownTimer = null;
-                          NotificationService.cancelTimerEnd();
+                          _cancelCountdown();
                           final (_, name, delta) =
                               await logic.stopActiveWithAdjustment();
                           setState(() {});
@@ -4119,6 +4150,7 @@ class _AppRootState extends State<AppRoot>
               return RunningActivityBanner(
                 state: _state,
                 logic: logic,
+                countdownEndsAt: _countdownEndsAt,
                 onTap: () => setState(() => _tab = _Tab.maintenant),
               );
             },
@@ -6192,7 +6224,7 @@ class _AppRootState extends State<AppRoot>
 
   Future<bool> _openActivitySheet(Activity a) async {
     final now = DateTime.now();
-    int _sheetMinutes = 0; // durée sélectionnée par les pills (0 = libre)
+    int _sheetMinutes = a.timerMin ?? 0;
 
     final bool? changed = await showModalBottomSheet<bool>(
       context: context,
@@ -6485,7 +6517,10 @@ class _AppRootState extends State<AppRoot>
                 // ── Pills durée + CTA (StatefulBuilder pour mise à jour locale) ─
                 StatefulBuilder(builder: (ctx2, setLocal) {
                   Widget pill(String label, int min) => GestureDetector(
-                    onTap: () => setLocal(() => _sheetMinutes = min),
+                    onTap: () {
+                      setLocal(() => _sheetMinutes = min);
+                      logic.setActivityTimerMin(a.id, min == 0 ? null : min);
+                    },
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 150),
                       margin: const EdgeInsets.only(right: 6),

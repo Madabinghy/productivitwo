@@ -629,6 +629,14 @@ class AppLogic {
     onChange();
   }
 
+  /// Sauvegarde la durée minuteur préférée pour une activité (null = chrono libre).
+  void setActivityTimerMin(String activityId, int? minutes) {
+    final idx = state.activities.indexWhere((a) => a.id == activityId);
+    if (idx < 0) return;
+    state.activities[idx].timerMin = minutes;
+    onChange();
+  }
+
   // ── Priorités libres du jour ────────────────────────────────────────────────
 
   void addTodayItem(String text) {

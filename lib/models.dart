@@ -316,6 +316,9 @@ class Activity {
   bool deleted;
   bool todayFlag; // priorité du jour (routines)
 
+  /// Durée minuteur préférée en minutes (null = chrono libre).
+  int? timerMin;
+
   Activity({
     String? id,
     required this.domainId,
@@ -335,6 +338,7 @@ class Activity {
     this.iconCode,
     this.deleted = false,
     this.todayFlag = false,
+    this.timerMin,
   })  : id = id ?? _uuid.v4(), // <-- sans const ici
         createdAt = createdAt ?? DateTime.now();
 
@@ -368,6 +372,7 @@ class Activity {
         'iconCode': iconCode,
         'deleted': deleted,
         'todayFlag': todayFlag,
+        'timerMin': timerMin,
       };
 
   /// Migration douce :
@@ -412,6 +417,7 @@ class Activity {
       iconCode: (j['iconCode'] as num?)?.toInt(),
       deleted: j['deleted'] as bool? ?? false,
       todayFlag: j['todayFlag'] as bool? ?? false,
+      timerMin: (j['timerMin'] as num?)?.toInt(),
     );
   }
 

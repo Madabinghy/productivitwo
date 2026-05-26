@@ -10,6 +10,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.40', '25 mai 2026', [
+    (Icons.timer_outlined, 'Minuteur : le bandeau activité affiche le compte à rebours en orange (rouge sous 60 s) quand un minuteur est actif'),
+    (Icons.timer_outlined, 'Minuteur : la durée choisie est mémorisée par activité — la fiche se rouvre avec la dernière sélection'),
+  ]),
   _Entry('5.39', '25 mai 2026', [
     (Icons.cleaning_services_outlined, 'Nettoyage interne : suppression complète de DayPlanItem — modèle, logique et persistance allégés'),
   ]),
