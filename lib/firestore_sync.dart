@@ -262,6 +262,10 @@ class FirestoreSync {
       reviewNotifHour:       local.reviewNotifHour,
       reviewNotifMinute:     local.reviewNotifMinute,
       reviewNotifEnabled:    local.reviewNotifEnabled,
+      // État éphémère local — non synchronisé Firestore
+      todayItems:            local.todayItems,
+      focusTodayIds:         local.focusTodayIds,
+      snoozedUntil:          local.snoozedUntil,
     );
   }
 
