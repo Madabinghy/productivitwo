@@ -1,24 +1,14 @@
 // ProductivitwoWidget.swift
-// Widget iOS home screen — Small (anneau routines) + Medium (plan du jour) + Large (projets Gantt)
+// Widget iOS home screen — Small (anneau routines) + Medium (top 4 tâches Gantt) + Large (Gantt groupé)
 
 import WidgetKit
 import SwiftUI
-import AppIntents
 
 // MARK: - Constantes
 
-private let appGroup  = "group.com.madabinghy.productivitwo"
-private let markDoneURL = "https://markplanitemdone-dzos75b65q-uc.a.run.app"
+private let appGroup = "group.com.madabinghy.productivitwo"
 
 // MARK: - Modèles de données
-
-struct PlanItem: Identifiable, Decodable {
-    let id = UUID()
-    let itemId: String   // ID Firestore — utilisé par TogglePlanItemIntent
-    let title: String
-    let done: Bool
-    enum CodingKeys: String, CodingKey { case itemId, title, done }
-}
 
 struct GanttTask: Identifiable, Decodable {
     let id = UUID()
@@ -35,81 +25,23 @@ struct GanttTask: Identifiable, Decodable {
 struct WidgetData {
     let routinesDone: Int
     let routinesTotal: Int
-    let planItems: [PlanItem]
     let ganttTasks: [GanttTask]
 
     static func load() -> WidgetData {
         let defaults = UserDefaults(suiteName: appGroup)
         let done  = defaults?.integer(forKey: "routines_done")  ?? 0
         let total = defaults?.integer(forKey: "routines_total") ?? 0
-        var items: [PlanItem] = []
-        if let raw = defaults?.string(forKey: "plan_json"),
-           let data = raw.data(using: .utf8),
-           let decoded = try? JSONDecoder().decode([PlanItem].self, from: data) {
-            items = decoded
-        }
         var tasks: [GanttTask] = []
         if let raw = defaults?.string(forKey: "gantt_json"),
            let data = raw.data(using: .utf8),
            let decoded = try? JSONDecoder().decode([GanttTask].self, from: data) {
             tasks = decoded
         }
-        return WidgetData(routinesDone: done, routinesTotal: total, planItems: items, ganttTasks: tasks)
+        return WidgetData(routinesDone: done, routinesTotal: total, ganttTasks: tasks)
     }
 
     var routineRatio: Double {
         routinesTotal > 0 ? Double(routinesDone) / Double(routinesTotal) : 0
-    }
-}
-
-// MARK: - AppIntent : cocher/décocher une action du plan du jour
-
-struct TogglePlanItemIntent: AppIntent {
-    static var title: LocalizedStringResource = "Cocher une action"
-
-    @Parameter(title: "Item ID") var itemId: String
-    @Parameter(title: "Nouveau statut") var newDone: Bool
-
-    init() { itemId = ""; newDone = false }
-    init(itemId: String, newDone: Bool) { self.itemId = itemId; self.newDone = newDone }
-
-    func perform() async throws -> some IntentResult {
-        let defaults = UserDefaults(suiteName: appGroup)
-
-        // 1. Mise à jour optimiste de plan_json dans UserDefaults
-        if let raw = defaults?.string(forKey: "plan_json"),
-           let data = raw.data(using: .utf8),
-           let items = try? JSONDecoder().decode([PlanItem].self, from: data) {
-            let updated: [[String: Any]] = items.map { item in
-                let isDone = item.itemId == itemId ? newDone : item.done
-                return ["itemId": item.itemId, "title": item.title, "done": isDone]
-            }
-            if let newData = try? JSONSerialization.data(withJSONObject: updated),
-               let newStr = String(data: newData, encoding: .utf8) {
-                defaults?.set(newStr, forKey: "plan_json")
-            }
-        }
-
-        // 2. Rechargement immédiat du widget
-        WidgetCenter.shared.reloadTimelines(ofKind: "ProductivitwoWidget")
-
-        // 3. Sync Firestore via Cloud Function (si credentials disponibles)
-        guard let token = defaults?.string(forKey: "widget_token"),
-              let uid   = defaults?.string(forKey: "widget_uid"),
-              !token.isEmpty, !uid.isEmpty else {
-            return .result()
-        }
-
-        guard let url = URL(string: markDoneURL) else { return .result() }
-        var request = URLRequest(url: url, timeoutInterval: 10)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body: [String: Any] = ["uid": uid, "planItemId": itemId, "done": newDone]
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        _ = try? await URLSession.shared.data(for: request)
-
-        return .result()
     }
 }
 
@@ -124,16 +56,11 @@ struct ProductivitwoProvider: TimelineProvider {
     func placeholder(in context: Context) -> ProductivitwoEntry {
         ProductivitwoEntry(date: Date(), data: WidgetData(
             routinesDone: 3, routinesTotal: 5,
-            planItems: [
-                PlanItem(itemId: "1", title: "Méditation", done: true),
-                PlanItem(itemId: "2", title: "Sport 30 min", done: false),
-                PlanItem(itemId: "3", title: "Revue emails", done: false),
-                PlanItem(itemId: "4", title: "Deep work", done: false),
-            ],
             ganttTasks: [
                 GanttTask(project: "Mon App", task: "Développer le backend", done: 2, total: 5),
                 GanttTask(project: "Mon App", task: "Design UI", done: 3, total: 3),
                 GanttTask(project: "Lancement", task: "Rédiger la landing page", done: 0, total: 4),
+                GanttTask(project: "Lancement", task: "Préparer les visuels", done: 1, total: 2),
             ]
         ))
     }
@@ -152,7 +79,7 @@ struct ProductivitwoProvider: TimelineProvider {
 
 // MARK: - Couleurs de marque
 
-private let brandPurple   = Color(red: 0.42, green: 0.18, blue: 0.88)
+private let brandPurple = Color(red: 0.42, green: 0.18, blue: 0.88)
 
 // MARK: - Widget Small : anneau de routines
 
@@ -196,7 +123,7 @@ struct SmallWidgetView: View {
     }
 }
 
-// MARK: - Widget Medium : plan du jour interactif
+// MARK: - Widget Medium : anneau routines + top 4 tâches Gantt
 
 struct MediumWidgetView: View {
     let data: WidgetData
@@ -238,27 +165,24 @@ struct MediumWidgetView: View {
                     .frame(width: 1)
                     .padding(.vertical, 4)
 
-                // Colonne droite : plan du jour (boutons interactifs)
+                // Colonne droite : top 4 tâches Gantt actives
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("Aujourd'hui")
+                    Text("Tâches actives")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(.secondary)
                         .textCase(.uppercase)
                         .tracking(0.6)
                         .padding(.bottom, 6)
 
-                    if data.planItems.isEmpty {
-                        Text("Aucune action planifiée")
+                    if data.ganttTasks.isEmpty {
+                        Text("Aucune tâche active")
                             .font(.system(size: 12))
                             .foregroundColor(.secondary.opacity(0.6))
                             .italic()
                     } else {
-                        ForEach(data.planItems.prefix(4)) { item in
-                            Button(intent: TogglePlanItemIntent(itemId: item.itemId, newDone: !item.done)) {
-                                PlanRowView(item: item)
-                                    .padding(.bottom, 5)
-                            }
-                            .buttonStyle(.plain)
+                        ForEach(data.ganttTasks.prefix(4)) { task in
+                            GanttTaskRow(task: task)
+                                .padding(.bottom, 5)
                         }
                     }
                     Spacer(minLength: 0)
@@ -267,34 +191,6 @@ struct MediumWidgetView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
-        }
-    }
-}
-
-struct PlanRowView: View {
-    let item: PlanItem
-
-    var body: some View {
-        HStack(spacing: 7) {
-            ZStack {
-                Circle()
-                    .fill(item.done ? brandPurple : Color.clear)
-                    .overlay(Circle().stroke(
-                        item.done ? brandPurple : Color.secondary.opacity(0.35),
-                        lineWidth: 1.2))
-                    .frame(width: 14, height: 14)
-                if item.done {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 7, weight: .bold))
-                        .foregroundColor(.white)
-                }
-            }
-
-            Text(item.title)
-                .font(.system(size: 12.5, weight: item.done ? .regular : .medium))
-                .foregroundColor(item.done ? .secondary : .primary)
-                .strikethrough(item.done, color: .secondary)
-                .lineLimit(1)
         }
     }
 }
@@ -445,14 +341,14 @@ struct ProductivitwoWidget: Widget {
                 .containerBackground(.fill.tertiary, for: .widget)
         }
         .configurationDisplayName("Productivitwo")
-        .description("Routines, plan du jour et projets actifs")
+        .description("Routines et tâches Gantt actives")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }
 
 struct ProductivitwoWidgetEntryView: View {
-    let entry: ProductivitwoEntry
     @Environment(\.widgetFamily) var family
+    let entry: ProductivitwoEntry
 
     var body: some View {
         switch family {
@@ -463,25 +359,3 @@ struct ProductivitwoWidgetEntryView: View {
         }
     }
 }
-
-// MARK: - Preview
-
-private let _previewData = WidgetData(
-    routinesDone: 3, routinesTotal: 5,
-    planItems: [
-        PlanItem(itemId: "1", title: "Méditation", done: true),
-        PlanItem(itemId: "2", title: "Sport 30 min", done: false),
-        PlanItem(itemId: "3", title: "Deep work", done: false),
-        PlanItem(itemId: "4", title: "Revue emails", done: false),
-    ],
-    ganttTasks: [
-        GanttTask(project: "Mon App", task: "Développer le backend", done: 2, total: 5),
-        GanttTask(project: "Mon App", task: "Design UI", done: 3, total: 3),
-        GanttTask(project: "Lancement", task: "Rédiger la landing page", done: 0, total: 4),
-        GanttTask(project: "Lancement", task: "Créer les visuels", done: 1, total: 3),
-    ]
-)
-
-#Preview(as: .systemSmall)  { ProductivitwoWidget() } timeline: { ProductivitwoEntry(date: .now, data: _previewData) }
-#Preview(as: .systemMedium) { ProductivitwoWidget() } timeline: { ProductivitwoEntry(date: .now, data: _previewData) }
-#Preview(as: .systemLarge)  { ProductivitwoWidget() } timeline: { ProductivitwoEntry(date: .now, data: _previewData) }
