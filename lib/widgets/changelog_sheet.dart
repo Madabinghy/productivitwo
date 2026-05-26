@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.39', '25 mai 2026', [
+    (Icons.cleaning_services_outlined, 'Nettoyage interne : suppression complète de DayPlanItem — modèle, logique et persistance allégés'),
+  ]),
   _Entry('5.38', '25 mai 2026', [
     (Icons.timer_outlined, 'Minuteur de démarrage : pills 5 / 10 / 15 / 25 min sur la fiche activité — auto-stop + notification à la fin'),
     (Icons.lightbulb_outline, 'Inbox : astuce ORION dans l\'état vide — explication du traitement automatique toutes les 6h'),
