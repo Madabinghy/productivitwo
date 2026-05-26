@@ -4,209 +4,7 @@ import 'package:uuid/uuid.dart';
 const _uuid = Uuid();
 const int kMinDailyGoalMin = 1;
 
-enum PlanKind { action, activityTime, habit }
-
 enum HabitFreq { daily, weekly, monthly }
-
-enum ActionStatus {
-  active,
-  done,
-  archived,
-  inbox,
-}
-
-class ChecklistItem {
-  String id;
-  String title;
-  bool done;
-
-  ChecklistItem({required this.id, required this.title, this.done = false});
-
-  Map<String, dynamic> toJson() => {
-        "id": id,
-        "title": title,
-        "done": done,
-      };
-
-  static ChecklistItem from(Map j) {
-    final rawId = (j["id"] ?? "").toString().trim();
-    final title = (j["title"] ?? "").toString();
-    final done = (j["done"] == true);
-
-    return ChecklistItem(
-      id: rawId.isNotEmpty
-          ? rawId
-          : "migr_${DateTime.now().microsecondsSinceEpoch}", // ✅
-      title: title,
-      done: done,
-    );
-  }
-}
-
-class DayPlanItem {
-  String id;
-  PlanKind kind;
-  String? refId;
-  String? domainId;
-  String? activityId;
-  String? habitId;
-  String? goalActionId;
-  String title;
-  String yyyymmdd;
-  bool done;
-  int doneCount;
-  bool allDay;
-  int order;
-  bool isNowFocus;
-  bool toPlan; // ✅ item "Courses / à prévoir"
-  bool archived; // ✅ archivé (global si habitId == null)
-  DateTime? snoozeUntil;
-  ActionStatus status;
-  DateTime createdAt;
-  String? blockId;
-  String? originalYmd; // date où l'action a été planifiée pour la première fois
-  String? projectId;     // projet Gantt associé
-  String? projectTaskId; // tâche Gantt associée
-
-  // ✅ NEW
-  List<ChecklistItem> checklist;
-
-  DayPlanItem({
-    required this.id,
-    required this.kind,
-    this.refId,
-    this.domainId,
-    this.activityId,
-    this.habitId,
-    this.goalActionId,
-    required this.title,
-    required this.yyyymmdd,
-    this.done = false,
-    this.doneCount = 0,
-    this.allDay = false,
-    this.isNowFocus = false,
-    this.order = 0,
-    this.toPlan = false,
-    this.archived = false,
-    DateTime? createdAt,
-    this.snoozeUntil,
-    ActionStatus? status,
-    this.blockId,
-    this.originalYmd,
-    this.projectId,
-    this.projectTaskId,
-
-    // ✅ NEW
-    List<ChecklistItem>? checklist,
-  })  : createdAt = createdAt ?? DateTime.now(),
-        status = status ?? ActionStatus.active,
-        checklist = checklist ?? <ChecklistItem>[];
-
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'kind': kind.name,
-        'refId': refId,
-        'domainId': domainId,
-        'activityId': activityId,
-        'habitId': habitId,
-        'goalActionId': goalActionId,
-        'title': title,
-        'yyyymmdd': yyyymmdd,
-        'done': done,
-        'doneCount': doneCount,
-        'allDay': allDay,
-        'isNowFocus': isNowFocus,
-        'order': order,
-        'toPlan': toPlan,
-        'archived': archived,
-        'snoozeUntil': snoozeUntil?.toIso8601String(),
-
-        // ✅ AJOUT
-        'status': status.name,
-        'createdAt': createdAt.toIso8601String(),
-        'blockId': blockId,
-        'originalYmd': originalYmd,
-        'projectId': projectId,
-        'projectTaskId': projectTaskId,
-
-        // ✅ CHECKLIST
-        'checklist': checklist.map((c) => c.toJson()).toList(),
-      };
-
-  static DayPlanItem from(Map j) {
-    final done = _asBool(j['done']);
-    final doneCount = j['doneCount'] ?? (done ? 1 : 0);
-
-    final kindStr = (j['kind'] as String?)?.trim();
-
-    final kind = PlanKind.values.firstWhere(
-      (k) => k.name == kindStr,
-      orElse: () => PlanKind.action, // ✅ ou une valeur par défaut cohérente
-    );
-
-    String? refId = (j['refId'] as String?)?.trim();
-    String? habitId = (j['habitId'] as String?)?.trim();
-
-    if (kind == PlanKind.habit && (refId == null || refId.isEmpty)) {
-      refId = habitId;
-      habitId = null;
-    }
-
-    return DayPlanItem(
-      id: j['id'],
-      kind: kind,
-      refId: refId,
-      habitId: habitId,
-      goalActionId: j['goalActionId'] as String?,
-      domainId: j['domainId'],
-      activityId: j['activityId'],
-      title: j['title'] ?? '',
-      yyyymmdd: j['yyyymmdd'],
-      done: done,
-      doneCount: doneCount,
-      allDay: _asBool(j['allDay']),
-      isNowFocus: _asBool(j['isNowFocus']),
-      order: (j['order'] as num?)?.toInt() ?? 0,
-      toPlan: _asBool(j['toPlan']),
-      archived: _asBool(j['archived']),
-      snoozeUntil: j['snoozeUntil'] != null
-          ? DateTime.tryParse(j['snoozeUntil'])
-          : null,
-      status: ActionStatus.values.firstWhere(
-        (s) => s.name == j['status'],
-        orElse: () => ActionStatus.active,
-      ),
-      createdAt: _parseDate(j['createdAt']),
-      blockId: j['blockId'] as String?,
-      originalYmd: j['originalYmd'] as String?,
-      projectId: j['projectId'] as String?,
-      projectTaskId: j['projectTaskId'] as String?,
-      checklist: (j['checklist'] as List?)
-              ?.map((c) => ChecklistItem.from(c))
-              .toList() ??
-          [],
-    );
-  }
-
-  static DateTime? _parseDate(dynamic v) {
-    if (v == null) return null;
-    if (v is String) return DateTime.tryParse(v);
-    // Firestore Timestamp (FieldValue.serverTimestamp) via cloud_firestore SDK
-    try { return (v as dynamic).toDate() as DateTime; } catch (_) { return DateTime.now(); }
-  }
-
-  static bool _asBool(dynamic v, {bool defaultValue = false}) {
-    if (v == null) return defaultValue;
-    if (v is bool) return v;
-    if (v is num) return v != 0;
-    if (v is String) {
-      final t = v.trim().toLowerCase();
-      if (t == 'true' || t == '1' || t == 'yes') return true;
-      if (t == 'false' || t == '0' || t == 'no') return false;
-    }
-    return defaultValue;
-  }
-}
 
 class DayBlock {
   String id;
@@ -920,7 +718,6 @@ class AppState {
 
   List<Goal> goals;
   List<InboxItem> inbox;
-  List<DayPlanItem> dayPlan;
 
   String? lastRolloverYmd;
   String? lastCarryYmd; // on a déjà fait "Hier → Aujourd'hui" pour ce jour ?
@@ -933,7 +730,7 @@ class AppState {
   // ✅ Habits context (associations)
   List<HabitHit> habitHits;
   Map<String, String> habitPinnedActivity;
-  Map<String, List<String>> nowSkippedByYmd; // ids de DayPlanItem (ou virt ids)
+  Map<String, List<String>> nowSkippedByYmd;
   Map<String, List<String>> nowDoneByYmd; // ids "pas aujourd'hui / ok"
   Map<String, List<String>>
       habitChecklistByHabitId; // habitId -> ["item1","item2"]
@@ -987,7 +784,6 @@ class AppState {
     Map<String, String>? snoozedUntil,
     List<Goal>? goals,
     List<InboxItem>? inbox,
-    List<DayPlanItem>? dayPlan,
     List<String>? focusTodayIds,
     this.sortTodayByDashboard = false,
     this.onboardingDone = false,
@@ -1033,7 +829,6 @@ class AppState {
   })  : snoozedUntil = snoozedUntil ?? <String, String>{},
         goals = goals ?? <Goal>[],
         inbox = inbox ?? <InboxItem>[],
-        dayPlan = dayPlan ?? <DayPlanItem>[],
         focusTodayIds = focusTodayIds ?? <String>[],
         habitHits = habitHits ?? <HabitHit>[],
         habitPinnedActivity = habitPinnedActivity ?? <String, String>{},
@@ -1061,7 +856,6 @@ class AppState {
         'snoozedUntil': snoozedUntil,
         'goals': goals.map((e) => e.toJson()).toList(),
         'inbox': inbox.map((e) => e.toJson()).toList(),
-        'dayPlan': dayPlan.map((e) => e.toJson()).toList(),
 
         'lastRolloverYmd': lastRolloverYmd,
         'lastCarryYmd': lastCarryYmd,
@@ -1159,7 +953,6 @@ class AppState {
       snoozedUntil: _mapSS(j['snoozedUntil']),
       goals: _list(j['goals'], (e) => Goal.from(e)),
       inbox: _list(j['inbox'], (e) => InboxItem.from(e)),
-      dayPlan: _list(j['dayPlan'], (e) => DayPlanItem.from(e)),
       lastRolloverYmd: j['lastRolloverYmd'] as String?,
       lastCarryYmd: j['lastCarryYmd'] as String?,
       lastPrepYmd: j['lastPrepYmd'] as String?,

@@ -43,13 +43,6 @@ class RowHeader extends RowItem {
   const RowHeader(this.id, this.title);
 }
 
-class RowPlan extends RowItem {
-  @override
-  final String id;
-  final DayPlanItem it;
-  RowPlan(this.it) : id = it.id;
-}
-
 enum HabitAssocEventType { pinned, changeSuggested }
 
 class HabitAssocEvent {
@@ -157,20 +150,6 @@ class AppLogic {
 
   void bumpRev() => rev.value++;
 
-  void moveItemToEnd(String ymd, DayPlanItem it) {
-    // si jamais c’est un virt: on ignore (ou tu peux matérialiser avant)
-    if (it.id.startsWith('virt:')) return;
-
-    final today = state.dayPlan.where((x) => x.yyyymmdd == ymd).toList();
-    int maxOrder = 0;
-    for (final x in today) {
-      if (x.order > maxOrder) maxOrder = x.order;
-    }
-
-    it.order = maxOrder + 1;
-    onChange();
-  }
-
   DateTime _parseYmd(String ymd) {
     // ymd = "YYYYMMDD"
     final y = int.parse(ymd.substring(0, 4));
@@ -203,28 +182,6 @@ class AppLogic {
     // refresh UI
     onChange();
     rev.value++;
-  }
-
-  String? resolvedLinkedActivityId(DayPlanItem it) {
-    // action classique
-    if (it.kind == PlanKind.action) {
-      final id = it.activityId?.trim();
-      return (id == null || id.isEmpty) ? null : id;
-    }
-
-    // habit / routine
-    if (it.kind == PlanKind.habit) {
-      final habitId = (it.refId ?? it.habitId ?? '').trim();
-      if (habitId.isEmpty) return null;
-
-      final act = _activityById(habitId);
-      final linked = act?.linkedActivityId?.trim();
-      if (linked != null && linked.isNotEmpty) return linked;
-
-      return null;
-    }
-
-    return null;
   }
 
   RoutineCatchupSummary routineCatchupSummary() {
@@ -290,29 +247,6 @@ class AppLogic {
         .toList();
   }
 
-  String? effectiveActivityId(DayPlanItem it) {
-    if (it.kind == PlanKind.action) {
-      final id = (it.activityId ?? '').trim();
-      return id.isEmpty ? null : id;
-    }
-
-    if (it.kind == PlanKind.habit) {
-      final habitId = (it.refId ?? it.habitId ?? '').trim();
-      if (habitId.isEmpty) return null;
-
-      final routineAct = _activityById(habitId);
-      final linkedId = (routineAct?.linkedActivityId ?? '').trim();
-      if (linkedId.isNotEmpty) return linkedId;
-
-      // fallback legacy
-      final legacy = (it.activityId ?? '').trim();
-      return legacy.isEmpty ? null : legacy;
-    }
-
-    final id = (it.activityId ?? '').trim();
-    return id.isEmpty ? null : id;
-  }
-
   Activity? _activityById(String? id) {
     final actId = (id ?? '').trim();
     if (actId.isEmpty) return null;
@@ -322,175 +256,11 @@ class AppLogic {
     return null;
   }
 
-  String? resolvedLaunchActivityId(DayPlanItem it) {
-    // action classique
-    if (it.kind == PlanKind.action) {
-      final id = it.activityId;
-      return (id == null || id.isEmpty) ? null : id;
-    }
-
-    // routine
-    if (it.kind == PlanKind.habit) {
-      final routineId = it.activityId;
-      if (routineId == null || routineId.isEmpty) return null;
-
-      final routine = getActivityById(routineId);
-
-      // si la routine est liée à une autre activité (ex: musculation)
-      final linked = routine?.linkedActivityId;
-
-      // priorité à l'activité liée
-      if (linked != null && linked.isNotEmpty) {
-        return linked;
-      }
-
-      // sinon on lance la routine elle-même
-      return routineId;
-    }
-
-    return null;
-  }
-
   Activity? getActivityById(String id) {
     for (final a in state.activeActivities) {
       if (a.id == id) return a;
     }
     return null;
-  }
-
-  void moveItemToTomorrow(String ymdToday, DayPlanItem it) {
-    if (it.id.startsWith('virt:')) return;
-
-    final d = _parseYmd(ymdToday); // adapte à ton helper
-    final tomorrow = d.add(const Duration(days: 1));
-    final ymdTomorrow = yyyymmdd(tomorrow);
-
-    // order fin de liste demain
-    final tomorrowItems =
-        state.dayPlan.where((x) => x.yyyymmdd == ymdTomorrow).toList();
-    int maxOrder = 0;
-    for (final x in tomorrowItems) {
-      if (x.order > maxOrder) maxOrder = x.order;
-    }
-
-    it.yyyymmdd = ymdTomorrow;
-    it.order = maxOrder + 1;
-
-    // optionnel : si c’était l’action focus Now, on la “détache”
-    it.isNowFocus = false;
-
-    onChange();
-  }
-
-  Future<void> sendToTomorrow(DayPlanItem it) async {
-    final now = DateTime.now();
-    final tomorrow =
-        DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
-    final ymdTomorrow = yyyymmdd(tomorrow);
-
-    // ✅ virtuel -> on matérialise un vrai item demain, sans clone du virtuel
-    if (it.id.startsWith('virt:') && it.kind == PlanKind.habit) {
-      final habitId = (it.refId ?? it.habitId ?? '').trim();
-      if (habitId.isEmpty) return;
-
-      ensurePlannedOnce(
-        ymdTomorrow,
-        PlanKind.habit,
-        habitId,
-        it.title,
-        domainId: it.domainId,
-      );
-      onChange();
-      return;
-    }
-
-    // ✅ item normal -> déplacement
-    moveItemToDay(it, ymdTomorrow);
-  }
-
-  void moveItemToDay(DayPlanItem it, String toYmd) {
-    // déplace le même objet, pas de clone
-    it.yyyymmdd = toYmd;
-    it.snoozeUntil = null;
-
-    // option : le remettre en fin de liste du jour cible
-    it.order = _nextOrderForDay(toYmd);
-
-    onChange();
-  }
-
-  int _nextOrderForDay(String ymd) {
-    final sameDay = state.dayPlan.where((x) => x.yyyymmdd == ymd);
-    if (sameDay.isEmpty) return 0;
-    final maxOrder = sameDay.fold<int>(0, (m, x) => x.order > m ? x.order : m);
-    return maxOrder + 1;
-  }
-
-  void ensureUnderHabitsPlannedToday({
-    required String ymd,
-    required DateTime now,
-  }) {
-    final today = DateTime(now.year, now.month, now.day);
-
-    // base items du jour
-    final todayItems = state.dayPlan.where((it) => it.yyyymmdd == ymd).toList();
-
-    final plannedHabitIds = todayItems
-        .where((x) => x.kind == PlanKind.habit && (x.refId ?? '').isNotEmpty)
-        .map((x) => x.refId!)
-        .toSet();
-
-    // ordre "fin de liste"
-    int maxOrder = 0;
-    for (final it in todayItems) {
-      if (it.order > maxOrder) maxOrder = it.order;
-    }
-
-    final habits = state.activeActivities.where((a) => a.isHabit).toList();
-
-    bool changed = false;
-
-    for (final a in habits) {
-      if (plannedHabitIds.contains(a.id)) continue;
-
-      final freq = effectiveHabitFreq(a);
-      final target = effectiveHabitTarget(a);
-
-      int done;
-      switch (freq) {
-        case HabitFreq.daily:
-          done = habitValueOn(a.id, today);
-          break;
-        case HabitFreq.weekly:
-          done = habitSliding(a.id, 7).done;
-          break;
-        case HabitFreq.monthly:
-          done = habitSliding(a.id, 30).done;
-          break;
-      }
-
-      if (!(target > 0 && done < target)) continue;
-
-      // ✅ crée un vrai DayPlanItem habit
-      state.dayPlan.add(
-        DayPlanItem(
-          id: 'p:${DateTime.now().microsecondsSinceEpoch}',
-          kind: PlanKind.habit,
-          refId: a.id,
-          domainId: a.domainId,
-          title: a.name,
-          yyyymmdd: ymd,
-          done: false,
-          doneCount: 0,
-          allDay: true,
-          order: ++maxOrder, // fin de liste
-        ),
-      );
-
-      changed = true;
-    }
-
-    if (changed) onChange();
   }
 
   double _expectedPerDay(Activity a) {
@@ -622,281 +392,10 @@ class AppLogic {
     // 2) supprime l’activité
     state.activities.removeWhere((a) => a.id == id);
 
-    // 3) nettoie les plans (DayPlanItem)
-    for (final it in state.dayPlan) {
-      // si l’item représente cette activité/routine directement
-      if (it.refId == id &&
-          (it.kind == PlanKind.habit || it.kind == PlanKind.activityTime)) {
-        // on le retire complètement (virt: aussi)
-        // -> on peut le marquer pour suppression
-        it.archived = true; // ou removeWhere plus bas
-      }
-
-      // si c’est une action liée à cette activité
-      if ((it.activityId ?? '') == id) {
-        it.activityId = null; // action redevient “inbox” ou neutre
-      }
-
-      // si tu utilises habitId sur actions et que ça pointe vers la routine supprimée
-      if ((it.habitId ?? '') == id) {
-        it.habitId = null;
-      }
-    }
-
-    // 4) purge des items archivé (si tu veux supprimer au lieu de masquer)
-    state.dayPlan.removeWhere((it) => it.archived == true && (it.refId == id));
-
-    // 5) purge filtres
+    // 3) purge filtres
     state.filters.activityIds.remove(id);
 
     onChange();
-  }
-
-  void reorderTodayBucket({
-    required String yyyymmdd,
-    required List<DayPlanItem>
-        bucketVisible, // la liste affichée (todo ou courses)
-    required int oldIndex,
-    required int newIndex,
-  }) {
-    if (oldIndex < 0 || oldIndex >= bucketVisible.length) return;
-    if (newIndex < 0 || newIndex > bucketVisible.length) return;
-
-    if (newIndex > oldIndex) newIndex -= 1;
-    if (newIndex < 0 || newIndex >= bucketVisible.length) return;
-
-    final moved = bucketVisible[oldIndex];
-    final target = bucketVisible[newIndex];
-
-    // liste canonique du jour (inclut inbox + todo + courses) triée par order
-    final all = state.dayPlan.where((it) => it.yyyymmdd == yyyymmdd).toList()
-      ..sort((a, b) => a.order.compareTo(b.order));
-
-    final from = all.indexWhere((e) => e.id == moved.id);
-    final to = all.indexWhere((e) => e.id == target.id);
-    if (from == -1 || to == -1) return;
-
-    final item = all.removeAt(from);
-    final insertAt = (from < to) ? to - 1 : to;
-    all.insert(insertAt, item);
-
-    // réécrit order (simple et robuste)
-    for (int i = 0; i < all.length; i++) {
-      all[i].order = i;
-    }
-
-    // replace dans state.dayPlan
-    state.dayPlan.removeWhere((it) => it.yyyymmdd == yyyymmdd);
-    state.dayPlan.addAll(all);
-
-    onChange();
-    bumpRev();
-  }
-
-  void pushTodayItemToEnd({
-    required String yyyymmdd,
-    required String itemId,
-  }) {
-    // liste canonique du jour (dans l’ordre)
-    final today = state.dayPlan.where((it) => it.yyyymmdd == yyyymmdd).toList()
-      ..sort((a, b) => a.order.compareTo(b.order));
-
-    final idx = today.indexWhere((it) => it.id == itemId);
-    if (idx == -1) return;
-
-    final moved = today.removeAt(idx);
-    today.add(moved); // ✅ dernier
-
-    // réécrit les order (robuste)
-    for (int i = 0; i < today.length; i++) {
-      today[i].order = i;
-    }
-
-    // remplace dans state.dayPlan
-    state.dayPlan.removeWhere((it) => it.yyyymmdd == yyyymmdd);
-    state.dayPlan.addAll(today);
-
-    onChange();
-    rev.value++; // ✅ refresh NowTab/TodayView si tu utilises rev
-  }
-
-  TodaySections todaySections({
-    required String yyyymmdd,
-    DateTime? now,
-    bool hideDone = true,
-    bool includeVirtualHabits = false,
-  }) {
-    final n = now ?? DateTime.now();
-
-    bool isVisibleBase(DayPlanItem it) {
-      if (it.archived) return false;
-      if (hideDone && it.done) return false;
-      final u = it.snoozeUntil;
-      if (u != null && u.isAfter(n)) return false;
-      return true;
-    }
-
-    final base = state.dayPlan
-        .where((it) => it.yyyymmdd == yyyymmdd)
-        .where(isVisibleBase)
-        .where((it) {
-      final actId = (it.activityId ?? '').trim();
-      if (actId.isEmpty) return true;
-      return !isActivitySnoozed(actId, n);
-    }).toList();
-
-    // ✅ ajoute les virtHabits si demandé (uniquement aujourd’hui en général)
-    final merged = <DayPlanItem>[...base];
-
-    if (includeVirtualHabits) {
-      final plannedHabitIds = base
-          .where((x) => x.kind == PlanKind.habit && (x.refId ?? '').isNotEmpty)
-          .map((x) => x.refId!)
-          .toSet();
-
-      final todayDate = DateTime(n.year, n.month, n.day);
-
-      final virtHabits = state.activeActivities
-          .where((a) => a.isHabit)
-          .where((a) {
-            final freq = effectiveHabitFreq(a);
-            final target = effectiveHabitTarget(a);
-            int done;
-            switch (freq) {
-              case HabitFreq.daily:
-                done = habitValueOn(a.id, todayDate);
-                break;
-              case HabitFreq.weekly:
-                done = habitSliding(a.id, 7).done;
-                break;
-              case HabitFreq.monthly:
-                done = habitSliding(a.id, 30).done;
-                break;
-            }
-            return target > 0 && done < target;
-          })
-          .where((a) => !plannedHabitIds.contains(a.id))
-          .map((a) => DayPlanItem(
-                id: 'virt:${a.id}',
-                kind: PlanKind.habit,
-                refId: a.id,
-                domainId: a.domainId,
-                title: a.name,
-                yyyymmdd: yyyymmdd,
-                allDay: true,
-                order: 1 << 30,
-              ))
-          .toList();
-
-      merged.addAll(virtHabits);
-    }
-
-    merged.sort((a, b) => a.order.compareTo(b.order));
-
-    // ✅ bucketing
-    final todo = <DayPlanItem>[];
-    final inbox = <DayPlanItem>[];
-    final courses = <DayPlanItem>[];
-
-    for (final it in merged) {
-      // IMPORTANT: inbox/courses ne concernent que les ACTIONS
-      if (it.kind == PlanKind.action) {
-        if (it.toPlan) {
-          courses.add(it);
-        } else if (it.status == ActionStatus.inbox &&
-            (it.activityId ?? '').isEmpty &&
-            (it.domainId ?? '').isEmpty) {
-          // Inbox = vraiment sans activité ni domaine.
-          // Si une activité ou un domaine est assigné, l'action va dans todo.
-          inbox.add(it);
-        } else {
-          todo.add(it);
-        }
-      } else {
-        // routines / activityTime -> toujours todo
-        todo.add(it);
-      }
-    }
-
-    return TodaySections(todo: todo, inbox: inbox, courses: courses);
-  }
-
-  void movePlannedToDayIfPresent(
-    PlanKind kind,
-    String refId,
-    String targetYmd, {
-    bool addIfMissing = true,
-  }) {
-    // cherche item existant aujourd’hui/demain/etc (peu importe le jour courant)
-    DayPlanItem? found;
-    for (final it in state.dayPlan) {
-      if (it.kind == kind && it.refId == refId) {
-        found = it;
-        break;
-      }
-    }
-
-    if (found == null) {
-      if (!addIfMissing) return;
-
-      found = DayPlanItem(
-        id: _uuid.v4(),
-        kind: kind,
-        refId: refId,
-        title: '', // ou tu remplis depuis l’activité
-        yyyymmdd: targetYmd,
-        order: 0,
-        allDay: true,
-      );
-      state.dayPlan.add(found);
-    }
-
-    // max order du target day
-    final sameDay =
-        state.dayPlan.where((x) => x.yyyymmdd == targetYmd).toList();
-    final maxOrder = sameDay.isEmpty
-        ? 0
-        : sameDay.map((x) => x.order).reduce((a, b) => a > b ? a : b);
-
-    found.yyyymmdd = targetYmd;
-    found.order = maxOrder + 1;
-    found.snoozeUntil = null;
-    onChange();
-    rev.value++;
-  }
-
-  void movePlanItemToDay(String itemId, String targetYmd) {
-    final it = state.dayPlan.firstWhere((x) => x.id == itemId);
-
-    // max order du jour cible
-    final sameDay =
-        state.dayPlan.where((x) => x.yyyymmdd == targetYmd).toList();
-    final maxOrder = sameDay.isEmpty
-        ? 0
-        : sameDay.map((x) => x.order).reduce((a, b) => a > b ? a : b);
-
-    it.yyyymmdd = targetYmd;
-    it.order = maxOrder + 1;
-    it.snoozeUntil = null; // optionnel: évite incohérences
-    onChange();
-    rev.value++;
-  }
-
-  void moveItemToDayById(String itemId, String targetYmd) {
-    final it = state.dayPlan.firstWhere((x) => x.id == itemId);
-
-    // max order du target day
-    final sameDay =
-        state.dayPlan.where((x) => x.yyyymmdd == targetYmd).toList();
-    final maxOrder = sameDay.isEmpty
-        ? 0
-        : sameDay.map((x) => x.order).reduce((a, b) => a > b ? a : b);
-
-    it.yyyymmdd = targetYmd;
-    it.order = maxOrder + 1;
-    it.snoozeUntil = null; // évite un snooze “today” sur un autre jour
-    onChange();
-    rev.value++;
   }
 
   Activity? _firstWhereOrNull<T extends Object>(
@@ -942,25 +441,6 @@ class AppLogic {
     onChange();
   }
 
-  void setNowFocus(String actionId) {
-    // ✅ un seul pinned à la fois
-    for (final it in state.dayPlan) {
-      if (it.kind == PlanKind.action && it.isNowFocus == true) {
-        it.isNowFocus = false;
-      }
-    }
-    DayPlanItem? x;
-    for (final e in state.dayPlan) {
-      if (e.id == actionId) {
-        x = e;
-        break;
-      }
-    }
-    if (x != null) x.isNowFocus = true;
-
-    onChange();
-  }
-
   void ensureChecklistDay(String ymd) {
     if (_checkYmd == ymd) return;
     _checkYmd = ymd;
@@ -979,17 +459,6 @@ class AppLogic {
     }
   }
 
-  bool shouldSurfacePlanItem(DayPlanItem it, DateTime now) {
-    // Action volante sans activité → toujours visible
-    final actId = it.refId;
-    if (actId == null || actId.isEmpty) return true;
-
-    // Si l’activité est snoozée → on ne remonte pas
-    if (isActivitySnoozed(actId, now)) return false;
-
-    return true;
-  }
-
   bool isActivitySnoozed(String? activityId, DateTime now) {
     final id = (activityId ?? '').trim();
     if (id.isEmpty) return false; // ✅ IMPORTANT
@@ -999,30 +468,6 @@ class AppLogic {
 
     final u = DateTime.tryParse(s);
     return u != null && u.isAfter(now);
-  }
-
-  Future<Activity?> openAssignActivitySheetAndWait(
-    BuildContext context,
-    DayPlanItem action,
-  ) {
-    return showModalBottomSheet<Activity>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => AssignActivitySheet(
-        st: this.state,
-
-        // ✅ quand l’utilisateur choisit une activité
-        onPick: (act) {
-          Navigator.pop(context, act); // ← RENVOIE l’activité
-        },
-
-        // optionnel : rester en inbox
-        onKeepInbox: () {
-          Navigator.pop(context, null);
-        },
-      ),
-    );
   }
 
   void unsnoozeActivity(String? activityId) {
@@ -1129,10 +574,6 @@ class AppLogic {
     );
   }
 
-  bool isCourse(DayPlanItem it) {
-    return it.kind == PlanKind.action && it.toPlan == true;
-  }
-
   String? runningActivityId() {
     // dernière session non terminée (si plusieurs, prends la plus récente)
     Session? last;
@@ -1212,40 +653,6 @@ class AppLogic {
     onChange();
   }
 
-  void appendToTomorrowIfLastIsDifferent(
-    PlanKind kind,
-    String refId,
-    String title, {
-    String? domainId, // ✅ NEW
-  }) {
-    final tomoKey = _tomorrowKey();
-
-    DayPlanItem? last;
-    for (final e in state.dayPlan) {
-      if (e.yyyymmdd != tomoKey) continue;
-      if (last == null || e.order > last.order) last = e;
-    }
-
-    final sameAsLast = last != null && last.kind == kind && last.refId == refId;
-    if (sameAsLast) return;
-
-    state.dayPlan.add(
-      DayPlanItem(
-        id: _uuid.v4(),
-        kind: kind,
-        refId: refId,
-        domainId: domainId, // ✅
-        title: title,
-        yyyymmdd: tomoKey,
-        done: false,
-        allDay: false,
-        order: _nextOrderForDay(tomoKey),
-      ),
-    );
-
-    onChange();
-  }
-
   /// Optionnel : proposer automatiquement les habitudes quotidiennes non atteintes
   void suggestAutoFocusForToday({int maxCount = 4}) {
     final candidates = <Activity>[];
@@ -1319,15 +726,6 @@ class AppLogic {
     state.sessions
         .add(Session(activityId: activityId, startAt: DateTime.now()));
 
-    // 3) journal (burst) -> demain
-
-    removeFromDay(_todayKeyLocal(), PlanKind.activityTime, activityId);
-    //logTomorrowIfLastDifferent(PlanKind.activityTime, activityId, title);
-
-    // 4) optionnel : préparer demain (si tu veux "planifier", pas "journaliser")
-    // ensurePlannedTomorrow(PlanKind.activityTime, activityId);
-
-    // 5) persiste une seule fois
     onChange();
   }
 
@@ -1452,29 +850,12 @@ class AppLogic {
   }
 
   void removeGoalActionFromToday(String actionId) {
-    state.dayPlan.removeWhere((it) => it.goalActionId == actionId);
     onChange();
   }
 
   void deleteGoalAction(String goalId, String actionId) {
     final g = state.goals.firstWhere((x) => x.id == goalId);
     g.actions.removeWhere((a) => a.id == actionId);
-    // Retire aussi les DayPlanItems liés
-    state.dayPlan.removeWhere((it) => it.goalActionId == actionId);
-    onChange();
-  }
-
-  /// Coche/décoche un DayPlanItem et synchronise la GoalAction liée si besoin.
-  void completePlanItem(DayPlanItem it, bool done) {
-    it.done = done;
-    if (it.goalActionId != null) {
-      final goal = state.goals.firstWhereOrNull(
-          (g) => g.actions.any((a) => a.id == it.goalActionId));
-      if (goal != null) {
-        toggleGoalAction(goal.id, it.goalActionId!, done);
-        return; // toggleGoalAction appelle onChange
-      }
-    }
     onChange();
   }
 
@@ -1484,10 +865,6 @@ class AppLogic {
     if (idx < 0) return;
     g.actions[idx].done = done;
     g.actions[idx].doneAt = done ? DateTime.now() : null;
-    // Synchronise les DayPlanItems liés
-    for (final it in state.dayPlan) {
-      if (it.goalActionId == actionId) it.done = done;
-    }
     onChange();
   }
 
@@ -1502,12 +879,6 @@ class AppLogic {
   void setGoalLinkedActivity(String goalId, String? activityId) {
     final g = state.goals.firstWhere((x) => x.id == goalId);
     g.activityId = activityId;
-    final actionIds = g.actions.map((a) => a.id).toSet();
-    for (final item in state.dayPlan) {
-      if (item.goalActionId != null && actionIds.contains(item.goalActionId)) {
-        item.activityId = activityId;
-      }
-    }
     onChange();
   }
 
@@ -1533,59 +904,6 @@ class AppLogic {
     } else {
       g.linkedHabitIds.add(habitId);
     }
-    onChange();
-  }
-
-  void addGoalActionToToday(String goalId, String actionId, {String? blockId}) {
-    final g = state.goals.firstWhere((x) => x.id == goalId);
-    final a = g.actions.firstWhere((x) => x.id == actionId);
-    final ymd = yyyymmdd(DateTime.now());
-    // Évite les doublons
-    if (state.dayPlan.any((it) => it.goalActionId == actionId)) return;
-    final maxOrder = state.dayPlan
-        .where((it) => it.yyyymmdd == ymd)
-        .fold<int>(0, (m, it) => it.order > m ? it.order : m);
-    state.dayPlan.add(DayPlanItem(
-      id: _uuid.v4(),
-      kind: PlanKind.action,
-      title: a.title,
-      yyyymmdd: ymd,
-      domainId: g.domainId,
-      activityId: g.activityId,
-      goalActionId: actionId,
-      blockId: (blockId ?? '').isEmpty ? null : blockId,
-      order: maxOrder + 1,
-    ));
-    onChange();
-  }
-
-  void addProjectTaskActionToToday({
-    required String projectId,
-    required String taskId,
-    required String actionId,
-    required String title,
-    String? blockId,
-  }) {
-    if (state.dayPlan.any((it) => it.projectTaskId == actionId)) return;
-    final ymd = yyyymmdd(DateTime.now());
-    final maxOrder = state.dayPlan
-        .where((it) => it.yyyymmdd == ymd)
-        .fold<int>(0, (m, it) => it.order > m ? it.order : m);
-    state.dayPlan.add(DayPlanItem(
-      id: _uuid.v4(),
-      kind: PlanKind.action,
-      title: title,
-      yyyymmdd: ymd,
-      projectId: projectId,
-      projectTaskId: actionId,
-      blockId: (blockId ?? '').isEmpty ? null : blockId,
-      order: maxOrder + 1,
-    ));
-    onChange();
-  }
-
-  void removeProjectTaskActionFromToday(String actionId) {
-    state.dayPlan.removeWhere((it) => it.projectTaskId == actionId);
     onChange();
   }
 
@@ -1911,28 +1229,6 @@ class AppLogic {
       }
     }
 
-    // --- planifier un lanceur "habit" aujourd’hui (anti-doublon) ---
-    if (delta > 0 && doneOnDay > 0) {
-      final ymdToday = yyyymmdd(currentDay);
-      ensurePlannedOnce(
-        ymdToday,
-        PlanKind.habit,
-        activityId,
-        act.name,
-        domainId: act.domainId,
-      );
-    }
-
-    // --- Retirer d’aujourd’hui uniquement si manuel + daily + atteint ---
-    final freq = effectiveHabitFreq(act);
-    if (freq == HabitFreq.daily) {
-      final dayQuota = dayQuotaFor(act);
-      if (act.manualTarget && dayQuota > 0 && doneOnDay >= dayQuota) {
-        removeFromDay(yyyymmdd(currentDay), PlanKind.habit, activityId);
-      }
-    }
-
-
     onChange();
     return assocEvent;
   }
@@ -2045,50 +1341,15 @@ class AppLogic {
     final currentDay = DateTime(day.year, day.month, day.day);
     final doneOnDay = habitValueOn(activityId, currentDay);
 
-    // ✅ JOURNAL (burst) — toutes fréquences, sans spam
-    // - seulement sur incrément
-    // - seulement s'il y a quelque chose à logguer
-/*     if (delta > 0 && doneOnDay > 0) {
-      logTomorrowIfLastDifferent(
-        PlanKind.habit,
-        activityId,
-        act.name,
-      );
-    } */
-
     if (delta > 0) {
       final running = runningActivity();
-
-      // log contexte (tu l'as déjà)
       state.habitHits.add(HabitHit(
         habitId: activityId,
         ts: DateTime.now(),
         contextActivityId: running?.id,
       ));
     }
-    if (delta > 0 && doneOnDay > 0) {
-      final ymdToday = yyyymmdd(currentDay);
-      ensurePlannedOnce(
-        ymdToday,
-        PlanKind.habit,
-        activityId,
-        act.name,
-        domainId: act.domainId,
-      );
-    }
 
-    // ✅ Retirer d’Aujourd’hui uniquement si :
-    // - cible MANUELLE
-    // - logique quotidienne
-/*     final freq = effectiveHabitFreq(act);
-    if (freq == HabitFreq.daily) {
-      final dayQuota = dayQuotaFor(act);
-      if (act.manualTarget && dayQuota > 0 && doneOnDay >= dayQuota) {
-        removeFromDay(yyyymmdd(currentDay), PlanKind.habit, activityId);
-      }
-    } */
-
-    // Un seul persist à la fin
     onChange();
   }
 
@@ -2104,85 +1365,6 @@ class AppLogic {
       counts[actId] = (counts[actId] ?? 0) + 1;
     }
     return counts;
-  }
-
-  List<DayPlanItem> injectSuggestedActivities({
-    required List<DayPlanItem> items,
-    required String ymd,
-    required DateTime now,
-  }) {
-    final out = <DayPlanItem>[];
-
-    // activités déjà présentes (planifiées OU injectées)
-    final seenActivityIds = <String>{
-      for (final it in items)
-        if (it.kind == PlanKind.activityTime && it.refId != null) it.refId!,
-    };
-
-    // --- A) injection activité associée au-dessus de la routine ---
-    for (final it in items) {
-      if (it.kind == PlanKind.habit && it.refId != null) {
-        final habitId = it.refId!;
-
-        final suggestedActId = suggestedActivityForHabit(
-          habitId: habitId,
-          now: now,
-        ); // ✅ pas de fallback domaine
-
-        if (suggestedActId != null &&
-            !seenActivityIds.contains(suggestedActId)) {
-          final act =
-              state.activeActivities.firstWhereOrNull((a) => a.id == suggestedActId);
-          if (act != null) {
-            out.add(
-              DayPlanItem(
-                id: 'virtAct:${act.id}',
-                kind: PlanKind.activityTime,
-                refId: act.id,
-                domainId: act.domainId,
-                title: act.name,
-                yyyymmdd: ymd,
-                done: false,
-                doneCount: 0,
-                allDay: true,
-                order: 1 << 30,
-              ),
-            );
-            seenActivityIds.add(act.id);
-          }
-        }
-      }
-
-      out.add(it);
-    }
-
-    // --- C) ensuite, ajouter les activités "sous seuil" (à rattraper) EN BAS ---
-    // ⚠️ seulement après les routines, donc ici à la fin.
-    final underGoalActs = state.activeActivities
-        .where((a) => !a.isHabit) // activités temps
-        .where((a) => activityUnderGoal(a, now)) // à toi: today ou 7j
-        .where((a) => !seenActivityIds.contains(a.id))
-        .toList();
-
-    for (final a in underGoalActs) {
-      out.add(
-        DayPlanItem(
-          id: 'virtActGoal:${a.id}', // virtuel "à rattraper"
-          kind: PlanKind.activityTime,
-          refId: a.id,
-          domainId: a.domainId,
-          title: a.name,
-          yyyymmdd: ymd,
-          done: false,
-          doneCount: 0,
-          allDay: true,
-          order: 1 << 30,
-        ),
-      );
-      seenActivityIds.add(a.id);
-    }
-
-    return out;
   }
 
   bool activityUnderGoal(Activity a, DateTime day) {
@@ -2257,134 +1439,6 @@ class AppLogic {
       case HabitFreq.monthly:
         return PeriodCount(habitSliding(a.id, 30).done, monthTargetFrom(a));
     }
-  }
-
-  // ---------- Snooze ----------
-  DayPlanItem ensureHabitPlannedForDay(String ymd, String habitId) {
-    final existing = state.dayPlan
-        .where((e) =>
-            e.yyyymmdd == ymd && e.kind == PlanKind.habit && e.refId == habitId)
-        .toList();
-
-    if (existing.isNotEmpty) return existing.first;
-
-    final a = state.activeActivities.firstWhere((x) => x.id == habitId);
-    final it = DayPlanItem(
-      id: const Uuid().v4(),
-      kind: PlanKind.habit,
-      refId: habitId,
-      domainId: a.domainId,
-      title: a.name,
-      yyyymmdd: ymd,
-      done: false,
-      doneCount: 0,
-      allDay: true,
-      order: _nextOrderForDay(ymd),
-    );
-
-    state.dayPlan.add(it);
-    return it;
-  }
-
-  bool isSnoozed(DayPlanItem it, DateTime now) {
-    final u = it.snoozeUntil;
-    return u != null && u.isAfter(now);
-  }
-
-  DateTime _startOfDay(DateTime d) => DateTime(d.year, d.month, d.day);
-
-  DateTime _tomorrowStart(DateTime now) {
-    final t = _startOfDay(now).add(const Duration(days: 1));
-    return t;
-  }
-
-  Future<DateTime?> _pickDate(BuildContext context, DateTime initial) {
-    return showDatePicker(
-      context: context,
-      initialDate: initial,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
-    );
-  }
-
-  Future<void> snoozeToTodayAfter(
-    DayPlanItem it,
-    TimeOfDay time, {
-    DateTime? now,
-  }) async {
-    final t = now ?? DateTime.now();
-    final todayKey = yyyymmdd(DateTime(t.year, t.month, t.day));
-
-    // ✅ Si c’est une routine virtuelle, on la matérialise dans dayPlan
-    DayPlanItem targetItem = it;
-    if (it.kind == PlanKind.habit &&
-        (it.id.startsWith('virt:') || it.id.startsWith('virt:habit:'))) {
-      final habitId = it.refId;
-      if (habitId != null && habitId.isNotEmpty) {
-        targetItem = ensureHabitPlannedForDay(todayKey, habitId);
-      }
-    }
-
-    // aujourd’hui à HH:MM
-    var target = DateTime(t.year, t.month, t.day, time.hour, time.minute);
-
-    // si on est déjà après l’heure, on pousse à demain (safe)
-    if (!target.isAfter(t)) {
-      target = target.add(const Duration(days: 1));
-    }
-
-    // ✅ IMPORTANT : on écrit sur targetItem (pas sur it)
-    targetItem.snoozeUntil = target;
-    targetItem.isNowFocus = false;
-
-    onChange();
-  }
-
-  DayPlanItem _resolveSnoozeTarget(DayPlanItem it, {DateTime? now}) {
-    if (it.kind == PlanKind.action && it.toPlan == true) {
-      return it; // ⛔ pas de snooze pour les courses
-    }
-    final t = now ?? DateTime.now();
-    final todayKey = yyyymmdd(DateTime(t.year, t.month, t.day));
-
-    if (it.kind == PlanKind.habit &&
-        (it.id.startsWith('virt:') || it.id.startsWith('virt:habit:'))) {
-      final habitId = it.refId;
-      if (habitId != null && habitId.isNotEmpty) {
-        return ensureHabitPlannedForDay(todayKey, habitId);
-      }
-    }
-    return it;
-  }
-
-  Future<void> snoozeToTomorrow(DayPlanItem it) async {
-    final now = DateTime.now();
-    final targetItem = _resolveSnoozeTarget(it, now: now);
-
-    targetItem.snoozeUntil = _tomorrowStart(now);
-    targetItem.isNowFocus = false;
-
-    onChange();
-  }
-
-  Future<void> snoozeToDate(BuildContext context, DayPlanItem it) async {
-    final now = DateTime.now();
-    final picked = await _pickDate(context, _startOfDay(now));
-    if (picked == null) return;
-
-    final targetItem = _resolveSnoozeTarget(it, now: now);
-
-    // heure par défaut : 12:00 (ou 18:00 si tu préfères)
-    final target = DateTime(picked.year, picked.month, picked.day, 12, 0);
-
-    targetItem.snoozeUntil = target;
-    targetItem.isNowFocus = false;
-
-    onChange();
-  }
-
-  void unsnooze(DayPlanItem it) {
-    it.snoozeUntil = null;
   }
 
   // ---------- Domaines ----------
@@ -2472,51 +1526,6 @@ class AppLogic {
         DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
     final start = end.subtract(const Duration(days: 30));
     return (start: start, end: end, days: 30);
-  }
-
-  void ensureDailyHabitsPlanned({DateTime? now}) {
-    final t = now ?? DateTime.now();
-    final todayKey = yyyymmdd(t);
-    final tomorrowKey = yyyymmdd(t.add(const Duration(days: 1)));
-    final today = DateTime(t.year, t.month, t.day);
-
-    bool exists(String ymd, PlanKind kind, String refId) =>
-        _existsInDay(ymd, kind, refId);
-
-    for (final a in state.activeActivities.where((x) => x.isHabit)) {
-      if (effectiveHabitFreq(a) != HabitFreq.daily) continue;
-
-      final quota = dayQuotaFor(a);
-      if (quota <= 0) continue;
-
-      // déjà présent aujourd'hui
-      if (exists(todayKey, PlanKind.habit, a.id)) continue;
-
-      // déjà atteint aujourd'hui
-      final doneToday = habitValueOn(a.id, today);
-      if (doneToday >= quota) continue;
-
-      // déplacé vers demain => ne pas ré-ajouter aujourd'hui
-      if (exists(tomorrowKey, PlanKind.habit, a.id)) continue;
-
-      // ✅ ajouter à AUJOURD'HUI
-      state.dayPlan.add(
-        DayPlanItem(
-          id: _uuid.v4(),
-          kind: PlanKind.habit,
-          refId: a.id,
-          domainId: a.domainId,
-          title: a.name,
-          yyyymmdd: todayKey,
-          done: false,
-          allDay: true,
-          toPlan: true,
-          order: _nextOrderForDay(todayKey),
-        ),
-      );
-    }
-
-    onChange();
   }
 
   Future<int?> maybeAutoAdjustActivity(
@@ -2916,50 +1925,6 @@ class AppLogic {
   }
 
 
-  bool isInbox(DayPlanItem a) {
-    final noDomain = (a.domainId == null || a.domainId!.isEmpty);
-    final noAct = (a.activityId == null || a.activityId!.isEmpty);
-    final notCourses = a.toPlan != true;
-    return noDomain && noAct && notCourses;
-  }
-
-    bool passesEffective(DayPlanItem it) {
-
-    final f = state.filters;
-    final manualActive = f.domainIds.isNotEmpty || f.activityIds.isNotEmpty;
-
-    final running = runningActivity();
-    final runningId = running?.id;
-      if (manualActive) return passesFilters(it);
-
-      if (runningId != null) {
-        final itAct = effectiveActivityId(it);
-        if (itAct != null && itAct.isNotEmpty) return itAct == runningId;
-        return isInbox(it); // ✅ inbox seulement
-      }
-
-      return true;
-    }
-
-
-  void movePlanItemToTop(String yyyymmdd, String itemId) {
-    final dayItems = state.dayPlan.where((e) => e.yyyymmdd == yyyymmdd).toList()
-      ..sort((a, b) => a.order.compareTo(b.order));
-
-    final index = dayItems.indexWhere((e) => e.id == itemId);
-    if (index <= 0) return; // déjà en haut ou introuvable
-
-    final item = dayItems.removeAt(index);
-    dayItems.insert(0, item);
-
-    // Réindexation propre
-    for (int i = 0; i < dayItems.length; i++) {
-      dayItems[i].order = i;
-    }
-
-    onChange();
-  }
-
   String habitFreqLabel(HabitFreq f) {
     switch (f) {
       case HabitFreq.daily:
@@ -2969,543 +1934,6 @@ class AppLogic {
       case HabitFreq.monthly:
         return "Mensuelle";
     }
-  }
-
-  void ensurePlannedTomorrow(PlanKind kind, String refId) {
-    final tomoKey = _tomorrowKey();
-    final exists = state.dayPlan.any(
-      (e) => e.yyyymmdd == tomoKey && e.kind == kind && e.refId == refId,
-    );
-    if (exists) return;
-
-    Activity? act;
-    String title;
-
-    switch (kind) {
-      case PlanKind.activityTime:
-        act = state.activeActivities.firstWhere(
-          (a) => a.id == refId,
-          orElse: () =>
-              Activity(domainId: '', name: 'Activité', habitTarget: 1),
-        );
-        title = act.name;
-        break;
-
-      case PlanKind.habit:
-        act = state.activeActivities.firstWhere(
-          (a) => a.id == refId,
-          orElse: () => Activity(
-            domainId: '',
-            name: 'Routine',
-            type: 'habit',
-            habitTarget: 1,
-          ),
-        );
-        title = act.name;
-        break;
-
-      case PlanKind.action:
-        title = 'Action';
-        break;
-    }
-
-    String? linkedActivityId;
-
-    if (kind == PlanKind.habit) {
-      // ✅ IMPORTANT : ici refId = habitId
-      // On essaie de retrouver l’activité associée à cette routine
-      // 1) si tu as une méthode dédiée, utilise-la:
-      // linkedActivityId = linkedActivityIdForHabit(refId);
-
-      // 2) sinon (fallback), essaye de trouver un item existant aujourd’hui avec la même routine
-      final todayKey =
-          _todayKey(); // si tu l’as, sinon calcule yyyymmdd(DateTime.now())
-      final existing = state.dayPlan.cast<DayPlanItem?>().firstWhere(
-            (e) =>
-                e != null &&
-                e.yyyymmdd == todayKey &&
-                e.kind == PlanKind.habit &&
-                e.refId == refId,
-            orElse: () => null,
-          );
-      linkedActivityId = existing?.activityId;
-    }
-
-    state.dayPlan.add(DayPlanItem(
-      id: _uuid.v4(),
-      kind: kind,
-      refId: refId,
-      domainId: act?.domainId.isNotEmpty == true ? act!.domainId : null,
-      title: title,
-      yyyymmdd: tomoKey,
-      done: false,
-      allDay: false,
-      order: _nextOrderForDay(tomoKey),
-
-      // ✅ activityId selon le type
-      activityId: (kind == PlanKind.activityTime)
-          ? refId
-          : (kind == PlanKind.habit ? linkedActivityId : null),
-    ));
-
-    onChange();
-  }
-
-  List<DayPlanItem> planItemsFor(String ymd) {
-    final out = state.dayPlan.where((e) => e.yyyymmdd == ymd).toList()
-      ..sort((a, b) => a.order.compareTo(b.order));
-    return out;
-  }
-
-  void archiveAction(DayPlanItem it) {
-    it.archived = true;
-    it.done = false;
-    // Les courses (toPlan=true) retournent en réserve — on préserve toPlan=true
-    // pour qu'elles restent dans le pool et réapparaissent dans le CoursesSheet.
-    if (it.toPlan != true) {
-      it.toPlan = false;
-    }
-    onChange();
-  }
-
-  List<RowItem> buildRowsGrouped({
-    required List<DayPlanItem> items,
-    required AppState st,
-    required AppLogic logic,
-    required Map<String, String?> assoc,
-  }) {
-    final r0 = logic.runningActivity();
-    final running =
-        (r0 != null && r0.role == ActivityRole.planning) ? null : r0;
-
-    final focusDomainId = running?.domainId;
-    final focusActivityId = running?.id;
-
-    final domainsById = {for (final d in st.domains) d.id: d};
-    final activitiesById = {for (final a in st.activities) a.id: a};
-
-/*     final habitActs = st.activities.where((a) => a.isHabit).toList();
-    final habitActsByDomain = <String, List<Activity>>{};
-    for (final h in habitActs) {
-      (habitActsByDomain[h.domainId] ??= []).add(h);
-    } */
-
-    // Sépare items par kind
-    final planRoutines = items.where((x) => x.kind == PlanKind.habit).toList();
-    final planActs =
-        items.where((x) => x.kind == PlanKind.activityTime).toList();
-    final planActions = items
-        .where((x) => x.kind == PlanKind.action && x.archived != true)
-        .toList();
-
-    // helper: domain d'un PlanItem routine/activity via Activity
-    String? domainOfPlan(
-      DayPlanItem it,
-      Map<String, Activity> activitiesById,
-    ) {
-      // 1️⃣ si le plan item a déjà un domainId, on l’utilise
-      if (it.domainId != null) return it.domainId;
-
-      // 2️⃣ sinon on remonte via l’Activity référencée
-      final actId = it.refId;
-      if (actId == null) return null;
-
-      final act = activitiesById[actId];
-      return act?.domainId;
-    }
-
-    // Regroupe routines par domaine
-    final routinesByDomain = <String, List<DayPlanItem>>{};
-    for (final it in planRoutines) {
-      final dom = domainOfPlan(it, activitiesById);
-      if (dom == null) continue;
-      (routinesByDomain[dom] ??= []).add(it);
-    }
-
-    // Regroupe activités par domaine
-    final actsByDomain = <String, List<DayPlanItem>>{};
-    for (final it in planActs) {
-      final dom = domainOfPlan(it, activitiesById);
-      if (dom == null) continue;
-      (actsByDomain[dom] ??= []).add(it);
-    }
-
-    // Domaines visibles selon focus
-    final domainIds = (running == null)
-        ? st.domains.map((d) => d.id).toList()
-        : [focusDomainId!];
-
-    final rows = <RowItem>[];
-
-    // Option: actions au tout début
-    if (planActions.isNotEmpty) {
-      rows.add(const RowHeader("virt:actions", "Actions"));
-      rows.addAll(planActions.map((it) => RowPlan(it)));
-    }
-
-    for (final domId in domainIds) {
-      final domName = domainsById[domId]?.name ?? "Domaine";
-      rows.add(RowHeader("virt:dom:$domId", domName));
-
-      //final domRoutines = routinesByDomain[domId] ?? const <DayPlanItem>[];
-      final domActs = actsByDomain[domId] ?? const <DayPlanItem>[];
-
-      final planned = routinesByDomain[domId] ?? const <DayPlanItem>[];
-      final plannedRefIds =
-          planned.map((e) => e.refId).whereType<String>().toSet();
-
-// Catalogue routines (Activity.isHabit)
-      final catalogHabits =
-          st.activities.where((a) => a.isHabit && a.domainId == domId).toList();
-
-// Convertit les routines catalogue absentes du plan en DayPlanItem virtuels
-      final virt = catalogHabits
-          .where((h) => !plannedRefIds.contains(h.id))
-          .map((h) => DayPlanItem(
-                id: 'virt:habit:${h.id}',
-                kind: PlanKind.habit,
-                refId: h.id,
-                domainId: h.domainId,
-                title: h.name,
-                yyyymmdd: planned.isNotEmpty
-                    ? planned.first.yyyymmdd
-                    : yyyymmdd(DateTime.now()),
-              ))
-          .toList();
-
-// ✅ Dom routines = planifiées + virtuelles
-      final domRoutines = [...planned, ...virt];
-
-      // routines groupées par activité associée (via events)
-      final byAct = <String?, List<DayPlanItem>>{};
-      for (final it in domRoutines) {
-        final routineId = it.refId; // id de l'Activity (habit) référencée
-        if (routineId == null) continue; // sécurité
-
-        final actId = assoc[routineId]; // id de l'Activity (time) associée
-        (byAct[actId] ??= []).add(it);
-      }
-      final isFocus = (focusActivityId != null && domId == focusDomainId);
-
-      if (isFocus) {
-        // 1) routines liées à l’activité en cours
-        final focusList = byAct[focusActivityId] ?? const <DayPlanItem>[];
-        if (focusList.isNotEmpty) {
-          final actName = activitiesById[focusActivityId]?.name ?? "Activité";
-          rows.add(RowHeader("virt:sec:$domId:focus", "Routines • $actName"));
-          rows.addAll(focusList.map(RowPlan.new));
-        }
-
-        // 2) routines sans activité
-        final noAct = byAct[null] ?? const <DayPlanItem>[];
-        if (noAct.isNotEmpty) {
-          rows.add(
-              RowHeader("virt:sec:$domId:none", "Routines • Sans activité"));
-          rows.addAll(noAct.map(RowPlan.new));
-        }
-
-        // 3) autres activités groupées
-        final otherActIds =
-            byAct.keys.where((id) => id != null && id != focusActivityId);
-        for (final actId in otherActIds) {
-          final list = byAct[actId]!;
-          final actName = activitiesById[actId!]?.name ?? "Activité";
-          rows.add(
-              RowHeader("virt:sec:$domId:act:$actId", "Routines • $actName"));
-          rows.addAll(list.map(RowPlan.new));
-        }
-      } else {
-        // normal: routines par activité
-        final actIds = byAct.keys.where((id) => id != null).cast<String>();
-        for (final actId in actIds) {
-          final list = byAct[actId]!;
-          final actName = activitiesById[actId]?.name ?? "Activité";
-          rows.add(
-              RowHeader("virt:sec:$domId:act:$actId", "Routines • $actName"));
-          rows.addAll(list.map(RowPlan.new));
-        }
-
-        // routines sans activité
-        final noAct = byAct[null] ?? const <DayPlanItem>[];
-        if (noAct.isNotEmpty) {
-          rows.add(
-              RowHeader("virt:sec:$domId:none", "Routines • Sans activité"));
-          rows.addAll(noAct.map(RowPlan.new));
-        }
-      }
-
-      // activités seules
-      if (domActs.isNotEmpty) {
-        rows.add(RowHeader("virt:sec:$domId:acts", "Activités"));
-        rows.addAll(domActs.map(RowPlan.new));
-      }
-    }
-
-    return rows;
-  }
-
-  bool removeFromDay(String ymd, PlanKind kind, String refId) {
-    final before = state.dayPlan.length;
-    state.dayPlan.removeWhere(
-        (e) => e.yyyymmdd == ymd && e.kind == kind && e.refId == refId);
-    return state.dayPlan.length != before;
-  }
-
-  bool backfillDomainIdsForPlan() {
-    bool changed = false;
-
-    for (final it in state.dayPlan) {
-      if (it.domainId != null) continue;
-      if (it.refId == null) continue;
-
-      if (it.kind == PlanKind.habit || it.kind == PlanKind.activityTime) {
-        final a = state.activeActivities.firstWhere(
-          (x) => x.id == it.refId,
-          orElse: () => Activity(domainId: '', name: '', habitTarget: 1),
-        );
-        if (a.domainId.isNotEmpty) {
-          it.domainId = a.domainId;
-          changed = true;
-        }
-      }
-    }
-
-    if (changed) onChange();
-    return changed;
-  }
-
-  void ensurePlannedOnce(String ymd, PlanKind kind, String refId, String title,
-      {String? domainId}) {
-    final exists = state.dayPlan
-        .any((e) => e.yyyymmdd == ymd && e.kind == kind && e.refId == refId);
-    if (exists) return;
-
-    state.dayPlan.add(DayPlanItem(
-      id: _uuid.v4(),
-      kind: kind,
-      refId: refId,
-      title: title,
-      domainId: domainId ?? '',
-      yyyymmdd: ymd,
-      done: false,
-      order: 1 << 30,
-      allDay: true,
-    ));
-  }
-
-  void logTomorrowIfLastDifferent(
-    PlanKind kind,
-    String refId,
-    String title, {
-    String? domainId, // ✅ NEW
-  }) {
-    final tomoKey = _tomorrowKey();
-
-    DayPlanItem? last;
-    for (final e in state.dayPlan) {
-      if (e.yyyymmdd != tomoKey) continue;
-      if (last == null || e.order > last.order) last = e;
-    }
-
-    final sameAsLast = last != null && last.kind == kind && last.refId == refId;
-    if (sameAsLast) return;
-
-    state.dayPlan.add(
-      DayPlanItem(
-        id: _uuid.v4(),
-        kind: kind,
-        refId: refId,
-        domainId:
-            (domainId != null && domainId.isNotEmpty) ? domainId : null, // ✅
-        title: title,
-        yyyymmdd: tomoKey,
-        done: false,
-        allDay: false,
-        order: _nextOrderForDay(tomoKey),
-      ),
-    );
-
-    onChange();
-  }
-
-  String? _domainIdForJournal(PlanKind kind, String? refId) {
-    if (refId == null) return null;
-
-    // Cas couverts tout de suite chez toi : refId = Activity.id
-    if (kind == PlanKind.habit || kind == PlanKind.activityTime) {
-      final a = state.activeActivities.firstWhere(
-        (x) => x.id == refId,
-        orElse: () => Activity(domainId: '', name: '', habitTarget: 1),
-      );
-      return a.domainId.isEmpty ? null : a.domainId;
-    }
-
-    // Actions / autres : pas de domaine (ou à compléter plus tard)
-    return null;
-  }
-
-  void journalLog({
-    required PlanKind kind,
-    required String? refId,
-    required String title,
-  }) {
-    final dayKey = _tomorrowKey(); // ou _todayKey()
-
-    DayPlanItem? last;
-    for (final e in state.dayPlan) {
-      if (e.yyyymmdd != dayKey) continue;
-      if (last == null || e.order > last.order) last = e;
-    }
-
-    final sameAsLast = last != null && last.kind == kind && last.refId == refId;
-
-    if (sameAsLast) return;
-
-    state.dayPlan.add(
-      DayPlanItem(
-        id: _uuid.v4(),
-        kind: kind,
-        refId: refId,
-        domainId: _domainIdForJournal(kind, refId), // ✅ NEW
-        title: title,
-        yyyymmdd: dayKey,
-        done: false,
-        allDay: false,
-        order: _nextOrderForDay(dayKey),
-      ),
-    );
-
-    onChange();
-  }
-
-  void moveItemToTomorrowById(String itemId) {
-    final todayKey = _todayKey();
-    final tomoKey = _tomorrowKey();
-
-    final idx = state.dayPlan
-        .indexWhere((e) => e.id == itemId && e.yyyymmdd == todayKey);
-    if (idx < 0) return;
-
-    final removed = state.dayPlan.removeAt(idx);
-
-    state.dayPlan.add(
-      DayPlanItem(
-        id: _uuid.v4(), // ok si tu veux une nouvelle occurrence
-        kind: removed.kind,
-        refId: removed.refId, // ✅ garde
-        domainId: removed.domainId, // ✅ garde (si ajouté au modèle)
-        title: removed.title,
-        yyyymmdd: tomoKey,
-        done: false,
-        allDay: removed.allDay,
-        order: _nextOrderForDay(tomoKey),
-      ),
-    );
-
-    onChange();
-  }
-
-  void deletePlanItemById(String id) {
-    state.dayPlan.removeWhere((e) => e.id == id);
-    onChange();
-  }
-
-  void movePlannedToTomorrowIfPresent(
-    PlanKind kind,
-    String refId, {
-    bool addIfMissing = false,
-    bool logEveryOccurrence = false, // ✅ NEW
-  }) {
-    final todayKey = _todayKey();
-    final tomoKey = _tomorrowKey();
-
-    final idx = _indexInDay(todayKey, kind, refId);
-    DayPlanItem? removed;
-    if (idx >= 0) {
-      removed = state.dayPlan.removeAt(idx);
-    }
-
-    // ✅ ancien comportement : dédup demain
-    if (!logEveryOccurrence) {
-      final existsTomorrow = _indexInDay(tomoKey, kind, refId) >= 0;
-      if (existsTomorrow) {
-        onChange();
-        return;
-      }
-    }
-
-    // Helper pour title si besoin
-    String _resolveTitle() {
-      switch (kind) {
-        case PlanKind.activityTime:
-          return state.activeActivities
-              .firstWhere(
-                (a) => a.id == refId,
-                orElse: () =>
-                    Activity(domainId: '', name: 'Activité', habitTarget: 1),
-              )
-              .name;
-        case PlanKind.habit:
-          return state.activeActivities
-              .firstWhere(
-                (a) => a.id == refId,
-                orElse: () => Activity(
-                    domainId: '',
-                    name: 'Routine',
-                    type: 'habit',
-                    habitTarget: 1),
-              )
-              .name;
-        case PlanKind.action:
-          return removed?.title ?? 'Action';
-      }
-    }
-
-    String? _resolveDomainId() {
-      switch (kind) {
-        case PlanKind.activityTime:
-        case PlanKind.habit:
-          final a = state.activeActivities.firstWhere(
-            (x) => x.id == refId,
-            orElse: () => Activity(domainId: '', name: '', habitTarget: 1),
-          );
-          return a.domainId.isEmpty ? null : a.domainId;
-        case PlanKind.action:
-          return null;
-      }
-    }
-
-    DayPlanItem? toAdd;
-
-// ✅ si on a retiré un item aujourd’hui, on log une occurrence demain
-    if (removed != null) {
-      toAdd = DayPlanItem(
-        id: _uuid.v4(),
-        kind: removed.kind,
-        refId: removed.refId,
-        domainId: removed.domainId, // ✅ NEW (si champ ajouté)
-        title: removed.title,
-        yyyymmdd: tomoKey,
-        done: false,
-        allDay: removed.allDay,
-        order: _nextOrderForDay(tomoKey),
-      );
-    } else if (addIfMissing) {
-      toAdd = DayPlanItem(
-        id: _uuid.v4(),
-        kind: kind,
-        refId: refId,
-        domainId: _resolveDomainId(), // ✅ NEW
-        title: _resolveTitle(),
-        yyyymmdd: tomoKey,
-        done: false,
-        allDay: false,
-        order: _nextOrderForDay(tomoKey),
-      );
-    }
-
-    if (toAdd != null) state.dayPlan.add(toAdd);
-    onChange();
   }
 
   Map<String, String?> routineToActivityId(List<HabitAssocEvent> events) {
@@ -3526,75 +1954,6 @@ class AppLogic {
       out[id] = pinned[id] ?? suggested[id];
     }
     return out;
-  }
-
-// Hier → Aujourd'hui (copie les non-faits d'hier). À appeler 1x/jour au lancement.
-  void maybeCarryFromYesterday({DateTime? now}) {
-    final t = now ?? DateTime.now();
-    final today = _ymd(t);
-    if (state.lastCarryYmd == today) return;
-    rolloverUndone(now: t); // ta fonction existante (yesterday -> today)
-    state.lastCarryYmd = today;
-    onChange();
-  }
-
-// Aujourd'hui → Demain (déplace les non-faits). À appeler le soir (ou via bouton).
-  void maybePrepTomorrow(
-      {DateTime? now, int cutoffHour = 22, bool force = false}) {
-    final t = now ?? DateTime.now();
-    final today = _ymd(t);
-    if (!force) {
-      if (t.hour < cutoffHour) return; // pas encore l’heure
-      if (state.lastPrepYmd == today) return; // déjà fait aujourd’hui
-    }
-    rolloverUnfinishedToTomorrow(
-        now: t); // ta fonction existante (today -> tomorrow)
-    state.lastPrepYmd = today;
-    onChange();
-  }
-
-  // ---------- Rollover (facultatif) ----------
-  void rolloverUnfinishedToTomorrow({DateTime? now}) {
-    final _now = now ?? DateTime.now();
-    final String todayKey = yyyymmdd(_now);
-    final String tomorrowKey = yyyymmdd(_now.add(const Duration(days: 1)));
-
-    int nextOrder = 1;
-    for (final e in state.dayPlan.where((e) => e.yyyymmdd == tomorrowKey)) {
-      if (e.order >= nextOrder) nextOrder = e.order + 1;
-    }
-
-    final todayItems =
-        state.dayPlan.where((e) => e.yyyymmdd == todayKey).toList();
-
-    bool _shouldMove(DayPlanItem it) {
-      switch (it.kind) {
-        case PlanKind.action:
-          return it.done == false;
-        case PlanKind.habit:
-          final a = state.activeActivities.firstWhere((x) => x.id == it.refId);
-          final freq = effectiveHabitFreq(a);
-          if (freq != HabitFreq.daily)
-            return false; // on ne déplace auto que le quotidien
-          final d = DateTime(_now.year, _now.month, _now.day);
-          final done = habitValueOn(it.refId!, d);
-          final target = dayQuotaFor(a);
-          return done < target;
-        case PlanKind.activityTime:
-          final dayStart = DateTime(_now.year, _now.month, _now.day);
-          final dur = totalForRangeByActivity(it.refId!, dayStart, _now);
-          return dur.inMinutes == 0;
-      }
-    }
-
-    for (final it in todayItems) {
-      if (_shouldMove(it)) {
-        it.yyyymmdd = tomorrowKey;
-        it.order = nextOrder++;
-      }
-    }
-
-    onChange();
   }
 
   // =====================
@@ -3738,13 +2097,11 @@ class AppLogic {
       final d = monday.add(Duration(days: i));
       if (d.isAfter(endDay)) break;
       final ymd = yyyymmdd(d);
-      final hasActions = state.dayPlan.any((it) =>
-          it.yyyymmdd == ymd && it.kind == PlanKind.action && !it.archived);
       final hasRoutines = state.activeActivities.any((a) =>
           a.isHabit &&
           effectiveHabitFreq(a) == HabitFreq.daily &&
           dayQuotaFor(a) > 0);
-      if (!hasActions && !hasRoutines) continue;
+      if (!hasRoutines) continue;
       sum += _dailyScoreFor(d);
       count++;
     }
@@ -3782,11 +2139,9 @@ class AppLogic {
     for (int i = 0; i < weeks * 7; i++) {
       final d = today.subtract(Duration(days: i));
       if (d.isAfter(today)) continue;
-      final ymd = yyyymmdd(d);
-      final plan = planFor(ymd);
       final hasRoutines = state.activeActivities.any(
           (a) => a.isHabit && effectiveHabitFreq(a) == HabitFreq.daily);
-      if (plan.isEmpty && !hasRoutines) continue;
+      if (!hasRoutines) continue;
       byWeekday[d.weekday - 1].add(_dailyScoreFor(d));
     }
 
@@ -3807,8 +2162,7 @@ class AppLogic {
     return List.generate(days, (i) {
       final d = today.subtract(Duration(days: days - 1 - i));
       final ymd = yyyymmdd(d);
-      final plan = planFor(ymd);
-      final hasData = plan.isNotEmpty || hasRoutines;
+      final hasData = hasRoutines;
       final isFuture = d.isAfter(today);
       return (
         ymd: ymd,
@@ -4158,30 +2512,6 @@ class AppLogic {
   }
 }
 
-extension FiltersX on AppLogic {
-  bool passesFilters(DayPlanItem it) {
-    final f = state.filters;
-
-    // auto-actif
-    final isActive = f.domainIds.isNotEmpty || f.activityIds.isNotEmpty;
-    if (!isActive) return true;
-
-    final domId = (it.domainId ?? '').trim();
-    if (f.domainIds.isNotEmpty) {
-      if (domId.isEmpty) return false;
-      if (!f.domainIds.contains(domId)) return false;
-    }
-
-    final actId = (it.activityId ?? '').trim();
-    if (f.activityIds.isNotEmpty) {
-      if (actId.isEmpty) return false;
-      if (!f.activityIds.contains(actId)) return false;
-    }
-
-    return true;
-  }
-}
-
 class DashboardDomainOrder {
   final Map<String, double> scoreByDomain;
   final Map<String, bool> haloReachedByDomain;
@@ -4327,33 +2657,6 @@ extension TodayLogic on AppLogic {
     );
   }
 
-  List<DayPlanItem> viewItemsSortedByDashboard(
-    List<DayPlanItem> input,
-    Map<String, int> domainRank,
-  ) {
-    // stabilité: garde l'ordre manuel actuel à l’intérieur d’un même domaine
-    final realIndex = <String, int>{};
-    for (var i = 0; i < input.length; i++) {
-      realIndex[input[i].id] = i;
-    }
-
-    final sorted = [...input];
-    sorted.sort((a, b) {
-      final ra =
-          a.domainId == null ? 1 << 30 : (domainRank[a.domainId!] ?? 1 << 20);
-      final rb =
-          b.domainId == null ? 1 << 30 : (domainRank[b.domainId!] ?? 1 << 20);
-
-      final c = ra.compareTo(rb);
-      if (c != 0) return c;
-
-      // même domaine => on garde l'ordre manuel actuel
-      return (realIndex[a.id] ?? 0).compareTo(realIndex[b.id] ?? 0);
-    });
-
-    return sorted;
-  }
-
   List<Domain> sortDomainsLikeDashboard({
     required Map<String, double> scoreByDomain,
     required Map<String, bool> haloReachedByDomain,
@@ -4391,78 +2694,9 @@ extension TodayLogic on AppLogic {
     return domainRankFromSorted(sorted);
   }
 
-  int _indexInDay(String ymd, PlanKind kind, String refId) {
-    return state.dayPlan.indexWhere(
-        (e) => e.yyyymmdd == ymd && e.kind == kind && e.refId == refId);
-  }
-
-  List<DayPlanItem> planFor(String ymd) {
-    final list = state.dayPlan.where((e) => e.yyyymmdd == ymd).toList();
-    list.sort((a, b) => a.order.compareTo(b.order));
-    return list;
-  }
-
   String _todayKeyLocal() {
     final now = DateTime.now();
     return yyyymmdd(DateTime(now.year, now.month, now.day));
-  }
-
-  bool _existsInDay(String ymd, PlanKind kind, String refId) {
-    return state.dayPlan.any(
-      (e) => e.yyyymmdd == ymd && e.kind == kind && e.refId == refId,
-    );
-  }
-
-  void restorePlanItem(DayPlanItem item) {
-    state.dayPlan.add(item);
-    onChange();
-  }
-
-  DayPlanItem? toggleDonePlanItem(String ymd, String itemId, bool value) {
-    final idx = state.dayPlan.indexWhere((e) => e.id == itemId);
-    if (idx == -1) return null;
-
-    final it = state.dayPlan[idx];
-
-    // ACTION → cochée = supprimée
-    if (it.kind == PlanKind.action) {
-      if (value) {
-        // Marque la GoalAction correspondante comme faite
-        if (it.goalActionId != null) {
-          for (final g in state.goals) {
-            final ai = g.actions.indexWhere((a) => a.id == it.goalActionId);
-            if (ai >= 0) {
-              g.actions[ai].done = true;
-              g.actions[ai].doneAt = DateTime.now();
-              break;
-            }
-          }
-        }
-        final removed = state.dayPlan.removeAt(idx);
-        onChange();
-        return removed;
-      }
-      return null;
-    }
-
-    // ROUTINE → on marque done
-    it.done = value;
-    onChange();
-    return null;
-  }
-
-  void markRoutineOkForToday(String ymd, String itemId, bool value) {
-    final idx =
-        state.dayPlan.indexWhere((e) => e.id == itemId && e.yyyymmdd == ymd);
-    if (idx == -1) return;
-
-    final it = state.dayPlan[idx];
-
-    // On ne valide que routines (pas actions)
-    if (it.kind == PlanKind.action) return;
-
-    it.done = value;
-    onChange();
   }
 
   Activity? shoppingActivity() {
@@ -4472,35 +2706,6 @@ extension TodayLogic on AppLogic {
       }
     }
     return null;
-  }
-
-  Future<void> addToPlanAction({
-    required String ymd,
-    required String title,
-    String? habitId,
-    String? domainId,
-  }) async {
-    await addPlanAction(ymd: ymd, title: title);
-
-    // récupère l’item qu’on vient d’ajouter (le dernier)
-    final it = state.dayPlan.last;
-
-    // trouve courses (temporaire par nom)
-    final courses = state.activeActivities.firstWhere(
-      (a) => !a.isHabit && a.name == "Courses",
-      orElse: () =>
-          Activity(domainId: domainId ?? '', name: "Courses", type: 'time'),
-    );
-
-    it.toPlan = true;
-    it.archived = true; // archivé par défaut : visible dans la section Courses uniquement quand activée
-    it.done = false;
-
-    it.habitId = habitId;
-    it.activityId = courses.id;
-    it.domainId = domainId ?? courses.domainId;
-
-    onChange();
   }
 
   void clearNowSkippedFor(String ymd) {
@@ -4517,63 +2722,6 @@ extension TodayLogic on AppLogic {
   void clearNowHiddenFor(String ymd) {
     state.nowSkippedByYmd.remove(ymd);
     state.nowDoneByYmd.remove(ymd);
-    onChange();
-  }
-
-  Future<void> addPlanAction({
-    required String ymd,
-    required String title,
-    String? domainId,
-    String? activityId,
-    String? habitId,
-    String? blockId,
-    String? goalId,
-  }) async {
-    final key = ymd;
-
-    final plan = planFor(key);
-    final todayKey = _todayKeyLocal();
-    final isToday = (key == todayKey);
-
-    final ord = plan.isEmpty
-        ? 0
-        : (isToday
-            ? (plan.first.order - 1)
-            : (plan.last.order + 1));
-
-    // Propagation automatique : domainId depuis l'activité si non fourni
-    String? effectiveDomainId = domainId;
-    if ((effectiveDomainId ?? '').isEmpty && (activityId ?? '').isNotEmpty) {
-      effectiveDomainId = state.activeActivities
-          .firstWhereOrNull((a) => a.id == activityId)
-          ?.domainId;
-    }
-
-    String? goalActionId;
-    if ((goalId ?? '').isNotEmpty) {
-      final goal = state.goals.firstWhereOrNull((g) => g.id == goalId);
-      if (goal != null) {
-        final ga = GoalAction(title: title.trim());
-        goal.actions.add(ga);
-        goalActionId = ga.id;
-        effectiveDomainId ??= goal.domainId;
-        activityId ??= goal.activityId;
-      }
-    }
-
-    state.dayPlan.add(DayPlanItem(
-        id: _uuid.v4(),
-        kind: PlanKind.action,
-        title: title,
-        yyyymmdd: key,
-        order: ord,
-        domainId: effectiveDomainId,
-        activityId: activityId,
-        habitId: habitId,
-        blockId: (blockId ?? '').isEmpty ? null : blockId,
-        goalActionId: goalActionId,
-        status: goalActionId != null ? null : ActionStatus.inbox));
-
     onChange();
   }
 
@@ -4732,107 +2880,8 @@ extension TodayLogic on AppLogic {
     }
   }
 
-  Future<void> addPlanActivity({
-    required String ymd,
-    required String activityId,
-    required bool isHabit,
-    bool allDay = false,
-  }) async {
-    final act = state.activeActivities.firstWhere((a) => a.id == activityId);
-    final key = ymd; // respecte l'onglet (aujourd'hui/demain/...)
-
-    final plan = planFor(key); // trié par order
-    final todayKey = _todayKeyLocal();
-    final isToday = (key == todayKey);
-
-    final ord = plan.isEmpty
-        ? 0
-        : (isToday
-            ? (plan.first.order - 1) // Aujourd'hui -> en tête
-            : (plan.last.order + 1)); // Demain/autre -> en fin
-
-    state.dayPlan.add(DayPlanItem(
-      id: const Uuid().v4(),
-      kind: isHabit ? PlanKind.habit : PlanKind.activityTime,
-      refId: activityId,
-      domainId: act.domainId.isEmpty ? null : act.domainId, // ✅ NEW
-      title: act.name,
-      yyyymmdd: key, // ✅ FIX: pas todayKey
-      allDay: isHabit ? allDay : false,
-      order: ord,
-    ));
-
-    onChange();
-  }
-
-  void toggleDone(String itemId, bool done) {
-    final i = state.dayPlan.indexWhere((e) => e.id == itemId);
-    if (i >= 0) {
-      state.dayPlan[i].done = done;
-      onChange();
-    }
-  }
-
-  void movePlanItemToEnd(String ymd, String itemId) {
-    final plan = planFor(ymd);
-    final oldIndex = plan.indexWhere((e) => e.id == itemId);
-    if (oldIndex == -1) return;
-
-    final lastIndex = plan
-        .length; // IMPORTANT: même convention que onReorder (newIndex "après")
-    if (oldIndex == plan.length - 1) return; // déjà en bas
-
-    reorderPlan(ymd, oldIndex, lastIndex);
-  }
-
-  void reorderPlan(String ymd, int oldIndex, int newIndex) {
-    final list = planFor(ymd);
-    if (newIndex > oldIndex) newIndex -= 1;
-    final item = list.removeAt(oldIndex);
-    list.insert(newIndex, item);
-    for (int i = 0; i < list.length; i++) {
-      list[i].order = i;
-    }
-    onChange();
-  }
-
   void rolloverUndone({DateTime? now}) {
-    final t = now ?? DateTime.now();
-    final today = yyyymmdd(DateTime(t.year, t.month, t.day));
-    final yesterday = yyyymmdd(
-      DateTime(t.year, t.month, t.day).subtract(const Duration(days: 1)),
-    );
-
-    final undone = state.dayPlan
-        .where((e) => e.yyyymmdd == yesterday && !e.done && e.archived != true)
-        .toList();
-    if (undone.isEmpty) return;
-
-    var order = planFor(today).length;
-
-    for (final e in undone) {
-      // Déjà présent aujourd'hui → ne pas dupliquer
-      final alreadyThere = state.dayPlan.any((x) {
-        if (x.yyyymmdd != today) return false;
-        if (x.kind != e.kind) return false;
-        if (e.kind == PlanKind.action) {
-          return x.title == e.title && x.habitId == e.habitId;
-        }
-        return x.refId == e.refId;
-      });
-      if (alreadyThere) continue;
-
-      // Déplacement en place : on conserve l'ID et on mémorise la date d'origine
-      e.originalYmd ??= e.yyyymmdd; // première fois = date d'hier
-      e.yyyymmdd = today;
-      e.order = order++;
-    }
-
-    // Les items FAITS restent sur leur jour d'origine pour le calcul de score.
-    // On nettoie seulement les habits (qui sont gérés via habitValueOn).
-    state.dayPlan.removeWhere(
-        (e) => e.yyyymmdd == yesterday && e.kind == PlanKind.habit);
-    onChange();
+    // DayPlanItem supprimé — plus de rollover à faire
   }
 
   int avgMinutesPerDayInclToday(int days, {DateTime? now}) {
@@ -5015,55 +3064,6 @@ extension TodayLogic on AppLogic {
 
   // ── Blocs journaliers ──────────────────────────────────────────────────────
 
-  String? effectiveBlockId(DayPlanItem it) {
-    if ((it.blockId ?? '').isNotEmpty) return it.blockId;
-    // La lookup activité → bloc s'applique uniquement aux habits/routines,
-    // pas aux actions (une action garde son propre bloc ou aucun).
-    if (it.kind == PlanKind.action) return null;
-    final actId = (it.refId ?? it.activityId ?? '').trim();
-    if (actId.isEmpty) return null;
-    for (final b in state.blocks) {
-      if (b.activityIds.contains(actId)) return b.id;
-    }
-    return null;
-  }
-
-  // Retourne TOUS les blocs auxquels appartient cet item (une routine peut
-  // être dans plusieurs blocs).
-  List<String> effectiveBlockIds(DayPlanItem it) {
-    if ((it.blockId ?? '').isNotEmpty) return [it.blockId!];
-    if (it.kind == PlanKind.action) return [];
-    final actId = (it.refId ?? it.activityId ?? '').trim();
-    if (actId.isEmpty) return [];
-    return state.blocks
-        .where((b) => b.activityIds.contains(actId))
-        .map((b) => b.id)
-        .toList();
-  }
-
-  List<DayPlanItem> blockItemsForDay(String blockId, String ymd) {
-    return state.dayPlan.where((it) {
-      if (it.yyyymmdd != ymd) return false;
-      if (it.archived) return false;
-      return effectiveBlockIds(it).contains(blockId);
-    }).toList()
-      ..sort((a, b) => a.order.compareTo(b.order));
-  }
-
-  bool isBlockComplete(String blockId, String ymd) {
-    final items = blockItemsForDay(blockId, ymd);
-    if (items.isEmpty) return true;
-    return items.every((it) {
-      if (it.kind == PlanKind.habit) {
-        final habitId = it.refId ?? it.habitId;
-        if (habitId == null) return it.done;
-        final act = state.activeActivities.firstWhereOrNull((a) => a.id == habitId);
-        return act != null ? habitReached(act) : it.done;
-      }
-      return it.done;
-    });
-  }
-
   bool isBlockDisabledForDay(String blockId, String ymd) {
     return (state.disabledBlocksByYmd[ymd] ?? []).contains(blockId);
   }
@@ -5108,15 +3108,6 @@ extension TodayLogic on AppLogic {
     return null;
   }
 
-  DayBlock? nextIncompleteBlock(String ymd) {
-    final sorted = [...state.blocks]..sort((a, b) => a.order.compareTo(b.order));
-    for (final b in sorted) {
-      if (isBlockDisabledForDay(b.id, ymd)) continue;
-      if (!isBlockComplete(b.id, ymd)) return b;
-    }
-    return null;
-  }
-
   void createBlock(String name, {String? emoji}) {
     final maxOrder = state.blocks.isEmpty
         ? 0
@@ -5127,9 +3118,6 @@ extension TodayLogic on AppLogic {
 
   void deleteBlock(String blockId) {
     state.blocks.removeWhere((b) => b.id == blockId);
-    for (final it in state.dayPlan) {
-      if (it.blockId == blockId) it.blockId = null;
-    }
     onChange();
   }
 
@@ -5173,12 +3161,6 @@ extension TodayLogic on AppLogic {
     final b = state.blocks.firstWhereOrNull((b) => b.id == blockId);
     if (b == null) return;
     if (!b.activityIds.contains(activityId)) b.activityIds.add(activityId);
-    // Garantit qu'un DayPlanItem existe pour aujourd'hui, sinon blockItemsForDay
-    // ne peut pas retrouver la routine dans le plan du jour.
-    final a = state.activeActivities.firstWhereOrNull((x) => x.id == activityId);
-    if (a != null && a.isHabit) {
-      ensureHabitPlannedForDay(yyyymmdd(DateTime.now()), activityId);
-    }
     onChange();
   }
 
@@ -5189,67 +3171,6 @@ extension TodayLogic on AppLogic {
     onChange();
   }
 
-  void assignActionToBlock(String dayPlanItemId, String? blockId) {
-    final it = state.dayPlan.firstWhereOrNull((x) => x.id == dayPlanItemId);
-    if (it == null) return;
-    it.blockId = blockId;
-    onChange();
-  }
-
-  // ──────────────────────────────────────────────────────────────────────────
-
-  void ensureTodayDailyHabits({DateTime? now}) {
-    final t = now ?? DateTime.now();
-    final todayKey = yyyymmdd(t);
-    final tomorrowKey = yyyymmdd(t.add(const Duration(days: 1)));
-    final todayDate = DateTime(t.year, t.month, t.day);
-
-    bool changed = false;
-
-    for (final a in state.activeActivities.where((x) => x.isHabit)) {
-      if (effectiveHabitFreq(a) != HabitFreq.daily) continue;
-
-      final quota = dayQuotaFor(a);
-      if (quota <= 0) continue;
-
-      final done = habitValueOn(a.id, todayDate);
-
-      if (done >= quota) {
-        final removed = removeFromDay(todayKey, PlanKind.habit, a.id);
-        if (removed) changed = true;
-        continue;
-      }
-
-      // ✅ si l'utilisateur l'a poussée à demain, ne pas la remettre aujourd'hui
-      final plannedTomorrow = state.dayPlan.any((e) =>
-          e.yyyymmdd == tomorrowKey &&
-          e.kind == PlanKind.habit &&
-          e.refId == a.id);
-      if (plannedTomorrow) continue;
-
-      final exists = state.dayPlan.any((e) =>
-          e.yyyymmdd == todayKey &&
-          e.kind == PlanKind.habit &&
-          e.refId == a.id);
-
-      if (!exists) {
-        state.dayPlan.add(DayPlanItem(
-          id: const Uuid().v4(),
-          kind: PlanKind.habit,
-          refId: a.id,
-          domainId: a.domainId.isEmpty ? null : a.domainId, // ✅
-          title: a.name,
-          yyyymmdd: todayKey,
-          done: false,
-          allDay: true,
-          order: _nextOrderForDay(todayKey),
-        ));
-        changed = true;
-      }
-    }
-
-    if (changed) onChange();
-  }
 }
 
 // =====================================================
@@ -5578,33 +3499,3 @@ class _MiniHistogramPainter extends CustomPainter {
   }
 }
 
-class TodaySections {
-  final List<DayPlanItem> todo;
-  final List<DayPlanItem> inbox;
-  final List<DayPlanItem> courses;
-
-  TodaySections({
-    required this.todo,
-    required this.inbox,
-    required this.courses,
-  });
-}
-
-extension DayPlanItemBuckets on DayPlanItem {
-  bool get hasActivityLink => (activityId ?? '').trim().isNotEmpty;
-
-  bool get isCourses => toPlan == true;
-
-  bool get isInbox {
-    // ✅ le plus propre : un vrai status inbox
-    if (status == ActionStatus.inbox) return true;
-
-    // ✅ fallback : action non clarifiée = pas d’activité liée
-    if (kind == PlanKind.action) return !hasActivityLink;
-
-    // routines (PlanKind.habit) ne dépendent pas de refId pour “inbox”
-    return false;
-  }
-
-  bool get isTodo => !archived && !isCourses && !isInbox;
-}

@@ -93,7 +93,6 @@ class FirestoreSync {
         _pushCollection(st.sessions.map((e) => e.toJson()).toList(), 'sessions'),
         _pushCollection(st.habitProgress.map((e) => e.toJson()).toList(), 'habitProgress'),
         _pushCollection(st.habitHits.map((e) => e.toJson()).toList(), 'habitHits'),
-        _pushCollection(st.dayPlan.map((e) => e.toJson()).toList(), 'dayPlan'),
         _pushCollection(st.goals.map((e) => e.toJson()).toList(), 'goals'),
         _pushCollection(st.blocks.map((e) => e.toJson()).toList(), 'blocks'),
         _pushCollection(st.earnedBadges.map((e) => e.toJson()).toList(), 'badges'),
@@ -137,7 +136,6 @@ class FirestoreSync {
         _col('sessions').get(),
         _col('habitProgress').get(),
         _col('habitHits').get(),
-        _col('dayPlan').get(),
         _col('goals').get(),
         _col('blocks').get(),
         _col('badges').get(),
@@ -162,10 +160,9 @@ class FirestoreSync {
         sessions: docs(3).map(Session.from).toList(),
         habitProgress: docs(4).map(HabitProgress.from).toList(),
         habitHits: docs(5).map(HabitHit.from).toList(),
-        dayPlan: docs(6).map(DayPlanItem.from).toList(),
-        goals: docs(7).map(Goal.from).toList(),
-        blocks: docs(8).map(DayBlock.from).toList(),
-        earnedBadges: docs(9)
+        goals: docs(6).map(Goal.from).toList(),
+        blocks: docs(7).map(DayBlock.from).toList(),
+        earnedBadges: docs(8)
             .map(EarnedBadge.tryFrom)
             .whereType<EarnedBadge>()
             .toList(),
@@ -186,8 +183,7 @@ class FirestoreSync {
 
   // ── Merge local + remote ───────────────────────────────────────────────────
   // Stratégie : union par ID pour toutes les collections.
-  // En cas de conflit sur le même ID, on préfère l'état le plus "avancé"
-  // (done=true pour dayPlan, valeur max pour habitProgress).
+  // En cas de conflit sur le même (activité, jour) habitProgress, on garde la valeur max.
   // Les métadonnées scalaires (préférences) viennent du device local.
   static AppState merge(AppState local, AppState remote) {
     // Helpers
@@ -199,21 +195,6 @@ class FirestoreSync {
       final map = byId(remoteList, id);
       for (final item in localList) map[id(item)] = item;
       return map.values.toList();
-    }
-
-    // dayPlan : préférer done=true ou archived=true du serveur (MCP clear/delete)
-    final remotePlan = byId(remote.dayPlan, (i) => i.id);
-    final mergedPlan = byId(local.dayPlan, (i) => i.id);
-    for (final entry in remotePlan.entries) {
-      final loc = mergedPlan[entry.key];
-      if (loc == null) {
-        mergedPlan[entry.key] = entry.value;
-      } else if (!loc.done && entry.value.done) {
-        mergedPlan[entry.key] = entry.value;
-      } else if (!loc.archived && entry.value.archived) {
-        // Le serveur a archivé cet item (ex: clear_day_plan ou delete_action via MCP)
-        mergedPlan[entry.key] = entry.value;
-      }
     }
 
     // habitProgress : clé composite (activityId + yyyymmdd) pour préserver chaque jour.
@@ -271,8 +252,6 @@ class FirestoreSync {
       }(),
       blocks:        union(local.blocks,        remote.blocks,        (b) => b.id),
       earnedBadges:  union(local.earnedBadges,  remote.earnedBadges,  (b) => '${b.id.name}_${b.habitId ?? ""}'),
-      // Merge spécifique
-      dayPlan:       mergedPlan.values.toList(),
       habitProgress: mergedHp.values.toList(),
       // Méta scalaire : valeurs locales (préférences de l'appareil actif)
       onboardingDone:        local.onboardingDone,

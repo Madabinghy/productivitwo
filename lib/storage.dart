@@ -27,54 +27,6 @@ class FileStore {
     await prefs.clear();
   }
 
-
-void _migrateDomainIdBackfill(AppState st) {
-  if (st.domainIdBackfilledOnce) return;
-  final actById = {for (final a in st.activities) a.id: a};
-  for (final item in st.dayPlan) {
-    if ((item.domainId ?? '').isNotEmpty) continue;
-    final actId = (item.activityId ?? '').trim();
-    if (actId.isEmpty) continue;
-    item.domainId = actById[actId]?.domainId;
-  }
-  st.domainIdBackfilledOnce = true;
-}
-
-void _migrateCoursesArchived(AppState st) {
-  if (st.coursesArchivedOnce) return;
-  for (final item in st.dayPlan) {
-    if (item.kind != PlanKind.action) continue;
-    if (item.toPlan != true) continue;
-    if (item.habitId == null || item.habitId!.isEmpty) continue;
-    item.archived = true;
-    item.done = false;
-  }
-  st.coursesArchivedOnce = true;
-}
-
-/// Remet en réserve les courses qui ont été sorties du pool (toPlan=false)
-/// suite au bug du rollover du 14 mai 2026.
-void _migrateRestoreCourses(AppState st) {
-  if (st.coursesRestoredV2) return;
-  // Fallback sur le nom si le rôle n'a pas été migré (données anciennes).
-  final shopAct = st.activities.firstWhereOrNull(
-          (a) => !a.isHabit && a.role == ActivityRole.shopping) ??
-      st.activities.firstWhereOrNull(
-          (a) => !a.isHabit && a.name.trim().toLowerCase() == 'courses');
-  if (shopAct != null) {
-    for (final item in st.dayPlan) {
-      if (item.kind != PlanKind.action) continue;
-      if (item.activityId != shopAct.id) continue;
-      if (item.toPlan == true) continue; // déjà correct
-      item.toPlan = true;
-      item.archived = true;
-      item.done = false;
-    }
-  }
-  st.coursesRestoredOnce = true;
-  st.coursesRestoredV2 = true;
-}
-
 void _migrateLinkedActivities(AppState st) {
   if (st.linkedActivitiesMigratedOnce) return;
 
@@ -150,30 +102,6 @@ void _migrateVoitureActivity(AppState st) {
   st.voitureMigratedOnce = true;
 }
 
-void _cleanChecklists(AppState st) {
-  for (final it in st.dayPlan) {
-    if (it.checklist.isEmpty) continue;
-
-    final seen = <String>{};
-    final cleaned = <ChecklistItem>[];
-
-    for (final c in it.checklist) {
-      // 1️⃣ id vide → on régénère
-      if (c.id.trim().isEmpty) {
-        c.id = "${DateTime.now().microsecondsSinceEpoch}";
-      }
-
-      // 2️⃣ dédup par titre (simple et efficace)
-      final key = c.title.trim().toLowerCase();
-
-      if (seen.add(key)) {
-        cleaned.add(c);
-      }
-    }
-
-    it.checklist = cleaned;
-  }
-}
 
 Future<AppState> loadOrInitCleaner() async {
   AppState? tryDecode(String s) {
@@ -192,13 +120,11 @@ Future<AppState> loadOrInitCleaner() async {
     if (raw != null) {
       final st = tryDecode(raw);
       if (st != null) {
-        _cleanChecklists(st);
         await save(st);
         return st;
       }
     }
     final st = _seedMinimal();
-    _cleanChecklists(st);
     await save(st);
     return st;
   }
@@ -209,12 +135,8 @@ Future<AppState> loadOrInitCleaner() async {
   if (await f.exists()) {
     final main = tryDecode(await f.readAsString());
     if (main != null) {
-      _migrateDomainIdBackfill(main);
-      _migrateCoursesArchived(main);
-      _migrateRestoreCourses(main);
       _migrateLinkedActivities(main);
       _migrateVoitureActivity(main);
-      _cleanChecklists(main);
       await save(main);
       return main;
     }
@@ -222,23 +144,19 @@ Future<AppState> loadOrInitCleaner() async {
     if (await bak.exists()) {
       final b = tryDecode(await bak.readAsString());
       if (b != null) {
-        _migrateCoursesArchived(b);
         _migrateLinkedActivities(b);
         _migrateVoitureActivity(b);
-        _cleanChecklists(b);
         await save(b);
         return b;
       }
     }
 
     final st = _seedMinimal();
-    _cleanChecklists(st);
     await save(st);
     return st;
   }
 
   final st = _seedMinimal();
-  _cleanChecklists(st);
   await save(st);
   return st;
 }
@@ -277,7 +195,6 @@ Future<AppState> loadOrInitCleaner() async {
     if (await f.exists()) {
       final main = tryDecode(await f.readAsString());
       if (main != null) {
-        _migrateCoursesArchived(main);
         _migrateLinkedActivities(main);
         _migrateVoitureActivity(main);
         await save(main);
@@ -287,8 +204,6 @@ Future<AppState> loadOrInitCleaner() async {
       if (await bak.exists()) {
         final b = tryDecode(await bak.readAsString());
         if (b != null) {
-          _migrateCoursesArchived(b);
-          _migrateRestoreCourses(b);
           _migrateLinkedActivities(b);
           _migrateVoitureActivity(b);
           await save(b);
@@ -564,9 +479,6 @@ Future<AppState> loadOrInitCleaner() async {
     final hSport = habitByName('Séance sport');
     final hStretch = habitByName('Étirements');
 
-    final coursesAct =
-        activities.firstWhere((a) => a.role == ActivityRole.shopping);
-
     // ========== CHECKLISTS seed ==========
     final habitChecklistByHabitId = <String, List<String>>{
       // Hygiène matin
@@ -757,127 +669,6 @@ Future<AppState> loadOrInitCleaner() async {
       ],
     };
 
-    // ========== À PRÉVOIR (Courses) ==========
-    int _seq = 0;
-    String _newId() =>
-        'seed:${DateTime.now().millisecondsSinceEpoch}:${_seq++}';
-
-    DateTime.now().subtract(const Duration(days: 1));
-    final today = DateTime.now();
-
-    DayPlanItem toPlan({
-      required String title,
-      required Activity habit,
-    }) {
-      return DayPlanItem(
-        id: _newId(),
-        kind: PlanKind.action,
-        title: title,
-        yyyymmdd: yyyymmdd(today),
-        done: false,
-        archived: true,
-        toPlan: true,
-        doneCount: 0,
-        allDay: true,
-        order: 0,
-        domainId: habit.domainId,
-        habitId: habit.id,
-        activityId: coursesAct.id, // ✅ section Courses
-      );
-    }
-
-    final dayPlan = <DayPlanItem>[
-      //Boire de l'eau
-      toPlan(title: 'Eau', habit: hEau),
-
-      // --- Hygiène (matin/soir/hebdo) ---
-      toPlan(title: 'Café', habit: hMatin),
-      toPlan(title: 'Dentifrice', habit: hMatin),
-      toPlan(title: 'Brosse à dents', habit: hMatin),
-      toPlan(title: 'Fil dentaire', habit: hMatin),
-      toPlan(title: 'Cotons-tiges', habit: hMatin),
-      toPlan(title: 'Bain de bouche', habit: hSoir),
-      toPlan(title: 'Savon / gel douche', habit: hMatin),
-      toPlan(title: 'Shampoing', habit: hMatin),
-      toPlan(title: 'Après-shampoing', habit: hMatin),
-      toPlan(title: 'Déodorant', habit: hMatin),
-      toPlan(title: 'Parfum', habit: hMatin),
-      toPlan(title: 'Passer au coiffeur', habit: hMatin),
-      toPlan(title: 'Crème visage', habit: hSoir),
-      toPlan(title: 'Crème corps', habit: hHebdo),
-      toPlan(title: 'Coton', habit: hSoir),
-      toPlan(title: 'Cotons-tiges', habit: hHebdo),
-      toPlan(title: 'Rasoir (jetable) / lames', habit: hHebdo),
-      toPlan(title: 'Mousse/gel à raser', habit: hHebdo),
-      toPlan(title: 'Baume/after-shave', habit: hHebdo),
-      toPlan(title: 'Serviettes hygiéniques', habit: hHebdo),
-      toPlan(title: 'Tampons', habit: hHebdo),
-      toPlan(title: 'Protège-slips', habit: hHebdo),
-      toPlan(title: 'Démaquillant', habit: hSoir),
-
-      // --- Vaisselle ---
-      toPlan(title: 'Liquide vaisselle', habit: hVaiss),
-      toPlan(title: 'Éponges', habit: hVaiss),
-      toPlan(title: 'Gants vaisselle', habit: hVaiss),
-      toPlan(title: 'Produit multi-usage cuisine', habit: hVaiss),
-      toPlan(title: 'Essuie-tout', habit: hVaiss),
-
-      // --- Aspirateur / Nettoyage ---
-      toPlan(title: 'Sacs aspirateur', habit: hAspi),
-      toPlan(title: 'Filtre aspirateur', habit: hAspi),
-      toPlan(title: 'Sacs poubelle (petits)', habit: hClean),
-      toPlan(title: 'Sacs poubelle (grands)', habit: hClean),
-      toPlan(title: 'Produit multi-surfaces', habit: hClean),
-      toPlan(title: 'Javel (option)', habit: hClean),
-      toPlan(title: 'Microfibres', habit: hClean),
-
-      // --- Lessive / Draps ---
-      toPlan(title: 'Lessive', habit: hLessive),
-      toPlan(title: 'Adoucissant (option)', habit: hLessive),
-      toPlan(title: 'Détachant', habit: hLessive),
-      toPlan(title: 'Pinces à linge', habit: hLessive),
-
-      // --- Voiture ---
-      toPlan(title: 'Parfum auto', habit: hVoiture),
-      toPlan(title: 'Produits d\'entretiens auto', habit: hVoiture),
-      toPlan(title: 'Liquide de refroidissement', habit: hVoiture),
-      toPlan(title: 'Chamoisine', habit: hVoiture),
-      toPlan(title: 'Faire le contrôle technique', habit: hVoiture),
-      toPlan(title: 'Changer les pneus', habit: hVoiture),
-      toPlan(title: 'Faire le plein', habit: hVoiture),
-      toPlan(title: 'Faire la pression des pneus', habit: hVoiture),
-
-      // --- Cuisine / Repas ---
-      toPlan(title: 'Huile', habit: hPlanRepas),
-      toPlan(title: 'Sel', habit: hPlanRepas),
-      toPlan(title: 'Poivre', habit: hPlanRepas),
-      toPlan(title: 'Riz', habit: hPlanRepas),
-      toPlan(title: 'Pâtes', habit: hPlanRepas),
-      toPlan(title: 'Farine', habit: hPlanRepas),
-      toPlan(title: 'Sucre', habit: hPlanRepas),
-      toPlan(title: 'Œufs', habit: hPlanRepas),
-      toPlan(title: 'Lait', habit: hPlanRepas),
-      toPlan(title: 'Beurre', habit: hPlanRepas),
-      toPlan(title: 'Yaourts', habit: hPlanRepas),
-      toPlan(title: 'Poulet / protéines', habit: hPlanRepas),
-      toPlan(title: 'Légumes', habit: hPlanRepas),
-      toPlan(title: 'Fruits', habit: hPlanRepas),
-      toPlan(title: 'Conserves (thon/haricots)', habit: hPlanRepas),
-      toPlan(title: 'Épices (curry/paprika)', habit: hPlanRepas),
-      toPlan(title: 'Oignons / ail', habit: hPlanRepas),
-      toPlan(title: 'Sauce tomate', habit: hPlanRepas),
-
-      // --- Cuisine / Repas / Batch ---
-      toPlan(title: 'Cuit-Vapeur', habit: hBatch),
-      toPlan(title: 'Plats à emporter', habit: hBatch),
-
-      // --- Organisation / divers ---
-      toPlan(title: 'Papier toilette', habit: hClean),
-      toPlan(title: 'Mouchoirs', habit: hHebdo),
-      toPlan(title: 'Piles', habit: hRevue),
-      toPlan(title: 'Ampoules', habit: hRevue),
-    ];
-
     // ========== Blocs par défaut ==========
     // "Boire de l'eau" est placée dans tous les blocs comme exemple concret
     // pour montrer à l'utilisateur qu'une routine peut traverser toute la journée.
@@ -898,20 +689,6 @@ Future<AppState> loadOrInitCleaner() async {
       ));
     }
 
-    // DayPlanItem pour que "Boire de l'eau" apparaisse dans les blocs dès aujourd'hui
-    dayPlan.add(DayPlanItem(
-      id: _newId(),
-      kind: PlanKind.habit,
-      refId: hEau.id,
-      domainId: hEau.domainId,
-      title: hEau.name,
-      yyyymmdd: yyyymmdd(today),
-      done: false,
-      doneCount: 0,
-      allDay: true,
-      order: 0,
-    ));
-
     return AppState(
       domains: [
         sante,
@@ -929,7 +706,6 @@ Future<AppState> loadOrInitCleaner() async {
       snoozedUntil: {},
       goals: [],
       inbox: [],
-      dayPlan: dayPlan,
       focusTodayIds: [],
       sortTodayByDashboard: false,
       habitHits: [],
