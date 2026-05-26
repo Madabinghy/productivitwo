@@ -10,6 +10,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.38', '25 mai 2026', [
+    (Icons.timer_outlined, 'Minuteur de démarrage : pills 5 / 10 / 15 / 25 min sur la fiche activité — auto-stop + notification à la fin'),
+    (Icons.lightbulb_outline, 'Inbox : astuce ORION dans l\'état vide — explication du traitement automatique toutes les 6h'),
+  ]),
   _Entry('5.37', '25 mai 2026', [
     (Icons.widgets_outlined, 'Widget Medium interactif : cocher une action depuis l\'écran d\'accueil sans ouvrir l\'app (iOS 17+)'),
     (Icons.widgets_outlined, 'Widget Large : tâches Gantt actives groupées par projet'),

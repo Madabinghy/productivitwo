@@ -1632,6 +1632,7 @@ class _AppRootState extends State<AppRoot>
 // affiché une seule fois tant que l'app reste ouverte
 
   Timer? _saveDebounce;
+  Timer? _countdownTimer;
   bool _saveQueued = false;
   bool _saving = false;
 
@@ -1733,6 +1734,7 @@ class _AppRootState extends State<AppRoot>
   @override
   void dispose() {
     _heartbeat?.cancel();
+    _countdownTimer?.cancel();
     _connectivitySub?.cancel();
     _domainsSub?.cancel();
     _projectsSub?.cancel();
@@ -2159,6 +2161,27 @@ class _AppRootState extends State<AppRoot>
     });
   }
 
+  // ---------- MINUTEUR DE DÉMARRAGE ----------
+
+  /// Lance un minuteur N minutes → auto-stop + notification à la fin.
+  void _startCountdown(int minutes, String activityName) {
+    _countdownTimer?.cancel();
+    NotificationService.scheduleTimerEnd(activityName: activityName, minutes: minutes);
+    _countdownTimer = Timer(Duration(minutes: minutes), () {
+      if (!mounted) return;
+      final stopped = logic.stopActive();
+      if (stopped != null) {
+        _saveAndRefresh();
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('⏱ $minutes min terminées — $activityName'),
+          duration: const Duration(seconds: 4),
+        ));
+      }
+      NotificationService.cancelTimerEnd();
+      _countdownTimer = null;
+    });
+  }
+
   // ---------- UTIL DATES ----------
   (DateTime start, DateTime end, int days) _rangeForScope(DateTime now) {
     switch (scope) {
@@ -2394,6 +2417,9 @@ class _AppRootState extends State<AppRoot>
                             foregroundColor: cs.error,
                             visualDensity: VisualDensity.compact),
                         onPressed: () async {
+                          _countdownTimer?.cancel();
+                          _countdownTimer = null;
+                          NotificationService.cancelTimerEnd();
                           final (_, name, delta) =
                               await logic.stopActiveWithAdjustment();
                           setState(() {});
@@ -6245,6 +6271,7 @@ class _AppRootState extends State<AppRoot>
 
   Future<bool> _openActivitySheet(Activity a) async {
     final now = DateTime.now();
+    int _sheetMinutes = 0; // durée sélectionnée par les pills (0 = libre)
 
     final bool? changed = await showModalBottomSheet<bool>(
       context: context,
@@ -6544,26 +6571,91 @@ class _AppRootState extends State<AppRoot>
                   ),
                 ),
 
-                const Divider(height: 1),
-
-                // ── Lancer (CTA principal) ───────────────────────────────────
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-                  child: FilledButton.icon(
-                    onPressed: () {
-                      logic.start(a.id);
-                      Navigator.pop(ctx, true);
-                      setState(() => _tab = _Tab.maintenant);
-                    },
-                    icon: const Icon(Icons.play_arrow_rounded, size: 20),
-                    label: const Text('Lancer',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48),
-                      backgroundColor: accentColor,
+                // ── Pills durée + CTA (StatefulBuilder pour mise à jour locale) ─
+                StatefulBuilder(builder: (ctx2, setLocal) {
+                  Widget pill(String label, int min) => GestureDetector(
+                    onTap: () => setLocal(() => _sheetMinutes = min),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      margin: const EdgeInsets.only(right: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: _sheetMinutes == min
+                            ? accentColor.withOpacity(.12)
+                            : cs.surfaceContainerHighest.withOpacity(.5),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: _sheetMinutes == min
+                              ? accentColor
+                              : cs.onSurface.withOpacity(.12),
+                        ),
+                      ),
+                      child: Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: _sheetMinutes == min
+                              ? FontWeight.w700
+                              : FontWeight.normal,
+                          color: _sheetMinutes == min
+                              ? accentColor
+                              : cs.onSurface.withOpacity(.6),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
+                  );
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Ligne de pills
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              pill('⏱ Libre', 0),
+                              pill('5 min', 5),
+                              pill('10 min', 10),
+                              pill('15 min', 15),
+                              pill('25 min', 25),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      // CTA principal
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                        child: FilledButton.icon(
+                          onPressed: () {
+                            logic.start(a.id);
+                            Navigator.pop(ctx, true);
+                            setState(() => _tab = _Tab.maintenant);
+                          },
+                          icon: Icon(
+                            _sheetMinutes == 0
+                                ? Icons.play_arrow_rounded
+                                : Icons.timer_rounded,
+                            size: 20,
+                          ),
+                          label: Text(
+                            _sheetMinutes == 0
+                                ? 'Lancer'
+                                : 'Démarrer $_sheetMinutes min',
+                            style: const TextStyle(
+                                fontSize: 15, fontWeight: FontWeight.w700),
+                          ),
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size.fromHeight(48),
+                            backgroundColor: accentColor,
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                }),
 
                 // ── Actions secondaires : Domaine + Cible ────────────────────
                 Padding(
@@ -6731,6 +6823,11 @@ class _AppRootState extends State<AppRoot>
         );
       },
     );
+
+    // Lance le minuteur si une durée a été sélectionnée
+    if (changed == true && _sheetMinutes > 0) {
+      _startCountdown(_sheetMinutes, a.name);
+    }
 
     return changed == true;
   }

@@ -149,12 +149,42 @@ class _InboxSheetState extends State<_InboxSheet> {
                 // ── En attente ───────────────────────────────────────────────
                 if (_pending.isEmpty)
                   Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 24),
-                    child: Center(
-                      child: Text('Aucune idée en attente',
-                          style: TextStyle(
-                              color: cs.onSurface.withOpacity(.4),
-                              fontSize: 14)),
+                    padding: const EdgeInsets.fromLTRB(0, 20, 0, 8),
+                    child: Column(
+                      children: [
+                        Text('Aucune idée en attente',
+                            style: TextStyle(
+                                color: cs.onSurface.withOpacity(.4),
+                                fontSize: 14)),
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: cs.surfaceContainerHighest.withOpacity(.45),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                                color: cs.onSurface.withOpacity(.06)),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('💡',
+                                  style: TextStyle(fontSize: 15)),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'ORION récupère tes idées et les structure automatiquement toutes les 6h — il peut créer des projets, planifier des rappels ou les ajouter à tes tâches existantes.',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: cs.onSurface.withOpacity(.55),
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   )
                 else ...[

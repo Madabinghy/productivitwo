@@ -28,6 +28,8 @@ class NotificationService {
   static const _midDayChannelId = 'midday_score';
   static const _midDayNotifId = 5;
   // IDs 10–29 réservés aux rappels de blocs
+  static const _timerEndChannelId = 'timer_end';
+  static const _timerEndNotifId = 30;
 
   static bool get _supported => !kIsWeb && (Platform.isAndroid || Platform.isIOS);
 
@@ -324,5 +326,41 @@ class NotificationService {
   static Future<void> cancelAll() async {
     if (!_supported) return;
     await _plugin.cancelAll();
+  }
+
+  /// Minuteur de démarrage — planifie une notification de fin dans [minutes] min.
+  static Future<void> scheduleTimerEnd({
+    required String activityName,
+    required int minutes,
+  }) async {
+    if (!_supported) return;
+    if (!_initialized) await init();
+    await _plugin.cancel(_timerEndNotifId);
+
+    final fireAt = tz.TZDateTime.now(tz.local).add(Duration(minutes: minutes));
+    await _plugin.zonedSchedule(
+      _timerEndNotifId,
+      'Productivitwo ⏱',
+      '$activityName — $minutes min écoulées !',
+      fireAt,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          _timerEndChannelId, 'Minuteur',
+          channelDescription: 'Fin d\'un minuteur de démarrage',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+        iOS: DarwinNotificationDetails(),
+      ),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+    );
+  }
+
+  /// Annule la notification de fin de minuteur en cours.
+  static Future<void> cancelTimerEnd() async {
+    if (!_supported) return;
+    await _plugin.cancel(_timerEndNotifId);
   }
 }
