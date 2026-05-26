@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.43', '26 mai 2026', [
+    (Icons.sync_problem_outlined, 'Fix : supprimer un domaine ou une session ne les faisait pas revenir au redémarrage'),
+  ]),
   _Entry('5.42', '26 mai 2026', [
     (Icons.widgets_outlined, 'Widget iOS : diagnostic amélioré (bouton "Forcer", nombre de projets chargés) — correction de l\'écriture prématurée avec données vides'),
   ]),

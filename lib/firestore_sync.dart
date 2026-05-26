@@ -389,6 +389,11 @@ class FirestoreSync {
     await _col('domains').doc(domain.id).set(domain.toJson());
   }
 
+  Future<void> deleteSession(String sessionId) async {
+    if (uid == null) return;
+    await _col('sessions').doc(sessionId).delete();
+  }
+
   Future<void> saveProject(Project project) async {
     if (uid == null) return;
     await _col('projects').doc(project.id).set(project.toJson());

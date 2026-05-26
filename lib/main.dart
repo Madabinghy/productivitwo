@@ -1464,12 +1464,13 @@ class _RunningBannerGlobalState extends State<RunningBannerGlobal> {
 }
 
 class _Last24hSessionsSheet extends StatelessWidget {
-  final dynamic logic; // mets le type de ta logique si tu veux
-  const _Last24hSessionsSheet({required this.logic});
+  final dynamic logic;
+  final FirestoreSync? sync;
+  const _Last24hSessionsSheet({required this.logic, this.sync});
 
   Future<void> _openEditSessionSheet(
     BuildContext context,
-    dynamic logic, // ou ton type de logic si tu veux
+    dynamic logic,
     Session s,
   ) async {
     final res = await showModalBottomSheet<_EditSessionResult>(
@@ -1486,6 +1487,7 @@ class _Last24hSessionsSheet extends StatelessWidget {
 
     if (res.delete) {
       logic.deleteSession(s.id);
+      sync?.deleteSession(s.id); // hard-delete Firestore — évite le retour au prochain pull
       return;
     }
 
@@ -2601,7 +2603,7 @@ class _AppRootState extends State<AppRoot>
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (_) => _Last24hSessionsSheet(logic: logic),
+      builder: (_) => _Last24hSessionsSheet(logic: logic, sync: _sync),
     );
   }
 

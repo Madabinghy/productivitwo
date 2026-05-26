@@ -932,11 +932,12 @@ class AppLogic {
   }
 
   void deleteDomain(Domain domain) {
-    state.domains.removeWhere((d) => d.id == domain.id);
-    for (int i = 0; i < state.activeActivities.length; i++) {
-      if (state.activeActivities[i].domainId == domain.id) {
-        state.activeActivities[i] = state.activeActivities[i].copyWith(domainId: '');
-      }
+    // Soft-delete : le doc reste dans Firestore avec deleted:true pour sync multi-device.
+    // activeDomains filtre automatiquement les deleted:true.
+    final idx = state.domains.indexWhere((d) => d.id == domain.id);
+    if (idx >= 0) state.domains[idx].deleted = true;
+    for (final a in state.activities) {
+      if (a.domainId == domain.id) a.domainId = '';
     }
     onChange();
   }
