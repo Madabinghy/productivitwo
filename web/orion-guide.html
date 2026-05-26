@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Productivitwo — Ce qu'ORION peut faire pour toi</title>
+<style>
+  :root {
+    --bg: #0d0f14;
+    --surface: #151820;
+    --surface2: #1c2030;
+    --border: #252a3a;
+    --gold: #f0c040;
+    --gold-dim: rgba(240,192,64,.1);
+    --gold-glow: rgba(240,192,64,.25);
+    --blue: #4a9eff;
+    --blue-dim: rgba(74,158,255,.1);
+    --green: #3ddc84;
+    --green-dim: rgba(61,220,132,.1);
+    --purple: #b06bff;
+    --purple-dim: rgba(176,107,255,.1);
+    --orange: #ff9f43;
+    --orange-dim: rgba(255,159,67,.1);
+    --text: #e8eaf0;
+    --text-dim: #8a90a8;
+    --text-muted: #4a5068;
+    --mono: 'SF Mono', 'Fira Code', monospace;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+    font-size: 15px;
+    line-height: 1.65;
+  }
+
+  /* ── Hero ── */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 80px 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero-bg {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 60% 50% at 50% 0%, rgba(240,192,64,.08) 0%, transparent 70%),
+      radial-gradient(ellipse 40% 40% at 20% 80%, rgba(74,158,255,.05) 0%, transparent 60%),
+      radial-gradient(ellipse 40% 40% at 80% 60%, rgba(176,107,255,.04) 0%, transparent 60%);
+    pointer-events: none;
+  }
+  .hero-stars {
+    position: absolute;
+    inset: 0;
+    background-image:
+      radial-gradient(1px 1px at 15% 20%, rgba(255,255,255,.3) 0%, transparent 100%),
+      radial-gradient(1px 1px at 35% 10%, rgba(255,255,255,.2) 0%, transparent 100%),
+      radial-gradient(1px 1px at 60% 30%, rgba(255,255,255,.25) 0%, transparent 100%),
+      radial-gradient(1px 1px at 80% 15%, rgba(255,255,255,.2) 0%, transparent 100%),
+      radial-gradient(1px 1px at 90% 50%, rgba(255,255,255,.15) 0%, transparent 100%),
+      radial-gradient(1px 1px at 5% 70%, rgba(255,255,255,.2) 0%, transparent 100%),
+      radial-gradient(1px 1px at 45% 75%, rgba(255,255,255,.15) 0%, transparent 100%),
+      radial-gradient(1px 1px at 70% 80%, rgba(255,255,255,.2) 0%, transparent 100%);
+    pointer-events: none;
+  }
+  .hero-content { position: relative; z-index: 1; max-width: 680px; }
+  .orion-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 16px;
+    border-radius: 20px;
+    border: 1px solid rgba(240,192,64,.3);
+    background: var(--gold-dim);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 28px;
+  }
+  .orion-badge-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--gold);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: .5; transform: scale(.8); }
+  }
+  .hero h1 {
+    font-size: clamp(32px, 6vw, 56px);
+    font-weight: 800;
+    letter-spacing: -.03em;
+    line-height: 1.1;
+    margin-bottom: 20px;
+  }
+  .hero h1 em {
+    font-style: normal;
+    background: linear-gradient(135deg, var(--gold) 0%, #ffdd80 50%, var(--orange) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .hero-sub {
+    font-size: 17px;
+    color: var(--text-dim);
+    max-width: 520px;
+    margin: 0 auto 40px;
+    line-height: 1.7;
+  }
+  .hero-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 28px;
+    background: var(--gold);
+    color: #1a1200;
+    font-weight: 700;
+    font-size: 15px;
+    border-radius: 10px;
+    text-decoration: none;
+    transition: all .2s;
+    box-shadow: 0 0 32px var(--gold-glow);
+  }
+  .hero-cta:hover {
+    background: #f5cc50;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 40px var(--gold-glow);
+  }
+  .hero-scroll {
+    position: absolute;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-muted);
+    font-size: 12px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    animation: float 3s ease-in-out infinite;
+  }
+  @keyframes float {
+    0%, 100% { transform: translateX(-50%) translateY(0); }
+    50% { transform: translateX(-50%) translateY(6px); }
+  }
+
+  /* ── Intro ── */
+  .intro {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 80px 24px;
+    text-align: center;
+  }
+  .intro h2 {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -.02em;
+    margin-bottom: 16px;
+  }
+  .intro p { color: var(--text-dim); font-size: 16px; max-width: 560px; margin: 0 auto 40px; }
+  .tips-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    text-align: left;
+  }
+  .tip {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+  }
+  .tip-icon { font-size: 24px; margin-bottom: 10px; }
+  .tip-title { font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+  .tip-text { font-size: 13px; color: var(--text-dim); line-height: 1.5; }
+
+  /* ── Section ── */
+  .section {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 80px 24px;
+    scroll-margin-top: 24px;
+  }
+  .section + .section { padding-top: 0; }
+  .section-eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .section h2 {
+    font-size: clamp(24px, 4vw, 34px);
+    font-weight: 800;
+    letter-spacing: -.025em;
+    line-height: 1.2;
+    margin-bottom: 12px;
+  }
+  .section-intro {
+    font-size: 16px;
+    color: var(--text-dim);
+    max-width: 600px;
+    margin-bottom: 40px;
+    line-height: 1.7;
+  }
+
+  /* ── Prompt cards ── */
+  .prompts {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .prompt-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    transition: border-color .2s;
+  }
+  .prompt-card:hover { border-color: #363c52; }
+  .prompt-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 20px 20px 16px;
+    cursor: pointer;
+  }
+  .prompt-avatar {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .prompt-bubble {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px 8px 8px 2px;
+    padding: 10px 14px;
+    font-size: 14px;
+    color: var(--text);
+    line-height: 1.5;
+    position: relative;
+    flex: 1;
+  }
+  .copy-btn {
+    flex-shrink: 0;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 10px;
+    color: var(--text-muted);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all .15s;
+    white-space: nowrap;
+    align-self: flex-start;
+    margin-top: 2px;
+  }
+  .copy-btn:hover { border-color: var(--gold); color: var(--gold); }
+  .copy-btn.copied { border-color: var(--green); color: var(--green); }
+
+  .prompt-result {
+    padding: 0 20px 20px 70px;
+    display: none;
+  }
+  .prompt-result.open { display: block; }
+  .result-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+  }
+  .result-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid;
+  }
+  .tag-gold   { color: var(--gold);   border-color: rgba(240,192,64,.3);  background: var(--gold-dim); }
+  .tag-blue   { color: var(--blue);   border-color: rgba(74,158,255,.3);  background: var(--blue-dim); }
+  .tag-green  { color: var(--green);  border-color: rgba(61,220,132,.3);  background: var(--green-dim); }
+  .tag-purple { color: var(--purple); border-color: rgba(176,107,255,.3); background: var(--purple-dim); }
+  .tag-orange { color: var(--orange); border-color: rgba(255,159,67,.3);  background: var(--orange-dim); }
+
+  /* ── Divider ── */
+  .divider {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 24px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* ── Conditions grid ── */
+  .cond-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 10px;
+    margin-top: 32px;
+  }
+  .cond-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    gap: 12px;
+  }
+  .cond-icon { font-size: 20px; flex-shrink: 0; }
+  .cond-title { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
+  .cond-desc  { font-size: 12px; color: var(--text-dim); line-height: 1.4; }
+
+  /* ── Footer ── */
+  footer {
+    text-align: center;
+    padding: 60px 24px;
+    color: var(--text-muted);
+    font-size: 13px;
+    border-top: 1px solid var(--border);
+  }
+  footer a { color: var(--text-dim); text-decoration: none; }
+  footer a:hover { color: var(--gold); }
+
+  /* ── Nav ── */
+  .nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 56px;
+    background: rgba(13,15,20,.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(37,42,58,.6);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 32px;
+    z-index: 100;
+  }
+  .nav-logo {
+    font-weight: 800;
+    font-size: 15px;
+    letter-spacing: -.01em;
+  }
+  .nav-logo span { color: var(--gold); }
+  .nav-links { display: flex; gap: 4px; }
+  .nav-links a {
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: var(--text-dim);
+    text-decoration: none;
+    transition: all .15s;
+  }
+  .nav-links a:hover { color: var(--text); background: var(--surface2); }
+
+  @media (max-width: 700px) {
+    .tips-row { grid-template-columns: 1fr; }
+    .nav-links { display: none; }
+    .prompt-result { padding-left: 20px; }
+    .cond-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-logo">Productivi<span>two</span></div>
+  <div class="nav-links">
+    <a href="#programme">Programme</a>
+    <a href="#journee">Journée</a>
+    <a href="#progres">Progrès</a>
+    <a href="#orion">ORION</a>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-stars"></div>
+  <div class="hero-content">
+    <div class="orion-badge">
+      <span class="orion-badge-dot"></span>
+      ORION · Assistant IA
+    </div>
+    <h1>Tout ce qu'<em>ORION</em><br>peut faire pour toi</h1>
+    <p class="hero-sub">
+      ORION n'est pas un chatbot. C'est un coach qui connaît tes objectifs, ton historique, et peut construire des plans entiers en quelques secondes directement dans Productivitwo.
+    </p>
+    <a href="#programme" class="hero-cta">
+      Voir les exemples ↓
+    </a>
+  </div>
+  <div class="hero-scroll">
+    <span>Explorer</span>
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <path d="M8 3v10M3 9l5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </div>
+</section>
+
+<!-- Intro -->
+<div class="intro">
+  <h2>Comment parler à ORION</h2>
+  <p>Pas besoin de syntaxe particulière. Parle-lui comme à un coach — il comprend le contexte, pose des questions si besoin, et agit directement dans ton espace.</p>
+  <div class="tips-row">
+    <div class="tip">
+      <div class="tip-icon">🎯</div>
+      <div class="tip-title">Sois concret sur l'objectif</div>
+      <div class="tip-text">« Je veux courir un 10 km en moins d'une heure d'ici 3 mois » vaut mieux que « aide-moi à courir ».</div>
+    </div>
+    <div class="tip">
+      <div class="tip-icon">⏱</div>
+      <div class="tip-title">Donne tes contraintes</div>
+      <div class="tip-text">Précise ta disponibilité (« 45 min par jour le soir »), ton niveau, ou ton matériel — ça change tout.</div>
+    </div>
+    <div class="tip">
+      <div class="tip-icon">✅</div>
+      <div class="tip-title">Valide avant qu'il crée</div>
+      <div class="tip-text">ORION te montre le programme avant de l'enregistrer. Dis « ok » pour qu'il construise tout dans Productivitwo.</div>
+    </div>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<!-- Créer un programme -->
+<section class="section" id="programme">
+  <div class="section-eyebrow" style="color:var(--gold)">✦ Créer un programme</div>
+  <h2>Lance un projet structuré<br>en une phrase</h2>
+  <p class="section-intro">
+    ORION crée automatiquement le domaine, les activités à tracker, le planning Gantt avec jalons, les routines quotidiennes et le programme HTML — tout lié et cohérent.
+  </p>
+
+  <div class="prompts">
+
+    <div class="prompt-card">
+      <div class="prompt-header" onclick="toggle(this)">
+        <div class="prompt-avatar">😊</div>
+        <div class="prompt-bubble">Lance-moi un programme de prise de masse sur 3 mois. Je peux m'entraîner 4x par semaine, j'ai accès à une salle de sport.</div>
+        <button class="copy-btn" onclick="copy(event, this)">Copier</button>
+      </div>
+      <div class="prompt-result">
+        <div class="result-label">Ce qu'ORION crée</div>
+        <div class="result-tags">
+          <span class="tag tag-gold">📁 Domaine Santé</span>
+          <span class="tag tag-blue">⏱ Activité Musculation</span>
+          <span class="tag tag-blue">⏱ Activité Nutrition</span>
+          <span class="tag tag-gold">📊 Gantt 3 mois + jalons</span>
+          <span class="tag tag-green">🔁 4 routines séances/sem.</span>
+          <span class="tag tag-green">🔁 Routine suivi alimentation</span>
+          <span class="tag tag-purple">📄 Programme HTML complet</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="prompt-card">
+      <div class="prompt-header" onclick="toggle(this)">
+        <div class="prompt-avatar">😊</div>
+        <div class="prompt-bubble">Je veux apprendre le développement iOS. Je suis débutant, j'ai 1h le matin avant le travail. Objectif : publier une app dans 6 mois.</div>
+        <button class="copy-btn" onclick="copy(event, this)">Copier</button>
+      </div>
+      <div class="prompt-result">
+        <div class="result-label">Ce qu'ORION crée</div>
+        <div class="result-tags">
+          <span class="tag tag-gold">📁 Domaine Formation</span>
+          <span class="tag tag-blue">⏱ Activité Dev iOS</span>
+          <span class="tag tag-gold">📊 Gantt 6 mois · 4 phases</span>
+          <span class="tag tag-green">🔁 Session quotidienne 1h</span>
+          <span class="tag tag-orange">🎯 KPI : app publiée</span>
+          <span class="tag tag-purple">📄 Roadmap pédagogique HTML</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="prompt-card">
+      <div class="prompt-header" onclick="toggle(this)">
+        <div class="prompt-avatar">😊</div>
+        <div class="prompt-bubble">Aide-moi à lancer mon activité freelance de graphiste. Je veux mes premiers clients dans 2 mois.</div>
+        <button class="copy-btn" onclick="copy(event, this)">Copier</button>
+      </div>
+      <div class="prompt-result">
+        <div class="result-label">Ce qu'ORION crée</div>
+        <div class="result-tags">
+          <span class="tag tag-gold">📁 Domaine Travail</span>
+          <span class="tag tag-blue">⏱ Activité Prospection</span>
+          <span class="tag tag-blue">⏱ Activité Création portfolio</span>
+          <span class="tag tag-gold">📊 Gantt 2 mois · jalons hebdo</span>
+          <span class="tag tag-green">🔁 Routine prospection quotidienne</span>
+          <span class="tag tag-purple">📄 Plan de lancement HTML</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="prompt-card">
+      <div class="prompt-header" onclick="toggle(this)">
+        <div class="prompt-avatar">😊</div>
+        <div class="prompt-bubble">Je veux perdre 8 kg avant l'été. Je préfère courir et faire du vélo, je ne veux pas de régime strict.</div>
+        <button class="copy-btn" onclick="copy(event, this)">Copier</button>
+      </div>
+      <div class="prompt-result">
+        <div class="result-label">Ce qu'ORION crée</div>
+        <div class="result-tags">
+          <span class="tag tag-gold">📁 Domaine Santé</span>
+          <span class="tag tag-blue">⏱ Activité Running</span>
+          <span class="tag tag-blue">⏱ Activité Vélo</span>
+          <span class="tag tag-gold">📊 Gantt jusqu'à l'été · KPI -8 kg</span>
+          <span class="tag tag-green">🔁 3 sorties cardio/semaine</span>
+          <span class="tag tag-green">🔁 Suivi alimentation</span>
+          <span class="tag tag-purple">📄 Programme cardio HTML</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- Planifier sa journée -->
+<section class="section" id="journee">
+  <div class="section-eyebrow" style="color:var(--blue)">✦ Planifier sa journée</div>
+  <h2>Une journée structurée,<br>sans effort</h2>
+  <p class="section-intro">
+    ORION connaît tes blocs de journée, ton agenda Google, tes priorités et tes actions en retard. Il génère un plan réaliste en tenant compte de tout ça.
+  </p>
+
+  <div class="prompts">
+
+    <div class="prompt-card">
+      <div class="prompt-header" onclick="toggle(this)">
+        <div class="prompt-avatar">😊</div>
+        <div class="prompt-bubble">Planifie ma journée de demain.</div>
+        <button class="copy-btn" onclick="copy(event, this)">Copier</button>
+      </div>
+      <div class="prompt-result">
+        <div class="result-label">Ce qu'ORION fait</div>
+        <div class="result-tags">
+          <span class="tag tag-blue">📅 Lit ton agenda Google Cal</span>
+          <span class="tag tag-gold">🧱 Respecte tes blocs (Matin, Midi…)</span>
+          <span class="tag tag-orange">⚠️ Intègre les tâches Gantt en retard</span>
+          <span class="tag tag-green">✅ Ajoute routines + actions prioritaires</span>
+          <span class="tag tag-blue">📋 Plan complet dans Productivitwo</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="prompt-card">
+      <div class="prompt-header" onclick="toggle(this)">
+        <div class="prompt-avatar">😊</div>
+        <div class="prompt-bubble">J'ai une grosse deadline vendredi pour rendre un rapport. Organise ma semaine en conséquence.</div>
+        <button class="copy-btn" onclick="copy(event, this)">Copier</button>
+      </div>
+      <div class="prompt-result">
+        <div class="result-label">Ce qu'ORION fait</div>
+        <div class="result-tags">
+          <span class="tag tag-gold">📊 Répartit les tâches sur la semaine</span>
+          <span class="tag tag-blue">🗓 Vérifie les RDV existants</span>
+          <span class="tag tag-orange">🔥 Blocs profonds en matinée</span>
+          <span class="tag tag-green">✅ 5 plans quotidiens créés</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="prompt-card">
+      <div class="prompt-header" onclick="toggle(this)">
+        <div class="prompt-avatar">😊</div>
+        <div class="prompt-bubble">Vide mon plan d'aujourd'hui et replanifie intelligemment — j'ai eu une urgence ce matin.</div>
+        <button class="copy-btn" onclick="copy(event, this)">Copier</button>
+      </div>
+      <div class="prompt-result">
+        <div class="result-label">Ce qu'ORION fait</div>
+        <div class="result-tags">
+          <span class="tag tag-orange">🗑 Efface les actions non faites</span>
+          <span class="tag tag-gold">↩️ Récupère ce qui peut encore être fait</span>
+          <span class="tag tag-green">✅ Replanifie sur les créneaux restants</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="prompt-card">
+      <div class="prompt-header" onclick="toggle(this)">
+        <div class="prompt-avatar">😊</div>
+        <div class="prompt-bubble">Ajoute un créneau "Deep Work" de 2h ce matin dans mon bloc Matinée, lié à mon projet freelance.</div>
+        <button class="copy-btn" onclick="copy(event, this)">Copier</button>
+      </div>
+      <div class="prompt-result">
+        <div class="result-label">Ce qu'ORION fait</div>
+        <div class="result-tags">
+          <span class="tag tag-blue">🧱 Identifie le bon bloc</span>
+          <span class="tag tag-gold">🔗 Lie à l'activité et au projet Gantt</span>
+          <span class="tag tag-green">✅ Ajoute l'action au plan</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- Suivre ses progrès -->
+<section class="section" id="progres">
+  <div class="section-eyebrow" style="color:var(--green)">✦ Suivre ses progrès</div>
+  <h2>Analyse, ajuste,<br>reste dans le game</h2>
+  <p class="section-intro">
+    ORION voit ce que tu as réellement fait, compare à tes objectifs, et peut ajuster le plan si tu prends du retard — sans te juger.
+  </p>
+
+  <div class="prompts">
+
+    <div class="prompt-card">
+      <div class="prompt-header" onclick="toggle(this)">
+        <div class="prompt-avatar">😊</div>
+        <div class="prompt-bubble">Fais un bilan de ma semaine. Qu'est-ce qui a bien marché, qu'est-ce qui a dérapé ?</div>
+        <button class="copy-btn" onclick="copy(event, this)">Copier</button>
+      </div>
+      <div class="prompt-result">
+        <div class="result-label">Ce qu'ORION analyse</div>
+        <div class="result-tags">
+          <span class="tag tag-gold">📊 Activités trackées vs objectifs</span>
+          <span class="tag tag-green">✅ Routines complétées</span>
+          <span class="tag tag-orange">⚠️ Actions Gantt en retard</span>
+          <span class="tag tag-blue">💡 Recommandations concrètes</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="prompt-card">
+      <div class="prompt-header" onclick="toggle(this)">
+        <div class="prompt-avatar">😊</div>
+        <div class="prompt-bubble">Mon objectif running est à la traîne. Ajuste le programme pour rattraper le retard sans me blesser.</div>
+        <button class="copy-btn" onclick="copy(event, this)">Copier</button>
+      </div>
+      <div class="prompt-result">
+        <div class="result-label">Ce qu'ORION fait</div>
+        <div class="result-tags">
+          <span class="tag tag-gold">📊 Consulte le Gantt running</span>
+          <span class="tag tag-orange">↩️ Décale les jalons en retard</span>
+          <span class="tag tag-blue">⏱ Ajuste l'objectif quotidien</span>
+          <span class="tag tag-green">✅ Met à jour le planning</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="prompt-card">
+      <div class="prompt-header" onclick="toggle(this)">
+        <div class="prompt-avatar">😊</div>
+        <div class="prompt-bubble">Marque la tâche "Prototype v1" de mon projet freelance comme terminée et dis-moi ce qui vient après.</div>
+        <button class="copy-btn" onclick="copy(event, this)">Copier</button>
+      </div>
+      <div class="prompt-result">
+        <div class="result-label">Ce qu'ORION fait</div>
+        <div class="result-tags">
+          <span class="tag tag-green">✅ Coche la tâche dans le Gantt</span>
+          <span class="tag tag-gold">📊 Lit les tâches suivantes</span>
+          <span class="tag tag-blue">💡 Récapitule les prochaines étapes</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="prompt-card">
+      <div class="prompt-header" onclick="toggle(this)">
+        <div class="prompt-avatar">😊</div>
+        <div class="prompt-bubble">Je veux augmenter mon objectif de méditation à 20 min par jour, j'ai bien tenu les 10 min ce mois-ci.</div>
+        <button class="copy-btn" onclick="copy(event, this)">Copier</button>
+      </div>
+      <div class="prompt-result">
+        <div class="result-label">Ce qu'ORION fait</div>
+        <div class="result-tags">
+          <span class="tag tag-blue">⏱ Met à jour l'objectif activité</span>
+          <span class="tag tag-gold">📊 Ajuste la routine dans le Gantt</span>
+          <span class="tag tag-green">✅ Confirmation immédiate</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- Messages ORION -->
+<section class="section" id="orion">
+  <div class="section-eyebrow" style="color:var(--purple)">✦ Messages ORION</div>
+  <h2>Des nudges au bon moment,<br>pas du bruit</h2>
+  <p class="section-intro">
+    ORION peut programmer des messages qui n'apparaissent <em>que si</em> une condition est vraie le jour J. Pas de spam — juste le bon conseil au moment où tu en as besoin.
+  </p>
+
+  <div class="prompts">
+
+    <div class="prompt-card">
+      <div class="prompt-header" onclick="toggle(this)">
+        <div class="prompt-avatar">😊</div>
+        <div class="prompt-bubble">Programme-moi un message motivant chaque lundi matin pour bien démarrer la semaine.</div>
+        <button class="copy-btn" onclick="copy(event, this)">Copier</button>
+      </div>
+      <div class="prompt-result">
+        <div class="result-label">Ce qu'ORION crée</div>
+        <div class="result-tags">
+          <span class="tag tag-purple">💬 Message visible le lundi</span>
+          <span class="tag tag-purple">⚡ Condition : week_start</span>
+          <span class="tag tag-blue">🔗 Bouton "Voir le plan"</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="prompt-card">
+      <div class="prompt-header" onclick="toggle(this)">
+        <div class="prompt-avatar">😊</div>
+        <div class="prompt-bubble">Envoie-moi un rappel si je n'ai rien tracké avant 20h. Je veux pas laisser passer une journée sans.</div>
+        <button class="copy-btn" onclick="copy(event, this)">Copier</button>
+      </div>
+      <div class="prompt-result">
+        <div class="result-label">Ce qu'ORION crée</div>
+        <div class="result-tags">
+          <span class="tag tag-purple">💬 Message conditionnel</span>
+          <span class="tag tag-purple">⚡ Condition : no_activity_logged_today</span>
+          <span class="tag tag-blue">🔗 Bouton "Tracker maintenant"</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="prompt-card">
+      <div class="prompt-header" onclick="toggle(this)">
+        <div class="prompt-avatar">😊</div>
+        <div class="prompt-bubble">Préviens-moi 5 jours avant la deadline de mon projet freelance avec un rappel des tâches restantes.</div>
+        <button class="copy-btn" onclick="copy(event, this)">Copier</button>
+      </div>
+      <div class="prompt-result">
+        <div class="result-label">Ce qu'ORION crée</div>
+        <div class="result-tags">
+          <span class="tag tag-purple">💬 Message J-5 deadline</span>
+          <span class="tag tag-purple">⚡ Condition : project_deadline_near</span>
+          <span class="tag tag-blue">🔗 Bouton "Voir le projet"</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="prompt-card">
+      <div class="prompt-header" onclick="toggle(this)">
+        <div class="prompt-avatar">😊</div>
+        <div class="prompt-bubble">Si je maintiens mon streak méditation 7 jours d'affilée, envoie-moi un message de félicitations.</div>
+        <button class="copy-btn" onclick="copy(event, this)">Copier</button>
+      </div>
+      <div class="prompt-result">
+        <div class="result-label">Ce qu'ORION crée</div>
+        <div class="result-tags">
+          <span class="tag tag-purple">💬 Message de célébration</span>
+          <span class="tag tag-purple">⚡ Condition : activity_streak · 7 jours</span>
+          <span class="tag tag-green">✨ Affiché seulement si streak atteint</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Conditions -->
+  <div style="margin-top:48px">
+    <div style="font-size:13px;font-weight:600;color:var(--text-dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:.08em">Toutes les conditions disponibles</div>
+    <div style="font-size:14px;color:var(--text-muted);margin-bottom:0">Dis simplement à ORION ce que tu veux — il choisit la bonne condition tout seul.</div>
+  </div>
+  <div class="cond-grid">
+    <div class="cond-card"><div class="cond-icon">📅</div><div><div class="cond-title">Début / fin de semaine</div><div class="cond-desc">Message le lundi ou le vendredi</div></div></div>
+    <div class="cond-card"><div class="cond-icon">🌅</div><div><div class="cond-title">Première ouverture du jour</div><div class="cond-desc">Affiché à la première ouverture de l'app</div></div></div>
+    <div class="cond-card"><div class="cond-icon">📋</div><div><div class="cond-title">Journée vide</div><div class="cond-desc">Aucune action planifiée aujourd'hui</div></div></div>
+    <div class="cond-card"><div class="cond-icon">🔥</div><div><div class="cond-title">Trop chargé</div><div class="cond-desc">Plan du jour surchargé</div></div></div>
+    <div class="cond-card"><div class="cond-icon">😴</div><div><div class="cond-title">Rien tracké aujourd'hui</div><div class="cond-desc">Aucune activité enregistrée</div></div></div>
+    <div class="cond-card"><div class="cond-icon">⏰</div><div><div class="cond-title">Pas de focus avant H</div><div class="cond-desc">Aucun focus choisi avant une certaine heure</div></div></div>
+    <div class="cond-card"><div class="cond-icon">⚠️</div><div><div class="cond-title">Actions en retard</div><div class="cond-desc">N actions non faites s'accumulent</div></div></div>
+    <div class="cond-card"><div class="cond-icon">📊</div><div><div class="cond-title">Activité en retard</div><div class="cond-desc">Activité sous son objectif hebdo</div></div></div>
+    <div class="cond-card"><div class="cond-icon">🔁</div><div><div class="cond-title">Routines au ralenti</div><div class="cond-desc">Taux de complétion sous un seuil</div></div></div>
+    <div class="cond-card"><div class="cond-icon">🏆</div><div><div class="cond-title">Streak actif</div><div class="cond-desc">N jours consécutifs sur une activité</div></div></div>
+    <div class="cond-card"><div class="cond-icon">💔</div><div><div class="cond-title">Streak cassé</div><div class="cond-desc">Habitude non faite hier</div></div></div>
+    <div class="cond-card"><div class="cond-icon">😴</div><div><div class="cond-title">Projet inactif</div><div class="cond-desc">Aucune activité sur un projet depuis N jours</div></div></div>
+    <div class="cond-card"><div class="cond-icon">⏳</div><div><div class="cond-title">Deadline projet proche</div><div class="cond-desc">N jours avant la fin d'un projet</div></div></div>
+    <div class="cond-card"><div class="cond-icon">🎯</div><div><div class="cond-title">Jalon aujourd'hui</div><div class="cond-desc">Milestone Gantt prévu ce jour</div></div></div>
+    <div class="cond-card"><div class="cond-icon">🗓</div><div><div class="cond-title">Date précise</div><div class="cond-desc">Message affiché un jour exact</div></div></div>
+    <div class="cond-card"><div class="cond-icon">⚡</div><div><div class="cond-title">Toujours</div><div class="cond-desc">Affiché quoi qu'il arrive le jour J</div></div></div>
+  </div>
+</section>
+
+<footer>
+  <p style="margin-bottom:8px;font-size:15px;font-weight:600;color:var(--text-dim)">Productivitwo</p>
+  <p>ORION est disponible depuis l'app via claude.ai &nbsp;·&nbsp; <a href="privacy.html">Confidentialité</a></p>
+</footer>
+
+<script>
+  function toggle(header) {
+    const result = header.nextElementSibling;
+    result.classList.toggle('open');
+  }
+
+  function copy(e, btn) {
+    e.stopPropagation();
+    const bubble = btn.closest('.prompt-header').querySelector('.prompt-bubble');
+    navigator.clipboard.writeText(bubble.textContent.trim()).then(() => {
+      btn.textContent = 'Copié ✓';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = 'Copier';
+        btn.classList.remove('copied');
+      }, 2000);
+    });
+  }
+
+  // Ouvrir toutes les cards au clic initial sur "Voir les exemples"
+  document.querySelectorAll('.prompt-header').forEach(h => {
+    h.style.cursor = 'pointer';
+  });
+
+  // Nav active on scroll
+  const sections = document.querySelectorAll('section[id], div.section[id]');
+  const navLinks = document.querySelectorAll('.nav-links a');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        navLinks.forEach(a => a.style.color = '');
+        const a = document.querySelector(`.nav-links a[href="#${e.target.id}"]`);
+        if (a) a.style.color = 'var(--gold)';
+      }
+    });
+  }, { rootMargin: '-30% 0px -60% 0px' });
+  sections.forEach(s => observer.observe(s));
+</script>
+</body>
+</html>
