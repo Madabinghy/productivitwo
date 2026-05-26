@@ -12,7 +12,7 @@ class _Entry {
 const _changelog = [
   _Entry('5.44', '26 mai 2026', [
     (Icons.today_outlined, 'Programme du jour visible même quand une activité est en cours'),
-    (Icons.pie_chart_outlined, 'Camembert activités loggées déplacé dans l\'onglet Accueil'),
+    (Icons.pie_chart, 'Camembert activités loggées déplacé dans l\'onglet Accueil'),
   ]),
   _Entry('5.43', '26 mai 2026', [
     (Icons.sync_problem_outlined, 'Fix : supprimer un domaine ou une session ne les faisait pas revenir au redémarrage'),
