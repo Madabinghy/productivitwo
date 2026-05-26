@@ -669,6 +669,7 @@ const PUSH_GANTT_MCP_TOOL = {
                 color:       { type: "string" },
                 barLabel:    { type: "string" },
                 status:      { type: "string", enum: ["pending", "done", "skipped"] },
+                actions:     { type: "array", items: { type: "string" }, description: "2 à 4 sous-actions opérationnelles (étapes courtes, verbe d'action)" },
               },
             },
           },

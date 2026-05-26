@@ -50,8 +50,14 @@ function normalizeTasks(tasks) {
     if (!tasks)
         return [];
     return tasks.map((t) => {
-        var _a, _b;
-        return (Object.assign(Object.assign({}, t), { id: t.id || (0, uuid_1.v4)(), isMilestone: (_a = t.isMilestone) !== null && _a !== void 0 ? _a : false, status: (_b = t.status) !== null && _b !== void 0 ? _b : "pending" }));
+        var _a, _b, _c;
+        return (Object.assign(Object.assign({}, t), { id: t.id || (0, uuid_1.v4)(), isMilestone: (_a = t.isMilestone) !== null && _a !== void 0 ? _a : false, status: (_b = t.status) !== null && _b !== void 0 ? _b : "pending", actions: ((_c = t.actions) !== null && _c !== void 0 ? _c : []).map((a) => ({
+                id: (0, uuid_1.v4)(),
+                title: a,
+                done: false,
+                doneAt: null,
+                createdAt: new Date().toISOString(),
+            })) }));
     });
 }
 async function executePushAssistantMessage(uid, args) {

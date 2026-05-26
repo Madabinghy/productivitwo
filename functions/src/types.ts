@@ -17,6 +17,7 @@ export interface ProjectTask {
   color?: string;
   barLabel?: string;
   status?: "pending" | "done" | "skipped";
+  actions?: string[];
 }
 
 export interface ProjectPayload {

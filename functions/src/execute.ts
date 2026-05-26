@@ -8,13 +8,20 @@ function normalizePhases(phases?: ProjectPhase[]): ProjectPhase[] {
   return phases.map((p) => ({ ...p, id: p.id || uuidv4() }));
 }
 
-function normalizeTasks(tasks?: ProjectTask[]): ProjectTask[] {
+function normalizeTasks(tasks?: ProjectTask[]): object[] {
   if (!tasks) return [];
   return tasks.map((t) => ({
     ...t,
     id: t.id || uuidv4(),
     isMilestone: t.isMilestone ?? false,
     status: t.status ?? "pending",
+    actions: (t.actions ?? []).map((a: string) => ({
+      id: uuidv4(),
+      title: a,
+      done: false,
+      doneAt: null,
+      createdAt: new Date().toISOString(),
+    })),
   }));
 }
 
