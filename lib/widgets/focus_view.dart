@@ -92,24 +92,6 @@ class _FocusViewState extends State<FocusView> {
 
   // ── Données camembert (sessions du jour) ─────────────────────────────────────
 
-  Map<String, double> _todayMinutesByActivity() {
-    final now = DateTime.now();
-    final todayStart = DateTime(now.year, now.month, now.day);
-    final result = <String, double>{};
-    for (final s in st.sessions) {
-      final start = s.startAt.isAfter(todayStart) ? s.startAt : todayStart;
-      final end = s.endAt ?? now;
-      if (end.isBefore(todayStart)) continue;
-      final minutes = end.difference(start).inSeconds / 60.0;
-      if (minutes <= 0) continue;
-      result[s.activityId] = (result[s.activityId] ?? 0) + minutes;
-    }
-    return result;
-  }
-
-  double _totalTodayMinutes() =>
-      _todayMinutesByActivity().values.fold(0.0, (a, b) => a + b);
-
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -121,9 +103,6 @@ class _FocusViewState extends State<FocusView> {
   // ── État idle ─────────────────────────────────────────────────────────────────
 
   Widget _buildIdle(BuildContext context, ColorScheme cs) {
-    final byActivity = _todayMinutesByActivity();
-    final totalMin = _totalTodayMinutes();
-    final totalH = totalMin / 60;
     final now = DateTime.now();
     final todayStr =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
@@ -141,33 +120,12 @@ class _FocusViewState extends State<FocusView> {
                   fontWeight: FontWeight.w800,
                   color: cs.onSurface),
             ),
-            Text(
-              totalMin < 1
-                  ? 'Aucune activité loggée'
-                  : '${totalH.toStringAsFixed(1).replaceAll('.', 'h')} loggées',
-              style: TextStyle(
-                  fontSize: 14, color: cs.onSurface.withOpacity(.45)),
-            ),
             const SizedBox(height: 24),
 
             // Programme horaire (stream Firestore)
             DailyScheduleView(date: todayStr),
 
-            const SizedBox(height: 32),
-
-            // Activités du jour (camembert) — section secondaire
-            if (byActivity.isNotEmpty) ...[
-              Text(
-                'Activités loggées',
-                style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: cs.onSurface),
-              ),
-              const SizedBox(height: 16),
-              _buildPieChart(context, cs, byActivity, totalMin),
-              const SizedBox(height: 24),
-            ],
+            const SizedBox(height: 24),
 
             OutlinedButton.icon(
               icon: const Icon(Icons.account_tree_outlined, size: 18),
@@ -186,79 +144,6 @@ class _FocusViewState extends State<FocusView> {
   }
 
 
-  Widget _buildPieChart(BuildContext context, ColorScheme cs,
-      Map<String, double> byActivity, double totalMin) {
-    final activities = st.activeActivities;
-    final entries = byActivity.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-
-    final sections = entries.map((e) {
-      final activity =
-          activities.where((a) => a.id == e.key).firstOrNull;
-      final color = domainColor(activity?.domainId, st.activeDomains) ??
-          cs.primary;
-      final pct = e.value / totalMin;
-      return PieChartSectionData(
-        value: e.value,
-        color: color,
-        radius: 70,
-        showTitle: pct > 0.08,
-        title: '${(pct * 100).round()}%',
-        titleStyle: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            color: Colors.white),
-      );
-    }).toList();
-
-    return Column(
-      children: [
-        SizedBox(
-          height: 180,
-          child: PieChart(
-            PieChartData(
-              sections: sections,
-              sectionsSpace: 2,
-              centerSpaceRadius: 36,
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        // Légende
-        Wrap(
-          spacing: 16,
-          runSpacing: 8,
-          alignment: WrapAlignment.center,
-          children: entries.map((e) {
-            final activity =
-                activities.where((a) => a.id == e.key).firstOrNull;
-            final color =
-                domainColor(activity?.domainId, st.activeDomains) ??
-                    cs.primary;
-            final mins = e.value.round();
-            final label =
-                '${activity?.name ?? '?'}  ${mins >= 60 ? '${(mins / 60).toStringAsFixed(1)}h' : '${mins}m'}';
-            return Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                        color: color, shape: BoxShape.circle)),
-                const SizedBox(width: 5),
-                Text(label,
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: cs.onSurface.withOpacity(.6))),
-              ],
-            );
-          }).toList(),
-        ),
-      ],
-    );
-  }
-
   // ── État actif ───────────────────────────────────────────────────────────────
 
   Widget _buildActive(BuildContext context, ColorScheme cs, Activity running) {
@@ -269,6 +154,10 @@ class _FocusViewState extends State<FocusView> {
     final elapsed = _elapsedDuration;
     final task = widget.focusTask;
     final project = widget.focusProject;
+    final now = DateTime.now();
+    final todayStr =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+
 
     return SafeArea(
       child: SingleChildScrollView(
@@ -393,6 +282,10 @@ class _FocusViewState extends State<FocusView> {
                 ),
               ),
             ],
+
+            // Programme du jour — toujours visible même pendant une activité
+            const SizedBox(height: 32),
+            DailyScheduleView(date: todayStr),
           ],
         ),
       ),
