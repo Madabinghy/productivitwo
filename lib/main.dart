@@ -1935,10 +1935,10 @@ class _AppRootState extends State<AppRoot>
     WidgetService.update(logic);
 
     // Token widget iOS : généré une fois, stocké dans l'App Group pour le widget interactif
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid != null) {
+    final widgetUid = _sync.uid;
+    if (widgetUid != null) {
       _sync.ensureWidgetToken().then((t) {
-        WidgetService.storeCredentials(t.token, uid);
+        WidgetService.storeCredentials(t.token, widgetUid);
       }).catchError((_) {});
     }
 
