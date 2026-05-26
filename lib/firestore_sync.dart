@@ -565,6 +565,47 @@ class FirestoreSync {
     await _col('captures').doc(id).delete();
   }
 
+  // ── Programme horaire journalier ────────────────────────────────────────────
+
+  /// Stream temps réel du programme du jour (null si aucun programme généré).
+  Stream<DailySchedule?> streamDailySchedule(String date) {
+    if (uid == null) return const Stream.empty();
+    return _db.doc('users/$uid/daily_schedules/$date').snapshots().map(
+          (snap) => snap.exists
+              ? DailySchedule.from(snap.data() as Map)
+              : null,
+        );
+  }
+
+  Future<void> saveDailySchedule(DailySchedule schedule) async {
+    if (uid == null) return;
+    await _db
+        .doc('users/$uid/daily_schedules/${schedule.date}')
+        .set(schedule.toJson());
+  }
+
+  /// Met à jour le status d'un bloc (pending → done | skipped) sans recharger le doc entier.
+  Future<void> updateBlockStatus(
+      String date, String blockId, String status) async {
+    if (uid == null) return;
+    final ref = _db.doc('users/$uid/daily_schedules/$date');
+    final snap = await ref.get();
+    if (!snap.exists) return;
+    final data = snap.data() as Map;
+    final blocks = (data['blocks'] as List?)
+            ?.map((b) => Map<String, dynamic>.from(b as Map))
+            .toList() ??
+        [];
+    for (final b in blocks) {
+      if (b['id'] == blockId) {
+        b['status'] = status;
+        if (status == 'done') b['doneAt'] = DateTime.now().toIso8601String();
+        break;
+      }
+    }
+    await ref.update({'blocks': blocks});
+  }
+
   /// Inscrit l'utilisateur au cron ORION (fire-and-forget).
   /// Appelé au démarrage — permet au backend de l'inclure dans runOrionCycle
   /// même sans token MCP.

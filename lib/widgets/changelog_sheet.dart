@@ -10,6 +10,12 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.42', '26 mai 2026', [
+    (Icons.widgets_outlined, 'Widget iOS : diagnostic amélioré (bouton "Forcer", nombre de projets chargés) — correction de l\'écriture prématurée avec données vides'),
+  ]),
+  _Entry('5.41', '26 mai 2026', [
+    (Icons.today_outlined, 'Programme du jour : timeline horaire dans l\'onglet Maintenant — généré par Claude ou ORION (swipe pour supprimer, tap pour éditer, long press pour réordonner)'),
+  ]),
   _Entry('5.40', '25 mai 2026', [
     (Icons.timer_outlined, 'Minuteur : le bandeau activité affiche le compte à rebours en orange (rouge sous 60 s) quand un minuteur est actif'),
     (Icons.timer_outlined, 'Minuteur : la durée choisie est mémorisée par activité — la fiche se rouvre avec la dernière sélection'),

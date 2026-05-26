@@ -1908,8 +1908,8 @@ class _AppRootState extends State<AppRoot>
       }
     });
 
-    // Alimentation initiale des widgets home screen (données dispo après le merge)
-    WidgetService.update(logic);
+    // Note : currentProjects n'est pas encore peuplé ici (pull() ne charge pas les projets).
+    // La mise à jour initiale du widget se fait via le stream ou fetchProjects() ci-dessous.
 
     // Affiche l'onboarding pour les nouveaux utilisateurs
     if (!_state!.onboardingDone) {
@@ -4367,7 +4367,7 @@ class _AppRootState extends State<AppRoot>
                 onTap: () {
                   Navigator.pop(sheetCtx);
                   Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => ApiTokensScreen(sync: _sync, uid: _sync.uid ?? ''),
+                    builder: (_) => ApiTokensScreen(sync: _sync, uid: _sync.uid ?? '', logic: logic),
                   ));
                 },
               ),

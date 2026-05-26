@@ -1197,7 +1197,9 @@ class ProjectTask {
         barLabel: j['barLabel'],
         status: j['status'] ?? 'pending',
         actions: (j['actions'] as List?)
-                ?.map((a) => TaskAction.from(a))
+                ?.map((a) => a is Map
+                    ? TaskAction.from(a)
+                    : TaskAction(title: a.toString()))
                 .toList() ??
             [],
         todayFlag: j['todayFlag'] as bool? ?? false,
@@ -1439,5 +1441,94 @@ class TodayItem {
         text: j['text'] ?? '',
         done: j['done'] as bool? ?? false,
         date: j['date'] ?? '',
+      );
+}
+
+// ─── PROGRAMME HORAIRE JOURNALIER ────────────────────────────────────────────
+//
+// Un doc par jour : users/{uid}/daily_schedules/{YYYY-MM-DD}
+// Généré par Claude à la demande ou par ORION automatiquement chaque matin.
+
+class ScheduleBlock {
+  String id;
+  String startTime;   // "HH:mm"
+  int durationMin;
+  String title;
+  String category;    // project | routine | personal | break
+  String? projectId;
+  String? taskId;
+  String? activityId;
+  String status;      // pending | done | skipped
+  DateTime? doneAt;
+
+  ScheduleBlock({
+    String? id,
+    required this.startTime,
+    required this.durationMin,
+    required this.title,
+    this.category = 'personal',
+    this.projectId,
+    this.taskId,
+    this.activityId,
+    this.status = 'pending',
+    this.doneAt,
+  }) : id = id ?? _uuid.v4();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'startTime': startTime,
+        'durationMin': durationMin,
+        'title': title,
+        'category': category,
+        'projectId': projectId,
+        'taskId': taskId,
+        'activityId': activityId,
+        'status': status,
+        'doneAt': doneAt?.toIso8601String(),
+      };
+
+  static ScheduleBlock from(Map j) => ScheduleBlock(
+        id: j['id'],
+        startTime: j['startTime'] ?? '00:00',
+        durationMin: (j['durationMin'] as num?)?.toInt() ?? 30,
+        title: j['title'] ?? '',
+        category: j['category'] ?? 'personal',
+        projectId: j['projectId'],
+        taskId: j['taskId'],
+        activityId: j['activityId'],
+        status: j['status'] ?? 'pending',
+        doneAt: _parseDateOrNull(j['doneAt']),
+      );
+}
+
+class DailySchedule {
+  String date;        // YYYY-MM-DD
+  String generatedBy; // claude | orion
+  DateTime generatedAt;
+  List<ScheduleBlock> blocks;
+
+  DailySchedule({
+    required this.date,
+    this.generatedBy = 'claude',
+    DateTime? generatedAt,
+    List<ScheduleBlock>? blocks,
+  })  : generatedAt = generatedAt ?? DateTime.now(),
+        blocks = blocks ?? [];
+
+  Map<String, dynamic> toJson() => {
+        'date': date,
+        'generatedBy': generatedBy,
+        'generatedAt': generatedAt.toIso8601String(),
+        'blocks': blocks.map((b) => b.toJson()).toList(),
+      };
+
+  static DailySchedule from(Map j) => DailySchedule(
+        date: j['date'] ?? '',
+        generatedBy: j['generatedBy'] ?? 'claude',
+        generatedAt: _parseDate(j['generatedAt']),
+        blocks: (j['blocks'] as List?)
+                ?.map((b) => ScheduleBlock.from(b))
+                .toList() ??
+            [],
       );
 }

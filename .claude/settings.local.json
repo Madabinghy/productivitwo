@@ -53,7 +53,20 @@
       "Bash(curl -sI \"https://www.gstatic.com/flutter-canvaskit/d2913632a4578ee4d0b8b1c4a69888c8a0672c4b/canvaskit.js\")",
       "Bash(md5 /Users/emericedmond/workspace/flutter/apps/Productivitwo/productivitwo_v1_starter/build/web/flutter_bootstrap.js)",
       "Bash(awk -F: '$2>=2598 && $2<=2700')",
-      "Bash(curl *)"
+      "Bash(curl *)",
+      "Bash(security cms *)",
+      "Bash(plutil -extract Name raw -)",
+      "mcp__claude_ai_Productivitwo__list_projects",
+      "mcp__claude_ai_Productivitwo__get_project",
+      "Bash(GOOGLE_CLOUD_PROJECT=productivitwo-app FIREBASE_AUTH_EMULATOR_HOST=\"\" node *)",
+      "Bash(GOOGLE_CLOUD_PROJECT=productivitwo-app node *)",
+      "Bash(node -e ' *)",
+      "Bash(firebase --version)",
+      "Bash(gcloud auth *)",
+      "Read(//Users/emericedmond/.config/gcloud/**)",
+      "Bash(firebase login *)",
+      "mcp__claude_ai_Productivitwo__push_gantt",
+      "Bash(grep -v \"^--$\")"
     ]
   }
 }

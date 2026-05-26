@@ -993,7 +993,7 @@ async function executePushGantt(uid: string, input: PushGanttBody): Promise<stri
       ...project,
       id: projectId,
       phases: (project.phases || []).map((p: ProjectPhase) => ({ ...p, id: p.id || uuidv4() })),
-      tasks: (project.tasks || []).map((t: ProjectTask) => ({ ...t, id: t.id || uuidv4(), isMilestone: t.isMilestone ?? false, status: t.status ?? "pending" })),
+      tasks: normalizeTasks(project.tasks),
       createdBy: uid,
       sourceType: "claude_mcp",
       status: "active",
@@ -1182,6 +1182,64 @@ async function executeProcessInboxItem(uid: string, itemId: string, note: string
   return `✅ Idée traitée : "${snap.data()?.text}" → ${note}`;
 }
 
+// ── Programme horaire journalier ─────────────────────────────────────────────
+
+async function executeGetDaySchedule(uid: string, date: string): Promise<string> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return `Date invalide : ${date}. Format attendu : YYYY-MM-DD`;
+  const snap = await db.doc(`users/${uid}/daily_schedules/${date}`).get();
+  if (!snap.exists) return `Aucun programme pour le ${date}.`;
+  const data = snap.data() as Record<string, unknown>;
+  const blocks = (data.blocks as Array<Record<string, unknown>>) ?? [];
+  const statusIcon = (s: string) =>
+    s === "done" ? "✅" : s === "skipped" ? "⏭" : s === "deleted" ? "❌" : "⬜";
+  const lines = blocks.map((b) => {
+    const icon = statusIcon(b.status as string);
+    const deletedNote = b.status === "deleted" ? " [supprimé par l'utilisateur — ne pas recréer]" : "";
+    return `${icon} ${b.startTime} (${b.durationMin}min) — ${b.title} [${b.category}]${deletedNote}`;
+  });
+  return `Programme du ${date} (généré par ${data.generatedBy}) :\n${lines.join("\n")}`;
+}
+
+async function executeScheduleDay(
+  uid: string,
+  date: string,
+  blocks: Array<{
+    startTime: string;
+    durationMin: number;
+    title: string;
+    category: string;
+    projectId?: string;
+    taskId?: string;
+    activityId?: string;
+  }>
+): Promise<string> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return `Date invalide : ${date}. Format attendu : YYYY-MM-DD`;
+  if (!blocks?.length) return `Aucun bloc fourni — le programme n'a pas été enregistré.`;
+
+  const normalizedBlocks = blocks.map((b) => ({
+    id: uuidv4(),
+    startTime: b.startTime,
+    durationMin: b.durationMin,
+    title: b.title,
+    category: b.category,
+    projectId: b.projectId ?? null,
+    taskId: b.taskId ?? null,
+    activityId: b.activityId ?? null,
+    status: "pending",
+    doneAt: null,
+  }));
+
+  await db.doc(`users/${uid}/daily_schedules/${date}`).set({
+    date,
+    generatedBy: "claude",
+    generatedAt: FieldValue.serverTimestamp(),
+    blocks: normalizedBlocks,
+  });
+
+  const lines = normalizedBlocks.map((b) => `• ${b.startTime} (${b.durationMin}min) — ${b.title}`);
+  return `✅ Programme du ${date} enregistré — ${normalizedBlocks.length} bloc(s)\n${lines.join("\n")}`;
+}
+
 export {
 executePushAssistantMessage,
 validateToken,
@@ -1219,6 +1277,8 @@ executeGetAssistantMessages,
 executeDeleteAssistantMessage,
 executeGetInbox,
 executeProcessInboxItem,
+executeGetDaySchedule,
+executeScheduleDay,
   normalizePhases,
   normalizeTasks,
 };

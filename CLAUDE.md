@@ -19,7 +19,7 @@ Langue du code : anglais. Langue des commentaires et UI : français.
 
 ```
 lib/
-├── models.dart          — tous les modèles de données (AppState, DayPlanItem, Activity…)
+├── models.dart          — tous les modèles de données (AppState, Activity…)
 ├── app_logic.dart       — logique métier centrale (ChangeNotifier)
 ├── firestore_sync.dart  — lecture/écriture Firestore, merge par ID
 ├── main.dart            — entrée app mobile/desktop
@@ -31,6 +31,8 @@ lib/
 │   ├── gantt_screen.dart
 │   └── …
 └── widgets/             — sheets, tiles, vues partagées mobile
+    ├── daily_schedule_view.dart  — timeline programme horaire (onglet Maintenant)
+    └── …
 ```
 
 ---
@@ -42,7 +44,6 @@ lib/
 | `Domain` | `domains` | Domaine de vie (Santé, Travail…) |
 | `Activity` | `activities` | Tracking temps (`type: time`) ou fréquence (`type: habit`) |
 | `RecurringAction` | `recurringActions` | Tâche récurrente sans tracking |
-| `DayPlanItem` | `dayPlan` | Action planifiée pour un jour (`yyyymmdd` format YYYYMMDD) |
 | `DayBlock` | `blocks` | Blocs de journée (Matin, Midi, Soir…) |
 | `Goal` | `goals` | Objectif GTD avec actions |
 | `Session` | `sessions` | Session de temps loggué |
@@ -52,22 +53,64 @@ lib/
 | `Document` | `documents` | Programmes HTML, briefs, livrables |
 | `ApiToken` | `api_tokens` | Tokens Bearer pour le MCP |
 | `AssistantMessage` | `assistant_messages` | Messages planifiés de l'assistant IA |
+| `ScheduleBlock` + `DailySchedule` | `daily_schedules` | Programme horaire journalier (voir ci-dessous) |
 
 Structure Firestore : `users/{uid}/{collection}/{id}` — toujours.
+Exception `daily_schedules` : doc unique par jour — `users/{uid}/daily_schedules/{YYYY-MM-DD}`.
+
+> **`DayPlanItem` supprimé** — le modèle Flutter et toute la logique associée ont été retirés.
+> La collection Firestore `dayPlan` et les outils MCP `plan_day` / `get_day_plan` /
+> `add_to_day_plan` / `clear_day_plan` restent déployés mais **aucune vue Flutter ne les lit**.
+> Ne pas recréer de logique autour de `DayPlanItem`. Le scheduling est désormais géré par
+> `DailySchedule` + l'outil MCP `schedule_day`.
+
+---
+
+## Programme horaire (`DailySchedule`)
+
+Un doc par jour : `users/{uid}/daily_schedules/{YYYY-MM-DD}`
+
+```
+DailySchedule {
+  date: "YYYY-MM-DD",
+  generatedBy: "claude" | "orion",
+  generatedAt: timestamp,
+  blocks: ScheduleBlock[]
+}
+
+ScheduleBlock {
+  id, startTime ("HH:mm"), durationMin,
+  title, category ("project"|"routine"|"personal"|"break"),
+  projectId?, taskId?, activityId?,   ← liens vers les objets existants
+  status: "pending" | "done" | "skipped" | "deleted",
+  doneAt?
+}
+```
+
+**Soft-delete des blocs** : swipe dans l'app → `status: "deleted"` (jamais retiré du tableau).
+`get_day_schedule` affiche les blocs supprimés avec `❌ [supprimé — ne pas recréer]` pour que
+Claude ne les recrée pas lors d'une régénération.
+
+**Outils MCP** :
+- `get_day_schedule(date)` — lit le programme du jour
+- `schedule_day(date, blocks[])` — crée ou remplace le programme entier
+
+**Vue Flutter** : `lib/widgets/daily_schedule_view.dart` dans l'onglet Maintenant.
+Actions : tap checkbox → done, tap → éditer, swipe gauche → supprimer, long press → réordonner.
 
 ---
 
 ## Suppression : soft-delete partout
 
 Ne jamais faire `delete()` direct sauf cas explicite.
-Utiliser `deleted: true` (domaines, activités, routines) ou `archived: true / status: archived` (dayPlan).
+Utiliser `deleted: true` (domaines, activités, routines) ou `status: archived/deleted`.
 `FirestoreSync` merge par ID — un doc absent côté Firestore ne supprime rien côté local.
 
 ---
 
 ## Cloud Functions (`functions/src/index.ts`)
 
-4 exports :
+4 exports HTTP :
 
 | Fonction | URL | Usage |
 |----------|-----|-------|
@@ -76,13 +119,16 @@ Utiliser `deleted: true` (domaines, activités, routines) ou `archived: true / s
 | `getCustomToken` | `https://getcustomtoken-dzos75b65q-uc.a.run.app` | Auth web via token API |
 | `mcpHandler` | `https://mcphandler-dzos75b65q-uc.a.run.app` | MCP remote JSON-RPC (claude.ai) |
 
-**Ajouter un outil MCP** = 4 étapes dans `index.ts` :
-1. Définir `CONST_TOOL` (inputSchema)
-2. Écrire `executeXxx()` async
-3. Ajouter dans `tools/list` (tableau dans `mcpHandler`)
-4. Ajouter le `else if` dans `tools/call`
+**Ajouter un outil MCP** = 4 étapes :
+1. Définir `CONST_TOOL` dans `tools.ts` (inputSchema)
+2. Écrire `executeXxx()` async dans `execute.ts` + l'ajouter au bloc `export {}`
+3. Ajouter dans `tools/list` (tableau dans `mcpHandler` — `index.ts`)
+4. Ajouter le `else if` dans `tools/call` (`index.ts`) + importer depuis `execute.ts`
 
 Après modification : `npm run build` dans `functions/`, puis `firebase deploy --only functions`.
+
+**Attention** : `executePushGantt` dans `execute.ts` doit toujours appeler `normalizeTasks()`
+pour convertir les actions `string[]` en `TaskAction` maps — ne pas faire de spread direct `{ ...t }`.
 
 ---
 
@@ -119,6 +165,9 @@ Schema Firestore :
 - `inbox_overflow(min)` · `no_now_focus(beforeHour)`
 - `week_start` · `week_end` · `first_open_of_day` · `custom_date(date)`
 
+> `day_plan_empty` et `day_plan_overloaded` sont définis mais **non évalués** (dayPlan supprimé).
+> Ils retournent `false` systématiquement dans `assistant_engine.dart`.
+
 **Status cycle** : `pending` → `shown` → `dismissed` | `expired`
 
 ---
@@ -126,7 +175,7 @@ Schema Firestore :
 ## App web (`lib/web/`)
 
 Compilée séparément du mobile. Accès via token API + `getCustomToken`.
-Affiche : projets Gantt, documents HTML, assistant IA (à venir).
+Affiche : projets Gantt, documents HTML, assistant IA.
 
 **Build + deploy web :**
 ```
@@ -140,7 +189,8 @@ firebase deploy --only hosting
 
 - Pas de commentaires sauf invariant non-évident
 - Soft-delete systématique (jamais de `delete()` direct sur domains/activities/recurringActions)
-- `yyyymmdd` = string `"20260521"` (pas de tirets) pour les dates de plan
-- `YYYY-MM-DD` = format ISO pour tout le reste (projets, sessions, MCP)
+- `YYYY-MM-DD` = format ISO pour tout (projets, sessions, MCP)
 - Les documents HTML sont toujours liés à `projectId` + `taskId` quand applicable
 - `activityId` obligatoire sur toute routine/action récurrente
+- Les actions de tâches Gantt (`ProjectTask.actions`) sont des `TaskAction` maps en Firestore —
+  `ProjectTask.from()` gère les deux formats (string et map) pour compatibilité ascendante

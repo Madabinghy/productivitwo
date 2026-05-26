@@ -36,6 +36,8 @@ exports.executeGetAssistantMessages = executeGetAssistantMessages;
 exports.executeDeleteAssistantMessage = executeDeleteAssistantMessage;
 exports.executeGetInbox = executeGetInbox;
 exports.executeProcessInboxItem = executeProcessInboxItem;
+exports.executeGetDaySchedule = executeGetDaySchedule;
+exports.executeScheduleDay = executeScheduleDay;
 exports.normalizePhases = normalizePhases;
 exports.normalizeTasks = normalizeTasks;
 const db_1 = require("./db");
@@ -888,7 +890,7 @@ async function executePushGantt(uid, input) {
         await db_1.db.collection(`users/${uid}/strategic_objectives`).doc(objId).set(Object.assign(Object.assign({}, strategicObjective), { id: objId, status: "active", updatedAt: db_1.FieldValue.serverTimestamp(), createdAt: db_1.FieldValue.serverTimestamp() }), { merge: true });
     }
     const projectId = project.id || (0, uuid_1.v4)();
-    await db_1.db.collection(`users/${uid}/projects`).doc(projectId).set(Object.assign(Object.assign(Object.assign(Object.assign({}, project), { id: projectId, phases: (project.phases || []).map((p) => (Object.assign(Object.assign({}, p), { id: p.id || (0, uuid_1.v4)() }))), tasks: (project.tasks || []).map((t) => { var _a, _b; return (Object.assign(Object.assign({}, t), { id: t.id || (0, uuid_1.v4)(), isMilestone: (_a = t.isMilestone) !== null && _a !== void 0 ? _a : false, status: (_b = t.status) !== null && _b !== void 0 ? _b : "pending" })); }), createdBy: uid, sourceType: "claude_mcp", status: "active" }), (strategicObjectiveId ? { strategicObjectiveId } : {})), { updatedAt: db_1.FieldValue.serverTimestamp(), createdAt: db_1.FieldValue.serverTimestamp() }), { merge: true });
+    await db_1.db.collection(`users/${uid}/projects`).doc(projectId).set(Object.assign(Object.assign(Object.assign(Object.assign({}, project), { id: projectId, phases: (project.phases || []).map((p) => (Object.assign(Object.assign({}, p), { id: p.id || (0, uuid_1.v4)() }))), tasks: normalizeTasks(project.tasks), createdBy: uid, sourceType: "claude_mcp", status: "active" }), (strategicObjectiveId ? { strategicObjectiveId } : {})), { updatedAt: db_1.FieldValue.serverTimestamp(), createdAt: db_1.FieldValue.serverTimestamp() }), { merge: true });
     if (strategicObjectiveId) {
         await db_1.db.collection(`users/${uid}/strategic_objectives`).doc(strategicObjectiveId)
             .update({ projectIds: db_1.FieldValue.arrayUnion(projectId) });
@@ -1052,5 +1054,52 @@ async function executeProcessInboxItem(uid, itemId, note) {
         processedAt: db_1.FieldValue.serverTimestamp(),
     });
     return `✅ Idée traitée : "${(_a = snap.data()) === null || _a === void 0 ? void 0 : _a.text}" → ${note}`;
+}
+// ── Programme horaire journalier ─────────────────────────────────────────────
+async function executeGetDaySchedule(uid, date) {
+    var _a;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
+        return `Date invalide : ${date}. Format attendu : YYYY-MM-DD`;
+    const snap = await db_1.db.doc(`users/${uid}/daily_schedules/${date}`).get();
+    if (!snap.exists)
+        return `Aucun programme pour le ${date}.`;
+    const data = snap.data();
+    const blocks = (_a = data.blocks) !== null && _a !== void 0 ? _a : [];
+    const statusIcon = (s) => s === "done" ? "✅" : s === "skipped" ? "⏭" : s === "deleted" ? "❌" : "⬜";
+    const lines = blocks.map((b) => {
+        const icon = statusIcon(b.status);
+        const deletedNote = b.status === "deleted" ? " [supprimé par l'utilisateur — ne pas recréer]" : "";
+        return `${icon} ${b.startTime} (${b.durationMin}min) — ${b.title} [${b.category}]${deletedNote}`;
+    });
+    return `Programme du ${date} (généré par ${data.generatedBy}) :\n${lines.join("\n")}`;
+}
+async function executeScheduleDay(uid, date, blocks) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
+        return `Date invalide : ${date}. Format attendu : YYYY-MM-DD`;
+    if (!(blocks === null || blocks === void 0 ? void 0 : blocks.length))
+        return `Aucun bloc fourni — le programme n'a pas été enregistré.`;
+    const normalizedBlocks = blocks.map((b) => {
+        var _a, _b, _c;
+        return ({
+            id: (0, uuid_1.v4)(),
+            startTime: b.startTime,
+            durationMin: b.durationMin,
+            title: b.title,
+            category: b.category,
+            projectId: (_a = b.projectId) !== null && _a !== void 0 ? _a : null,
+            taskId: (_b = b.taskId) !== null && _b !== void 0 ? _b : null,
+            activityId: (_c = b.activityId) !== null && _c !== void 0 ? _c : null,
+            status: "pending",
+            doneAt: null,
+        });
+    });
+    await db_1.db.doc(`users/${uid}/daily_schedules/${date}`).set({
+        date,
+        generatedBy: "claude",
+        generatedAt: db_1.FieldValue.serverTimestamp(),
+        blocks: normalizedBlocks,
+    });
+    const lines = normalizedBlocks.map((b) => `• ${b.startTime} (${b.durationMin}min) — ${b.title}`);
+    return `✅ Programme du ${date} enregistré — ${normalizedBlocks.length} bloc(s)\n${lines.join("\n")}`;
 }
 //# sourceMappingURL=execute.js.map

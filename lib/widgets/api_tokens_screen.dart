@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widget_service.dart';
@@ -7,8 +8,9 @@ import 'package:productivitwo_v1/widget_service.dart';
 class ApiTokensScreen extends StatefulWidget {
   final FirestoreSync sync;
   final String uid;
+  final AppLogic? logic;
 
-  const ApiTokensScreen({super.key, required this.sync, this.uid = ''});
+  const ApiTokensScreen({super.key, required this.sync, this.uid = '', this.logic});
 
   @override
   State<ApiTokensScreen> createState() => _ApiTokensScreenState();
@@ -275,7 +277,7 @@ class _ApiTokensScreenState extends State<ApiTokensScreen> {
                 ),
 
                 // ── Widget iOS diag ────────────────────────────────────────
-                _WidgetDiagTile(),
+                _WidgetDiagTile(logic: widget.logic),
 
                 // ── Tokens actifs ───────────────────────────────────────────
                 if (active.isEmpty)
@@ -406,7 +408,25 @@ class _TokenTile extends StatelessWidget {
 
 // ── Diagnostic Widget iOS ─────────────────────────────────────────────────────
 
-class _WidgetDiagTile extends StatelessWidget {
+class _WidgetDiagTile extends StatefulWidget {
+  final AppLogic? logic;
+  const _WidgetDiagTile({this.logic});
+
+  @override
+  State<_WidgetDiagTile> createState() => _WidgetDiagTileState();
+}
+
+class _WidgetDiagTileState extends State<_WidgetDiagTile> {
+  bool _updating = false;
+
+  Future<void> _forceUpdate() async {
+    final l = widget.logic;
+    if (l == null) return;
+    setState(() => _updating = true);
+    await WidgetService.update(l);
+    if (mounted) setState(() => _updating = false);
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -421,7 +441,7 @@ class _WidgetDiagTile extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
         decoration: BoxDecoration(
           color: color.withOpacity(0.08),
           borderRadius: BorderRadius.circular(10),
@@ -447,6 +467,22 @@ class _WidgetDiagTile extends StatelessWidget {
                 style: TextStyle(fontSize: 12, color: color),
               ),
             ),
+            if (widget.logic != null)
+              TextButton(
+                onPressed: _updating ? null : _forceUpdate,
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: _updating
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Forcer', style: TextStyle(fontSize: 12)),
+              ),
           ],
         ),
       ),

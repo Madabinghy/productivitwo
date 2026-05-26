@@ -6,6 +6,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
+import 'package:productivitwo_v1/widgets/daily_schedule_view.dart';
 
 class FocusView extends StatefulWidget {
   final AppLogic logic;
@@ -123,10 +124,13 @@ class _FocusViewState extends State<FocusView> {
     final byActivity = _todayMinutesByActivity();
     final totalMin = _totalTodayMinutes();
     final totalH = totalMin / 60;
+    final now = DateTime.now();
+    final todayStr =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -144,15 +148,26 @@ class _FocusViewState extends State<FocusView> {
               style: TextStyle(
                   fontSize: 14, color: cs.onSurface.withOpacity(.45)),
             ),
+            const SizedBox(height: 24),
+
+            // Programme horaire (stream Firestore)
+            DailyScheduleView(date: todayStr),
+
             const SizedBox(height: 32),
 
-            // Camembert
-            if (byActivity.isEmpty)
-              _buildNoPieState(cs)
-            else
+            // Activités du jour (camembert) — section secondaire
+            if (byActivity.isNotEmpty) ...[
+              Text(
+                'Activités loggées',
+                style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: cs.onSurface),
+              ),
+              const SizedBox(height: 16),
               _buildPieChart(context, cs, byActivity, totalMin),
-
-            const Spacer(),
+              const SizedBox(height: 24),
+            ],
 
             OutlinedButton.icon(
               icon: const Icon(Icons.account_tree_outlined, size: 18),
@@ -170,25 +185,6 @@ class _FocusViewState extends State<FocusView> {
     );
   }
 
-  Widget _buildNoPieState(ColorScheme cs) {
-    return Expanded(
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.play_circle_outline,
-                size: 64, color: cs.onSurface.withOpacity(.15)),
-            const SizedBox(height: 16),
-            Text(
-              'Lance une activité pour commencer',
-              style: TextStyle(
-                  fontSize: 14, color: cs.onSurface.withOpacity(.35)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _buildPieChart(BuildContext context, ColorScheme cs,
       Map<String, double> byActivity, double totalMin) {
@@ -215,53 +211,51 @@ class _FocusViewState extends State<FocusView> {
       );
     }).toList();
 
-    return Expanded(
-      child: Column(
-        children: [
-          SizedBox(
-            height: 200,
-            child: PieChart(
-              PieChartData(
-                sections: sections,
-                sectionsSpace: 2,
-                centerSpaceRadius: 40,
-              ),
+    return Column(
+      children: [
+        SizedBox(
+          height: 180,
+          child: PieChart(
+            PieChartData(
+              sections: sections,
+              sectionsSpace: 2,
+              centerSpaceRadius: 36,
             ),
           ),
-          const SizedBox(height: 20),
-          // Légende
-          Wrap(
-            spacing: 16,
-            runSpacing: 8,
-            alignment: WrapAlignment.center,
-            children: entries.map((e) {
-              final activity =
-                  activities.where((a) => a.id == e.key).firstOrNull;
-              final color =
-                  domainColor(activity?.domainId, st.activeDomains) ??
-                      cs.primary;
-              final mins = e.value.round();
-              final label =
-                  '${activity?.name ?? '?'}  ${mins >= 60 ? '${(mins / 60).toStringAsFixed(1)}h' : '${mins}m'}';
-              return Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                      width: 10,
-                      height: 10,
-                      decoration: BoxDecoration(
-                          color: color, shape: BoxShape.circle)),
-                  const SizedBox(width: 5),
-                  Text(label,
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: cs.onSurface.withOpacity(.6))),
-                ],
-              );
-            }).toList(),
-          ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 16),
+        // Légende
+        Wrap(
+          spacing: 16,
+          runSpacing: 8,
+          alignment: WrapAlignment.center,
+          children: entries.map((e) {
+            final activity =
+                activities.where((a) => a.id == e.key).firstOrNull;
+            final color =
+                domainColor(activity?.domainId, st.activeDomains) ??
+                    cs.primary;
+            final mins = e.value.round();
+            final label =
+                '${activity?.name ?? '?'}  ${mins >= 60 ? '${(mins / 60).toStringAsFixed(1)}h' : '${mins}m'}';
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                        color: color, shape: BoxShape.circle)),
+                const SizedBox(width: 5),
+                Text(label,
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: cs.onSurface.withOpacity(.6))),
+              ],
+            );
+          }).toList(),
+        ),
+      ],
     );
   }
 

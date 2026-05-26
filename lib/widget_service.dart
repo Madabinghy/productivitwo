@@ -14,6 +14,7 @@ class WidgetDiag {
   final int routinesDone;
   final int routinesTotal;
   final int ganttCount;
+  final int projectsLoaded;
   final String? error;
   final DateTime ts;
 
@@ -21,6 +22,7 @@ class WidgetDiag {
     required this.routinesDone,
     required this.routinesTotal,
     required this.ganttCount,
+    required this.projectsLoaded,
     this.error,
     required this.ts,
   });
@@ -28,7 +30,10 @@ class WidgetDiag {
   @override
   String toString() {
     if (error != null) return '❌ $error';
-    return '✅ routines $routinesDone/$routinesTotal · gantt $ganttCount · ${ts.hour}:${ts.minute.toString().padLeft(2, '0')}';
+    final ganttInfo = ganttCount > 0
+        ? '$ganttCount tâche(s)'
+        : 'aucune tâche active ($projectsLoaded projet(s) chargé(s))';
+    return '✅ routines $routinesDone/$routinesTotal · gantt $ganttInfo · ${ts.hour}h${ts.minute.toString().padLeft(2, '0')}';
   }
 }
 
@@ -86,6 +91,7 @@ class WidgetService {
         routinesDone: routinesDone,
         routinesTotal: routinesTotal,
         ganttCount: ganttTasks.length,
+        projectsLoaded: logic.currentProjects.length,
         ts: DateTime.now(),
       );
     } catch (e) {
@@ -93,6 +99,7 @@ class WidgetService {
         routinesDone: 0,
         routinesTotal: 0,
         ganttCount: 0,
+        projectsLoaded: 0,
         error: e.toString(),
         ts: DateTime.now(),
       );

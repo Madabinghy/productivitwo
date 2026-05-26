@@ -637,6 +637,7 @@ const PUSH_GANTT_MCP_TOOL = {
         type: "object",
         required: ["title", "startDate"],
         properties: {
+          id:          { type: "string", description: "id du projet existant à mettre à jour (obtenu via list_projects). Omets pour créer un nouveau projet." },
           title:       { type: "string" },
           description: { type: "string" },
           domainId:    { type: "string", description: "id du domaine (get_user_context)" },
@@ -743,4 +744,56 @@ DELETE_PROJECT_TOOL,
 LIST_PROJECTS_TOOL,
 GET_PROJECT_TOOL,
 PUSH_GANTT_MCP_TOOL,
+};
+
+export const GET_DAY_SCHEDULE_TOOL = {
+  name: "get_day_schedule",
+  description:
+    "Retourne le programme horaire d'une journée (généré par Claude ou ORION). " +
+    "Appelle cet outil avant schedule_day pour vérifier si un programme existe déjà.",
+  inputSchema: {
+    type: "object",
+    required: ["date"],
+    properties: {
+      date: { type: "string", description: "YYYY-MM-DD" },
+    },
+  },
+};
+
+export const SCHEDULE_DAY_TOOL = {
+  name: "schedule_day",
+  description:
+    "Génère ou remplace le programme horaire d'une journée dans Productivitwo. " +
+    "Chaque bloc est un créneau horaire avec une action concrète. " +
+    "Étapes recommandées : (1) get_user_context pour récupérer projets et routines actifs, " +
+    "(2) get_day_schedule pour vérifier si un programme existe déjà, " +
+    "(3) schedule_day pour créer ou remplacer le programme.",
+  inputSchema: {
+    type: "object",
+    required: ["date", "blocks"],
+    properties: {
+      date: { type: "string", description: "YYYY-MM-DD — date du programme" },
+      blocks: {
+        type: "array",
+        description: "Liste des blocs horaires dans l'ordre chronologique",
+        items: {
+          type: "object",
+          required: ["startTime", "durationMin", "title", "category"],
+          properties: {
+            startTime:   { type: "string", description: "Heure de début HH:mm (ex: '09:30')" },
+            durationMin: { type: "integer", description: "Durée en minutes" },
+            title:       { type: "string", description: "Intitulé court et actionnable (verbe d'action)" },
+            category:    {
+              type: "string",
+              enum: ["project", "routine", "personal", "break"],
+              description: "project = tâche Gantt · routine = activité trackée · personal = perso/maison · break = pause",
+            },
+            projectId:   { type: "string", description: "id du projet Gantt lié (si category=project, obtenu via list_projects)" },
+            taskId:      { type: "string", description: "id de la tâche Gantt liée (obtenu via get_project)" },
+            activityId:  { type: "string", description: "id de l'activité liée (si category=routine, obtenu via get_user_context)" },
+          },
+        },
+      },
+    },
+  },
 };

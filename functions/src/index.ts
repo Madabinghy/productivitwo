@@ -19,6 +19,7 @@ import {
   DELETE_DOCUMENT_TOOL, GET_ARCHIVES_TOOL, RESTORE_ITEM_TOOL,
   CREATE_DOMAIN_TOOL, DELETE_DOMAIN_TOOL, PUSH_ASSISTANT_MESSAGE_TOOL,
   GET_ASSISTANT_MESSAGES_TOOL, DELETE_ASSISTANT_MESSAGE_TOOL,
+  GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL,
 } from "./tools";
 import {
   validateToken, normalizePhases, normalizeTasks,
@@ -32,6 +33,7 @@ import {
   executeLinkGoalToTask, executeDeleteRoutine, executeDeleteGoal, executeClearDayPlan,
   executeArchiveProject, executeDeleteProject, executeListProjects, executeGetProject,
   executePushGantt,
+  executeGetDaySchedule, executeScheduleDay,
 } from "./execute";
 import type { PushGanttBody } from "./types";
 
@@ -259,6 +261,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
             DELETE_DOCUMENT_TOOL, GET_ARCHIVES_TOOL, RESTORE_ITEM_TOOL,
             CREATE_DOMAIN_TOOL, DELETE_DOMAIN_TOOL, PUSH_ASSISTANT_MESSAGE_TOOL,
             GET_ASSISTANT_MESSAGES_TOOL, DELETE_ASSISTANT_MESSAGE_TOOL,
+            GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL,
           ],
         },
       });
@@ -342,6 +345,10 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
           text = await executeGetAssistantMessages(uid);
         } else if (toolName === "delete_assistant_message") {
           text = await executeDeleteAssistantMessage(uid, args.messageId as string);
+        } else if (toolName === "get_day_schedule") {
+          text = await executeGetDaySchedule(uid, args.date as string);
+        } else if (toolName === "schedule_day") {
+          text = await executeScheduleDay(uid, args.date as string, args.blocks as Parameters<typeof executeScheduleDay>[2]);
         } else {
           responses.push({ jsonrpc: "2.0", id, error: { code: -32601, message: `Outil inconnu : ${toolName}` } });
           continue;
