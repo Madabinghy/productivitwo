@@ -58,11 +58,12 @@ lib/
 Structure Firestore : `users/{uid}/{collection}/{id}` — toujours.
 Exception `daily_schedules` : doc unique par jour — `users/{uid}/daily_schedules/{YYYY-MM-DD}`.
 
-> **`DayPlanItem` supprimé** — le modèle Flutter, toute la logique associée, ET les outils MCP
-> `plan_day` / `get_day_plan` / `add_to_day_plan` / `clear_day_plan` / `delete_action` ont été
+> **`DayPlanItem` supprimé** — le modèle Flutter, toute la logique associée, ET les anciens outils MCP
+> `get_day_plan` / `add_to_day_plan` / `clear_day_plan` / `delete_action` ont été
 > **entièrement retirés** (Cloud Functions + orion.ts). La collection Firestore `dayPlan` existe
 > encore en base mais n'est plus lue ni écrite. Ne pas recréer de logique autour de `DayPlanItem`.
-> Le scheduling est désormais géré par `DailySchedule` + l'outil MCP `schedule_day`.
+> Le scheduling est désormais géré par `DailySchedule` + les outils MCP `schedule_day` / `plan_day`.
+> ⚠️ Le nouvel outil `plan_day` (agrégateur de contexte) est **sans rapport** avec l'ancien `plan_day` supprimé.
 
 ---
 
@@ -94,6 +95,9 @@ Claude ne les recrée pas lors d'une régénération.
 **Outils MCP** :
 - `get_day_schedule(date)` — lit le programme du jour
 - `schedule_day(date, blocks[])` — crée ou remplace le programme entier
+- `plan_day(date?, startHour?, endHour?, syncToCalendar?)` — agrège user context + schedule existant + projets actifs en un appel ; retourne le contexte consolidé + workflow pour générer le programme et le syncer dans Google Calendar
+- `plan_week(startDate?, syncToCalendar?)` — idem sur 5 jours ouvrés (défaut : lundi prochain)
+- `sync_calendar(date?)` — lit le programme existant et retourne les instructions GCal précises (delete + create_event avec colorId et tag `source: productivitwo`)
 
 **Vue Flutter** : `lib/widgets/daily_schedule_view.dart` dans l'onglet Maintenant.
 Actions : tap checkbox → done, tap → éditer, swipe gauche → supprimer, long press → réordonner.
@@ -119,6 +123,20 @@ Utiliser `deleted: true` (domaines, activités, routines) ou `status: archived/d
 | `getCustomToken` | `https://getcustomtoken-dzos75b65q-uc.a.run.app` | Auth web via token API |
 | `mcpHandler` | `https://mcphandler-dzos75b65q-uc.a.run.app` | MCP remote JSON-RPC (claude.ai) |
 
+**Fichiers Cloud Functions** :
+
+| Fichier | Rôle |
+|---------|------|
+| `index.ts` | Exports HTTP (pushGantt, mcpHandler, orionWebhook…) |
+| `execute.ts` | Implémentation de chaque outil MCP |
+| `tools.ts` | Définitions inputSchema des outils MCP |
+| `models.ts` | Constantes `MODELS` (Haiku/Sonnet), `getModel(taskType)`, `logTokenUsage()` |
+| `orion.ts` | Cycle ORION (boucle LLM + tools) |
+| `orion_tasks.ts` | Tâches déterministes ORION (sans LLM) |
+| `prompts.ts` | Prompts MCP et template HTML document |
+| `db.ts` | Instance Firestore admin |
+| `types.ts` | Types TypeScript partagés |
+
 **Ajouter un outil MCP** = 4 étapes :
 1. Définir `CONST_TOOL` dans `tools.ts` (inputSchema)
 2. Écrire `executeXxx()` async dans `execute.ts` + l'ajouter au bloc `export {}`
@@ -129,6 +147,27 @@ Après modification : `npm run build` dans `functions/`, puis `firebase deploy -
 
 **Attention** : `executePushGantt` dans `execute.ts` doit toujours appeler `normalizeTasks()`
 pour convertir les actions `string[]` en `TaskAction` maps — ne pas faire de spread direct `{ ...t }`.
+
+---
+
+## Model Routing (`functions/src/models.ts`)
+
+Toujours importer depuis `models.ts` — ne jamais écrire les noms de modèle en dur.
+
+```typescript
+import { MODELS, getModel, logTokenUsage } from "./models";
+
+// Routing par type de tâche
+getModel("orion_cycle")       // → MODELS.HAIKU
+getModel("structure_project") // → MODELS.HAIKU
+getModel("chat")              // → MODELS.SONNET
+getModel("generate_document") // → MODELS.SONNET
+// Haiku par défaut pour toute nouvelle tâche automatique
+```
+
+`logTokenUsage(taskType, model, usage)` — log JSON structuré dans Cloud Logging.
+À appeler après chaque `client.messages.create()` ou équivalent.
+Tâches automatiques (JSON structuré) → Haiku. Conversations / génération riche → Sonnet.
 
 ---
 
