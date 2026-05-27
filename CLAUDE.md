@@ -58,11 +58,11 @@ lib/
 Structure Firestore : `users/{uid}/{collection}/{id}` — toujours.
 Exception `daily_schedules` : doc unique par jour — `users/{uid}/daily_schedules/{YYYY-MM-DD}`.
 
-> **`DayPlanItem` supprimé** — le modèle Flutter et toute la logique associée ont été retirés.
-> La collection Firestore `dayPlan` et les outils MCP `plan_day` / `get_day_plan` /
-> `add_to_day_plan` / `clear_day_plan` restent déployés mais **aucune vue Flutter ne les lit**.
-> Ne pas recréer de logique autour de `DayPlanItem`. Le scheduling est désormais géré par
-> `DailySchedule` + l'outil MCP `schedule_day`.
+> **`DayPlanItem` supprimé** — le modèle Flutter, toute la logique associée, ET les outils MCP
+> `plan_day` / `get_day_plan` / `add_to_day_plan` / `clear_day_plan` / `delete_action` ont été
+> **entièrement retirés** (Cloud Functions + orion.ts). La collection Firestore `dayPlan` existe
+> encore en base mais n'est plus lue ni écrite. Ne pas recréer de logique autour de `DayPlanItem`.
+> Le scheduling est désormais géré par `DailySchedule` + l'outil MCP `schedule_day`.
 
 ---
 

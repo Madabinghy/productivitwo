@@ -15,21 +15,16 @@ const ORION_TOOLS = [
     { name: "get_orion_context", description: "Contexte utilisateur : domaines, activités, routines, objectifs, projets actifs (tâches urgentes), plan du jour résumé, stats 7j.", input_schema: { type: "object", properties: {}, required: [] } },
     { name: "get_assistant_messages", description: "Messages ORION en attente et récents. Appeler en premier pour éviter les doublons.", input_schema: { type: "object", properties: {}, required: [] } },
     { name: "get_day_blocks", description: "Blocs de journée configurés.", input_schema: { type: "object", properties: {}, required: [] } },
-    { name: "get_day_plan", description: "Plan du jour pour une date donnée.", input_schema: { type: "object", properties: { date: { type: "string", description: "YYYYMMDD" } }, required: ["date"] } },
     { name: "get_documents", description: "Documents de l'utilisateur, filtrables par projectId/taskId.", input_schema: { type: "object", properties: { projectId: { type: "string" }, taskId: { type: "string" } }, required: [] } },
     { name: "get_archives", description: "Éléments archivés/supprimés.", input_schema: { type: "object", properties: {}, required: [] } },
     { name: "list_projects", description: "Liste résumée des projets Gantt.", input_schema: { type: "object", properties: {}, required: [] } },
     { name: "get_project", description: "Détail complet d'un projet Gantt (phases, tâches, IDs).", input_schema: { type: "object", properties: { projectId: { type: "string" } }, required: ["projectId"] } },
-    { name: "plan_day", description: "Planifie des actions pour une date.", input_schema: { type: "object", properties: { date: { type: "string" }, items: { type: "array" }, clearExisting: { type: "boolean" } }, required: ["date", "items"] } },
-    { name: "clear_day_plan", description: "Vide le plan du jour d'une date.", input_schema: { type: "object", properties: { date: { type: "string" } }, required: ["date"] } },
-    { name: "add_to_day_plan", description: "Ajoute un élément au plan du jour.", input_schema: { type: "object", properties: { title: { type: "string" }, yyyymmdd: { type: "string" } }, required: ["title", "yyyymmdd"] } },
     { name: "create_activity", description: "Crée une activité (temps ou habitude).", input_schema: { type: "object", properties: { name: { type: "string" }, type: { type: "string" }, domainId: { type: "string" } }, required: ["name", "type", "domainId"] } },
     { name: "update_activity", description: "Met à jour une activité.", input_schema: { type: "object", properties: { activityId: { type: "string" } }, required: ["activityId"] } },
     { name: "update_activity_goal", description: "Met à jour l'objectif quotidien d'une activité.", input_schema: { type: "object", properties: { activityId: { type: "string" }, goalMin: { type: "number" } }, required: ["activityId"] } },
     { name: "delete_activity", description: "Supprime (soft-delete) une activité.", input_schema: { type: "object", properties: { activityId: { type: "string" } }, required: ["activityId"] } },
     { name: "create_routine", description: "Crée une routine récurrente.", input_schema: { type: "object", properties: { title: { type: "string" }, activityId: { type: "string" } }, required: ["title", "activityId"] } },
     { name: "delete_routine", description: "Supprime une routine.", input_schema: { type: "object", properties: { routineId: { type: "string" } }, required: ["routineId"] } },
-    { name: "delete_action", description: "Supprime une action récurrente.", input_schema: { type: "object", properties: { actionId: { type: "string" } }, required: ["actionId"] } },
     { name: "create_domain", description: "Crée un domaine de vie.", input_schema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] } },
     { name: "delete_domain", description: "Supprime un domaine.", input_schema: { type: "object", properties: { domainId: { type: "string" } }, required: ["domainId"] } },
     { name: "update_project", description: "Met à jour les champs d'un projet Gantt.", input_schema: { type: "object", properties: { projectId: { type: "string" } }, required: ["projectId"] } },
@@ -91,7 +86,7 @@ async function writeCycleLog(uid, log) {
 }
 // ── Cycle ORION — accès complet à tous les tools ──────────────────────────────
 async function runOrionCycle(uid, opts) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
     const today = new Date().toISOString().slice(0, 10);
     const count = await getOrionRunCount(uid, today);
     if (count >= ORION_MAX_RUNS) {
@@ -150,7 +145,7 @@ Même si tu n'as fait aucune action, même s'il n'y a rien d'urgent — pousse t
 ## Types d'instructions et réponses attendues
 
 **"Analyse mes retards / propose un plan de rattrapage"**
-→ Lis planSummary.overdue et projects[].urgentTasks dans le contexte
+→ Lis projects[].urgentTasks dans le contexte
 → Pousse 2-3 messages ciblés : un par tâche/projet en retard, avec condition overdue_count ou project_deadline_near
 → Pour chaque message, inclus une action concrète (ex: open_gantt_task)
 → targetDate = aujourd'hui, condition: {type:"always"} pour affichage immédiat
@@ -158,11 +153,6 @@ Même si tu n'as fait aucune action, même s'il n'y a rien d'urgent — pousse t
 **"Bilan de semaine / rapport de progression"**
 → Lis habitStats et timeStats dans le contexte
 → Pousse un message résumant les points clés (ce qui a bien marché, ce qui est en retard)
-
-**"Optimiser mon plan du jour"**
-→ Appelle get_day_plan(today) pour voir ce qui est planifié
-→ Utilise plan_day pour ajouter les tâches urgentes manquantes
-→ Pousse un message confirmant les changements
 
 **"Archiver les projets inactifs"**
 → Liste les projets dans get_orion_context, ceux sans tâches urgentes = inactifs
@@ -248,9 +238,6 @@ Tu dois TOUJOURS appeler push_assistant_message avant end_turn, quelle que soit 
                         case "get_day_blocks":
                             result = await (0, execute_1.executeGetDayBlocks)(uid);
                             break;
-                        case "get_day_plan":
-                            result = await (0, execute_1.executeGetDayPlan)(uid, args.date);
-                            break;
                         case "get_documents":
                             result = await (0, execute_1.executeGetDocuments)(uid, args.projectId, args.taskId);
                             break;
@@ -266,23 +253,10 @@ Tu dois TOUJOURS appeler push_assistant_message avant end_turn, quelle que soit 
                         case "get_project":
                             result = await (0, execute_1.executeGetProject)(uid, args.projectId);
                             break;
-                        // ── Plan du jour ─────────────────────────────────────────────
-                        case "plan_day":
-                            result = await (0, execute_1.executePlanDay)(uid, args.date, args.items, (_b = args.clearExisting) !== null && _b !== void 0 ? _b : false);
-                            actionLog.push(`📅 Plan du jour mis à jour (${args.date})`);
-                            break;
-                        case "clear_day_plan":
-                            result = await (0, execute_1.executeClearDayPlan)(uid, args.date);
-                            actionLog.push(`🗑 Plan du jour vidé (${args.date})`);
-                            break;
-                        case "add_to_day_plan":
-                            result = await (0, execute_1.executeAddToDayPlan)(uid, args);
-                            actionLog.push(`➕ Ajout au plan du jour`);
-                            break;
                         // ── Activités ────────────────────────────────────────────────
                         case "create_activity":
                             result = await (0, execute_1.executeCreateActivity)(uid, args);
-                            actionLog.push(`✅ Activité créée : ${(_c = args.name) !== null && _c !== void 0 ? _c : ""}`);
+                            actionLog.push(`✅ Activité créée : ${(_b = args.name) !== null && _b !== void 0 ? _b : ""}`);
                             break;
                         case "update_activity":
                             result = await (0, execute_1.executeUpdateActivity)(uid, args.activityId, args);
@@ -299,20 +273,16 @@ Tu dois TOUJOURS appeler push_assistant_message avant end_turn, quelle que soit 
                         // ── Routines / Actions ───────────────────────────────────────
                         case "create_routine":
                             result = await (0, execute_1.executeCreateRoutine)(uid, args);
-                            actionLog.push(`✅ Routine créée : ${(_d = args.title) !== null && _d !== void 0 ? _d : ""}`);
+                            actionLog.push(`✅ Routine créée : ${(_c = args.title) !== null && _c !== void 0 ? _c : ""}`);
                             break;
                         case "delete_routine":
                             result = await (0, execute_1.executeDeleteRoutine)(uid, args.routineId);
                             actionLog.push(`🗑 Routine supprimée`);
                             break;
-                        case "delete_action":
-                            result = await (0, execute_1.executeDeleteAction)(uid, args.actionId);
-                            actionLog.push(`🗑 Action supprimée`);
-                            break;
                         // ── Domaines ─────────────────────────────────────────────────
                         case "create_domain":
                             result = await (0, execute_1.executeCreateDomain)(uid, args);
-                            actionLog.push(`✅ Domaine créé : ${(_e = args.name) !== null && _e !== void 0 ? _e : ""}`);
+                            actionLog.push(`✅ Domaine créé : ${(_d = args.name) !== null && _d !== void 0 ? _d : ""}`);
                             break;
                         case "delete_domain":
                             result = await (0, execute_1.executeDeleteDomain)(uid, args.domainId);
@@ -328,30 +298,30 @@ Tu dois TOUJOURS appeler push_assistant_message avant end_turn, quelle que soit 
                             actionLog.push(`✏️ Statut tâche → ${args.status} (${args.taskId})`);
                             break;
                         case "archive_project":
-                            result = await (0, execute_1.executeArchiveProject)(uid, args.projectId, (_f = args.restore) !== null && _f !== void 0 ? _f : false);
+                            result = await (0, execute_1.executeArchiveProject)(uid, args.projectId, (_e = args.restore) !== null && _e !== void 0 ? _e : false);
                             actionLog.push(args.restore ? `♻️ Projet restauré` : `🗄 Projet archivé`);
                             break;
                         case "delete_project":
-                            result = await (0, execute_1.executeDeleteProject)(uid, args.projectId, (_g = args.deleteObjective) !== null && _g !== void 0 ? _g : false);
+                            result = await (0, execute_1.executeDeleteProject)(uid, args.projectId, (_f = args.deleteObjective) !== null && _f !== void 0 ? _f : false);
                             actionLog.push(`🗑 Projet supprimé`);
                             break;
                         case "push_gantt":
                             result = await (0, execute_1.executePushGantt)(uid, Object.assign({ uid }, args));
-                            actionLog.push(`🗂 Projet Gantt créé : ${(_j = (_h = args.project) === null || _h === void 0 ? void 0 : _h.title) !== null && _j !== void 0 ? _j : ""}`);
+                            actionLog.push(`🗂 Projet Gantt créé : ${(_h = (_g = args.project) === null || _g === void 0 ? void 0 : _g.title) !== null && _h !== void 0 ? _h : ""}`);
                             break;
                         // ── Objectifs ────────────────────────────────────────────────
                         case "link_goal_to_task":
-                            result = await (0, execute_1.executeLinkGoalToTask)(uid, args.goalId, (_k = args.projectId) !== null && _k !== void 0 ? _k : null, (_l = args.projectTaskId) !== null && _l !== void 0 ? _l : null);
+                            result = await (0, execute_1.executeLinkGoalToTask)(uid, args.goalId, (_j = args.projectId) !== null && _j !== void 0 ? _j : null, (_k = args.projectTaskId) !== null && _k !== void 0 ? _k : null);
                             actionLog.push(`🔗 Objectif lié à une tâche Gantt`);
                             break;
                         case "delete_goal":
-                            result = await (0, execute_1.executeDeleteGoal)(uid, args.goalId, (_m = args.action) !== null && _m !== void 0 ? _m : "archive");
+                            result = await (0, execute_1.executeDeleteGoal)(uid, args.goalId, (_l = args.action) !== null && _l !== void 0 ? _l : "archive");
                             actionLog.push(`🗑 Objectif archivé/supprimé`);
                             break;
                         // ── Documents ────────────────────────────────────────────────
                         case "save_document":
                             result = await (0, execute_1.executeSaveDocument)(uid, args);
-                            actionLog.push(`📄 Document sauvegardé : ${(_o = args.title) !== null && _o !== void 0 ? _o : ""}`);
+                            actionLog.push(`📄 Document sauvegardé : ${(_m = args.title) !== null && _m !== void 0 ? _m : ""}`);
                             break;
                         case "delete_document": {
                             const ref = db_1.db.collection(`users/${uid}/documents`).doc(args.documentId);
@@ -370,7 +340,7 @@ Tu dois TOUJOURS appeler push_assistant_message avant end_turn, quelle que soit 
                         // ── Messages ORION ───────────────────────────────────────────
                         case "push_assistant_message": {
                             result = await (0, execute_1.executePushAssistantMessage)(uid, args);
-                            const msgText = ((_p = args.text) !== null && _p !== void 0 ? _p : "").slice(0, 80);
+                            const msgText = ((_o = args.text) !== null && _o !== void 0 ? _o : "").slice(0, 80);
                             actionLog.push(`💬 Message ORION planifié : "${msgText}${msgText.length >= 80 ? "…" : ""}"`);
                             pushedCount++;
                             break;

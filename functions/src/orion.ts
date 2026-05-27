@@ -4,10 +4,9 @@ import { db, FieldValue } from "./db";
 import {
   executeGetOrionContext, executeGetAssistantMessages, executePushAssistantMessage,
   executeDeleteAssistantMessage, executeUpdateActivityGoal, executeCreateRoutine,
-  executeAddToDayPlan, executeGetDayBlocks,
-  executeGetDayPlan, executePlanDay, executeClearDayPlan, executeCreateActivity,
-  executeUpdateActivity, executeUpdateActivityGoal as _uag, executeDeleteActivity,
-  executeDeleteAction, executeCreateDomain, executeDeleteDomain,
+  executeGetDayBlocks, executeCreateActivity,
+  executeUpdateActivity, executeDeleteActivity,
+  executeCreateDomain, executeDeleteDomain,
   executeListProjects, executeGetProject, executePushGantt, executeUpdateProject,
   executeUpdateTaskStatus, executeArchiveProject, executeDeleteProject,
   executeLinkGoalToTask, executeDeleteGoal, executeDeleteRoutine,
@@ -20,14 +19,10 @@ const ORION_TOOLS: PromptCachingBetaTool[] = [
   { name: "get_orion_context",        description: "Contexte utilisateur : domaines, activités, routines, objectifs, projets actifs (tâches urgentes), plan du jour résumé, stats 7j.",   input_schema: { type: "object", properties: {}, required: [] } },
   { name: "get_assistant_messages",   description: "Messages ORION en attente et récents. Appeler en premier pour éviter les doublons.",                                                   input_schema: { type: "object", properties: {}, required: [] } },
   { name: "get_day_blocks",           description: "Blocs de journée configurés.",                                                                                                         input_schema: { type: "object", properties: {}, required: [] } },
-  { name: "get_day_plan",             description: "Plan du jour pour une date donnée.",                                                                                                   input_schema: { type: "object", properties: { date: { type: "string", description: "YYYYMMDD" } }, required: ["date"] } },
   { name: "get_documents",            description: "Documents de l'utilisateur, filtrables par projectId/taskId.",                                                                         input_schema: { type: "object", properties: { projectId: { type: "string" }, taskId: { type: "string" } }, required: [] } },
   { name: "get_archives",             description: "Éléments archivés/supprimés.",                                                                                                        input_schema: { type: "object", properties: {}, required: [] } },
   { name: "list_projects",            description: "Liste résumée des projets Gantt.",                                                                                                     input_schema: { type: "object", properties: {}, required: [] } },
   { name: "get_project",              description: "Détail complet d'un projet Gantt (phases, tâches, IDs).",                                                                             input_schema: { type: "object", properties: { projectId: { type: "string" } }, required: ["projectId"] } },
-  { name: "plan_day",                 description: "Planifie des actions pour une date.",                                                                                                  input_schema: { type: "object", properties: { date: { type: "string" }, items: { type: "array" }, clearExisting: { type: "boolean" } }, required: ["date", "items"] } },
-  { name: "clear_day_plan",           description: "Vide le plan du jour d'une date.",                                                                                                    input_schema: { type: "object", properties: { date: { type: "string" } }, required: ["date"] } },
-  { name: "add_to_day_plan",          description: "Ajoute un élément au plan du jour.",                                                                                                  input_schema: { type: "object", properties: { title: { type: "string" }, yyyymmdd: { type: "string" } }, required: ["title", "yyyymmdd"] } },
   { name: "create_activity",          description: "Crée une activité (temps ou habitude).",                                                                                              input_schema: { type: "object", properties: { name: { type: "string" }, type: { type: "string" }, domainId: { type: "string" } }, required: ["name", "type", "domainId"] } },
   { name: "update_activity",          description: "Met à jour une activité.",                                                                                                            input_schema: { type: "object", properties: { activityId: { type: "string" } }, required: ["activityId"] } },
   { name: "update_activity_goal",     description: "Met à jour l'objectif quotidien d'une activité.",                                                                                    input_schema: { type: "object", properties: { activityId: { type: "string" }, goalMin: { type: "number" } }, required: ["activityId"] } },
@@ -35,7 +30,6 @@ const ORION_TOOLS: PromptCachingBetaTool[] = [
   { name: "create_routine",           description: "Crée une routine récurrente.",                                                                                                        input_schema: { type: "object", properties: { title: { type: "string" }, activityId: { type: "string" } }, required: ["title", "activityId"] } },
   { name: "delete_routine",           description: "Supprime une routine.",                                                                                                               input_schema: { type: "object", properties: { routineId: { type: "string" } }, required: ["routineId"] } },
 
-  { name: "delete_action",            description: "Supprime une action récurrente.",                                                                                                     input_schema: { type: "object", properties: { actionId: { type: "string" } }, required: ["actionId"] } },
   { name: "create_domain",            description: "Crée un domaine de vie.",                                                                                                             input_schema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] } },
   { name: "delete_domain",            description: "Supprime un domaine.",                                                                                                                input_schema: { type: "object", properties: { domainId: { type: "string" } }, required: ["domainId"] } },
   { name: "update_project",           description: "Met à jour les champs d'un projet Gantt.",                                                                                           input_schema: { type: "object", properties: { projectId: { type: "string" } }, required: ["projectId"] } },
@@ -188,7 +182,7 @@ Même si tu n'as fait aucune action, même s'il n'y a rien d'urgent — pousse t
 ## Types d'instructions et réponses attendues
 
 **"Analyse mes retards / propose un plan de rattrapage"**
-→ Lis planSummary.overdue et projects[].urgentTasks dans le contexte
+→ Lis projects[].urgentTasks dans le contexte
 → Pousse 2-3 messages ciblés : un par tâche/projet en retard, avec condition overdue_count ou project_deadline_near
 → Pour chaque message, inclus une action concrète (ex: open_gantt_task)
 → targetDate = aujourd'hui, condition: {type:"always"} pour affichage immédiat
@@ -196,11 +190,6 @@ Même si tu n'as fait aucune action, même s'il n'y a rien d'urgent — pousse t
 **"Bilan de semaine / rapport de progression"**
 → Lis habitStats et timeStats dans le contexte
 → Pousse un message résumant les points clés (ce qui a bien marché, ce qui est en retard)
-
-**"Optimiser mon plan du jour"**
-→ Appelle get_day_plan(today) pour voir ce qui est planifié
-→ Utilise plan_day pour ajouter les tâches urgentes manquantes
-→ Pousse un message confirmant les changements
 
 **"Archiver les projets inactifs"**
 → Liste les projets dans get_orion_context, ceux sans tâches urgentes = inactifs
@@ -296,25 +285,11 @@ Tu dois TOUJOURS appeler push_assistant_message avant end_turn, quelle que soit 
               actionLog.push("📩 Vérification des messages ORION existants");
               break;
             case "get_day_blocks":          result = await executeGetDayBlocks(uid); break;
-            case "get_day_plan":            result = await executeGetDayPlan(uid, args.date as string); break;
             case "get_documents":           result = await executeGetDocuments(uid, args.projectId as string | undefined, args.taskId as string | undefined); break;
             case "get_document_template":   result = executeGetDocumentTemplate(); break;
             case "get_archives":            result = await executeGetArchives(uid); break;
             case "list_projects":           result = await executeListProjects(uid); break;
             case "get_project":             result = await executeGetProject(uid, args.projectId as string); break;
-            // ── Plan du jour ─────────────────────────────────────────────
-            case "plan_day":
-              result = await executePlanDay(uid, args.date as string, args.items as Parameters<typeof executePlanDay>[2], (args.clearExisting as boolean) ?? false);
-              actionLog.push(`📅 Plan du jour mis à jour (${args.date})`);
-              break;
-            case "clear_day_plan":
-              result = await executeClearDayPlan(uid, args.date as string);
-              actionLog.push(`🗑 Plan du jour vidé (${args.date})`);
-              break;
-            case "add_to_day_plan":
-              result = await executeAddToDayPlan(uid, args as Parameters<typeof executeAddToDayPlan>[1]);
-              actionLog.push(`➕ Ajout au plan du jour`);
-              break;
             // ── Activités ────────────────────────────────────────────────
             case "create_activity":
               result = await executeCreateActivity(uid, args as Parameters<typeof executeCreateActivity>[1]);
@@ -342,10 +317,6 @@ Tu dois TOUJOURS appeler push_assistant_message avant end_turn, quelle que soit 
               actionLog.push(`🗑 Routine supprimée`);
               break;
 
-            case "delete_action":
-              result = await executeDeleteAction(uid, args.actionId as string);
-              actionLog.push(`🗑 Action supprimée`);
-              break;
             // ── Domaines ─────────────────────────────────────────────────
             case "create_domain":
               result = await executeCreateDomain(uid, args as Parameters<typeof executeCreateDomain>[1]);

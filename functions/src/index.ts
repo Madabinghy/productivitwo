@@ -8,13 +8,13 @@ import { v4 as uuidv4 } from "uuid";
 import { db, FieldValue } from "./db";
 import { MCP_PROMPTS, getPromptMessages, executeGetDocumentTemplate } from "./prompts";
 import {
-  GET_USER_CONTEXT_TOOL, GET_DAY_BLOCKS_TOOL, GET_DAY_PLAN_TOOL, PLAN_DAY_TOOL,
-  CLEAR_DAY_PLAN_TOOL, LIST_PROJECTS_TOOL, GET_PROJECT_TOOL, PUSH_GANTT_MCP_TOOL,
+  GET_USER_CONTEXT_TOOL, GET_DAY_BLOCKS_TOOL,
+  LIST_PROJECTS_TOOL, GET_PROJECT_TOOL, PUSH_GANTT_MCP_TOOL,
   ARCHIVE_PROJECT_TOOL, DELETE_PROJECT_TOOL, UPDATE_ACTIVITY_GOAL_TOOL,
   CREATE_ROUTINE_TOOL, DELETE_ROUTINE_TOOL,
-  ADD_TO_DAY_PLAN_TOOL, DELETE_GOAL_TOOL, LINK_GOAL_TO_TASK_TOOL,
+  DELETE_GOAL_TOOL, LINK_GOAL_TO_TASK_TOOL,
   CREATE_ACTIVITY_TOOL, UPDATE_ACTIVITY_TOOL, UPDATE_TASK_STATUS_TOOL,
-  UPDATE_PROJECT_TOOL, DELETE_ACTIVITY_TOOL, DELETE_ACTION_TOOL,
+  UPDATE_PROJECT_TOOL, DELETE_ACTIVITY_TOOL,
   GET_DOCUMENT_TEMPLATE_TOOL, SAVE_DOCUMENT_TOOL, GET_DOCUMENTS_TOOL,
   DELETE_DOCUMENT_TOOL, GET_ARCHIVES_TOOL, RESTORE_ITEM_TOOL,
   CREATE_DOMAIN_TOOL, DELETE_DOMAIN_TOOL, PUSH_ASSISTANT_MESSAGE_TOOL,
@@ -25,12 +25,12 @@ import {
   validateToken, normalizePhases, normalizeTasks,
   executePushAssistantMessage, executeGetAssistantMessages, executeDeleteAssistantMessage,
   executeGetUserContext, executeUpdateActivityGoal,
-  executeCreateRoutine, executeAddToDayPlan,
-  executeGetDayBlocks, executeGetDayPlan, executePlanDay, executeCreateActivity,
-  executeDeleteAction, executeSaveDocument, executeGetDocuments, executeGetArchives,
+  executeCreateRoutine,
+  executeGetDayBlocks, executeCreateActivity,
+  executeSaveDocument, executeGetDocuments, executeGetArchives,
   executeRestoreItem, executeCreateDomain, executeDeleteDomain, executeDeleteActivity,
   executeUpdateProject, executeUpdateTaskStatus, executeUpdateActivity,
-  executeLinkGoalToTask, executeDeleteRoutine, executeDeleteGoal, executeClearDayPlan,
+  executeLinkGoalToTask, executeDeleteRoutine, executeDeleteGoal,
   executeArchiveProject, executeDeleteProject, executeListProjects, executeGetProject,
   executePushGantt,
   executeGetDaySchedule, executeScheduleDay,
@@ -250,13 +250,13 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
         jsonrpc: "2.0", id,
         result: {
           tools: [
-            GET_USER_CONTEXT_TOOL, GET_DAY_BLOCKS_TOOL, GET_DAY_PLAN_TOOL, PLAN_DAY_TOOL,
-            CLEAR_DAY_PLAN_TOOL, LIST_PROJECTS_TOOL, GET_PROJECT_TOOL, PUSH_GANTT_MCP_TOOL,
+            GET_USER_CONTEXT_TOOL, GET_DAY_BLOCKS_TOOL,
+            LIST_PROJECTS_TOOL, GET_PROJECT_TOOL, PUSH_GANTT_MCP_TOOL,
             ARCHIVE_PROJECT_TOOL, DELETE_PROJECT_TOOL, UPDATE_ACTIVITY_GOAL_TOOL,
             CREATE_ROUTINE_TOOL, DELETE_ROUTINE_TOOL,
-            ADD_TO_DAY_PLAN_TOOL, DELETE_GOAL_TOOL, LINK_GOAL_TO_TASK_TOOL,
+            DELETE_GOAL_TOOL, LINK_GOAL_TO_TASK_TOOL,
             CREATE_ACTIVITY_TOOL, UPDATE_ACTIVITY_TOOL, UPDATE_TASK_STATUS_TOOL,
-            UPDATE_PROJECT_TOOL, DELETE_ACTIVITY_TOOL, DELETE_ACTION_TOOL,
+            UPDATE_PROJECT_TOOL, DELETE_ACTIVITY_TOOL,
             GET_DOCUMENT_TEMPLATE_TOOL, SAVE_DOCUMENT_TOOL, GET_DOCUMENTS_TOOL,
             DELETE_DOCUMENT_TOOL, GET_ARCHIVES_TOOL, RESTORE_ITEM_TOOL,
             CREATE_DOMAIN_TOOL, DELETE_DOMAIN_TOOL, PUSH_ASSISTANT_MESSAGE_TOOL,
@@ -275,16 +275,6 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
           text = await executeGetUserContext(uid);
         } else if (toolName === "get_day_blocks") {
           text = await executeGetDayBlocks(uid);
-        } else if (toolName === "get_day_plan") {
-          text = await executeGetDayPlan(uid, args.date as string);
-        } else if (toolName === "plan_day") {
-          text = await executePlanDay(uid, args.date as string, args.items as Parameters<typeof executePlanDay>[2], (args.clearExisting as boolean) ?? false);
-        } else if (toolName === "clear_day_plan") {
-          text = await executeClearDayPlan(uid, args.date as string);
-        } else if (toolName === "add_to_day_plan") {
-          text = await executeAddToDayPlan(uid, args as Parameters<typeof executeAddToDayPlan>[1]);
-        } else if (toolName === "delete_action") {
-          text = await executeDeleteAction(uid, args.actionId as string);
         } else if (toolName === "list_projects") {
           text = await executeListProjects(uid);
         } else if (toolName === "get_project") {

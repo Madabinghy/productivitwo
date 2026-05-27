@@ -173,7 +173,7 @@ exports.getCustomToken = (0, https_1.onRequest)({ cors: true, invoker: "public" 
 //
 // URL : /mcp/{uid}/{token} — protocole MCP JSON-RPC 2.0 (Streamable HTTP, stateless)
 exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, async (req, res) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s;
     if (req.method === "OPTIONS") {
         res.status(204).send("");
         return;
@@ -233,13 +233,13 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                 jsonrpc: "2.0", id,
                 result: {
                     tools: [
-                        tools_1.GET_USER_CONTEXT_TOOL, tools_1.GET_DAY_BLOCKS_TOOL, tools_1.GET_DAY_PLAN_TOOL, tools_1.PLAN_DAY_TOOL,
-                        tools_1.CLEAR_DAY_PLAN_TOOL, tools_1.LIST_PROJECTS_TOOL, tools_1.GET_PROJECT_TOOL, tools_1.PUSH_GANTT_MCP_TOOL,
+                        tools_1.GET_USER_CONTEXT_TOOL, tools_1.GET_DAY_BLOCKS_TOOL,
+                        tools_1.LIST_PROJECTS_TOOL, tools_1.GET_PROJECT_TOOL, tools_1.PUSH_GANTT_MCP_TOOL,
                         tools_1.ARCHIVE_PROJECT_TOOL, tools_1.DELETE_PROJECT_TOOL, tools_1.UPDATE_ACTIVITY_GOAL_TOOL,
                         tools_1.CREATE_ROUTINE_TOOL, tools_1.DELETE_ROUTINE_TOOL,
-                        tools_1.ADD_TO_DAY_PLAN_TOOL, tools_1.DELETE_GOAL_TOOL, tools_1.LINK_GOAL_TO_TASK_TOOL,
+                        tools_1.DELETE_GOAL_TOOL, tools_1.LINK_GOAL_TO_TASK_TOOL,
                         tools_1.CREATE_ACTIVITY_TOOL, tools_1.UPDATE_ACTIVITY_TOOL, tools_1.UPDATE_TASK_STATUS_TOOL,
-                        tools_1.UPDATE_PROJECT_TOOL, tools_1.DELETE_ACTIVITY_TOOL, tools_1.DELETE_ACTION_TOOL,
+                        tools_1.UPDATE_PROJECT_TOOL, tools_1.DELETE_ACTIVITY_TOOL,
                         tools_1.GET_DOCUMENT_TEMPLATE_TOOL, tools_1.SAVE_DOCUMENT_TOOL, tools_1.GET_DOCUMENTS_TOOL,
                         tools_1.DELETE_DOCUMENT_TOOL, tools_1.GET_ARCHIVES_TOOL, tools_1.RESTORE_ITEM_TOOL,
                         tools_1.CREATE_DOMAIN_TOOL, tools_1.DELETE_DOMAIN_TOOL, tools_1.PUSH_ASSISTANT_MESSAGE_TOOL,
@@ -260,21 +260,6 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                 else if (toolName === "get_day_blocks") {
                     text = await (0, execute_1.executeGetDayBlocks)(uid);
                 }
-                else if (toolName === "get_day_plan") {
-                    text = await (0, execute_1.executeGetDayPlan)(uid, args.date);
-                }
-                else if (toolName === "plan_day") {
-                    text = await (0, execute_1.executePlanDay)(uid, args.date, args.items, (_l = args.clearExisting) !== null && _l !== void 0 ? _l : false);
-                }
-                else if (toolName === "clear_day_plan") {
-                    text = await (0, execute_1.executeClearDayPlan)(uid, args.date);
-                }
-                else if (toolName === "add_to_day_plan") {
-                    text = await (0, execute_1.executeAddToDayPlan)(uid, args);
-                }
-                else if (toolName === "delete_action") {
-                    text = await (0, execute_1.executeDeleteAction)(uid, args.actionId);
-                }
                 else if (toolName === "list_projects") {
                     text = await (0, execute_1.executeListProjects)(uid);
                 }
@@ -291,10 +276,10 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                     text = await (0, execute_1.executeUpdateTaskStatus)(uid, args.projectId, args.taskId, args.status);
                 }
                 else if (toolName === "archive_project") {
-                    text = await (0, execute_1.executeArchiveProject)(uid, args.projectId, (_m = args.restore) !== null && _m !== void 0 ? _m : false);
+                    text = await (0, execute_1.executeArchiveProject)(uid, args.projectId, (_l = args.restore) !== null && _l !== void 0 ? _l : false);
                 }
                 else if (toolName === "delete_project") {
-                    text = await (0, execute_1.executeDeleteProject)(uid, args.projectId, (_o = args.deleteObjective) !== null && _o !== void 0 ? _o : false);
+                    text = await (0, execute_1.executeDeleteProject)(uid, args.projectId, (_m = args.deleteObjective) !== null && _m !== void 0 ? _m : false);
                 }
                 else if (toolName === "create_activity") {
                     text = await (0, execute_1.executeCreateActivity)(uid, args);
@@ -321,10 +306,10 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                     text = await (0, execute_1.executeDeleteDomain)(uid, args.domainId);
                 }
                 else if (toolName === "link_goal_to_task") {
-                    text = await (0, execute_1.executeLinkGoalToTask)(uid, args.goalId, (_p = args.projectId) !== null && _p !== void 0 ? _p : null, (_q = args.projectTaskId) !== null && _q !== void 0 ? _q : null);
+                    text = await (0, execute_1.executeLinkGoalToTask)(uid, args.goalId, (_o = args.projectId) !== null && _o !== void 0 ? _o : null, (_p = args.projectTaskId) !== null && _p !== void 0 ? _p : null);
                 }
                 else if (toolName === "delete_goal") {
-                    text = await (0, execute_1.executeDeleteGoal)(uid, args.goalId, (_r = args.action) !== null && _r !== void 0 ? _r : "archive");
+                    text = await (0, execute_1.executeDeleteGoal)(uid, args.goalId, (_q = args.action) !== null && _q !== void 0 ? _q : "archive");
                 }
                 else if (toolName === "get_document_template") {
                     text = (0, prompts_1.executeGetDocumentTemplate)();
@@ -342,7 +327,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                         text = `Document introuvable : ${args.documentId}`;
                     }
                     else {
-                        const title = (_t = (_s = snap.data()) === null || _s === void 0 ? void 0 : _s.title) !== null && _t !== void 0 ? _t : args.documentId;
+                        const title = (_s = (_r = snap.data()) === null || _r === void 0 ? void 0 : _r.title) !== null && _s !== void 0 ? _s : args.documentId;
                         await ref.delete();
                         text = `✅ Document "${title}" supprimé.`;
                     }

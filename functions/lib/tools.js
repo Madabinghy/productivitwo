@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.PLAN_DAY_TOOL = exports.GET_DAY_PLAN_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.CLEAR_DAY_PLAN_TOOL = exports.DELETE_GOAL_TOOL = exports.DELETE_ROUTINE_TOOL = exports.LINK_GOAL_TO_TASK_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.DELETE_ACTION_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.ADD_TO_DAY_PLAN_TOOL = exports.CREATE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
+exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_GOAL_TOOL = exports.DELETE_ROUTINE_TOOL = exports.LINK_GOAL_TO_TASK_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
 const GET_USER_CONTEXT_TOOL = {
     name: "get_user_context",
     description: "APPELLE CET OUTIL EN PREMIER dans toute conversation liée à la productivité. " +
@@ -72,24 +72,6 @@ const CREATE_ROUTINE_TOOL = {
     },
 };
 exports.CREATE_ROUTINE_TOOL = CREATE_ROUTINE_TOOL;
-const ADD_TO_DAY_PLAN_TOOL = {
-    name: "add_to_day_plan",
-    description: "Ajoute une action au plan quotidien de l'utilisateur pour une date donnée. " +
-        "Utilise cet outil pour planifier des actions spécifiques dans l'agenda.",
-    inputSchema: {
-        type: "object",
-        required: ["title", "date"],
-        properties: {
-            title: { type: "string", description: "Titre de l'action" },
-            date: { type: "string", description: "Date ISO YYYY-MM-DD" },
-            domainId: { type: "string" },
-            activityId: { type: "string" },
-            projectId: { type: "string" },
-            projectTaskId: { type: "string" },
-        },
-    },
-};
-exports.ADD_TO_DAY_PLAN_TOOL = ADD_TO_DAY_PLAN_TOOL;
 const CREATE_ACTIVITY_TOOL = {
     name: "create_activity",
     description: "Crée une **activité** : tracking de temps avec chrono (ex: Deep Work, Running, Lecture). " +
@@ -327,20 +309,6 @@ const RESTORE_ITEM_TOOL = {
     },
 };
 exports.RESTORE_ITEM_TOOL = RESTORE_ITEM_TOOL;
-const DELETE_ACTION_TOOL = {
-    name: "delete_action",
-    description: "Supprime une action individuelle du plan quotidien. " +
-        "Utilise get_day_plan(date) pour obtenir l'id de l'action. " +
-        "Demande confirmation si l'action est déjà faite (done=true).",
-    inputSchema: {
-        type: "object",
-        required: ["actionId"],
-        properties: {
-            actionId: { type: "string", description: "id de l'action (obtenu via get_day_plan)" },
-        },
-    },
-};
-exports.DELETE_ACTION_TOOL = DELETE_ACTION_TOOL;
 const DELETE_ACTIVITY_TOOL = {
     name: "delete_activity",
     description: "Archive une activité et ses routines liées (cascade). " +
@@ -460,84 +428,13 @@ const DELETE_GOAL_TOOL = {
     },
 };
 exports.DELETE_GOAL_TOOL = DELETE_GOAL_TOOL;
-const CLEAR_DAY_PLAN_TOOL = {
-    name: "clear_day_plan",
-    description: "Supprime les actions non faites du plan d'un jour donné. " +
-        "Utile pour vider une journée avant de la replanifier. " +
-        "Ne supprime jamais les actions déjà faites (done=true).",
-    inputSchema: {
-        type: "object",
-        required: ["date"],
-        properties: {
-            date: { type: "string", description: "Date ISO YYYY-MM-DD" },
-        },
-    },
-};
-exports.CLEAR_DAY_PLAN_TOOL = CLEAR_DAY_PLAN_TOOL;
 const GET_DAY_BLOCKS_TOOL = {
     name: "get_day_blocks",
     description: "Retourne les blocs de journée (Miracle Morning, Matinée, Midi, Soir…) avec horaires. " +
-        "Appelle cet outil AVANT plan_day pour connaître la structure de la journée. " +
-        "Respecte toujours les blocs existants : ne place pas une tâche de concentration " +
-        "dans un bloc 'Soir' si 'Matinée' est disponible.",
+        "Utile avant schedule_day pour adapter les blocs horaires à la structure de la journée.",
     inputSchema: { type: "object", properties: {} },
 };
 exports.GET_DAY_BLOCKS_TOOL = GET_DAY_BLOCKS_TOOL;
-const GET_DAY_PLAN_TOOL = {
-    name: "get_day_plan",
-    description: "Retourne le plan d'un jour donné (actions planifiées, faites, reportées). " +
-        "Appelle cet outil avant plan_day pour éviter les doublons et identifier " +
-        "les créneaux libres. Si le plan est déjà chargé, ne replanifie que ce qui manque.",
-    inputSchema: {
-        type: "object",
-        required: ["date"],
-        properties: {
-            date: { type: "string", description: "Date ISO YYYY-MM-DD" },
-        },
-    },
-};
-exports.GET_DAY_PLAN_TOOL = GET_DAY_PLAN_TOOL;
-const PLAN_DAY_TOOL = {
-    name: "plan_day",
-    description: "OUTIL PRINCIPAL du coach : crée le programme personnalisé d'une journée. " +
-        "Workflow obligatoire avant d'appeler cet outil : " +
-        "1) get_user_context → connaître les objectifs et le réalisé récent, " +
-        "2) get_day_blocks → connaître la structure de la journée, " +
-        "3) get_day_plan → voir ce qui est déjà prévu, " +
-        "4) list_events (Google Calendar) → voir les rendez-vous existants. " +
-        "Ensuite : place les actions urgentes en matinée, les routines dans leurs blocs, " +
-        "crée des 'Rendez-vous avec [objectif]' pour les goals GTD prioritaires, " +
-        "et intègre les tâches Gantt en retard.",
-    inputSchema: {
-        type: "object",
-        required: ["date", "items"],
-        properties: {
-            date: { type: "string", description: "Date ISO YYYY-MM-DD" },
-            clearExisting: {
-                type: "boolean",
-                description: "Si true, efface le plan existant avant d'ajouter (défaut: false)",
-            },
-            items: {
-                type: "array",
-                description: "Liste des actions à planifier",
-                items: {
-                    type: "object",
-                    required: ["title"],
-                    properties: {
-                        title: { type: "string", description: "Titre de l'action ou du créneau" },
-                        blockId: { type: "string", description: "id du bloc (obtenu via get_day_blocks)" },
-                        domainId: { type: "string" },
-                        activityId: { type: "string" },
-                        projectId: { type: "string" },
-                        projectTaskId: { type: "string" },
-                        durationNote: { type: "string", description: "Note de durée visible (ex: '45 min')" },
-                    },
-                },
-            },
-        },
-    },
-};
-exports.PLAN_DAY_TOOL = PLAN_DAY_TOOL;
 const ARCHIVE_PROJECT_TOOL = {
     name: "archive_project",
     description: "Met un projet Gantt en veille (archived) ou le réactive (active). " +

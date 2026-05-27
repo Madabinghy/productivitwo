@@ -132,17 +132,12 @@ async function executeGetUserContext(uid: string): Promise<string> {
   // Fenêtre glissante : 7 derniers jours
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const ymdFrom = sevenDaysAgo.toISOString().slice(0, 10).replace(/-/g, "");
 
   const [domainsSnap, activitiesSnap, goalsSnap,
-         dayPlanSnap, habitHitsSnap, sessionsSnap] = await Promise.all([
+         habitHitsSnap, sessionsSnap] = await Promise.all([
     db.collection(`users/${uid}/domains`).get(),
     db.collection(`users/${uid}/activities`).get(),
     db.collection(`users/${uid}/goals`).where("status", "==", "active").get(),
-    // Actions planifiées et réalisées sur 7 jours
-    db.collection(`users/${uid}/dayPlan`)
-      .where("yyyymmdd", ">=", ymdFrom)
-      .get(),
     // Incréments de routines/habitudes sur 7 jours
     db.collection(`users/${uid}/habitHits`)
       .where("ts", ">=", sevenDaysAgo)
@@ -194,22 +189,6 @@ async function executeGetUserContext(uid: string): Promise<string> {
 
   // ── Réalisé des 7 derniers jours ──────────────────────────────────────────
 
-  // Actions complétées (dayPlan done)
-  const completedActions = dayPlanSnap.docs
-    .map((d) => d.data())
-    .filter((it) => it.done)
-    .map((it) => ({
-      title: it.title,
-      date: it.yyyymmdd,
-      domainId: it.domainId || null,
-    }));
-
-  // Actions planifiées non faites (pour identifier les écarts)
-  const pendingActions = dayPlanSnap.docs
-    .map((d) => d.data())
-    .filter((it) => !it.done && !it.archived && it.status !== "archived")
-    .map((it) => ({ title: it.title, date: it.yyyymmdd }));
-
   // Taux de complétion des habitudes/routines (habitHits groupés par habitId)
   const hitsByHabit = new Map<string, number>();
   for (const doc of habitHitsSnap.docs) {
@@ -244,8 +223,6 @@ async function executeGetUserContext(uid: string): Promise<string> {
 
   const recentActivity = {
     period: "7 derniers jours",
-    completedActions,
-    pendingActions,
     habitCompletion,
     timeLogged,
   };
@@ -274,7 +251,7 @@ async function executeGetUserContext(uid: string): Promise<string> {
       "Pour chaque message avec une tâche ou projet précis, ajoute TOUJOURS une action ciblée : " +
       "• open_gantt_task(projectId, taskId) pour une tâche Gantt urgente ou un jalon — c'est le plus utile, ça ouvre la fiche directement ; " +
       "• open_project(projectId) pour une deadline de projet ou un projet inactif ; " +
-      "• open_day_plan pour les retards ou le plan vide ; " +
+      "• open_schedule pour voir ou modifier le programme du jour ; " +
       "• open_goals pour les objectifs GTD en souffrance. " +
       "Pour obtenir les taskId, appelle get_project(projectId) — tasks[].id. " +
       "Exemples de messages pertinents à programmer : deadline dans 3 jours (condition: project_deadline_near), tâche en retard (overdue_count), jalon imminent (project_milestone_today), activité sous objectif (activity_behind_target), début de semaine (week_start). " +
@@ -334,47 +311,6 @@ async function executeCreateRoutine(
 }
 
 
-async function executeAddToDayPlan(
-  uid: string,
-  args: {
-    title: string;
-    date: string;
-    domainId?: string;
-    activityId?: string;
-    projectId?: string;
-    projectTaskId?: string;
-  }
-): Promise<string> {
-  // Valider le format de date
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(args.date)) {
-    return `Date invalide : ${args.date}. Format attendu : YYYY-MM-DD`;
-  }
-  const yyyymmdd = args.date.replace(/-/g, "");
-
-  const id = uuidv4();
-  await db.collection(`users/${uid}/dayPlan`).doc(id).set({
-    id,
-    kind: "action",
-    title: args.title,
-    yyyymmdd,
-    done: false,
-    doneCount: 0,
-    allDay: false,
-    isNowFocus: false,
-    order: 9999,
-    toPlan: false,
-    archived: false,
-    status: "active",
-    createdAt: FieldValue.serverTimestamp(),
-    domainId: args.domainId || null,
-    activityId: args.activityId || null,
-    projectId: args.projectId || null,
-    projectTaskId: args.projectTaskId || null,
-  });
-
-  return `✅ "${args.title}" ajouté au plan du ${args.date}.`;
-}
-
 async function executeGetDayBlocks(uid: string): Promise<string> {
   const snap = await db.collection(`users/${uid}/blocks`).orderBy("order").get();
   if (snap.empty) return "Aucun bloc de journée configuré.";
@@ -393,104 +329,6 @@ async function executeGetDayBlocks(uid: string): Promise<string> {
   });
 
   return JSON.stringify({ blocks }, null, 2);
-}
-
-async function executeGetDayPlan(uid: string, date: string): Promise<string> {
-  const yyyymmdd = date.replace(/-/g, "");
-  const snap = await db.collection(`users/${uid}/dayPlan`)
-    .where("yyyymmdd", "==", yyyymmdd)
-    .get();
-
-  if (snap.empty) return `Aucune action planifiée le ${date}.`;
-
-  const items = snap.docs
-    .map((d) => d.data())
-    .filter((v) => !v.archived && v.status !== "archived")
-    .map((v) => ({
-      id: v.id,
-      title: v.title,
-      done: v.done,
-      blockId: v.blockId || null,
-      domainId: v.domainId || null,
-      activityId: v.activityId || null,
-      status: v.status || "active",
-      order: v.order || 0,
-      checklist: (v.checklist || []).map((c: Record<string, unknown>) => ({
-        id: c.id,
-        title: c.title,
-        done: c.done ?? false,
-      })),
-    }))
-    .sort((a, b) => a.order - b.order);
-
-  const done = items.filter((it) => it.done).length;
-  return JSON.stringify({
-    date,
-    summary: `${done}/${items.length} actions faites`,
-    items,
-  }, null, 2);
-}
-
-async function executePlanDay(
-  uid: string,
-  date: string,
-  items: Array<{
-    title: string;
-    blockId?: string;
-    domainId?: string;
-    activityId?: string;
-    projectId?: string;
-    projectTaskId?: string;
-    durationNote?: string;
-  }>,
-  clearExisting: boolean
-): Promise<string> {
-  const yyyymmdd = date.replace(/-/g, "");
-
-  if (clearExisting) {
-    // Supprimer les items non-faits du jour
-    const existing = await db.collection(`users/${uid}/dayPlan`)
-      .where("yyyymmdd", "==", yyyymmdd)
-      .where("done", "==", false)
-      .get();
-    const batch = db.batch();
-    for (const doc of existing.docs) batch.delete(doc.ref);
-    if (!existing.empty) await batch.commit();
-  }
-
-  const addBatch = db.batch();
-  items.forEach((item, i) => {
-    const id = uuidv4();
-    const title = item.durationNote
-      ? `${item.title} (${item.durationNote})`
-      : item.title;
-    addBatch.set(db.collection(`users/${uid}/dayPlan`).doc(id), {
-      id,
-      kind: "action",
-      title,
-      yyyymmdd,
-      done: false,
-      doneCount: 0,
-      allDay: false,
-      isNowFocus: false,
-      order: 9000 + i,
-      toPlan: false,
-      archived: false,
-      status: "active",
-      createdAt: FieldValue.serverTimestamp(),
-      blockId: item.blockId || null,
-      domainId: item.domainId || null,
-      activityId: item.activityId || null,
-      projectId: item.projectId || null,
-      projectTaskId: item.projectTaskId || null,
-    });
-  });
-  await addBatch.commit();
-
-  return (
-    `✅ Programme du ${date} créé — ${items.length} action(s) planifiée(s).\n` +
-    items.map((it, i) => `  ${i + 1}. ${it.title}${it.blockId ? ` → bloc ${it.blockId}` : ""}`).join("\n")
-  );
 }
 
 async function executeCreateActivity(
@@ -517,16 +355,6 @@ async function executeCreateActivity(
     deleted: false,
   });
   return `✅ Activité "${args.name}" créée (tracking temps). Elle apparaîtra dans Productivitwo à la prochaine synchronisation.`;
-}
-
-async function executeDeleteAction(uid: string, actionId: string): Promise<string> {
-  const ref = db.collection(`users/${uid}/dayPlan`).doc(actionId);
-  const snap = await ref.get();
-  if (!snap.exists) return `Action introuvable : ${actionId}`;
-  const title = snap.data()?.title ?? actionId;
-  // Archiver plutôt que supprimer pour que le merge Flutter respecte la suppression
-  await ref.update({ archived: true, status: "archived" });
-  return `✅ Action "${title}" supprimée du plan.`;
 }
 
 function executeGetDocumentTemplate(): string {
@@ -768,20 +596,7 @@ async function executeDeleteActivity(uid: string, activityId: string): Promise<s
 
   await ref.update({ deleted: true });
 
-  // Délie les day plan items non faits
-  const planSnap = await db.collection(`users/${uid}/dayPlan`)
-    .where("activityId", "==", activityId)
-    .where("done", "==", false)
-    .get();
-  if (!planSnap.empty) {
-    const batch = db.batch();
-    for (const doc of planSnap.docs) batch.update(doc.ref, { activityId: null });
-    await batch.commit();
-  }
-
-  const details = planSnap.size > 0 ? `${planSnap.size} action(s) du plan déliée(s)` : null;
-
-  return `✅ Activité "${name}" supprimée${details ? ` (cascade : ${details})` : ""}.`;
+  return `✅ Activité "${name}" supprimée.`;
 }
 
 async function executeUpdateProject(
@@ -895,20 +710,6 @@ async function executeDeleteGoal(uid: string, goalId: string, action: string): P
   // Archive par défaut
   await ref.update({ status: "archived" });
   return `✅ Objectif "${title}" archivé.`;
-}
-
-async function executeClearDayPlan(uid: string, date: string): Promise<string> {
-  const yyyymmdd = date.replace(/-/g, "");
-  const snap = await db.collection(`users/${uid}/dayPlan`)
-    .where("yyyymmdd", "==", yyyymmdd)
-    .where("done", "==", false)
-    .get();
-  if (snap.empty) return `Aucune action non faite à supprimer le ${date}.`;
-  // Archiver plutôt que supprimer pour que le merge Flutter respecte la suppression
-  const batch = db.batch();
-  for (const doc of snap.docs) batch.update(doc.ref, { archived: true, status: "archived" });
-  await batch.commit();
-  return `✅ ${snap.size} action(s) non faite(s) supprimée(s) du plan du ${date}.`;
 }
 
 async function executeArchiveProject(uid: string, projectId: string, restore: boolean): Promise<string> {
@@ -1081,15 +882,12 @@ async function executeGetOrionContext(uid: string): Promise<string> {
   const now = new Date();
   const today = now.toISOString().slice(0, 10);
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const ymdFrom = sevenDaysAgo.toISOString().slice(0, 10).replace(/-/g, "");
-  const ymdToday = today.replace(/-/g, "");
 
   const [domainsSnap, activitiesSnap, goalsSnap,
-         dayPlanSnap, habitHitsSnap, sessionsSnap, projectsSnap] = await Promise.all([
+         habitHitsSnap, sessionsSnap, projectsSnap] = await Promise.all([
     db.collection(`users/${uid}/domains`).get(),
     db.collection(`users/${uid}/activities`).get(),
     db.collection(`users/${uid}/goals`).where("status", "==", "active").get(),
-    db.collection(`users/${uid}/dayPlan`).where("yyyymmdd", ">=", ymdFrom).get(),
     db.collection(`users/${uid}/habitHits`).where("ts", ">=", sevenDaysAgo).get(),
     db.collection(`users/${uid}/sessions`).where("startAt", ">=", sevenDaysAgo.toISOString()).get(),
     db.collection(`users/${uid}/projects`).where("status", "==", "active").get(),
@@ -1111,15 +909,6 @@ async function executeGetOrionContext(uid: string): Promise<string> {
     return { id: v.id, title: v.title, domainId: v.domainId, dueDate: v.dueDate ?? null,
              progress: `${actions.filter((a) => a.done).length}/${actions.length}` };
   });
-
-  // Plan du jour — seulement aujourd'hui, résumé
-  const todayPlan = dayPlanSnap.docs.map((d) => d.data()).filter((it) => it.yyyymmdd === ymdToday);
-  const planSummary = {
-    done: todayPlan.filter((it) => it.done).length,
-    pending: todayPlan.filter((it) => !it.done && it.status !== "archived").length,
-    overdue: dayPlanSnap.docs.map((d) => d.data())
-      .filter((it) => !it.done && it.status !== "archived" && it.yyyymmdd < ymdToday).length,
-  };
 
   // Habitudes : hits 7j par activité
   const hitsByHabit = new Map<string, number>();
@@ -1154,7 +943,7 @@ async function executeGetOrionContext(uid: string): Promise<string> {
     };
   });
 
-  return JSON.stringify({ today, domains, activities, goals, planSummary, habitStats, timeStats, projects }, null, 2);
+  return JSON.stringify({ today, domains, activities, goals, habitStats, timeStats, projects }, null, 2);
 }
 
 async function executeGetInbox(uid: string): Promise<string> {
@@ -1241,44 +1030,39 @@ async function executeScheduleDay(
 }
 
 export {
-executePushAssistantMessage,
-validateToken,
-executeGetUserContext,
-executeGetOrionContext,
-executeUpdateActivityGoal,
-executeCreateRoutine,
-executeAddToDayPlan,
-executeGetDayBlocks,
-executeGetDayPlan,
-executePlanDay,
-executeCreateActivity,
-executeDeleteAction,
-executeGetDocumentTemplate,
-executeSaveDocument,
-executeGetDocuments,
-executeGetArchives,
-executeRestoreItem,
-executeCreateDomain,
-executeDeleteDomain,
-executeDeleteActivity,
-executeUpdateProject,
-executeUpdateTaskStatus,
-executeUpdateActivity,
-executeLinkGoalToTask,
-executeDeleteRoutine,
-executeDeleteGoal,
-executeClearDayPlan,
-executeArchiveProject,
-executeDeleteProject,
-executeListProjects,
-executeGetProject,
-executePushGantt,
-executeGetAssistantMessages,
-executeDeleteAssistantMessage,
-executeGetInbox,
-executeProcessInboxItem,
-executeGetDaySchedule,
-executeScheduleDay,
+  executePushAssistantMessage,
+  validateToken,
+  executeGetUserContext,
+  executeGetOrionContext,
+  executeUpdateActivityGoal,
+  executeCreateRoutine,
+  executeGetDayBlocks,
+  executeCreateActivity,
+  executeGetDocumentTemplate,
+  executeSaveDocument,
+  executeGetDocuments,
+  executeGetArchives,
+  executeRestoreItem,
+  executeCreateDomain,
+  executeDeleteDomain,
+  executeDeleteActivity,
+  executeUpdateProject,
+  executeUpdateTaskStatus,
+  executeUpdateActivity,
+  executeLinkGoalToTask,
+  executeDeleteRoutine,
+  executeDeleteGoal,
+  executeArchiveProject,
+  executeDeleteProject,
+  executeListProjects,
+  executeGetProject,
+  executePushGantt,
+  executeGetAssistantMessages,
+  executeDeleteAssistantMessage,
+  executeGetInbox,
+  executeProcessInboxItem,
+  executeGetDaySchedule,
+  executeScheduleDay,
   normalizePhases,
   normalizeTasks,
 };
