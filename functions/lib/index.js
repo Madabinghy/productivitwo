@@ -5,6 +5,7 @@ const https_1 = require("firebase-functions/v2/https");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
 const orion_1 = require("./orion");
+const models_1 = require("./models");
 const sdk_1 = require("@anthropic-ai/sdk");
 const orion_tasks_1 = require("./orion_tasks");
 const uuid_1 = require("uuid");
@@ -571,10 +572,11 @@ Retourne UNIQUEMENT ce JSON valide, sans aucun texte autour :
   ]
 }`;
     const message = await client.messages.create({
-        model: "claude-haiku-4-5-20251001",
+        model: models_1.MODELS.HAIKU,
         max_tokens: 2048,
         messages: [{ role: "user", content: prompt }],
     });
+    (0, models_1.logTokenUsage)("structure_project", models_1.MODELS.HAIKU, message.usage);
     const raw = message.content[0].text.trim();
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {

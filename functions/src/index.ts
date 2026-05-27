@@ -2,6 +2,7 @@ import { onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as admin from "firebase-admin";
 import { runOrionCycle, getAllActiveUserIds, getOrionRunCount, incrementOrionRunCount, saveOrionConfig, writeCycleLog } from "./orion";
+import { MODELS, logTokenUsage } from "./models";
 import Anthropic from "@anthropic-ai/sdk";
 import { runDeterministicTask } from "./orion_tasks";
 import { v4 as uuidv4 } from "uuid";
@@ -557,10 +558,11 @@ Retourne UNIQUEMENT ce JSON valide, sans aucun texte autour :
 }`;
 
     const message = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: MODELS.HAIKU,
       max_tokens: 2048,
       messages: [{ role: "user", content: prompt }],
     });
+    logTokenUsage("structure_project", MODELS.HAIKU, message.usage);
 
     const raw = (message.content[0] as { type: string; text: string }).text.trim();
     const jsonMatch = raw.match(/\{[\s\S]*\}/);

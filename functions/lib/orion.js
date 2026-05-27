@@ -8,6 +8,7 @@ exports.writeCycleLog = writeCycleLog;
 exports.runOrionCycle = runOrionCycle;
 exports.getAllActiveUserIds = getAllActiveUserIds;
 const sdk_1 = require("@anthropic-ai/sdk");
+const models_1 = require("./models");
 const db_1 = require("./db");
 const execute_1 = require("./execute");
 // Descriptions compactes pour ORION — ~10x moins de tokens que les tools MCP complets
@@ -43,7 +44,7 @@ const ORION_TOOLS = [
     { name: "process_inbox_item", description: "Marque une idée inbox comme traitée avec une note expliquant l'action prise.", input_schema: { type: "object", properties: { itemId: { type: "string" }, note: { type: "string", description: "Ce qu'ORION a fait : ex: 'ajouté comme tâche dans Projet X' ou 'message reminder planifié'" } }, required: ["itemId", "note"], }, cache_control: { type: "ephemeral" } },
 ];
 const ORION_MAX_RUNS = 50;
-const ORION_MODEL = "claude-haiku-4-5-20251001";
+const ORION_MODEL = models_1.MODELS.HAIKU;
 // ── Config utilisateur ────────────────────────────────────────────────────────
 async function getOrionConfig(uid) {
     var _a, _b, _c, _d;
@@ -213,6 +214,7 @@ Tu dois TOUJOURS appeler push_assistant_message avant end_turn, quelle que soit 
             messages,
         });
         messages.push({ role: "assistant", content: response.content });
+        (0, models_1.logTokenUsage)("orion_cycle", ORION_MODEL, response.usage);
         if (response.stop_reason === "end_turn") {
             continueLoop = false;
             break;

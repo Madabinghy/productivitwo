@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { MODELS, logTokenUsage } from "./models";
 import type { PromptCachingBetaMessageParam, PromptCachingBetaTool } from "@anthropic-ai/sdk/resources/beta/prompt-caching/messages";
 import { db, FieldValue } from "./db";
 import {
@@ -50,7 +51,7 @@ const ORION_TOOLS: PromptCachingBetaTool[] = [
 import type { PushGanttBody } from "./types";
 
 const ORION_MAX_RUNS = 50;
-const ORION_MODEL = "claude-haiku-4-5-20251001";
+const ORION_MODEL = MODELS.HAIKU;
 
 // ── Config utilisateur ────────────────────────────────────────────────────────
 
@@ -259,6 +260,7 @@ Tu dois TOUJOURS appeler push_assistant_message avant end_turn, quelle que soit 
     });
 
     messages.push({ role: "assistant", content: response.content as PromptCachingBetaMessageParam["content"] });
+    logTokenUsage("orion_cycle", ORION_MODEL, response.usage as Parameters<typeof logTokenUsage>[2]);
 
     if (response.stop_reason === "end_turn") {
       continueLoop = false;
