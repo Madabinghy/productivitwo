@@ -131,7 +131,7 @@ workflows:
     publishing:
       google_play:
         credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
-        track: beta
+        track: internal
         submit_as_draft: false
       email:
         recipients:
