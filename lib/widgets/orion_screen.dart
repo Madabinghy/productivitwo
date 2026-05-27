@@ -109,7 +109,7 @@ class _OrionScreenState extends State<OrionScreen>
         FirebaseFirestore.instance
             .collection('users/$uid/assistant_messages')
             .where('status', isEqualTo: 'shown')
-            .limit(10)
+            .limit(5)
             .get(),
         if (_activeToken != null && _activeToken!.isNotEmpty)
           http.get(Uri.parse('$_countUrl?uid=$uid&token=$_activeToken'))
@@ -834,7 +834,9 @@ class _MessageCard extends StatelessWidget {
       'jan', 'fév', 'mar', 'avr', 'mai', 'juin',
       'juil', 'aoû', 'sep', 'oct', 'nov', 'déc'
     ];
-    return '${d.day} ${months[d.month - 1]}';
+    final h = d.hour.toString().padLeft(2, '0');
+    final m = d.minute.toString().padLeft(2, '0');
+    return '${d.day} ${months[d.month - 1]} · $h:$m';
   }
 }
 
