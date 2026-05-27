@@ -452,7 +452,7 @@ class _FocusView extends StatelessWidget {
     );
   }
 
-  // ── Panneau tâches actives de la semaine ──────────────────────────────────
+  // ── Panneau tâches actives aujourd'hui (fallback : semaine) ──────────────
 
   Widget _buildProjectsPanel(
     BuildContext context,
@@ -460,10 +460,20 @@ class _FocusView extends StatelessWidget {
     DateTime today,
     List<({ProjectTask task, Project project})> weekPairs,
   ) {
+    bool isActiveToday(ProjectTask t) {
+      final end = t.endDate ?? t.startDate;
+      return !t.startDate.isAfter(today) && !end.isBefore(today);
+    }
+
+    // Tâches actives aujourd'hui d'abord, fallback semaine si vide
+    var sourcePairs = weekPairs.where((e) => isActiveToday(e.task)).toList();
+    final bool isFallback = sourcePairs.isEmpty;
+    if (isFallback) sourcePairs = weekPairs;
+
     // Grouper les tâches non-terminées par projet
     final byProject = <String, List<ProjectTask>>{};
     final projectMap = <String, Project>{};
-    for (final pair in weekPairs) {
+    for (final pair in sourcePairs) {
       if (pair.task.status == 'done' || pair.task.status == 'skipped') continue;
       if (pair.task.isMilestone) continue;
       byProject.putIfAbsent(pair.project.id, () => []).add(pair.task);
@@ -483,23 +493,31 @@ class _FocusView extends StatelessWidget {
     }
 
     // Trier par ordre d'apparition dans la liste originale des projets
-    final orderedProjectIds = weekPairs
+    final orderedProjectIds = sourcePairs
         .map((e) => e.project.id)
         .where(byProject.containsKey)
         .toSet()
         .toList();
+
+    final todayStr =
+        '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Programme du jour ───────────────────────────────────────────
+          _buildScheduleSection(context, cs, todayStr),
+          const SizedBox(height: 20),
+
+          // ── Tâches en cours / cette semaine ─────────────────────────────
           Row(children: [
             Icon(Icons.account_tree_outlined,
                 size: 13, color: cs.onSurface.withOpacity(.45)),
             const SizedBox(width: 6),
             Text(
-              'TÂCHES EN COURS',
+              isFallback ? 'TÂCHES CETTE SEMAINE' : 'TÂCHES EN COURS',
               style: TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.w700,
@@ -520,6 +538,152 @@ class _FocusView extends StatelessWidget {
             const SizedBox(height: 14),
           ],
         ],
+      ),
+    );
+  }
+
+  // ── Programme du jour ──────────────────────────────────────────────────────
+
+  static const _categoryColor = {
+    'project':  Color(0xFF1D9E75),
+    'routine':  Color(0xFFE07B39),
+    'personal': Color(0xFF5B8DEF),
+    'break':    Color(0xFF8E9AAF),
+  };
+
+  Widget _buildScheduleSection(
+      BuildContext context, ColorScheme cs, String todayStr) {
+    return StreamBuilder<DailySchedule?>(
+      stream: sync.streamDailySchedule(todayStr),
+      builder: (context, snap) {
+        final schedule = snap.data;
+        final blocks = schedule?.blocks
+                .where((b) => b.status != 'deleted')
+                .toList() ??
+            [];
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(Icons.schedule_outlined,
+                  size: 13, color: cs.onSurface.withOpacity(.45)),
+              const SizedBox(width: 6),
+              Text(
+                'PROGRAMME DU JOUR',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                  color: cs.onSurface.withOpacity(.45),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 10),
+            if (blocks.isEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest.withOpacity(.18),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                      color: cs.outlineVariant.withOpacity(.25), width: 1),
+                ),
+                child: Row(children: [
+                  Icon(Icons.wb_sunny_outlined,
+                      size: 14, color: cs.onSurface.withOpacity(.3)),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Aucun programme — demande à Claude de planifier ta journée',
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontStyle: FontStyle.italic,
+                        color: cs.onSurface.withOpacity(.35)),
+                  ),
+                ]),
+              )
+            else
+              for (final block in blocks)
+                _buildScheduleBlockRow(context, cs, block),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildScheduleBlockRow(
+      BuildContext context, ColorScheme cs, ScheduleBlock block) {
+    final isDone = block.status == 'done';
+    final isSkipped = block.status == 'skipped';
+    final color =
+        _categoryColor[block.category] ?? const Color(0xFF8E9AAF);
+    final dimmed = isDone || isSkipped;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 5),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [
+              color.withOpacity(dimmed ? 0.05 : 0.12),
+              cs.surfaceContainerHighest.withOpacity(.15),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(8),
+          border: Border(
+            left: BorderSide(
+                color: color.withOpacity(dimmed ? 0.3 : 0.8), width: 3),
+          ),
+        ),
+        child: Row(
+          children: [
+            // Heure
+            SizedBox(
+              width: 36,
+              child: Text(
+                block.startTime,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: dimmed
+                      ? cs.onSurface.withOpacity(.3)
+                      : color.withOpacity(.9),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            // Titre
+            Expanded(
+              child: Text(
+                block.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: cs.onSurface.withOpacity(dimmed ? .3 : .85),
+                  decoration:
+                      isSkipped ? TextDecoration.lineThrough : null,
+                ),
+              ),
+            ),
+            // Durée + statut
+            const SizedBox(width: 6),
+            if (isDone)
+              Icon(Icons.check_circle,
+                  size: 13, color: Colors.green.shade500)
+            else
+              Text(
+                '${block.durationMin}min',
+                style: TextStyle(
+                    fontSize: 10,
+                    color: cs.onSurface.withOpacity(.3)),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -1199,6 +1363,34 @@ class _FocusView extends StatelessWidget {
             height: rowH,
             child: Stack(
               children: [
+                // Fond héro colonne aujourd'hui
+                Builder(builder: (_) {
+                  final todayIdx = today.difference(wStart).inDays;
+                  if (todayIdx < 0 || todayIdx > 6) return const SizedBox.shrink();
+                  return Positioned(
+                    left: todayIdx * dayW,
+                    top: 0,
+                    width: dayW,
+                    bottom: 0,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.teal.withOpacity(0.13),
+                            Colors.teal.withOpacity(0.07),
+                          ],
+                        ),
+                        border: const Border(
+                          left: BorderSide(color: Color(0x2227C48F), width: 1),
+                          right: BorderSide(color: Color(0x2227C48F), width: 1),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+
                 // Séparateurs verticaux
                 for (int d = 0; d < 7; d++)
                   Positioned(
