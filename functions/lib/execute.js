@@ -33,6 +33,9 @@ exports.executeGetInbox = executeGetInbox;
 exports.executeProcessInboxItem = executeProcessInboxItem;
 exports.executeGetDaySchedule = executeGetDaySchedule;
 exports.executeScheduleDay = executeScheduleDay;
+exports.executePlanDay = executePlanDay;
+exports.executePlanWeek = executePlanWeek;
+exports.executeSyncCalendar = executeSyncCalendar;
 exports.normalizePhases = normalizePhases;
 exports.normalizeTasks = normalizeTasks;
 const db_1 = require("./db");
@@ -872,6 +875,164 @@ async function executeProcessInboxItem(uid, itemId, note) {
     return `✅ Idée traitée : "${(_a = snap.data()) === null || _a === void 0 ? void 0 : _a.text}" → ${note}`;
 }
 // ── Programme horaire journalier ─────────────────────────────────────────────
+async function executePlanDay(uid, args) {
+    var _a, _b, _c;
+    const today = new Date().toISOString().slice(0, 10);
+    const date = (_a = args.date) !== null && _a !== void 0 ? _a : today;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
+        return `Date invalide : ${date}`;
+    const startHour = (_b = args.startHour) !== null && _b !== void 0 ? _b : 7;
+    const endHour = (_c = args.endHour) !== null && _c !== void 0 ? _c : 20;
+    const syncToCalendar = args.syncToCalendar !== false;
+    const [userContext, existingSchedule] = await Promise.all([
+        executeGetUserContext(uid),
+        executeGetDaySchedule(uid, date),
+    ]);
+    const projectsSnap = await db_1.db.collection(`users/${uid}/projects`)
+        .where("status", "==", "active").get();
+    const projectDetails = [];
+    for (const doc of projectsSnap.docs) {
+        projectDetails.push(await executeGetProject(uid, doc.id));
+    }
+    const calendarSync = syncToCalendar
+        ? [
+            ``,
+            `📅 SYNC GOOGLE CALENDAR (après schedule_day) :`,
+            `1. list_calendars() → trouver le calendrier "Productivitwo"`,
+            `2. list_events(calendarId, "${date}T00:00:00Z", "${date}T23:59:59Z") → events existants`,
+            `3. Supprimer les events dont description contient "source: productivitwo"`,
+            `4. create_event() pour chaque bloc (sauf conflits avec calendrier principal)`,
+            `   description format : "source: productivitwo | category: [project|routine|break|personal]"`,
+            `   colorId : routine=2, project=7, break=5, personal=4`,
+        ]
+        : [];
+    return [
+        `══════════════════════════════════════════`,
+        `📋 CONTEXTE PLANIFICATION — ${date} (${startHour}h-${endHour}h)`,
+        `══════════════════════════════════════════`,
+        ``,
+        `── CONTEXTE UTILISATEUR ──`,
+        userContext,
+        ``,
+        `── PROGRAMME EXISTANT ──`,
+        existingSchedule,
+        ``,
+        `── PROJETS ACTIFS (${projectDetails.length}) ──`,
+        projectDetails.length > 0 ? projectDetails.join("\n\n---\n\n") : "Aucun projet actif.",
+        ``,
+        `══════════════════════════════════════════`,
+        `WORKFLOW :`,
+        `1. list_events() Google Calendar principal → identifier les créneaux occupés`,
+        `2. Générer les blocs (${startHour}h-${endHour}h) : tâches Gantt + routines + pauses`,
+        `   → Tâche la plus proche de la deadline en premier`,
+        `   → Ne pas recréer les blocs marqués [supprimé par l'utilisateur]`,
+        `3. schedule_day("${date}", blocks[])`,
+        ...calendarSync,
+        `══════════════════════════════════════════`,
+    ].join("\n");
+}
+async function executePlanWeek(uid, args) {
+    const today = new Date().toISOString().slice(0, 10);
+    let startDate = args.startDate;
+    if (!startDate) {
+        const d = new Date(today);
+        const day = d.getDay();
+        const daysToMonday = day === 1 ? 0 : day === 0 ? 1 : 8 - day;
+        d.setDate(d.getDate() + daysToMonday);
+        startDate = d.toISOString().slice(0, 10);
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate))
+        return `Date invalide : ${startDate}`;
+    const weekDates = [];
+    const start = new Date(startDate);
+    for (let i = 0; weekDates.length < 5; i++) {
+        const d = new Date(start);
+        d.setDate(start.getDate() + i);
+        const day = d.getDay();
+        if (day !== 0 && day !== 6)
+            weekDates.push(d.toISOString().slice(0, 10));
+    }
+    const [userContext] = await Promise.all([executeGetUserContext(uid)]);
+    const projectsSnap = await db_1.db.collection(`users/${uid}/projects`)
+        .where("status", "==", "active").get();
+    const projectDetails = [];
+    for (const doc of projectsSnap.docs) {
+        projectDetails.push(await executeGetProject(uid, doc.id));
+    }
+    const schedules = [];
+    for (const d of weekDates) {
+        const s = await executeGetDaySchedule(uid, d);
+        schedules.push(`${d} : ${s}`);
+    }
+    const syncNote = args.syncToCalendar !== false
+        ? `\n📅 SYNC GOOGLE CALENDAR : après chaque schedule_day(), créer les events dans le calendrier "Productivitwo" (colorId: routine=2, project=7, break=5, personal=4).`
+        : "";
+    return [
+        `══════════════════════════════════════════`,
+        `📋 CONTEXTE PLANIFICATION SEMAINE`,
+        `${weekDates[0]} → ${weekDates[4]}`,
+        `══════════════════════════════════════════`,
+        ``,
+        `── CONTEXTE UTILISATEUR ──`,
+        userContext,
+        ``,
+        `── PROGRAMMES EXISTANTS ──`,
+        schedules.join("\n"),
+        ``,
+        `── PROJETS ACTIFS (${projectDetails.length}) ──`,
+        projectDetails.length > 0 ? projectDetails.join("\n\n---\n\n") : "Aucun projet actif.",
+        ``,
+        `══════════════════════════════════════════`,
+        `WORKFLOW :`,
+        `1. Répartir les tâches Gantt sur les 5 jours (deadline proche = premier)`,
+        `2. Max ~6h de travail projet par jour · inclure routines matin/soir`,
+        `3. Pour chaque jour, schedule_day("YYYY-MM-DD", blocks[])`,
+        syncNote,
+        `4. Afficher un résumé semaine`,
+        `══════════════════════════════════════════`,
+    ].join("\n");
+}
+async function executeSyncCalendar(uid, date) {
+    var _a;
+    const today = new Date().toISOString().slice(0, 10);
+    const targetDate = date !== null && date !== void 0 ? date : today;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate))
+        return `Date invalide : ${targetDate}`;
+    const snap = await db_1.db.doc(`users/${uid}/daily_schedules/${targetDate}`).get();
+    if (!snap.exists) {
+        return `Aucun programme Productivitwo pour le ${targetDate}. Appelle plan_day("${targetDate}") pour en créer un.`;
+    }
+    const data = snap.data();
+    const blocks = (_a = data.blocks) !== null && _a !== void 0 ? _a : [];
+    const activeBlocks = blocks.filter((b) => b.status !== "deleted");
+    const colorMap = { routine: 2, project: 7, break: 5, personal: 4 };
+    const eventLines = activeBlocks.map((b) => {
+        var _a;
+        const [sh, sm] = b.startTime.split(":").map(Number);
+        const endMin = sh * 60 + sm + b.durationMin;
+        const eh = Math.floor(endMin / 60);
+        const em = endMin % 60;
+        const pad = (n) => String(n).padStart(2, "0");
+        const start = `${targetDate}T${pad(sh)}:${pad(sm)}:00`;
+        const end = `${targetDate}T${pad(eh)}:${pad(em)}:00`;
+        const colorId = (_a = colorMap[b.category]) !== null && _a !== void 0 ? _a : 7;
+        const desc = `source: productivitwo | category: ${b.category}${b.projectId ? ` | projectId: ${b.projectId}` : ""}`;
+        return `  • "${b.title}" ${pad(sh)}:${pad(sm)}-${pad(eh)}:${pad(em)} colorId=${colorId}\n    description="${desc}"\n    startTime="${start}" endTime="${end}"`;
+    });
+    return [
+        `📅 SYNC GOOGLE CALENDAR — ${targetDate}`,
+        `Programme Productivitwo : ${activeBlocks.length} bloc(s) à synchroniser`,
+        ``,
+        `ÉTAPES :`,
+        `1. list_calendars() → trouver le calendarId du calendrier "Productivitwo"`,
+        `2. list_events(calendarId, "${targetDate}T00:00:00Z", "${targetDate}T23:59:59Z")`,
+        `3. Supprimer les events dont description contient "source: productivitwo"`,
+        `4. Créer les events suivants :`,
+        ...eventLines,
+        ``,
+        `Note : ne pas dupliquer les events déjà présents dans le calendrier principal.`,
+    ].join("\n");
+}
 async function executeGetDaySchedule(uid, date) {
     var _a;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date))

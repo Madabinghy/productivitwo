@@ -635,6 +635,65 @@ GET_PROJECT_TOOL,
 PUSH_GANTT_MCP_TOOL,
 };
 
+export const PLAN_DAY_TOOL = {
+  name: "plan_day",
+  description:
+    "Agrège tout le contexte nécessaire pour planifier une journée : contexte utilisateur, " +
+    "programme existant, et détail de tous les projets Gantt actifs avec leurs tâches. " +
+    "Retourne le contexte consolidé + les instructions de workflow à suivre pour générer " +
+    "le programme et le synchroniser dans Google Calendar.\n\n" +
+    "Workflow attendu après cet appel :\n" +
+    "1. Lire list_events() Google Calendar pour la date (éviter les conflits)\n" +
+    "2. Générer les blocs horaires en tenant compte des tâches Gantt, routines et pauses\n" +
+    "3. Appeler schedule_day(date, blocks[])\n" +
+    "4. Si syncToCalendar=true : créer les events dans le calendrier Google 'Productivitwo'",
+  inputSchema: {
+    type: "object",
+    properties: {
+      date:            { type: "string", description: "YYYY-MM-DD (défaut: aujourd'hui)" },
+      startHour:       { type: "number", description: "Heure de début (défaut: 7)" },
+      endHour:         { type: "number", description: "Heure de fin (défaut: 20)" },
+      syncToCalendar:  { type: "boolean", description: "Synchroniser dans Google Calendar après schedule_day (défaut: true)" },
+    },
+  },
+};
+
+export const PLAN_WEEK_TOOL = {
+  name: "plan_week",
+  description:
+    "Agrège le contexte complet pour planifier une semaine de 5 jours ouvrés : contexte utilisateur, " +
+    "programmes existants pour chaque jour, et tous les projets Gantt actifs. " +
+    "Retourne le contexte consolidé + les instructions pour répartir les tâches sur la semaine " +
+    "et synchroniser dans Google Calendar.\n\n" +
+    "Workflow attendu : générer 5 programmes via schedule_day(), un par jour, " +
+    "en répartissant les tâches Gantt (deadline proche = priorité, max ~6h/jour).",
+  inputSchema: {
+    type: "object",
+    properties: {
+      startDate:       { type: "string", description: "YYYY-MM-DD du lundi de début (défaut: lundi prochain, ou aujourd'hui si lundi)" },
+      syncToCalendar:  { type: "boolean", description: "Synchroniser dans Google Calendar après schedule_day (défaut: true)" },
+    },
+  },
+};
+
+export const SYNC_CALENDAR_TOOL = {
+  name: "sync_calendar",
+  description:
+    "Lit le programme Productivitwo d'une journée et retourne les instructions exactes " +
+    "pour synchroniser ce programme dans Google Calendar (sans regénérer le programme). " +
+    "Utile quand le programme a été modifié manuellement dans l'app Flutter.\n\n" +
+    "Workflow attendu :\n" +
+    "1. Trouver le calendrier 'Productivitwo' via list_calendars()\n" +
+    "2. Supprimer les events existants avec 'source: productivitwo' dans la description\n" +
+    "3. Créer les events listés dans la réponse de cet outil",
+  inputSchema: {
+    type: "object",
+    properties: {
+      date: { type: "string", description: "YYYY-MM-DD (défaut: aujourd'hui)" },
+    },
+  },
+};
+
 export const GET_DAY_SCHEDULE_TOOL = {
   name: "get_day_schedule",
   description:

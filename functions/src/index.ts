@@ -20,6 +20,7 @@ import {
   CREATE_DOMAIN_TOOL, DELETE_DOMAIN_TOOL, PUSH_ASSISTANT_MESSAGE_TOOL,
   GET_ASSISTANT_MESSAGES_TOOL, DELETE_ASSISTANT_MESSAGE_TOOL,
   GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL,
+  PLAN_DAY_TOOL, PLAN_WEEK_TOOL, SYNC_CALENDAR_TOOL,
 } from "./tools";
 import {
   validateToken, normalizePhases, normalizeTasks,
@@ -34,6 +35,7 @@ import {
   executeArchiveProject, executeDeleteProject, executeListProjects, executeGetProject,
   executePushGantt,
   executeGetDaySchedule, executeScheduleDay,
+  executePlanDay, executePlanWeek, executeSyncCalendar,
 } from "./execute";
 import type { PushGanttBody } from "./types";
 
@@ -262,6 +264,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
             CREATE_DOMAIN_TOOL, DELETE_DOMAIN_TOOL, PUSH_ASSISTANT_MESSAGE_TOOL,
             GET_ASSISTANT_MESSAGES_TOOL, DELETE_ASSISTANT_MESSAGE_TOOL,
             GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL,
+            PLAN_DAY_TOOL, PLAN_WEEK_TOOL, SYNC_CALENDAR_TOOL,
           ],
         },
       });
@@ -339,6 +342,12 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
           text = await executeGetDaySchedule(uid, args.date as string);
         } else if (toolName === "schedule_day") {
           text = await executeScheduleDay(uid, args.date as string, args.blocks as Parameters<typeof executeScheduleDay>[2]);
+        } else if (toolName === "plan_day") {
+          text = await executePlanDay(uid, args as Parameters<typeof executePlanDay>[1]);
+        } else if (toolName === "plan_week") {
+          text = await executePlanWeek(uid, args as Parameters<typeof executePlanWeek>[1]);
+        } else if (toolName === "sync_calendar") {
+          text = await executeSyncCalendar(uid, args.date as string | undefined);
         } else {
           responses.push({ jsonrpc: "2.0", id, error: { code: -32601, message: `Outil inconnu : ${toolName}` } });
           continue;
