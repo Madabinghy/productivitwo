@@ -1017,6 +1017,29 @@ async function executeGetOrionContext(uid: string): Promise<string> {
   return JSON.stringify({ today, domains, activities, goals, habitStats, timeStats, projects }, null, 2);
 }
 
+async function executeGetOrionQueue(uid: string): Promise<string> {
+  const snap = await db.collection(`users/${uid}/orion_queue`)
+    .orderBy("createdAt", "asc")
+    .limit(10)
+    .get();
+  if (snap.empty) return "Aucune instruction en file.";
+  const items = snap.docs.map((d) => {
+    const v = d.data();
+    return {
+      id: v.id ?? d.id,
+      instruction: v.instruction as string,
+      context: (v.context as string) ?? null,
+      createdAt: v.createdAt?.toDate?.()?.toISOString?.() ?? null,
+    };
+  });
+  return JSON.stringify(items, null, 2);
+}
+
+async function executeDeleteOrionQueueItem(uid: string, itemId: string): Promise<string> {
+  await db.collection(`users/${uid}/orion_queue`).doc(itemId).delete();
+  return `✅ Instruction traitée et retirée de la file.`;
+}
+
 async function executeGetInbox(uid: string): Promise<string> {
   const snap = await db.collection(`users/${uid}/captures`)
     .where("status", "==", "pending")
@@ -1443,6 +1466,8 @@ export {
   executePushGantt,
   executeGetAssistantMessages,
   executeDeleteAssistantMessage,
+  executeGetOrionQueue,
+  executeDeleteOrionQueueItem,
   executeGetInbox,
   executeProcessInboxItem,
   executeGetDaySchedule,

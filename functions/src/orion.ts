@@ -16,6 +16,7 @@ import {
   executeGetInbox, executeProcessInboxItem,
   executeGetDaySchedule, executeScheduleDay, executeUpdateScheduleBlock,
   executeComputeTimeBudget,
+  executeGetOrionQueue, executeDeleteOrionQueueItem,
 } from "./execute";
 // Descriptions compactes pour ORION — ~10x moins de tokens que les tools MCP complets
 const ORION_TOOLS: PromptCachingBetaTool[] = [
@@ -47,6 +48,8 @@ const ORION_TOOLS: PromptCachingBetaTool[] = [
   { name: "restore_item",             description: "Restaure un élément archivé.",                                                                                                        input_schema: { type: "object", properties: { collection: { type: "string" }, itemId: { type: "string" } }, required: ["collection", "itemId"] } },
   { name: "push_assistant_message",   description: "Planifie un message ORION contextuel.",                                                                                               input_schema: { type: "object", properties: { targetDate: { type: "string" }, text: { type: "string" }, condition: { type: "object" }, expiresAfterDays: { type: "number" }, priority: { type: "number" } }, required: ["targetDate", "text", "condition"] } },
   { name: "delete_assistant_message", description: "Supprime un message ORION.",                                                                                                          input_schema: { type: "object", properties: { messageId: { type: "string" } }, required: ["messageId"] } },
+  { name: "get_orion_queue",         description: "File de travail : instructions spécifiques que l'utilisateur a envoyées en réponse à un message ORION. À lire EN PREMIER, avant l'inbox. Chaque item est une action concrète à exécuter immédiatement.",                                     input_schema: { type: "object", properties: {}, required: [] } },
+  { name: "delete_orion_queue_item", description: "Supprime un item de la file après traitement.",                                                                                                                                                                                                         input_schema: { type: "object", properties: { itemId: { type: "string" } }, required: ["itemId"] } },
   { name: "get_inbox",               description: "Idées et notes capturées par l'utilisateur en attente de traitement.",                                                                  input_schema: { type: "object", properties: {}, required: [] } },
   { name: "process_inbox_item",      description: "Marque une idée inbox comme traitée avec une note expliquant l'action prise.",                                                          input_schema: { type: "object", properties: { itemId: { type: "string" }, note: { type: "string", description: "Ce qu'ORION a fait : ex: 'ajouté comme tâche dans Projet X' ou 'message reminder planifié'" } }, required: ["itemId", "note"] } },
   { name: "get_day_schedule",        description: "Lit le programme horaire d'une journée.",                                                                                               input_schema: { type: "object", properties: { date: { type: "string", description: "YYYY-MM-DD" } }, required: ["date"] } },
@@ -170,8 +173,9 @@ Le contexte utilisateur et les messages ORION existants sont fournis directement
 ## Workflow OBLIGATOIRE
 
 1. Lis le contexte et les messages existants dans le message fourni.
-2. Appelle get_inbox — si des idées sont en attente, traite-les (voir règles inbox ci-dessous).
-3. Si l'utilisateur a donné une instruction spécifique → exécute-la avec les outils appropriés.
+2. **PRIORITÉ ABSOLUE** : appelle get_orion_queue — si des instructions y sont en attente, exécute-les IMMÉDIATEMENT comme actions concrètes (push_gantt, update_project, create_activity…), puis delete_orion_queue_item pour chaque item traité. Ne passe à l'étape suivante qu'après avoir vidé la file.
+3. Appelle get_inbox — si des idées sont en attente, traite-les (voir règles inbox ci-dessous).
+4. Si l'utilisateur a donné une instruction spécifique → exécute-la avec les outils appropriés.
 4. TOUJOURS terminer par push_assistant_message — MINIMUM 1 message, MAXIMUM 3.
 5. Si plusieurs push, appelle-les dans la MÊME réponse (tool use parallèle) pour économiser des tokens.
 
@@ -409,6 +413,14 @@ Tu dois TOUJOURS appeler push_assistant_message avant end_turn, quelle que soit 
             }
             case "delete_assistant_message": result = await executeDeleteAssistantMessage(uid, args.messageId as string); break;
             // ── Inbox ─────────────────────────────────────────────────────
+            case "get_orion_queue":
+              result = await executeGetOrionQueue(uid);
+              actionLog.push("📬 Lecture de la file Orion");
+              break;
+            case "delete_orion_queue_item":
+              result = await executeDeleteOrionQueueItem(uid, args.itemId as string);
+              actionLog.push("✅ Instruction file Orion traitée");
+              break;
             case "get_inbox":           result = await executeGetInbox(uid); break;
             case "process_inbox_item":  result = await executeProcessInboxItem(uid, args.itemId as string, args.note as string);
               actionLog.push(`💡 Idée traitée depuis l'inbox`);

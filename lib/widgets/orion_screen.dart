@@ -344,7 +344,7 @@ class _OrionScreenState extends State<OrionScreen>
         if (_messages.isEmpty)
           _buildEmptyState()
         else
-          for (final m in _messages) _MessageCard(message: m),
+          for (final m in _messages) _MessageCard(message: m, sync: widget.sync),
       ],
     );
   }
@@ -765,7 +765,8 @@ class _OrionMessage {
 
 class _MessageCard extends StatelessWidget {
   final _OrionMessage message;
-  const _MessageCard({required this.message});
+  final FirestoreSync sync;
+  const _MessageCard({required this.message, required this.sync});
 
   @override
   Widget build(BuildContext context) {
@@ -775,7 +776,7 @@ class _MessageCard extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
         decoration: BoxDecoration(
           color: _bg,
           borderRadius: BorderRadius.circular(10),
@@ -821,6 +822,111 @@ class _MessageCard extends StatelessWidget {
                 fontSize: 13,
                 height: 1.65,
                 color: _text,
+              ),
+            ),
+            const SizedBox(height: 10),
+            GestureDetector(
+              onTap: () => _showReplySheet(context),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                  Icon(Icons.subdirectory_arrow_right_rounded, size: 13, color: _muted),
+                  SizedBox(width: 4),
+                  Text(
+                    'Répondre',
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 11,
+                      color: _muted,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showReplySheet(BuildContext context) {
+    final ctrl = TextEditingController();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 18, right: 18, top: 20,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '↳ ${message.text.length > 60 ? '${message.text.substring(0, 60)}…' : message.text}',
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: _muted),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: ctrl,
+              autofocus: true,
+              maxLines: 3,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 13, color: _text),
+              decoration: InputDecoration(
+                hintText: 'Dis à ORION quoi faire…',
+                hintStyle: const TextStyle(color: _muted, fontSize: 12),
+                filled: true,
+                fillColor: _bg,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: _border),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: _border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: _gold),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: GestureDetector(
+                onTap: () async {
+                  final text = ctrl.text.trim();
+                  if (text.isEmpty) return;
+                  await sync.saveOrionQueueItem(
+                    instruction: text,
+                    context: message.text,
+                  );
+                  if (ctx.mounted) Navigator.pop(ctx);
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: _gold,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Text(
+                    'Envoyer à ORION',
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: _bg,
+                    ),
+                  ),
+                ),
               ),
             ),
           ],

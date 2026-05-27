@@ -29,6 +29,8 @@ exports.executeGetProject = executeGetProject;
 exports.executePushGantt = executePushGantt;
 exports.executeGetAssistantMessages = executeGetAssistantMessages;
 exports.executeDeleteAssistantMessage = executeDeleteAssistantMessage;
+exports.executeGetOrionQueue = executeGetOrionQueue;
+exports.executeDeleteOrionQueueItem = executeDeleteOrionQueueItem;
 exports.executeGetInbox = executeGetInbox;
 exports.executeProcessInboxItem = executeProcessInboxItem;
 exports.executeGetDaySchedule = executeGetDaySchedule;
@@ -905,6 +907,29 @@ async function executeGetOrionContext(uid) {
         };
     });
     return JSON.stringify({ today, domains, activities, goals, habitStats, timeStats, projects }, null, 2);
+}
+async function executeGetOrionQueue(uid) {
+    const snap = await db_1.db.collection(`users/${uid}/orion_queue`)
+        .orderBy("createdAt", "asc")
+        .limit(10)
+        .get();
+    if (snap.empty)
+        return "Aucune instruction en file.";
+    const items = snap.docs.map((d) => {
+        var _a, _b, _c, _d, _e, _f, _g;
+        const v = d.data();
+        return {
+            id: (_a = v.id) !== null && _a !== void 0 ? _a : d.id,
+            instruction: v.instruction,
+            context: (_b = v.context) !== null && _b !== void 0 ? _b : null,
+            createdAt: (_g = (_f = (_e = (_d = (_c = v.createdAt) === null || _c === void 0 ? void 0 : _c.toDate) === null || _d === void 0 ? void 0 : _d.call(_c)) === null || _e === void 0 ? void 0 : _e.toISOString) === null || _f === void 0 ? void 0 : _f.call(_e)) !== null && _g !== void 0 ? _g : null,
+        };
+    });
+    return JSON.stringify(items, null, 2);
+}
+async function executeDeleteOrionQueueItem(uid, itemId) {
+    await db_1.db.collection(`users/${uid}/orion_queue`).doc(itemId).delete();
+    return `✅ Instruction traitée et retirée de la file.`;
 }
 async function executeGetInbox(uid) {
     const snap = await db_1.db.collection(`users/${uid}/captures`)

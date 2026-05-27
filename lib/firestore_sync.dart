@@ -546,6 +546,20 @@ class FirestoreSync {
 
   // ── Captures (idées rapides) ──────────────────────────────────────────────
 
+  Future<void> saveOrionQueueItem({
+    required String instruction,
+    String? context,
+  }) async {
+    if (uid == null) return;
+    final id = DateTime.now().millisecondsSinceEpoch.toString();
+    await _col('orion_queue').doc(id).set({
+      'id': id,
+      'instruction': instruction,
+      'context': context,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+
   Stream<List<CaptureItem>> streamCaptures() {
     if (uid == null) return const Stream.empty();
     return _col('captures')
