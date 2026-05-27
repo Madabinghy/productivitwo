@@ -49,7 +49,7 @@ const ORION_TOOLS = [
     { name: "compute_time_budget", description: "Calcule le budget temps 24h basé sur 12 semaines de sessions réelles. Retourne le goalMin recommandé par activité (stretch avg×1.10) et le sommeil résiduel pour sommer à 1440 min/j. À appeler le lundi avant update_activity_goal.", input_schema: { type: "object", properties: {}, required: [] } },
     { name: "schedule_day", description: "Crée ou remplace le programme horaire complet d'une journée.", input_schema: { type: "object", properties: { date: { type: "string" }, blocks: { type: "array", items: { type: "object", required: ["startTime", "durationMin", "title", "category"], properties: { startTime: { type: "string" }, durationMin: { type: "number" }, title: { type: "string" }, category: { type: "string", enum: ["project", "routine", "personal", "break"] }, projectId: { type: "string" }, taskId: { type: "string" }, activityId: { type: "string" } } } } }, required: ["date", "blocks"], }, cache_control: { type: "ephemeral" } },
 ];
-const ORION_MAX_RUNS = 50;
+const ORION_MAX_RUNS = 30;
 const ORION_MODEL = models_1.MODELS.HAIKU;
 // ── Config utilisateur ────────────────────────────────────────────────────────
 async function getOrionConfig(uid) {

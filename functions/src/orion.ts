@@ -59,7 +59,7 @@ const ORION_TOOLS: PromptCachingBetaTool[] = [
 ];
 import type { PushGanttBody } from "./types";
 
-const ORION_MAX_RUNS = 50;
+const ORION_MAX_RUNS = 30;
 const ORION_MODEL = MODELS.HAIKU;
 
 // ── Config utilisateur ────────────────────────────────────────────────────────
