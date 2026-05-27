@@ -153,7 +153,7 @@ async function executeGetUserContext(uid: string): Promise<string> {
     // Programme du jour
     db.doc(`users/${uid}/daily_schedules/${todayStr}`).get(),
     // Inbox (idées en attente)
-    db.collection(`users/${uid}/inbox`).where("processed", "==", false).get(),
+    db.collection(`users/${uid}/captures`).where("status", "==", "pending").get(),
   ]);
 
   const domains = domainsSnap.docs
@@ -1034,12 +1034,9 @@ async function executeProcessInboxItem(uid: string, itemId: string, note: string
   const ref = db.collection(`users/${uid}/captures`).doc(itemId);
   const snap = await ref.get();
   if (!snap.exists) return `Item inbox introuvable : ${itemId}`;
-  await ref.update({
-    status: "processed",
-    orionNote: note,
-    processedAt: FieldValue.serverTimestamp(),
-  });
-  return `✅ Idée traitée : "${snap.data()?.text}" → ${note}`;
+  const text = snap.data()?.text as string ?? "";
+  await ref.delete();
+  return `✅ Idée traitée et retirée de l'inbox : "${text}" → ${note}`;
 }
 
 // ── Programme horaire journalier ─────────────────────────────────────────────

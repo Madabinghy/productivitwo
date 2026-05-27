@@ -170,7 +170,7 @@ async function executeGetUserContext(uid) {
         // Programme du jour
         db_1.db.doc(`users/${uid}/daily_schedules/${todayStr}`).get(),
         // Inbox (idées en attente)
-        db_1.db.collection(`users/${uid}/inbox`).where("processed", "==", false).get(),
+        db_1.db.collection(`users/${uid}/captures`).where("status", "==", "pending").get(),
     ]);
     const domains = domainsSnap.docs
         .map((d) => d.data())
@@ -921,17 +921,14 @@ async function executeGetInbox(uid) {
     return JSON.stringify(items, null, 2);
 }
 async function executeProcessInboxItem(uid, itemId, note) {
-    var _a;
+    var _a, _b;
     const ref = db_1.db.collection(`users/${uid}/captures`).doc(itemId);
     const snap = await ref.get();
     if (!snap.exists)
         return `Item inbox introuvable : ${itemId}`;
-    await ref.update({
-        status: "processed",
-        orionNote: note,
-        processedAt: db_1.FieldValue.serverTimestamp(),
-    });
-    return `✅ Idée traitée : "${(_a = snap.data()) === null || _a === void 0 ? void 0 : _a.text}" → ${note}`;
+    const text = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.text) !== null && _b !== void 0 ? _b : "";
+    await ref.delete();
+    return `✅ Idée traitée et retirée de l'inbox : "${text}" → ${note}`;
 }
 // ── Programme horaire journalier ─────────────────────────────────────────────
 async function executePlanDay(uid, args) {
