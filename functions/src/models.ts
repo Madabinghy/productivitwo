@@ -16,7 +16,7 @@ type TaskType =
   | "onboarding";
 
 const MODEL_ROUTING: Record<TaskType, string> = {
-  orion_cycle:       MODELS.HAIKU,
+  orion_cycle:       MODELS.SONNET, // test perf vs Haiku
   structure_project: MODELS.HAIKU,
   plan_day:          MODELS.HAIKU,
   plan_week:         MODELS.HAIKU,

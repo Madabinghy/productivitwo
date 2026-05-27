@@ -41,7 +41,11 @@ const ORION_TOOLS = [
     { name: "push_assistant_message", description: "Planifie un message ORION contextuel.", input_schema: { type: "object", properties: { targetDate: { type: "string" }, text: { type: "string" }, condition: { type: "object" }, expiresAfterDays: { type: "number" }, priority: { type: "number" } }, required: ["targetDate", "text", "condition"] } },
     { name: "delete_assistant_message", description: "Supprime un message ORION.", input_schema: { type: "object", properties: { messageId: { type: "string" } }, required: ["messageId"] } },
     { name: "get_inbox", description: "Idées et notes capturées par l'utilisateur en attente de traitement.", input_schema: { type: "object", properties: {}, required: [] } },
-    { name: "process_inbox_item", description: "Marque une idée inbox comme traitée avec une note expliquant l'action prise.", input_schema: { type: "object", properties: { itemId: { type: "string" }, note: { type: "string", description: "Ce qu'ORION a fait : ex: 'ajouté comme tâche dans Projet X' ou 'message reminder planifié'" } }, required: ["itemId", "note"], }, cache_control: { type: "ephemeral" } },
+    { name: "process_inbox_item", description: "Marque une idée inbox comme traitée avec une note expliquant l'action prise.", input_schema: { type: "object", properties: { itemId: { type: "string" }, note: { type: "string", description: "Ce qu'ORION a fait : ex: 'ajouté comme tâche dans Projet X' ou 'message reminder planifié'" } }, required: ["itemId", "note"] } },
+    { name: "get_day_schedule", description: "Lit le programme horaire d'une journée.", input_schema: { type: "object", properties: { date: { type: "string", description: "YYYY-MM-DD" } }, required: ["date"] } },
+    { name: "update_schedule_block", description: "Met à jour le statut d'un bloc du programme du jour (done/skipped/deleted/pending) sans écraser tout le programme.", input_schema: { type: "object", properties: { date: { type: "string", description: "YYYY-MM-DD" }, blockTitle: { type: "string", description: "Titre (partiel) du bloc à modifier" }, status: { type: "string", enum: ["done", "skipped", "deleted", "pending"] } }, required: ["date", "blockTitle", "status"] } },
+    { name: "compute_time_budget", description: "Calcule le budget temps 24h basé sur 12 semaines de sessions réelles. Retourne le goalMin recommandé par activité (stretch avg×1.10) et le sommeil résiduel pour sommer à 1440 min/j. À appeler le lundi avant update_activity_goal.", input_schema: { type: "object", properties: {}, required: [] } },
+    { name: "schedule_day", description: "Crée ou remplace le programme horaire complet d'une journée.", input_schema: { type: "object", properties: { date: { type: "string" }, blocks: { type: "array", items: { type: "object", required: ["startTime", "durationMin", "title", "category"], properties: { startTime: { type: "string" }, durationMin: { type: "number" }, title: { type: "string" }, category: { type: "string", enum: ["project", "routine", "personal", "break"] }, projectId: { type: "string" }, taskId: { type: "string" }, activityId: { type: "string" } } } } }, required: ["date", "blocks"], }, cache_control: { type: "ephemeral" } },
 ];
 const ORION_MAX_RUNS = 50;
 const ORION_MODEL = models_1.MODELS.HAIKU;
@@ -164,6 +168,12 @@ Même si tu n'as fait aucune action, même s'il n'y a rien d'urgent — pousse t
 → Utilise push_gantt pour créer le projet avec une structure raisonnable déduite du contexte : 3-4 phases, 2-4 tâches chacune, dates réalistes à partir d'aujourd'hui
 → Si le domaine n'est pas précisé, choisis le plus cohérent parmi les domaines existants dans le contexte
 → Pousse ensuite un push_assistant_message confirmant ce qui a été créé (titre du projet, nb de phases/tâches)
+
+**Lundi matin — rééquilibrage du budget temps 24h**
+→ compute_time_budget → pour chaque activité avec id non-null : update_activity_goal(activityId, goalMin=recommendedGoalMin)
+→ Si l'activité "Sommeil" est absente (id: null) → create_activity(name="Sommeil", domainId=<domaine Santé/Bien-être>)
+→ push_assistant_message : liste concise des objectifs rééquilibrés (ex: "Sport : 45min/j → 49min/j · Sommeil : 7h30")
+→ Ne pas exécuter si déjà fait cette semaine (vérifie recentShown pour un message de type "budget")
 
 **Instruction ambiguë (sans supression/delete)**
 → Interprète au mieux, agis, puis pousse un message expliquant ce que tu as fait et demandant si c'est correct
@@ -357,6 +367,22 @@ Tu dois TOUJOURS appeler push_assistant_message avant end_turn, quelle que soit 
                         case "process_inbox_item":
                             result = await (0, execute_1.executeProcessInboxItem)(uid, args.itemId, args.note);
                             actionLog.push(`💡 Idée traitée depuis l'inbox`);
+                            break;
+                        // ── Programme du jour ──────────────────────────────────────────
+                        case "compute_time_budget":
+                            result = await (0, execute_1.executeComputeTimeBudget)(uid);
+                            actionLog.push("📊 Budget temps 24h calculé (12 semaines)");
+                            break;
+                        case "get_day_schedule":
+                            result = await (0, execute_1.executeGetDaySchedule)(uid, args.date);
+                            break;
+                        case "update_schedule_block":
+                            result = await (0, execute_1.executeUpdateScheduleBlock)(uid, args.date, args.blockTitle, args.status);
+                            actionLog.push(`📅 Bloc programme mis à jour`);
+                            break;
+                        case "schedule_day":
+                            result = await (0, execute_1.executeScheduleDay)(uid, args.date, args.blocks);
+                            actionLog.push(`📅 Programme du jour enregistré`);
                             break;
                         default:
                             result = `Outil inconnu dans ORION : ${block.name}`;

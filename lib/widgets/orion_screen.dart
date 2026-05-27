@@ -108,8 +108,8 @@ class _OrionScreenState extends State<OrionScreen>
             .get(),
         FirebaseFirestore.instance
             .collection('users/$uid/assistant_messages')
-            .where('status', whereIn: ['shown', 'pending'])
-            .limit(25)
+            .where('status', isEqualTo: 'shown')
+            .limit(10)
             .get(),
         if (_activeToken != null && _activeToken!.isNotEmpty)
           http.get(Uri.parse('$_countUrl?uid=$uid&token=$_activeToken'))
@@ -142,8 +142,6 @@ class _OrionScreenState extends State<OrionScreen>
       }).toList();
 
       _messages.sort((a, b) {
-        if (a.status == 'pending' && b.status != 'pending') return -1;
-        if (b.status == 'pending' && a.status != 'pending') return 1;
         final da = a.shownAt ?? a.createdAt ?? DateTime(0);
         final db = b.shownAt ?? b.createdAt ?? DateTime(0);
         return db.compareTo(da);
@@ -771,7 +769,6 @@ class _MessageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isPending = message.status == 'pending';
     final date = message.shownAt ?? message.createdAt;
     final dateStr = date != null ? _fmt(date) : message.targetDate;
 
@@ -780,11 +777,9 @@ class _MessageCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
         decoration: BoxDecoration(
-          color: isPending ? _surface : _bg,
+          color: _bg,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: isPending ? _gold.withOpacity(0.28) : _border,
-          ),
+          border: Border.all(color: _border),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -795,9 +790,9 @@ class _MessageCard extends StatelessWidget {
                   width: 6,
                   height: 6,
                   margin: const EdgeInsets.only(right: 8),
-                  decoration: BoxDecoration(
+                  decoration: const BoxDecoration(
                     shape: BoxShape.circle,
-                    color: isPending ? _gold : _muted,
+                    color: _muted,
                   ),
                 ),
                 Text(
@@ -816,38 +811,16 @@ class _MessageCard extends StatelessWidget {
                   style: const TextStyle(
                       fontFamily: 'monospace', fontSize: 10, color: _muted),
                 ),
-                const Spacer(),
-                if (isPending)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: _gold.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(4),
-                      border:
-                          Border.all(color: _gold.withOpacity(0.28)),
-                    ),
-                    child: const Text(
-                      'PRÉVU',
-                      style: TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 8,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1,
-                        color: _gold,
-                      ),
-                    ),
-                  ),
               ],
             ),
             const SizedBox(height: 10),
             Text(
               message.text,
-              style: TextStyle(
+              style: const TextStyle(
                 fontFamily: 'monospace',
                 fontSize: 13,
                 height: 1.65,
-                color: isPending ? _text : _text.withOpacity(0.5),
+                color: _text,
               ),
             ),
           ],

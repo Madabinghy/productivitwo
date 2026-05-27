@@ -33,6 +33,8 @@ exports.executeGetInbox = executeGetInbox;
 exports.executeProcessInboxItem = executeProcessInboxItem;
 exports.executeGetDaySchedule = executeGetDaySchedule;
 exports.executeScheduleDay = executeScheduleDay;
+exports.executeUpdateScheduleBlock = executeUpdateScheduleBlock;
+exports.executeComputeTimeBudget = executeComputeTimeBudget;
 exports.executePlanDay = executePlanDay;
 exports.executePlanWeek = executePlanWeek;
 exports.executeSyncCalendar = executeSyncCalendar;
@@ -146,10 +148,12 @@ async function validateToken(uid, rawToken) {
     return false;
 }
 async function executeGetUserContext(uid) {
+    var _a, _b;
     // Fenêtre glissante : 7 derniers jours
     const now = new Date();
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const [domainsSnap, activitiesSnap, goalsSnap, habitHitsSnap, sessionsSnap] = await Promise.all([
+    const todayStr = now.toISOString().slice(0, 10);
+    const [domainsSnap, activitiesSnap, goalsSnap, habitHitsSnap, sessionsSnap, projectsSnap, scheduleSnap, inboxSnap] = await Promise.all([
         db_1.db.collection(`users/${uid}/domains`).get(),
         db_1.db.collection(`users/${uid}/activities`).get(),
         db_1.db.collection(`users/${uid}/goals`).where("status", "==", "active").get(),
@@ -161,6 +165,12 @@ async function executeGetUserContext(uid) {
         db_1.db.collection(`users/${uid}/sessions`)
             .where("startAt", ">=", sevenDaysAgo.toISOString())
             .get(),
+        // Projets actifs
+        db_1.db.collection(`users/${uid}/projects`).where("status", "==", "active").get(),
+        // Programme du jour
+        db_1.db.doc(`users/${uid}/daily_schedules/${todayStr}`).get(),
+        // Inbox (idées en attente)
+        db_1.db.collection(`users/${uid}/inbox`).where("processed", "==", false).get(),
     ]);
     const domains = domainsSnap.docs
         .map((d) => d.data())
@@ -233,6 +243,53 @@ async function executeGetUserContext(uid) {
         habitCompletion,
         timeLogged,
     };
+    // ── Projets actifs (résumé) ────────────────────────────────────────────────
+    const today = new Date(todayStr);
+    const activeProjects = projectsSnap.docs.map((d) => {
+        var _a, _b;
+        const p = d.data();
+        const tasks = (p.tasks || []);
+        const realTasks = tasks.filter((t) => !t.isMilestone);
+        const tasksDone = realTasks.filter((t) => t.status === "done").length;
+        const tasksOverdue = realTasks.filter((t) => t.status !== "done" && t.status !== "skipped" &&
+            t.endDate && new Date(t.endDate) < today).length;
+        const nextDeadline = (_a = realTasks
+            .filter((t) => t.status !== "done" && t.status !== "skipped" && t.endDate)
+            .sort((a, b) => a.endDate.localeCompare(b.endDate))
+            .map((t) => t.endDate)[0]) !== null && _a !== void 0 ? _a : null;
+        return {
+            id: p.id,
+            title: p.title,
+            endDate: (_b = p.endDate) !== null && _b !== void 0 ? _b : null,
+            tasksDone,
+            tasksTotal: realTasks.length,
+            tasksOverdue,
+            nextDeadline,
+        };
+    });
+    // ── Programme du jour ──────────────────────────────────────────────────────
+    const scheduleData = scheduleSnap.exists ? scheduleSnap.data() : null;
+    const todaySchedule = scheduleData
+        ? {
+            date: todayStr,
+            generatedBy: (_a = scheduleData.generatedBy) !== null && _a !== void 0 ? _a : null,
+            blocks: ((_b = scheduleData.blocks) !== null && _b !== void 0 ? _b : [])
+                .filter((b) => b.status !== "deleted")
+                .map((b) => ({
+                startTime: b.startTime,
+                title: b.title,
+                durationMin: b.durationMin,
+                category: b.category,
+                status: b.status,
+            })),
+        }
+        : null;
+    // ── Inbox (idées en attente) ───────────────────────────────────────────────
+    const inboxItems = inboxSnap.docs.map((d) => {
+        var _a, _b, _c;
+        const v = d.data();
+        return { id: (_a = v.id) !== null && _a !== void 0 ? _a : d.id, text: (_c = (_b = v.text) !== null && _b !== void 0 ? _b : v.content) !== null && _c !== void 0 ? _c : "" };
+    }).filter((v) => v.text);
     const coachingRules = {
         _instructions: [
             "AVANT de commencer tout travail long (programme, bilan, alignement Gantt) : annonce à l'utilisateur que ça prend ~1-2 min et que tu envoies une notification quand c'est prêt.",
@@ -242,6 +299,7 @@ async function executeGetUserContext(uid) {
             "POUR créer un programme : appelle toujours get_document_template d'abord, génère le HTML, montre-le à l'utilisateur et attends sa validation avant de créer quoi que ce soit dans Productivitwo.",
             "CONVENTION CALENDRIER : quand tu crées un événement Google Calendar dans le cadre d'une session Productivitwo, ajoute ' - Productivitwo' à la fin du titre (ex: 'Séance musculation - Productivitwo'). Cela te permet d'identifier les events que tu peux modifier librement lors d'une réorganisation. Les events sans ' - Productivitwo' ont été créés par l'utilisateur ou hors contexte Productivitwo : ne les modifie pas sans demander confirmation explicite.",
             "FICHIERS DE TÂCHE : quand tu crées ou sauvegardes un document avec save_document, associe-le toujours à la tâche Gantt concernée via taskId (obtenu depuis get_project → tasks[].id). Choisis la category appropriée : 'programme' pour un plan structuré, 'brief' pour un cahier des charges, 'recherche' pour une analyse/veille, 'livrable' pour un output final, 'notes' pour des notes de travail. Avant de créer un nouveau document, vérifie via get_documents(taskId) si un document de même category existe déjà pour éviter les doublons — si oui, mets-le à jour via documentId.",
+            "PRIORITÉ ABSOLUE : réponds d'abord à la demande de l'utilisateur. Ne fais jamais d'actions non demandées (schedule_day, push_assistant_message, modification Gantt…) avant d'avoir répondu. Les actions proactives viennent APRÈS la réponse, jamais à la place.",
             "PROPOSITIONS DE FIN DE SESSION : après avoir terminé une action significative (programme créé, Gantt mis à jour, bilan fait, messages ORION programmés…), propose toujours 2 à 3 suites logiques sous forme de liste numérotée courte. " +
                 "Adapte les options à ce qui vient d'être fait. Exemples pertinents selon le contexte : " +
                 "• 'Programme ton plan du jour' (si pas encore fait aujourd'hui) " +
@@ -252,19 +310,20 @@ async function executeGetUserContext(uid) {
                 "• 'Aligner ton agenda Google Calendar' (si des créneaux sont à bloquer) " +
                 "• 'Voir les projets en veille' (si tu as archivé quelque chose) " +
                 "Formule-les en une ligne, sans description. Ne propose pas une option déjà réalisée dans la session.",
-            "ASSISTANT ORION — RÈGLE PROACTIVE : après chaque appel get_user_context, appelle D'ABORD get_assistant_messages pour voir ce qui est déjà programmé — ne recrée jamais un message avec la même condition et la même période. Ensuite programme systématiquement 2 à 4 messages pour l'assistant via push_assistant_message, sans attendre que l'utilisateur le demande. " +
-                "Choisis des dates et conditions pertinentes selon le contexte analysé. " +
-                "Pour chaque message avec une tâche ou projet précis, ajoute TOUJOURS une action ciblée : " +
-                "• open_gantt_task(projectId, taskId) pour une tâche Gantt urgente ou un jalon — c'est le plus utile, ça ouvre la fiche directement ; " +
-                "• open_project(projectId) pour une deadline de projet ou un projet inactif ; " +
-                "• open_schedule pour voir ou modifier le programme du jour ; " +
-                "• open_goals pour les objectifs GTD en souffrance. " +
-                "Pour obtenir les taskId, appelle get_project(projectId) — tasks[].id. " +
-                "Exemples de messages pertinents à programmer : deadline dans 3 jours (condition: project_deadline_near), tâche en retard (overdue_count), jalon imminent (project_milestone_today), activité sous objectif (activity_behind_target), début de semaine (week_start). " +
+            "MESSAGES PROACTIFS (optionnel, après la réponse) : si la demande est un bilan, une analyse ou une planification, tu peux programmer 1 à 2 messages ORION pertinents via push_assistant_message — uniquement si ça apporte une vraie valeur. Vérifie d'abord get_assistant_messages pour éviter les doublons. Ne programme jamais de messages pour une demande simple (action ponctuelle, question, suppression). " +
+                "Pour chaque message avec une tâche ou projet précis, ajoute une action ciblée : " +
+                "• open_gantt_task(projectId, taskId) pour une tâche Gantt urgente ; " +
+                "• open_project(projectId) pour une deadline de projet ; " +
+                "• open_schedule pour le programme du jour ; " +
+                "• open_goals pour les objectifs GTD. " +
                 "Ne programme jamais deux messages avec la même condition pour la même période.",
         ],
     };
-    return JSON.stringify(Object.assign(Object.assign({}, coachingRules), { domains, activities, activeGoals, recentActivity }), null, 2);
+    return JSON.stringify(Object.assign(Object.assign({}, coachingRules), { today: todayStr, domains,
+        activities,
+        activeGoals,
+        activeProjects,
+        todaySchedule, inboxItems: inboxItems.length > 0 ? inboxItems : null, recentActivity }), null, 2);
 }
 async function executeUpdateActivityGoal(uid, activityId, updates) {
     var _a, _b;
@@ -1078,5 +1137,125 @@ async function executeScheduleDay(uid, date, blocks) {
     });
     const lines = normalizedBlocks.map((b) => `• ${b.startTime} (${b.durationMin}min) — ${b.title}`);
     return `✅ Programme du ${date} enregistré — ${normalizedBlocks.length} bloc(s)\n${lines.join("\n")}`;
+}
+async function executeComputeTimeBudget(uid) {
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    const twelveWeeksAgo = new Date(now.getTime() - 84 * 24 * 60 * 60 * 1000);
+    const [sessionsSnap, activitiesSnap] = await Promise.all([
+        db_1.db.collection(`users/${uid}/sessions`)
+            .where("startAt", ">=", twelveWeeksAgo.toISOString())
+            .get(),
+        db_1.db.collection(`users/${uid}/activities`).get(),
+    ]);
+    const activities = activitiesSnap.docs
+        .map((d) => d.data())
+        .filter((v) => !v.deleted && v.type === "time");
+    // Indexer les sessions par activité : totalMin + semaines distinctes
+    const minByActivity = new Map();
+    const weeksByActivity = new Map();
+    for (const doc of sessionsSnap.docs) {
+        const v = doc.data();
+        if (!v.endAt)
+            continue;
+        const mins = Math.round((new Date(v.endAt).getTime() - new Date(v.startAt).getTime()) / 60000);
+        if (mins <= 0)
+            continue;
+        minByActivity.set(v.activityId, (minByActivity.get(v.activityId) || 0) + mins);
+        // Numéro de semaine ISO pour détecter la richesse des données
+        const sessionDate = new Date(v.startAt);
+        const weekKey = `${sessionDate.getFullYear()}-W${String(Math.ceil(sessionDate.getDate() / 7)).padStart(2, "0")}`;
+        if (!weeksByActivity.has(v.activityId))
+            weeksByActivity.set(v.activityId, new Set());
+        weeksByActivity.get(v.activityId).add(weekKey);
+    }
+    const MIN_WEEKS_TO_CALIBRATE = 2;
+    const PERIOD_DAYS = 84;
+    const TOTAL_DAY_MIN = 1440;
+    const STRETCH = 1.10;
+    const MIN_SLEEP_MIN = 420; // 7h plancher
+    const budgets = activities.map((a) => {
+        var _a, _b, _c, _d;
+        const total = (_a = minByActivity.get(a.id)) !== null && _a !== void 0 ? _a : 0;
+        const weeksOfData = (_c = (_b = weeksByActivity.get(a.id)) === null || _b === void 0 ? void 0 : _b.size) !== null && _c !== void 0 ? _c : 0;
+        const isSleep = /sommeil|sleep/i.test(a.name);
+        const hasEnoughData = weeksOfData >= MIN_WEEKS_TO_CALIBRATE;
+        const avgPerDay = hasEnoughData ? total / PERIOD_DAYS : 0;
+        return {
+            id: a.id,
+            name: a.name,
+            currentGoalMin: (_d = a.goalMin) !== null && _d !== void 0 ? _d : null,
+            avgMinPerDay: Math.round(avgPerDay),
+            weeksOfData,
+            hasEnoughData,
+            isSleep,
+        };
+    });
+    const nonSleep = budgets.filter((b) => !b.isSleep);
+    const sleepActivity = budgets.find((b) => b.isSleep);
+    // Seules les activités avec assez de données reçoivent un stretch target
+    const withStretch = nonSleep.map((b) => (Object.assign(Object.assign({}, b), { recommendedGoalMin: b.hasEnoughData
+            ? Math.max(1, Math.round(b.avgMinPerDay * STRETCH))
+            : null })));
+    const calibrated = withStretch.filter((b) => b.recommendedGoalMin !== null);
+    const uncalibrated = withStretch.filter((b) => b.recommendedGoalMin === null);
+    const nonSleepTotal = calibrated.reduce((s, b) => { var _a; return s + ((_a = b.recommendedGoalMin) !== null && _a !== void 0 ? _a : 0); }, 0);
+    const sleepGoal = Math.max(MIN_SLEEP_MIN, TOTAL_DAY_MIN - nonSleepTotal);
+    const result = [
+        ...withStretch,
+        sleepActivity
+            ? Object.assign(Object.assign({}, sleepActivity), { recommendedGoalMin: calibrated.length > 0 ? sleepGoal : null }) : {
+            id: null,
+            name: "Sommeil (manquant)",
+            currentGoalMin: null,
+            avgMinPerDay: null,
+            weeksOfData: 0,
+            hasEnoughData: false,
+            isSleep: true,
+            recommendedGoalMin: calibrated.length > 0 ? sleepGoal : null,
+            missingNote: "Créer une activité 'Sommeil' (type: time) pour activer le suivi budget 24h.",
+        },
+    ];
+    const totalCheck = (calibrated.reduce((s, b) => { var _a; return s + ((_a = b.recommendedGoalMin) !== null && _a !== void 0 ? _a : 0); }, 0)) +
+        (calibrated.length > 0 ? sleepGoal : 0);
+    return JSON.stringify({
+        analysedPeriod: `${twelveWeeksAgo.toISOString().slice(0, 10)} → ${today}`,
+        totalDayMin: TOTAL_DAY_MIN,
+        calibratedActivities: calibrated.length,
+        uncalibratedActivities: uncalibrated.length,
+        budgetCheck: calibrated.length > 0 ? `${totalCheck} / ${TOTAL_DAY_MIN} min` : "Données insuffisantes — budget non calculable",
+        activities: result,
+        workflow: calibrated.length > 0
+            ? [
+                "1. Si 'Sommeil' est absent (id: null) → create_activity(name='Sommeil', type='time', domainId=<domaine Santé>)",
+                "2. Pour chaque activité avec hasEnoughData=true et id non-null → update_activity_goal(activityId, goalMin=recommendedGoalMin)",
+                "3. push_assistant_message : liste les objectifs rééquilibrés (±X min/j) + temps sommeil",
+                uncalibrated.length > 0
+                    ? `4. push_assistant_message pour les ${uncalibrated.length} activité(s) non calibrée(s) : demander à l'utilisateur de logger ses premières sessions pour activer le budget 24h`
+                    : "",
+            ].filter(Boolean)
+            : [
+                "Aucune activité n'a assez de données (min 2 semaines de sessions).",
+                "push_assistant_message : encourager l'utilisateur à logger ses activités pour activer le budget 24h automatique.",
+                "Ne pas appeler update_activity_goal — les goalMin à 1min par défaut ne seraient pas améliorés.",
+            ],
+    }, null, 2);
+}
+async function executeUpdateScheduleBlock(uid, date, blockTitle, status) {
+    var _a;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
+        return `Date invalide : ${date}`;
+    const ref = db_1.db.doc(`users/${uid}/daily_schedules/${date}`);
+    const snap = await ref.get();
+    if (!snap.exists)
+        return `Aucun programme pour le ${date}.`;
+    const data = snap.data();
+    const blocks = (_a = data.blocks) !== null && _a !== void 0 ? _a : [];
+    const idx = blocks.findIndex((b) => b.title.toLowerCase().includes(blockTitle.toLowerCase()));
+    if (idx === -1)
+        return `Bloc "${blockTitle}" introuvable dans le programme du ${date}.`;
+    blocks[idx] = Object.assign(Object.assign(Object.assign({}, blocks[idx]), { status }), (status === "done" ? { doneAt: new Date().toISOString() } : {}));
+    await ref.update({ blocks });
+    return `✅ Bloc "${blocks[idx].title}" → ${status}`;
 }
 //# sourceMappingURL=execute.js.map
