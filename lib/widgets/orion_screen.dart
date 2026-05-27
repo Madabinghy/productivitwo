@@ -834,6 +834,14 @@ class _MessageCard extends StatelessWidget {
                   style: const TextStyle(
                       fontFamily: 'monospace', fontSize: 10, color: _muted),
                 ),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () => FirebaseFirestore.instance
+                      .collection('users/$uid/assistant_messages')
+                      .doc(message.id)
+                      .update({'status': 'dismissed'}),
+                  child: const Icon(Icons.close, size: 14, color: _muted),
+                ),
               ],
             ),
             const SizedBox(height: 10),
