@@ -456,10 +456,10 @@ export const orionRunCount = onRequest({ cors: true, invoker: "public" }, async 
   res.status(200).json({ count, max: 5, date: today });
 });
 
-// ── orionCron — toutes les 6h ─────────────────────────────────────────────────
+// ── orionCron — toutes les 1h (test) / 6h (prod) ─────────────────────────────
 
 export const orionCron = onSchedule(
-  { schedule: "every 6 hours", timeZone: "Europe/Paris", secrets: ["ANTHROPIC_API_KEY"] },
+  { schedule: "every 1 hours", timeZone: "Europe/Paris", secrets: ["ANTHROPIC_API_KEY"] },
   async () => {
     const uids = await getAllActiveUserIds();
     console.log(`ORION cron : ${uids.length} users actifs`);

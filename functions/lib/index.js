@@ -482,8 +482,8 @@ exports.orionRunCount = (0, https_1.onRequest)({ cors: true, invoker: "public" }
     const count = await (0, orion_1.getOrionRunCount)(uid, today);
     res.status(200).json({ count, max: 5, date: today });
 });
-// ── orionCron — toutes les 6h ─────────────────────────────────────────────────
-exports.orionCron = (0, scheduler_1.onSchedule)({ schedule: "every 6 hours", timeZone: "Europe/Paris", secrets: ["ANTHROPIC_API_KEY"] }, async () => {
+// ── orionCron — toutes les 1h (test) / 6h (prod) ─────────────────────────────
+exports.orionCron = (0, scheduler_1.onSchedule)({ schedule: "every 1 hours", timeZone: "Europe/Paris", secrets: ["ANTHROPIC_API_KEY"] }, async () => {
     const uids = await (0, orion_1.getAllActiveUserIds)();
     console.log(`ORION cron : ${uids.length} users actifs`);
     const results = await Promise.allSettled(uids.map((uid) => (0, orion_1.runOrionCycle)(uid)));
