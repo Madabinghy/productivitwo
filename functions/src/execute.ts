@@ -35,6 +35,7 @@ async function executePushAssistantMessage(
     characterName?: string;
     priority?: number;
     action?: { type: string; label?: string; payload?: Record<string, unknown> };
+    requiresReply?: boolean;
   }
 ): Promise<string> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(args.targetDate)) {
@@ -63,6 +64,7 @@ async function executePushAssistantMessage(
     characterName: args.characterName ?? "ORION",
     priority: args.priority ?? 1,
     action: args.action ?? null,
+    requiresReply: args.requiresReply ?? false,
     status: "pending",
     createdAt: FieldValue.serverTimestamp(),
     createdBy: "claude",

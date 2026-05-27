@@ -56,7 +56,9 @@ class _OrionScreenState extends State<OrionScreen>
   final _replyCtrl = TextEditingController();
   final _needsCtrl = TextEditingController();
 
-  List<_OrionMessage> _messages = [];
+  String? _uid;
+  List<_OrionMessage> _replyMessages = [];   // clarifications sans limite
+  List<_OrionMessage> _messages = [];        // messages normaux, max 5
 
   late final AnimationController _pulseCtrl;
   late final Animation<double> _pulseAnim;
@@ -90,6 +92,7 @@ class _OrionScreenState extends State<OrionScreen>
     try {
       final uid = widget.sync.uid;
       if (uid == null) throw Exception('Non connecté');
+      _uid = uid;
 
       final tokens = await widget.sync.fetchApiTokens();
       final activeTokens = tokens.where((t) => t.active).toList();
@@ -109,7 +112,7 @@ class _OrionScreenState extends State<OrionScreen>
         FirebaseFirestore.instance
             .collection('users/$uid/assistant_messages')
             .where('status', isEqualTo: 'shown')
-            .limit(5)
+            .limit(20)
             .get(),
         if (_activeToken != null && _activeToken!.isNotEmpty)
           http.get(Uri.parse('$_countUrl?uid=$uid&token=$_activeToken'))
@@ -128,7 +131,7 @@ class _OrionScreenState extends State<OrionScreen>
         _needsCtrl.text = _userNeeds;
       }
 
-      _messages = msgsSnap.docs.map((doc) {
+      final allMessages = msgsSnap.docs.map((doc) {
         final d = doc.data() as Map<String, dynamic>;
         return _OrionMessage(
           id: d['id'] as String? ?? doc.id,
@@ -138,14 +141,18 @@ class _OrionScreenState extends State<OrionScreen>
           targetDate: d['targetDate'] as String? ?? '',
           shownAt: _toDate(d['shownAt']),
           createdAt: _toDate(d['createdAt']),
+          requiresReply: d['requiresReply'] as bool? ?? false,
         );
       }).toList();
 
-      _messages.sort((a, b) {
+      allMessages.sort((a, b) {
         final da = a.shownAt ?? a.createdAt ?? DateTime(0);
         final db = b.shownAt ?? b.createdAt ?? DateTime(0);
         return db.compareTo(da);
       });
+
+      _replyMessages = allMessages.where((m) => m.requiresReply).toList();
+      _messages = allMessages.where((m) => !m.requiresReply).take(5).toList();
 
       if (results.length > 2 && results[2] is http.Response) {
         final resp = results[2] as http.Response;
@@ -338,13 +345,24 @@ class _OrionScreenState extends State<OrionScreen>
         ],
 
         const SizedBox(height: 28),
-        _SectionLabel('MESSAGES ORION (${_messages.length})'),
+        _SectionLabel('MESSAGES ORION'),
         const SizedBox(height: 12),
 
-        if (_messages.isEmpty)
+        if (_replyMessages.isEmpty && _messages.isEmpty)
           _buildEmptyState()
-        else
-          for (final m in _messages) _MessageCard(message: m, sync: widget.sync),
+        else ...[
+          if (_replyMessages.isNotEmpty) ...[
+            _SectionLabel('EN ATTENTE DE TA RÉPONSE (${_replyMessages.length})'),
+            const SizedBox(height: 8),
+            for (final m in _replyMessages) _MessageCard(message: m, sync: widget.sync, uid: _uid ?? ''),
+            const SizedBox(height: 16),
+          ],
+          if (_messages.isNotEmpty) ...[
+            if (_replyMessages.isNotEmpty) _SectionLabel('RÉCENTS'),
+            if (_replyMessages.isNotEmpty) const SizedBox(height: 8),
+            for (final m in _messages) _MessageCard(message: m, sync: widget.sync, uid: _uid ?? ''),
+          ],
+        ],
       ],
     );
   }
@@ -752,6 +770,8 @@ class _OrionMessage {
   final DateTime? shownAt;
   final DateTime? createdAt;
 
+  final bool requiresReply;
+
   const _OrionMessage({
     required this.id,
     required this.text,
@@ -760,13 +780,15 @@ class _OrionMessage {
     required this.targetDate,
     this.shownAt,
     this.createdAt,
+    this.requiresReply = false,
   });
 }
 
 class _MessageCard extends StatelessWidget {
   final _OrionMessage message;
   final FirestoreSync sync;
-  const _MessageCard({required this.message, required this.sync});
+  final String uid;
+  const _MessageCard({required this.message, required this.sync, required this.uid});
 
   @override
   Widget build(BuildContext context) {
@@ -904,10 +926,17 @@ class _MessageCard extends StatelessWidget {
                 onTap: () async {
                   final text = ctrl.text.trim();
                   if (text.isEmpty) return;
-                  await sync.saveOrionQueueItem(
-                    instruction: text,
-                    context: message.text,
-                  );
+                  await Future.wait([
+                    sync.saveOrionQueueItem(
+                      instruction: text,
+                      context: message.text,
+                    ),
+                    if (message.requiresReply)
+                      FirebaseFirestore.instance
+                          .collection('users/$uid/assistant_messages')
+                          .doc(message.id)
+                          .update({'status': 'replied'}),
+                  ]);
                   if (ctx.mounted) Navigator.pop(ctx);
                 },
                 child: Container(

@@ -65,7 +65,7 @@ function normalizeTasks(tasks) {
     });
 }
 async function executePushAssistantMessage(uid, args) {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(args.targetDate)) {
         return `Date invalide : ${args.targetDate}. Format attendu : YYYY-MM-DD`;
     }
@@ -90,6 +90,7 @@ async function executePushAssistantMessage(uid, args) {
         characterName: (_b = args.characterName) !== null && _b !== void 0 ? _b : "ORION",
         priority: (_c = args.priority) !== null && _c !== void 0 ? _c : 1,
         action: (_d = args.action) !== null && _d !== void 0 ? _d : null,
+        requiresReply: (_e = args.requiresReply) !== null && _e !== void 0 ? _e : false,
         status: "pending",
         createdAt: db_1.FieldValue.serverTimestamp(),
         createdBy: "claude",
