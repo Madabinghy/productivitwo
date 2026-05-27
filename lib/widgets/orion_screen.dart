@@ -846,26 +846,28 @@ class _MessageCard extends StatelessWidget {
                 color: _text,
               ),
             ),
-            const SizedBox(height: 10),
-            GestureDetector(
-              onTap: () => _showReplySheet(context),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: const [
-                  Icon(Icons.subdirectory_arrow_right_rounded, size: 13, color: _muted),
-                  SizedBox(width: 4),
-                  Text(
-                    'Répondre',
-                    style: TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 11,
-                      color: _muted,
-                      letterSpacing: 0.5,
+            if (message.requiresReply) ...[
+              const SizedBox(height: 10),
+              GestureDetector(
+                onTap: () => _showReplySheet(context),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Icon(Icons.subdirectory_arrow_right_rounded, size: 13, color: _gold),
+                    SizedBox(width: 4),
+                    Text(
+                      'Répondre',
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                        color: _gold,
+                        letterSpacing: 0.5,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),
