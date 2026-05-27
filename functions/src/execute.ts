@@ -893,6 +893,43 @@ async function executePushGantt(uid: string, input: PushGanttBody): Promise<stri
 }
 
 
+async function executeAddTask(
+  uid: string,
+  projectId: string,
+  task: ProjectTask
+): Promise<string> {
+  const ref = db.collection(`users/${uid}/projects`).doc(projectId);
+  const snap = await ref.get();
+  if (!snap.exists) return `Projet introuvable : ${projectId}`;
+
+  const data = snap.data() as Record<string, unknown>;
+  const tasks = (data.tasks || []) as Array<Record<string, unknown>>;
+  const newTask = { ...task, id: task.id || uuidv4(), status: task.status || "pending" };
+  tasks.push(newTask);
+  await ref.update({ tasks, updatedAt: FieldValue.serverTimestamp() });
+  return `✅ Tâche "${task.title}" ajoutée au projet (id: ${newTask.id}).`;
+}
+
+async function executeUpdateTask(
+  uid: string,
+  projectId: string,
+  taskId: string,
+  updates: Partial<Omit<ProjectTask, "id">>
+): Promise<string> {
+  const ref = db.collection(`users/${uid}/projects`).doc(projectId);
+  const snap = await ref.get();
+  if (!snap.exists) return `Projet introuvable : ${projectId}`;
+
+  const data = snap.data() as Record<string, unknown>;
+  const tasks = (data.tasks || []) as Array<Record<string, unknown>>;
+  const idx = tasks.findIndex((t) => t.id === taskId);
+  if (idx === -1) return `Tâche introuvable : ${taskId}`;
+
+  tasks[idx] = { ...tasks[idx], ...updates };
+  await ref.update({ tasks, updatedAt: FieldValue.serverTimestamp() });
+  return `✅ Tâche "${tasks[idx].title}" mise à jour.`;
+}
+
 async function executeGetAssistantMessages(uid: string): Promise<string> {
   const [pendingSnap, shownSnap] = await Promise.all([
     db.collection(`users/${uid}/assistant_messages`)
@@ -1466,6 +1503,8 @@ export {
   executeListProjects,
   executeGetProject,
   executePushGantt,
+  executeAddTask,
+  executeUpdateTask,
   executeGetAssistantMessages,
   executeDeleteAssistantMessage,
   executeGetOrionQueue,

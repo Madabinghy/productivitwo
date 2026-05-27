@@ -22,6 +22,7 @@ import {
   GET_ASSISTANT_MESSAGES_TOOL, DELETE_ASSISTANT_MESSAGE_TOOL,
   GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL,
   PLAN_DAY_TOOL, PLAN_WEEK_TOOL, SYNC_CALENDAR_TOOL,
+  ADD_TASK_TOOL, UPDATE_TASK_TOOL,
 } from "./tools";
 import {
   validateToken, normalizePhases, normalizeTasks,
@@ -34,7 +35,7 @@ import {
   executeUpdateProject, executeUpdateTaskStatus, executeUpdateActivity,
   executeLinkGoalToTask, executeDeleteRoutine, executeDeleteGoal,
   executeArchiveProject, executeDeleteProject, executeListProjects, executeGetProject,
-  executePushGantt,
+  executePushGantt, executeAddTask, executeUpdateTask,
   executeGetDaySchedule, executeScheduleDay,
   executePlanDay, executePlanWeek, executeSyncCalendar,
 } from "./execute";
@@ -266,6 +267,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
             GET_ASSISTANT_MESSAGES_TOOL, DELETE_ASSISTANT_MESSAGE_TOOL,
             GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL,
             PLAN_DAY_TOOL, PLAN_WEEK_TOOL, SYNC_CALENDAR_TOOL,
+            ADD_TASK_TOOL, UPDATE_TASK_TOOL,
           ],
         },
       });
@@ -349,6 +351,10 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
           text = await executePlanWeek(uid, args as Parameters<typeof executePlanWeek>[1]);
         } else if (toolName === "sync_calendar") {
           text = await executeSyncCalendar(uid, args.date as string | undefined);
+        } else if (toolName === "add_task") {
+          text = await executeAddTask(uid, args.projectId as string, args as Parameters<typeof executeAddTask>[2]);
+        } else if (toolName === "update_task") {
+          text = await executeUpdateTask(uid, args.projectId as string, args.taskId as string, args);
         } else {
           responses.push({ jsonrpc: "2.0", id, error: { code: -32601, message: `Outil inconnu : ${toolName}` } });
           continue;

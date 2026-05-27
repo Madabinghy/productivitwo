@@ -96,15 +96,17 @@ workflows:
           success: true
           failure: true
 
-  # ── Android — release AAB (manuel) ───────────────────────────────────────────
+  # ── Android — release AAB → Google Play Beta (manuel) ───────────────────────
   android-release:
-    name: Android Release → AAB
+    name: Android Release → Google Play Beta
     max_build_duration: 60
     # Pas de triggering → déclenchement manuel depuis Codemagic uniquement
     environment:
       flutter: stable
       android_signing:
         - productivitwo_keystore
+      groups:
+        - android_credentials   # GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
       vars:
         PACKAGE_NAME: "com.madabinghy.productivitwo"
     scripts:
@@ -116,8 +118,8 @@ workflows:
         script: |
           flutter build appbundle --release \
             --no-tree-shake-icons \
-            --build-name=1.0.0 \
-            --build-number=1 2>&1 | tee /tmp/flutter_build.log
+            --build-name=1.0.$BUILD_NUMBER \
+            --build-number=$BUILD_NUMBER 2>&1 | tee /tmp/flutter_build.log
           BUILD_EXIT=${PIPESTATUS[0]}
           if [ $BUILD_EXIT -ne 0 ]; then
             echo "=== ERREURS DE BUILD ==="
@@ -127,6 +129,10 @@ workflows:
     artifacts:
       - build/app/outputs/bundle/release/*.aab
     publishing:
+      google_play:
+        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        track: beta
+        submit_as_draft: false
       email:
         recipients:
           - emeric.edmond@gmail.com

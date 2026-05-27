@@ -27,6 +27,8 @@ exports.executeDeleteProject = executeDeleteProject;
 exports.executeListProjects = executeListProjects;
 exports.executeGetProject = executeGetProject;
 exports.executePushGantt = executePushGantt;
+exports.executeAddTask = executeAddTask;
+exports.executeUpdateTask = executeUpdateTask;
 exports.executeGetAssistantMessages = executeGetAssistantMessages;
 exports.executeDeleteAssistantMessage = executeDeleteAssistantMessage;
 exports.executeGetOrionQueue = executeGetOrionQueue;
@@ -792,6 +794,32 @@ async function executePushGantt(uid, input) {
         `• ${(project.tasks || []).length} tâche(s) · ${(project.phases || []).length} phase(s)\n` +
         `• Voir sur : https://productivitwo-app.web.app\n` +
         `• projectId : ${projectId}`);
+}
+async function executeAddTask(uid, projectId, task) {
+    const ref = db_1.db.collection(`users/${uid}/projects`).doc(projectId);
+    const snap = await ref.get();
+    if (!snap.exists)
+        return `Projet introuvable : ${projectId}`;
+    const data = snap.data();
+    const tasks = (data.tasks || []);
+    const newTask = Object.assign(Object.assign({}, task), { id: task.id || (0, uuid_1.v4)(), status: task.status || "pending" });
+    tasks.push(newTask);
+    await ref.update({ tasks, updatedAt: db_1.FieldValue.serverTimestamp() });
+    return `✅ Tâche "${task.title}" ajoutée au projet (id: ${newTask.id}).`;
+}
+async function executeUpdateTask(uid, projectId, taskId, updates) {
+    const ref = db_1.db.collection(`users/${uid}/projects`).doc(projectId);
+    const snap = await ref.get();
+    if (!snap.exists)
+        return `Projet introuvable : ${projectId}`;
+    const data = snap.data();
+    const tasks = (data.tasks || []);
+    const idx = tasks.findIndex((t) => t.id === taskId);
+    if (idx === -1)
+        return `Tâche introuvable : ${taskId}`;
+    tasks[idx] = Object.assign(Object.assign({}, tasks[idx]), updates);
+    await ref.update({ tasks, updatedAt: db_1.FieldValue.serverTimestamp() });
+    return `✅ Tâche "${tasks[idx].title}" mise à jour.`;
 }
 async function executeGetAssistantMessages(uid) {
     const [pendingSnap, shownSnap] = await Promise.all([

@@ -247,6 +247,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                         tools_1.GET_ASSISTANT_MESSAGES_TOOL, tools_1.DELETE_ASSISTANT_MESSAGE_TOOL,
                         tools_1.GET_DAY_SCHEDULE_TOOL, tools_1.SCHEDULE_DAY_TOOL,
                         tools_1.PLAN_DAY_TOOL, tools_1.PLAN_WEEK_TOOL, tools_1.SYNC_CALENDAR_TOOL,
+                        tools_1.ADD_TASK_TOOL, tools_1.UPDATE_TASK_TOOL,
                     ],
                 },
             });
@@ -363,6 +364,12 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                 }
                 else if (toolName === "sync_calendar") {
                     text = await (0, execute_1.executeSyncCalendar)(uid, args.date);
+                }
+                else if (toolName === "add_task") {
+                    text = await (0, execute_1.executeAddTask)(uid, args.projectId, args);
+                }
+                else if (toolName === "update_task") {
+                    text = await (0, execute_1.executeUpdateTask)(uid, args.projectId, args.taskId, args);
                 }
                 else {
                     responses.push({ jsonrpc: "2.0", id, error: { code: -32601, message: `Outil inconnu : ${toolName}` } });

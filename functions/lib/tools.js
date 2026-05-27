@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_GOAL_TOOL = exports.DELETE_ROUTINE_TOOL = exports.LINK_GOAL_TO_TASK_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
+exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_GOAL_TOOL = exports.DELETE_ROUTINE_TOOL = exports.LINK_GOAL_TO_TASK_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
 const GET_USER_CONTEXT_TOOL = {
     name: "get_user_context",
     description: "APPELLE CET OUTIL EN PREMIER dans toute conversation liée à la productivité. " +
@@ -576,6 +576,55 @@ exports.DELETE_ASSISTANT_MESSAGE_TOOL = {
         },
     },
 };
+const ADD_TASK_TOOL = {
+    name: "add_task",
+    description: "Ajoute une seule tâche à un projet Gantt existant sans réécrire tout le projet. " +
+        "Utilise list_projects + get_project pour obtenir projectId et les phaseId. " +
+        "Préférer cet outil à push_gantt quand on ajoute une tâche isolée.",
+    inputSchema: {
+        type: "object",
+        required: ["projectId", "title", "startDate"],
+        properties: {
+            projectId: { type: "string", description: "id du projet (list_projects)" },
+            title: { type: "string" },
+            phaseId: { type: "string", description: "id de la phase (get_project)" },
+            groupLabel: { type: "string" },
+            startDate: { type: "string", description: "YYYY-MM-DD" },
+            endDate: { type: "string", description: "YYYY-MM-DD" },
+            isMilestone: { type: "boolean" },
+            color: { type: "string" },
+            barLabel: { type: "string" },
+            status: { type: "string", enum: ["pending", "done", "skipped"] },
+            actions: { type: "array", items: { type: "string" }, description: "Sous-actions (strings)" },
+        },
+    },
+};
+exports.ADD_TASK_TOOL = ADD_TASK_TOOL;
+const UPDATE_TASK_TOOL = {
+    name: "update_task",
+    description: "Modifie les champs d'une tâche Gantt existante (titre, dates, actions, phase…). " +
+        "Ne modifie que les champs fournis, laisse les autres inchangés. " +
+        "Utilise list_projects + get_project pour obtenir projectId et taskId.",
+    inputSchema: {
+        type: "object",
+        required: ["projectId", "taskId"],
+        properties: {
+            projectId: { type: "string", description: "id du projet" },
+            taskId: { type: "string", description: "id de la tâche (get_project)" },
+            title: { type: "string" },
+            phaseId: { type: "string" },
+            groupLabel: { type: "string" },
+            startDate: { type: "string", description: "YYYY-MM-DD" },
+            endDate: { type: "string", description: "YYYY-MM-DD" },
+            isMilestone: { type: "boolean" },
+            color: { type: "string" },
+            barLabel: { type: "string" },
+            status: { type: "string", enum: ["pending", "done", "skipped"] },
+            actions: { type: "array", items: { type: "string" }, description: "Remplace toutes les sous-actions" },
+        },
+    },
+};
+exports.UPDATE_TASK_TOOL = UPDATE_TASK_TOOL;
 exports.PLAN_DAY_TOOL = {
     name: "plan_day",
     description: "Agrège tout le contexte nécessaire pour planifier une journée : contexte utilisateur, " +

@@ -606,6 +606,57 @@ export const DELETE_ASSISTANT_MESSAGE_TOOL = {
   },
 };
 
+const ADD_TASK_TOOL = {
+  name: "add_task",
+  description:
+    "Ajoute une seule tâche à un projet Gantt existant sans réécrire tout le projet. " +
+    "Utilise list_projects + get_project pour obtenir projectId et les phaseId. " +
+    "Préférer cet outil à push_gantt quand on ajoute une tâche isolée.",
+  inputSchema: {
+    type: "object",
+    required: ["projectId", "title", "startDate"],
+    properties: {
+      projectId:   { type: "string", description: "id du projet (list_projects)" },
+      title:       { type: "string" },
+      phaseId:     { type: "string", description: "id de la phase (get_project)" },
+      groupLabel:  { type: "string" },
+      startDate:   { type: "string", description: "YYYY-MM-DD" },
+      endDate:     { type: "string", description: "YYYY-MM-DD" },
+      isMilestone: { type: "boolean" },
+      color:       { type: "string" },
+      barLabel:    { type: "string" },
+      status:      { type: "string", enum: ["pending", "done", "skipped"] },
+      actions:     { type: "array", items: { type: "string" }, description: "Sous-actions (strings)" },
+    },
+  },
+};
+
+const UPDATE_TASK_TOOL = {
+  name: "update_task",
+  description:
+    "Modifie les champs d'une tâche Gantt existante (titre, dates, actions, phase…). " +
+    "Ne modifie que les champs fournis, laisse les autres inchangés. " +
+    "Utilise list_projects + get_project pour obtenir projectId et taskId.",
+  inputSchema: {
+    type: "object",
+    required: ["projectId", "taskId"],
+    properties: {
+      projectId:   { type: "string", description: "id du projet" },
+      taskId:      { type: "string", description: "id de la tâche (get_project)" },
+      title:       { type: "string" },
+      phaseId:     { type: "string" },
+      groupLabel:  { type: "string" },
+      startDate:   { type: "string", description: "YYYY-MM-DD" },
+      endDate:     { type: "string", description: "YYYY-MM-DD" },
+      isMilestone: { type: "boolean" },
+      color:       { type: "string" },
+      barLabel:    { type: "string" },
+      status:      { type: "string", enum: ["pending", "done", "skipped"] },
+      actions:     { type: "array", items: { type: "string" }, description: "Remplace toutes les sous-actions" },
+    },
+  },
+};
+
 export {
 GET_USER_CONTEXT_TOOL,
 UPDATE_ACTIVITY_GOAL_TOOL,
@@ -633,6 +684,8 @@ DELETE_PROJECT_TOOL,
 LIST_PROJECTS_TOOL,
 GET_PROJECT_TOOL,
 PUSH_GANTT_MCP_TOOL,
+ADD_TASK_TOOL,
+UPDATE_TASK_TOOL,
 };
 
 export const PLAN_DAY_TOOL = {
