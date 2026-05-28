@@ -2548,7 +2548,7 @@ class _TokensPanelState extends State<_TokensPanel>
     if (label == null) return;
     final token = await widget.sync.createApiToken(label);
     if (!mounted) return;
-    setState(() => _newTokenValue = token.token);
+    setState(() => _newTokenValue = token.rawToken ?? '');
     await _load();
   }
 
@@ -2591,7 +2591,7 @@ class _TokensPanelState extends State<_TokensPanel>
   }
 
   String _mcpUrl(String token) =>
-      'https://productivitwo-app.web.app/mcp/$_uid/$token';
+      'https://mcphandler-dzos75b65q-uc.a.run.app/mcp/$_uid/$token';
 
   String _mcpConfig(String token) => '''{
   "mcpServers": {
@@ -2696,13 +2696,13 @@ class _TokensPanelState extends State<_TokensPanel>
                                           children: [
                                             Expanded(
                                               child: SelectableText(
-                                                _mcpUrl(activeTokens.first.token),
+                                                _mcpUrl(activeTokens.first.rawToken ?? ''),
                                                 style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
                                               ),
                                             ),
                                             IconButton(
                                               icon: const Icon(Icons.copy_outlined, size: 16),
-                                              onPressed: () => _copy(_mcpUrl(activeTokens.first.token), 'URL copiée'),
+                                              onPressed: () => _copy(_mcpUrl(activeTokens.first.rawToken ?? ''), 'URL copiée'),
                                             ),
                                           ],
                                         ),
@@ -2732,13 +2732,13 @@ class _TokensPanelState extends State<_TokensPanel>
                                           children: [
                                             Expanded(
                                               child: SelectableText(
-                                                _mcpConfig(activeTokens.first.token),
+                                                _mcpConfig(activeTokens.first.rawToken ?? ''),
                                                 style: const TextStyle(fontFamily: 'monospace', fontSize: 10),
                                               ),
                                             ),
                                             IconButton(
                                               icon: const Icon(Icons.copy_outlined, size: 14),
-                                              onPressed: () => _copy(_mcpConfig(activeTokens.first.token), 'Config copiée'),
+                                              onPressed: () => _copy(_mcpConfig(activeTokens.first.rawToken ?? ''), 'Config copiée'),
                                             ),
                                           ],
                                         ),
@@ -3483,7 +3483,7 @@ class _OrionViewState extends State<_OrionView> {
       if (uid == null) return;
 
       final tokens = await widget.sync.fetchApiTokens();
-      final token = tokens.where((t) => t.active).firstOrNull?.token ?? '';
+      final token = tokens.where((t) => t.active).firstOrNull?.rawToken ?? '';
 
       final results = await Future.wait([
         FirebaseFirestore.instance
@@ -3535,7 +3535,7 @@ class _OrionViewState extends State<_OrionView> {
   Future<void> _triggerWithPreset({required String taskId, required String need}) async {
     final uid = widget.sync.uid;
     final tokens = await widget.sync.fetchApiTokens();
-    final token = tokens.where((t) => t.active).firstOrNull?.token;
+    final token = tokens.where((t) => t.active).firstOrNull?.rawToken;
     if (uid == null || token == null) return;
 
     final isDeterministic = taskId.isNotEmpty;
@@ -3570,7 +3570,7 @@ class _OrionViewState extends State<_OrionView> {
   Future<void> _triggerNow() async {
     final uid = widget.sync.uid;
     final tokens = await widget.sync.fetchApiTokens();
-    final token = tokens.where((t) => t.active).firstOrNull?.token;
+    final token = tokens.where((t) => t.active).firstOrNull?.rawToken;
     if (uid == null || token == null) return;
 
     setState(() => _triggering = true);
@@ -5729,7 +5729,7 @@ class _OrionSidebarSectionState extends State<_OrionSidebarSection> {
   Future<void> _trigger({required String taskId, required String need, required String label}) async {
     final uid = widget.sync.uid;
     final tokens = await widget.sync.fetchApiTokens();
-    final token = tokens.where((t) => t.active).firstOrNull?.token;
+    final token = tokens.where((t) => t.active).firstOrNull?.rawToken;
     if (uid == null || token == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
