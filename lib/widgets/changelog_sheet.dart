@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.45', '27 mai 2026', [
+    (Icons.email_outlined, 'Connexion par email (magic link) — se connecter sans mot de passe depuis les paramètres'),
+  ]),
   _Entry('5.44', '26 mai 2026', [
     (Icons.today_outlined, 'Programme du jour visible même quand une activité est en cours'),
     (Icons.pie_chart, 'Camembert activités loggées déplacé dans l\'onglet Accueil'),

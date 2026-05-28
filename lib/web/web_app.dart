@@ -1,8 +1,10 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/web/web_auth_screen.dart';
 import 'package:productivitwo_v1/web/web_home_screen.dart';
+import 'package:productivitwo_v1/web/web_email_signin_screen.dart';
 
 // ── Couleurs Productivitwo ────────────────────────────────────────────────────
 
@@ -87,6 +89,16 @@ class _AuthGateState extends State<_AuthGate> {
 
   @override
   Widget build(BuildContext context) {
+    // Détecte un magic link dans l'URL courante (web uniquement)
+    if (kIsWeb) {
+      final currentUrl = Uri.base.toString();
+      try {
+        if (FirebaseAuth.instance.isSignInWithEmailLink(currentUrl)) {
+          return WebEmailSignInScreen(emailLink: currentUrl);
+        }
+      } catch (_) {}
+    }
+
     final stream = _stream;
     if (stream == null) return const WebAuthScreen();
 
