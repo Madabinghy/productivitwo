@@ -44,6 +44,9 @@ import 'package:productivitwo_v1/fcm_service.dart';
 import 'package:uuid/uuid.dart';
 import 'package:productivitwo_v1/widgets/paywall_sheet.dart';
 import 'package:productivitwo_v1/widgets/apple_sign_in_button.dart';
+import 'package:productivitwo_v1/widgets/email_sign_in_tile.dart';
+import 'package:app_links/app_links.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:productivitwo_v1/widgets/programmes_sheet.dart';
 import 'package:productivitwo_v1/widgets/project_sheet.dart';
 import 'package:productivitwo_v1/widgets/inbox_sheet.dart';
@@ -1653,6 +1656,7 @@ class _AppRootState extends State<AppRoot>
   bool _saving = false;
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+  StreamSubscription<Uri?>? _deepLinkSub;
   StreamSubscription<List<Domain>>? _domainsSub;
   StreamSubscription<List<Project>>? _projectsSub;
   StreamSubscription<List<CaptureItem>>? _inboxSub;
@@ -1688,6 +1692,7 @@ class _AppRootState extends State<AppRoot>
 
     _startMinuteHeartbeat();
     _startConnectivityListener();
+    _initDeepLinks();
     // Timeout global 15s sur _init() — l'app s'ouvre toujours en local si ça bloque
     _init().timeout(
       const Duration(seconds: 15),
@@ -1752,6 +1757,7 @@ class _AppRootState extends State<AppRoot>
     _heartbeat?.cancel();
     _countdownTimer?.cancel();
     _connectivitySub?.cancel();
+    _deepLinkSub?.cancel();
     _domainsSub?.cancel();
     _projectsSub?.cancel();
     _inboxSub?.cancel();
@@ -1775,6 +1781,75 @@ class _AppRootState extends State<AppRoot>
       if (isOffline) setState(() => _syncStatus = '⚠️');
       _wasOffline = isOffline;
     });
+  }
+
+  void _initDeepLinks() {
+    final appLinks = AppLinks();
+    // Lien initial (app lancée depuis un lien)
+    appLinks.getInitialLink().then((uri) {
+      if (uri != null) _handleDeepLink(uri);
+    });
+    // Liens suivants (app déjà ouverte)
+    _deepLinkSub = appLinks.uriLinkStream.listen(_handleDeepLink);
+  }
+
+  Future<void> _handleDeepLink(Uri uri) async {
+    final link = uri.toString();
+    if (!_sync.isEmailSignInLink(link)) return;
+    final prefs = await SharedPreferences.getInstance();
+    final email = prefs.getString('email_sign_in_pending');
+    if (email == null || email.isEmpty) {
+      // Email inconnu — demander à l'utilisateur
+      final ctx = _navigatorKey.currentState?.overlay?.context;
+      if (ctx == null) return;
+      final entered = await _askEmailDialog(ctx);
+      if (entered == null) return;
+      _completeEmailSignIn(entered, link);
+    } else {
+      _completeEmailSignIn(email, link);
+    }
+  }
+
+  Future<String?> _askEmailDialog(BuildContext ctx) async {
+    final ctrl = TextEditingController();
+    return showDialog<String>(
+      context: ctx,
+      builder: (c) => AlertDialog(
+        title: const Text('Confirme ton email'),
+        content: TextField(
+          controller: ctrl,
+          keyboardType: TextInputType.emailAddress,
+          decoration: const InputDecoration(hintText: 'ton@email.com'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c), child: const Text('Annuler')),
+          FilledButton(onPressed: () => Navigator.pop(c, ctrl.text.trim()), child: const Text('Confirmer')),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _completeEmailSignIn(String email, String link) async {
+    try {
+      final result = await _sync.signInWithEmailLink(email, link);
+      await ProManager.loginUser(result.uid);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('email_sign_in_pending');
+      if (!result.isNew) {
+        final remote = await _sync.pull();
+        if (remote != null && mounted) {
+          await store.save(remote);
+          final s = await store.loadOrInit();
+          if (mounted) setState(() {
+            _state = s;
+            logic = AppLogic(_state!, _saveAndRefresh);
+          });
+        }
+      }
+      if (mounted) setState(() {});
+    } catch (e) {
+      devLog.error('Email sign-in failed', tag: 'AUTH', error: e);
+    }
   }
 
   @override
@@ -4346,6 +4421,15 @@ class _AppRootState extends State<AppRoot>
                                   fontWeight: FontWeight.w800,
                                   color: Theme.of(context).colorScheme.onSurface)),
                           const SizedBox(height: 12),
+                          EmailSignInTile(
+                            sync: _sync,
+                            state: _state!,
+                            onDataChanged: () {
+                              Navigator.pop(context);
+                              _init();
+                            },
+                          ),
+                          const Divider(height: 24),
                           AppleSignInTile(
                             sync: _sync,
                             state: _state!,

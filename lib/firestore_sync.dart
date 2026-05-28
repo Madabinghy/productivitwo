@@ -64,6 +64,42 @@ class FirestoreSync {
     return (isNew: isNew, uid: cred.user!.uid);
   }
 
+  // URL de continuation pour le magic link — doit être dans les domaines autorisés Firebase
+  static const _emailLinkUrl = 'https://productivitwo-app.web.app/email-signin';
+
+  Future<void> sendSignInLink(String email) async {
+    final settings = ActionCodeSettings(
+      url: _emailLinkUrl,
+      handleCodeInApp: true,
+      iOSBundleId: 'com.madabinghy.productivitwo',
+      androidPackageName: 'com.madabinghy.productivitwo',
+      androidInstallApp: true,
+      androidMinimumVersion: '21',
+    );
+    await _auth.sendSignInLinkToEmail(email: email, actionCodeSettings: settings);
+  }
+
+  Future<({bool isNew, String uid})> signInWithEmailLink(String email, String link) async {
+    if (!_auth.isSignInWithEmailLink(link)) {
+      throw FirebaseAuthException(
+        code: 'invalid-email-link',
+        message: 'Ce lien de connexion n\'est pas valide.',
+      );
+    }
+    final credential = EmailAuthProvider.credentialWithLink(email: email, emailLink: link);
+    UserCredential cred;
+    if (_auth.currentUser != null && _auth.currentUser!.isAnonymous) {
+      cred = await _auth.currentUser!.linkWithCredential(credential);
+    } else {
+      cred = await _auth.signInWithCredential(credential);
+    }
+    final isNew = cred.additionalUserInfo?.isNewUser ?? false;
+    return (isNew: isNew, uid: cred.user!.uid);
+  }
+
+  String? get userEmail => _auth.currentUser?.email;
+  bool isEmailSignInLink(String link) => _auth.isSignInWithEmailLink(link);
+
   Future<void> signOut() async {
     await _auth.signOut();
     await _auth.signInAnonymously();
