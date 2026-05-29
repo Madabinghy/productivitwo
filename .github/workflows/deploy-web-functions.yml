@@ -156,10 +156,14 @@ jobs:
         run: |
           echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/sa.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          # PAS de --force : si le déploiement devait SUPPRIMER des fonctions
+          # (présentes en prod mais absentes de la source), il ÉCHOUE au lieu de
+          # les détruire silencieusement. Garde anti-incident (cf. 29/05/2026 où
+          # un --force depuis un main incomplet a supprimé 7 fonctions live).
           npx -y firebase-tools@latest deploy \
             --only functions \
             --project "$FIREBASE_PROJECT" \
-            --non-interactive --force
+            --non-interactive
 
   # ── Avance le marqueur SEULEMENT si les deux jobs ont réussi ───────────────
   # (déploiement partiel manuel hosting/functions → marqueur non avancé)
