@@ -57,3 +57,7 @@ mcp-server/package-lock.json
 scripts/node_modules/
 scripts/package-lock.json
 scripts/.env
+
+# Artefacts / état local (non source)
+.claude_MB/
+review.zip

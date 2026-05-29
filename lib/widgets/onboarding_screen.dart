@@ -1722,7 +1722,7 @@ class _OrionProjectPageState extends State<_OrionProjectPage> {
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'uid': uid,
-          'token': apiToken.token,
+          'token': apiToken.rawToken,
           'userNeeds': 'ONBOARDING — Crée un projet Gantt pour ce besoin : $desc',
           'isOnboarding': true,
         }),
