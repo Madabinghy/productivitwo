@@ -564,7 +564,18 @@ const PUSH_GANTT_MCP_TOOL = {
                 color:       { type: "string" },
                 barLabel:    { type: "string" },
                 status:      { type: "string", enum: ["pending", "done", "skipped"] },
-                actions:     { type: "array", items: { type: "string" }, description: "2 à 4 sous-actions opérationnelles (étapes courtes, verbe d'action)" },
+                actions:     {
+                  type: "array",
+                  items: { type: "string" },
+                  description:
+                    "Sous-actions opérationnelles. " +
+                    "Pour une tâche de développement, utiliser le format mini-spec en 4 lignes :\n" +
+                    "  1. \"Objectif : <ce que la tâche doit accomplir>\"\n" +
+                    "  2. \"Fichiers : <fichiers ou zones concernés, ex: lib/web/gantt_screen.dart, functions/src/execute.ts>\"\n" +
+                    "  3. \"Critères : <liste des critères d'acceptation vérifiables>\"\n" +
+                    "  4. \"Contraintes : <limites techniques, libs interdites, rétrocompatibilité…>\"\n" +
+                    "Pour une tâche non-dev : 2 à 4 étapes courtes avec verbe d'action.",
+                },
               },
             },
           },
@@ -626,7 +637,18 @@ const ADD_TASK_TOOL = {
       color:       { type: "string" },
       barLabel:    { type: "string" },
       status:      { type: "string", enum: ["pending", "done", "skipped"] },
-      actions:     { type: "array", items: { type: "string" }, description: "Sous-actions (strings)" },
+      actions:     {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "Sous-actions opérationnelles. " +
+          "Pour une tâche de développement, utiliser le format mini-spec en 4 lignes :\n" +
+          "  1. \"Objectif : <ce que la tâche doit accomplir>\"\n" +
+          "  2. \"Fichiers : <fichiers ou zones concernés, ex: lib/web/gantt_screen.dart, functions/src/execute.ts>\"\n" +
+          "  3. \"Critères : <liste des critères d'acceptation vérifiables>\"\n" +
+          "  4. \"Contraintes : <limites techniques, libs interdites, rétrocompatibilité…>\"\n" +
+          "Pour une tâche non-dev : 2 à 4 étapes courtes avec verbe d'action.",
+      },
     },
   },
 };
