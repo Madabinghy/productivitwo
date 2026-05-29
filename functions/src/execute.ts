@@ -192,6 +192,29 @@ async function executePushAssistantMessage(
   );
 }
 
+// Push FCM générique — réutilise le fcmToken stocké dans orion_config/main.
+export async function sendFcmPush(
+  uid: string,
+  title: string,
+  body: string,
+  data: Record<string, string> = {},
+): Promise<void> {
+  const configSnap = await db.collection(`users/${uid}/orion_config`).doc("main").get();
+  if (!configSnap.exists) return;
+  const fcmToken = configSnap.data()?.fcmToken as string | undefined;
+  if (!fcmToken) return;
+
+  const preview = body.length > 120 ? body.slice(0, 120) + "…" : body;
+
+  await admin.messaging().send({
+    token: fcmToken,
+    notification: { title, body: preview },
+    data,
+    apns: { payload: { aps: { sound: "default", badge: 1 } } },
+    android: { notification: { channelId: "orion_messages", priority: "high" } },
+  });
+}
+
 async function sendOrionPushNotification(uid: string, text: string): Promise<void> {
   const configSnap = await db.collection(`users/${uid}/orion_config`).doc("main").get();
   if (!configSnap.exists) return;

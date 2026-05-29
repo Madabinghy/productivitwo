@@ -1,7 +1,7 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as admin from "firebase-admin";
-import { createHmac } from "crypto";
+import { createHmac, timingSafeEqual } from "crypto";
 import { runOrionCycle, getOrionRunCount, incrementOrionRunCount, saveOrionConfig, writeCycleLog } from "./orion";
 import { getOrCreateBrief, setFocus, getFocus, setBriefFeedback, listBriefs } from "./orion_brief";
 import { MODELS, getModel, logTokenUsage } from "./models";
@@ -27,7 +27,7 @@ import {
   ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL,
 } from "./tools";
 import {
-  validateToken, pickProject, pickStrategicObjective, checkRateLimit, todayInParis,
+  validateToken, sendFcmPush, pickProject, pickStrategicObjective, checkRateLimit, todayInParis,
   executePushAssistantMessage, executeGetAssistantMessages, executeDeleteAssistantMessage,
   executeGetUserContext, executeUpdateActivityGoal,
   executeCreateRoutine,
@@ -427,6 +427,58 @@ export const orionWebhook = onRequest(
 //
 // POST { uid, token, userNeeds?, userReply? }
 // Sauvegarde la config ORION puis déclenche un cycle.
+
+// ── githubWebhook — notif push quand une PR est ouverte ─────────────────────
+//
+// Configuré dans GitHub (repo Settings → Webhooks), content-type application/json,
+// event "Pull requests". Vérifie X-Hub-Signature-256 (HMAC du rawBody avec
+// GITHUB_WEBHOOK_SECRET), puis pousse une notif FCM au dev (uid = GITHUB_NOTIFY_UID).
+
+function verifyGithubSignature(raw: Buffer, header: string, secret: string): boolean {
+  if (!secret || !header.startsWith("sha256=")) return false;
+  const expected = "sha256=" + createHmac("sha256", secret).update(raw).digest("hex");
+  const a = Buffer.from(header);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+export const githubWebhook = onRequest(
+  { invoker: "public", secrets: ["GITHUB_WEBHOOK_SECRET"] },
+  async (req, res) => {
+    if (req.method !== "POST") { res.status(405).send("Method Not Allowed"); return; }
+
+    const secret = process.env.GITHUB_WEBHOOK_SECRET ?? "";
+    const sig = req.get("x-hub-signature-256") ?? "";
+    const raw = (req as unknown as { rawBody?: Buffer }).rawBody;
+    if (!raw || !verifyGithubSignature(raw, sig, secret)) {
+      res.status(401).send("Invalid signature");
+      return;
+    }
+
+    if (req.get("x-github-event") !== "pull_request") { res.status(200).send("ignored"); return; }
+
+    const body = req.body as {
+      action?: string;
+      number?: number;
+      pull_request?: { title?: string; html_url?: string };
+      repository?: { full_name?: string };
+    };
+    if (body.action !== "opened" && body.action !== "ready_for_review") {
+      res.status(200).send("ignored");
+      return;
+    }
+
+    const uid = process.env.GITHUB_NOTIFY_UID;
+    if (uid) {
+      const num = body.number ?? 0;
+      const title = body.pull_request?.title ?? "";
+      const url = body.pull_request?.html_url ?? "";
+      await sendFcmPush(uid, `📥 PR #${num} à valider`, title, { type: "github_pr", url });
+    }
+
+    res.status(200).send("ok");
+  }
+);
 
 export const orionSaveConfig = onRequest(
   { cors: true, invoker: "public", secrets: ["ANTHROPIC_API_KEY"] },
