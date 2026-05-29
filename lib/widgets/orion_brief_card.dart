@@ -785,7 +785,7 @@ class _OrionHistoryScreenState extends State<OrionHistoryScreen> {
             Icon(Icons.auto_awesome_outlined, size: 40, color: _kGold.withOpacity(.4)),
             const SizedBox(height: 12),
             Text(
-              'Aucun brief pour l'instant',
+              "Aucun brief pour l'instant",
               style: TextStyle(color: cs.onSurface.withOpacity(.5), fontSize: 15),
             ),
             const SizedBox(height: 6),
