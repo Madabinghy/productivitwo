@@ -1,0 +1,182 @@
+name: Deploy Web + Functions
+
+# Déclenchement :
+#  - workflow_dispatch : bouton manuel (déclenchable depuis l'app GitHub mobile)
+#  - push d'un tag v*  : ex. `git tag v5.46 && git push origin v5.46`
+#  - schedule (cron)   : reprise idempotente — redéploie le dernier tag v* si son
+#                        déploiement n'a jamais réussi (quota épuisé, échec transitoire…)
+# JAMAIS sur push de branche → rien ne part à chaque merge.
+#
+# Idempotence : le tag marqueur `deployed-prod` pointe sur le dernier commit
+# déployé avec succès. Le cron compare dernier `v*` vs marqueur :
+#   - identiques → no-op (quelques secondes, coût minute négligeable)
+#   - différents → (re)déploie, puis avance le marqueur SI les deux jobs réussissent
+# Un déploiement raté n'avance pas le marqueur → le prochain cron reprend tout seul.
+#
+# ⚠️ Limite du "mur" : si les minutes GitHub Actions sont elles-mêmes épuisées,
+# le cron ne tourne pas non plus. Il reprend au reset mensuel des minutes.
+# ⚠️ Les workflows planifiés ne tournent que depuis la branche par défaut (main).
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Quoi déployer"
+        type: choice
+        default: both
+        options: [both, hosting, functions]
+  push:
+    tags:
+      - "v*"
+  schedule:
+    - cron: "0 */3 * * *" # toutes les 3 h — reprise idempotente
+
+concurrency:
+  group: deploy-web-functions
+  cancel-in-progress: false
+
+permissions:
+  contents: write # pour déplacer le tag marqueur `deployed-prod`
+
+env:
+  FIREBASE_PROJECT: productivitwo-app
+  DEPLOYED_MARKER: deployed-prod
+
+jobs:
+  # ── Décide quoi déployer et si c'est nécessaire ────────────────────────────
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      should_deploy: ${{ steps.decide.outputs.should_deploy }}
+      target_sha: ${{ steps.decide.outputs.target_sha }}
+      target_ref: ${{ steps.decide.outputs.target_ref }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          PUSHED_REF: ${{ github.ref_name }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT" = "push" ]; then
+            # Tag v* poussé → déploie ce tag
+            target_ref="$PUSHED_REF"
+            target_sha="$(git rev-list -n1 "$target_ref")"
+            should=true
+          elif [ "$EVENT" = "workflow_dispatch" ]; then
+            # Déclenchement manuel → déploie HEAD (main) maintenant, sans condition
+            target_ref="$HEAD_SHA"
+            target_sha="$HEAD_SHA"
+            should=true
+          else
+            # schedule → reprise idempotente : déploie le dernier tag v* s'il n'est
+            # pas déjà marqué déployé. Sans tag, ne fait rien.
+            target_ref="$(git tag -l 'v*' --sort=-v:refname | head -n1)"
+            if [ -z "$target_ref" ]; then
+              echo "Aucun tag v* — rien à reprendre."
+              echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            target_sha="$(git rev-list -n1 "$target_ref")"
+            deployed_sha="$(git rev-list -n1 "$DEPLOYED_MARKER" 2>/dev/null || echo '')"
+            if [ "$target_sha" = "$deployed_sha" ]; then
+              echo "✅ $target_ref déjà déployé — skip."
+              should=false
+            else
+              should=true
+            fi
+          fi
+
+          echo "→ event=$EVENT target=$target_ref ($target_sha) deploy=$should"
+          echo "should_deploy=$should"  >> "$GITHUB_OUTPUT"
+          echo "target_ref=$target_ref" >> "$GITHUB_OUTPUT"
+          echo "target_sha=$target_sha" >> "$GITHUB_OUTPUT"
+
+  # ── Web → Firebase Hosting ─────────────────────────────────────────────────
+  deploy-web:
+    needs: check
+    if: ${{ needs.check.outputs.should_deploy == 'true' && (github.event_name != 'workflow_dispatch' || inputs.target != 'functions') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check.outputs.target_sha }}
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.35.6"
+          channel: stable
+          cache: true
+
+      - name: flutter pub get
+        run: flutter pub get
+
+      - name: Build web
+        run: flutter build web --release --no-tree-shake-icons
+
+      - name: Deploy hosting
+        run: |
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          npx -y firebase-tools@latest deploy \
+            --only hosting \
+            --project "$FIREBASE_PROJECT" \
+            --non-interactive --force
+
+  # ── Cloud Functions → Firebase ─────────────────────────────────────────────
+  deploy-functions:
+    needs: check
+    if: ${{ needs.check.outputs.should_deploy == 'true' && (github.event_name != 'workflow_dispatch' || inputs.target != 'hosting') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check.outputs.target_sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install deps
+        working-directory: functions
+        run: npm ci
+
+      - name: Build (tsc)
+        working-directory: functions
+        run: npm run build
+
+      - name: Deploy functions
+        run: |
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          npx -y firebase-tools@latest deploy \
+            --only functions \
+            --project "$FIREBASE_PROJECT" \
+            --non-interactive --force
+
+  # ── Avance le marqueur SEULEMENT si les deux jobs ont réussi ───────────────
+  # (déploiement partiel manuel hosting/functions → marqueur non avancé)
+  mark-deployed:
+    needs: [check, deploy-web, deploy-functions]
+    if: ${{ always() && needs.deploy-web.result == 'success' && needs.deploy-functions.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Move deployed-prod marker
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -f "$DEPLOYED_MARKER" "${{ needs.check.outputs.target_sha }}"
+          git push -f origin "refs/tags/$DEPLOYED_MARKER"
+          echo "✅ Marqueur $DEPLOYED_MARKER → ${{ needs.check.outputs.target_ref }} (${{ needs.check.outputs.target_sha }})"
