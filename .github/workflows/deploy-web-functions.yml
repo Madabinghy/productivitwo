@@ -25,6 +25,8 @@ on:
         default: both
         options: [both, hosting, functions]
   push:
+    branches:
+      - main # deploy on merge : tout merge sur main déploie web + functions
     tags:
       - "v*"
   schedule:
@@ -58,12 +60,18 @@ jobs:
       - id: decide
         env:
           EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
           PUSHED_REF: ${{ github.ref_name }}
           HEAD_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
 
-          if [ "$EVENT" = "push" ]; then
+          if [ "$EVENT" = "push" ] && [ "$REF" = "refs/heads/main" ]; then
+            # Merge/push sur main → déploie main HEAD (deploy on merge)
+            target_ref="$HEAD_SHA"
+            target_sha="$HEAD_SHA"
+            should=true
+          elif [ "$EVENT" = "push" ]; then
             # Tag v* poussé → déploie ce tag
             target_ref="$PUSHED_REF"
             target_sha="$(git rev-list -n1 "$target_ref")"
