@@ -26,6 +26,12 @@ Le mobile (iOS/Android) reste hors de ce pipeline : builds manuels via Codemagic
 - **Pas de `--force` sur le déploiement functions** : un déploiement qui supprimerait des
   fonctions présentes en prod mais absentes de la source **échoue** au lieu de les détruire.
 
+## Notifications
+
+Quand une PR est ouverte, la Cloud Function `githubWebhook` envoie une notif push
+dans Productivitwo (vérif signature HMAC `GITHUB_WEBHOOK_SECRET` → FCM au dev).
+But : valider les PR des agents depuis le téléphone.
+
 ## Leçon importante
 
 `main` (git) et la prod (Firebase) sont deux choses distinctes. Les Cloud Functions et le web
