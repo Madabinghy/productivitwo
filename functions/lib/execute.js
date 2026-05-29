@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.sendFcmPush = sendFcmPush;
 exports.executePushAssistantMessage = executePushAssistantMessage;
 exports.validateToken = validateToken;
 exports.executeGetUserContext = executeGetUserContext;
@@ -174,6 +175,24 @@ async function executePushAssistantMessage(uid, args) {
         `• Condition : ${args.condition.type}\n` +
         `• Texte : "${args.text.slice(0, 60)}${args.text.length > 60 ? "…" : ""}"\n` +
         `• messageId : ${id}`);
+}
+// Push FCM générique — réutilise le fcmToken stocké dans orion_config/main.
+async function sendFcmPush(uid, title, body, data = {}) {
+    var _a;
+    const configSnap = await db_1.db.collection(`users/${uid}/orion_config`).doc("main").get();
+    if (!configSnap.exists)
+        return;
+    const fcmToken = (_a = configSnap.data()) === null || _a === void 0 ? void 0 : _a.fcmToken;
+    if (!fcmToken)
+        return;
+    const preview = body.length > 120 ? body.slice(0, 120) + "…" : body;
+    await admin.messaging().send({
+        token: fcmToken,
+        notification: { title, body: preview },
+        data,
+        apns: { payload: { aps: { sound: "default", badge: 1 } } },
+        android: { notification: { channelId: "orion_messages", priority: "high" } },
+    });
 }
 async function sendOrionPushNotification(uid, text) {
     var _a;
