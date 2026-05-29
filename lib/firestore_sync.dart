@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/dev_logger.dart';
@@ -500,28 +501,39 @@ class FirestoreSync {
 
   // ── API tokens ───────────────────────────────────────────────────────────────
 
+  static String _rawTokenPrefsKey(String tokenId) => 'api_token_raw_$tokenId';
+
   Future<List<ApiToken>> fetchApiTokens() async {
     if (uid == null) return [];
     try {
       final snap = await _col('api_tokens').get();
-      return snap.docs
-          .map((d) => ApiToken.from(d.data() as Map))
-          .toList();
+      final prefs = await SharedPreferences.getInstance();
+      return snap.docs.map((d) {
+        final token = ApiToken.from(d.data() as Map);
+        token.rawToken = prefs.getString(_rawTokenPrefsKey(token.id));
+        return token;
+      }).toList();
     } catch (_) {
       return [];
     }
   }
 
-  /// Crée un token, le persiste et le retourne (valeur brute visible une seule fois).
+  /// Crée un token, le persiste et le retourne (rawToken disponible une seule fois).
   Future<ApiToken> createApiToken(String label) async {
-    final token = ApiToken(label: label);
+    final rawToken = _generateNonce(32);
+    final hash = _sha256(rawToken);
+    final token = ApiToken(label: label, tokenHash: hash, rawToken: rawToken);
     await _col('api_tokens').doc(token.id).set(token.toJson());
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_rawTokenPrefsKey(token.id), rawToken);
     return token;
   }
 
   Future<void> revokeApiToken(String tokenId) async {
     if (uid == null) return;
     await _col('api_tokens').doc(tokenId).update({'active': false});
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_rawTokenPrefsKey(tokenId));
   }
 
   /// Retourne le premier token actif existant, ou en crée un silencieusement.

@@ -1022,14 +1022,42 @@ class _FocusView extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Stat globale ─────────────────────────────────────────────
-            Text(
-              '$weekDone / $weekActive tâches actives faites cette semaine',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: cs.onSurface.withOpacity(0.55),
-              ),
+            // ── Stat globale + bouton vue élargie ────────────────────────
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '$weekDone / $weekActive tâches actives faites cette semaine',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurface.withOpacity(0.55),
+                    ),
+                  ),
+                ),
+                Tooltip(
+                  message: 'Vue 14 jours',
+                  child: InkWell(
+                    onTap: () => _showWideGanttModal(context),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.open_in_full, size: 13, color: cs.onSurface.withOpacity(0.5)),
+                        const SizedBox(width: 5),
+                        Text(
+                          '14 jours',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: cs.onSurface.withOpacity(0.5),
+                          ),
+                        ),
+                      ]),
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 12),
 
@@ -1605,10 +1633,1098 @@ class _FocusView extends StatelessWidget {
                   ),
           ),
           const SizedBox(height: 12),
-          // ── ORION ───────────────────────────────────────────────────────
-          _OrionSidebarSection(sync: sync, cs: cs),
+          // ── ORION Brief — Stratège quotidien ────────────────────────────
+          const _OrionBriefSection(),
+          const SizedBox(height: 12),
+          // ── VISION ──────────────────────────────────────────────────────
+          const _VisionSidebarSection(),
         ],
       ),
+    );
+  }
+
+  // ── Modale vue Gantt 14 jours roulants ────────────────────────────────────
+  void _showWideGanttModal(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => _WideGanttDialog(
+        projects: projects,
+        domains: domains,
+      ),
+    );
+  }
+}
+
+// ── Modale Gantt 14 jours ─────────────────────────────────────────────────────
+
+class _WideGanttDialog extends StatelessWidget {
+  final List<Project> projects;
+  final List<Domain> domains;
+  const _WideGanttDialog({required this.projects, required this.domains});
+
+  static const int _numDays = 14;
+  static const List<String> _shortDayNames = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+
+  static Color _domainColor(Domain? domain, ColorScheme cs, List<Domain> allDomains) {
+    if (domain == null) return cs.onSurface.withOpacity(0.4);
+    if (domain.colorValue != null) return Color(domain.colorValue!);
+    final idx = allDomains.indexWhere((d) => d.id == domain.id);
+    if (idx >= 0) return kDomainPalette[idx % kDomainPalette.length];
+    return cs.primary;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final now = DateTime.now();
+    final startDate = DateTime(now.year, now.month, now.day);
+    final endDate = startDate.add(const Duration(days: _numDays - 1));
+
+    // Filtrer les tâches qui chevauchent la fenêtre 14 jours
+    final pairs = <({ProjectTask task, Project project})>[];
+    for (final p in projects) {
+      if (p.status == 'archived' || p.status == 'done') continue;
+      for (final t in p.tasks) {
+        if (t.status == 'skipped') continue;
+        final effectiveEnd = t.endDate ?? t.startDate;
+        if (!t.startDate.isAfter(endDate) && !effectiveEnd.isBefore(startDate)) {
+          pairs.add((task: t, project: p));
+        }
+      }
+    }
+
+    // Grouper par domaine
+    final byDomain = <String?, List<({ProjectTask task, Project project})>>{};
+    for (final pair in pairs) {
+      byDomain.putIfAbsent(pair.project.domainId, () => []).add(pair);
+    }
+    final domainGroups = <({Domain? domain, List<({ProjectTask task, Project project})> pairs})>[];
+    for (final d in domains) {
+      if (d.deleted) continue;
+      final list = byDomain[d.id] ?? [];
+      if (list.isNotEmpty) domainGroups.add((domain: d, pairs: list));
+    }
+    final orphans = byDomain[null] ?? [];
+    if (orphans.isNotEmpty) domainGroups.add((domain: null, pairs: orphans));
+
+    return LayoutBuilder(
+      builder: (ctx, screen) {
+        // Dimensions modale (95% de l'écran)
+        final modalW = (screen.maxWidth * 0.95).clamp(700.0, 1800.0);
+        final modalH = (screen.maxHeight * 0.92).clamp(500.0, 1000.0);
+        // Label fixe à gauche
+        final labelW = (modalW * 0.22).clamp(180.0, 320.0);
+        // 14 colonnes jours dynamiques
+        const innerPadding = 24.0;
+        final daysAvailableW = modalW - labelW - innerPadding * 2;
+        final dayW = daysAvailableW / _numDays;
+        const rowH = 30.0;
+        const headerH = 50.0;
+        const domainHeaderH = 26.0;
+
+        return Center(
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              width: modalW,
+              constraints: BoxConstraints(maxHeight: modalH),
+              decoration: BoxDecoration(
+                color: cs.surface,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 30)],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // ── Header ─────────────────────────────────────────────
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 20, 16, 14),
+                    child: Row(
+                      children: [
+                        Icon(Icons.view_timeline_outlined, size: 18, color: cs.primary),
+                        const SizedBox(width: 10),
+                        Text(
+                          '14 prochains jours',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: cs.onSurface),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          '${_fmtDate(startDate)} → ${_fmtDate(endDate)}',
+                          style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.45)),
+                        ),
+                        const Spacer(),
+                        Text(
+                          '${pairs.length} tâche${pairs.length > 1 ? 's' : ''}',
+                          style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.45)),
+                        ),
+                        const SizedBox(width: 10),
+                        IconButton(
+                          icon: const Icon(Icons.close, size: 20),
+                          onPressed: () => Navigator.of(ctx).pop(),
+                          tooltip: 'Fermer',
+                        ),
+                      ],
+                    ),
+                  ),
+                  Divider(height: 1, color: cs.outlineVariant.withOpacity(0.3)),
+                  // ── Contenu Gantt ──────────────────────────────────────
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(innerPadding),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Header jours
+                          Row(
+                            children: [
+                              SizedBox(width: labelW),
+                              for (int d = 0; d < _numDays; d++)
+                                _buildDayHeader(cs, startDate.add(Duration(days: d)), startDate, dayW, headerH),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          // Groupes domaines
+                          if (domainGroups.isEmpty)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 40),
+                              child: Center(
+                                child: Text(
+                                  'Aucune tâche dans les 14 prochains jours',
+                                  style: TextStyle(fontSize: 14, color: cs.onSurface.withOpacity(0.35)),
+                                ),
+                              ),
+                            )
+                          else
+                            for (final group in domainGroups)
+                              _buildDomainGroup(cs, group.domain, group.pairs, startDate, labelW, dayW, rowH, domainHeaderH),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDayHeader(ColorScheme cs, DateTime day, DateTime startDate, double width, double height) {
+    final isToday = day.year == startDate.year && day.month == startDate.month && day.day == startDate.day;
+    final dayOfWeek = day.weekday; // 1=Mon..7=Sun
+    final letter = _shortDayNames[dayOfWeek - 1];
+    final isWeekend = dayOfWeek >= 6;
+
+    return SizedBox(
+      width: width,
+      height: height,
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          decoration: isToday
+              ? BoxDecoration(color: Colors.teal.withOpacity(0.15), borderRadius: BorderRadius.circular(6))
+              : null,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                letter,
+                style: TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                  color: isToday
+                      ? Colors.teal.shade700
+                      : isWeekend
+                          ? cs.onSurface.withOpacity(0.3)
+                          : cs.onSurface.withOpacity(0.5),
+                ),
+              ),
+              Text(
+                '${day.day}',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: isToday ? FontWeight.w800 : FontWeight.w600,
+                  color: isToday
+                      ? Colors.teal.shade700
+                      : isWeekend
+                          ? cs.onSurface.withOpacity(0.4)
+                          : cs.onSurface.withOpacity(0.65),
+                  height: 1.1,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDomainGroup(
+    ColorScheme cs,
+    Domain? domain,
+    List<({ProjectTask task, Project project})> pairs,
+    DateTime startDate,
+    double labelW,
+    double dayW,
+    double rowH,
+    double domainHeaderH,
+  ) {
+    final color = _domainColor(domain, cs, domains);
+    final name = domain?.name ?? 'Sans domaine';
+    final totalW = labelW + _numDays * dayW;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: totalW,
+          child: Container(
+            height: domainHeaderH,
+            margin: const EdgeInsets.only(bottom: 3, top: 8),
+            decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(4)),
+            child: Row(
+              children: [
+                const SizedBox(width: 10),
+                Container(width: 7, height: 7, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+                const SizedBox(width: 7),
+                Text(
+                  name.toUpperCase(),
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.8, color: color),
+                ),
+                const Spacer(),
+                Text(
+                  '${pairs.length}',
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color.withOpacity(0.6)),
+                ),
+                const SizedBox(width: 10),
+              ],
+            ),
+          ),
+        ),
+        for (final pair in pairs)
+          _buildTaskRow(cs, pair.task, pair.project, startDate, labelW, dayW, rowH, color),
+      ],
+    );
+  }
+
+  Widget _buildTaskRow(
+    ColorScheme cs,
+    ProjectTask task,
+    Project project,
+    DateTime startDate,
+    double labelW,
+    double dayW,
+    double rowH,
+    Color domainColor,
+  ) {
+    final isDone = task.status == 'done';
+    final endDate = startDate.add(const Duration(days: _numDays - 1));
+    final totalDayW = dayW * _numDays;
+
+    final tStart = DateTime(task.startDate.year, task.startDate.month, task.startDate.day);
+    final tEnd = task.endDate != null
+        ? DateTime(task.endDate!.year, task.endDate!.month, task.endDate!.day)
+        : tStart;
+    final barStart = tStart.isBefore(startDate) ? startDate : tStart;
+    final barEnd = tEnd.isAfter(endDate) ? endDate : tEnd;
+    final startOffset = barStart.difference(startDate).inDays * dayW;
+    final barDays = barEnd.difference(barStart).inDays + 1;
+    final barWidth = barDays * dayW;
+    final resolvedColor = _parseTaskColor(task.color) ?? domainColor;
+    final barColor = isDone ? resolvedColor.withOpacity(0.35) : resolvedColor.withOpacity(0.75);
+
+    return SizedBox(
+      height: rowH,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: labelW,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Row(
+                children: [
+                  if (isDone) ...[
+                    Icon(Icons.check_circle, size: 11, color: Colors.green.shade500),
+                    const SizedBox(width: 4),
+                  ],
+                  Expanded(
+                    child: Text(
+                      task.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: cs.onSurface.withOpacity(isDone ? 0.35 : 0.8),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          SizedBox(
+            width: totalDayW,
+            height: rowH,
+            child: Stack(
+              children: [
+                // Aujourd'hui surligné
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  width: dayW,
+                  bottom: 0,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.teal.withOpacity(0.08),
+                      border: const Border(
+                        left: BorderSide(color: Color(0x2227C48F), width: 1),
+                        right: BorderSide(color: Color(0x2227C48F), width: 1),
+                      ),
+                    ),
+                  ),
+                ),
+                // Séparateurs verticaux légers (chaque 7e jour plus fort)
+                for (int d = 0; d < _numDays; d++)
+                  Positioned(
+                    left: d * dayW,
+                    top: 4,
+                    bottom: 4,
+                    width: 1,
+                    child: Container(color: cs.outlineVariant.withOpacity(d == 7 ? 0.25 : 0.08)),
+                  ),
+                // Jalon ou barre
+                if (task.isMilestone) ...[
+                  Positioned(
+                    left: startOffset + dayW / 2 - 6,
+                    top: rowH / 2 - 6,
+                    child: Transform.rotate(
+                      angle: 0.785398,
+                      child: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: isDone ? Colors.green.shade600 : Colors.orange.shade700,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                  ),
+                ] else if (barWidth > 0) ...[
+                  Positioned(
+                    left: startOffset,
+                    top: rowH / 2 - 5,
+                    width: barWidth,
+                    height: 10,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: barColor,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _fmtDate(DateTime d) {
+    const months = ['jan','fév','mar','avr','mai','juin','juil','aoû','sep','oct','nov','déc'];
+    return '${d.day} ${months[d.month - 1]}';
+  }
+}
+
+// ── Vision sidebar — bouton + countdown ───────────────────────────────────────
+
+class _VisionSidebarSection extends StatefulWidget {
+  const _VisionSidebarSection();
+  @override
+  State<_VisionSidebarSection> createState() => _VisionSidebarSectionState();
+}
+
+class _VisionSidebarSectionState extends State<_VisionSidebarSection> {
+  static const _visionApi = 'https://getvisionaccess-dzos75b65q-uc.a.run.app';
+
+  bool _loading = true;
+  bool _isPro = false;
+  bool _available = false;
+  bool _onboardingDone = false;
+  DateTime? _nextAvailableAt;
+  String? _accessUrl;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        setState(() { _loading = false; _error = 'Non connecté'; });
+        return;
+      }
+      final idToken = await user.getIdToken();
+      final res = await http.post(
+        Uri.parse(_visionApi),
+        headers: {
+          'Authorization': 'Bearer $idToken',
+          'Content-Type': 'application/json',
+        },
+      );
+      if (!mounted) return;
+      if (res.statusCode != 200) {
+        setState(() { _loading = false; _error = 'Erreur ${res.statusCode}'; });
+        return;
+      }
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      setState(() {
+        _loading = false;
+        _isPro = body['isPro'] == true;
+        _available = body['available'] == true;
+        _onboardingDone = body['onboardingDone'] == true;
+        _accessUrl = body['accessUrl'] as String?;
+        final nextStr = body['nextAvailableAt'] as String?;
+        _nextAvailableAt = nextStr != null ? DateTime.tryParse(nextStr) : null;
+      });
+    } catch (e) {
+      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+    }
+  }
+
+  void _openVision() {
+    final url = _accessUrl;
+    if (url == null) return;
+    html.window.open(url, '_blank');
+  }
+
+  String _daysUntilNext() {
+    if (_nextAvailableAt == null) return '';
+    final diff = _nextAvailableAt!.difference(DateTime.now());
+    if (diff.isNegative) return 'maintenant';
+    final days = diff.inDays;
+    if (days == 0) return 'aujourd\'hui';
+    if (days == 1) return 'demain';
+    return 'dans $days jours';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    const gold = Color(0xFFC9A84C);
+
+    return _SidebarCard(
+      title: 'Vision',
+      titleColor: gold,
+      icon: Icons.auto_awesome_outlined,
+      cs: cs,
+      child: _loading
+          ? Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(children: [
+                SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5, color: cs.onSurface.withOpacity(.3))),
+                const SizedBox(width: 8),
+                Text('Chargement…', style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.4))),
+              ]),
+            )
+          : !_onboardingDone
+              ? Text(
+                  'Termine d\'abord ta première session Vision pour activer le mode mensuel.',
+                  style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.5), height: 1.5),
+                )
+              : !_isPro
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Fais évoluer ta vision chaque mois (~20 min) avec Productivitwo Pro.',
+                          style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.6), height: 1.5),
+                        ),
+                        const SizedBox(height: 10),
+                        InkWell(
+                          onTap: () => html.window.open('https://app.productivitwo.com', '_blank'),
+                          child: Row(children: [
+                            Icon(Icons.workspace_premium_outlined, size: 14, color: gold),
+                            const SizedBox(width: 6),
+                            Text('Passer en Pro', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: gold)),
+                          ]),
+                        ),
+                      ],
+                    )
+                  : _available
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Ta session mensuelle est disponible.',
+                              style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.65), height: 1.5),
+                            ),
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              width: double.infinity,
+                              child: FilledButton.icon(
+                                onPressed: _openVision,
+                                icon: const Icon(Icons.auto_awesome, size: 14),
+                                label: const Text('Démarrer ma Vision', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: gold,
+                                  foregroundColor: Colors.black87,
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                ),
+                              ),
+                            ),
+                          ],
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(children: [
+                              Icon(Icons.schedule, size: 13, color: cs.onSurface.withOpacity(.4)),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Prochaine vision ${_daysUntilNext()}',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: cs.onSurface.withOpacity(.6)),
+                              ),
+                            ]),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Une session par mois pour faire évoluer ta vision.',
+                              style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(.4), height: 1.5),
+                            ),
+                          ],
+                        ),
+    );
+  }
+}
+
+// ── ORION Brief — Stratège quotidien ──────────────────────────────────────────
+
+class _OrionBriefSection extends StatefulWidget {
+  const _OrionBriefSection();
+  @override
+  State<_OrionBriefSection> createState() => _OrionBriefSectionState();
+}
+
+class _OrionBriefSectionState extends State<_OrionBriefSection> {
+  static const _api = 'https://orionbrief-dzos75b65q-uc.a.run.app';
+  static const _gold = Color(0xFFe8c94a);
+
+  bool _loading = true;
+  String _focus = '';
+  Map<String, dynamic>? _brief;
+  bool _editingFocus = false;
+  bool _focusNotSet = false;
+  String? _error;
+  final _focusCtrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAll();
+  }
+
+  @override
+  void dispose() {
+    _focusCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<String?> _getIdToken() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return null;
+    return await user.getIdToken();
+  }
+
+  Future<void> _loadAll() async {
+    setState(() { _loading = true; _error = null; });
+    final idToken = await _getIdToken();
+    if (idToken == null) {
+      setState(() { _loading = false; _error = 'Non connecté'; });
+      return;
+    }
+    try {
+      // Get focus
+      final fRes = await http.post(
+        Uri.parse(_api),
+        headers: {'Authorization': 'Bearer $idToken', 'Content-Type': 'application/json'},
+        body: jsonEncode({'action': 'getFocus'}),
+      );
+      final focus = (jsonDecode(fRes.body) as Map)['focus'] as String? ?? '';
+      _focus = focus;
+      _focusCtrl.text = focus;
+
+      if (focus.trim().isEmpty) {
+        setState(() { _loading = false; _focusNotSet = true; _editingFocus = true; });
+        return;
+      }
+
+      // Get brief
+      final bRes = await http.post(
+        Uri.parse(_api),
+        headers: {'Authorization': 'Bearer $idToken', 'Content-Type': 'application/json'},
+        body: jsonEncode({'action': 'getBrief'}),
+      );
+      if (bRes.statusCode == 200) {
+        _brief = jsonDecode(bRes.body) as Map<String, dynamic>;
+        setState(() { _loading = false; _focusNotSet = false; });
+      } else if (bRes.statusCode == 412) {
+        setState(() { _loading = false; _focusNotSet = true; });
+      } else {
+        setState(() { _loading = false; _error = 'Erreur ${bRes.statusCode}'; });
+      }
+    } catch (e) {
+      setState(() { _loading = false; _error = e.toString(); });
+    }
+  }
+
+  Future<void> _saveFocus() async {
+    final newFocus = _focusCtrl.text.trim();
+    if (newFocus.isEmpty) return;
+    final idToken = await _getIdToken();
+    if (idToken == null) return;
+    setState(() => _loading = true);
+    try {
+      await http.post(
+        Uri.parse(_api),
+        headers: {'Authorization': 'Bearer $idToken', 'Content-Type': 'application/json'},
+        body: jsonEncode({'action': 'setFocus', 'focus': newFocus}),
+      );
+      _focus = newFocus;
+      _editingFocus = false;
+      // Force régénération du brief avec le nouveau focus
+      await _loadAll();
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _sendFeedback(String value) async {
+    final brief = _brief;
+    if (brief == null) return;
+    final idToken = await _getIdToken();
+    if (idToken == null) return;
+    final date = brief['date'] as String?;
+    if (date == null) return;
+    try {
+      await http.post(
+        Uri.parse(_api),
+        headers: {'Authorization': 'Bearer $idToken', 'Content-Type': 'application/json'},
+        body: jsonEncode({'action': 'setFeedback', 'date': date, 'feedback': value}),
+      );
+      setState(() { _brief = {...brief, 'feedback': value}; });
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return _SidebarCard(
+      title: 'ORION · Stratège',
+      titleColor: _gold,
+      icon: Icons.auto_awesome_outlined,
+      cs: cs,
+      child: _buildContent(cs),
+    );
+  }
+
+  Widget _buildContent(ColorScheme cs) {
+    if (_loading) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(children: [
+          SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5, color: cs.onSurface.withOpacity(.3))),
+          const SizedBox(width: 8),
+          Text('Chargement…', style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.4))),
+        ]),
+      );
+    }
+    if (_error != null) {
+      return Text(_error!, style: TextStyle(fontSize: 12, color: cs.error));
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Focus
+        _buildFocusBlock(cs),
+        const SizedBox(height: 14),
+        // Brief
+        if (_focusNotSet)
+          Text(
+            'Définis ton focus au-dessus pour activer ton brief quotidien.',
+            style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.45), height: 1.5, fontStyle: FontStyle.italic),
+          )
+        else if (_brief != null)
+          _buildBriefBlock(cs),
+      ],
+    );
+  }
+
+  Widget _buildFocusBlock(ColorScheme cs) {
+    if (_editingFocus) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('TON FOCUS DU MOMENT',
+              style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 1.2, color: cs.onSurface.withOpacity(.4))),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _focusCtrl,
+            maxLines: 3,
+            minLines: 2,
+            maxLength: 280,
+            decoration: InputDecoration(
+              hintText: 'Ex : "Je lance ma formation avant fin juin. Tout converge vers ça."',
+              hintStyle: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.3)),
+              border: const OutlineInputBorder(),
+              isDense: true,
+              contentPadding: const EdgeInsets.all(10),
+            ),
+            style: const TextStyle(fontSize: 13),
+          ),
+          const SizedBox(height: 8),
+          Row(children: [
+            FilledButton(
+              onPressed: _saveFocus,
+              style: FilledButton.styleFrom(
+                backgroundColor: _gold,
+                foregroundColor: Colors.black87,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              ),
+              child: const Text('Enregistrer', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+            ),
+            if (_focus.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              TextButton(
+                onPressed: () => setState(() { _editingFocus = false; _focusCtrl.text = _focus; }),
+                child: Text('Annuler', style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.5))),
+              ),
+            ],
+          ]),
+        ],
+      );
+    }
+
+    return InkWell(
+      onTap: () => setState(() => _editingFocus = true),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Text('TON FOCUS',
+                  style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 1.2, color: cs.onSurface.withOpacity(.4))),
+              const Spacer(),
+              Icon(Icons.edit_outlined, size: 11, color: cs.onSurface.withOpacity(.3)),
+            ]),
+            const SizedBox(height: 6),
+            Text(_focus,
+                style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(.85), height: 1.5, fontStyle: FontStyle.italic)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBriefBlock(ColorScheme cs) {
+    final b = _brief!;
+    final priorityAction = b['priorityAction'] as String? ?? '';
+    final risk = b['risk'] as String?;
+    final question = b['question'] as String?;
+    final feedback = b['feedback'] as String?;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('BRIEF DU JOUR',
+            style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 1.2, color: _gold)),
+        const SizedBox(height: 10),
+        _briefRow(cs, '→', 'Action prioritaire', priorityAction, _gold),
+        if (risk != null && risk.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          _briefRow(cs, '⚠', 'Risque', risk, const Color(0xFFE07B39)),
+        ],
+        if (question != null && question.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          _briefRow(cs, '?', 'Question', question, const Color(0xFF7AB8E5)),
+        ],
+        const SizedBox(height: 14),
+        // Feedback + historique
+        Row(children: [
+          if (feedback == null) ...[
+            _feedbackBtn(cs, '✓ Utile', () => _sendFeedback('useful')),
+            const SizedBox(width: 8),
+            _feedbackBtn(cs, '✗ Passe', () => _sendFeedback('skip')),
+          ] else
+            Text(
+              feedback == 'useful' ? '✓ Marqué utile' : '✗ Brief passé',
+              style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(.4)),
+            ),
+          const Spacer(),
+          InkWell(
+            onTap: _openHistory,
+            borderRadius: BorderRadius.circular(6),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.history, size: 12, color: cs.onSurface.withOpacity(.5)),
+                const SizedBox(width: 4),
+                Text('Historique',
+                    style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(.5), fontWeight: FontWeight.w500)),
+              ]),
+            ),
+          ),
+        ]),
+      ],
+    );
+  }
+
+  Future<void> _openHistory() async {
+    final idToken = await _getIdToken();
+    if (idToken == null) return;
+    if (!mounted) return;
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Theme.of(ctx).colorScheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560, maxHeight: 700),
+          child: _BriefHistoryView(idToken: idToken, api: _api),
+        ),
+      ),
+    );
+  }
+
+  Widget _briefRow(ColorScheme cs, String icon, String label, String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: color.withOpacity(.05),
+        borderRadius: BorderRadius.circular(8),
+        border: Border(left: BorderSide(color: color.withOpacity(.5), width: 3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Text(icon, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w700)),
+            const SizedBox(width: 6),
+            Text(label.toUpperCase(),
+                style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 1, color: color)),
+          ]),
+          const SizedBox(height: 4),
+          Text(text, style: TextStyle(fontSize: 12.5, color: cs.onSurface.withOpacity(.85), height: 1.45)),
+        ],
+      ),
+    );
+  }
+
+  Widget _feedbackBtn(ColorScheme cs, String label, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          border: Border.all(color: cs.outlineVariant.withOpacity(.5)),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(label, style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(.65), fontWeight: FontWeight.w500)),
+      ),
+    );
+  }
+}
+
+// ── ORION Brief — Historique ─────────────────────────────────────────────────
+
+class _BriefHistoryView extends StatefulWidget {
+  final String idToken;
+  final String api;
+  const _BriefHistoryView({required this.idToken, required this.api});
+  @override
+  State<_BriefHistoryView> createState() => _BriefHistoryViewState();
+}
+
+class _BriefHistoryViewState extends State<_BriefHistoryView> {
+  bool _loading = true;
+  List<Map<String, dynamic>> _briefs = [];
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final res = await http.post(
+        Uri.parse(widget.api),
+        headers: {'Authorization': 'Bearer ${widget.idToken}', 'Content-Type': 'application/json'},
+        body: jsonEncode({'action': 'history', 'limit': 30}),
+      );
+      if (res.statusCode != 200) {
+        setState(() { _loading = false; _error = 'Erreur ${res.statusCode}'; });
+        return;
+      }
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      setState(() {
+        _loading = false;
+        _briefs = (data['briefs'] as List).cast<Map<String, dynamic>>();
+      });
+    } catch (e) {
+      setState(() { _loading = false; _error = e.toString(); });
+    }
+  }
+
+  String _fmtDate(String yyyymmdd) {
+    try {
+      final d = DateTime.parse(yyyymmdd);
+      const m = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin', 'juil', 'aoû', 'sep', 'oct', 'nov', 'déc'];
+      const w = ['lun', 'mar', 'mer', 'jeu', 'ven', 'sam', 'dim'];
+      return '${w[d.weekday - 1]} ${d.day} ${m[d.month - 1]}';
+    } catch (_) { return yyyymmdd; }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    const gold = Color(0xFFe8c94a);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Header
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 14, 14),
+          child: Row(children: [
+            Icon(Icons.auto_awesome_outlined, size: 16, color: gold),
+            const SizedBox(width: 8),
+            Text('Historique ORION', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: cs.onSurface)),
+            const Spacer(),
+            IconButton(
+              icon: const Icon(Icons.close, size: 18),
+              onPressed: () => Navigator.of(context).pop(),
+              tooltip: 'Fermer',
+              visualDensity: VisualDensity.compact,
+            ),
+          ]),
+        ),
+        Divider(height: 1, color: cs.outlineVariant.withOpacity(.3)),
+        Flexible(
+          child: _loading
+              ? const Padding(padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator()))
+              : _error != null
+                  ? Padding(padding: const EdgeInsets.all(20), child: Text(_error!, style: TextStyle(color: cs.error)))
+                  : _briefs.isEmpty
+                      ? Padding(
+                          padding: const EdgeInsets.all(40),
+                          child: Center(
+                            child: Text('Aucun brief sauvegardé pour le moment.',
+                                style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(.4), fontStyle: FontStyle.italic)),
+                          ),
+                        )
+                      : ListView.separated(
+                          shrinkWrap: true,
+                          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                          itemCount: _briefs.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 16),
+                          itemBuilder: (_, i) => _briefCard(cs, gold, _briefs[i]),
+                        ),
+        ),
+      ],
+    );
+  }
+
+  Widget _briefCard(ColorScheme cs, Color gold, Map<String, dynamic> b) {
+    final date = b['date'] as String? ?? '';
+    final focus = b['focus'] as String?;
+    final priorityAction = b['priorityAction'] as String? ?? '';
+    final risk = b['risk'] as String?;
+    final question = b['question'] as String?;
+    final feedback = b['feedback'] as String?;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withOpacity(.25),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.outlineVariant.withOpacity(.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Text(_fmtDate(date),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: gold, letterSpacing: 0.3)),
+            const Spacer(),
+            if (feedback != null)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: (feedback == 'useful' ? Colors.green : cs.onSurface).withOpacity(.1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  feedback == 'useful' ? '✓ utile' : '✗ passé',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: feedback == 'useful' ? Colors.green.shade700 : cs.onSurface.withOpacity(.4),
+                  ),
+                ),
+              ),
+          ]),
+          if (focus != null && focus.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text('Focus : "$focus"',
+                style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: cs.onSurface.withOpacity(.45))),
+          ],
+          const SizedBox(height: 10),
+          _briefLine(cs, gold, '→', 'Action', priorityAction),
+          if (risk != null && risk.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            _briefLine(cs, const Color(0xFFE07B39), '⚠', 'Risque', risk),
+          ],
+          if (question != null && question.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            _briefLine(cs, const Color(0xFF7AB8E5), '?', 'Question', question),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _briefLine(ColorScheme cs, Color color, String icon, String label, String text) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 18,
+          alignment: Alignment.center,
+          child: Text(icon, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w700)),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(text,
+              style: TextStyle(fontSize: 12.5, color: cs.onSurface.withOpacity(.85), height: 1.5)),
+        ),
+      ],
     );
   }
 }
@@ -2681,70 +3797,79 @@ class _TokensPanelState extends State<_TokensPanel>
                                 ? Text('Crée d\'abord un token (étape 1)',
                                     style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(0.45),
                                         fontStyle: FontStyle.italic))
-                                : Column(
-                                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                                    children: [
-                                      // URL principale (simple)
-                                      Container(
-                                        padding: const EdgeInsets.all(12),
-                                        decoration: BoxDecoration(
-                                          color: cs.primaryContainer.withOpacity(0.4),
-                                          borderRadius: BorderRadius.circular(8),
-                                          border: Border.all(color: cs.primary.withOpacity(0.25)),
-                                        ),
-                                        child: Row(
-                                          children: [
-                                            Expanded(
-                                              child: SelectableText(
-                                                _mcpUrl(activeTokens.first.rawToken ?? ''),
-                                                style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+                                : Builder(builder: (context) {
+                                    final displayToken = _newTokenValue ?? activeTokens.first.rawToken;
+                                    if (displayToken == null) {
+                                      return Text(
+                                        'Crée un nouveau token (étape 1) pour voir ton URL complète.',
+                                        style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(0.55), fontStyle: FontStyle.italic),
+                                      );
+                                    }
+                                    return Column(
+                                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                                      children: [
+                                        // URL principale (simple)
+                                        Container(
+                                          padding: const EdgeInsets.all(12),
+                                          decoration: BoxDecoration(
+                                            color: cs.primaryContainer.withOpacity(0.4),
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(color: cs.primary.withOpacity(0.25)),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Expanded(
+                                                child: SelectableText(
+                                                  _mcpUrl(displayToken),
+                                                  style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+                                                ),
                                               ),
-                                            ),
-                                            IconButton(
-                                              icon: const Icon(Icons.copy_outlined, size: 16),
-                                              onPressed: () => _copy(_mcpUrl(activeTokens.first.rawToken ?? ''), 'URL copiée'),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      const SizedBox(height: 10),
-                                      // Option A : Claude.ai web
-                                      _ConnectOption(
-                                        icon: Icons.language_outlined,
-                                        title: 'Claude.ai web',
-                                        description: 'Paramètres → Personnaliser → Connecteurs → colle l\'URL',
-                                      ),
-                                      const SizedBox(height: 8),
-                                      // Option B : Claude Desktop
-                                      _ConnectOption(
-                                        icon: Icons.desktop_mac_outlined,
-                                        title: 'Claude Desktop',
-                                        description: 'Paramètres → Développeur → Modifier la config → colle le JSON ci-dessous',
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Container(
-                                        padding: const EdgeInsets.all(10),
-                                        decoration: BoxDecoration(
-                                          color: cs.surfaceContainerHighest.withOpacity(0.6),
-                                          borderRadius: BorderRadius.circular(6),
-                                        ),
-                                        child: Row(
-                                          children: [
-                                            Expanded(
-                                              child: SelectableText(
-                                                _mcpConfig(activeTokens.first.rawToken ?? ''),
-                                                style: const TextStyle(fontFamily: 'monospace', fontSize: 10),
+                                              IconButton(
+                                                icon: const Icon(Icons.copy_outlined, size: 16),
+                                                onPressed: () => _copy(_mcpUrl(displayToken), 'URL copiée'),
                                               ),
-                                            ),
-                                            IconButton(
-                                              icon: const Icon(Icons.copy_outlined, size: 14),
-                                              onPressed: () => _copy(_mcpConfig(activeTokens.first.rawToken ?? ''), 'Config copiée'),
-                                            ),
-                                          ],
+                                            ],
+                                          ),
                                         ),
-                                      ),
-                                    ],
-                                  ),
+                                        const SizedBox(height: 10),
+                                        // Option A : Claude.ai web
+                                        _ConnectOption(
+                                          icon: Icons.language_outlined,
+                                          title: 'Claude.ai web',
+                                          description: 'Paramètres → Personnaliser → Connecteurs → colle l\'URL',
+                                        ),
+                                        const SizedBox(height: 8),
+                                        // Option B : Claude Desktop
+                                        _ConnectOption(
+                                          icon: Icons.desktop_mac_outlined,
+                                          title: 'Claude Desktop',
+                                          description: 'Paramètres → Développeur → Modifier la config → colle le JSON ci-dessous',
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Container(
+                                          padding: const EdgeInsets.all(10),
+                                          decoration: BoxDecoration(
+                                            color: cs.surfaceContainerHighest.withOpacity(0.6),
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Expanded(
+                                                child: SelectableText(
+                                                  _mcpConfig(displayToken),
+                                                  style: const TextStyle(fontFamily: 'monospace', fontSize: 10),
+                                                ),
+                                              ),
+                                              IconButton(
+                                                icon: const Icon(Icons.copy_outlined, size: 14),
+                                                onPressed: () => _copy(_mcpConfig(displayToken), 'Config copiée'),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  }),
                           ),
                           const SizedBox(height: 16),
                           _Step(

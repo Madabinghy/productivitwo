@@ -99,9 +99,9 @@ class _OrionScreenState extends State<OrionScreen>
       if (activeTokens.isEmpty) {
         // Aucun token actif — on en crée un automatiquement
         final created = await widget.sync.ensureOnboardingToken();
-        _activeToken = created.token;
+        _activeToken = created.rawToken;
       } else {
-        _activeToken = activeTokens.first.token;
+        _activeToken = activeTokens.first.rawToken;
       }
 
       final futures = <Future>[

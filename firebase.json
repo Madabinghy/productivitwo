@@ -60,7 +60,11 @@
       }
     ],
     "rewrites": [
-      { "source": "/mcp/**", "function": "mcpHandler", "region": "us-central1" },
+      { "source": "/mcp/**", "run": { "serviceId": "mcphandler", "region": "us-central1" } },
+      { "source": "/vision", "destination": "/formation.html" },
+      { "source": "/vision/", "destination": "/formation.html" },
+      { "source": "/formation", "destination": "/formation.html" },
+      { "source": "/formation/", "destination": "/formation.html" },
       { "source": "**", "destination": "/index.html" }
     ]
   },

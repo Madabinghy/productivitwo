@@ -1,5 +1,5 @@
 import { db, FieldValue } from "./db";
-import { executePushAssistantMessage } from "./execute";
+import { executePushAssistantMessage, todayInParis } from "./execute";
 
 export type TaskResult = {
   actions: string[];
@@ -12,7 +12,7 @@ export type TaskResult = {
 export async function taskOverdueSummary(uid: string): Promise<TaskResult> {
   const actions: string[] = [];
   let pushed = 0;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInParis();
   const todayYmd = today.replace(/-/g, "");
 
   const [dayPlanSnap, projectsSnap] = await Promise.all([
@@ -80,8 +80,8 @@ export async function taskOverdueSummary(uid: string): Promise<TaskResult> {
 export async function taskWeeklyDeadlines(uid: string): Promise<TaskResult> {
   const actions: string[] = [];
   let pushed = 0;
-  const today = new Date().toISOString().slice(0, 10);
-  const in7days = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const today = todayInParis();
+  const in7days = todayInParis(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
 
   const snap = await db.collection(`users/${uid}/projects`).where("status", "==", "active").get();
 
@@ -124,7 +124,7 @@ export async function taskWeeklyDeadlines(uid: string): Promise<TaskResult> {
 export async function taskArchiveInactiveProjects(uid: string): Promise<TaskResult> {
   const actions: string[] = [];
   let pushed = 0;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInParis();
   const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
 
   const snap = await db.collection(`users/${uid}/projects`).where("status", "==", "active").get();
@@ -170,7 +170,7 @@ export async function taskArchiveInactiveProjects(uid: string): Promise<TaskResu
 // ── Nettoyer les messages expirés ─────────────────────────────────────────────
 export async function taskCleanExpiredMessages(uid: string): Promise<TaskResult> {
   const actions: string[] = [];
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInParis();
 
   const snap = await db.collection(`users/${uid}/assistant_messages`)
     .where("status", "==", "pending").get();
@@ -181,7 +181,7 @@ export async function taskCleanExpiredMessages(uid: string): Promise<TaskResult>
     const m = doc.data();
     const expireDate = new Date(m.targetDate as string);
     expireDate.setDate(expireDate.getDate() + ((m.expiresAfterDays as number) ?? 2));
-    if (expireDate.toISOString().slice(0, 10) < today) {
+    if (todayInParis(expireDate) < today) {
       batch.update(doc.ref, { status: "expired" });
       count++;
     }
@@ -200,7 +200,7 @@ export async function taskCleanExpiredMessages(uid: string): Promise<TaskResult>
 export async function taskProgressReport(uid: string): Promise<TaskResult> {
   const actions: string[] = [];
   let pushed = 0;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInParis();
 
   const snap = await db.collection(`users/${uid}/projects`).where("status", "==", "active").get();
   if (snap.empty) {

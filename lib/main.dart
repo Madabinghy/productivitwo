@@ -1794,12 +1794,19 @@ class _AppRootState extends State<AppRoot>
   }
 
   Future<void> _handleDeepLink(Uri uri) async {
-    final link = uri.toString();
+    // Format 1 : com.madabinghy.productivitwo://email-signin?link=ENCODED_URL
+    //   → lien Firebase encodé dans le param 'link' (depuis la page relay web)
+    // Format 2 : lien Firebase direct (deep link natif iOS, fallback)
+    String link;
+    if (uri.host == 'email-signin' && uri.queryParameters.containsKey('link')) {
+      link = uri.queryParameters['link']!;
+    } else {
+      link = uri.toString();
+    }
     if (!_sync.isEmailSignInLink(link)) return;
     final prefs = await SharedPreferences.getInstance();
     final email = prefs.getString('email_sign_in_pending');
     if (email == null || email.isEmpty) {
-      // Email inconnu — demander à l'utilisateur
       final ctx = _navigatorKey.currentState?.overlay?.context;
       if (ctx == null) return;
       final entered = await _askEmailDialog(ctx);

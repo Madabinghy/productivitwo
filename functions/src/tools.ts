@@ -657,6 +657,24 @@ const UPDATE_TASK_TOOL = {
   },
 };
 
+const MARK_ACTION_DONE_TOOL = {
+  name: "mark_action_done",
+  description:
+    "Coche/décoche une sous-action individuelle d'une tâche Gantt sans toucher au reste. " +
+    "Préfère cet outil à update_task quand l'utilisateur progresse sur une action précise. " +
+    "Récupère projectId, taskId et actionId via get_project.",
+  inputSchema: {
+    type: "object",
+    required: ["projectId", "taskId", "actionId", "done"],
+    properties: {
+      projectId: { type: "string", description: "id du projet (list_projects)" },
+      taskId:    { type: "string", description: "id de la tâche (get_project)" },
+      actionId:  { type: "string", description: "id de la sous-action (get_project)" },
+      done:      { type: "boolean", description: "true pour marquer faite, false pour démarquer" },
+    },
+  },
+};
+
 export {
 GET_USER_CONTEXT_TOOL,
 UPDATE_ACTIVITY_GOAL_TOOL,
@@ -686,6 +704,7 @@ GET_PROJECT_TOOL,
 PUSH_GANTT_MCP_TOOL,
 ADD_TASK_TOOL,
 UPDATE_TASK_TOOL,
+MARK_ACTION_DONE_TOOL,
 };
 
 export const PLAN_DAY_TOOL = {

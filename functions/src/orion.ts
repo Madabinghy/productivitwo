@@ -17,6 +17,7 @@ import {
   executeGetDaySchedule, executeScheduleDay, executeUpdateScheduleBlock,
   executeComputeTimeBudget,
   executeGetOrionQueue, executeDeleteOrionQueueItem,
+  todayInParis,
 } from "./execute";
 // Descriptions compactes pour ORION — ~10x moins de tokens que les tools MCP complets
 const ORION_TOOLS: PromptCachingBetaTool[] = [
@@ -87,7 +88,7 @@ export async function saveOrionConfig(
   if (fields.userNeeds !== undefined) update.userNeeds = fields.userNeeds;
   if (fields.userReply !== undefined) {
     update.userReply = fields.userReply;
-    update.replyTimestamp = new Date().toISOString().slice(0, 10);
+    update.replyTimestamp = todayInParis();
   }
   await db.collection(`users/${uid}/orion_config`).doc("main").set(update, { merge: true });
 }
@@ -130,7 +131,7 @@ export async function runOrionCycle(uid: string, opts?: { skipCount?: boolean })
   reason?: string;
   pushed?: number;
 }> {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInParis();
   const count = await getOrionRunCount(uid, today);
   if (count >= ORION_MAX_RUNS) {
     const reason = `Limite journalière atteinte (${count}/${ORION_MAX_RUNS})`;

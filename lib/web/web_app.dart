@@ -89,14 +89,15 @@ class _AuthGateState extends State<_AuthGate> {
 
   @override
   Widget build(BuildContext context) {
-    // Détecte un magic link dans l'URL courante (web uniquement)
+    // Détecte un magic link dans l'URL courante (web uniquement).
+    // On lit directement les query params pour éviter un race condition
+    // avec l'initialisation Firebase (isSignInWithEmailLink peut throw).
     if (kIsWeb) {
-      final currentUrl = Uri.base.toString();
-      try {
-        if (FirebaseAuth.instance.isSignInWithEmailLink(currentUrl)) {
-          return WebEmailSignInScreen(emailLink: currentUrl);
-        }
-      } catch (_) {}
+      final uri = Uri.base;
+      final params = uri.queryParameters;
+      if (params['mode'] == 'signIn' && params.containsKey('oobCode')) {
+        return WebEmailSignInScreen(emailLink: uri.toString());
+      }
     }
 
     final stream = _stream;

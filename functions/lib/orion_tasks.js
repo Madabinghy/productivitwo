@@ -12,7 +12,7 @@ const execute_1 = require("./execute");
 async function taskOverdueSummary(uid) {
     const actions = [];
     let pushed = 0;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = (0, execute_1.todayInParis)();
     const todayYmd = today.replace(/-/g, "");
     const [dayPlanSnap, projectsSnap] = await Promise.all([
         db_1.db.collection(`users/${uid}/dayPlan`)
@@ -75,8 +75,8 @@ async function taskOverdueSummary(uid) {
 async function taskWeeklyDeadlines(uid) {
     const actions = [];
     let pushed = 0;
-    const today = new Date().toISOString().slice(0, 10);
-    const in7days = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const today = (0, execute_1.todayInParis)();
+    const in7days = (0, execute_1.todayInParis)(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
     const snap = await db_1.db.collection(`users/${uid}/projects`).where("status", "==", "active").get();
     const upcoming = [];
     for (const doc of snap.docs) {
@@ -116,7 +116,7 @@ async function taskArchiveInactiveProjects(uid) {
     var _a, _b, _c, _d, _e, _f;
     const actions = [];
     let pushed = 0;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = (0, execute_1.todayInParis)();
     const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
     const snap = await db_1.db.collection(`users/${uid}/projects`).where("status", "==", "active").get();
     const toArchive = [];
@@ -160,7 +160,7 @@ async function taskArchiveInactiveProjects(uid) {
 async function taskCleanExpiredMessages(uid) {
     var _a;
     const actions = [];
-    const today = new Date().toISOString().slice(0, 10);
+    const today = (0, execute_1.todayInParis)();
     const snap = await db_1.db.collection(`users/${uid}/assistant_messages`)
         .where("status", "==", "pending").get();
     const batch = db_1.db.batch();
@@ -169,7 +169,7 @@ async function taskCleanExpiredMessages(uid) {
         const m = doc.data();
         const expireDate = new Date(m.targetDate);
         expireDate.setDate(expireDate.getDate() + ((_a = m.expiresAfterDays) !== null && _a !== void 0 ? _a : 2));
-        if (expireDate.toISOString().slice(0, 10) < today) {
+        if ((0, execute_1.todayInParis)(expireDate) < today) {
             batch.update(doc.ref, { status: "expired" });
             count++;
         }
@@ -187,7 +187,7 @@ async function taskCleanExpiredMessages(uid) {
 async function taskProgressReport(uid) {
     const actions = [];
     let pushed = 0;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = (0, execute_1.todayInParis)();
     const snap = await db_1.db.collection(`users/${uid}/projects`).where("status", "==", "active").get();
     if (snap.empty) {
         await (0, execute_1.executePushAssistantMessage)(uid, {

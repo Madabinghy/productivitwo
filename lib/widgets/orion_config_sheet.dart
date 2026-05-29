@@ -66,8 +66,8 @@ class _OrionConfigSheetState extends State<OrionConfigSheet> {
 
       _activeToken = tokens.firstWhere(
         (t) => t.active,
-        orElse: () => tokens.isEmpty ? ApiToken(label: '') : tokens.first,
-      ).token;
+        orElse: () => tokens.isEmpty ? ApiToken(label: '', tokenHash: '') : tokens.first,
+      ).rawToken;
 
       // Charger le compteur du jour
       if (_activeToken != null && _activeToken!.isNotEmpty) {

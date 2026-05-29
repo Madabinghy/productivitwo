@@ -136,7 +136,7 @@ class _ApiTokensScreenState extends State<ApiTokensScreen> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: SelectableText(
-                token.token,
+                token.rawToken ?? '',
                 style: const TextStyle(
                   fontFamily: 'monospace',
                   fontSize: 13,
@@ -151,7 +151,7 @@ class _ApiTokensScreenState extends State<ApiTokensScreen> {
                 icon: const Icon(Icons.copy, size: 16),
                 label: const Text('Copier'),
                 onPressed: () {
-                  Clipboard.setData(ClipboardData(text: token.token));
+                  Clipboard.setData(ClipboardData(text: token.rawToken ?? ''));
                   ScaffoldMessenger.of(ctx).showSnackBar(
                     const SnackBar(
                       content: Text('Token copié'),

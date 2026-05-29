@@ -70,7 +70,7 @@ async function saveOrionConfig(uid, fields) {
         update.userNeeds = fields.userNeeds;
     if (fields.userReply !== undefined) {
         update.userReply = fields.userReply;
-        update.replyTimestamp = new Date().toISOString().slice(0, 10);
+        update.replyTimestamp = (0, execute_1.todayInParis)();
     }
     await db_1.db.collection(`users/${uid}/orion_config`).doc("main").set(update, { merge: true });
 }
@@ -94,7 +94,7 @@ async function writeCycleLog(uid, log) {
 // ── Cycle ORION — accès complet à tous les tools ──────────────────────────────
 async function runOrionCycle(uid, opts) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = (0, execute_1.todayInParis)();
     const count = await getOrionRunCount(uid, today);
     if (count >= ORION_MAX_RUNS) {
         const reason = `Limite journalière atteinte (${count}/${ORION_MAX_RUNS})`;

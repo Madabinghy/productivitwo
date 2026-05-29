@@ -1337,7 +1337,8 @@ class StrategicObjective {
 
 class ApiToken {
   String id;
-  String token; // valeur brute UUID, affichée une seule fois dans l'UI
+  String tokenHash; // sha256 du token brut — seule valeur persistée
+  String? rawToken; // valeur brute en mémoire uniquement, jamais sérialisée vers Firestore
   String label; // ex: "Claude MCP", "Coach Antoine"
   bool active;
   DateTime createdAt;
@@ -1345,18 +1346,18 @@ class ApiToken {
 
   ApiToken({
     String? id,
-    String? token,
+    required this.tokenHash,
+    this.rawToken,
     required this.label,
     this.active = true,
     DateTime? createdAt,
     this.lastUsedAt,
   })  : id = id ?? _uuid.v4(),
-        token = token ?? _uuid.v4(),
         createdAt = createdAt ?? DateTime.now();
 
   Map<String, dynamic> toJson() => {
         'id': id,
-        'token': token,
+        'tokenHash': tokenHash,
         'label': label,
         'active': active,
         'createdAt': createdAt.toIso8601String(),
@@ -1365,7 +1366,7 @@ class ApiToken {
 
   static ApiToken from(Map j) => ApiToken(
         id: j['id'],
-        token: j['token'] ?? '',
+        tokenHash: j['tokenHash'] ?? '',
         label: j['label'] ?? '',
         active: j['active'] as bool? ?? true,
         createdAt: j['createdAt'] != null

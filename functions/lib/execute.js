@@ -29,6 +29,7 @@ exports.executeGetProject = executeGetProject;
 exports.executePushGantt = executePushGantt;
 exports.executeAddTask = executeAddTask;
 exports.executeUpdateTask = executeUpdateTask;
+exports.executeMarkActionDone = executeMarkActionDone;
 exports.executeGetAssistantMessages = executeGetAssistantMessages;
 exports.executeDeleteAssistantMessage = executeDeleteAssistantMessage;
 exports.executeGetOrionQueue = executeGetOrionQueue;
@@ -42,29 +43,98 @@ exports.executeComputeTimeBudget = executeComputeTimeBudget;
 exports.executePlanDay = executePlanDay;
 exports.executePlanWeek = executePlanWeek;
 exports.executeSyncCalendar = executeSyncCalendar;
-exports.normalizePhases = normalizePhases;
-exports.normalizeTasks = normalizeTasks;
+exports.pickProject = pickProject;
+exports.pickStrategicObjective = pickStrategicObjective;
+exports.checkRateLimit = checkRateLimit;
+exports.todayInParis = todayInParis;
 const db_1 = require("./db");
 const uuid_1 = require("uuid");
 const admin = require("firebase-admin");
-function normalizePhases(phases) {
-    if (!phases)
-        return [];
-    return phases.map((p) => (Object.assign(Object.assign({}, p), { id: p.id || (0, uuid_1.v4)() })));
+const crypto_1 = require("crypto");
+// ── Date helpers ──────────────────────────────────────────────────────────────
+/** Retourne YYYY-MM-DD dans le fuseau Europe/Paris. */
+function todayInParis(d = new Date()) {
+    return d.toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" });
 }
-function normalizeTasks(tasks) {
-    if (!tasks)
-        return [];
-    return tasks.map((t) => {
-        var _a, _b, _c;
-        return (Object.assign(Object.assign({}, t), { id: t.id || (0, uuid_1.v4)(), isMilestone: (_a = t.isMilestone) !== null && _a !== void 0 ? _a : false, status: (_b = t.status) !== null && _b !== void 0 ? _b : "pending", actions: ((_c = t.actions) !== null && _c !== void 0 ? _c : []).map((a) => ({
-                id: (0, uuid_1.v4)(),
-                title: a,
-                done: false,
-                doneAt: null,
-                createdAt: new Date().toISOString(),
-            })) }));
-    });
+// ── Rate limiting ─────────────────────────────────────────────────────────────
+const HOUR_MS = 60 * 60 * 1000;
+async function checkRateLimit(uid, key, maxPerHour) {
+    var _a, _b;
+    const ref = db_1.db.doc(`users/${uid}/rate_limits/endpoints`);
+    const now = Date.now();
+    const snap = await ref.get();
+    const data = ((_a = snap.data()) !== null && _a !== void 0 ? _a : {});
+    const entry = (_b = data[key]) !== null && _b !== void 0 ? _b : { count: 0, windowStart: now };
+    const windowExpired = now - entry.windowStart >= HOUR_MS;
+    const count = windowExpired ? 0 : entry.count;
+    const windowStart = windowExpired ? now : entry.windowStart;
+    if (count >= maxPerHour) {
+        const retryAfterSecs = Math.ceil((entry.windowStart + HOUR_MS - now) / 1000);
+        return { limited: true, retryAfterSecs: Math.max(1, retryAfterSecs) };
+    }
+    await ref.set({ [key]: { count: count + 1, windowStart } }, { merge: true });
+    return { limited: false };
+}
+// ── Validation helpers ────────────────────────────────────────────────────────
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TASK_STATUSES = new Set(["pending", "done", "skipped"]);
+const PROJECT_STATUSES = new Set(["active", "archived", "completed"]);
+function assertDate(value, field) {
+    if (typeof value !== "string" || !DATE_RE.test(value))
+        throw new Error(`${field} : format attendu YYYY-MM-DD, reçu "${value}"`);
+}
+function clampStr(value, maxLen, field) {
+    if (typeof value !== "string")
+        throw new Error(`${field} doit être une chaîne`);
+    if (value.length > maxLen)
+        throw new Error(`${field} dépasse ${maxLen} caractères (reçu ${value.length})`);
+    return value;
+}
+function pickPhase(p) {
+    const label = clampStr(p.label, 200, "phase.label");
+    assertDate(p.startDate, "phase.startDate");
+    assertDate(p.endDate, "phase.endDate");
+    return Object.assign({ id: typeof p.id === "string" ? p.id : (0, uuid_1.v4)(), label, startDate: p.startDate, endDate: p.endDate }, (typeof p.color === "string" ? { color: p.color } : {}));
+}
+function pickTask(t) {
+    const title = clampStr(t.title, 200, "task.title");
+    assertDate(t.startDate, "task.startDate");
+    if (t.endDate !== undefined)
+        assertDate(t.endDate, "task.endDate");
+    const rawStatus = typeof t.status === "string" ? t.status : "pending";
+    if (!TASK_STATUSES.has(rawStatus))
+        throw new Error(`task.status invalide : "${rawStatus}"`);
+    const rawActions = Array.isArray(t.actions) ? t.actions : [];
+    const actions = rawActions.map((a) => typeof a === "string"
+        ? { id: (0, uuid_1.v4)(), title: a, done: false, doneAt: null, createdAt: new Date().toISOString() }
+        : a);
+    return Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof t.id === "string" ? t.id : (0, uuid_1.v4)(), title, startDate: t.startDate }, (typeof t.endDate === "string" ? { endDate: t.endDate } : {})), (typeof t.phaseId === "string" ? { phaseId: t.phaseId } : {})), (typeof t.groupLabel === "string" ? { groupLabel: t.groupLabel } : {})), (typeof t.color === "string" ? { color: t.color } : {})), (typeof t.barLabel === "string" ? { barLabel: t.barLabel } : {})), { isMilestone: t.isMilestone === true, status: rawStatus, actions });
+}
+function pickProject(p) {
+    var _a, _b;
+    const title = clampStr(p.title, 200, "project.title");
+    const description = p.description !== undefined
+        ? clampStr(p.description, 5000, "project.description") : undefined;
+    assertDate(p.startDate, "project.startDate");
+    if (p.endDate !== undefined)
+        assertDate(p.endDate, "project.endDate");
+    const phases = (_a = p.phases) !== null && _a !== void 0 ? _a : [];
+    const tasks = (_b = p.tasks) !== null && _b !== void 0 ? _b : [];
+    if (phases.length > 20)
+        throw new Error(`Trop de phases : ${phases.length} (max 20)`);
+    if (tasks.length > 200)
+        throw new Error(`Trop de tâches : ${tasks.length} (max 200)`);
+    return Object.assign(Object.assign(Object.assign(Object.assign({ title, startDate: p.startDate }, (description !== undefined ? { description } : {})), (p.endDate !== undefined ? { endDate: p.endDate } : {})), (p.domainId !== undefined ? { domainId: p.domainId } : {})), { phases: phases.map((ph) => pickPhase(ph)), tasks: tasks.map((t) => pickTask(t)) });
+}
+function pickStrategicObjective(so) {
+    const title = clampStr(so.title, 200, "strategicObjective.title");
+    const description = so.description !== undefined
+        ? clampStr(so.description, 5000, "strategicObjective.description") : undefined;
+    if (so.startDate !== undefined)
+        assertDate(so.startDate, "strategicObjective.startDate");
+    if (so.endDate !== undefined)
+        assertDate(so.endDate, "strategicObjective.endDate");
+    return Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ title }, (description !== undefined ? { description } : {})), (so.domainId !== undefined ? { domainId: so.domainId } : {})), (so.kpiTarget !== undefined ? { kpiTarget: so.kpiTarget } : {})), (so.horizonLabel !== undefined ? { horizonLabel: so.horizonLabel } : {})), (so.startDate !== undefined ? { startDate: so.startDate } : {})), (so.endDate !== undefined ? { endDate: so.endDate } : {}));
 }
 async function executePushAssistantMessage(uid, args) {
     var _a, _b, _c, _d, _e;
@@ -140,9 +210,10 @@ async function sendOrionPushNotification(uid, text) {
     });
 }
 async function validateToken(uid, rawToken) {
+    const hash = (0, crypto_1.createHash)("sha256").update(rawToken).digest("hex");
     const q = await db_1.db
         .collection(`users/${uid}/api_tokens`)
-        .where("token", "==", rawToken)
+        .where("tokenHash", "==", hash)
         .where("active", "==", true)
         .limit(1)
         .get();
@@ -157,7 +228,7 @@ async function executeGetUserContext(uid) {
     // Fenêtre glissante : 7 derniers jours
     const now = new Date();
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const todayStr = now.toISOString().slice(0, 10);
+    const todayStr = todayInParis(now);
     const [domainsSnap, activitiesSnap, goalsSnap, habitHitsSnap, sessionsSnap, projectsSnap, scheduleSnap, inboxSnap] = await Promise.all([
         db_1.db.collection(`users/${uid}/domains`).get(),
         db_1.db.collection(`users/${uid}/activities`).get(),
@@ -633,13 +704,15 @@ async function executeUpdateProject(uid, projectId, updates) {
     if (!snap.exists)
         return `Projet introuvable : ${projectId}`;
     const title = (_a = updates.title) !== null && _a !== void 0 ? _a : ((_c = (_b = snap.data()) === null || _b === void 0 ? void 0 : _b.title) !== null && _c !== void 0 ? _c : projectId);
+    if (updates.status !== undefined && !PROJECT_STATUSES.has(updates.status))
+        return `❌ status invalide : "${updates.status}". Valeurs acceptées : active, archived, completed`;
     const patch = { updatedAt: db_1.FieldValue.serverTimestamp() };
     if (updates.domainId !== undefined)
         patch.domainId = updates.domainId;
     if (updates.title !== undefined)
-        patch.title = updates.title;
+        patch.title = clampStr(updates.title, 200, "title");
     if (updates.description !== undefined)
-        patch.description = updates.description;
+        patch.description = clampStr(updates.description, 5000, "description");
     if (updates.status !== undefined)
         patch.status = updates.status;
     await ref.update(patch);
@@ -647,6 +720,8 @@ async function executeUpdateProject(uid, projectId, updates) {
 }
 async function executeUpdateTaskStatus(uid, projectId, taskId, status) {
     var _a;
+    if (!TASK_STATUSES.has(status))
+        return `❌ status invalide : "${status}". Valeurs acceptées : pending, done, skipped`;
     const ref = db_1.db.collection(`users/${uid}/projects`).doc(projectId);
     const snap = await ref.get();
     if (!snap.exists)
@@ -777,14 +852,24 @@ async function executeGetProject(uid, projectId) {
 }
 async function executePushGantt(uid, input) {
     const { project, strategicObjective } = input;
+    let pickedProject;
+    let pickedSO;
+    try {
+        pickedProject = pickProject(project);
+        if (strategicObjective)
+            pickedSO = pickStrategicObjective(strategicObjective);
+    }
+    catch (e) {
+        return `❌ Payload invalide : ${e instanceof Error ? e.message : String(e)}`;
+    }
     let strategicObjectiveId;
-    if (strategicObjective) {
+    if (strategicObjective && pickedSO) {
         const objId = strategicObjective.id || (0, uuid_1.v4)();
         strategicObjectiveId = objId;
-        await db_1.db.collection(`users/${uid}/strategic_objectives`).doc(objId).set(Object.assign(Object.assign({}, strategicObjective), { id: objId, status: "active", updatedAt: db_1.FieldValue.serverTimestamp(), createdAt: db_1.FieldValue.serverTimestamp() }), { merge: true });
+        await db_1.db.collection(`users/${uid}/strategic_objectives`).doc(objId).set(Object.assign(Object.assign({}, pickedSO), { id: objId, status: "active", updatedAt: db_1.FieldValue.serverTimestamp(), createdAt: db_1.FieldValue.serverTimestamp() }), { merge: true });
     }
     const projectId = project.id || (0, uuid_1.v4)();
-    await db_1.db.collection(`users/${uid}/projects`).doc(projectId).set(Object.assign(Object.assign(Object.assign(Object.assign({}, project), { id: projectId, phases: (project.phases || []).map((p) => (Object.assign(Object.assign({}, p), { id: p.id || (0, uuid_1.v4)() }))), tasks: normalizeTasks(project.tasks), createdBy: uid, sourceType: "claude_mcp", status: "active" }), (strategicObjectiveId ? { strategicObjectiveId } : {})), { updatedAt: db_1.FieldValue.serverTimestamp(), createdAt: db_1.FieldValue.serverTimestamp() }), { merge: true });
+    await db_1.db.collection(`users/${uid}/projects`).doc(projectId).set(Object.assign(Object.assign(Object.assign(Object.assign({}, pickedProject), { id: projectId, createdBy: uid, sourceType: "claude_mcp", status: "active" }), (strategicObjectiveId ? { strategicObjectiveId } : {})), { updatedAt: db_1.FieldValue.serverTimestamp(), createdAt: db_1.FieldValue.serverTimestamp() }), { merge: true });
     if (strategicObjectiveId) {
         await db_1.db.collection(`users/${uid}/strategic_objectives`).doc(strategicObjectiveId)
             .update({ projectIds: db_1.FieldValue.arrayUnion(projectId) });
@@ -800,26 +885,126 @@ async function executeAddTask(uid, projectId, task) {
     const snap = await ref.get();
     if (!snap.exists)
         return `Projet introuvable : ${projectId}`;
-    const data = snap.data();
-    const tasks = (data.tasks || []);
-    const newTask = Object.assign(Object.assign({}, task), { id: task.id || (0, uuid_1.v4)(), status: task.status || "pending" });
-    tasks.push(newTask);
-    await ref.update({ tasks, updatedAt: db_1.FieldValue.serverTimestamp() });
-    return `✅ Tâche "${task.title}" ajoutée au projet (id: ${newTask.id}).`;
+    let newTask;
+    try {
+        newTask = pickTask(task);
+    }
+    catch (e) {
+        return `❌ Tâche invalide : ${e instanceof Error ? e.message : String(e)}`;
+    }
+    // arrayUnion est atomique et ne nécessite pas de lire/réécrire le tableau entier
+    await ref.update({
+        tasks: db_1.FieldValue.arrayUnion(newTask),
+        updatedAt: db_1.FieldValue.serverTimestamp(),
+    });
+    return `✅ Tâche "${newTask.title}" ajoutée au projet (id: ${newTask.id}).`;
 }
 async function executeUpdateTask(uid, projectId, taskId, updates) {
+    var _a, _b, _c, _d;
     const ref = db_1.db.collection(`users/${uid}/projects`).doc(projectId);
     const snap = await ref.get();
     if (!snap.exists)
         return `Projet introuvable : ${projectId}`;
     const data = snap.data();
-    const tasks = (data.tasks || []);
+    // Sanitize Timestamps → ISO strings pour éviter les erreurs de re-sérialisation
+    const rawTasks = (data.tasks || []);
+    const tasks = rawTasks.map((t) => JSON.parse(JSON.stringify(t, (_k, v) => v && typeof v === "object" && typeof v.toDate === "function"
+        ? v.toDate().toISOString()
+        : v)));
     const idx = tasks.findIndex((t) => t.id === taskId);
     if (idx === -1)
         return `Tâche introuvable : ${taskId}`;
-    tasks[idx] = Object.assign(Object.assign({}, tasks[idx]), updates);
+    try {
+        const patch = {};
+        if (updates.title !== undefined)
+            patch.title = clampStr(updates.title, 200, "title");
+        if (updates.startDate !== undefined) {
+            assertDate(updates.startDate, "startDate");
+            patch.startDate = updates.startDate;
+        }
+        if (updates.endDate !== undefined) {
+            assertDate(updates.endDate, "endDate");
+            patch.endDate = updates.endDate;
+        }
+        if (updates.status !== undefined) {
+            if (!TASK_STATUSES.has(updates.status))
+                throw new Error(`status invalide : "${updates.status}"`);
+            patch.status = updates.status;
+        }
+        if (updates.phaseId !== undefined)
+            patch.phaseId = updates.phaseId;
+        if (updates.groupLabel !== undefined)
+            patch.groupLabel = updates.groupLabel;
+        if (updates.isMilestone !== undefined)
+            patch.isMilestone = updates.isMilestone;
+        if (updates.color !== undefined)
+            patch.color = updates.color;
+        if (updates.barLabel !== undefined)
+            patch.barLabel = updates.barLabel;
+        if (updates.actions !== undefined) {
+            // Remplace les sous-actions, mais préserve l'état done par match de titre
+            // pour ne pas perdre la progression de l'utilisateur en cas de simple
+            // renommage ou réordonnancement.
+            const rawActions = Array.isArray(updates.actions) ? updates.actions : [];
+            const oldActions = (_a = tasks[idx].actions) !== null && _a !== void 0 ? _a : [];
+            const oldByTitle = {};
+            for (const a of oldActions) {
+                const t = (_b = a.title) !== null && _b !== void 0 ? _b : "";
+                if (t) {
+                    oldByTitle[t] = {
+                        done: (_c = a.done) !== null && _c !== void 0 ? _c : false,
+                        doneAt: (_d = a.doneAt) !== null && _d !== void 0 ? _d : null,
+                        id: a.id,
+                    };
+                }
+            }
+            patch.actions = rawActions.map((a) => {
+                var _a, _b, _c;
+                const title = typeof a === "string"
+                    ? a
+                    : (typeof a === "object" && a !== null && "title" in a ? String(a.title) : "");
+                const previous = oldByTitle[title];
+                return {
+                    id: (_a = previous === null || previous === void 0 ? void 0 : previous.id) !== null && _a !== void 0 ? _a : (0, uuid_1.v4)(),
+                    title,
+                    done: (_b = previous === null || previous === void 0 ? void 0 : previous.done) !== null && _b !== void 0 ? _b : false,
+                    doneAt: (_c = previous === null || previous === void 0 ? void 0 : previous.doneAt) !== null && _c !== void 0 ? _c : null,
+                    createdAt: new Date().toISOString(),
+                };
+            });
+        }
+        tasks[idx] = Object.assign(Object.assign({}, tasks[idx]), patch);
+    }
+    catch (e) {
+        return `❌ Mise à jour invalide : ${e instanceof Error ? e.message : String(e)}`;
+    }
     await ref.update({ tasks, updatedAt: db_1.FieldValue.serverTimestamp() });
     return `✅ Tâche "${tasks[idx].title}" mise à jour.`;
+}
+async function executeMarkActionDone(uid, projectId, taskId, actionId, done) {
+    var _a, _b;
+    const ref = db_1.db.collection(`users/${uid}/projects`).doc(projectId);
+    const snap = await ref.get();
+    if (!snap.exists)
+        return `Projet introuvable : ${projectId}`;
+    const data = snap.data();
+    // Sanitize Timestamps → ISO strings pour éviter les erreurs de re-sérialisation
+    const rawTasks = (data.tasks || []);
+    const tasks = rawTasks.map((t) => JSON.parse(JSON.stringify(t, (_k, v) => v && typeof v === "object" && typeof v.toDate === "function"
+        ? v.toDate().toISOString()
+        : v)));
+    const taskIdx = tasks.findIndex((t) => t.id === taskId);
+    if (taskIdx === -1)
+        return `Tâche introuvable : ${taskId}`;
+    const actions = ((_a = tasks[taskIdx].actions) !== null && _a !== void 0 ? _a : []).slice();
+    const actionIdx = actions.findIndex((a) => a.id === actionId);
+    if (actionIdx === -1)
+        return `Sous-action introuvable : ${actionId}`;
+    const actionTitle = (_b = actions[actionIdx].title) !== null && _b !== void 0 ? _b : actionId;
+    actions[actionIdx] = Object.assign(Object.assign({}, actions[actionIdx]), { done, doneAt: done ? new Date().toISOString() : null });
+    tasks[taskIdx] = Object.assign(Object.assign({}, tasks[taskIdx]), { actions });
+    await ref.update({ tasks, updatedAt: db_1.FieldValue.serverTimestamp() });
+    return `✅ Sous-action "${actionTitle}" ${done ? "marquée faite" : "démarquée"}.`;
 }
 async function executeGetAssistantMessages(uid) {
     const [pendingSnap, shownSnap] = await Promise.all([
@@ -878,7 +1063,7 @@ async function executeDeleteAssistantMessage(uid, messageId) {
 // ── Contexte allégé pour ORION (sans coachingRules, sans détails sessions) ────
 async function executeGetOrionContext(uid) {
     const now = new Date();
-    const today = now.toISOString().slice(0, 10);
+    const today = todayInParis(now);
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const [domainsSnap, activitiesSnap, goalsSnap, habitHitsSnap, sessionsSnap, projectsSnap] = await Promise.all([
         db_1.db.collection(`users/${uid}/domains`).get(),
@@ -920,7 +1105,7 @@ async function executeGetOrionContext(uid) {
     const timeStats = Array.from(minByActivity.entries())
         .map(([id, mins]) => { var _a; return ({ name: (_a = activityMap.get(id)) !== null && _a !== void 0 ? _a : id, hours7d: Math.round(mins / 6) / 10 }); });
     // Projets actifs — résumé + tâches urgentes seulement
-    const in30days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const in30days = todayInParis(new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000));
     const projects = projectsSnap.docs.map((d) => {
         var _a, _b;
         const p = d.data();
@@ -987,7 +1172,7 @@ async function executeProcessInboxItem(uid, itemId, note) {
 // ── Programme horaire journalier ─────────────────────────────────────────────
 async function executePlanDay(uid, args) {
     var _a, _b, _c;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayInParis();
     const date = (_a = args.date) !== null && _a !== void 0 ? _a : today;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
         return `Date invalide : ${date}`;
@@ -1042,14 +1227,14 @@ async function executePlanDay(uid, args) {
     ].join("\n");
 }
 async function executePlanWeek(uid, args) {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayInParis();
     let startDate = args.startDate;
     if (!startDate) {
         const d = new Date(today);
         const day = d.getDay();
         const daysToMonday = day === 1 ? 0 : day === 0 ? 1 : 8 - day;
         d.setDate(d.getDate() + daysToMonday);
-        startDate = d.toISOString().slice(0, 10);
+        startDate = todayInParis(d);
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate))
         return `Date invalide : ${startDate}`;
@@ -1060,7 +1245,7 @@ async function executePlanWeek(uid, args) {
         d.setDate(start.getDate() + i);
         const day = d.getDay();
         if (day !== 0 && day !== 6)
-            weekDates.push(d.toISOString().slice(0, 10));
+            weekDates.push(todayInParis(d));
     }
     const [userContext] = await Promise.all([executeGetUserContext(uid)]);
     const projectsSnap = await db_1.db.collection(`users/${uid}/projects`)
@@ -1104,7 +1289,7 @@ async function executePlanWeek(uid, args) {
 }
 async function executeSyncCalendar(uid, date) {
     var _a;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayInParis();
     const targetDate = date !== null && date !== void 0 ? date : today;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate))
         return `Date invalide : ${targetDate}`;
@@ -1191,7 +1376,7 @@ async function executeScheduleDay(uid, date, blocks) {
 }
 async function executeComputeTimeBudget(uid) {
     const now = new Date();
-    const today = now.toISOString().slice(0, 10);
+    const today = todayInParis(now);
     const twelveWeeksAgo = new Date(now.getTime() - 84 * 24 * 60 * 60 * 1000);
     const [sessionsSnap, activitiesSnap] = await Promise.all([
         db_1.db.collection(`users/${uid}/sessions`)
@@ -1270,7 +1455,7 @@ async function executeComputeTimeBudget(uid) {
     const totalCheck = (calibrated.reduce((s, b) => { var _a; return s + ((_a = b.recommendedGoalMin) !== null && _a !== void 0 ? _a : 0); }, 0)) +
         (calibrated.length > 0 ? sleepGoal : 0);
     return JSON.stringify({
-        analysedPeriod: `${twelveWeeksAgo.toISOString().slice(0, 10)} → ${today}`,
+        analysedPeriod: `${todayInParis(twelveWeeksAgo)} → ${today}`,
         totalDayMin: TOTAL_DAY_MIN,
         calibratedActivities: calibrated.length,
         uncalibratedActivities: uncalibrated.length,
