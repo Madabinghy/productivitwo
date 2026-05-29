@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 // Canal ORION — priorité haute, son par défaut
 const _kOrionChannelId = 'orion_messages';
@@ -65,7 +66,12 @@ class FcmService {
       const InitializationSettings(
           android: androidSettings, iOS: darwinSettings),
       onDidReceiveNotificationResponse: (resp) {
-        if (resp.payload == 'orion') onOrionNotificationTap?.call();
+        final payload = resp.payload;
+        if (payload == 'orion') {
+          onOrionNotificationTap?.call();
+        } else if (payload != null && payload.startsWith('http')) {
+          _openUrl(payload);
+        }
       },
     );
 
@@ -97,6 +103,10 @@ class FcmService {
     final notif = message.notification;
     if (notif == null) return;
 
+    final type = message.data['type'] as String?;
+    final url = message.data['url'] as String?;
+    final payload = (type == 'github_pr' && url != null) ? url : 'orion';
+
     _localNotifs.show(
       _kOrionNotifId,
       notif.title ?? '◉ ORION',
@@ -114,14 +124,24 @@ class FcmService {
           presentSound: true,
         ),
       ),
-      payload: 'orion',
+      payload: payload,
     );
   }
 
   static void _handleTap(RemoteMessage message) {
-    if (message.data['type'] == 'orion_message') {
+    final type = message.data['type'] as String?;
+    if (type == 'orion_message') {
       onOrionNotificationTap?.call();
+    } else if (type == 'github_pr') {
+      final url = message.data['url'] as String?;
+      if (url != null) _openUrl(url);
     }
+  }
+
+  static Future<void> _openUrl(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   static Future<void> clearOrionBadge() async {
