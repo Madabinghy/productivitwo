@@ -224,6 +224,34 @@ firebase deploy --only hosting
 
 ---
 
+## Mini-spec des tâches de développement Gantt
+
+Les sous-actions (`actions[]`) d'une tâche Gantt de type dev doivent suivre ce format en **4 lignes** :
+
+```
+actions: [
+  "Objectif : <ce que la tâche doit accomplir — 1 phrase>",
+  "Fichiers : <chemins ou zones concernés, ex: lib/web/gantt_screen.dart, functions/src/execute.ts>",
+  "Critères : <critères d'acceptation vérifiables, séparés par ' · '>",
+  "Contraintes : <limites techniques, dépendances interdites, rétrocompatibilité requise>"
+]
+```
+
+**Exemple concret :**
+```
+actions: [
+  "Objectif : ajouter un filtre de recherche en temps réel sur la liste des projets",
+  "Fichiers : lib/web/web_home_screen.dart, lib/web/gantt_screen.dart",
+  "Critères : filtre réactif < 200ms · vide = affiche tout · insensible à la casse · résultat vide = message explicite",
+  "Contraintes : pas de dépendance externe · utiliser TextField Flutter existant · ne pas casser l'état de navigation"
+]
+```
+
+> Ce format s'applique uniquement aux tâches de développement logiciel.  
+> Pour les tâches non-dev (séances sport, réunions, livrables…), utiliser 2-4 étapes courtes avec verbe d'action.
+
+---
+
 ## Conventions de code
 
 - Pas de commentaires sauf invariant non-évident
