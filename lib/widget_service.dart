@@ -1,13 +1,18 @@
 // widget_service.dart — pousse les données vers les widgets iOS home screen
-// Utilise home_widget + App Group "group.com.madabinghy.productivitwo"
+// Écriture directe via Method Channel vers UserDefaults(suiteName:) côté Swift.
+// On bypass home_widget pour les écritures car le plugin peut écrire dans la
+// mauvaise suite sur certaines configs iOS. home_widget reste utilisé pour
+// Android.
 
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 
 const _kAppGroup = 'group.com.madabinghy.productivitwo';
+const _kIosWidgetChannel = MethodChannel('com.madabinghy.productivitwo/widget');
 
 /// Résultat du dernier appel à WidgetService.update — visible dans l'UI de debug.
 class WidgetDiag {
@@ -45,11 +50,9 @@ class WidgetService {
   /// Pousse l'état courant vers tous les widgets home screen.
   /// Appelé depuis _saveAndRefresh(), au chargement initial, et sur le stream projets.
   static Future<void> update(AppLogic logic) async {
-    if (!Platform.isIOS) return;
+    if (!Platform.isIOS && !Platform.isAndroid) return;
 
     try {
-      await HomeWidget.setAppGroupId(_kAppGroup);
-
       // --- Routines : done / total pour la période en cours ---
       final routineItems = logic.routineProgressItemsForCurrentPeriod();
       final int routinesDone =
@@ -73,19 +76,29 @@ class WidgetService {
         if (ganttTasks.length >= 12) break;
       }
 
-      // --- Écriture UserDefaults via App Group ---
-      await Future.wait([
-        HomeWidget.saveWidgetData<int>('routines_done', routinesDone),
-        HomeWidget.saveWidgetData<int>('routines_total', routinesTotal),
-        HomeWidget.saveWidgetData<String>('gantt_json', jsonEncode(ganttTasks)),
-      ]);
+      final ganttJson = jsonEncode(ganttTasks);
 
-      await HomeWidget.updateWidget(
-        iOSName: 'ProductivitwoWidget',
-        androidName: 'ProductivitwoWidget',
-        qualifiedAndroidName:
-            'com.madabinghy.productivitwo.ProductivitwoWidget',
-      );
+      if (Platform.isIOS) {
+        // Écriture directe via Method Channel — UserDefaults(suiteName:) côté Swift
+        await Future.wait([
+          _kIosWidgetChannel.invokeMethod('setInt', {'key': 'routines_done', 'value': routinesDone}),
+          _kIosWidgetChannel.invokeMethod('setInt', {'key': 'routines_total', 'value': routinesTotal}),
+          _kIosWidgetChannel.invokeMethod('setString', {'key': 'gantt_json', 'value': ganttJson}),
+        ]);
+        await _kIosWidgetChannel.invokeMethod('reload');
+      } else {
+        // Android : home_widget toujours utilisé
+        await HomeWidget.setAppGroupId(_kAppGroup);
+        await Future.wait([
+          HomeWidget.saveWidgetData<int>('routines_done', routinesDone),
+          HomeWidget.saveWidgetData<int>('routines_total', routinesTotal),
+          HomeWidget.saveWidgetData<String>('gantt_json', ganttJson),
+        ]);
+        await HomeWidget.updateWidget(
+          androidName: 'ProductivitwoWidget',
+          qualifiedAndroidName: 'com.madabinghy.productivitwo.ProductivitwoWidget',
+        );
+      }
 
       lastDiag = WidgetDiag(
         routinesDone: routinesDone,
