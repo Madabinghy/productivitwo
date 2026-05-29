@@ -31,3 +31,5 @@ Le mobile (iOS/Android) reste hors de ce pipeline : builds manuels via Codemagic
 `main` (git) et la prod (Firebase) sont deux choses distinctes. Les Cloud Functions et le web
 doivent toujours être **commités** : tout déployer depuis un working tree non commité fait
 diverger git de la prod et expose à une perte de code.
+
+_(ligne de test webhook)_
