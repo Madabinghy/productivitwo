@@ -735,7 +735,6 @@ Retourne UNIQUEMENT ce JSON valide, sans aucun texte autour :
       color: null,
       barLabel: null,
       status: "pending",
-      recurringActionId: null,
       actions: (t.actions ?? []).map((a: string) => ({
         id: uuidv4(),
         title: a,
@@ -1098,7 +1097,7 @@ Une fois la structure validée, crée TOUT dans cet ordre :
    - type "time" → goalMin réaliste (souvent 15-30 min).
    - type "habit" → TOUJOURS préciser habitFreq (daily/weekly/monthly) ET habitTarget (ex: 3 = 3×/sem, 8 = 8×/jour). Ne mets jamais "daily ×1" par défaut sans raison — reflète ce que la personne a dit.
    (Routines et gestes récurrents = create_activity type "habit". Il n'existe PAS d'outil routine séparé.)
-   - PAIRE PAR DÉFAUT : pour chaque habitude qui a une durée sensée, crée EN PLUS une activité type "time" appairée, selon la convention de nommage (verbe = fréquence "Faire la vaisselle" / nom = temps "Vaisselle" ; "Boire de l'eau" / "Hydratation"). Les deux coexistent : fréquence (coché) + temps (chronométré).
+   - PAIRE PAR DÉFAUT : pour chaque habitude qui a une durée sensée, crée d'ABORD l'activité type "time" (le nom, ex: "Vaisselle"), PUIS la routine type "habit" (le verbe, ex: "Faire la vaisselle") en passant linkedActivityName = le nom de l'activité temps (ex: "Vaisselle"). Convention : verbe = fréquence / nom = temps ; "Boire de l'eau" → "Hydratation". Les deux coexistent (fréquence cochée + temps chronométré) et la routine est RATTACHÉE à son activité. (Pas de paire pour une habitude sans durée sensée, ex: peser son poids.)
 3. PROJET (conditionnel — ne JAMAIS le forcer). Demande clairement :
    "Y a-t-il un objectif concret que tu aimerais atteindre d'ici ~3 mois ?"
    - Si OUI → push_gantt autour de cet objectif :
@@ -1144,6 +1143,7 @@ const ONBOARDING_TOOLS = [
         habitFreq: { type: "string", enum: ["daily", "weekly", "monthly"], description: "Période de la fréquence (type habit) — quotidien / hebdo / mensuel" },
         habitTarget: { type: "number", description: "Cible par période (type habit) — ex: 3 = 3×/semaine, 8 = 8×/jour, 1 = 1×/mois" },
         unit: { type: "string", description: "Unité optionnelle (ex: verres, pages, km)" },
+        linkedActivityName: { type: "string", description: "Pour une ROUTINE appairée : le nom EXACT de l'activité TEMPS parente (déjà créée juste avant). Ex: routine 'Faire la vaisselle' → linkedActivityName 'Vaisselle'. Permet de retrouver la routine en lançant l'activité." },
       },
       required: ["name", "domainName", "type"],
     },
@@ -1216,6 +1216,7 @@ const ONBOARDING_TOOLS = [
                     name: { type: "string" },
                     type: { type: "string", enum: ["time", "habit"] },
                     goalMin: { type: "number", description: "Minutes/jour visées (activités type 'time' uniquement, si une durée a été évoquée)" },
+                    parent: { type: "string", description: "Pour une routine appairée : nom de l'activité TEMPS parente (nichage visuel). Ex: 'Faire la vaisselle' → parent 'Vaisselle'." },
                   },
                 },
               },
@@ -1248,6 +1249,7 @@ async function executeOnboardingTool(
   toolName: string,
   input: Record<string, unknown>,
   domainMap: Record<string, string>,
+  activityMap: Record<string, string> = {},
 ): Promise<OnboardingTool> {
   if (toolName === "create_domain") {
     const id = uuidv4();
@@ -1275,6 +1277,9 @@ async function executeOnboardingTool(
     const habitTarget = isHabit ? ((input.habitTarget as number) ?? 1) : null;
     // Si le guide a précisé fréquence/cible, on fige la cible (pas d'auto-tune qui l'écrase).
     const manualHabit = isHabit && (input.habitFreq !== undefined || input.habitTarget !== undefined);
+    // Lien routine → activité temps parente (cf. linkedActivityId : "lancer l'activité → ses routines").
+    const linkedName = input.linkedActivityName as string | undefined;
+    const linkedActivityId = linkedName ? (activityMap[linkedName] ?? null) : null;
     await db.collection(`users/${uid}/activities`).doc(id).set({
       id, name, domainId,
       type: isHabit ? "habit" : "time",
@@ -1285,9 +1290,11 @@ async function executeOnboardingTool(
       habitTarget,
       manualTarget: manualHabit,
       autoTune: !manualHabit,
+      linkedActivityId,
       createdAt: FieldValue.serverTimestamp(),
       lastTuneAt: null, order: 0, iconCode: null, deleted: false,
     });
+    activityMap[name] = id; // pour résoudre les liens des routines créées ensuite
     const detail = isHabit ? ` (${freqKey} ×${habitTarget})` : (input.goalMin ? ` (${input.goalMin}min/j)` : "");
     return { notification: `✓ Activité "${name}"${detail} créée`, output: `Activité créée — id: ${id}` };
   }
@@ -1325,7 +1332,6 @@ async function executeOnboardingTool(
       startDate: t.startDate, endDate: t.endDate,
       isMilestone: t.isMilestone ?? false,
       color: null, barLabel: null, status: "pending",
-      recurringActionId: null,
       actions: (t.actions ?? []).map((a) => ({ id: uuidv4(), title: a, done: false, doneAt: null, createdAt: new Date().toISOString() })),
     }));
     // Objectif stratégique (le résultat visé) — affiché en tête du Gantt
@@ -1430,7 +1436,6 @@ async function executeOnboardingTool(
       color: null,
       barLabel: null,
       status: "pending",
-      recurringActionId: null,
       actions: ((input.actions as string[]) ?? []).map((a) => ({
         id: uuidv4(), title: a, done: false, doneAt: null, createdAt: new Date().toISOString(),
       })),
@@ -1445,30 +1450,54 @@ async function executeOnboardingTool(
   return { notification: "", output: `Outil inconnu : ${toolName}` };
 }
 
-// Filet de sécurité mindmap : extrait la structure de vie depuis la conversation
-// via un appel léger (Haiku), quand le guide n'a pas appelé set_structure_preview.
+// Fusionne deux snapshots de structure : on n'enlève JAMAIS un domaine/activité
+// déjà connu (l'extraction par tour peut en oublier sur un transcript long).
+type MMActivity = { name?: string; type?: string; goalMin?: number };
+type MMDomain = { name?: string; activities?: MMActivity[] };
+type MMStruct = { center?: string; domains?: MMDomain[] };
+function mergeStructures(prev: unknown, next: unknown): unknown {
+  const p = prev as MMStruct | null;
+  const n = next as MMStruct | null;
+  if (!p || !Array.isArray(p.domains)) return next;
+  if (!n || !Array.isArray(n.domains)) return prev;
+  const norm = (s?: string) => String(s ?? "").trim().toLowerCase();
+  const map = new Map<string, MMDomain>();
+  for (const d of p.domains) map.set(norm(d.name), { name: d.name, activities: [...(d.activities ?? [])] });
+  for (const d of n.domains) {
+    const k = norm(d.name);
+    const ex = map.get(k);
+    if (!ex) { map.set(k, { name: d.name, activities: [...(d.activities ?? [])] }); continue; }
+    ex.name = d.name;
+    const actMap = new Map<string, MMActivity>();
+    for (const a of (ex.activities ?? [])) actMap.set(norm(a.name) + "|" + (a.type ?? ""), a);
+    for (const a of (d.activities ?? [])) actMap.set(norm(a.name) + "|" + (a.type ?? ""), a);
+    ex.activities = [...actMap.values()];
+  }
+  return { center: n.center || p.center, domains: [...map.values()] };
+}
+
+// Mindmap (filet de sécurité, INCRÉMENTAL) : part de la structure connue + le dernier
+// échange, renvoie la structure mise à jour. Input petit et constant (pas tout le
+// transcript) → bien moins cher, et plus fiable (on ne perd rien).
 async function extractStructurePreview(
   client: Anthropic,
-  history: Array<{ role: string; content: string }>,
+  prevStructure: unknown,
   userMessage: string,
   assistantText: string,
 ): Promise<unknown | null> {
   try {
-    const transcript = [
-      ...history.map((m) => `${m.role}: ${m.content}`),
-      `user: ${userMessage}`,
-      `assistant: ${assistantText}`,
-    ].join("\n");
+    const prevJson = JSON.stringify(prevStructure ?? { center: "Ma vie", domains: [] });
     const r = await client.messages.create({
       model: getModel("structure_project"),
-      max_tokens: 1024,
+      max_tokens: 4096,
       system:
-        "Tu extrais la structure de vie co-construite dans la conversation. Réponds UNIQUEMENT un objet JSON, rien d'autre. " +
-        "Format exact : {\"center\": string, \"domains\": [{\"name\": string, \"activities\": [{\"name\": string, \"type\": \"time\"|\"habit\", \"goalMin\": number}]}]}. " +
-        "goalMin = minutes/jour pour CHAQUE activité 'time' : reprends la durée évoquée dans la conversation, sinon estime une valeur réaliste selon l'activité (ex: cuisiner 30, sieste 20, sport 45, lecture 20). " +
-        "center = prénom de l'utilisateur si mentionné, sinon \"Ma vie\". N'inclus QUE les domaines et activités explicitement nommés/validés (ignore les pistes non confirmées). " +
-        "Si rien n'est encore défini : {\"center\":\"Ma vie\",\"domains\":[]}.",
-      messages: [{ role: "user", content: transcript + "\n\n---\nExtrais la structure actuelle en JSON." }],
+        "Tu maintiens une structure de vie pour une mindmap. On te donne la structure ACTUELLE (JSON) et le DERNIER échange. " +
+        "Renvoie la structure MISE À JOUR : ajoute/complète selon le dernier échange, ne SUPPRIME jamais ce qui existe déjà. UNIQUEMENT du JSON, rien d'autre. " +
+        "Format exact : {\"center\": string, \"domains\": [{\"name\": string, \"activities\": [{\"name\": string, \"type\": \"time\"|\"habit\", \"goalMin\": number, \"parent\": string}]}]}. " +
+        "type 'time' = durée (goalMin minutes/jour ; estime si non dit : cuisiner 30, sieste 20, sport 45, lecture 20) ; 'habit' = fréquence. " +
+        "parent = pour une routine appairée à une activité temps, le nom de cette activité (ex: 'Faire la vaisselle' → parent 'Vaisselle'). Omets si pas de jumelle. " +
+        "center = prénom si connu, sinon \"Ma vie\". N'ajoute QUE des domaines/activités explicitement nommés/validés.",
+      messages: [{ role: "user", content: `Structure actuelle:\n${prevJson}\n\nDernier échange:\nuser: ${userMessage}\nassistant: ${assistantText}\n\nRenvoie la structure mise à jour (JSON uniquement).` }],
     });
     const txt = r.content.filter((b) => b.type === "text").map((b) => (b as { type: "text"; text: string }).text).join("");
     const m = txt.match(/\{[\s\S]*\}/);
@@ -1716,6 +1745,7 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
 
     const notifications: string[] = [];
     const domainMap: Record<string, string> = {};
+    const activityMap: Record<string, string> = {};
     let onboardingComplete = false;
     let structurePreview: unknown = null;
     let assistantText = ""; // accumule le texte de TOUS les tours (évite les messages vides quand le modèle répond ET appelle un outil dans le même tour)
@@ -1736,10 +1766,22 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
           .map((b) => (b as { type: "text"; text: string }).text)
           .join("");
         const text = assistantText.trim();
-        // Filet de sécurité : si le guide n'a pas mis à jour la mindmap lui-même,
-        // on extrait la structure de la conversation (appel léger) pour l'alimenter.
+        // Lit la structure déjà connue UNE fois (sert à l'extraction incrémentale + à la fusion).
+        let prevStruct: unknown = null;
+        if (!onboardingComplete) {
+          try {
+            const prevSnap = await db.collection("formation_sessions").doc(uid).get();
+            prevStruct = prevSnap.exists ? (prevSnap.data()?.structure ?? null) : null;
+          } catch (_) { /* prevStruct reste null */ }
+        }
+        // Filet de sécurité : si le guide n'a pas mis à jour la mindmap, on l'alimente
+        // par extraction incrémentale (structure connue + dernier échange).
         if (!structurePreview && !onboardingComplete) {
-          structurePreview = await extractStructurePreview(client, history ?? [], message ?? "", text);
+          structurePreview = await extractStructurePreview(client, prevStruct, message ?? "", text);
+        }
+        // Fusion finale → aucun domaine/activité déjà connu ne disparaît.
+        if (structurePreview && !onboardingComplete) {
+          structurePreview = mergeStructures(prevStruct, structurePreview);
         }
         if (onboardingComplete) {
           await db.collection("formation_access").doc(uid).update({
@@ -1781,7 +1823,7 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
         const toolResults: unknown[] = [];
         for (const block of response.content) {
           if (block.type === "tool_use") {
-            const result = await executeOnboardingTool(uid, block.name, block.input as Record<string, unknown>, domainMap);
+            const result = await executeOnboardingTool(uid, block.name, block.input as Record<string, unknown>, domainMap, activityMap);
             if (result.notification) notifications.push(result.notification);
             if (block.name === "push_gantt" || block.name === "complete_onboarding") onboardingComplete = true;
             if (block.name === "set_structure_preview") structurePreview = block.input;
@@ -1900,7 +1942,6 @@ export const adminProductivitwo = onRequest(
           startDate, endDate: endDate ?? null,
           isMilestone: isMilestone ?? false,
           color: null, barLabel: null, status: status ?? "pending",
-          recurringActionId: null,
           actions: (actions ?? []).map(a => ({
             id: uuidv4(), title: a,
             done: actionsAllDone === true, doneAt: actionsAllDone === true ? new Date().toISOString() : null,
@@ -1969,7 +2010,6 @@ export const adminProductivitwo = onRequest(
           groupLabel: null,
           startDate: t.startDate, endDate: t.endDate ?? null,
           isMilestone: false, color: null, barLabel: null, status: "pending",
-          recurringActionId: null,
           actions: (t.actions ?? []).map(a => ({
             id: uuidv4(), title: a, done: false, doneAt: null, createdAt: new Date().toISOString(),
           })),

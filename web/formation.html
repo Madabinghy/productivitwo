@@ -1017,14 +1017,33 @@ function renderMindmap(structure) {
   if (empty) empty.style.display = 'none';
 
   const domains = structure.domains;
-  const xCenter = 10, xDomain = 118, xAct = 286;
-  const rowH = 24, actGap = 3, domGap = 18, padTop = 40, W = 540;
+  const xCenter = 10, xDomain = 118, xAct = 258, xAct2 = 388;
+  const rowH = 24, actGap = 3, domGap = 18, padTop = 40, W = 560;
+  const norm = (s) => String(s || '').trim().toLowerCase();
 
   let y = padTop;
   const dl = domains.map(d => {
     const acts = Array.isArray(d.activities) ? d.activities : [];
-    const blockH = Math.max(rowH, acts.length * (rowH + actGap) - actGap);
-    const o = { name: d.name || '', acts, top: y, cy: y + blockH / 2 };
+    // Lignes : activités temps (avec leurs routines enfants nichées) puis habitudes orphelines.
+    const rows = [];
+    const placed = new Set();
+    acts.forEach(a => {
+      if (a && a.type === 'time') {
+        const pIdx = rows.length;
+        rows.push({ act: a, level: 2 });
+        acts.forEach(c => {
+          if (c && c.type !== 'time' && c.parent && norm(c.parent) === norm(a.name) && !placed.has(c)) {
+            rows.push({ act: c, level: 3, parent: pIdx });
+            placed.add(c);
+          }
+        });
+      }
+    });
+    acts.forEach(a => { if (a && a.type !== 'time' && !placed.has(a)) rows.push({ act: a, level: 2 }); });
+    const blockH = Math.max(rowH, rows.length * (rowH + actGap) - actGap);
+    const top = y;
+    rows.forEach((r, i) => { r.y = top + i * (rowH + actGap) + rowH / 2; });
+    const o = { name: d.name || '', rows, top, cy: top + blockH / 2 };
     y += blockH + domGap;
     return o;
   });
@@ -1043,19 +1062,25 @@ function renderMindmap(structure) {
   // domaines, activités, arêtes
   dl.forEach(d => {
     let domTotal = 0;
-    d.acts.forEach((a, i) => {
-      const ay = d.top + i * (rowH + actGap) + rowH / 2;
-      parts.push(edge(xDomain + 104, d.cy, xAct - 2, ay, true));
+    d.rows.forEach(r => {
+      const a = r.act;
       const isTime = (a && a.type === 'time');
       const col = isTime ? '#10B981' : '#C9A84C';
-      let label = _mmEsc(a && a.name).slice(0, 24);
-      if (isTime && a.goalMin) { label += ` · ${_fmtMin(a.goalMin)}`; domTotal += a.goalMin; }
-      parts.push(`<circle cx="${xAct + 4}" cy="${ay}" r="3.5" fill="${col}"/><text x="${xAct + 14}" y="${ay + 4}" font-size="11" fill="rgba(255,255,255,.72)">${label}</text>`);
+      if (r.level === 2) {
+        parts.push(edge(xDomain + 104, d.cy, xAct - 2, r.y, true));
+        let label = _mmEsc(a && a.name).slice(0, 24);
+        if (isTime && a.goalMin) { label += ` · ${_fmtMin(a.goalMin)}`; domTotal += a.goalMin; }
+        parts.push(`<circle cx="${xAct + 4}" cy="${r.y}" r="3.5" fill="${col}"/><text x="${xAct + 14}" y="${r.y + 4}" font-size="11" fill="rgba(255,255,255,.72)">${label}</text>`);
+      } else {
+        const py = d.rows[r.parent] ? d.rows[r.parent].y : r.y;
+        parts.push(edge(xAct + 10, py, xAct2 - 2, r.y, true));
+        parts.push(`<circle cx="${xAct2 + 3}" cy="${r.y}" r="3" fill="${col}"/><text x="${xAct2 + 11}" y="${r.y + 3.5}" font-size="10" fill="rgba(255,255,255,.58)">${_mmEsc(a && a.name).slice(0, 22)}</text>`);
+      }
     });
     const dh = domTotal > 0 ? 32 : 26;
     const nameY = domTotal > 0 ? d.cy - 2 : d.cy + 4;
     let dom = `<rect x="${xDomain}" y="${d.cy - dh / 2}" width="104" height="${dh}" rx="8" fill="rgba(201,168,76,.14)" stroke="rgba(201,168,76,.4)"/><text x="${xDomain + 8}" y="${nameY}" font-size="11.5" font-weight="600" fill="#E8D9A8">${_mmEsc(d.name).slice(0, 16)}</text>`;
-    if (domTotal > 0) dom += `<text x="${xDomain + 8}" y="${d.cy + 11}" font-size="8.5" fill="rgba(255,255,255,.5)">Σ ${_fmtMin(domTotal)}/j</text>`;
+    if (domTotal > 0) dom += `<text x="${xDomain + 8}" y="${d.cy + 11}" font-size="8.5" fill="rgba(255,255,255,.5)">${_fmtMin(domTotal)}/j</text>`;
     parts.push(dom);
   });
   // nœud central

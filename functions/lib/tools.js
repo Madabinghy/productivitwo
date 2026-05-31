@@ -77,7 +77,6 @@ const CREATE_ACTIVITY_TOOL = {
     description: "Crée une **activité** : tracking de temps avec chrono (ex: Deep Work, Running, Lecture). " +
         "Utilise cet outil quand l'utilisateur veut mesurer le temps passé sur quelque chose. " +
         "⚠️ NE PAS utiliser pour tracker une fréquence/compteur → create_routine. " +
-        "⚠️ NE PAS utiliser pour une tâche récurrente sans tracking → create_recurring_action. " +
         "Demande confirmation avant de créer.",
     inputSchema: {
         type: "object",

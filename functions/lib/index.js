@@ -759,7 +759,6 @@ Retourne UNIQUEMENT ce JSON valide, sans aucun texte autour :
             color: null,
             barLabel: null,
             status: "pending",
-            recurringActionId: null,
             actions: ((_d = t.actions) !== null && _d !== void 0 ? _d : []).map((a) => ({
                 id: (0, uuid_1.v4)(),
                 title: a,
@@ -1115,7 +1114,7 @@ Une fois la structure validée, crée TOUT dans cet ordre :
    - type "time" → goalMin réaliste (souvent 15-30 min).
    - type "habit" → TOUJOURS préciser habitFreq (daily/weekly/monthly) ET habitTarget (ex: 3 = 3×/sem, 8 = 8×/jour). Ne mets jamais "daily ×1" par défaut sans raison — reflète ce que la personne a dit.
    (Routines et gestes récurrents = create_activity type "habit". Il n'existe PAS d'outil routine séparé.)
-   - PAIRE PAR DÉFAUT : pour chaque habitude qui a une durée sensée, crée EN PLUS une activité type "time" appairée, selon la convention de nommage (verbe = fréquence "Faire la vaisselle" / nom = temps "Vaisselle" ; "Boire de l'eau" / "Hydratation"). Les deux coexistent : fréquence (coché) + temps (chronométré).
+   - PAIRE PAR DÉFAUT : pour chaque habitude qui a une durée sensée, crée d'ABORD l'activité type "time" (le nom, ex: "Vaisselle"), PUIS la routine type "habit" (le verbe, ex: "Faire la vaisselle") en passant linkedActivityName = le nom de l'activité temps (ex: "Vaisselle"). Convention : verbe = fréquence / nom = temps ; "Boire de l'eau" → "Hydratation". Les deux coexistent (fréquence cochée + temps chronométré) et la routine est RATTACHÉE à son activité. (Pas de paire pour une habitude sans durée sensée, ex: peser son poids.)
 3. PROJET (conditionnel — ne JAMAIS le forcer). Demande clairement :
    "Y a-t-il un objectif concret que tu aimerais atteindre d'ici ~3 mois ?"
    - Si OUI → push_gantt autour de cet objectif :
@@ -1160,6 +1159,7 @@ const ONBOARDING_TOOLS = [
                 habitFreq: { type: "string", enum: ["daily", "weekly", "monthly"], description: "Période de la fréquence (type habit) — quotidien / hebdo / mensuel" },
                 habitTarget: { type: "number", description: "Cible par période (type habit) — ex: 3 = 3×/semaine, 8 = 8×/jour, 1 = 1×/mois" },
                 unit: { type: "string", description: "Unité optionnelle (ex: verres, pages, km)" },
+                linkedActivityName: { type: "string", description: "Pour une ROUTINE appairée : le nom EXACT de l'activité TEMPS parente (déjà créée juste avant). Ex: routine 'Faire la vaisselle' → linkedActivityName 'Vaisselle'. Permet de retrouver la routine en lançant l'activité." },
             },
             required: ["name", "domainName", "type"],
         },
@@ -1232,6 +1232,7 @@ const ONBOARDING_TOOLS = [
                                         name: { type: "string" },
                                         type: { type: "string", enum: ["time", "habit"] },
                                         goalMin: { type: "number", description: "Minutes/jour visées (activités type 'time' uniquement, si une durée a été évoquée)" },
+                                        parent: { type: "string", description: "Pour une routine appairée : nom de l'activité TEMPS parente (nichage visuel). Ex: 'Faire la vaisselle' → parent 'Vaisselle'." },
                                     },
                                 },
                             },
@@ -1253,8 +1254,8 @@ const ONBOARDING_TOOLS = [
         },
     },
 ];
-async function executeOnboardingTool(uid, toolName, input, domainMap) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v;
+async function executeOnboardingTool(uid, toolName, input, domainMap, activityMap = {}) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w;
     if (toolName === "create_domain") {
         const id = (0, uuid_1.v4)();
         const name = input.name;
@@ -1280,19 +1281,24 @@ async function executeOnboardingTool(uid, toolName, input, domainMap) {
         const habitTarget = isHabit ? ((_d = input.habitTarget) !== null && _d !== void 0 ? _d : 1) : null;
         // Si le guide a précisé fréquence/cible, on fige la cible (pas d'auto-tune qui l'écrase).
         const manualHabit = isHabit && (input.habitFreq !== undefined || input.habitTarget !== undefined);
+        // Lien routine → activité temps parente (cf. linkedActivityId : "lancer l'activité → ses routines").
+        const linkedName = input.linkedActivityName;
+        const linkedActivityId = linkedName ? ((_e = activityMap[linkedName]) !== null && _e !== void 0 ? _e : null) : null;
         await db_1.db.collection(`users/${uid}/activities`).doc(id).set({
             id, name, domainId,
             type: isHabit ? "habit" : "time",
             role: "generic",
-            goalMin: (_e = input.goalMin) !== null && _e !== void 0 ? _e : 1,
-            unit: (_f = input.unit) !== null && _f !== void 0 ? _f : null,
+            goalMin: (_f = input.goalMin) !== null && _f !== void 0 ? _f : 1,
+            unit: (_g = input.unit) !== null && _g !== void 0 ? _g : null,
             habitFreq,
             habitTarget,
             manualTarget: manualHabit,
             autoTune: !manualHabit,
+            linkedActivityId,
             createdAt: db_1.FieldValue.serverTimestamp(),
             lastTuneAt: null, order: 0, iconCode: null, deleted: false,
         });
+        activityMap[name] = id; // pour résoudre les liens des routines créées ensuite
         const detail = isHabit ? ` (${freqKey} ×${habitTarget})` : (input.goalMin ? ` (${input.goalMin}min/j)` : "");
         return { notification: `✓ Activité "${name}"${detail} créée`, output: `Activité créée — id: ${id}` };
     }
@@ -1300,11 +1306,11 @@ async function executeOnboardingTool(uid, toolName, input, domainMap) {
         const id = (0, uuid_1.v4)();
         const name = input.name;
         const domainName = input.domainName;
-        const domainId = (_g = domainMap[domainName]) !== null && _g !== void 0 ? _g : ((_h = Object.values(domainMap)[0]) !== null && _h !== void 0 ? _h : null);
+        const domainId = (_h = domainMap[domainName]) !== null && _h !== void 0 ? _h : ((_j = Object.values(domainMap)[0]) !== null && _j !== void 0 ? _j : null);
         await db_1.db.collection(`users/${uid}/activities`).doc(id).set({
             id, name, domainId,
             type: "habit", role: "generic",
-            goalMin: (_j = input.dureeMin) !== null && _j !== void 0 ? _j : 15,
+            goalMin: (_l = input.dureeMin) !== null && _l !== void 0 ? _l : 15,
             unit: null, habitFreq: 0, habitTarget: 1,
             manualTarget: false, autoTune: false,
             createdAt: db_1.FieldValue.serverTimestamp(),
@@ -1325,18 +1331,17 @@ async function executeOnboardingTool(uid, toolName, input, domainMap) {
                 startDate: t.startDate, endDate: t.endDate,
                 isMilestone: (_c = t.isMilestone) !== null && _c !== void 0 ? _c : false,
                 color: null, barLabel: null, status: "pending",
-                recurringActionId: null,
                 actions: ((_d = t.actions) !== null && _d !== void 0 ? _d : []).map((a) => ({ id: (0, uuid_1.v4)(), title: a, done: false, doneAt: null, createdAt: new Date().toISOString() })),
             });
         });
         // Objectif stratégique (le résultat visé) — affiché en tête du Gantt
         let strategicObjectiveId = null;
-        if ((_l = ganttInput.strategicObjective) === null || _l === void 0 ? void 0 : _l.title) {
+        if ((_m = ganttInput.strategicObjective) === null || _m === void 0 ? void 0 : _m.title) {
             strategicObjectiveId = (0, uuid_1.v4)();
             await db_1.db.collection(`users/${uid}/strategic_objectives`).doc(strategicObjectiveId).set({
                 id: strategicObjectiveId,
                 title: ganttInput.strategicObjective.title,
-                kpiTarget: (_m = ganttInput.strategicObjective.kpiTarget) !== null && _m !== void 0 ? _m : null,
+                kpiTarget: (_o = ganttInput.strategicObjective.kpiTarget) !== null && _o !== void 0 ? _o : null,
                 description: null, domainId: null, horizonLabel: null,
                 startDate: ganttInput.startDate, endDate: ganttInput.endDate,
                 status: "active", projectIds: [projectId],
@@ -1408,7 +1413,7 @@ async function executeOnboardingTool(uid, toolName, input, domainMap) {
         if (input.status)
             updates.status = input.status;
         await ref.update(updates);
-        const newTitle = (_q = (_o = input.title) !== null && _o !== void 0 ? _o : (_p = snap.data()) === null || _p === void 0 ? void 0 : _p.title) !== null && _q !== void 0 ? _q : projectId;
+        const newTitle = (_r = (_p = input.title) !== null && _p !== void 0 ? _p : (_q = snap.data()) === null || _q === void 0 ? void 0 : _q.title) !== null && _r !== void 0 ? _r : projectId;
         return { notification: `✓ Projet "${newTitle}" mis à jour`, output: `Projet mis à jour` };
     }
     if (toolName === "archive_project") {
@@ -1417,7 +1422,7 @@ async function executeOnboardingTool(uid, toolName, input, domainMap) {
         const snap = await ref.get();
         if (!snap.exists)
             return { notification: `Projet introuvable`, output: `Erreur` };
-        const title = (_s = (_r = snap.data()) === null || _r === void 0 ? void 0 : _r.title) !== null && _s !== void 0 ? _s : projectId;
+        const title = (_t = (_s = snap.data()) === null || _s === void 0 ? void 0 : _s.title) !== null && _t !== void 0 ? _t : projectId;
         await ref.update({ status: "archived", updatedAt: db_1.FieldValue.serverTimestamp() });
         return { notification: `✓ Projet "${title}" archivé`, output: `Archivé` };
     }
@@ -1434,13 +1439,12 @@ async function executeOnboardingTool(uid, toolName, input, domainMap) {
             phaseId: null,
             groupLabel: null,
             startDate: input.startDate,
-            endDate: (_t = input.endDate) !== null && _t !== void 0 ? _t : null,
-            isMilestone: (_u = input.isMilestone) !== null && _u !== void 0 ? _u : false,
+            endDate: (_u = input.endDate) !== null && _u !== void 0 ? _u : null,
+            isMilestone: (_v = input.isMilestone) !== null && _v !== void 0 ? _v : false,
             color: null,
             barLabel: null,
             status: "pending",
-            recurringActionId: null,
-            actions: ((_v = input.actions) !== null && _v !== void 0 ? _v : []).map((a) => ({
+            actions: ((_w = input.actions) !== null && _w !== void 0 ? _w : []).map((a) => ({
                 id: (0, uuid_1.v4)(), title: a, done: false, doneAt: null, createdAt: new Date().toISOString(),
             })),
         };
@@ -1452,24 +1456,51 @@ async function executeOnboardingTool(uid, toolName, input, domainMap) {
     }
     return { notification: "", output: `Outil inconnu : ${toolName}` };
 }
-// Filet de sécurité mindmap : extrait la structure de vie depuis la conversation
-// via un appel léger (Haiku), quand le guide n'a pas appelé set_structure_preview.
-async function extractStructurePreview(client, history, userMessage, assistantText) {
+function mergeStructures(prev, next) {
+    var _a, _b, _c, _d, _e, _f;
+    const p = prev;
+    const n = next;
+    if (!p || !Array.isArray(p.domains))
+        return next;
+    if (!n || !Array.isArray(n.domains))
+        return prev;
+    const norm = (s) => String(s !== null && s !== void 0 ? s : "").trim().toLowerCase();
+    const map = new Map();
+    for (const d of p.domains)
+        map.set(norm(d.name), { name: d.name, activities: [...((_a = d.activities) !== null && _a !== void 0 ? _a : [])] });
+    for (const d of n.domains) {
+        const k = norm(d.name);
+        const ex = map.get(k);
+        if (!ex) {
+            map.set(k, { name: d.name, activities: [...((_b = d.activities) !== null && _b !== void 0 ? _b : [])] });
+            continue;
+        }
+        ex.name = d.name;
+        const actMap = new Map();
+        for (const a of ((_c = ex.activities) !== null && _c !== void 0 ? _c : []))
+            actMap.set(norm(a.name) + "|" + ((_d = a.type) !== null && _d !== void 0 ? _d : ""), a);
+        for (const a of ((_e = d.activities) !== null && _e !== void 0 ? _e : []))
+            actMap.set(norm(a.name) + "|" + ((_f = a.type) !== null && _f !== void 0 ? _f : ""), a);
+        ex.activities = [...actMap.values()];
+    }
+    return { center: n.center || p.center, domains: [...map.values()] };
+}
+// Mindmap (filet de sécurité, INCRÉMENTAL) : part de la structure connue + le dernier
+// échange, renvoie la structure mise à jour. Input petit et constant (pas tout le
+// transcript) → bien moins cher, et plus fiable (on ne perd rien).
+async function extractStructurePreview(client, prevStructure, userMessage, assistantText) {
     try {
-        const transcript = [
-            ...history.map((m) => `${m.role}: ${m.content}`),
-            `user: ${userMessage}`,
-            `assistant: ${assistantText}`,
-        ].join("\n");
+        const prevJson = JSON.stringify(prevStructure !== null && prevStructure !== void 0 ? prevStructure : { center: "Ma vie", domains: [] });
         const r = await client.messages.create({
             model: (0, models_1.getModel)("structure_project"),
-            max_tokens: 1024,
-            system: "Tu extrais la structure de vie co-construite dans la conversation. Réponds UNIQUEMENT un objet JSON, rien d'autre. " +
-                "Format exact : {\"center\": string, \"domains\": [{\"name\": string, \"activities\": [{\"name\": string, \"type\": \"time\"|\"habit\", \"goalMin\": number}]}]}. " +
-                "goalMin = minutes/jour pour CHAQUE activité 'time' : reprends la durée évoquée dans la conversation, sinon estime une valeur réaliste selon l'activité (ex: cuisiner 30, sieste 20, sport 45, lecture 20). " +
-                "center = prénom de l'utilisateur si mentionné, sinon \"Ma vie\". N'inclus QUE les domaines et activités explicitement nommés/validés (ignore les pistes non confirmées). " +
-                "Si rien n'est encore défini : {\"center\":\"Ma vie\",\"domains\":[]}.",
-            messages: [{ role: "user", content: transcript + "\n\n---\nExtrais la structure actuelle en JSON." }],
+            max_tokens: 4096,
+            system: "Tu maintiens une structure de vie pour une mindmap. On te donne la structure ACTUELLE (JSON) et le DERNIER échange. " +
+                "Renvoie la structure MISE À JOUR : ajoute/complète selon le dernier échange, ne SUPPRIME jamais ce qui existe déjà. UNIQUEMENT du JSON, rien d'autre. " +
+                "Format exact : {\"center\": string, \"domains\": [{\"name\": string, \"activities\": [{\"name\": string, \"type\": \"time\"|\"habit\", \"goalMin\": number, \"parent\": string}]}]}. " +
+                "type 'time' = durée (goalMin minutes/jour ; estime si non dit : cuisiner 30, sieste 20, sport 45, lecture 20) ; 'habit' = fréquence. " +
+                "parent = pour une routine appairée à une activité temps, le nom de cette activité (ex: 'Faire la vaisselle' → parent 'Vaisselle'). Omets si pas de jumelle. " +
+                "center = prénom si connu, sinon \"Ma vie\". N'ajoute QUE des domaines/activités explicitement nommés/validés.",
+            messages: [{ role: "user", content: `Structure actuelle:\n${prevJson}\n\nDernier échange:\nuser: ${userMessage}\nassistant: ${assistantText}\n\nRenvoie la structure mise à jour (JSON uniquement).` }],
         });
         const txt = r.content.filter((b) => b.type === "text").map((b) => b.text).join("");
         const m = txt.match(/\{[\s\S]*\}/);
@@ -1485,7 +1516,7 @@ async function extractStructurePreview(client, history, userMessage, assistantTe
     }
 }
 exports.onboardingChat = (0, https_1.onRequest)({ cors: true, invoker: "public", secrets: ["FORMATION_JWT_SECRET", "ANTHROPIC_API_KEY"] }, async (req, res) => {
-    var _a, _b, _c, _d, _e, _f, _g;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
     if (req.method === "OPTIONS") {
         res.status(204).send("");
         return;
@@ -1687,6 +1718,7 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
     ];
     const notifications = [];
     const domainMap = {};
+    const activityMap = {};
     let onboardingComplete = false;
     let structurePreview = null;
     let assistantText = ""; // accumule le texte de TOUS les tours (évite les messages vides quand le modèle répond ET appelle un outil dans le même tour)
@@ -1705,10 +1737,23 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
                 .map((b) => b.text)
                 .join("");
             const text = assistantText.trim();
-            // Filet de sécurité : si le guide n'a pas mis à jour la mindmap lui-même,
-            // on extrait la structure de la conversation (appel léger) pour l'alimenter.
+            // Lit la structure déjà connue UNE fois (sert à l'extraction incrémentale + à la fusion).
+            let prevStruct = null;
+            if (!onboardingComplete) {
+                try {
+                    const prevSnap = await db_1.db.collection("formation_sessions").doc(uid).get();
+                    prevStruct = prevSnap.exists ? ((_j = (_h = prevSnap.data()) === null || _h === void 0 ? void 0 : _h.structure) !== null && _j !== void 0 ? _j : null) : null;
+                }
+                catch (_) { /* prevStruct reste null */ }
+            }
+            // Filet de sécurité : si le guide n'a pas mis à jour la mindmap, on l'alimente
+            // par extraction incrémentale (structure connue + dernier échange).
             if (!structurePreview && !onboardingComplete) {
-                structurePreview = await extractStructurePreview(client, history !== null && history !== void 0 ? history : [], message !== null && message !== void 0 ? message : "", text);
+                structurePreview = await extractStructurePreview(client, prevStruct, message !== null && message !== void 0 ? message : "", text);
+            }
+            // Fusion finale → aucun domaine/activité déjà connu ne disparaît.
+            if (structurePreview && !onboardingComplete) {
+                structurePreview = mergeStructures(prevStruct, structurePreview);
             }
             if (onboardingComplete) {
                 await db_1.db.collection("formation_access").doc(uid).update({
@@ -1742,7 +1787,7 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
             const toolResults = [];
             for (const block of response.content) {
                 if (block.type === "tool_use") {
-                    const result = await executeOnboardingTool(uid, block.name, block.input, domainMap);
+                    const result = await executeOnboardingTool(uid, block.name, block.input, domainMap, activityMap);
                     if (result.notification)
                         notifications.push(result.notification);
                     if (block.name === "push_gantt" || block.name === "complete_onboarding")
@@ -1859,7 +1904,6 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
                 startDate, endDate: endDate !== null && endDate !== void 0 ? endDate : null,
                 isMilestone: isMilestone !== null && isMilestone !== void 0 ? isMilestone : false,
                 color: null, barLabel: null, status: status !== null && status !== void 0 ? status : "pending",
-                recurringActionId: null,
                 actions: (actions !== null && actions !== void 0 ? actions : []).map(a => ({
                     id: (0, uuid_1.v4)(), title: a,
                     done: actionsAllDone === true, doneAt: actionsAllDone === true ? new Date().toISOString() : null,
@@ -1933,7 +1977,6 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
                     groupLabel: null,
                     startDate: t.startDate, endDate: (_c = t.endDate) !== null && _c !== void 0 ? _c : null,
                     isMilestone: false, color: null, barLabel: null, status: "pending",
-                    recurringActionId: null,
                     actions: ((_d = t.actions) !== null && _d !== void 0 ? _d : []).map(a => ({
                         id: (0, uuid_1.v4)(), title: a, done: false, doneAt: null, createdAt: new Date().toISOString(),
                     })),

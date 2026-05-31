@@ -43,7 +43,6 @@ lib/
 |--------|----------------------|-------|
 | `Domain` | `domains` | Domaine de vie (Santé, Travail…) |
 | `Activity` | `activities` | Tracking temps (`type: time`) ou fréquence (`type: habit`) |
-| `RecurringAction` | `recurringActions` | Tâche récurrente sans tracking |
 | `DayBlock` | `blocks` | Blocs de journée (Matin, Midi, Soir…) |
 | `Session` | `sessions` | Session de temps loggué |
 | `HabitHit` | `habitHits` | Incrément de routine |
@@ -255,7 +254,7 @@ actions: [
 ## Conventions de code
 
 - Pas de commentaires sauf invariant non-évident
-- Soft-delete systématique (jamais de `delete()` direct sur domains/activities/recurringActions)
+- Soft-delete systématique (jamais de `delete()` direct sur domains/activities)
 - `YYYY-MM-DD` = format ISO pour tout (projets, sessions, MCP)
 - Les documents HTML sont toujours liés à `projectId` + `taskId` quand applicable
 - `activityId` obligatoire sur toute routine/action récurrente
