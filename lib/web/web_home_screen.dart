@@ -282,7 +282,6 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   void _handleAssistantAction(AssistantActionData action) {
     switch (action.type) {
       case 'open_day_plan':
-      case 'open_goals':
         _mainTabs.animateTo(1);
       case 'open_project':
         final projectId = action.payload?['projectId'] as String?;
@@ -2137,9 +2136,24 @@ class _VisionSidebarSectionState extends State<_VisionSidebarSection> {
               ]),
             )
           : !_onboardingDone
-              ? Text(
-                  'Termine d\'abord ta première session Vision pour activer le mode mensuel.',
-                  style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.5), height: 1.5),
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Configure Productivitwo en discutant avec ton guide, à ton rythme — ta progression est sauvegardée. Domaines, activités et premier plan créés pour toi.',
+                      style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.6), height: 1.5),
+                    ),
+                    const SizedBox(height: 10),
+                    if (_accessUrl != null)
+                      InkWell(
+                        onTap: _openVision,
+                        child: Row(children: [
+                          Icon(Icons.auto_awesome_outlined, size: 14, color: gold),
+                          const SizedBox(width: 6),
+                          Text('Commencer ma première session', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: gold)),
+                        ]),
+                      ),
+                  ],
                 )
               : !_isPro
                   ? Column(

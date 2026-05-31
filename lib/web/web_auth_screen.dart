@@ -3,8 +3,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:productivitwo_v1/web/web_magic_link_complete_screen.dart';
 
 const _kCustomTokenUrl = 'https://getcustomtoken-dzos75b65q-uc.a.run.app';
+// Continuation URL du magic link web — racine pour que _AuthGate complète sur le web
+// (le chemin /email-signin est réservé au relay natif).
+const _kWebContinuationUrl = 'https://productivitwo-app.web.app/';
 
 class WebAuthScreen extends StatefulWidget {
   const WebAuthScreen({super.key});
@@ -18,14 +23,16 @@ class _WebAuthScreenState extends State<WebAuthScreen>
   late TabController _tabs;
   bool _loading = false;
   String? _error;
+  bool _emailSent = false;
 
   final _uidCtrl   = TextEditingController();
   final _tokenCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 2, vsync: this);
+    _tabs = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -33,7 +40,35 @@ class _WebAuthScreenState extends State<WebAuthScreen>
     _tabs.dispose();
     _uidCtrl.dispose();
     _tokenCtrl.dispose();
+    _emailCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _sendMagicLink() async {
+    final email = _emailCtrl.text.trim();
+    if (email.isEmpty || !email.contains('@')) {
+      setState(() => _error = 'Adresse email invalide');
+      return;
+    }
+    setState(() { _loading = true; _error = null; });
+    try {
+      await FirebaseAuth.instance.sendSignInLinkToEmail(
+        email: email,
+        actionCodeSettings: ActionCodeSettings(
+          url: _kWebContinuationUrl,
+          handleCodeInApp: true,
+        ),
+      );
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(kWebEmailPendingKey, email);
+      if (mounted) setState(() => _emailSent = true);
+    } on FirebaseAuthException catch (e) {
+      if (mounted) setState(() => _error = e.message ?? 'Envoi impossible');
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   Future<void> _signInWithGoogle() async {
@@ -139,8 +174,9 @@ class _WebAuthScreenState extends State<WebAuthScreen>
                                     dividerColor: Colors.transparent,
                                     indicatorColor: cs.primary,
                                     tabs: const [
+                                      Tab(text: 'Par email'),
                                       Tab(text: 'Compte iOS'),
-                                      Tab(text: 'Nouveau compte'),
+                                      Tab(text: 'Google'),
                                     ],
                                   ),
                                 ),
@@ -168,6 +204,14 @@ class _WebAuthScreenState extends State<WebAuthScreen>
                                   child: TabBarView(
                                     controller: _tabs,
                                     children: [
+                                      // ── Onglet Email (magic link) ───────
+                                      _EmailLoginTab(
+                                        emailCtrl: _emailCtrl,
+                                        loading: _loading,
+                                        sent: _emailSent,
+                                        onSubmit: _sendMagicLink,
+                                      ),
+
                                       // ── Onglet iOS ──────────────────────
                                       _IosLoginTab(
                                         uidCtrl: _uidCtrl,
@@ -443,6 +487,87 @@ class _IosLoginTab extends StatelessWidget {
                     width: 16, height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2))
                 : const Text('Connecter mon compte iOS'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Onglet Email (magic link) ───────────────────────────────────────────────
+
+class _EmailLoginTab extends StatelessWidget {
+  final TextEditingController emailCtrl;
+  final bool loading;
+  final bool sent;
+  final VoidCallback onSubmit;
+
+  const _EmailLoginTab({
+    required this.emailCtrl,
+    required this.loading,
+    required this.sent,
+    required this.onSubmit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    if (sent) {
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.mark_email_read_outlined, color: cs.primary, size: 40),
+            const SizedBox(height: 16),
+            Text(
+              'Lien envoyé ! Ouvre ton email et clique sur le lien de connexion.',
+              style: TextStyle(fontSize: 14, color: cs.onSurface.withOpacity(0.75)),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Reviens ensuite sur cet onglet — la connexion se finalisera automatiquement.',
+              style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.45)),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Reçois un lien de connexion par email.\nPas de mot de passe à retenir.',
+            style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.55)),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: emailCtrl,
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(
+              labelText: 'Ton email',
+              isDense: true,
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: (_) => loading ? null : onSubmit(),
+          ),
+          const SizedBox(height: 16),
+          FilledButton(
+            onPressed: loading ? null : onSubmit,
+            style: FilledButton.styleFrom(
+                minimumSize: const Size(double.infinity, 44)),
+            child: loading
+                ? const SizedBox(
+                    width: 16, height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('Recevoir mon lien'),
           ),
         ],
       ),

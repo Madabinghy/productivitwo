@@ -98,14 +98,11 @@ class AssistantEngine {
         .map((d) => ((d.data()['condition'] as Map?)?.cast<String, dynamic>() ?? {})['type'] as String? ?? '')
         .toSet();
 
-    List<Map<String, dynamic>>? goalsCache;
     List<Map<String, dynamic>>? sessionsCache;
     List<Map<String, dynamic>>? habitHitsCache;
     List<Map<String, dynamic>>? activitiesCache;
 
     await Future.wait([
-      if (conditionTypes.any(_needsGoals))
-        _fetchGoals(uid).then((v) => goalsCache = v),
       if (conditionTypes.any(_needsSessions))
         _fetchRecentSessions(uid, today).then((v) => sessionsCache = v),
       if (conditionTypes.any(_needsHabitHits))
@@ -139,7 +136,6 @@ class AssistantEngine {
         projects: projects,
         domains: domains,
         today: today,
-        goals: goalsCache,
         sessions: sessionsCache,
         habitHits: habitHitsCache,
         activities: activitiesCache,
@@ -262,7 +258,6 @@ class AssistantEngine {
     required List<Project> projects,
     required List<Domain> domains,
     required DateTime today,
-    List<Map<String, dynamic>>? goals,
     List<Map<String, dynamic>>? sessions,
     List<Map<String, dynamic>>? habitHits,
     List<Map<String, dynamic>>? activities,
@@ -342,32 +337,11 @@ class AssistantEngine {
         // Non implémenté — inbox dans collection séparée (captures)
         return false;
 
-      // ── Conditions objectifs ──────────────────────────────────────────────
+      // ── Conditions objectifs (non utilisées — GTD goals supprimé) ─────────
 
       case 'goal_near_deadline':
-        final goalId = condition['goalId'] as String?;
-        final daysBefore = (condition['daysBefore'] as num?)?.toInt() ?? 3;
-        if (goalId == null || goals == null) return false;
-        final goal = goals.where((g) => g['id'] == goalId).firstOrNull;
-        if (goal == null) return false;
-        final dueDateStr = goal['dueDate'] as String?;
-        if (dueDateStr == null) return false;
-        final dueDate = DateTime.tryParse(dueDateStr);
-        if (dueDate == null) return false;
-        final diff = dueDate.difference(todayD).inDays;
-        return diff >= 0 && diff <= daysBefore;
-
       case 'goal_undone_actions':
-        final activityId = condition['activityId'] as String?;
-        final min = (condition['min'] as num?)?.toInt() ?? 1;
-        if (goals == null) return false;
-        int undone = 0;
-        for (final g in goals) {
-          if (activityId != null && g['activityId'] != activityId) continue;
-          final actions = (g['actions'] as List?) ?? [];
-          undone += actions.where((a) => a['done'] != true).length;
-        }
-        return undone >= min;
+        return false;
 
       // ── Conditions activités (sessions) ──────────────────────────────────
 
@@ -490,10 +464,6 @@ class AssistantEngine {
     return count;
   }
 
-  static bool _needsGoals(String type) => const {
-    'goal_near_deadline', 'goal_undone_actions',
-  }.contains(type);
-
   static bool _needsSessions(String type) => const {
     'activity_behind_target', 'no_activity_logged_today', 'activity_streak',
   }.contains(type);
@@ -537,14 +507,6 @@ class AssistantEngine {
     if (v is Timestamp) return v.toDate();
     if (v is String) return DateTime.tryParse(v);
     return null;
-  }
-
-  static Future<List<Map<String, dynamic>>> _fetchGoals(String uid) async {
-    final snap = await _db
-        .collection('users/$uid/goals')
-        .where('status', isEqualTo: 'active')
-        .get();
-    return snap.docs.map((d) => d.data()).toList();
   }
 
   static AssistantActionData? _parseAction(dynamic raw) {

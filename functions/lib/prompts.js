@@ -41,7 +41,6 @@ function getPromptMessages(name, args) {
                         `5. Crée un programme cohérent avec plan_day :\n` +
                         `   - Respecte mes blocs\n` +
                         `   - Priorise les tâches Gantt en retard\n` +
-                        `   - Ajoute des créneaux "Rendez-vous avec [objectif]" pour mes goals GTD\n` +
                         `   - Commente les actions non faites de la semaine si pertinent\n` +
                         `6. Demande-moi : "Veux-tu que j'intègre des créneaux dans ton agenda Google Calendar ?"\n` +
                         `   - Si oui : identifie les créneaux libres, propose-les clairement, puis appelle create_event après validation.\n` +

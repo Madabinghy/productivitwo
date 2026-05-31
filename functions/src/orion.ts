@@ -10,7 +10,7 @@ import {
   executeCreateDomain, executeDeleteDomain,
   executeListProjects, executeGetProject, executePushGantt, executeUpdateProject,
   executeUpdateTaskStatus, executeArchiveProject, executeDeleteProject,
-  executeLinkGoalToTask, executeDeleteGoal, executeDeleteRoutine,
+  executeDeleteRoutine,
   executeGetDocuments, executeSaveDocument, executeGetDocumentTemplate,
   executeGetArchives, executeRestoreItem,
   executeGetInbox, executeProcessInboxItem,
@@ -42,8 +42,6 @@ const ORION_TOOLS: PromptCachingBetaTool[] = [
   { name: "archive_project",          description: "Archive ou restaure un projet.",                                                                                                      input_schema: { type: "object", properties: { projectId: { type: "string" }, restore: { type: "boolean" } }, required: ["projectId"] } },
   { name: "delete_project",           description: "Supprime définitivement un projet.",                                                                                                  input_schema: { type: "object", properties: { projectId: { type: "string" }, deleteObjective: { type: "boolean" } }, required: ["projectId"] } },
   { name: "push_gantt", description: "Crée ou met à jour un projet Gantt. TOUJOURS inclure phases[] ET tasks[] — sans tasks le projet sera vide.", input_schema: { type: "object", required: ["project"], properties: { project: { type: "object", required: ["title", "startDate", "tasks"], properties: { title: { type: "string" }, description: { type: "string" }, domainId: { type: "string" }, startDate: { type: "string", description: "YYYY-MM-DD" }, endDate: { type: "string", description: "YYYY-MM-DD" }, phases: { type: "array", items: { type: "object", required: ["id", "label", "startDate", "endDate"], properties: { id: { type: "string", description: "ex: phase-1" }, label: { type: "string" }, startDate: { type: "string" }, endDate: { type: "string" }, color: { type: "string" } } } }, tasks: { type: "array", description: "OBLIGATOIRE : au moins 2 tâches par phase", items: { type: "object", required: ["id", "title", "startDate"], properties: { id: { type: "string", description: "ex: task-1" }, title: { type: "string" }, phaseId: { type: "string" }, startDate: { type: "string", description: "YYYY-MM-DD" }, endDate: { type: "string", description: "YYYY-MM-DD" }, isMilestone: { type: "boolean" }, status: { type: "string", enum: ["pending", "done", "skipped"] } } } } } } } } },
-  { name: "link_goal_to_task",        description: "Lie un objectif GTD à une tâche Gantt.",                                                                                              input_schema: { type: "object", properties: { goalId: { type: "string" }, projectId: { type: "string" }, projectTaskId: { type: "string" } }, required: ["goalId"] } },
-  { name: "delete_goal",              description: "Archive ou supprime un objectif GTD.",                                                                                                input_schema: { type: "object", properties: { goalId: { type: "string" }, action: { type: "string" } }, required: ["goalId"] } },
   { name: "save_document",            description: "Sauvegarde un document HTML.",                                                                                                        input_schema: { type: "object", properties: { title: { type: "string" }, content: { type: "string" } }, required: ["title", "content"] } },
   { name: "delete_document",          description: "Supprime un document.",                                                                                                               input_schema: { type: "object", properties: { documentId: { type: "string" } }, required: ["documentId"] } },
   { name: "restore_item",             description: "Restaure un élément archivé.",                                                                                                        input_schema: { type: "object", properties: { collection: { type: "string" }, itemId: { type: "string" } }, required: ["collection", "itemId"] } },
@@ -380,15 +378,6 @@ Tu dois TOUJOURS appeler push_assistant_message avant end_turn, quelle que soit 
             case "push_gantt":
               result = await executePushGantt(uid, { uid, ...args } as PushGanttBody);
               actionLog.push(`🗂 Projet Gantt créé : ${(args as unknown as PushGanttBody).project?.title ?? ""}`);
-              break;
-            // ── Objectifs ────────────────────────────────────────────────
-            case "link_goal_to_task":
-              result = await executeLinkGoalToTask(uid, args.goalId as string, (args.projectId as string) ?? null, (args.projectTaskId as string) ?? null);
-              actionLog.push(`🔗 Objectif lié à une tâche Gantt`);
-              break;
-            case "delete_goal":
-              result = await executeDeleteGoal(uid, args.goalId as string, (args.action as string) ?? "archive");
-              actionLog.push(`🗑 Objectif archivé/supprimé`);
               break;
             // ── Documents ────────────────────────────────────────────────
             case "save_document":

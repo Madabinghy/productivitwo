@@ -90,7 +90,18 @@ class FirestoreSync {
     final credential = EmailAuthProvider.credentialWithLink(email: email, emailLink: link);
     UserCredential cred;
     if (_auth.currentUser != null && _auth.currentUser!.isAnonymous) {
-      cred = await _auth.currentUser!.linkWithCredential(credential);
+      try {
+        cred = await _auth.currentUser!.linkWithCredential(credential);
+      } on FirebaseAuthException catch (e) {
+        // Compte déjà créé en amont (webhook systeme.io → formation) : on ne peut
+        // pas lier le compte anonyme, on bascule sur le compte existant qui porte
+        // déjà les domaines/activités générés par la formation.
+        if (e.code == 'email-already-in-use' || e.code == 'credential-already-in-use') {
+          cred = await _auth.signInWithCredential(credential);
+        } else {
+          rethrow;
+        }
+      }
     } else {
       cred = await _auth.signInWithCredential(credential);
     }
@@ -130,7 +141,6 @@ class FirestoreSync {
         _pushCollection(st.sessions.map((e) => e.toJson()).toList(), 'sessions'),
         _pushCollection(st.habitProgress.map((e) => e.toJson()).toList(), 'habitProgress'),
         _pushCollection(st.habitHits.map((e) => e.toJson()).toList(), 'habitHits'),
-        _pushCollection(st.goals.map((e) => e.toJson()).toList(), 'goals'),
         _pushCollection(st.blocks.map((e) => e.toJson()).toList(), 'blocks'),
         _pushCollection(st.earnedBadges.map((e) => e.toJson()).toList(), 'badges'),
         _meta().set(_encodeMeta(st), SetOptions(merge: true)),
@@ -173,7 +183,6 @@ class FirestoreSync {
         _col('sessions').get(),
         _col('habitProgress').get(),
         _col('habitHits').get(),
-        _col('goals').get(),
         _col('blocks').get(),
         _col('badges').get(),
       ]);
@@ -197,9 +206,8 @@ class FirestoreSync {
         sessions: docs(3).map(Session.from).toList(),
         habitProgress: docs(4).map(HabitProgress.from).toList(),
         habitHits: docs(5).map(HabitHit.from).toList(),
-        goals: docs(6).map(Goal.from).toList(),
-        blocks: docs(7).map(DayBlock.from).toList(),
-        earnedBadges: docs(8)
+        blocks: docs(6).map(DayBlock.from).toList(),
+        earnedBadges: docs(7)
             .map(EarnedBadge.tryFrom)
             .whereType<EarnedBadge>()
             .toList(),
@@ -273,20 +281,6 @@ class FirestoreSync {
       }(),
       sessions:      union(local.sessions,      remote.sessions,      (s) => s.id),
       habitHits:     union(local.habitHits,     remote.habitHits,     (h) => h.id),
-      // Goals : remote est la source de vérité (MCP peut archiver/supprimer)
-      // On garde en plus les goals locaux absents du remote (créés offline)
-      goals: () {
-        final remoteMap = byId(remote.goals, (g) => g.id);
-        final merged = Map.of(remoteMap); // remote en base
-        for (final goal in local.goals) {
-          if (!remoteMap.containsKey(goal.id)) {
-            // Créé localement offline → on le garde
-            merged[goal.id] = goal;
-          }
-          // Si présent dans les deux : remote gagne (MCP a la priorité)
-        }
-        return merged.values.toList();
-      }(),
       blocks:        union(local.blocks,        remote.blocks,        (b) => b.id),
       earnedBadges:  union(local.earnedBadges,  remote.earnedBadges,  (b) => '${b.id.name}_${b.habitId ?? ""}'),
       habitProgress: mergedHp.values.toList(),
@@ -400,12 +394,6 @@ class FirestoreSync {
     return _col('projects').snapshots().map(
       (snap) => snap.docs.map((d) => Project.from(d.data() as Map)).toList(),
     );
-  }
-
-  Stream<List<Goal>> streamGoals() {
-    if (uid == null) return const Stream.empty();
-    return _col('goals').snapshots().map((snap) =>
-        snap.docs.map((d) => Goal.from(d.data() as Map)).toList());
   }
 
   Stream<List<Domain>> streamDomains() {

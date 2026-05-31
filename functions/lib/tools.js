@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_GOAL_TOOL = exports.DELETE_ROUTINE_TOOL = exports.LINK_GOAL_TO_TASK_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
+exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
 const GET_USER_CONTEXT_TOOL = {
     name: "get_user_context",
     description: "APPELLE CET OUTIL EN PREMIER dans toute conversation liée à la productivité. " +
@@ -138,7 +138,6 @@ const PUSH_ASSISTANT_MESSAGE_TOOL = {
                             "day_plan_empty",
                             "project_inactive_days",
                             "activity_behind_target",
-                            "goal_undone_actions",
                             "habit_streak_broken",
                             "inbox_overflow",
                             "project_deadline_near",
@@ -150,28 +149,26 @@ const PUSH_ASSISTANT_MESSAGE_TOOL = {
                             "week_start",
                             "week_end",
                             "activity_streak",
-                            "goal_near_deadline",
                             "first_open_of_day",
                             "custom_date",
                         ],
                         description: "always · overdue_count(min) · day_plan_empty · project_inactive_days(projectId,days) · " +
-                            "activity_behind_target(activityId) · goal_undone_actions(activityId,min) · habit_streak_broken(habitId) · " +
+                            "activity_behind_target(activityId) · habit_streak_broken(habitId) · " +
                             "inbox_overflow(min) · project_deadline_near(projectId,daysBefore) · no_now_focus(beforeHour) · " +
                             "routine_completion_low(maxPercent) · day_plan_overloaded(min) · no_activity_logged_today · " +
                             "project_milestone_today(projectId) · week_start · week_end · " +
-                            "activity_streak(activityId,minDays) · goal_near_deadline(goalId,daysBefore) · " +
+                            "activity_streak(activityId,minDays) · " +
                             "first_open_of_day · custom_date(date)",
                     },
-                    min: { type: "number", description: "Seuil minimum (overdue_count, goal_undone_actions, inbox_overflow, day_plan_overloaded)" },
+                    min: { type: "number", description: "Seuil minimum (overdue_count, inbox_overflow, day_plan_overloaded)" },
                     projectId: { type: "string", description: "ID projet (project_inactive_days, project_deadline_near, project_milestone_today)" },
                     days: { type: "number", description: "Jours d'inactivité (project_inactive_days)" },
-                    daysBefore: { type: "number", description: "Jours avant deadline (project_deadline_near, goal_near_deadline)" },
-                    activityId: { type: "string", description: "ID activité (activity_behind_target, goal_undone_actions, activity_streak)" },
+                    daysBefore: { type: "number", description: "Jours avant deadline (project_deadline_near)" },
+                    activityId: { type: "string", description: "ID activité (activity_behind_target, activity_streak)" },
                     habitId: { type: "string", description: "ID habitude (habit_streak_broken)" },
                     beforeHour: { type: "number", description: "Heure limite 0-23 (no_now_focus) — ex: 10 = avant 10h" },
                     maxPercent: { type: "number", description: "Taux de complétion max en % (routine_completion_low) — ex: 50 = moins de 50%" },
                     minDays: { type: "number", description: "Nombre de jours consécutifs minimum (activity_streak)" },
-                    goalId: { type: "string", description: "ID objectif GTD (goal_near_deadline)" },
                     date: { type: "string", description: "Date exacte YYYY-MM-DD (custom_date)" },
                 },
             },
@@ -193,7 +190,7 @@ const PUSH_ASSISTANT_MESSAGE_TOOL = {
                 properties: {
                     type: {
                         type: "string",
-                        enum: ["open_day_plan", "open_project", "open_gantt_task", "open_activity", "open_goals"],
+                        enum: ["open_day_plan", "open_project", "open_gantt_task", "open_activity"],
                         description: "Deep link — open_gantt_task ouvre la fiche de la tâche directement (payload: { projectId, taskId })",
                     },
                     label: { type: "string", description: "Libellé du bouton (ex: 'Voir le plan')" },
@@ -378,23 +375,6 @@ const UPDATE_ACTIVITY_TOOL = {
     },
 };
 exports.UPDATE_ACTIVITY_TOOL = UPDATE_ACTIVITY_TOOL;
-const LINK_GOAL_TO_TASK_TOOL = {
-    name: "link_goal_to_task",
-    description: "Lie un objectif GTD (Goal) à une tâche Gantt. " +
-        "Le goal devient le détail opérationnel de la tâche stratégique. " +
-        "Utilise get_user_context pour les goalId et list_projects+get_project pour les taskId. " +
-        "Passe null pour délier.",
-    inputSchema: {
-        type: "object",
-        required: ["goalId"],
-        properties: {
-            goalId: { type: "string", description: "id du Goal GTD" },
-            projectId: { type: "string", description: "id du projet Gantt (null pour délier)" },
-            projectTaskId: { type: "string", description: "id de la tâche Gantt (null pour délier)" },
-        },
-    },
-};
-exports.LINK_GOAL_TO_TASK_TOOL = LINK_GOAL_TO_TASK_TOOL;
 const DELETE_ROUTINE_TOOL = {
     name: "delete_routine",
     description: "Archive une action récurrente. L'élément reste récupérable depuis les Archives — " +
@@ -409,25 +389,6 @@ const DELETE_ROUTINE_TOOL = {
     },
 };
 exports.DELETE_ROUTINE_TOOL = DELETE_ROUTINE_TOOL;
-const DELETE_GOAL_TOOL = {
-    name: "delete_goal",
-    description: "Archive ou supprime définitivement un objectif GTD. " +
-        "Préfère 'archive' (status archived) pour conserver l'historique. " +
-        "Demande confirmation avant d'appeler.",
-    inputSchema: {
-        type: "object",
-        required: ["goalId"],
-        properties: {
-            goalId: { type: "string", description: "id du goal (obtenu via get_user_context)" },
-            action: {
-                type: "string",
-                enum: ["archive", "delete"],
-                description: "'archive' = marque comme archivé (recommandé), 'delete' = suppression définitive",
-            },
-        },
-    },
-};
-exports.DELETE_GOAL_TOOL = DELETE_GOAL_TOOL;
 const GET_DAY_BLOCKS_TOOL = {
     name: "get_day_blocks",
     description: "Retourne les blocs de journée (Miracle Morning, Matinée, Midi, Soir…) avec horaires. " +
@@ -538,7 +499,17 @@ const PUSH_GANTT_MCP_TOOL = {
                                 color: { type: "string" },
                                 barLabel: { type: "string" },
                                 status: { type: "string", enum: ["pending", "done", "skipped"] },
-                                actions: { type: "array", items: { type: "string" }, description: "2 à 4 sous-actions opérationnelles (étapes courtes, verbe d'action)" },
+                                actions: {
+                                    type: "array",
+                                    items: { type: "string" },
+                                    description: "Sous-actions opérationnelles. " +
+                                        "Pour une tâche de développement, utiliser le format mini-spec en 4 lignes :\n" +
+                                        "  1. \"Objectif : <ce que la tâche doit accomplir>\"\n" +
+                                        "  2. \"Fichiers : <fichiers ou zones concernés, ex: lib/web/gantt_screen.dart, functions/src/execute.ts>\"\n" +
+                                        "  3. \"Critères : <liste des critères d'acceptation vérifiables>\"\n" +
+                                        "  4. \"Contraintes : <limites techniques, libs interdites, rétrocompatibilité…>\"\n" +
+                                        "Pour une tâche non-dev : 2 à 4 étapes courtes avec verbe d'action.",
+                                },
                             },
                         },
                     },
@@ -595,7 +566,17 @@ const ADD_TASK_TOOL = {
             color: { type: "string" },
             barLabel: { type: "string" },
             status: { type: "string", enum: ["pending", "done", "skipped"] },
-            actions: { type: "array", items: { type: "string" }, description: "Sous-actions (strings)" },
+            actions: {
+                type: "array",
+                items: { type: "string" },
+                description: "Sous-actions opérationnelles. " +
+                    "Pour une tâche de développement, utiliser le format mini-spec en 4 lignes :\n" +
+                    "  1. \"Objectif : <ce que la tâche doit accomplir>\"\n" +
+                    "  2. \"Fichiers : <fichiers ou zones concernés, ex: lib/web/gantt_screen.dart, functions/src/execute.ts>\"\n" +
+                    "  3. \"Critères : <liste des critères d'acceptation vérifiables>\"\n" +
+                    "  4. \"Contraintes : <limites techniques, libs interdites, rétrocompatibilité…>\"\n" +
+                    "Pour une tâche non-dev : 2 à 4 étapes courtes avec verbe d'action.",
+            },
         },
     },
 };

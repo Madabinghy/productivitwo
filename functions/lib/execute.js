@@ -20,9 +20,7 @@ exports.executeDeleteActivity = executeDeleteActivity;
 exports.executeUpdateProject = executeUpdateProject;
 exports.executeUpdateTaskStatus = executeUpdateTaskStatus;
 exports.executeUpdateActivity = executeUpdateActivity;
-exports.executeLinkGoalToTask = executeLinkGoalToTask;
 exports.executeDeleteRoutine = executeDeleteRoutine;
-exports.executeDeleteGoal = executeDeleteGoal;
 exports.executeArchiveProject = executeArchiveProject;
 exports.executeDeleteProject = executeDeleteProject;
 exports.executeListProjects = executeListProjects;
@@ -144,11 +142,11 @@ async function executePushAssistantMessage(uid, args) {
     }
     const validTypes = [
         "always", "overdue_count", "day_plan_empty", "project_inactive_days",
-        "activity_behind_target", "goal_undone_actions", "habit_streak_broken",
+        "activity_behind_target", "habit_streak_broken",
         "inbox_overflow", "project_deadline_near", "no_now_focus",
         "routine_completion_low", "day_plan_overloaded", "no_activity_logged_today",
         "project_milestone_today", "week_start", "week_end",
-        "activity_streak", "goal_near_deadline", "first_open_of_day", "custom_date",
+        "activity_streak", "first_open_of_day", "custom_date",
     ];
     if (!validTypes.includes(args.condition.type)) {
         return `Type de condition inconnu : ${args.condition.type}`;
@@ -248,10 +246,9 @@ async function executeGetUserContext(uid) {
     const now = new Date();
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const todayStr = todayInParis(now);
-    const [domainsSnap, activitiesSnap, goalsSnap, habitHitsSnap, sessionsSnap, projectsSnap, scheduleSnap, inboxSnap] = await Promise.all([
+    const [domainsSnap, activitiesSnap, habitHitsSnap, sessionsSnap, projectsSnap, scheduleSnap, inboxSnap] = await Promise.all([
         db_1.db.collection(`users/${uid}/domains`).get(),
         db_1.db.collection(`users/${uid}/activities`).get(),
-        db_1.db.collection(`users/${uid}/goals`).where("status", "==", "active").get(),
         // Incréments de routines/habitudes sur 7 jours
         db_1.db.collection(`users/${uid}/habitHits`)
             .where("ts", ">=", sevenDaysAgo)
@@ -289,17 +286,6 @@ async function executeGetUserContext(uid) {
             goalMin: v.goalMin,
             habitFreq: v.habitFreq,
             habitTarget: v.habitTarget,
-        };
-    });
-    const activeGoals = goalsSnap.docs.map((d) => {
-        const v = d.data();
-        const actions = (v.actions || []);
-        return {
-            id: v.id,
-            title: v.title,
-            domainId: v.domainId,
-            dueDate: v.dueDate || null,
-            progress: `${actions.filter((a) => a.done).length}/${actions.length}`,
         };
     });
     // ── Réalisé des 7 derniers jours ──────────────────────────────────────────
@@ -409,14 +395,12 @@ async function executeGetUserContext(uid) {
                 "Pour chaque message avec une tâche ou projet précis, ajoute une action ciblée : " +
                 "• open_gantt_task(projectId, taskId) pour une tâche Gantt urgente ; " +
                 "• open_project(projectId) pour une deadline de projet ; " +
-                "• open_schedule pour le programme du jour ; " +
-                "• open_goals pour les objectifs GTD. " +
+                "• open_schedule pour le programme du jour. " +
                 "Ne programme jamais deux messages avec la même condition pour la même période.",
         ],
     };
     return JSON.stringify(Object.assign(Object.assign({}, coachingRules), { today: todayStr, domains,
         activities,
-        activeGoals,
         activeProjects,
         todaySchedule, inboxItems: inboxItems.length > 0 ? inboxItems : null, recentActivity }), null, 2);
 }
@@ -779,18 +763,6 @@ async function executeUpdateActivity(uid, activityId, updates) {
     await ref.update(patch);
     return `✅ Activité "${currentName}" mise à jour.`;
 }
-async function executeLinkGoalToTask(uid, goalId, projectId, projectTaskId) {
-    var _a, _b;
-    const ref = db_1.db.collection(`users/${uid}/goals`).doc(goalId);
-    const snap = await ref.get();
-    if (!snap.exists)
-        return `Objectif introuvable : ${goalId}`;
-    const title = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.title) !== null && _b !== void 0 ? _b : goalId;
-    await ref.update({ projectId: projectId !== null && projectId !== void 0 ? projectId : null, projectTaskId: projectTaskId !== null && projectTaskId !== void 0 ? projectTaskId : null });
-    if (!projectTaskId)
-        return `✅ Objectif "${title}" délié de tout projet Gantt.`;
-    return `✅ Objectif "${title}" lié à la tâche Gantt ${projectTaskId}.`;
-}
 async function executeDeleteRoutine(uid, routineId) {
     var _a, _b;
     const ref = db_1.db.collection(`users/${uid}/activities`).doc(routineId);
@@ -801,21 +773,6 @@ async function executeDeleteRoutine(uid, routineId) {
     // Soft-delete pour que le merge Flutter respecte la suppression
     await ref.update({ deleted: true });
     return `✅ Routine "${title}" supprimée.`;
-}
-async function executeDeleteGoal(uid, goalId, action) {
-    var _a, _b;
-    const ref = db_1.db.collection(`users/${uid}/goals`).doc(goalId);
-    const snap = await ref.get();
-    if (!snap.exists)
-        return `Objectif introuvable : ${goalId}`;
-    const title = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.title) !== null && _b !== void 0 ? _b : goalId;
-    if (action === "delete") {
-        await ref.delete();
-        return `✅ Objectif "${title}" supprimé définitivement.`;
-    }
-    // Archive par défaut
-    await ref.update({ status: "archived" });
-    return `✅ Objectif "${title}" archivé.`;
 }
 async function executeArchiveProject(uid, projectId, restore) {
     var _a, _b;
@@ -1084,10 +1041,9 @@ async function executeGetOrionContext(uid) {
     const now = new Date();
     const today = todayInParis(now);
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const [domainsSnap, activitiesSnap, goalsSnap, habitHitsSnap, sessionsSnap, projectsSnap] = await Promise.all([
+    const [domainsSnap, activitiesSnap, habitHitsSnap, sessionsSnap, projectsSnap] = await Promise.all([
         db_1.db.collection(`users/${uid}/domains`).get(),
         db_1.db.collection(`users/${uid}/activities`).get(),
-        db_1.db.collection(`users/${uid}/goals`).where("status", "==", "active").get(),
         db_1.db.collection(`users/${uid}/habitHits`).where("ts", ">=", sevenDaysAgo).get(),
         db_1.db.collection(`users/${uid}/sessions`).where("startAt", ">=", sevenDaysAgo.toISOString()).get(),
         db_1.db.collection(`users/${uid}/projects`).where("status", "==", "active").get(),
@@ -1099,13 +1055,6 @@ async function executeGetOrionContext(uid) {
     activitiesSnap.docs.forEach((d) => { const v = d.data(); activityMap.set(v.id, v.name); });
     const activities = activitiesSnap.docs.map((d) => d.data()).filter((v) => !v.deleted)
         .map((v) => { var _a; return ({ id: v.id, name: v.name, type: v.type, domainId: v.domainId, goalMin: (_a = v.goalMin) !== null && _a !== void 0 ? _a : null }); });
-    const goals = goalsSnap.docs.map((d) => {
-        var _a;
-        const v = d.data();
-        const actions = (v.actions || []);
-        return { id: v.id, title: v.title, domainId: v.domainId, dueDate: (_a = v.dueDate) !== null && _a !== void 0 ? _a : null,
-            progress: `${actions.filter((a) => a.done).length}/${actions.length}` };
-    });
     // Habitudes : hits 7j par activité
     const hitsByHabit = new Map();
     habitHitsSnap.docs.forEach((d) => { const v = d.data(); hitsByHabit.set(v.habitId, (hitsByHabit.get(v.habitId) || 0) + 1); });
@@ -1139,7 +1088,7 @@ async function executeGetOrionContext(uid) {
             urgentTasks,
         };
     });
-    return JSON.stringify({ today, domains, activities, goals, habitStats, timeStats, projects }, null, 2);
+    return JSON.stringify({ today, domains, activities, habitStats, timeStats, projects }, null, 2);
 }
 async function executeGetOrionQueue(uid) {
     const snap = await db_1.db.collection(`users/${uid}/orion_queue`)
