@@ -1100,14 +1100,15 @@ Une fois la structure validée, crée TOUT dans cet ordre :
    - PAIRE PAR DÉFAUT : pour chaque habitude qui a une durée sensée, crée d'ABORD l'activité type "time" (le nom, ex: "Vaisselle"), PUIS la routine type "habit" (le verbe, ex: "Faire la vaisselle") en passant linkedActivityName = le nom de l'activité temps (ex: "Vaisselle"). Convention : verbe = fréquence / nom = temps ; "Boire de l'eau" → "Hydratation". Les deux coexistent (fréquence cochée + temps chronométré) et la routine est RATTACHÉE à son activité. (Pas de paire pour une habitude sans durée sensée, ex: peser son poids.)
 3. PROJET (conditionnel — ne JAMAIS le forcer). Demande clairement :
    "Y a-t-il un objectif concret que tu aimerais atteindre d'ici ~3 mois ?"
-   - Si OUI → push_gantt autour de cet objectif :
-       · strategicObjective = le RÉSULTAT visé (un cap clair + un KPI mesurable) — le "pourquoi" affiché au-dessus des étapes/tâches.
-       · Titre personnalisé reflétant son voyage présent→futur.
-       · Phases = étapes vers l'objectif ; 3-5 tâches/phase (actions concrètes).
-       · Durée calée sur SON objectif (par défaut ~3 mois ; ajuste s'il donne un autre horizon). Jamais un 6-9 mois imposé.
+   - Si OUI → construis le projet en DEUX temps :
+       a) PRÉSENTE D'ABORD le plan proposé dans ta réponse texte (l'objectif/cap + KPI, les phases = étapes, 3-5 tâches/phase, durée calée sur SON objectif ~3 mois — jamais un 6-9 mois imposé). À ce moment, un Gantt se dessine en direct sous le chat. Demande s'il veut ajuster (ajouter/retirer/réordonner une étape ou une tâche). Affine avec lui sur 1-2 échanges si besoin. N'appelle PAS encore push_gantt.
+       b) SEULEMENT après sa validation ("c'est bon", "go", "parfait") → appelle push_gantt avec le plan validé : strategicObjective (résultat visé + KPI mesurable), titre personnalisé, phases, tâches, durée.
    - Si NON ou flou → ne crée PAS de projet, n'en invente pas. Dis-lui qu'il pourra en lancer un dès qu'il en aura un, avec l'assistant.
 4. complete_onboarding — appelle-le en DERNIER pour clôturer (que tu aies créé un projet ou non).
-5. Message final enthousiaste : annonce que le système est prêt, invite à ouvrir l'app, et précise qu'il pourra ajouter/affiner activités et projets à tout moment (lui-même ou via l'assistant).
+5. Message final enthousiaste : annonce que le système est prêt, et explique clairement la suite en 3 points :
+   • Ouvre l'app et commence à tracker ce que tu fais.
+   • Pour créer autant de projets Gantt que tu veux et aller plus loin au quotidien : connecte Claude depuis l'app web et travaille directement avec lui (il peut créer/ajuster tes projets, programmes, etc.).
+   • Reviens ici dans "Vision" une fois par mois pour faire évoluer ta stratégie, tes domaines et tes activités.
 
 ━━━ STYLE ━━━
 - Tutoiement naturel et chaleureux
@@ -1450,32 +1451,6 @@ async function executeOnboardingTool(
   return { notification: "", output: `Outil inconnu : ${toolName}` };
 }
 
-// Fusionne deux snapshots de structure : on n'enlève JAMAIS un domaine/activité
-// déjà connu (l'extraction par tour peut en oublier sur un transcript long).
-type MMActivity = { name?: string; type?: string; goalMin?: number };
-type MMDomain = { name?: string; activities?: MMActivity[] };
-type MMStruct = { center?: string; domains?: MMDomain[] };
-function mergeStructures(prev: unknown, next: unknown): unknown {
-  const p = prev as MMStruct | null;
-  const n = next as MMStruct | null;
-  if (!p || !Array.isArray(p.domains)) return next;
-  if (!n || !Array.isArray(n.domains)) return prev;
-  const norm = (s?: string) => String(s ?? "").trim().toLowerCase();
-  const map = new Map<string, MMDomain>();
-  for (const d of p.domains) map.set(norm(d.name), { name: d.name, activities: [...(d.activities ?? [])] });
-  for (const d of n.domains) {
-    const k = norm(d.name);
-    const ex = map.get(k);
-    if (!ex) { map.set(k, { name: d.name, activities: [...(d.activities ?? [])] }); continue; }
-    ex.name = d.name;
-    const actMap = new Map<string, MMActivity>();
-    for (const a of (ex.activities ?? [])) actMap.set(norm(a.name) + "|" + (a.type ?? ""), a);
-    for (const a of (d.activities ?? [])) actMap.set(norm(a.name) + "|" + (a.type ?? ""), a);
-    ex.activities = [...actMap.values()];
-  }
-  return { center: n.center || p.center, domains: [...map.values()] };
-}
-
 // Mindmap (filet de sécurité, INCRÉMENTAL) : part de la structure connue + le dernier
 // échange, renvoie la structure mise à jour. Input petit et constant (pas tout le
 // transcript) → bien moins cher, et plus fiable (on ne perd rien).
@@ -1492,11 +1467,12 @@ async function extractStructurePreview(
       max_tokens: 4096,
       system:
         "Tu maintiens une structure de vie pour une mindmap. On te donne la structure ACTUELLE (JSON) et le DERNIER échange. " +
-        "Renvoie la structure MISE À JOUR : ajoute/complète selon le dernier échange, ne SUPPRIME jamais ce qui existe déjà. UNIQUEMENT du JSON, rien d'autre. " +
-        "Format exact : {\"center\": string, \"domains\": [{\"name\": string, \"activities\": [{\"name\": string, \"type\": \"time\"|\"habit\", \"goalMin\": number, \"parent\": string}]}]}. " +
+        "Renvoie la structure MISE À JOUR en appliquant le dernier échange : AJOUTE les nouveaux éléments, RENOMME ou SUPPRIME ceux que l'utilisateur demande explicitement de changer/retirer, et conserve À L'IDENTIQUE tout le reste (ne perds rien par inadvertance). UNIQUEMENT du JSON, rien d'autre. " +
+        "Format exact : {\"center\": string, \"domains\": [{\"name\": string, \"activities\": [{\"name\": string, \"type\": \"time\"|\"habit\", \"goalMin\": number, \"parent\": string}]}], \"gantt\": {\"title\": string, \"startDate\": \"YYYY-MM-DD\", \"endDate\": \"YYYY-MM-DD\", \"phases\": [{\"name\": string, \"startDate\": \"YYYY-MM-DD\", \"endDate\": \"YYYY-MM-DD\"}], \"tasks\": [{\"name\": string, \"phase\": string, \"startDate\": \"YYYY-MM-DD\", \"endDate\": \"YYYY-MM-DD\", \"milestone\": boolean}]}}. " +
         "type 'time' = durée (goalMin minutes/jour ; estime si non dit : cuisiner 30, sieste 20, sport 45, lecture 20) ; 'habit' = fréquence. " +
         "parent = pour une routine appairée à une activité temps, le nom de cette activité (ex: 'Faire la vaisselle' → parent 'Vaisselle'). Omets si pas de jumelle. " +
-        "center = prénom si connu, sinon \"Ma vie\". N'ajoute QUE des domaines/activités explicitement nommés/validés.",
+        "gantt = UNIQUEMENT si un objectif concret à ~3 mois, avec des étapes (phases) et des tâches, est en cours de construction. Sinon N'INCLUS PAS le champ gantt. 'phase' d'une tâche = le nom de sa phase parente. Dates au format YYYY-MM-DD. " +
+        "center = prénom si connu, sinon \"Ma vie\". N'ajoute QUE des domaines/activités/éléments explicitement nommés/validés.",
       messages: [{ role: "user", content: `Structure actuelle:\n${prevJson}\n\nDernier échange:\nuser: ${userMessage}\nassistant: ${assistantText}\n\nRenvoie la structure mise à jour (JSON uniquement).` }],
     });
     const txt = r.content.filter((b) => b.type === "text").map((b) => (b as { type: "text"; text: string }).text).join("");
@@ -1511,7 +1487,7 @@ async function extractStructurePreview(
 }
 
 export const onboardingChat = onRequest(
-  { cors: true, invoker: "public", secrets: ["FORMATION_JWT_SECRET", "ANTHROPIC_API_KEY"] },
+  { cors: true, invoker: "public", secrets: ["FORMATION_JWT_SECRET", "ANTHROPIC_API_KEY"], timeoutSeconds: 300, memory: "512MiB" },
   async (req, res) => {
     if (req.method === "OPTIONS") { res.status(204).send(""); return; }
     if (req.method !== "POST") { res.status(405).json({ error: "Method Not Allowed" }); return; }
@@ -1754,7 +1730,7 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
     while (true) {
       const response = await client.messages.create({
         model: getModel("onboarding"),
-        max_tokens: 2048,
+        max_tokens: 4096, // assez pour push_gantt sans laisser le modèle générer trop (latence)
         system: systemPrompt,
         tools: ONBOARDING_TOOLS as Parameters<typeof client.messages.create>[0]["tools"],
         messages: messages as Parameters<typeof client.messages.create>[0]["messages"],
@@ -1779,16 +1755,24 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
         if (!structurePreview && !onboardingComplete) {
           structurePreview = await extractStructurePreview(client, prevStruct, message ?? "", text);
         }
-        // Fusion finale → aucun domaine/activité déjà connu ne disparaît.
-        if (structurePreview && !onboardingComplete) {
-          structurePreview = mergeStructures(prevStruct, structurePreview);
+        // Pas de fusion des domaines : l'extraction incrémentale fait foi (applique
+        // ajouts ET renommages/suppressions). MAIS on préserve le Gantt déjà construit
+        // si l'extraction l'a omis ce tour-ci (sinon il disparaît en éditant un domaine).
+        if (structurePreview && prevStruct) {
+          const sp = structurePreview as { gantt?: unknown };
+          const pp = prevStruct as { gantt?: unknown };
+          if (!sp.gantt && pp.gantt) sp.gantt = pp.gantt;
         }
         if (onboardingComplete) {
-          await db.collection("formation_access").doc(uid).update({
+          // set(merge) et non update : pour un compte magic-link, le doc formation_access
+          // n'existe pas forcément (pas créé par le webhook) → update échouerait silencieusement
+          // et l'utilisateur ne serait jamais marqué "terminé".
+          await db.collection("formation_access").doc(uid).set({
+            uid,
             onboardingDone: true,
             onboardingDoneAt: FieldValue.serverTimestamp(),
             lastVisionAt: FieldValue.serverTimestamp(),
-          }).catch(() => {});
+          }, { merge: true }).catch(() => {});
           // Nettoie la session après completion
           db.collection("formation_sessions").doc(uid).delete().catch(() => {});
         } else {
@@ -1834,11 +1818,17 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
         continue;
       }
 
-      // stop_reason inattendu
+      // stop_reason inattendu (ex: max_tokens) — on sort de la boucle
       break;
     }
 
-    res.status(500).json({ error: "Erreur inattendue dans la boucle agentique" });
+    // Au lieu d'échouer : on renvoie ce qu'on a accumulé (texte + structure).
+    res.status(200).json({
+      message: assistantText.trim() || "Désolé, peux-tu reformuler ? (réponse interrompue)",
+      notifications,
+      onboardingComplete,
+      structure: structurePreview,
+    });
   }
 );
 
