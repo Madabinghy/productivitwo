@@ -60,31 +60,32 @@ class _WebMagicLinkCompleteScreenState
 
   Future<void> _complete(String email) async {
     try {
-      try {
-        await FirebaseAuth.instance
-            .signInWithEmailLink(email: email.trim(), emailLink: widget.emailLink);
-      } on TypeError catch (_) {
-        // firebase_auth web peut lancer un TypeError JS-interop sur le UserCredential
-        // même quand l'auth réussit — on vérifie currentUser comme fallback.
-        await Future.delayed(const Duration(milliseconds: 400));
-        if (FirebaseAuth.instance.currentUser == null) rethrow;
-      }
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(kWebEmailPendingKey);
-      // Retire mode/oobCode de l'URL pour qu'un refresh ne re-déclenche pas la complétion.
-      html.window.history.replaceState(null, '', '/');
-      // Notifie _AuthGate pour qu'il se reconstruise et bascule vers WebHomeScreen.
-      widget.onSignedIn?.call();
-    } on FirebaseAuthException catch (e) {
-      if (mounted) {
-        setState(() {
-          _askEmail = true;
-          _error = e.message ?? 'Connexion impossible. Vérifie ton email.';
-        });
-      }
+      await FirebaseAuth.instance
+          .signInWithEmailLink(email: email.trim(), emailLink: widget.emailLink);
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      // Hors Chrome, firebase_auth web lève souvent une erreur d'interop JS sur le
+      // UserCredential ALORS QUE l'auth a réussi. On ne se fie pas au type de l'erreur :
+      // on vérifie currentUser. Si vraiment non connecté → on affiche l'erreur.
+      await Future.delayed(const Duration(milliseconds: 400));
+      if (FirebaseAuth.instance.currentUser == null) {
+        if (mounted) {
+          setState(() {
+            _askEmail = true;
+            _error = e is FirebaseAuthException
+                ? (e.message ?? 'Connexion impossible. Vérifie ton email.')
+                : 'Connexion impossible. Réessaie.';
+          });
+        }
+        return;
+      }
+      // sinon : auth réussie malgré l'erreur d'interop → on continue.
     }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(kWebEmailPendingKey);
+    // Retire mode/oobCode de l'URL pour qu'un refresh ne re-déclenche pas la complétion.
+    html.window.history.replaceState(null, '', '/');
+    // Notifie _AuthGate pour qu'il se reconstruise et bascule vers WebHomeScreen.
+    widget.onSignedIn?.call();
   }
 
   @override

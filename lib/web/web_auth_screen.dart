@@ -75,10 +75,15 @@ class _WebAuthScreenState extends State<WebAuthScreen>
     setState(() { _loading = true; _error = null; });
     try {
       await FirebaseAuth.instance.signInWithPopup(GoogleAuthProvider());
-    } on FirebaseAuthException catch (e) {
-      if (mounted) setState(() => _error = e.message ?? 'Erreur de connexion');
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      // Hors Chrome, firebase_auth web lève souvent une erreur d'interop JS sur le
+      // UserCredential alors que l'auth a réussi — on ne se fie pas au type, on vérifie currentUser.
+      await Future.delayed(const Duration(milliseconds: 400));
+      if (FirebaseAuth.instance.currentUser == null && mounted) {
+        setState(() => _error = e is FirebaseAuthException
+            ? (e.message ?? 'Erreur de connexion')
+            : 'Connexion impossible. Réessaie.');
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -106,11 +111,11 @@ class _WebAuthScreenState extends State<WebAuthScreen>
       if (customToken == null || customToken.isEmpty) {
         throw Exception('Token Firebase manquant');
       }
-      // firebase_auth web peut lancer un TypeError JS-interop sur le UserCredential
-      // même quand l'auth réussit — on vérifie currentUser comme fallback.
+      // Hors Chrome, firebase_auth web lève souvent une erreur d'interop JS sur le
+      // UserCredential alors que l'auth a réussi — on vérifie currentUser (peu importe le type d'erreur).
       try {
         await FirebaseAuth.instance.signInWithCustomToken(customToken);
-      } on TypeError catch (_) {
+      } catch (_) {
         await Future.delayed(const Duration(milliseconds: 400));
         if (FirebaseAuth.instance.currentUser == null) {
           throw Exception('Connexion Firebase échouée');
