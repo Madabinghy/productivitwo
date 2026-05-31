@@ -1014,10 +1014,10 @@ Prends le temps qu'il te faut. Si tu dois t'arrêter, ta session est sauvegardé
 On commence ?"
 
 DÉROULÉ pour chaque domaine :
-  1. Annonce le domaine, propose 4-5 noms + "Autre" → l'utilisateur choisit/valide.
+  1. Annonce le domaine, propose 4-5 noms + "Autre" → l'utilisateur choisit/valide. DÈS qu'il valide le nom → appelle set_structure_preview (le domaine apparaît dans la mindmap).
   2. BALAYAGE DES ACTIVITÉS — c'est ICI qu'on construit le vrai système trackable.
      Demande concrètement ce qu'il fait (ou veut suivre) dans ce domaine, avec les DEUX lentilles :
-       • DURÉE (type "time") : ce qu'on mesure en temps — ex: Sport, Stratégie, Cuisiner, Sommeil → goalMin réaliste (souvent 15-30 min).
+       • DURÉE (type "time") : ce qu'on mesure en temps — ex: Sport, Stratégie, Cuisiner → propose TOUJOURS un goalMin réaliste (infère une valeur sensée selon l'activité et ANNONCE-la, ex: "Cuisiner ~30 min/j", "Sieste ~20 min" ; l'utilisateur ajuste s'il veut). Ne laisse JAMAIS une activité temps sans durée.
        • FRÉQUENCE (type "habit") : ce qu'on coche — ex: Boire de l'eau (daily ×8), Footing (weekly ×3), Ménage (weekly), Laver la voiture (monthly) → habitFreq + habitTarget.
      Pour chaque activité, déduis la bonne lentille ; si habit, déduis fréquence + cible. Si une cible est importante et incertaine, demande — ne devine pas.
   3. Vise jusqu'à ~5 activités/domaine selon son appétit — sans remplir artificiellement, sans plafonner un power-user (il complétera dans l'app).
@@ -1025,6 +1025,24 @@ DÉROULÉ pour chaque domaine :
 
 L'utilisateur peut dire "passe" pour sauter un domaine, "stop"/"c'est bon" pour valider et aller en Phase 4.
 Maximum 6-7 domaines — propose de fusionner s'il en veut trop.
+
+━━━ PAIRE FRÉQUENCE + TEMPS (PAR DÉFAUT) ━━━
+Pour que l'utilisateur puisse tout tracer sans frustration ("je l'ai fait, mais où je note le temps ?"), dès qu'une habitude correspond à une action qui prend un temps mesurable, crée DEUX activités appairées :
+  • FRÉQUENCE (type "habit") — forme VERBALE (l'action) : "Faire la vaisselle", "Boire de l'eau", "Lire", "Aller à la mer" → l'utilisateur coche.
+  • TEMPS (type "time") — le NOM sans verbe (la chose) : "Vaisselle", "Hydratation", "Lecture", "Bain de mer" → l'utilisateur chronomètre.
+C'est le comportement PAR DÉFAUT (ne demande pas à chaque fois ; mentionne-le brièvement une fois en début de balayage). N'appaire pas ce qui n'a aucune durée sensée (ex: peser son poids). Pour un appétit "essentiel", reste plus léger sur le doublement.
+
+━━━ CAS SOMMEIL (et activités à très longue durée) ━━━
+Si l'utilisateur veut suivre son SOMMEIL, crée un DOMAINE dédié "Sommeil" (et non une activité dans Santé). Raison : ~7-8h/nuit écraseraient le temps de toutes les autres activités du domaine et fausseraient sa vision du temps réellement réparti. Même logique pour toute activité au temps disproportionné.
+
+━━━ MINDMAP LIVE (set_structure_preview) — APPEL FRÉQUENT, DÈS LE DÉBUT ━━━
+L'utilisateur voit une mindmap se dessiner EN DIRECT à côté du chat. C'est OBLIGATOIRE et FRÉQUENT.
+⚠️ IMPORTANT : set_structure_preview ne crée RIEN en base — c'est juste l'APERÇU VISUEL. La règle "ne rien créer avant validation" NE s'applique PAS à cet outil. Appelle-le LIBREMENT et SOUVENT, pendant toute la conversation, BIEN AVANT la Phase 4.
+Quand l'appeler (envoie TOUJOURS la structure complète à jour) :
+  - DÈS qu'un domaine est nommé/validé (même sans activités encore) → le domaine apparaît dans la mindmap.
+  - Après le balayage des activités de chaque domaine (avec les paires fréquence/temps).
+  - Après tout ajout/ajustement.
+Mets center = le prénom de l'utilisateur si tu le connais, sinon "Ma vie". C'est le moment fort : voir sa vie s'organiser au fil de l'échange.
 
 ━━━ RÈGLE CRITIQUE — BESOIN ÉMOTIONNEL vs ACTIVITÉ TRACKABLE ━━━
 
@@ -1088,7 +1106,7 @@ Un domaine doit répondre à la question : "est-ce que cette personne a des comp
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-⚠️ NE CRÉE RIEN DANS PRODUCTIVITWO AVANT QUE L'UTILISATEUR DISE "stop", "c'est bon", "go", "parfait" ou équivalent.
+⚠️ NE CRÉE RIEN DANS PRODUCTIVITWO (create_domain, create_activity, push_gantt) AVANT QUE L'UTILISATEUR DISE "stop", "c'est bon", "go", "parfait" ou équivalent. (EXCEPTION : set_structure_preview — l'aperçu visuel — s'appelle librement et souvent AVANT validation ; il ne crée rien en base.)
 
 PHASE 4 — CRÉATION (automatique après validation)
 Une fois la structure validée, crée TOUT dans cet ordre :
@@ -1097,6 +1115,7 @@ Une fois la structure validée, crée TOUT dans cet ordre :
    - type "time" → goalMin réaliste (souvent 15-30 min).
    - type "habit" → TOUJOURS préciser habitFreq (daily/weekly/monthly) ET habitTarget (ex: 3 = 3×/sem, 8 = 8×/jour). Ne mets jamais "daily ×1" par défaut sans raison — reflète ce que la personne a dit.
    (Routines et gestes récurrents = create_activity type "habit". Il n'existe PAS d'outil routine séparé.)
+   - PAIRE PAR DÉFAUT : pour chaque habitude qui a une durée sensée, crée EN PLUS une activité type "time" appairée, selon la convention de nommage (verbe = fréquence "Faire la vaisselle" / nom = temps "Vaisselle" ; "Boire de l'eau" / "Hydratation"). Les deux coexistent : fréquence (coché) + temps (chronométré).
 3. PROJET (conditionnel — ne JAMAIS le forcer). Demande clairement :
    "Y a-t-il un objectif concret que tu aimerais atteindre d'ici ~3 mois ?"
    - Si OUI → push_gantt autour de cet objectif :
@@ -1113,7 +1132,8 @@ Une fois la structure validée, crée TOUT dans cet ordre :
 - Phrases courtes, questions ouvertes
 - Reformule avant de proposer (montre que tu as écouté)
 - En Phase 3 : utilise une mise en forme claire pour les domaines proposés
-- En Phase 4 : sois enthousiaste, c'est le moment fort de l'expérience`;
+- En Phase 4 : sois enthousiaste, c'est le moment fort de l'expérience
+- TOUJOURS terminer ton tour par un message à l'utilisateur (au moins une phrase qui confirme/enchaîne, ex: "Noté ✓ — on continue ?"). Ne réponds JAMAIS uniquement par un appel d'outil silencieux : même quand tu mets à jour la mindmap, accompagne-le d'un mot.`;
 const ONBOARDING_TOOLS = [
     {
         name: "create_domain",
@@ -1189,6 +1209,37 @@ const ONBOARDING_TOOLS = [
                 },
             },
             required: ["title", "startDate", "endDate", "phases", "tasks"],
+        },
+    },
+    {
+        name: "set_structure_preview",
+        description: "Met à jour la MINDMAP visuelle affichée à l'utilisateur EN LIVE pendant la conversation. Appelle-le dès que la structure proposée évolue (un domaine nommé, les activités d'un domaine balayées, un ajustement). Envoie TOUJOURS la structure COMPLÈTE et à jour (tous les domaines + activités connus jusque-là), jamais un delta.",
+        input_schema: {
+            type: "object",
+            properties: {
+                center: { type: "string", description: "Libellé du nœud central (prénom de l'utilisateur, ou 'Ma vie')" },
+                domains: {
+                    type: "array",
+                    items: {
+                        type: "object",
+                        properties: {
+                            name: { type: "string" },
+                            activities: {
+                                type: "array",
+                                items: {
+                                    type: "object",
+                                    properties: {
+                                        name: { type: "string" },
+                                        type: { type: "string", enum: ["time", "habit"] },
+                                        goalMin: { type: "number", description: "Minutes/jour visées (activités type 'time' uniquement, si une durée a été évoquée)" },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+            required: ["domains"],
         },
     },
     {
@@ -1302,6 +1353,9 @@ async function executeOnboardingTool(uid, toolName, input, domainMap) {
         });
         return { notification: `✓ Projet Gantt "${ganttInput.title}" créé`, output: `Projet créé — id: ${projectId}` };
     }
+    if (toolName === "set_structure_preview") {
+        return { notification: "", output: "Aperçu de la structure mis à jour." };
+    }
     if (toolName === "complete_onboarding") {
         return { notification: "✓ Configuration terminée", output: "Onboarding marqué comme terminé." };
     }
@@ -1398,8 +1452,40 @@ async function executeOnboardingTool(uid, toolName, input, domainMap) {
     }
     return { notification: "", output: `Outil inconnu : ${toolName}` };
 }
+// Filet de sécurité mindmap : extrait la structure de vie depuis la conversation
+// via un appel léger (Haiku), quand le guide n'a pas appelé set_structure_preview.
+async function extractStructurePreview(client, history, userMessage, assistantText) {
+    try {
+        const transcript = [
+            ...history.map((m) => `${m.role}: ${m.content}`),
+            `user: ${userMessage}`,
+            `assistant: ${assistantText}`,
+        ].join("\n");
+        const r = await client.messages.create({
+            model: (0, models_1.getModel)("structure_project"),
+            max_tokens: 1024,
+            system: "Tu extrais la structure de vie co-construite dans la conversation. Réponds UNIQUEMENT un objet JSON, rien d'autre. " +
+                "Format exact : {\"center\": string, \"domains\": [{\"name\": string, \"activities\": [{\"name\": string, \"type\": \"time\"|\"habit\", \"goalMin\": number}]}]}. " +
+                "goalMin = minutes/jour pour CHAQUE activité 'time' : reprends la durée évoquée dans la conversation, sinon estime une valeur réaliste selon l'activité (ex: cuisiner 30, sieste 20, sport 45, lecture 20). " +
+                "center = prénom de l'utilisateur si mentionné, sinon \"Ma vie\". N'inclus QUE les domaines et activités explicitement nommés/validés (ignore les pistes non confirmées). " +
+                "Si rien n'est encore défini : {\"center\":\"Ma vie\",\"domains\":[]}.",
+            messages: [{ role: "user", content: transcript + "\n\n---\nExtrais la structure actuelle en JSON." }],
+        });
+        const txt = r.content.filter((b) => b.type === "text").map((b) => b.text).join("");
+        const m = txt.match(/\{[\s\S]*\}/);
+        if (!m)
+            return null;
+        const parsed = JSON.parse(m[0]);
+        if (parsed && Array.isArray(parsed.domains) && parsed.domains.length > 0)
+            return parsed;
+        return null;
+    }
+    catch (_) {
+        return null;
+    }
+}
 exports.onboardingChat = (0, https_1.onRequest)({ cors: true, invoker: "public", secrets: ["FORMATION_JWT_SECRET", "ANTHROPIC_API_KEY"] }, async (req, res) => {
-    var _a, _b, _c, _d, _e, _f;
+    var _a, _b, _c, _d, _e, _f, _g;
     if (req.method === "OPTIONS") {
         res.status(204).send("");
         return;
@@ -1440,7 +1526,7 @@ exports.onboardingChat = (0, https_1.onRequest)({ cors: true, invoker: "public",
             res.status(200).json(Object.assign(Object.assign({}, base), { hasSession: false }));
             return;
         }
-        res.status(200).json(Object.assign(Object.assign({}, base), { hasSession: true, mode: (_c = data.mode) !== null && _c !== void 0 ? _c : "onboarding", history: (_d = data.history) !== null && _d !== void 0 ? _d : [], userContext: (_e = data.userContext) !== null && _e !== void 0 ? _e : null, turnCount: (_f = data.turnCount) !== null && _f !== void 0 ? _f : 0, savedAt: savedAt === null || savedAt === void 0 ? void 0 : savedAt.toISOString() }));
+        res.status(200).json(Object.assign(Object.assign({}, base), { hasSession: true, mode: (_c = data.mode) !== null && _c !== void 0 ? _c : "onboarding", history: (_d = data.history) !== null && _d !== void 0 ? _d : [], userContext: (_e = data.userContext) !== null && _e !== void 0 ? _e : null, turnCount: (_f = data.turnCount) !== null && _f !== void 0 ? _f : 0, savedAt: savedAt === null || savedAt === void 0 ? void 0 : savedAt.toISOString(), structure: (_g = data.structure) !== null && _g !== void 0 ? _g : null }));
         return;
     }
     if (action === "clearSession") {
@@ -1602,6 +1688,8 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
     const notifications = [];
     const domainMap = {};
     let onboardingComplete = false;
+    let structurePreview = null;
+    let assistantText = ""; // accumule le texte de TOUS les tours (évite les messages vides quand le modèle répond ET appelle un outil dans le même tour)
     // Boucle agentique : continue jusqu'à end_turn (réponse texte finale)
     while (true) {
         const response = await client.messages.create({
@@ -1612,10 +1700,16 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
             messages: messages,
         });
         if (response.stop_reason === "end_turn") {
-            const text = response.content
+            assistantText += response.content
                 .filter((b) => b.type === "text")
                 .map((b) => b.text)
                 .join("");
+            const text = assistantText.trim();
+            // Filet de sécurité : si le guide n'a pas mis à jour la mindmap lui-même,
+            // on extrait la structure de la conversation (appel léger) pour l'alimenter.
+            if (!structurePreview && !onboardingComplete) {
+                structurePreview = await extractStructurePreview(client, history !== null && history !== void 0 ? history : [], message !== null && message !== void 0 ? message : "", text);
+            }
             if (onboardingComplete) {
                 await db_1.db.collection("formation_access").doc(uid).update({
                     onboardingDone: true,
@@ -1632,18 +1726,19 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
                     { role: "user", content: message },
                     { role: "assistant", content: text },
                 ];
-                db_1.db.collection("formation_sessions").doc(uid).set({
-                    uid, history: historyToSave,
-                    userContext: userContext !== null && userContext !== void 0 ? userContext : null,
-                    turnCount: (history !== null && history !== void 0 ? history : []).length / 2 + 1,
-                    savedAt: db_1.FieldValue.serverTimestamp(),
-                }).catch(() => { });
+                db_1.db.collection("formation_sessions").doc(uid).set(Object.assign({ uid, history: historyToSave, userContext: userContext !== null && userContext !== void 0 ? userContext : null, turnCount: (history !== null && history !== void 0 ? history : []).length / 2 + 1, savedAt: db_1.FieldValue.serverTimestamp() }, (structurePreview ? { structure: structurePreview } : {})), { merge: true }).catch(() => { });
             }
-            res.status(200).json({ message: text, notifications, onboardingComplete });
+            res.status(200).json({ message: text, notifications, onboardingComplete, structure: structurePreview });
             return;
         }
         if (response.stop_reason === "tool_use") {
             messages.push({ role: "assistant", content: response.content });
+            // Récupère le texte émis DANS ce tour (le modèle répond souvent ET appelle un outil
+            // dans le même tour) — sinon ce texte serait perdu → bulle vide côté chat.
+            assistantText += response.content
+                .filter((b) => b.type === "text")
+                .map((b) => b.text)
+                .join("");
             const toolResults = [];
             for (const block of response.content) {
                 if (block.type === "tool_use") {
@@ -1652,6 +1747,8 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
                         notifications.push(result.notification);
                     if (block.name === "push_gantt" || block.name === "complete_onboarding")
                         onboardingComplete = true;
+                    if (block.name === "set_structure_preview")
+                        structurePreview = block.input;
                     toolResults.push({ type: "tool_result", tool_use_id: block.id, content: result.output });
                 }
             }

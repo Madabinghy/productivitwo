@@ -264,9 +264,28 @@
   /* ── CHAT ── */
   .chat-wrap {
     flex: 1; display: none;
-    flex-direction: column; overflow: hidden;
+    flex-direction: row; overflow: hidden;
   }
   .chat-wrap.show { display: flex; }
+  .chat-col { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ── MINDMAP LIVE ── */
+  .mindmap-panel {
+    width: 44%; max-width: 600px; flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    background: rgba(255,255,255,.015);
+    overflow: auto; padding: 14px;
+    display: none;
+  }
+  .mindmap-panel.show { display: block; }
+  .mm-title { font-size: 10px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: var(--gray); margin: 2px 0 10px 4px; }
+  .mm-empty { color: var(--gray); font-size: 13px; text-align: center; margin-top: 60px; line-height: 1.6; padding: 0 20px; }
+  .mm-note { font-size: 11px; color: rgba(255,255,255,.45); line-height: 1.55; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .mm-note em { color: rgba(255,255,255,.65); font-style: normal; font-weight: 600; }
+  @media (max-width: 860px) {
+    .chat-wrap { flex-direction: column; }
+    .mindmap-panel { width: auto; max-width: none; max-height: 38%; border-right: none; border-bottom: 1px solid var(--border); }
+  }
 
   .messages {
     flex: 1; overflow-y: auto;
@@ -621,6 +640,13 @@
 
 <!-- CHAT -->
 <div class="chat-wrap" id="chat">
+  <div class="mindmap-panel" id="mindmap-panel">
+    <div class="mm-title">Ta structure de vie</div>
+    <div class="mm-empty" id="mm-empty">Elle se dessinera ici, au fil de la conversation ✨</div>
+    <svg id="mindmap-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div class="mm-note" id="mm-note" style="display:none">💡 Normal : chaque routine (🟡 fréquence) reçoit une activité jumelle 🟢 temps — pour suivre aussi le <em>temps passé</em>, pas seulement la cocher.</div>
+  </div>
+  <div class="chat-col">
   <div class="messages" id="messages"></div>
   <div class="complete-banner" id="complete-banner">
     <h3>✓ Productivitwo est configuré</h3>
@@ -639,6 +665,7 @@
       </button>
     </div>
     <div class="input-hint" id="input-hint">Entrée pour envoyer · Maj+Entrée pour un saut de ligne</div>
+  </div>
   </div>
 </div>
 
@@ -729,6 +756,7 @@ function resumeSession() {
   turnCount = savedSession.turnCount ?? 0;
   document.getElementById("resume-screen").classList.remove("show");
   document.getElementById("chat").classList.add("show");
+  if (savedSession.structure) renderMindmap(savedSession.structure);
   // Ré-affiche l'historique (sans typewriter pour la reprise)
   const msgs = document.getElementById("messages");
   for (const msg of history) {
@@ -896,11 +924,13 @@ async function sendToAPI(userMessage, action) {
     updatePhase(turnCount);
 
     if (userMessage) history.push({ role: "user", content: userMessage });
-    history.push({ role: "assistant", content: data.message });
+    if (data.message) history.push({ role: "assistant", content: data.message });
+
+    if (data.structure) renderMindmap(data.structure);
 
     if (data.notifications?.length > 0) appendToolNotifications(data.notifications);
 
-    await appendMessageTypewriter("assistant", data.message);
+    if (data.message) await appendMessageTypewriter("assistant", data.message);
 
     if (data.onboardingComplete) finishOnboarding();
 
@@ -972,6 +1002,76 @@ function appendMessageTypewriter(role, text) {
 }
 
 // ── DOM helpers ───────────────────────────────────────────────────────────────
+
+// ── Mindmap live ──────────────────────────────────────────────────────────
+function _mmEsc(s){ return String(s==null?'':s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function _fmtMin(m){ m = Math.round(m||0); if (m < 60) return m + 'min'; const h = Math.floor(m/60), mm = m%60; return mm === 0 ? h + 'h' : h + 'h' + String(mm).padStart(2,'0'); }
+
+function renderMindmap(structure) {
+  if (!structure || !Array.isArray(structure.domains) || structure.domains.length === 0) return;
+  const panel = document.getElementById('mindmap-panel');
+  const empty = document.getElementById('mm-empty');
+  const svg = document.getElementById('mindmap-svg');
+  if (!panel || !svg) return;
+  panel.classList.add('show');
+  if (empty) empty.style.display = 'none';
+
+  const domains = structure.domains;
+  const xCenter = 10, xDomain = 118, xAct = 286;
+  const rowH = 24, actGap = 3, domGap = 18, padTop = 40, W = 540;
+
+  let y = padTop;
+  const dl = domains.map(d => {
+    const acts = Array.isArray(d.activities) ? d.activities : [];
+    const blockH = Math.max(rowH, acts.length * (rowH + actGap) - actGap);
+    const o = { name: d.name || '', acts, top: y, cy: y + blockH / 2 };
+    y += blockH + domGap;
+    return o;
+  });
+  const totalH = Math.max(y, 160);
+  const centerY = totalH / 2;
+
+  function edge(x1, y1, x2, y2, thin) {
+    const dx = (x2 - x1) * 0.5;
+    return `<path d="M${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}" fill="none" stroke="rgba(255,255,255,${thin ? 0.07 : 0.13})" stroke-width="${thin ? 1 : 1.4}"/>`;
+  }
+  const parts = [];
+  // légende
+  parts.push(`<g><circle cx="14" cy="14" r="3.5" fill="#10B981"/><text x="24" y="18" font-size="10" fill="rgba(255,255,255,.5)">Temps</text><circle cx="78" cy="14" r="3.5" fill="#C9A84C"/><text x="88" y="18" font-size="10" fill="rgba(255,255,255,.5)">Fréquence</text></g>`);
+  // arêtes centre → domaines
+  dl.forEach(d => parts.push(edge(xCenter + 96, centerY, xDomain - 2, d.cy)));
+  // domaines, activités, arêtes
+  dl.forEach(d => {
+    let domTotal = 0;
+    d.acts.forEach((a, i) => {
+      const ay = d.top + i * (rowH + actGap) + rowH / 2;
+      parts.push(edge(xDomain + 104, d.cy, xAct - 2, ay, true));
+      const isTime = (a && a.type === 'time');
+      const col = isTime ? '#10B981' : '#C9A84C';
+      let label = _mmEsc(a && a.name).slice(0, 24);
+      if (isTime && a.goalMin) { label += ` · ${_fmtMin(a.goalMin)}`; domTotal += a.goalMin; }
+      parts.push(`<circle cx="${xAct + 4}" cy="${ay}" r="3.5" fill="${col}"/><text x="${xAct + 14}" y="${ay + 4}" font-size="11" fill="rgba(255,255,255,.72)">${label}</text>`);
+    });
+    const dh = domTotal > 0 ? 32 : 26;
+    const nameY = domTotal > 0 ? d.cy - 2 : d.cy + 4;
+    let dom = `<rect x="${xDomain}" y="${d.cy - dh / 2}" width="104" height="${dh}" rx="8" fill="rgba(201,168,76,.14)" stroke="rgba(201,168,76,.4)"/><text x="${xDomain + 8}" y="${nameY}" font-size="11.5" font-weight="600" fill="#E8D9A8">${_mmEsc(d.name).slice(0, 16)}</text>`;
+    if (domTotal > 0) dom += `<text x="${xDomain + 8}" y="${d.cy + 11}" font-size="8.5" fill="rgba(255,255,255,.5)">Σ ${_fmtMin(domTotal)}/j</text>`;
+    parts.push(dom);
+  });
+  // nœud central
+  parts.push(`<rect x="${xCenter}" y="${centerY - 15}" width="96" height="30" rx="15" fill="#C9A84C"/><text x="${xCenter + 48}" y="${centerY + 4}" text-anchor="middle" font-size="12" font-weight="700" fill="#0F0F1A">${_mmEsc(structure.center || 'Ma vie').slice(0, 14)}</text>`);
+
+  svg.setAttribute('width', W);
+  svg.setAttribute('height', totalH);
+  svg.innerHTML = parts.join('');
+
+  // Note explicative : visible dès qu'une paire fréquence/temps existe.
+  const note = document.getElementById('mm-note');
+  if (note) {
+    const hasTime = domains.some(d => Array.isArray(d.activities) && d.activities.some(a => a && a.type === 'time'));
+    note.style.display = hasTime ? 'block' : 'none';
+  }
+}
 
 function appendMessage(role, text) {
   const msgs = document.getElementById("messages");
