@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/web/web_auth_screen.dart';
 import 'package:productivitwo_v1/web/web_home_screen.dart';
 import 'package:productivitwo_v1/web/web_email_signin_screen.dart';
+import 'package:productivitwo_v1/web/web_magic_link_complete_screen.dart';
 
 // ── Couleurs Productivitwo ────────────────────────────────────────────────────
 
@@ -95,8 +96,25 @@ class _AuthGateState extends State<_AuthGate> {
     if (kIsWeb) {
       final uri = Uri.base;
       final params = uri.queryParameters;
-      if (params['mode'] == 'signIn' && params.containsKey('oobCode')) {
-        return WebEmailSignInScreen(emailLink: uri.toString());
+      // Une fois connecté, on ignore les params magic-link résiduels dans l'URL
+      // (sinon _AuthGate reboucle sur l'écran de complétion avec un code déjà consommé).
+      bool signedIn = false;
+      try { signedIn = FirebaseAuth.instance.currentUser != null; } catch (_) {}
+      if (!signedIn &&
+          params['mode'] == 'signIn' &&
+          params.containsKey('oobCode')) {
+        // /email-signin = lien émis par l'app native → relay vers le custom scheme.
+        // Tout autre chemin = lien émis par le web → on complète la connexion ici.
+        if (uri.path.contains('email-signin')) {
+          return WebEmailSignInScreen(emailLink: uri.toString());
+        }
+        // onSignedIn force un rebuild de la gate une fois connecté : sans ça, le
+        // StreamBuilder (sous cet écran) n'est pas monté donc personne n'écoute
+        // authStateChanges → l'écran resterait bloqué sur "Connexion en cours".
+        return WebMagicLinkCompleteScreen(
+          emailLink: uri.toString(),
+          onSignedIn: () { if (mounted) setState(() {}); },
+        );
       }
     }
 

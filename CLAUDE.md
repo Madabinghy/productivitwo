@@ -45,7 +45,6 @@ lib/
 | `Activity` | `activities` | Tracking temps (`type: time`) ou fréquence (`type: habit`) |
 | `RecurringAction` | `recurringActions` | Tâche récurrente sans tracking |
 | `DayBlock` | `blocks` | Blocs de journée (Matin, Midi, Soir…) |
-| `Goal` | `goals` | Objectif GTD avec actions |
 | `Session` | `sessions` | Session de temps loggué |
 | `HabitHit` | `habitHits` | Incrément de routine |
 | `Project` | `projects` | Projet Gantt (phases + tasks embarquées) |
@@ -205,7 +204,8 @@ Schema Firestore :
 - `week_start` · `week_end` · `first_open_of_day` · `custom_date(date)`
 
 > `day_plan_empty` et `day_plan_overloaded` sont définis mais **non évalués** (dayPlan supprimé).
-> Ils retournent `false` systématiquement dans `assistant_engine.dart`.
+> Idem pour `goal_undone_actions` et `goal_near_deadline` (modèle GTD `Goal` supprimé — Full Firestore).
+> Ces conditions retournent `false` systématiquement dans `assistant_engine.dart`.
 
 **Status cycle** : `pending` → `shown` → `dismissed` | `expired`
 

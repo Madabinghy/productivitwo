@@ -15,7 +15,6 @@ import {
   LIST_PROJECTS_TOOL, GET_PROJECT_TOOL, PUSH_GANTT_MCP_TOOL,
   ARCHIVE_PROJECT_TOOL, DELETE_PROJECT_TOOL, UPDATE_ACTIVITY_GOAL_TOOL,
   CREATE_ROUTINE_TOOL, DELETE_ROUTINE_TOOL,
-  DELETE_GOAL_TOOL, LINK_GOAL_TO_TASK_TOOL,
   CREATE_ACTIVITY_TOOL, UPDATE_ACTIVITY_TOOL, UPDATE_TASK_STATUS_TOOL,
   UPDATE_PROJECT_TOOL, DELETE_ACTIVITY_TOOL,
   GET_DOCUMENT_TEMPLATE_TOOL, SAVE_DOCUMENT_TOOL, GET_DOCUMENTS_TOOL,
@@ -35,7 +34,7 @@ import {
   executeSaveDocument, executeGetDocuments, executeGetArchives,
   executeRestoreItem, executeCreateDomain, executeDeleteDomain, executeDeleteActivity,
   executeUpdateProject, executeUpdateTaskStatus, executeUpdateActivity,
-  executeLinkGoalToTask, executeDeleteRoutine, executeDeleteGoal,
+  executeDeleteRoutine,
   executeArchiveProject, executeDeleteProject, executeListProjects, executeGetProject,
   executePushGantt, executeAddTask, executeUpdateTask, executeMarkActionDone,
   executeGetDaySchedule, executeScheduleDay,
@@ -259,7 +258,6 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
             LIST_PROJECTS_TOOL, GET_PROJECT_TOOL, PUSH_GANTT_MCP_TOOL,
             ARCHIVE_PROJECT_TOOL, DELETE_PROJECT_TOOL, UPDATE_ACTIVITY_GOAL_TOOL,
             CREATE_ROUTINE_TOOL, DELETE_ROUTINE_TOOL,
-            DELETE_GOAL_TOOL, LINK_GOAL_TO_TASK_TOOL,
             CREATE_ACTIVITY_TOOL, UPDATE_ACTIVITY_TOOL, UPDATE_TASK_STATUS_TOOL,
             UPDATE_PROJECT_TOOL, DELETE_ACTIVITY_TOOL,
             GET_DOCUMENT_TEMPLATE_TOOL, SAVE_DOCUMENT_TOOL, GET_DOCUMENTS_TOOL,
@@ -317,10 +315,6 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
           text = await executeCreateDomain(uid, args as Parameters<typeof executeCreateDomain>[1]);
         } else if (toolName === "delete_domain") {
           text = await executeDeleteDomain(uid, args.domainId as string);
-        } else if (toolName === "link_goal_to_task") {
-          text = await executeLinkGoalToTask(uid, args.goalId as string, (args.projectId as string) ?? null, (args.projectTaskId as string) ?? null);
-        } else if (toolName === "delete_goal") {
-          text = await executeDeleteGoal(uid, args.goalId as string, (args.action as string) ?? "archive");
         } else if (toolName === "get_document_template") {
           text = executeGetDocumentTemplate();
         } else if (toolName === "save_document") {
@@ -2033,8 +2027,10 @@ export const getVisionAccess = onRequest(
       intervalDays: VISION_INTERVAL_DAYS,
     };
 
-    // Si Pro et disponible → génère un access URL frais
-    if (isPro && available && onboardingDone) {
+    // Génère un access URL frais vers la formation :
+    // - première session d'onboarding : toujours accessible (gratuite)
+    // - révisions mensuelles suivantes : réservées aux Pro quand disponible
+    if (!onboardingDone || (isPro && available)) {
       const token = createFormationToken(uid, email, process.env.FORMATION_JWT_SECRET!);
       result.accessUrl = `https://productivitwo-app.web.app/vision?token=${encodeURIComponent(token)}`;
     }

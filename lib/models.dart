@@ -96,136 +96,6 @@ class InboxItem {
       );
 }
 
-// --- OBJECTIFS (GTD light) ---
-// status: 'active' | 'done' | 'archived'
-class GoalAction {
-  String id;
-  String title;
-  bool done;
-  DateTime? doneAt;
-
-  GoalAction({String? id, required this.title, this.done = false, this.doneAt})
-      : id = id ?? _uuid.v4();
-
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'title': title,
-        'done': done,
-        'doneAt': doneAt?.toIso8601String(),
-      };
-
-  static GoalAction from(Map j) => GoalAction(
-        id: j['id'],
-        title: j['title'] ?? '',
-        done: j['done'] as bool? ?? (j['doneAt'] != null),
-        doneAt: j['doneAt'] != null ? DateTime.tryParse(j['doneAt']) : null,
-      );
-}
-
-class Goal {
-  String id, domainId, title;
-  String status;
-  String? activityId;
-  List<String> linkedHabitIds;
-  String? context;
-  DateTime createdAt;
-  DateTime? doneAt;
-  DateTime? dueDate;
-  List<GoalAction> actions;
-  int order;
-  bool pinned;
-  // Lien avec un projet Gantt
-  String? projectId;
-  String? projectTaskId;
-
-  Goal({
-    String? id,
-    required this.domainId,
-    required this.title,
-    this.status = 'active',
-    this.activityId,
-    List<String>? linkedHabitIds,
-    this.context,
-    DateTime? createdAt,
-    this.doneAt,
-    this.dueDate,
-    List<GoalAction>? actions,
-    this.order = 0,
-    this.pinned = false,
-    this.projectId,
-    this.projectTaskId,
-  })  : id = id ?? _uuid.v4(),
-        createdAt = createdAt ?? DateTime.now(),
-        linkedHabitIds = linkedHabitIds ?? [],
-        actions = actions ?? [];
-
-  GoalAction? get nextAction =>
-      actions.where((a) => !a.done).firstOrNull;
-
-  int get stepsDone => actions.where((a) => a.done).length;
-  int get stepsTotal => actions.length;
-
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'domainId': domainId,
-        'title': title,
-        'status': status,
-        'activityId': activityId,
-        'linkedHabitIds': linkedHabitIds,
-        'context': context,
-        'createdAt': createdAt.toIso8601String(),
-        'doneAt': doneAt?.toIso8601String(),
-        'dueDate': dueDate?.toIso8601String(),
-        'actions': actions.map((a) => a.toJson()).toList(),
-        'order': order,
-        'pinned': pinned,
-        'projectId': projectId,
-        'projectTaskId': projectTaskId,
-      };
-
-  static Goal from(Map j) {
-    // Migration : ancien format avait nextAction (String) + doneActions (List)
-    final List<GoalAction> actions = [];
-    final rawDone = j['doneActions'] as List?;
-    if (rawDone != null) {
-      for (final e in rawDone) {
-        actions.add(GoalAction.from({...e, 'done': true}));
-      }
-    }
-    final rawActions = j['actions'] as List?;
-    if (rawActions != null) {
-      for (final e in rawActions) {
-        actions.add(GoalAction.from(e));
-      }
-    }
-    final oldNext = j['nextAction'] as String?;
-    if (oldNext != null &&
-        oldNext.isNotEmpty &&
-        !actions.any((a) => !a.done)) {
-      actions.add(GoalAction(title: oldNext, done: false));
-    }
-    return Goal(
-      id: j['id'],
-      domainId: j['domainId'],
-      title: j['title'],
-      status: j['status'] ?? 'active',
-      activityId: j['activityId'],
-      linkedHabitIds: (j['linkedHabitIds'] as List?)
-              ?.map((e) => e as String)
-              .toList() ??
-          [],
-      context: j['context'],
-      createdAt: _parseDate(j['createdAt']),
-      doneAt: _parseDateOrNull(j['doneAt']),
-      dueDate: _parseDateOrNull(j['dueDate']),
-      actions: actions,
-      order: (j['order'] as num?)?.toInt() ?? 0,
-      pinned: j['pinned'] as bool? ?? false,
-      projectId: j['projectId'] as String?,
-      projectTaskId: j['projectTaskId'] as String?,
-    );
-  }
-}
 
 /// --- DOMAINES ---
 class Domain {
@@ -717,12 +587,9 @@ class AppState {
   List<Session> sessions;
   List<HabitProgress> habitProgress;
 
-  DateTime? lastGoalsReview;
-
   // NEW: activité → ISO8601 jusqu’à quand elle est “snoozed”
   Map<String, String> snoozedUntil;
 
-  List<Goal> goals;
   List<InboxItem> inbox;
 
   String? lastRolloverYmd;
@@ -786,9 +653,7 @@ class AppState {
     required this.activities,
     required this.sessions,
     required this.habitProgress,
-    this.lastGoalsReview,
     Map<String, String>? snoozedUntil,
-    List<Goal>? goals,
     List<InboxItem>? inbox,
     List<String>? focusTodayIds,
     this.sortTodayByDashboard = false,
@@ -833,7 +698,6 @@ class AppState {
     this.coursesRestoredOnce = false,
     this.coursesRestoredV2 = false,
   })  : snoozedUntil = snoozedUntil ?? <String, String>{},
-        goals = goals ?? <Goal>[],
         inbox = inbox ?? <InboxItem>[],
         focusTodayIds = focusTodayIds ?? <String>[],
         habitHits = habitHits ?? <HabitHit>[],
@@ -858,9 +722,7 @@ class AppState {
         'activities': activities.map((e) => e.toJson()).toList(),
         'sessions': sessions.map((e) => e.toJson()).toList(),
         'habitProgress': habitProgress.map((e) => e.toJson()).toList(),
-        'lastGoalsReview': lastGoalsReview?.toIso8601String(),
         'snoozedUntil': snoozedUntil,
-        'goals': goals.map((e) => e.toJson()).toList(),
         'inbox': inbox.map((e) => e.toJson()).toList(),
 
         'lastRolloverYmd': lastRolloverYmd,
@@ -953,11 +815,7 @@ class AppState {
       activities: _list(j['activities'], (e) => Activity.from(e)),
       sessions: _list(j['sessions'], (e) => Session.from(e)),
       habitProgress: _list(j['habitProgress'], (e) => HabitProgress.from(e)),
-      lastGoalsReview: j['lastGoalsReview'] == null
-          ? null
-          : DateTime.parse(j['lastGoalsReview']),
       snoozedUntil: _mapSS(j['snoozedUntil']),
-      goals: _list(j['goals'], (e) => Goal.from(e)),
       inbox: _list(j['inbox'], (e) => InboxItem.from(e)),
       lastRolloverYmd: j['lastRolloverYmd'] as String?,
       lastCarryYmd: j['lastCarryYmd'] as String?,
@@ -1057,7 +915,6 @@ DateTime? _parseDateOrNull(dynamic v) {
 // ─── GESTION DE PROJETS (Gantt) ──────────────────────────────────────────────
 //
 // TaskAction : action opérationnelle liée à une tâche Gantt.
-// Même structure que GoalAction, mais sémantiquement liée au projet.
 
 class TaskAction {
   String id;

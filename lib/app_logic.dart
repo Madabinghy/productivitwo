@@ -807,121 +807,6 @@ class AppLogic {
     onChange();
   }
 
-// Clarify -> créer un Goal depuis un InboxItem
-  Goal inboxToGoal({
-    required String inboxId,
-    required String domainId,
-    required String title,
-    String? activityId,
-    String? firstAction,
-    String? context,
-  }) {
-    final g = createGoal(
-      domainId: domainId,
-      title: title,
-      activityId: activityId,
-      firstAction: firstAction,
-      context: context,
-    );
-    inboxRemove(inboxId);
-    return g;
-  }
-
-// ---------------- GOALS ----------------
-  Goal createGoal({
-    required String domainId,
-    required String title,
-    String? activityId,
-    String? firstAction,
-    String? context,
-  }) {
-    final g = Goal(
-      domainId: domainId,
-      title: title,
-      activityId: activityId,
-      context: context,
-      status: 'active',
-      createdAt: DateTime.now(),
-    );
-    if (firstAction != null && firstAction.trim().isNotEmpty) {
-      g.actions.add(GoalAction(title: firstAction.trim()));
-    }
-    state.goals.add(g);
-    onChange();
-    return g;
-  }
-
-  void addGoalAction(String goalId, String title) {
-    final g = state.goals.firstWhere((x) => x.id == goalId);
-    g.actions.add(GoalAction(title: title.trim()));
-    onChange();
-  }
-
-  void removeGoalActionFromToday(String actionId) {
-    onChange();
-  }
-
-  void deleteGoalAction(String goalId, String actionId) {
-    final g = state.goals.firstWhere((x) => x.id == goalId);
-    g.actions.removeWhere((a) => a.id == actionId);
-    onChange();
-  }
-
-  void toggleGoalAction(String goalId, String actionId, bool done) {
-    final g = state.goals.firstWhere((x) => x.id == goalId);
-    final idx = g.actions.indexWhere((a) => a.id == actionId);
-    if (idx < 0) return;
-    g.actions[idx].done = done;
-    g.actions[idx].doneAt = done ? DateTime.now() : null;
-    onChange();
-  }
-
-  void reorderGoalActions(String goalId, int oldIndex, int newIndex) {
-    final g = state.goals.firstWhere((x) => x.id == goalId);
-    if (newIndex > oldIndex) newIndex -= 1;
-    final item = g.actions.removeAt(oldIndex);
-    g.actions.insert(newIndex, item);
-    onChange();
-  }
-
-  void setGoalLinkedActivity(String goalId, String? activityId) {
-    final g = state.goals.firstWhere((x) => x.id == goalId);
-    g.activityId = activityId;
-    onChange();
-  }
-
-  void setGoalDomain(String goalId, String domainId) {
-    final g = state.goals.firstWhere((x) => x.id == goalId);
-    g.domainId = domainId;
-    g.activityId = null;
-    g.linkedHabitIds.clear();
-    onChange();
-  }
-
-  void setGoalLinkedTask(String goalId, String? projectId, String? projectTaskId) {
-    final g = state.goals.firstWhere((x) => x.id == goalId);
-    g.projectId = projectId;
-    g.projectTaskId = projectTaskId;
-    onChange();
-  }
-
-  void toggleGoalLinkedHabit(String goalId, String habitId) {
-    final g = state.goals.firstWhere((x) => x.id == goalId);
-    if (g.linkedHabitIds.contains(habitId)) {
-      g.linkedHabitIds.remove(habitId);
-    } else {
-      g.linkedHabitIds.add(habitId);
-    }
-    onChange();
-  }
-
-  void markGoalDone(String goalId) {
-    final g = state.goals.firstWhere((x) => x.id == goalId);
-    g.status = 'done';
-    g.doneAt = DateTime.now();
-    onChange();
-  }
-
   // ─── Helpers onboarding ───────────────────────────────────────────────────
 
   Domain createDomain(String name) {
@@ -962,24 +847,6 @@ class AppLogic {
     return a;
   }
 
-  void toggleGoalPin(String goalId) {
-    final g = state.goals.firstWhere((x) => x.id == goalId);
-    // Un seul goal épinglé à la fois
-    if (!g.pinned) {
-      for (final other in state.goals) {
-        other.pinned = false;
-      }
-    }
-    g.pinned = !g.pinned;
-    onChange();
-  }
-
-  void archiveGoal(String goalId) {
-    final g = state.goals.firstWhere((x) => x.id == goalId);
-    g.status = 'archived';
-    onChange();
-  }
-
   void reorderDailyRoutines(int oldIndex, int newIndex) {
     final habits = state.activeActivities
         .where((a) => a.isHabit && effectiveHabitFreq(a) == HabitFreq.daily)
@@ -989,20 +856,6 @@ class AppLogic {
     final moved = habits.removeAt(oldIndex);
     habits.insert(newIndex, moved);
     for (int i = 0; i < habits.length; i++) habits[i].order = i;
-    onChange();
-  }
-
-  void reorderGoals(String? domainId, int oldIndex, int newIndex) {
-    final goals = state.goals
-        .where((g) =>
-            g.status == 'active' &&
-            (domainId == null || g.domainId == domainId))
-        .toList()
-      ..sort((a, b) => a.order.compareTo(b.order));
-    if (newIndex > oldIndex) newIndex--;
-    final moved = goals.removeAt(oldIndex);
-    goals.insert(newIndex, moved);
-    for (int i = 0; i < goals.length; i++) goals[i].order = i;
     onChange();
   }
 
@@ -1678,133 +1531,6 @@ class AppLogic {
     if (touched) onChange();
   }
 
-  // ---------- Revue périodique des objectifs ----------
-  Future<List<GoalChange>> reviewGoals({
-    DateTime? now,
-    int lookbackDays = 7,
-    int neededHits = 5,
-    double lower = 0.85,
-    double upper = 1.15,
-    double high = 1.50,
-    double pctStep = 0.10,
-    int minStepMin = 15,
-    int maxPerDayMin = 12 * 60,
-    double maxWeeklyPct = 0.20,
-    bool force = false,
-  }) async {
-    // Cibles toujours manuelles — l'auto-ajustement a été retiré.
-    return <GoalChange>[];
-    // ignore: dead_code
-    final changes = <GoalChange>[];
-    final t = now ?? DateTime.now();
-    final today = DateTime(t.year, t.month, t.day);
-
-    if (!force && state.lastGoalsReview != null) {
-      final last = DateTime(state.lastGoalsReview!.year,
-          state.lastGoalsReview!.month, state.lastGoalsReview!.day);
-      if (last == today) return changes;
-    }
-
-    final daysBack = List<DateTime>.generate(lookbackDays, (i) {
-      final d = today.subtract(Duration(days: i + 1));
-      return DateTime(d.year, d.month, d.day);
-    });
-
-    int clampNonNeg(int v) => v < 0 ? 0 : v;
-    int clampToWeeklyCap(int base, int delta) {
-      final cap = (base * maxWeeklyPct).round();
-      if (cap <= 0) return delta;
-      return delta > cap ? cap : delta;
-    }
-
-    // TIME
-    for (final a in state.activeActivities.where((x) => !x.isHabit)) {
-      final base = a.goalMin;
-      if (base <= 0) continue;
-
-      int above = 0, below = 0, wayAbove = 0;
-
-      for (final d in daysBack) {
-        final start = d;
-        final end = d.add(const Duration(days: 1));
-        final doneMin = totalForRangeByActivity(a.id, start, end).inMinutes;
-        final ratio = base > 0 ? (doneMin / base) : 0.0;
-
-        if (ratio >= upper) above++;
-        if (ratio <= lower) below++;
-        if (ratio >= high) wayAbove++;
-      }
-
-      var newGoal = base;
-
-      if (above >= neededHits) {
-        var step = (base * pctStep).round();
-        if (step < minStepMin) step = minStepMin;
-        step = clampToWeeklyCap(base, step);
-        final boost = wayAbove >= (neededHits ~/ 2) ? (step ~/ 2) : 0;
-        newGoal = (base + step + boost).clamp(0, maxPerDayMin);
-      } else if (below >= neededHits) {
-        var step = (base * pctStep).round();
-        if (step < minStepMin) step = minStepMin;
-        newGoal = math.max(kMinDailyGoalMin, base - step);
-      }
-
-      if (newGoal != base) {
-        final delta = newGoal - base;
-        a.goalMin = newGoal;
-        changes.add(GoalChange(
-            kind: 'activity', id: a.id, deltaMin: delta, newGoalMin: newGoal));
-      }
-    }
-
-    // DOMAINES (manuel)
-    for (final d in state.activeDomains.where((dom) => !dom.autoGoal)) {
-      final base = d.goalMinDay ?? 0;
-      if (base <= 0) continue;
-
-      int above = 0, below = 0, wayAbove = 0;
-
-      for (final day in daysBack) {
-        final ratio = domainProgressOnDay(d.id, day);
-        if (ratio >= upper) above++;
-        if (ratio <= lower) below++;
-        if (ratio >= high) wayAbove++;
-      }
-
-      var newGoal = base;
-
-      if (above >= neededHits) {
-        var step = (base * pctStep).round();
-        if (step < minStepMin) step = minStepMin;
-        step = clampToWeeklyCap(base, step);
-        final boost = wayAbove >= (neededHits ~/ 2) ? (step ~/ 2) : 0;
-        newGoal = (base + step + boost).clamp(0, maxPerDayMin);
-      } else if (below >= neededHits) {
-        var step = (base * pctStep).round();
-        if (step < minStepMin) step = minStepMin;
-        newGoal = clampNonNeg(base - step);
-      }
-
-      if (newGoal != base) {
-        final delta = newGoal - base;
-        d.goalMinDay = newGoal;
-        changes.add(GoalChange(
-            kind: 'domain', id: d.id, deltaMin: delta, newGoalMin: newGoal));
-      }
-    }
-
-    // HABITS : ajustements
-/*     for (final a in state.activeActivities.where((x) => x.isHabit)) {
-      autoTuneHabitImmediate(this, a); // hausse immédiate si >120%
-      _autoTuneHabitSafe(a, now: t); // finetune avec cooldown
-    } */
-
-
-    //state.lastGoalsReview = t;
-    onChange();
-    return changes;
-  }
-
   // ---------- Mesures glissantes ----------
   DateTimeRange lastNDays(int n, {DateTime? now}) {
     final t = now ?? DateTime.now();
@@ -2397,46 +2123,6 @@ class AppLogic {
     }
 
     return target > 0 && done >= target;
-  }
-
-// ========= GOALS: progression globale d’un objectif =========
-// 1) Priorité aux étapes (steps planned / done)
-// 2) Sinon, si effort estimé (en minutes) + activité liée → calcule via sessions temps
-// 3) Sinon, pas de métrique (ratio/label = null)
-  ({double? ratio, String? label}) goalProgress(Goal g, {DateTime? now}) {
-    final total = g.stepsTotal;
-    if (total > 0) {
-      final done = g.stepsDone;
-      final r = (done / total).clamp(0.0, 1.0);
-      return (ratio: r, label: "$done/$total actions");
-    }
-    return (ratio: null, label: null);
-  }
-
-// ========= GOALS: rythme hebdo sur l’activité liée =========
-// - Temps: utilise timeSliding(7j) → "Semaine Xm / Ym"
-// - Habitude: utilise habitSliding(7j) → "Semaine X / Y <unité>"
-  ({double ratio, String label}) goalWeeklyPace(Goal g, {DateTime? now}) {
-    if (g.activityId == null) return (ratio: 0.0, label: "Semaine 0 / 0");
-
-    // Récupère l’activité (si absente → neutre)
-    final idx = state.activeActivities.indexWhere((a) => a.id == g.activityId);
-    if (idx < 0) return (ratio: 0.0, label: "Semaine 0 / 0");
-    final act = state.activeActivities[idx];
-
-    if (!act.isHabit) {
-      final w = timeSliding(act.id, 7, now: now); // {doneMin,targetMin,ratio}
-      return (ratio: w.ratio, label: "Semaine ${w.doneMin}/${w.targetMin}m");
-    } else {
-      final w = habitSliding(act.id, 7, now: now); // {done,target,ratio}
-      final unit = (act.unit ?? '').isNotEmpty ? ' ${act.unit}' : '';
-      return (ratio: w.ratio, label: "Semaine ${w.done}/${w.target}$unit");
-    }
-  }
-
-// ========= GOALS: incrémenter/décrémenter le nombre d’étapes =========
-  void incGoalStep(String goalId, {int delta = 1}) {
-    // stepsDone est dérivé de actions — no-op, gardé pour compatibilité
   }
 
 // Cible active (selon la fréquence courante de la routine)
@@ -3191,7 +2877,6 @@ class FocusItem {
   final double score;
   final String reason;
   final Activity? activity;
-  final Goal? goal;
   final Duration? timeDeficit;
   final int? habitDeficit;
   final String? titleOverride;
@@ -3202,7 +2887,6 @@ class FocusItem {
     required this.score,
     required this.reason,
     this.activity,
-    this.goal,
     this.timeDeficit,
     this.habitDeficit,
     this.titleOverride,
@@ -3368,18 +3052,6 @@ extension SlidingProgress on AppLogic {
   }
 }
 
-// ---------- Focus/Goals annexes ----------
-class GoalChange {
-  final String kind; // 'activity' | 'domain'
-  final String id;
-  final int deltaMin;
-  final int newGoalMin;
-  GoalChange(
-      {required this.kind,
-      required this.id,
-      required this.deltaMin,
-      required this.newGoalMin});
-}
 
 class StepButton extends StatelessWidget {
   const StepButton({required this.icon, required this.onTap});

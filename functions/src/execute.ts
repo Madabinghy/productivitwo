@@ -154,11 +154,11 @@ async function executePushAssistantMessage(
 
   const validTypes = [
     "always", "overdue_count", "day_plan_empty", "project_inactive_days",
-    "activity_behind_target", "goal_undone_actions", "habit_streak_broken",
+    "activity_behind_target", "habit_streak_broken",
     "inbox_overflow", "project_deadline_near", "no_now_focus",
     "routine_completion_low", "day_plan_overloaded", "no_activity_logged_today",
     "project_milestone_today", "week_start", "week_end",
-    "activity_streak", "goal_near_deadline", "first_open_of_day", "custom_date",
+    "activity_streak", "first_open_of_day", "custom_date",
   ];
   if (!validTypes.includes(args.condition.type as string)) {
     return `Type de condition inconnu : ${args.condition.type}`;
@@ -270,12 +270,11 @@ async function executeGetUserContext(uid: string): Promise<string> {
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   const todayStr = todayInParis(now);
 
-  const [domainsSnap, activitiesSnap, goalsSnap,
+  const [domainsSnap, activitiesSnap,
          habitHitsSnap, sessionsSnap,
          projectsSnap, scheduleSnap, inboxSnap] = await Promise.all([
     db.collection(`users/${uid}/domains`).get(),
     db.collection(`users/${uid}/activities`).get(),
-    db.collection(`users/${uid}/goals`).where("status", "==", "active").get(),
     // Incréments de routines/habitudes sur 7 jours
     db.collection(`users/${uid}/habitHits`)
       .where("ts", ">=", sevenDaysAgo)
@@ -316,18 +315,6 @@ async function executeGetUserContext(uid: string): Promise<string> {
       goalMin: v.goalMin,
       habitFreq: v.habitFreq,
       habitTarget: v.habitTarget,
-    };
-  });
-
-  const activeGoals = goalsSnap.docs.map((d) => {
-    const v = d.data();
-    const actions = (v.actions || []) as Array<{ done: boolean }>;
-    return {
-      id: v.id,
-      title: v.title,
-      domainId: v.domainId,
-      dueDate: v.dueDate || null,
-      progress: `${actions.filter((a) => a.done).length}/${actions.length}`,
     };
   });
 
@@ -450,8 +437,7 @@ async function executeGetUserContext(uid: string): Promise<string> {
       "Pour chaque message avec une tâche ou projet précis, ajoute une action ciblée : " +
       "• open_gantt_task(projectId, taskId) pour une tâche Gantt urgente ; " +
       "• open_project(projectId) pour une deadline de projet ; " +
-      "• open_schedule pour le programme du jour ; " +
-      "• open_goals pour les objectifs GTD. " +
+      "• open_schedule pour le programme du jour. " +
       "Ne programme jamais deux messages avec la même condition pour la même période.",
     ],
   };
@@ -462,7 +448,6 @@ async function executeGetUserContext(uid: string): Promise<string> {
       today: todayStr,
       domains,
       activities,
-      activeGoals,
       activeProjects,
       todaySchedule,
       inboxItems: inboxItems.length > 0 ? inboxItems : null,
@@ -884,23 +869,6 @@ async function executeUpdateActivity(
   return `✅ Activité "${currentName}" mise à jour.`;
 }
 
-async function executeLinkGoalToTask(
-  uid: string,
-  goalId: string,
-  projectId: string | null,
-  projectTaskId: string | null
-): Promise<string> {
-  const ref = db.collection(`users/${uid}/goals`).doc(goalId);
-  const snap = await ref.get();
-  if (!snap.exists) return `Objectif introuvable : ${goalId}`;
-  const title = snap.data()?.title ?? goalId;
-
-  await ref.update({ projectId: projectId ?? null, projectTaskId: projectTaskId ?? null });
-
-  if (!projectTaskId) return `✅ Objectif "${title}" délié de tout projet Gantt.`;
-  return `✅ Objectif "${title}" lié à la tâche Gantt ${projectTaskId}.`;
-}
-
 async function executeDeleteRoutine(uid: string, routineId: string): Promise<string> {
   const ref = db.collection(`users/${uid}/activities`).doc(routineId);
   const snap = await ref.get();
@@ -909,20 +877,6 @@ async function executeDeleteRoutine(uid: string, routineId: string): Promise<str
   // Soft-delete pour que le merge Flutter respecte la suppression
   await ref.update({ deleted: true });
   return `✅ Routine "${title}" supprimée.`;
-}
-
-async function executeDeleteGoal(uid: string, goalId: string, action: string): Promise<string> {
-  const ref = db.collection(`users/${uid}/goals`).doc(goalId);
-  const snap = await ref.get();
-  if (!snap.exists) return `Objectif introuvable : ${goalId}`;
-  const title = snap.data()?.title ?? goalId;
-  if (action === "delete") {
-    await ref.delete();
-    return `✅ Objectif "${title}" supprimé définitivement.`;
-  }
-  // Archive par défaut
-  await ref.update({ status: "archived" });
-  return `✅ Objectif "${title}" archivé.`;
 }
 
 async function executeArchiveProject(uid: string, projectId: string, restore: boolean): Promise<string> {
@@ -1241,11 +1195,10 @@ async function executeGetOrionContext(uid: string): Promise<string> {
   const today = todayInParis(now);
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-  const [domainsSnap, activitiesSnap, goalsSnap,
+  const [domainsSnap, activitiesSnap,
          habitHitsSnap, sessionsSnap, projectsSnap] = await Promise.all([
     db.collection(`users/${uid}/domains`).get(),
     db.collection(`users/${uid}/activities`).get(),
-    db.collection(`users/${uid}/goals`).where("status", "==", "active").get(),
     db.collection(`users/${uid}/habitHits`).where("ts", ">=", sevenDaysAgo).get(),
     db.collection(`users/${uid}/sessions`).where("startAt", ">=", sevenDaysAgo.toISOString()).get(),
     db.collection(`users/${uid}/projects`).where("status", "==", "active").get(),
@@ -1260,13 +1213,6 @@ async function executeGetOrionContext(uid: string): Promise<string> {
 
   const activities = activitiesSnap.docs.map((d) => d.data()).filter((v) => !v.deleted)
     .map((v) => ({ id: v.id, name: v.name, type: v.type, domainId: v.domainId, goalMin: v.goalMin ?? null }));
-
-  const goals = goalsSnap.docs.map((d) => {
-    const v = d.data();
-    const actions = (v.actions || []) as Array<{ done: boolean }>;
-    return { id: v.id, title: v.title, domainId: v.domainId, dueDate: v.dueDate ?? null,
-             progress: `${actions.filter((a) => a.done).length}/${actions.length}` };
-  });
 
   // Habitudes : hits 7j par activité
   const hitsByHabit = new Map<string, number>();
@@ -1301,7 +1247,7 @@ async function executeGetOrionContext(uid: string): Promise<string> {
     };
   });
 
-  return JSON.stringify({ today, domains, activities, goals, habitStats, timeStats, projects }, null, 2);
+  return JSON.stringify({ today, domains, activities, habitStats, timeStats, projects }, null, 2);
 }
 
 async function executeGetOrionQueue(uid: string): Promise<string> {
@@ -1743,9 +1689,7 @@ export {
   executeUpdateProject,
   executeUpdateTaskStatus,
   executeUpdateActivity,
-  executeLinkGoalToTask,
   executeDeleteRoutine,
-  executeDeleteGoal,
   executeArchiveProject,
   executeDeleteProject,
   executeListProjects,

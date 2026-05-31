@@ -33,8 +33,6 @@ const ORION_TOOLS = [
     { name: "archive_project", description: "Archive ou restaure un projet.", input_schema: { type: "object", properties: { projectId: { type: "string" }, restore: { type: "boolean" } }, required: ["projectId"] } },
     { name: "delete_project", description: "Supprime définitivement un projet.", input_schema: { type: "object", properties: { projectId: { type: "string" }, deleteObjective: { type: "boolean" } }, required: ["projectId"] } },
     { name: "push_gantt", description: "Crée ou met à jour un projet Gantt. TOUJOURS inclure phases[] ET tasks[] — sans tasks le projet sera vide.", input_schema: { type: "object", required: ["project"], properties: { project: { type: "object", required: ["title", "startDate", "tasks"], properties: { title: { type: "string" }, description: { type: "string" }, domainId: { type: "string" }, startDate: { type: "string", description: "YYYY-MM-DD" }, endDate: { type: "string", description: "YYYY-MM-DD" }, phases: { type: "array", items: { type: "object", required: ["id", "label", "startDate", "endDate"], properties: { id: { type: "string", description: "ex: phase-1" }, label: { type: "string" }, startDate: { type: "string" }, endDate: { type: "string" }, color: { type: "string" } } } }, tasks: { type: "array", description: "OBLIGATOIRE : au moins 2 tâches par phase", items: { type: "object", required: ["id", "title", "startDate"], properties: { id: { type: "string", description: "ex: task-1" }, title: { type: "string" }, phaseId: { type: "string" }, startDate: { type: "string", description: "YYYY-MM-DD" }, endDate: { type: "string", description: "YYYY-MM-DD" }, isMilestone: { type: "boolean" }, status: { type: "string", enum: ["pending", "done", "skipped"] } } } } } } } } },
-    { name: "link_goal_to_task", description: "Lie un objectif GTD à une tâche Gantt.", input_schema: { type: "object", properties: { goalId: { type: "string" }, projectId: { type: "string" }, projectTaskId: { type: "string" } }, required: ["goalId"] } },
-    { name: "delete_goal", description: "Archive ou supprime un objectif GTD.", input_schema: { type: "object", properties: { goalId: { type: "string" }, action: { type: "string" } }, required: ["goalId"] } },
     { name: "save_document", description: "Sauvegarde un document HTML.", input_schema: { type: "object", properties: { title: { type: "string" }, content: { type: "string" } }, required: ["title", "content"] } },
     { name: "delete_document", description: "Supprime un document.", input_schema: { type: "object", properties: { documentId: { type: "string" } }, required: ["documentId"] } },
     { name: "restore_item", description: "Restaure un élément archivé.", input_schema: { type: "object", properties: { collection: { type: "string" }, itemId: { type: "string" } }, required: ["collection", "itemId"] } },
@@ -93,7 +91,7 @@ async function writeCycleLog(uid, log) {
 }
 // ── Cycle ORION — accès complet à tous les tools ──────────────────────────────
 async function runOrionCycle(uid, opts) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
     const today = (0, execute_1.todayInParis)();
     const count = await getOrionRunCount(uid, today);
     if (count >= ORION_MAX_RUNS) {
@@ -338,19 +336,10 @@ Tu dois TOUJOURS appeler push_assistant_message avant end_turn, quelle que soit 
                             result = await (0, execute_1.executePushGantt)(uid, Object.assign({ uid }, args));
                             actionLog.push(`🗂 Projet Gantt créé : ${(_h = (_g = args.project) === null || _g === void 0 ? void 0 : _g.title) !== null && _h !== void 0 ? _h : ""}`);
                             break;
-                        // ── Objectifs ────────────────────────────────────────────────
-                        case "link_goal_to_task":
-                            result = await (0, execute_1.executeLinkGoalToTask)(uid, args.goalId, (_j = args.projectId) !== null && _j !== void 0 ? _j : null, (_k = args.projectTaskId) !== null && _k !== void 0 ? _k : null);
-                            actionLog.push(`🔗 Objectif lié à une tâche Gantt`);
-                            break;
-                        case "delete_goal":
-                            result = await (0, execute_1.executeDeleteGoal)(uid, args.goalId, (_l = args.action) !== null && _l !== void 0 ? _l : "archive");
-                            actionLog.push(`🗑 Objectif archivé/supprimé`);
-                            break;
                         // ── Documents ────────────────────────────────────────────────
                         case "save_document":
                             result = await (0, execute_1.executeSaveDocument)(uid, args);
-                            actionLog.push(`📄 Document sauvegardé : ${(_m = args.title) !== null && _m !== void 0 ? _m : ""}`);
+                            actionLog.push(`📄 Document sauvegardé : ${(_j = args.title) !== null && _j !== void 0 ? _j : ""}`);
                             break;
                         case "delete_document": {
                             const ref = db_1.db.collection(`users/${uid}/documents`).doc(args.documentId);
@@ -369,7 +358,7 @@ Tu dois TOUJOURS appeler push_assistant_message avant end_turn, quelle que soit 
                         // ── Messages ORION ───────────────────────────────────────────
                         case "push_assistant_message": {
                             result = await (0, execute_1.executePushAssistantMessage)(uid, args);
-                            const msgText = ((_o = args.text) !== null && _o !== void 0 ? _o : "").slice(0, 80);
+                            const msgText = ((_k = args.text) !== null && _k !== void 0 ? _k : "").slice(0, 80);
                             actionLog.push(`💬 Message ORION planifié : "${msgText}${msgText.length >= 80 ? "…" : ""}"`);
                             pushedCount++;
                             break;

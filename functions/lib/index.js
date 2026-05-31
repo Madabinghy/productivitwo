@@ -191,7 +191,7 @@ exports.getCustomToken = (0, https_1.onRequest)({ cors: true, invoker: "public" 
 //
 // URL : /mcp/{uid}/{token} — protocole MCP JSON-RPC 2.0 (Streamable HTTP, stateless)
 exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, async (req, res) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r, _s, _t;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q;
     if (req.method === "OPTIONS") {
         res.status(204).send("");
         return;
@@ -255,7 +255,6 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                         tools_1.LIST_PROJECTS_TOOL, tools_1.GET_PROJECT_TOOL, tools_1.PUSH_GANTT_MCP_TOOL,
                         tools_1.ARCHIVE_PROJECT_TOOL, tools_1.DELETE_PROJECT_TOOL, tools_1.UPDATE_ACTIVITY_GOAL_TOOL,
                         tools_1.CREATE_ROUTINE_TOOL, tools_1.DELETE_ROUTINE_TOOL,
-                        tools_1.DELETE_GOAL_TOOL, tools_1.LINK_GOAL_TO_TASK_TOOL,
                         tools_1.CREATE_ACTIVITY_TOOL, tools_1.UPDATE_ACTIVITY_TOOL, tools_1.UPDATE_TASK_STATUS_TOOL,
                         tools_1.UPDATE_PROJECT_TOOL, tools_1.DELETE_ACTIVITY_TOOL,
                         tools_1.GET_DOCUMENT_TEMPLATE_TOOL, tools_1.SAVE_DOCUMENT_TOOL, tools_1.GET_DOCUMENTS_TOOL,
@@ -330,12 +329,6 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                 else if (toolName === "delete_domain") {
                     text = await (0, execute_1.executeDeleteDomain)(uid, args.domainId);
                 }
-                else if (toolName === "link_goal_to_task") {
-                    text = await (0, execute_1.executeLinkGoalToTask)(uid, args.goalId, (_p = args.projectId) !== null && _p !== void 0 ? _p : null, (_q = args.projectTaskId) !== null && _q !== void 0 ? _q : null);
-                }
-                else if (toolName === "delete_goal") {
-                    text = await (0, execute_1.executeDeleteGoal)(uid, args.goalId, (_r = args.action) !== null && _r !== void 0 ? _r : "archive");
-                }
                 else if (toolName === "get_document_template") {
                     text = (0, prompts_1.executeGetDocumentTemplate)();
                 }
@@ -352,7 +345,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                         text = `Document introuvable : ${args.documentId}`;
                     }
                     else {
-                        const title = (_t = (_s = snap.data()) === null || _s === void 0 ? void 0 : _s.title) !== null && _t !== void 0 ? _t : args.documentId;
+                        const title = (_q = (_p = snap.data()) === null || _p === void 0 ? void 0 : _p.title) !== null && _q !== void 0 ? _q : args.documentId;
                         await ref.update({ deleted: true });
                         text = `✅ Document "${title}" supprimé.`;
                     }
@@ -1980,8 +1973,10 @@ exports.getVisionAccess = (0, https_1.onRequest)({ cors: true, invoker: "public"
         available: available === true,
         intervalDays: VISION_INTERVAL_DAYS,
     };
-    // Si Pro et disponible → génère un access URL frais
-    if (isPro && available && onboardingDone) {
+    // Génère un access URL frais vers la formation :
+    // - première session d'onboarding : toujours accessible (gratuite)
+    // - révisions mensuelles suivantes : réservées aux Pro quand disponible
+    if (!onboardingDone || (isPro && available)) {
         const token = createFormationToken(uid, email, process.env.FORMATION_JWT_SECRET);
         result.accessUrl = `https://productivitwo-app.web.app/vision?token=${encodeURIComponent(token)}`;
     }
