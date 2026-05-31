@@ -874,14 +874,17 @@ const REVISION_TOOLS = [
   },
   {
     name: "create_activity",
-    description: "Crée une nouvelle activité dans un domaine existant.",
+    description: "Crée une nouvelle activité dans un domaine existant. type 'time' = suivi de durée (goalMin). type 'habit' = suivi de fréquence (habitFreq + habitTarget).",
     input_schema: {
       type: "object" as const,
       properties: {
         name: { type: "string" },
         domainName: { type: "string", description: "Nom exact du domaine existant" },
         type: { type: "string", enum: ["time", "habit"] },
-        goalMin: { type: "number" },
+        goalMin: { type: "number", description: "Objectif quotidien en minutes (type time)" },
+        habitFreq: { type: "string", enum: ["daily", "weekly", "monthly"], description: "Période de la fréquence (type habit)" },
+        habitTarget: { type: "number", description: "Cible par période (type habit) — ex: 3 = 3×/semaine, 8 = 8×/jour, 1 = mensuel" },
+        unit: { type: "string", description: "Unité optionnelle (ex: verres, pages, km)" },
       },
       required: ["name", "domainName", "type"],
     },
@@ -952,16 +955,25 @@ Aujourd'hui : {{TODAY}}
 
 {{USER_CONTEXT}}
 
-Ta mission : conduire une conversation de co-construction de vision de vie (~50 min) qui aboutit à une configuration complète et personnalisée de Productivitwo. L'utilisateur doit pouvoir ouvrir l'application à la fin et tout trouver prêt.
+Ta mission : conduire une conversation chaleureuse mais EFFICACE qui aboutit à un système Productivitwo réellement prêt à l'emploi — l'utilisateur doit pouvoir, dès l'ouverture de l'app, tracker concrètement ce qu'il fait.
+
+Deux livrables comptent autant : (1) qu'il se sente vraiment compris, (2) qu'il reparte avec un VRAI système trackable (domaines + activités calibrées + 1er projet Gantt), pas un échantillon creux. Ces deux objectifs ne s'opposent PAS : garde une vraie conversation exploratoire et chaleureuse — c'est elle qui crée le sentiment d'écoute. Le "trop de blabla pour trop peu" se corrige en Phase 3, où cette écoute se convertit en un système réellement rempli (balayage des activités), PAS en raccourcissant l'exploration.
+
+⚖️ DENSITÉ ADAPTATIVE — calibre-toi sur la personne, jamais sur un quota :
+- Jauge son appétit en formulant le choix par la COUVERTURE, jamais par l'effort : "Tu veux qu'on capture TOUT ce que tu fais au quotidien (système complet), ou plutôt l'essentiel — quelques indicateurs clés pour démarrer ?" ⚠️ Ne dis JAMAIS "beaucoup d'activités" / "suivre en détail" : ça suggère à tort qu'il faudra cliquer davantage. Un système complet = il reflète ta vie, pas un surcroît de saisie (on logue seulement ce qu'on fait).
+- Capture ce qu'elle fait VRAIMENT — n'invente pas pour remplir, ne plafonne pas un power-user non plus.
+- Plafond souple : ~5 activités/domaine pendant l'onboarding (le reste s'ajoute dans l'app). Profil "essentiel" : 1-3 suffisent.
+- Rappelle qu'on peut tout enrichir plus tard, à tout moment.
 
 ━━━ PHASES ━━━
 
 PHASE 1 — ÉTAT PRÉSENT (4-5 échanges)
-Explore la vie actuelle avec curiosité. Tu veux comprendre :
+Explore la vie actuelle avec curiosité — c'est ce temps d'écoute qui fait que l'utilisateur se sent compris. Tu veux comprendre :
 - Ses activités pro et perso au quotidien
 - Ce qui lui prend du temps (subi vs choisi)
 - Comment il structure (ou ne structure pas) sa semaine
 - Ses frustrations d'organisation actuelles
+Jauge aussi, au fil de l'échange, son appétit : système complet (capturer tout ce qu'il fait) vs essentiel (quelques indicateurs clés). Formule toujours par la couverture, pas par l'effort.
 Pose 1-2 questions ouvertes par message. Écoute vraiment, reformule ce que tu comprends.
 Ne passe pas à la Phase 2 tant que tu n'as pas une image claire et nuancée.
 
@@ -985,14 +997,17 @@ Prends le temps qu'il te faut. Si tu dois t'arrêter, ta session est sauvegardé
 On commence ?"
 
 DÉROULÉ pour chaque domaine :
-  1. Annonce le domaine et sa question centrale (1 phrase)
-  2. Propose les 4-5 options de noms + "Autre (ton propre mot)"
-  3. L'utilisateur choisit ou tape son mot → tu valides
-  4. Pose 1 question courte pour explorer ce qui se passe VRAIMENT dans ce domaine
-  5. Reformule ce que tu comprends, puis passe au suivant
+  1. Annonce le domaine, propose 4-5 noms + "Autre" → l'utilisateur choisit/valide.
+  2. BALAYAGE DES ACTIVITÉS — c'est ICI qu'on construit le vrai système trackable.
+     Demande concrètement ce qu'il fait (ou veut suivre) dans ce domaine, avec les DEUX lentilles :
+       • DURÉE (type "time") : ce qu'on mesure en temps — ex: Sport, Stratégie, Cuisiner, Sommeil → goalMin réaliste (souvent 15-30 min).
+       • FRÉQUENCE (type "habit") : ce qu'on coche — ex: Boire de l'eau (daily ×8), Footing (weekly ×3), Ménage (weekly), Laver la voiture (monthly) → habitFreq + habitTarget.
+     Pour chaque activité, déduis la bonne lentille ; si habit, déduis fréquence + cible. Si une cible est importante et incertaine, demande — ne devine pas.
+  3. Vise jusqu'à ~5 activités/domaine selon son appétit — sans remplir artificiellement, sans plafonner un power-user (il complétera dans l'app).
+  4. Reformule la courte liste ("Dans X, tu suivras : … — ça te va ?"), puis passe au domaine suivant.
 
-L'utilisateur peut dire "passe" pour sauter un domaine, "stop" ou "c'est bon" pour valider et aller en Phase 4.
-Maximum 6 domaines au total — propose de fusionner si l'utilisateur en veut trop.
+L'utilisateur peut dire "passe" pour sauter un domaine, "stop"/"c'est bon" pour valider et aller en Phase 4.
+Maximum 6-7 domaines — propose de fusionner s'il en veut trop.
 
 ━━━ RÈGLE CRITIQUE — BESOIN ÉMOTIONNEL vs ACTIVITÉ TRACKABLE ━━━
 
@@ -1060,15 +1075,15 @@ Un domaine doit répondre à la question : "est-ce que cette personne a des comp
 
 PHASE 4 — CRÉATION (automatique après validation)
 Une fois la structure validée, crée TOUT dans cet ordre :
-1. Appelle create_domain pour chaque domaine (avec couleur cohérente)
-2. Appelle create_activity pour chaque activité (liée au bon domaine par nom)
-3. Appelle create_routine pour les routines clés (2-3 max)
-4. Appelle push_gantt pour le premier projet :
+1. create_domain pour chaque domaine (couleur cohérente).
+2. create_activity pour CHAQUE activité du balayage, liée au bon domaine par nom :
+   - type "time" → goalMin réaliste (souvent 15-30 min).
+   - type "habit" → TOUJOURS préciser habitFreq (daily/weekly/monthly) ET habitTarget (ex: 3 = 3×/sem, 8 = 8×/jour). Ne mets jamais "daily ×1" par défaut sans raison — reflète ce que la personne a dit.
+   (Routines et gestes récurrents = create_activity type "habit". Il n'existe PAS d'outil routine séparé.)
+3. push_gantt pour le premier projet :
    - Titre qui reflète le voyage présent→futur de CET utilisateur
-   - Les phases Gantt = les étapes de progression pour atteindre la vision
-   - 3-5 tâches par phase, formulées comme des actions concrètes
-   - Durée : 6-9 mois à partir d'aujourd'hui
-5. Message final enthousiaste : annonce que Productivitwo est prêt, invite à ouvrir l'app
+   - Phases = étapes de progression vers la vision ; 3-5 tâches/phase (actions concrètes) ; durée 6-9 mois.
+4. Message final enthousiaste : annonce que le système est prêt, invite à ouvrir l'app, et précise qu'il pourra ajouter/affiner ses activités à tout moment (lui-même ou via l'assistant).
 
 ━━━ STYLE ━━━
 - Tutoiement naturel et chaleureux
@@ -1092,29 +1107,19 @@ const ONBOARDING_TOOLS = [
   },
   {
     name: "create_activity",
-    description: "Crée une activité de tracking dans un domaine. Utilise le nom du domaine (pas son ID).",
+    description: "Crée une activité de tracking dans un domaine. Utilise le nom du domaine (pas son ID). 'time' = suivi de durée ; 'habit' = suivi de fréquence (routines, gestes quotidiens/hebdo/mensuels).",
     input_schema: {
       type: "object" as const,
       properties: {
         name: { type: "string", description: "Nom de l'activité" },
         domainName: { type: "string", description: "Nom exact du domaine dans lequel créer l'activité" },
         type: { type: "string", enum: ["time", "habit"], description: "time = tracking durée, habit = tracking fréquence" },
-        goalMin: { type: "number", description: "Objectif quotidien en minutes (pour type time)" },
+        goalMin: { type: "number", description: "Objectif quotidien en minutes (type time)" },
+        habitFreq: { type: "string", enum: ["daily", "weekly", "monthly"], description: "Période de la fréquence (type habit) — quotidien / hebdo / mensuel" },
+        habitTarget: { type: "number", description: "Cible par période (type habit) — ex: 3 = 3×/semaine, 8 = 8×/jour, 1 = 1×/mois" },
+        unit: { type: "string", description: "Unité optionnelle (ex: verres, pages, km)" },
       },
       required: ["name", "domainName", "type"],
-    },
-  },
-  {
-    name: "create_routine",
-    description: "Crée une routine quotidienne (habitude) dans un domaine.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        name: { type: "string" },
-        domainName: { type: "string", description: "Nom exact du domaine" },
-        dureeMin: { type: "number", description: "Durée en minutes" },
-      },
-      required: ["name", "domainName"],
     },
   },
   {
@@ -1188,19 +1193,27 @@ async function executeOnboardingTool(
     const domainName = input.domainName as string;
     const domainId = domainMap[domainName] ?? null;
     const isHabit = input.type === "habit";
+    const freqMap: Record<string, number> = { daily: 0, weekly: 1, monthly: 2 };
+    const freqKey = (input.habitFreq as string) ?? "daily";
+    const habitFreq = isHabit ? (freqMap[freqKey] ?? 0) : null;
+    const habitTarget = isHabit ? ((input.habitTarget as number) ?? 1) : null;
+    // Si le guide a précisé fréquence/cible, on fige la cible (pas d'auto-tune qui l'écrase).
+    const manualHabit = isHabit && (input.habitFreq !== undefined || input.habitTarget !== undefined);
     await db.collection(`users/${uid}/activities`).doc(id).set({
       id, name, domainId,
       type: isHabit ? "habit" : "time",
       role: "generic",
       goalMin: (input.goalMin as number) ?? 1,
-      unit: null,
-      habitFreq: isHabit ? 0 : null,
-      habitTarget: isHabit ? 1 : null,
-      manualTarget: false, autoTune: true,
+      unit: (input.unit as string) ?? null,
+      habitFreq,
+      habitTarget,
+      manualTarget: manualHabit,
+      autoTune: !manualHabit,
       createdAt: FieldValue.serverTimestamp(),
       lastTuneAt: null, order: 0, iconCode: null, deleted: false,
     });
-    return { notification: `✓ Activité "${name}" créée`, output: `Activité créée — id: ${id}` };
+    const detail = isHabit ? ` (${freqKey} ×${habitTarget})` : (input.goalMin ? ` (${input.goalMin}min/j)` : "");
+    return { notification: `✓ Activité "${name}"${detail} créée`, output: `Activité créée — id: ${id}` };
   }
 
   if (toolName === "create_routine") {
