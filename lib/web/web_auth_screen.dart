@@ -1,12 +1,8 @@
-import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:productivitwo_v1/web/web_magic_link_complete_screen.dart';
 
-const _kCustomTokenUrl = 'https://getcustomtoken-dzos75b65q-uc.a.run.app';
 // Continuation URL du magic link web — racine pour que _AuthGate complète sur le web
 // (le chemin /email-signin est réservé au relay natif).
 const _kWebContinuationUrl = 'https://productivitwo-app.web.app/';
@@ -18,28 +14,15 @@ class WebAuthScreen extends StatefulWidget {
   State<WebAuthScreen> createState() => _WebAuthScreenState();
 }
 
-class _WebAuthScreenState extends State<WebAuthScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabs;
+class _WebAuthScreenState extends State<WebAuthScreen> {
   bool _loading = false;
   String? _error;
   bool _emailSent = false;
 
-  final _uidCtrl   = TextEditingController();
-  final _tokenCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
 
   @override
-  void initState() {
-    super.initState();
-    _tabs = TabController(length: 3, vsync: this);
-  }
-
-  @override
   void dispose() {
-    _tabs.dispose();
-    _uidCtrl.dispose();
-    _tokenCtrl.dispose();
     _emailCtrl.dispose();
     super.dispose();
   }
@@ -64,63 +47,6 @@ class _WebAuthScreenState extends State<WebAuthScreen>
       if (mounted) setState(() => _emailSent = true);
     } on FirebaseAuthException catch (e) {
       if (mounted) setState(() => _error = e.message ?? 'Envoi impossible');
-    } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _signInWithGoogle() async {
-    setState(() { _loading = true; _error = null; });
-    try {
-      await FirebaseAuth.instance.signInWithPopup(GoogleAuthProvider());
-    } catch (e) {
-      // Hors Chrome, firebase_auth web lève souvent une erreur d'interop JS sur le
-      // UserCredential alors que l'auth a réussi — on ne se fie pas au type, on vérifie currentUser.
-      await Future.delayed(const Duration(milliseconds: 400));
-      if (FirebaseAuth.instance.currentUser == null && mounted) {
-        setState(() => _error = e is FirebaseAuthException
-            ? (e.message ?? 'Erreur de connexion')
-            : 'Connexion impossible. Réessaie.');
-      }
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _signInWithIosToken() async {
-    final uid   = _uidCtrl.text.trim();
-    final token = _tokenCtrl.text.trim();
-    if (uid.isEmpty || token.isEmpty) {
-      setState(() => _error = 'UID et token requis');
-      return;
-    }
-    setState(() { _loading = true; _error = null; });
-    try {
-      final res = await http.post(
-        Uri.parse(_kCustomTokenUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'uid': uid, 'token': token}),
-      );
-      final body = (jsonDecode(res.body) as Map).cast<String, dynamic>();
-      if (res.statusCode != 200) {
-        throw Exception(body['error'] ?? 'Erreur serveur (${res.statusCode})');
-      }
-      final customToken = body['customToken']?.toString();
-      if (customToken == null || customToken.isEmpty) {
-        throw Exception('Token Firebase manquant');
-      }
-      // Hors Chrome, firebase_auth web lève souvent une erreur d'interop JS sur le
-      // UserCredential alors que l'auth a réussi — on vérifie currentUser (peu importe le type d'erreur).
-      try {
-        await FirebaseAuth.instance.signInWithCustomToken(customToken);
-      } catch (_) {
-        await Future.delayed(const Duration(milliseconds: 400));
-        if (FirebaseAuth.instance.currentUser == null) {
-          throw Exception('Connexion Firebase échouée');
-        }
-      }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {
@@ -171,21 +97,7 @@ class _WebAuthScreenState extends State<WebAuthScreen>
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                // Tabs
-                                Padding(
-                                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                                  child: TabBar(
-                                    controller: _tabs,
-                                    dividerColor: Colors.transparent,
-                                    indicatorColor: cs.primary,
-                                    tabs: const [
-                                      Tab(text: 'Par email'),
-                                      Tab(text: 'Compte iOS'),
-                                      Tab(text: 'Google'),
-                                    ],
-                                  ),
-                                ),
-
+                                const SizedBox(height: 8),
                                 // Erreur
                                 if (_error != null)
                                   Padding(
@@ -204,34 +116,11 @@ class _WebAuthScreenState extends State<WebAuthScreen>
                                     ),
                                   ),
 
-                                SizedBox(
-                                  height: 230,
-                                  child: TabBarView(
-                                    controller: _tabs,
-                                    children: [
-                                      // ── Onglet Email (magic link) ───────
-                                      _EmailLoginTab(
-                                        emailCtrl: _emailCtrl,
-                                        loading: _loading,
-                                        sent: _emailSent,
-                                        onSubmit: _sendMagicLink,
-                                      ),
-
-                                      // ── Onglet iOS ──────────────────────
-                                      _IosLoginTab(
-                                        uidCtrl: _uidCtrl,
-                                        tokenCtrl: _tokenCtrl,
-                                        loading: _loading,
-                                        onSubmit: _signInWithIosToken,
-                                      ),
-
-                                      // ── Onglet Google ───────────────────
-                                      _GoogleLoginTab(
-                                        loading: _loading,
-                                        onSubmit: _signInWithGoogle,
-                                      ),
-                                    ],
-                                  ),
+                                _EmailLoginTab(
+                                  emailCtrl: _emailCtrl,
+                                  loading: _loading,
+                                  sent: _emailSent,
+                                  onSubmit: _sendMagicLink,
                                 ),
                               ],
                             ),
@@ -426,79 +315,6 @@ class _BrandingHeader extends StatelessWidget {
   }
 }
 
-// ── Onglet iOS ────────────────────────────────────────────────────────────────
-
-class _IosLoginTab extends StatelessWidget {
-  final TextEditingController uidCtrl;
-  final TextEditingController tokenCtrl;
-  final bool loading;
-  final VoidCallback onSubmit;
-
-  const _IosLoginTab({
-    required this.uidCtrl,
-    required this.tokenCtrl,
-    required this.loading,
-    required this.onSubmit,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'iOS → menu ⋮ → Tokens API → copie UID + token',
-            style: TextStyle(
-                fontSize: 12, color: cs.onSurface.withOpacity(0.5)),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: uidCtrl,
-            decoration: const InputDecoration(
-              labelText: 'UID iOS',
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: tokenCtrl,
-            decoration: InputDecoration(
-              labelText: 'Token',
-              isDense: true,
-              border: const OutlineInputBorder(),
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.paste_outlined, size: 16),
-                onPressed: () async {
-                  final d = await Clipboard.getData('text/plain');
-                  if (d?.text != null) tokenCtrl.text = d!.text!;
-                },
-              ),
-            ),
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-          ),
-          const SizedBox(height: 12),
-          FilledButton(
-            onPressed: loading ? null : onSubmit,
-            style: FilledButton.styleFrom(
-                minimumSize: const Size(double.infinity, 44)),
-            child: loading
-                ? const SizedBox(
-                    width: 16, height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Connecter mon compte iOS'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 // ── Onglet Email (magic link) ───────────────────────────────────────────────
 
 class _EmailLoginTab extends StatelessWidget {
@@ -573,48 +389,6 @@ class _EmailLoginTab extends StatelessWidget {
                     width: 16, height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2))
                 : const Text('Recevoir mon lien'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Onglet Google ─────────────────────────────────────────────────────────────
-
-class _GoogleLoginTab extends StatelessWidget {
-  final bool loading;
-  final VoidCallback onSubmit;
-
-  const _GoogleLoginTab({required this.loading, required this.onSubmit});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'Tu découvres Productivitwo sur le web,\nou tu utilises Android.',
-            style: TextStyle(
-                fontSize: 13, color: cs.onSurface.withOpacity(0.55)),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 20),
-          FilledButton.icon(
-            onPressed: loading ? null : onSubmit,
-            icon: loading
-                ? SizedBox(
-                    width: 16, height: 16,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: cs.onPrimary))
-                : const Icon(Icons.login_outlined, size: 18),
-            label: Text(loading ? 'Connexion…' : 'Continuer avec Google'),
-            style: FilledButton.styleFrom(
-                minimumSize: const Size(double.infinity, 48)),
           ),
         ],
       ),

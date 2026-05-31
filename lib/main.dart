@@ -34,7 +34,6 @@ import 'package:productivitwo_v1/widgets/time_report_card.dart';
 import 'package:productivitwo_v1/widgets/routine_freq_card.dart';
 import 'package:productivitwo_v1/widgets/changelog_sheet.dart';
 import 'package:productivitwo_v1/widgets/privacy_policy_screen.dart';
-import 'package:productivitwo_v1/widgets/api_tokens_screen.dart';
 import 'package:productivitwo_v1/web/web_app_stub.dart'
     if (dart.library.html) 'package:productivitwo_v1/web/web_app.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -4450,19 +4449,6 @@ class _AppRootState extends State<AppRoot>
                       ),
                     ),
                   );
-                },
-              ),
-              // Tokens API
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.vpn_key_outlined),
-                title: const Text('Tokens API'),
-                trailing: const Icon(Icons.chevron_right, size: 18),
-                onTap: () {
-                  Navigator.pop(sheetCtx);
-                  Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => ApiTokensScreen(sync: _sync, uid: _sync.uid ?? '', logic: logic),
-                  ));
                 },
               ),
               // Confidentialité
