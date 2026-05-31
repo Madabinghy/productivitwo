@@ -96,6 +96,7 @@ class _GanttScreenState extends State<GanttScreen> {
   late Project _project;
   final _sync = FirestoreSync();
   bool _forceLight = false;
+  StrategicObjective? _objective;
 
   @override
   void initState() {
@@ -104,6 +105,20 @@ class _GanttScreenState extends State<GanttScreen> {
     if (widget.targetTaskId != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _openTargetTask());
     }
+    _loadObjective();
+  }
+
+  // Charge l'objectif stratégique lié (s'il existe) pour l'afficher en tête du Gantt.
+  Future<void> _loadObjective() async {
+    final id = _project.strategicObjectiveId;
+    if (id == null) return;
+    try {
+      final objs = await _sync.fetchStrategicObjectives();
+      final matches = objs.where((o) => o.id == id).toList();
+      if (matches.isNotEmpty && mounted) {
+        setState(() => _objective = matches.first);
+      }
+    } catch (_) {}
   }
 
   void _openTargetTask() {
@@ -426,6 +441,38 @@ class _GanttScreenState extends State<GanttScreen> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (_objective != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.flag_outlined, size: 12, color: cs.primary),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        _objective!.title.toUpperCase(),
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.8,
+                            color: cs.primary),
+                      ),
+                    ),
+                    if (_objective!.kpiTarget != null) ...[
+                      const SizedBox(width: 6),
+                      Text(
+                        _objective!.kpiTarget!,
+                        style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: cs.primary.withOpacity(0.75)),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             Text(_project.title,
                 style: const TextStyle(
                     fontSize: 16, fontWeight: FontWeight.w700)),

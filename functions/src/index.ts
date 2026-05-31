@@ -1080,10 +1080,16 @@ Une fois la structure validée, crée TOUT dans cet ordre :
    - type "time" → goalMin réaliste (souvent 15-30 min).
    - type "habit" → TOUJOURS préciser habitFreq (daily/weekly/monthly) ET habitTarget (ex: 3 = 3×/sem, 8 = 8×/jour). Ne mets jamais "daily ×1" par défaut sans raison — reflète ce que la personne a dit.
    (Routines et gestes récurrents = create_activity type "habit". Il n'existe PAS d'outil routine séparé.)
-3. push_gantt pour le premier projet :
-   - Titre qui reflète le voyage présent→futur de CET utilisateur
-   - Phases = étapes de progression vers la vision ; 3-5 tâches/phase (actions concrètes) ; durée 6-9 mois.
-4. Message final enthousiaste : annonce que le système est prêt, invite à ouvrir l'app, et précise qu'il pourra ajouter/affiner ses activités à tout moment (lui-même ou via l'assistant).
+3. PROJET (conditionnel — ne JAMAIS le forcer). Demande clairement :
+   "Y a-t-il un objectif concret que tu aimerais atteindre d'ici ~3 mois ?"
+   - Si OUI → push_gantt autour de cet objectif :
+       · strategicObjective = le RÉSULTAT visé (un cap clair + un KPI mesurable) — le "pourquoi" affiché au-dessus des étapes/tâches.
+       · Titre personnalisé reflétant son voyage présent→futur.
+       · Phases = étapes vers l'objectif ; 3-5 tâches/phase (actions concrètes).
+       · Durée calée sur SON objectif (par défaut ~3 mois ; ajuste s'il donne un autre horizon). Jamais un 6-9 mois imposé.
+   - Si NON ou flou → ne crée PAS de projet, n'en invente pas. Dis-lui qu'il pourra en lancer un dès qu'il en aura un, avec l'assistant.
+4. complete_onboarding — appelle-le en DERNIER pour clôturer (que tu aies créé un projet ou non).
+5. Message final enthousiaste : annonce que le système est prêt, invite à ouvrir l'app, et précise qu'il pourra ajouter/affiner activités et projets à tout moment (lui-même ou via l'assistant).
 
 ━━━ STYLE ━━━
 - Tutoiement naturel et chaleureux
@@ -1131,6 +1137,15 @@ const ONBOARDING_TOOLS = [
         title: { type: "string", description: "Titre du projet (personnalisé, pas générique)" },
         startDate: { type: "string", description: "YYYY-MM-DD (aujourd'hui)" },
         endDate: { type: "string", description: "YYYY-MM-DD (6-9 mois)" },
+        strategicObjective: {
+          type: "object",
+          description: "Objectif stratégique = le RÉSULTAT visé du projet (le 'pourquoi', au-dessus des étapes/tâches). À fournir systématiquement.",
+          properties: {
+            title: { type: "string", description: "Le résultat visé formulé comme un cap (ex: 'Lancer mon activité de coaching')" },
+            kpiTarget: { type: "string", description: "Indicateur de succès mesurable (ex: '5 clients réguliers', '10k€/mois')" },
+          },
+          required: ["title"],
+        },
         phases: {
           type: "array",
           items: {
@@ -1158,6 +1173,16 @@ const ONBOARDING_TOOLS = [
         },
       },
       required: ["title", "startDate", "endDate", "phases", "tasks"],
+    },
+  },
+  {
+    name: "complete_onboarding",
+    description: "Clôture l'onboarding une fois la structure créée (domaines + activités, et projet SI pertinent). À appeler en DERNIER, juste avant le message final. Marque la config comme terminée — indépendant de la création d'un projet.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        summary: { type: "string", description: "Récap en 1 phrase de ce qui a été mis en place (optionnel)" },
+      },
     },
   },
 ];
@@ -1237,6 +1262,7 @@ async function executeOnboardingTool(
     const projectId = uuidv4();
     const ganttInput = input as {
       title: string; startDate: string; endDate: string;
+      strategicObjective?: { title: string; kpiTarget?: string };
       phases: Array<{ label: string; startDate: string; endDate: string }>;
       tasks: Array<{ title: string; phaseIndex: number; startDate: string; endDate: string; isMilestone?: boolean; actions?: string[] }>;
     };
@@ -1251,15 +1277,33 @@ async function executeOnboardingTool(
       recurringActionId: null,
       actions: (t.actions ?? []).map((a) => ({ id: uuidv4(), title: a, done: false, doneAt: null, createdAt: new Date().toISOString() })),
     }));
+    // Objectif stratégique (le résultat visé) — affiché en tête du Gantt
+    let strategicObjectiveId: string | null = null;
+    if (ganttInput.strategicObjective?.title) {
+      strategicObjectiveId = uuidv4();
+      await db.collection(`users/${uid}/strategic_objectives`).doc(strategicObjectiveId).set({
+        id: strategicObjectiveId,
+        title: ganttInput.strategicObjective.title,
+        kpiTarget: ganttInput.strategicObjective.kpiTarget ?? null,
+        description: null, domainId: null, horizonLabel: null,
+        startDate: ganttInput.startDate, endDate: ganttInput.endDate,
+        status: "active", projectIds: [projectId],
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    }
     await db.collection(`users/${uid}/projects`).doc(projectId).set({
       id: projectId, title: ganttInput.title,
-      description: null, strategicObjectiveId: null, domainId: null,
+      description: null, strategicObjectiveId, domainId: null,
       startDate: ganttInput.startDate, endDate: ganttInput.endDate,
       status: "active", phases, tasks,
       createdBy: uid, sourceType: "formation_onboarding",
       createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
     });
     return { notification: `✓ Projet Gantt "${ganttInput.title}" créé`, output: `Projet créé — id: ${projectId}` };
+  }
+
+  if (toolName === "complete_onboarding") {
+    return { notification: "✓ Configuration terminée", output: "Onboarding marqué comme terminé." };
   }
 
   if (toolName === "update_domain") {
@@ -1631,7 +1675,7 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
           if (block.type === "tool_use") {
             const result = await executeOnboardingTool(uid, block.name, block.input as Record<string, unknown>, domainMap);
             if (result.notification) notifications.push(result.notification);
-            if (block.name === "push_gantt") onboardingComplete = true;
+            if (block.name === "push_gantt" || block.name === "complete_onboarding") onboardingComplete = true;
             toolResults.push({ type: "tool_result", tool_use_id: block.id, content: result.output });
           }
         }
