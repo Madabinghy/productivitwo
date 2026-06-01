@@ -206,7 +206,7 @@ export const getCustomToken = onRequest({ cors: true, invoker: "public" }, async
 // (Single Sender ou domaine authentifié). Sinon SendGrid rejette l'envoi.
 const MAGIC_FROM_EMAIL = "noreply@productivitwo.com";
 const MAGIC_FROM_NAME = "Productivitwo";
-const MAGIC_DEFAULT_CONTINUE_URL = "https://productivitwo-app.web.app/";
+const MAGIC_DEFAULT_CONTINUE_URL = "https://app.productivitwo.com/";
 
 function magicLinkEmailHtml(link: string): string {
   return `<!DOCTYPE html>
@@ -2338,7 +2338,7 @@ export const adminProductivitwo = onRequest(
 
 // ── Formation helpers ─────────────────────────────────────────────────────────
 
-const FORMATION_URL = "https://productivitwo-app.web.app/formation";
+const FORMATION_URL = "https://app.productivitwo.com/formation";
 
 function createFormationToken(uid: string, email: string, secret: string): string {
   const cleanSecret = secret.trim();
@@ -2498,7 +2498,7 @@ export const getVisionAccess = onRequest(
     // - révisions mensuelles suivantes : réservées aux Pro quand disponible
     if (!onboardingDone || (isPro && available)) {
       const token = createFormationToken(uid, email, process.env.FORMATION_JWT_SECRET!);
-      result.accessUrl = `https://productivitwo-app.web.app/vision?token=${encodeURIComponent(token)}`;
+      result.accessUrl = `https://app.productivitwo.com/vision?token=${encodeURIComponent(token)}`;
     }
 
     res.status(200).json(result);

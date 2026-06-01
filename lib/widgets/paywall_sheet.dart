@@ -309,7 +309,7 @@ class _PaywallSheetState extends State<_PaywallSheet> {
                 children: [
                   TextButton(
                     onPressed: () => launchUrl(
-                      Uri.parse('https://productivitwo-app.web.app/privacy.html'),
+                      Uri.parse('https://app.productivitwo.com/privacy.html'),
                       mode: LaunchMode.externalApplication,
                     ),
                     style: TextButton.styleFrom(

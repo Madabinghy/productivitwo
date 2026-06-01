@@ -66,7 +66,7 @@ class FirestoreSync {
   }
 
   // URL de continuation pour le magic link — doit être dans les domaines autorisés Firebase
-  static const _emailLinkUrl = 'https://productivitwo-app.web.app/email-signin';
+  static const _emailLinkUrl = 'https://app.productivitwo.com/email-signin';
 
   Future<void> sendSignInLink(String email) async {
     final settings = ActionCodeSettings(

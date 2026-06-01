@@ -712,7 +712,7 @@ class _GoalsViewState extends State<GoalsView> {
             const SizedBox(height: 12),
             const Text(
               'Les projets Gantt se créent depuis l\'app web. '
-              'Ouvre productivitwo-app.web.app et utilise le tab Projets.',
+              'Ouvre app.productivitwo.com et utilise le tab Projets.',
               style: TextStyle(fontSize: 14),
             ),
             const SizedBox(height: 8),

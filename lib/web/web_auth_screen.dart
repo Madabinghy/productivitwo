@@ -6,7 +6,7 @@ import 'package:productivitwo_v1/web/web_magic_link_complete_screen.dart';
 
 // Continuation URL du magic link web — racine pour que _AuthGate complète sur le web
 // (le chemin /email-signin est réservé au relay natif).
-const _kWebContinuationUrl = 'https://productivitwo-app.web.app/';
+const _kWebContinuationUrl = 'https://app.productivitwo.com/';
 
 // Cloud Function qui génère le lien (Admin SDK) et envoie le mail brandé via SendGrid.
 const _kSendMagicLinkUrl = 'https://sendmagiclink-dzos75b65q-uc.a.run.app';
