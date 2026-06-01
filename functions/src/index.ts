@@ -6,6 +6,7 @@ import { runOrionCycle, getOrionRunCount, incrementOrionRunCount, saveOrionConfi
 import { getOrCreateBrief, setFocus, getFocus, setBriefFeedback, listBriefs } from "./orion_brief";
 import { MODELS, getModel, logTokenUsage } from "./models";
 import Anthropic from "@anthropic-ai/sdk";
+import sgMail = require("@sendgrid/mail");
 import { runDeterministicTask } from "./orion_tasks";
 import { v4 as uuidv4 } from "uuid";
 import { db, FieldValue } from "./db";
@@ -191,6 +192,119 @@ export const getCustomToken = onRequest({ cors: true, invoker: "public" }, async
   const customToken = await admin.auth().createCustomToken(uid);
   res.status(200).json({ customToken });
 });
+
+// ── sendMagicLink ───────────────────────────────────────────────────────────
+//
+// POST https://sendmagiclink-dzos75b65q-uc.a.run.app
+// Body: { email, continueUrl? }
+//
+// Génère un lien de connexion passwordless (Admin SDK) et l'envoie via SendGrid
+// avec un mail HTML brandé Productivitwo — remplace le mail générique Firebase.
+// La complétion côté client reste signInWithEmailLink (inchangée).
+
+// ⚠️ MAGIC_FROM_EMAIL doit être un expéditeur VÉRIFIÉ dans SendGrid
+// (Single Sender ou domaine authentifié). Sinon SendGrid rejette l'envoi.
+const MAGIC_FROM_EMAIL = "noreply@productivitwo.com";
+const MAGIC_FROM_NAME = "Productivitwo";
+const MAGIC_DEFAULT_CONTINUE_URL = "https://productivitwo-app.web.app/";
+
+function magicLinkEmailHtml(link: string): string {
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#0D2A1E;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0D2A1E;padding:40px 16px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:440px;background:#0F1F19;border:1px solid rgba(255,255,255,0.08);border-radius:20px;overflow:hidden;">
+        <tr><td style="padding:36px 32px 8px;text-align:center;">
+          <div style="font-size:26px;font-weight:800;color:#E6F7F2;letter-spacing:-0.5px;">Productivitwo</div>
+          <div style="font-size:13px;color:#9FE1CB;margin-top:6px;">Gérez vos projets, pilotés par l'IA</div>
+        </td></tr>
+        <tr><td style="padding:24px 32px 8px;text-align:center;">
+          <div style="font-size:15px;color:#D6EFE6;line-height:1.5;">Voici ton lien de connexion.<br>Pas de mot de passe à retenir.</div>
+        </td></tr>
+        <tr><td style="padding:24px 32px;text-align:center;">
+          <a href="${link}" style="display:inline-block;background:#10B981;color:#06231A;text-decoration:none;font-weight:700;font-size:15px;padding:14px 28px;border-radius:999px;">Me connecter</a>
+        </td></tr>
+        <tr><td style="padding:0 32px 28px;text-align:center;">
+          <div style="font-size:11px;color:#6E8C82;line-height:1.5;">Si le bouton ne fonctionne pas, copie ce lien dans ton navigateur :<br>
+          <a href="${link}" style="color:#6BBFA3;word-break:break-all;">${link}</a></div>
+          <div style="font-size:11px;color:#52685F;margin-top:20px;">Tu n'as pas demandé cette connexion ? Ignore cet email.</div>
+        </td></tr>
+      </table>
+      <div style="font-size:11px;color:#3F5249;margin-top:20px;">© ${new Date().getFullYear()} Productivitwo</div>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+// Throttle anti-abus : max 5 envois / heure / adresse email (endpoint public).
+async function checkMagicLinkThrottle(email: string): Promise<boolean> {
+  const id = createHmac("sha256", "magic-link-throttle").update(email).digest("hex").slice(0, 40);
+  const ref = db.doc(`magic_link_throttle/${id}`);
+  const now = Date.now();
+  const HOUR_MS = 60 * 60 * 1000;
+  const snap = await ref.get();
+  const data = (snap.data() ?? {}) as { count?: number; windowStart?: number };
+  const expired = now - (data.windowStart ?? now) >= HOUR_MS;
+  const count = expired ? 0 : (data.count ?? 0);
+  if (count >= 5) return true;
+  await ref.set(
+    { count: count + 1, windowStart: expired ? now : (data.windowStart ?? now) },
+    { merge: true },
+  );
+  return false;
+}
+
+export const sendMagicLink = onRequest(
+  { cors: true, invoker: "public", secrets: ["SENDGRID_API_KEY"] },
+  async (req, res) => {
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST") { res.status(405).json({ error: "Method Not Allowed" }); return; }
+
+    const { email, continueUrl } = req.body as { email?: string; continueUrl?: string };
+    const cleanEmail = (email ?? "").trim().toLowerCase();
+    if (!cleanEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cleanEmail)) {
+      res.status(400).json({ error: "Adresse email invalide" });
+      return;
+    }
+
+    const apiKey = process.env.SENDGRID_API_KEY;
+    if (!apiKey) { res.status(500).json({ error: "SENDGRID_API_KEY non configurée" }); return; }
+
+    if (await checkMagicLinkThrottle(cleanEmail)) {
+      res.status(429).json({ error: "Trop de demandes. Réessaie dans une heure." });
+      return;
+    }
+
+    try {
+      const url = continueUrl && continueUrl.startsWith("https://")
+        ? continueUrl
+        : MAGIC_DEFAULT_CONTINUE_URL;
+      const link = await admin.auth().generateSignInWithEmailLink(cleanEmail, {
+        url,
+        handleCodeInApp: true,
+      });
+
+      sgMail.setApiKey(apiKey);
+      await sgMail.send({
+        to: cleanEmail,
+        from: { email: MAGIC_FROM_EMAIL, name: MAGIC_FROM_NAME },
+        subject: "Ton lien de connexion Productivitwo",
+        text:
+          `Connecte-toi à Productivitwo en ouvrant ce lien :\n\n${link}\n\n` +
+          `Tu n'as pas demandé cette connexion ? Ignore cet email.`,
+        html: magicLinkEmailHtml(link),
+      });
+
+      res.status(200).json({ ok: true });
+    } catch (e: any) {
+      console.error("sendMagicLink error:", e?.response?.body ?? e?.message ?? e);
+      res.status(500).json({ error: "Envoi impossible" });
+    }
+  },
+);
 
 // ── mcpHandler ────────────────────────────────────────────────────────────────
 //
@@ -1090,22 +1204,21 @@ Un domaine doit répondre à la question : "est-ce que cette personne a des comp
 
 ⚠️ NE CRÉE RIEN DANS PRODUCTIVITWO (create_domain, create_activity, push_gantt) AVANT QUE L'UTILISATEUR DISE "stop", "c'est bon", "go", "parfait" ou équivalent. (EXCEPTION : set_structure_preview — l'aperçu visuel — s'appelle librement et souvent AVANT validation ; il ne crée rien en base.)
 
-PHASE 4 — CRÉATION (automatique après validation)
-Une fois la structure validée, crée TOUT dans cet ordre :
-1. create_domain pour chaque domaine (couleur cohérente).
-2. create_activity pour CHAQUE activité du balayage, liée au bon domaine par nom :
-   - type "time" → goalMin réaliste (souvent 15-30 min).
-   - type "habit" → TOUJOURS préciser habitFreq (daily/weekly/monthly) ET habitTarget (ex: 3 = 3×/sem, 8 = 8×/jour). Ne mets jamais "daily ×1" par défaut sans raison — reflète ce que la personne a dit.
-   (Routines et gestes récurrents = create_activity type "habit". Il n'existe PAS d'outil routine séparé.)
-   - PAIRE PAR DÉFAUT : pour chaque habitude qui a une durée sensée, crée d'ABORD l'activité type "time" (le nom, ex: "Vaisselle"), PUIS la routine type "habit" (le verbe, ex: "Faire la vaisselle") en passant linkedActivityName = le nom de l'activité temps (ex: "Vaisselle"). Convention : verbe = fréquence / nom = temps ; "Boire de l'eau" → "Hydratation". Les deux coexistent (fréquence cochée + temps chronométré) et la routine est RATTACHÉE à son activité. (Pas de paire pour une habitude sans durée sensée, ex: peser son poids.)
-3. PROJET (conditionnel — ne JAMAIS le forcer). Demande clairement :
-   "Y a-t-il un objectif concret que tu aimerais atteindre d'ici ~3 mois ?"
-   - Si OUI → construis le projet en DEUX temps :
-       a) PRÉSENTE D'ABORD le plan proposé dans ta réponse texte (l'objectif/cap + KPI, les phases = étapes, 3-5 tâches/phase, durée calée sur SON objectif ~3 mois — jamais un 6-9 mois imposé). À ce moment, un Gantt se dessine en direct sous le chat. Demande s'il veut ajuster (ajouter/retirer/réordonner une étape ou une tâche). Affine avec lui sur 1-2 échanges si besoin. N'appelle PAS encore push_gantt.
-       b) SEULEMENT après sa validation ("c'est bon", "go", "parfait") → appelle push_gantt avec le plan validé : strategicObjective (résultat visé + KPI mesurable), titre personnalisé, phases, tâches, durée.
-   - Si NON ou flou → ne crée PAS de projet, n'en invente pas. Dis-lui qu'il pourra en lancer un dès qu'il en aura un, avec l'assistant.
-4. complete_onboarding — appelle-le en DERNIER pour clôturer (que tu aies créé un projet ou non).
-5. Message final enthousiaste : annonce que le système est prêt, et explique clairement la suite en 3 points :
+PHASE 4 — CRÉATION (UN SEUL appel create_workspace, après validation)
+La structure a été co-construite (domaines + activités + routines via le balayage ; projet présenté/validé si applicable). Pour tout créer, appelle **create_workspace UNE SEULE FOIS** avec l'ensemble :
+- domains[] : chaque domaine avec SES activités.
+- Pour chaque activité : type "time" (goalMin réaliste 15-30) OU type "habit" (TOUJOURS habitFreq daily/weekly/monthly + habitTarget ; jamais "daily ×1" par défaut sans raison).
+- ⚠️ ROUTINES / PAIRES — ESSENTIEL, ne livre JAMAIS un système sans ses routines : pour chaque activité ayant une durée sensée, inclus la PAIRE — l'activité "time" (nom, ex "Vaisselle") ET la routine "habit" (verbe, ex "Faire la vaisselle") avec linkedActivityName = le nom de l'activité temps. ("Boire de l'eau" → linkedActivityName "Hydratation".) Pas de paire pour ce qui n'a pas de durée (ex: peser son poids).
+- project (optionnel) : UNIQUEMENT si un objectif ~3 mois a été validé (cf. ci-dessous) — strategicObjective {title, kpiTarget}, phases, tasks (dates YYYY-MM-DD), durée ~3 mois.
+
+⚠️ N'utilise PAS create_domain / create_activity / push_gantt séparément : create_workspace fait tout d'un coup (rapide, fiable).
+
+DÉCISION PROJET (pendant la conversation, AVANT create_workspace) :
+- Demande : "Y a-t-il un objectif concret que tu aimerais atteindre d'ici ~3 mois ?"
+- Si OUI → présente le plan (phases = étapes + 3-5 tâches/phase) dans ta réponse texte ; le Gantt se dessine en direct sous le chat → laisse-le ajuster (1-2 échanges) → une fois validé, inclus ce projet dans l'appel create_workspace.
+- Si NON/flou → pas de project ; dis-lui qu'il pourra en lancer un plus tard avec l'assistant.
+
+Message final enthousiaste (juste après create_workspace) : annonce que le système est prêt, et explique la suite en 3 points :
    • Ouvre l'app et commence à tracker ce que tu fais.
    • Pour créer autant de projets Gantt que tu veux et aller plus loin au quotidien : connecte Claude depuis l'app web et travaille directement avec lui (il peut créer/ajuster tes projets, programmes, etc.).
    • Reviens ici dans "Vision" une fois par mois pour faire évoluer ta stratégie, tes domaines et tes activités.
@@ -1229,6 +1342,55 @@ const ONBOARDING_TOOLS = [
     },
   },
   {
+    name: "create_workspace",
+    description: "Crée TOUTE la structure validée d'un seul coup (domaines + activités + routines + projet Gantt optionnel). À utiliser POUR L'ONBOARDING à la place de create_domain/create_activity/push_gantt : appelle-le UNE seule fois, après validation de l'utilisateur. Rapide et atomique. Déclenche la fin de l'onboarding.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        domains: {
+          type: "array",
+          items: {
+            type: "object" as const,
+            properties: {
+              name: { type: "string" },
+              color: { type: "string", description: "Couleur hex optionnelle (ex: #4A90E2)" },
+              activities: {
+                type: "array",
+                items: {
+                  type: "object" as const,
+                  properties: {
+                    name: { type: "string" },
+                    type: { type: "string", enum: ["time", "habit"] },
+                    goalMin: { type: "number", description: "Minutes/jour (type time)" },
+                    habitFreq: { type: "string", enum: ["daily", "weekly", "monthly"], description: "Période (type habit)" },
+                    habitTarget: { type: "number", description: "Cible par période (type habit) — ex: 3 = 3×/sem" },
+                    unit: { type: "string" },
+                    linkedActivityName: { type: "string", description: "Pour une ROUTINE : nom de l'activité temps parente (présente dans ce même appel)" },
+                  },
+                  required: ["name", "type"],
+                },
+              },
+            },
+            required: ["name"],
+          },
+        },
+        project: {
+          type: "object",
+          description: "Projet Gantt — seulement si un objectif ~3 mois a été validé.",
+          properties: {
+            title: { type: "string" },
+            startDate: { type: "string", description: "YYYY-MM-DD" },
+            endDate: { type: "string", description: "YYYY-MM-DD" },
+            strategicObjective: { type: "object", properties: { title: { type: "string" }, kpiTarget: { type: "string" } } },
+            phases: { type: "array", items: { type: "object", properties: { name: { type: "string" }, startDate: { type: "string" }, endDate: { type: "string" } } } },
+            tasks: { type: "array", items: { type: "object", properties: { name: { type: "string" }, phase: { type: "string" }, startDate: { type: "string" }, endDate: { type: "string" }, milestone: { type: "boolean" }, actions: { type: "array", items: { type: "string" } } } } },
+          },
+        },
+      },
+      required: ["domains"],
+    },
+  },
+  {
     name: "complete_onboarding",
     description: "Clôture l'onboarding une fois la structure créée (domaines + activités, et projet SI pertinent). À appeler en DERNIER, juste avant le message final. Marque la config comme terminée — indépendant de la création d'un projet.",
     input_schema: {
@@ -1252,6 +1414,114 @@ async function executeOnboardingTool(
   domainMap: Record<string, string>,
   activityMap: Record<string, string> = {},
 ): Promise<OnboardingTool> {
+  if (toolName === "create_workspace") {
+    type WsAct = { name: string; type?: string; goalMin?: number; habitFreq?: string; habitTarget?: number; unit?: string; linkedActivityName?: string };
+    type WsDom = { name: string; color?: string; activities?: WsAct[] };
+    const ws = input as {
+      domains?: WsDom[];
+      project?: {
+        title?: string; startDate?: string; endDate?: string;
+        strategicObjective?: { title?: string; kpiTarget?: string };
+        phases?: Array<{ name: string; startDate?: string; endDate?: string }>;
+        tasks?: Array<{ name: string; phase?: string; startDate?: string; endDate?: string; milestone?: boolean; actions?: string[] }>;
+      };
+    };
+    // Robustesse : le modèle envoie parfois `domains`/`project`/`activities` en string JSON
+    // au lieu de tableaux/objets. Sans coercition, `for...of` sur une string itère caractère
+    // par caractère → des milliers de docs sans nom (incident 2026-05-31 : 9987 domaines vides).
+    // On coerce, on valide la forme, et on n'écrit JAMAIS un doc sans nom non vide.
+    const coerce = <T>(v: unknown): T | undefined => {
+      if (typeof v === "string") { try { return JSON.parse(v) as T; } catch { return undefined; } }
+      return v as T | undefined;
+    };
+    const asNamedArray = <T extends { name?: unknown }>(v: unknown): T[] => {
+      const arr = coerce<T[]>(v);
+      if (!Array.isArray(arr)) return [];
+      return arr.filter((x): x is T => !!x && typeof x === "object" && typeof x.name === "string" && (x.name as string).trim().length > 0);
+    };
+    const domains = asNamedArray<WsDom>(ws.domains);
+    // Garde-fou anti-emballement : un onboarding normal produit ~5-15 domaines.
+    if (domains.length > 100) {
+      return {
+        notification: `⚠️ create_workspace ignoré (${domains.length} domaines — anormal)`,
+        output: `Erreur : ${domains.length} domaines reçus, payload probablement malformé. Rien n'a été créé. Renvoie une structure normale (≤ ~15 domaines, en tableau JSON et non en chaîne).`,
+      };
+    }
+    const project = coerce<typeof ws.project>(ws.project);
+    const batch = db.batch();
+    const freqMap: Record<string, number> = { daily: 0, weekly: 1, monthly: 2 };
+    const dMap: Record<string, string> = {};
+    const aMap: Record<string, string> = {};
+    let nDom = 0, nAct = 0;
+    for (const d of domains) {
+      const id = uuidv4(); dMap[d.name] = id; nDom++;
+      batch.set(db.collection(`users/${uid}/domains`).doc(id), {
+        id, name: d.name, goalMinDay: null, autoGoal: true,
+        colorValue: d.color ? hexToColorValue(d.color) : null,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    }
+    const allActs: Array<{ a: WsAct; domainId: string | null }> = [];
+    for (const d of domains) for (const a of asNamedArray<WsAct>(d.activities)) allActs.push({ a, domainId: dMap[d.name] ?? null });
+    // 2 passes : activités temps d'abord (pour résoudre linkedActivityName), puis habitudes.
+    for (const pass of ["time", "habit"] as const) {
+      for (const { a, domainId } of allActs) {
+        const isHabit = a.type === "habit";
+        if ((pass === "time") === isHabit) continue;
+        const id = uuidv4(); aMap[a.name] = id; nAct++;
+        batch.set(db.collection(`users/${uid}/activities`).doc(id), {
+          id, name: a.name, domainId,
+          type: isHabit ? "habit" : "time", role: "generic",
+          goalMin: a.goalMin ?? 1, unit: a.unit ?? null,
+          habitFreq: isHabit ? (freqMap[a.habitFreq ?? "daily"] ?? 0) : null,
+          habitTarget: isHabit ? (a.habitTarget ?? 1) : null,
+          manualTarget: isHabit, autoTune: !isHabit,
+          linkedActivityId: a.linkedActivityName ? (aMap[a.linkedActivityName] ?? null) : null,
+          createdAt: FieldValue.serverTimestamp(), lastTuneAt: null, order: 0, iconCode: null, deleted: false,
+        });
+      }
+    }
+    let projectMsg = "";
+    if (project && project.title) {
+      const arr = <T>(v: unknown): T[] => { const c = coerce<T[]>(v); return Array.isArray(c) ? c : []; };
+      const p = { ...project, phases: arr<NonNullable<typeof project.phases>[number]>(project.phases), tasks: arr<NonNullable<typeof project.tasks>[number]>(project.tasks) };
+      const today = todayInParis();
+      const projectId = uuidv4();
+      let strategicObjectiveId: string | null = null;
+      if (p.strategicObjective && p.strategicObjective.title) {
+        strategicObjectiveId = uuidv4();
+        batch.set(db.collection(`users/${uid}/strategic_objectives`).doc(strategicObjectiveId), {
+          id: strategicObjectiveId, title: p.strategicObjective.title, kpiTarget: p.strategicObjective.kpiTarget ?? null,
+          description: null, domainId: null, horizonLabel: null,
+          startDate: p.startDate ?? null, endDate: p.endDate ?? null,
+          status: "active", projectIds: [projectId], createdAt: FieldValue.serverTimestamp(),
+        });
+      }
+      const phases = (p.phases ?? []).map((ph) => ({ id: uuidv4(), label: ph.name, color: null, startDate: ph.startDate ?? p.startDate ?? today, endDate: ph.endDate ?? p.endDate ?? today }));
+      const phaseIdByName: Record<string, string> = {};
+      (p.phases ?? []).forEach((ph, i) => { phaseIdByName[ph.name] = phases[i].id; });
+      const tasks = (p.tasks ?? []).map((t) => ({
+        id: uuidv4(), title: t.name,
+        phaseId: t.phase ? (phaseIdByName[t.phase] ?? null) : null,
+        groupLabel: null, description: null,
+        startDate: t.startDate ?? p.startDate ?? today, endDate: t.endDate ?? null,
+        isMilestone: t.milestone ?? false, color: null, barLabel: null, status: "pending",
+        actions: (t.actions ?? []).map((x) => ({ id: uuidv4(), title: x, done: false, doneAt: null, createdAt: new Date().toISOString() })),
+      }));
+      batch.set(db.collection(`users/${uid}/projects`).doc(projectId), {
+        id: projectId, title: p.title, description: null,
+        strategicObjectiveId, domainId: null,
+        startDate: p.startDate ?? today, endDate: p.endDate ?? null,
+        status: "active", phases, tasks,
+        createdBy: uid, sourceType: "formation_onboarding",
+        createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
+      });
+      projectMsg = " + 1 projet Gantt";
+    }
+    await batch.commit();
+    return { notification: `✓ ${nDom} domaines, ${nAct} activités créés${projectMsg}`, output: `Workspace créé : ${nDom} domaines, ${nAct} activités${projectMsg}.` };
+  }
+
   if (toolName === "create_domain") {
     const id = uuidv4();
     const name = input.name as string;
@@ -1730,7 +2000,7 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
     while (true) {
       const response = await client.messages.create({
         model: getModel("onboarding"),
-        max_tokens: 4096, // assez pour push_gantt sans laisser le modèle générer trop (latence)
+        max_tokens: 8192, // create_workspace = un gros payload unique (≈40 activités + projet)
         system: systemPrompt,
         tools: ONBOARDING_TOOLS as Parameters<typeof client.messages.create>[0]["tools"],
         messages: messages as Parameters<typeof client.messages.create>[0]["messages"],
@@ -1809,7 +2079,7 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
           if (block.type === "tool_use") {
             const result = await executeOnboardingTool(uid, block.name, block.input as Record<string, unknown>, domainMap, activityMap);
             if (result.notification) notifications.push(result.notification);
-            if (block.name === "push_gantt" || block.name === "complete_onboarding") onboardingComplete = true;
+            if (block.name === "push_gantt" || block.name === "complete_onboarding" || block.name === "create_workspace") onboardingComplete = true;
             if (block.name === "set_structure_preview") structurePreview = block.input;
             toolResults.push({ type: "tool_result", tool_use_id: block.id, content: result.output });
           }

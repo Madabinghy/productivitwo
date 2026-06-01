@@ -111,11 +111,11 @@ class _StartTab extends StatelessWidget {
         _Step(
           number: '1',
           icon: Icons.smartphone_outlined,
-          title: 'Connecte ton compte iOS',
+          title: 'Connecte-toi avec ton email',
           body:
-              'Menu ⋮ → Tokens API dans l\'app iPhone.\n'
-              'Copie ton UID (en haut) et génère un token.\n'
-              'Puis sur cette page → "Connecter Claude" → "Compte iOS".',
+              'Utilise la même adresse email que sur l\'app iPhone.\n'
+              'Tu reçois un lien de connexion par email — pas de mot de passe.\n'
+              'Web et iOS partagent alors le même compte et les mêmes données.',
         ),
         SizedBox(height: 16),
         _Step(
@@ -264,7 +264,7 @@ class _FeaturesTab extends StatelessWidget {
           icon: Icons.info_outline,
           text:
               '• Claude voit les 7 derniers jours d\'activité (pas l\'historique complet)\n'
-              '• La sync iOS nécessite la connexion Apple Sign In pour fonctionner entre plusieurs appareils\n'
+              '• La sync entre appareils nécessite d\'être connecté avec la même adresse email partout\n'
               '• Les modifications de Claude apparaissent dans Productivitwo iOS à la prochaine ouverture de l\'app',
         ),
         const SizedBox(height: 24),

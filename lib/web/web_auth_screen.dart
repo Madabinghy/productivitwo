@@ -1,4 +1,5 @@
-import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:productivitwo_v1/web/web_magic_link_complete_screen.dart';
@@ -6,6 +7,9 @@ import 'package:productivitwo_v1/web/web_magic_link_complete_screen.dart';
 // Continuation URL du magic link web — racine pour que _AuthGate complète sur le web
 // (le chemin /email-signin est réservé au relay natif).
 const _kWebContinuationUrl = 'https://productivitwo-app.web.app/';
+
+// Cloud Function qui génère le lien (Admin SDK) et envoie le mail brandé via SendGrid.
+const _kSendMagicLinkUrl = 'https://sendmagiclink-dzos75b65q-uc.a.run.app';
 
 class WebAuthScreen extends StatefulWidget {
   const WebAuthScreen({super.key});
@@ -35,20 +39,22 @@ class _WebAuthScreenState extends State<WebAuthScreen> {
     }
     setState(() { _loading = true; _error = null; });
     try {
-      await FirebaseAuth.instance.sendSignInLinkToEmail(
-        email: email,
-        actionCodeSettings: ActionCodeSettings(
-          url: _kWebContinuationUrl,
-          handleCodeInApp: true,
-        ),
+      final res = await http.post(
+        Uri.parse(_kSendMagicLinkUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email, 'continueUrl': _kWebContinuationUrl}),
       );
+      if (res.statusCode != 200) {
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        throw Exception(body['error'] ?? 'Envoi impossible (${res.statusCode})');
+      }
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(kWebEmailPendingKey, email);
       if (mounted) setState(() => _emailSent = true);
-    } on FirebaseAuthException catch (e) {
-      if (mounted) setState(() => _error = e.message ?? 'Envoi impossible');
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      if (mounted) {
+        setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }

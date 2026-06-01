@@ -1,1 +1,4 @@
 node_modules/
+
+# Utilitaire de dépannage local — génère un magic link sans SendGrid (non source)
+gen_login_link.js
