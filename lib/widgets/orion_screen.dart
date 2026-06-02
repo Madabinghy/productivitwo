@@ -24,8 +24,8 @@ const _text = Color(0xFFf0ece0);
 const _webhookBase = 'https://orionsaveconfig-dzos75b65q-uc.a.run.app';
 const _countUrl = 'https://orionruncount-dzos75b65q-uc.a.run.app';
 
-const _kLimitFree = 1;   // Gratuit : 1 activation/jour
-const _kLimitPro  = 30;  // Pro : 30 activations/jour (test)
+const _kLimitFree = 1;  // Gratuit : 1 activation/jour
+const _kLimitPro  = 5;  // Pro : 5 activations/jour
 
 class OrionScreen extends StatefulWidget {
   final FirestoreSync sync;

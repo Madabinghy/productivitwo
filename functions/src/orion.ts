@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { MODELS, logTokenUsage } from "./models";
 import type { PromptCachingBetaMessageParam, PromptCachingBetaTool } from "@anthropic-ai/sdk/resources/beta/prompt-caching/messages";
-import { db, FieldValue } from "./db";
+import { db, FieldValue, effectivePro } from "./db";
 import {
   executeGetOrionContext, executeGetAssistantMessages, executePushAssistantMessage,
   executeDeleteAssistantMessage, executeUpdateActivityGoal, executeCreateRoutine,
@@ -58,7 +58,8 @@ const ORION_TOOLS: PromptCachingBetaTool[] = [
 ];
 import type { PushGanttBody } from "./types";
 
-const ORION_MAX_RUNS = 30;
+const ORION_MAX_FREE = 1;  // Gratuit : 1 cycle/jour
+const ORION_MAX_PRO = 5;   // Pro : 5 cycles/jour
 const ORION_MODEL = MODELS.HAIKU;
 
 // ── Config utilisateur ────────────────────────────────────────────────────────
@@ -131,8 +132,12 @@ export async function runOrionCycle(uid: string, opts?: { skipCount?: boolean })
 }> {
   const today = todayInParis();
   const count = await getOrionRunCount(uid, today);
-  if (count >= ORION_MAX_RUNS) {
-    const reason = `Limite journalière atteinte (${count}/${ORION_MAX_RUNS})`;
+  // Limite appliquée CÔTÉ SERVEUR selon le statut Pro effectif (Firestore) —
+  // infalsifiable, contrairement à la limite affichée par le client.
+  const accessSnap = await db.collection("formation_access").doc(uid).get();
+  const max = effectivePro(accessSnap.data()) ? ORION_MAX_PRO : ORION_MAX_FREE;
+  if (count >= max) {
+    const reason = `Limite journalière atteinte (${count}/${max})`;
     await writeCycleLog(uid, { userNeeds: "", userReply: "", actions: [], pushed: 0, skipped: true, skippedReason: reason });
     return { skipped: true, reason };
   }

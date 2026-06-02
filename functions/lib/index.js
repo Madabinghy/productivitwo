@@ -1806,7 +1806,7 @@ exports.onboardingChat = (0, https_1.onRequest)({ cors: true, invoker: "public",
     const accessDoc = await db_1.db.collection("formation_access").doc(uid).get();
     const accessData = (_a = accessDoc.data()) !== null && _a !== void 0 ? _a : {};
     const onboardingDone = accessData.onboardingDone === true;
-    const isPro = effectivePro(accessData);
+    const isPro = (0, db_1.effectivePro)(accessData);
     // ── Actions hors-chat ─────────────────────────────────────────────────────
     if (action === "checkSession") {
         const snap = await db_1.db.collection("formation_sessions").doc(uid).get();
@@ -2090,23 +2090,6 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
 // Endpoint protégé par secret pour permettre à Claude Code d'inspecter et
 // pousser dans Productivitwo pendant les sessions de travail (sans passe-plat
 // avec le MCP de Claude.ai). Secret stocké en Firebase Secret Manager.
-// Statut Pro effectif depuis un doc formation_access. Sources combinées (l'une
-// suffit, aucune n'écrase l'autre) :
-//   - subscriptionUntil : abonné RevenueCat (iOS/Android), posé par le webhook
-//   - proUntil          : grant daté (formation / comp admin)
-//   - isPro (bool)      : legacy / sans expiration
-function effectivePro(d) {
-    const now = Date.now();
-    const active = (v) => {
-        const t = v;
-        return !!t && typeof t.toMillis === "function" && t.toMillis() > now;
-    };
-    if (active(d === null || d === void 0 ? void 0 : d.subscriptionUntil))
-        return true;
-    if (active(d === null || d === void 0 ? void 0 : d.proUntil))
-        return true;
-    return (d === null || d === void 0 ? void 0 : d.isPro) === true;
-}
 // Entitlement RevenueCat surveillé (doit matcher kEntitlementPro côté app).
 const kEntitlementPro = "pro";
 // ── revenueCatWebhook ─────────────────────────────────────────────────────────
@@ -2188,6 +2171,11 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
             faSnap.docs.forEach((d) => { faByUid[d.id] = d.data(); });
             const tsToIso = (v) => v && typeof v.toDate === "function"
                 ? v.toDate().toISOString() : null;
+            const nowMs = Date.now();
+            const tActive = (v) => {
+                const t = v;
+                return !!t && typeof t.toMillis === "function" && t.toMillis() > nowMs;
+            };
             const seen = new Set();
             const users = await Promise.all(authList.users.map(async (u) => {
                 var _a, _b, _c, _d;
@@ -2206,16 +2194,21 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
                     email: (_b = u.email) !== null && _b !== void 0 ? _b : null,
                     providers,
                     source: providers.includes("apple.com") ? "iOS (Apple)"
-                        : anonymous ? "Anonyme (app)"
-                            : fa ? "Formation" : "Web (email)",
+                        : providers.includes("google.com") ? "Web (Google)"
+                            : anonymous ? "Anonyme (app)"
+                                : (fa && fa.purchasedAt) ? "Formation" : "Web (email)",
                     anonymous,
                     createdAt: (_c = u.metadata.creationTime) !== null && _c !== void 0 ? _c : null,
                     lastSignIn: (_d = u.metadata.lastSignInTime) !== null && _d !== void 0 ? _d : null,
                     formation: !!fa,
                     purchasedAt: fa ? tsToIso(fa.purchasedAt) : null,
                     onboardingDone: (fa === null || fa === void 0 ? void 0 : fa.onboardingDone) === true,
-                    isPro: effectivePro(fa),
+                    isPro: (0, db_1.effectivePro)(fa),
                     proUntil: fa ? tsToIso(fa.proUntil) : null,
+                    proSource: !(0, db_1.effectivePro)(fa) ? null
+                        : tActive(fa === null || fa === void 0 ? void 0 : fa.subscriptionUntil) ? "Abo"
+                            : tActive(fa === null || fa === void 0 ? void 0 : fa.proUntil) ? "Grant" : "Legacy",
+                    subscriptionUntil: fa ? tsToIso(fa.subscriptionUntil) : null,
                     lastVisionAt: fa ? tsToIso(fa.lastVisionAt) : null,
                     allowlisted: allowEmails.has(email),
                     projects,
@@ -2664,7 +2657,7 @@ exports.getVisionAccess = (0, https_1.onRequest)({ cors: true, invoker: "public"
     }
     const accessDoc = await db_1.db.collection("formation_access").doc(uid).get();
     const accessData = (_c = accessDoc.data()) !== null && _c !== void 0 ? _c : {};
-    const isPro = effectivePro(accessData);
+    const isPro = (0, db_1.effectivePro)(accessData);
     const onboardingDone = accessData.onboardingDone === true;
     const lastVisionAt = (_d = accessData.lastVisionAt) === null || _d === void 0 ? void 0 : _d.toDate();
     const now = Date.now();

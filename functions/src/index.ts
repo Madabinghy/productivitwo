@@ -9,7 +9,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import sgMail = require("@sendgrid/mail");
 import { runDeterministicTask } from "./orion_tasks";
 import { v4 as uuidv4 } from "uuid";
-import { db, FieldValue } from "./db";
+import { db, FieldValue, effectivePro } from "./db";
 import { MCP_PROMPTS, getPromptMessages, executeGetDocumentTemplate } from "./prompts";
 import {
   GET_USER_CONTEXT_TOOL, GET_DAY_BLOCKS_TOOL,
@@ -2128,22 +2128,6 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
 // pousser dans Productivitwo pendant les sessions de travail (sans passe-plat
 // avec le MCP de Claude.ai). Secret stocké en Firebase Secret Manager.
 
-// Statut Pro effectif depuis un doc formation_access. Sources combinées (l'une
-// suffit, aucune n'écrase l'autre) :
-//   - subscriptionUntil : abonné RevenueCat (iOS/Android), posé par le webhook
-//   - proUntil          : grant daté (formation / comp admin)
-//   - isPro (bool)      : legacy / sans expiration
-function effectivePro(d: Record<string, unknown> | undefined): boolean {
-  const now = Date.now();
-  const active = (v: unknown): boolean => {
-    const t = v as { toMillis?: () => number } | undefined;
-    return !!t && typeof t.toMillis === "function" && t.toMillis() > now;
-  };
-  if (active(d?.subscriptionUntil)) return true;
-  if (active(d?.proUntil)) return true;
-  return d?.isPro === true;
-}
-
 // Entitlement RevenueCat surveillé (doit matcher kEntitlementPro côté app).
 const kEntitlementPro = "pro";
 
@@ -2226,6 +2210,11 @@ export const adminProductivitwo = onRequest(
         const tsToIso = (v: unknown): string | null =>
           v && typeof (v as { toDate?: unknown }).toDate === "function"
             ? (v as { toDate: () => Date }).toDate().toISOString() : null;
+        const nowMs = Date.now();
+        const tActive = (v: unknown): boolean => {
+          const t = v as { toMillis?: () => number } | undefined;
+          return !!t && typeof t.toMillis === "function" && t.toMillis() > nowMs;
+        };
 
         const seen = new Set<string>();
         const users = await Promise.all(authList.users.map(async (u) => {
@@ -2244,8 +2233,9 @@ export const adminProductivitwo = onRequest(
             email: u.email ?? null,
             providers,
             source: providers.includes("apple.com") ? "iOS (Apple)"
+              : providers.includes("google.com") ? "Web (Google)"
               : anonymous ? "Anonyme (app)"
-              : fa ? "Formation" : "Web (email)",
+              : (fa && fa.purchasedAt) ? "Formation" : "Web (email)",
             anonymous,
             createdAt: u.metadata.creationTime ?? null,
             lastSignIn: u.metadata.lastSignInTime ?? null,
@@ -2254,6 +2244,10 @@ export const adminProductivitwo = onRequest(
             onboardingDone: fa?.onboardingDone === true,
             isPro: effectivePro(fa),
             proUntil: fa ? tsToIso(fa.proUntil) : null,
+            proSource: !effectivePro(fa) ? null
+              : tActive(fa?.subscriptionUntil) ? "Abo"
+                : tActive(fa?.proUntil) ? "Grant" : "Legacy",
+            subscriptionUntil: fa ? tsToIso(fa.subscriptionUntil) : null,
             lastVisionAt: fa ? tsToIso(fa.lastVisionAt) : null,
             allowlisted: allowEmails.has(email),
             projects,
