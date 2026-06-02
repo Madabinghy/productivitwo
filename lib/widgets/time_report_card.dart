@@ -155,6 +155,69 @@ class TimeReportCard extends StatelessWidget {
   }
 }
 
+// ── Stats temps pour l'accueil ──────────────────────────────────────────────────
+// Réutilise la heatmap par domaine + les barres 12 semaines du rapport, sans le
+// donut (déjà présent sur l'accueil). Affiché sous la heatmap productivité.
+
+class AccueilTimeStats extends StatelessWidget {
+  final AppLogic logic;
+  const AccueilTimeStats({super.key, required this.logic});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final now = DateTime.now();
+    final domains = logic.state.domains;
+
+    const kWeeks = 12;
+    final monday = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: now.weekday - 1));
+    final weekStarts = List.generate(
+      kWeeks,
+      (i) => monday.subtract(Duration(days: 7 * (kWeeks - 1 - i))),
+    );
+    final weekData = List.generate(kWeeks, (wi) {
+      final ws = weekStarts[wi];
+      final we = ws.add(const Duration(days: 7));
+      return {
+        for (final d in domains)
+          d.id: logic.totalForRange(ws, we, domainId: d.id).inMinutes.toDouble()
+      };
+    });
+    final maxWeekMinutes = weekData
+        .map((w) => w.values.fold(0.0, (s, v) => s + v))
+        .fold(0.0, (a, b) => a > b ? a : b);
+
+    Widget title(String t) => Text(
+          t,
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 14,
+            color: cs.onSurface.withOpacity(.6),
+          ),
+        );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        title('Temps par domaine'),
+        const SizedBox(height: 12),
+        _DomainHeatmapSection(logic: logic, cs: cs),
+        const SizedBox(height: 28),
+        title('12 dernières semaines (heures)'),
+        const SizedBox(height: 12),
+        _WeeklyBarsSection(
+          domains: domains,
+          weekStarts: weekStarts,
+          weekData: weekData,
+          maxMinutes: maxWeekMinutes,
+          cs: cs,
+        ),
+      ],
+    );
+  }
+}
+
 // ── Donut ──────────────────────────────────────────────────────────────────────
 
 class _DonutSection extends StatelessWidget {

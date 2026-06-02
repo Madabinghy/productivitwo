@@ -5394,6 +5394,12 @@ class _AppRootState extends State<AppRoot>
           ),
         ),
         SectionCard(
+          child: ProGate(
+            featureName: 'Statistiques avancées',
+            child: AccueilTimeStats(logic: logic),
+          ),
+        ),
+        SectionCard(
           child: RoutineFreqCard(
             logic: logic,
             onCreateRoutine: () async {
