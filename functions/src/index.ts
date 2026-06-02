@@ -2161,17 +2161,25 @@ export const adminProductivitwo = onRequest(
             ? (v as { toDate: () => Date }).toDate().toISOString() : null;
 
         const seen = new Set<string>();
-        const users = authList.users.map((u) => {
+        const users = await Promise.all(authList.users.map(async (u) => {
           const email = (u.email ?? "").toLowerCase();
           seen.add(email);
           const providers = u.providerData.map((p) => p.providerId);
           const fa = faByUid[u.uid];
+          const anonymous = !u.email && providers.length === 0;
+          // Compteurs de données (aggregation .count() — ne lit pas les docs).
+          const [projects, activities] = await Promise.all([
+            db.collection(`users/${u.uid}/projects`).count().get().then((s) => s.data().count).catch(() => 0),
+            db.collection(`users/${u.uid}/activities`).count().get().then((s) => s.data().count).catch(() => 0),
+          ]);
           return {
             uid: u.uid,
             email: u.email ?? null,
             providers,
             source: providers.includes("apple.com") ? "iOS (Apple)"
+              : anonymous ? "Anonyme (app)"
               : fa ? "Formation" : "Web (email)",
+            anonymous,
             createdAt: u.metadata.creationTime ?? null,
             lastSignIn: u.metadata.lastSignInTime ?? null,
             formation: !!fa,
@@ -2180,8 +2188,10 @@ export const adminProductivitwo = onRequest(
             isPro: fa?.isPro === true,
             lastVisionAt: fa ? tsToIso(fa.lastVisionAt) : null,
             allowlisted: allowEmails.has(email),
+            projects,
+            activities,
           };
-        });
+        }));
         // Emails dans l'allowlist sans compte encore créé (invités en attente).
         const invited = [...allowEmails].filter((e) => !seen.has(e)).map((e) => ({
           uid: null, email: e, providers: [] as string[], source: "Invité (allowlist)",

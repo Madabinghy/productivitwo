@@ -2119,18 +2119,26 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
             const tsToIso = (v) => v && typeof v.toDate === "function"
                 ? v.toDate().toISOString() : null;
             const seen = new Set();
-            const users = authList.users.map((u) => {
+            const users = await Promise.all(authList.users.map(async (u) => {
                 var _a, _b, _c, _d;
                 const email = ((_a = u.email) !== null && _a !== void 0 ? _a : "").toLowerCase();
                 seen.add(email);
                 const providers = u.providerData.map((p) => p.providerId);
                 const fa = faByUid[u.uid];
+                const anonymous = !u.email && providers.length === 0;
+                // Compteurs de données (aggregation .count() — ne lit pas les docs).
+                const [projects, activities] = await Promise.all([
+                    db_1.db.collection(`users/${u.uid}/projects`).count().get().then((s) => s.data().count).catch(() => 0),
+                    db_1.db.collection(`users/${u.uid}/activities`).count().get().then((s) => s.data().count).catch(() => 0),
+                ]);
                 return {
                     uid: u.uid,
                     email: (_b = u.email) !== null && _b !== void 0 ? _b : null,
                     providers,
                     source: providers.includes("apple.com") ? "iOS (Apple)"
-                        : fa ? "Formation" : "Web (email)",
+                        : anonymous ? "Anonyme (app)"
+                            : fa ? "Formation" : "Web (email)",
+                    anonymous,
                     createdAt: (_c = u.metadata.creationTime) !== null && _c !== void 0 ? _c : null,
                     lastSignIn: (_d = u.metadata.lastSignInTime) !== null && _d !== void 0 ? _d : null,
                     formation: !!fa,
@@ -2139,8 +2147,10 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
                     isPro: (fa === null || fa === void 0 ? void 0 : fa.isPro) === true,
                     lastVisionAt: fa ? tsToIso(fa.lastVisionAt) : null,
                     allowlisted: allowEmails.has(email),
+                    projects,
+                    activities,
                 };
-            });
+            }));
             // Emails dans l'allowlist sans compte encore créé (invités en attente).
             const invited = [...allowEmails].filter((e) => !seen.has(e)).map((e) => ({
                 uid: null, email: e, providers: [], source: "Invité (allowlist)",
