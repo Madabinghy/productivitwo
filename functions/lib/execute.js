@@ -422,18 +422,19 @@ async function executeUpdateActivityGoal(uid, activityId, updates) {
     return `✅ Objectif de "${name}" mis à jour. Visible dans Productivitwo à la prochaine synchronisation.`;
 }
 async function executeCreateRoutine(uid, args) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d;
     const id = (0, uuid_1.v4)();
     await db_1.db.collection(`users/${uid}/activities`).doc(id).set({
         id,
         name: args.name,
         domainId: args.domainId,
+        activityId: (_a = args.activityId) !== null && _a !== void 0 ? _a : null, // lien optionnel vers une activité temps
         type: "habit",
         role: "generic",
         goalMin: 1,
-        unit: (_a = args.unit) !== null && _a !== void 0 ? _a : null,
-        habitFreq: (_b = args.habitFreq) !== null && _b !== void 0 ? _b : 0,
-        habitTarget: (_c = args.habitTarget) !== null && _c !== void 0 ? _c : 1,
+        unit: (_b = args.unit) !== null && _b !== void 0 ? _b : null,
+        habitFreq: (_c = args.habitFreq) !== null && _c !== void 0 ? _c : 0,
+        habitTarget: (_d = args.habitTarget) !== null && _d !== void 0 ? _d : 1,
         manualTarget: false,
         autoTune: true,
         createdAt: db_1.FieldValue.serverTimestamp(),

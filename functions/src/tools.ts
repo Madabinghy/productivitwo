@@ -22,16 +22,16 @@ const GET_USER_CONTEXT_TOOL = {
     "1. Identifier ou créer le domaine concerné.\n" +
     "2. Identifier ou créer UNE OU PLUSIEURS activités temps selon les dimensions de l'objectif. " +
     "   Ex: 'prendre de la masse' → Musculation (temps) + Nutrition (temps). " +
-    "   Chaque routine/action sera liée à l'activité la plus pertinente.\n" +
+    "   Une routine pourra être liée à l'activité la plus pertinente (optionnel).\n" +
     "3. Créer le projet Gantt (push_gantt) couvrant AU MINIMUM la semaine en cours " +
     "   avec un jalon 'Bilan' le dimanche et un objectif KPI mesurable.\n" +
     "4. Sauvegarder le programme HTML avec save_document lié au projectId créé. " +
     "   Toujours renseigner domainId et subtitle. " +
     "   Si un document existe déjà pour ce projet (get_documents avant), passer son documentId pour éviter les doublons.\n" +
-    "5. Créer les routines (create_routine) — TOUTES liées à l'activityId de l'étape 2.\n" +
+    "5. Créer les routines (create_routine) — mesurables (habitFreq + habitTarget), rattachées au domaine ; activityId facultatif.\n" +
     "6. Envoyer une push_notification : \"[Titre du programme] créé ✅\"\n\n" +
-    "Structure garantie : Domaine → Activités temps → Projet Gantt (+ KPI + Bilan dim.) → Programme HTML sauvegardé → Routines & Actions liées.\n" +
-    "Ne jamais créer une routine ou action sans activityId et sans projet associé.",
+    "Structure garantie : Domaine → Activités temps → Projet Gantt (+ KPI + Bilan dim.) → Programme HTML sauvegardé → Routines mesurables.\n" +
+    "Toute routine doit être mesurable (fréquence + cible) et rattachée à un domaine.",
   inputSchema: { type: "object", properties: {} },
 };
 
@@ -55,16 +55,16 @@ const UPDATE_ACTIVITY_GOAL_TOOL = {
 const CREATE_ROUTINE_TOOL = {
   name: "create_routine",
   description:
-    "Crée une **routine** : habitude trackée avec compteur ou fréquence (ex: Méditation, Gainage, Eau). " +
-    "⚠️ activityId OBLIGATOIRE — créer d'abord l'activité temps avec create_activity si elle n'existe pas. " +
+    "Crée une **routine** : habitude mesurable trackée avec compteur ou fréquence (ex: Méditation, Gainage, Eau). " +
+    "Liée à un domaine ; toujours mesurable (habitFreq + habitTarget). " +
     "⚠️ NE PAS confondre avec create_activity (tracking de temps/chrono).",
   inputSchema: {
     type: "object",
-    required: ["name", "domainId", "activityId"],
+    required: ["name", "domainId"],
     properties: {
       name:        { type: "string", description: "Nom de la routine (ex: Méditation, Gainage)" },
       domainId:    { type: "string", description: "id du domaine (get_user_context)" },
-      activityId:  { type: "string", description: "id de l'activité temps associée (OBLIGATOIRE — créer avec create_activity si absente)" },
+      activityId:  { type: "string", description: "id d'une activité temps à associer (OPTIONNEL — lien facultatif)" },
       unit:        { type: "string", description: "Unité comptée (ex: fois, verres, séries)" },
       habitFreq:   { type: "number", description: "Fréquence : 0=daily, 1=weekly, 2=monthly" },
       habitTarget: { type: "number", description: "Cible par période (ex: 3 fois/semaine)" },
@@ -394,7 +394,7 @@ const UPDATE_ACTIVITY_TOOL = {
 const DELETE_ROUTINE_TOOL = {
   name: "delete_routine",
   description:
-    "Archive une action récurrente. L'élément reste récupérable depuis les Archives — " +
+    "Archive une routine. L'élément reste récupérable depuis les Archives — " +
     "la suppression définitive est réservée à l'utilisateur depuis le web app. " +
     "Demande toujours confirmation avant d'appeler.",
   inputSchema: {

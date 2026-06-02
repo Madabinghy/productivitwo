@@ -478,13 +478,14 @@ async function executeUpdateActivityGoal(
 
 async function executeCreateRoutine(
   uid: string,
-  args: { name: string; domainId: string; unit?: string; habitFreq?: number; habitTarget?: number }
+  args: { name: string; domainId: string; activityId?: string; unit?: string; habitFreq?: number; habitTarget?: number }
 ): Promise<string> {
   const id = uuidv4();
   await db.collection(`users/${uid}/activities`).doc(id).set({
     id,
     name: args.name,
     domainId: args.domainId,
+    activityId: args.activityId ?? null, // lien optionnel vers une activité temps
     type: "habit",
     role: "generic",
     goalMin: 1,
