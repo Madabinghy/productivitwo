@@ -749,10 +749,8 @@ void main() async {
     return;
   }
 
-  // Mobile / desktop
-  if (!Platform.isMacOS && !Platform.isWindows && !Platform.isLinux) {
-    await ProManager.init();
-  }
+  // Mobile / desktop — Firebase DOIT être initialisé AVANT ProManager
+  // (qui lit le grant Pro via Firestore/Auth dans init()).
   if (!Platform.isMacOS && !Platform.isWindows && !Platform.isLinux) {
     try {
       if (Firebase.apps.isEmpty) {
@@ -762,6 +760,13 @@ void main() async {
       devLog.log('Firebase.initializeApp OK', tag: 'MAIN');
     } catch (e) {
       devLog.error('Firebase.initializeApp FAIL', tag: 'MAIN', error: e);
+    }
+  }
+  if (!Platform.isMacOS && !Platform.isWindows && !Platform.isLinux) {
+    try {
+      await ProManager.init();
+    } catch (e) {
+      devLog.error('ProManager.init FAIL', tag: 'MAIN', error: e);
     }
   }
   try {

@@ -47,13 +47,13 @@ class ProManager {
 
   // Lit le grant Pro Firestore (formation_access/{uid}.proUntil) et recalcule.
   static Future<void> refreshGrant([String? uid]) async {
-    final u = uid ?? FirebaseAuth.instance.currentUser?.uid;
-    if (u == null) {
-      _grantPro = false;
-      _recompute();
-      return;
-    }
     try {
+      final u = uid ?? FirebaseAuth.instance.currentUser?.uid;
+      if (u == null) {
+        _grantPro = false;
+        _recompute();
+        return;
+      }
       final doc = await FirebaseFirestore.instance
           .collection('formation_access')
           .doc(u)
@@ -68,7 +68,7 @@ class ProManager {
         _grantPro = false;
       }
     } catch (_) {
-      // Pas de doc / pas d'accès — on garde l'état RevenueCat
+      // Firebase pas prêt / pas d'accès — on garde l'état RevenueCat
     }
     _recompute();
   }
