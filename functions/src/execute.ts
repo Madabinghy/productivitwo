@@ -1133,6 +1133,61 @@ async function executeMarkActionDone(
   return `✅ Sous-action "${actionTitle}" ${done ? "marquée faite" : "démarquée"}.`;
 }
 
+async function executeLogRoutineHit(uid: string, activityId: string): Promise<string> {
+  if (!activityId) return "activityId requis.";
+  const ymd = todayInParis().replace(/-/g, "");
+  const hpCol = db.collection(`users/${uid}/habitProgress`);
+  // Incrément du compteur du jour (clé logique activityId + yyyymmdd, doc id = uuid).
+  const existing = await hpCol
+    .where("activityId", "==", activityId)
+    .where("yyyymmdd", "==", ymd)
+    .limit(1)
+    .get();
+  if (!existing.empty) {
+    const doc = existing.docs[0];
+    const cur = (doc.data().value as number) ?? 0;
+    await doc.ref.update({ value: cur + 1 });
+  } else {
+    const id = uuidv4();
+    await hpCol.doc(id).set({ id, activityId, yyyymmdd: ymd, value: 1 });
+  }
+  // Trace du hit (historique des incréments).
+  const hitId = uuidv4();
+  await db.collection(`users/${uid}/habitHits`).doc(hitId).set({
+    id: hitId,
+    habitId: activityId,
+    ts: new Date().toISOString(),
+    contextActivityId: null,
+  });
+  return "✅ Routine incrémentée pour aujourd'hui.";
+}
+
+async function executeMarkBlockDone(
+  uid: string,
+  date: string,
+  blockId: string,
+  done: boolean
+): Promise<string> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return `Date invalide : ${date}. Format attendu : YYYY-MM-DD`;
+  const ref = db.doc(`users/${uid}/daily_schedules/${date}`);
+  const snap = await ref.get();
+  if (!snap.exists) return `Aucun programme pour le ${date}.`;
+
+  const data = snap.data() as Record<string, unknown>;
+  const blocks = ((data.blocks || []) as Array<Record<string, unknown>>).slice();
+  const idx = blocks.findIndex((b) => b.id === blockId);
+  if (idx === -1) return `Bloc introuvable : ${blockId}`;
+
+  const title = (blocks[idx].title as string) ?? blockId;
+  blocks[idx] = {
+    ...blocks[idx],
+    status: done ? "done" : "pending",
+    doneAt: done ? new Date().toISOString() : null,
+  };
+  await ref.update({ blocks });
+  return `✅ Bloc "${title}" ${done ? "marqué fait" : "remis à faire"}.`;
+}
+
 async function executeGetAssistantMessages(uid: string): Promise<string> {
   const [pendingSnap, shownSnap] = await Promise.all([
     db.collection(`users/${uid}/assistant_messages`)
@@ -1699,6 +1754,8 @@ export {
   executeAddTask,
   executeUpdateTask,
   executeMarkActionDone,
+  executeLogRoutineHit,
+  executeMarkBlockDone,
   executeGetAssistantMessages,
   executeDeleteAssistantMessage,
   executeGetOrionQueue,

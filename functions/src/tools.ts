@@ -655,6 +655,38 @@ const MARK_ACTION_DONE_TOOL = {
   },
 };
 
+const LOG_ROUTINE_HIT_TOOL = {
+  name: "log_routine_hit",
+  description:
+    "Incrémente d'une unité une routine (habit) pour aujourd'hui : ajoute un HabitHit et " +
+    "augmente la progression du jour. Utilisé notamment par le widget iOS quand l'utilisateur " +
+    "coche une routine depuis l'écran d'accueil. Récupère activityId via get_user_context.",
+  inputSchema: {
+    type: "object",
+    required: ["activityId"],
+    properties: {
+      activityId: { type: "string", description: "id de l'activité routine (type habit)" },
+    },
+  },
+};
+
+const MARK_BLOCK_DONE_TOOL = {
+  name: "mark_block_done",
+  description:
+    "Marque (ou démarque) un bloc du programme horaire du jour comme fait, sans toucher au reste " +
+    "du programme. Préfère cet outil à schedule_day quand l'utilisateur valide un seul bloc. " +
+    "Récupère blockId via get_day_schedule.",
+  inputSchema: {
+    type: "object",
+    required: ["date", "blockId"],
+    properties: {
+      date:    { type: "string", description: "jour du programme, format YYYY-MM-DD" },
+      blockId: { type: "string", description: "id du bloc (get_day_schedule)" },
+      done:    { type: "boolean", description: "true (défaut) pour marquer fait, false pour démarquer" },
+    },
+  },
+};
+
 export {
 GET_USER_CONTEXT_TOOL,
 UPDATE_ACTIVITY_GOAL_TOOL,
@@ -683,6 +715,8 @@ PUSH_GANTT_MCP_TOOL,
 ADD_TASK_TOOL,
 UPDATE_TASK_TOOL,
 MARK_ACTION_DONE_TOOL,
+LOG_ROUTINE_HIT_TOOL,
+MARK_BLOCK_DONE_TOOL,
 };
 
 export const PLAN_DAY_TOOL = {

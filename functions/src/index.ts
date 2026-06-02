@@ -25,6 +25,7 @@ import {
   GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL,
   PLAN_DAY_TOOL, PLAN_WEEK_TOOL, SYNC_CALENDAR_TOOL,
   ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL,
+  LOG_ROUTINE_HIT_TOOL, MARK_BLOCK_DONE_TOOL,
 } from "./tools";
 import {
   validateToken, sendFcmPush, pickProject, pickStrategicObjective, checkRateLimit, todayInParis,
@@ -38,6 +39,7 @@ import {
   executeDeleteRoutine,
   executeArchiveProject, executeDeleteProject, executeListProjects, executeGetProject,
   executePushGantt, executeAddTask, executeUpdateTask, executeMarkActionDone,
+  executeLogRoutineHit, executeMarkBlockDone,
   executeGetDaySchedule, executeScheduleDay,
   executePlanDay, executePlanWeek, executeSyncCalendar,
 } from "./execute";
@@ -401,6 +403,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
             GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL,
             PLAN_DAY_TOOL, PLAN_WEEK_TOOL, SYNC_CALENDAR_TOOL,
             ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL,
+            LOG_ROUTINE_HIT_TOOL, MARK_BLOCK_DONE_TOOL,
           ],
         },
       });
@@ -496,6 +499,15 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
             args.taskId as string,
             args.actionId as string,
             args.done as boolean,
+          );
+        } else if (toolName === "log_routine_hit") {
+          text = await executeLogRoutineHit(uid, args.activityId as string);
+        } else if (toolName === "mark_block_done") {
+          text = await executeMarkBlockDone(
+            uid,
+            args.date as string,
+            args.blockId as string,
+            args.done === undefined ? true : (args.done as boolean),
           );
         } else {
           responses.push({ jsonrpc: "2.0", id, error: { code: -32601, message: `Outil inconnu : ${toolName}` } });

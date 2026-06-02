@@ -15,5 +15,6 @@ struct ProductivitwoWidgetBundle: WidgetBundle {
         ScheduleWidget()
         RoutinesWidget()
         ProjectsWidget()
+        FocusTaskWidget()
     }
 }

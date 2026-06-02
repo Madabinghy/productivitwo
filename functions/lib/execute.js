@@ -29,6 +29,8 @@ exports.executePushGantt = executePushGantt;
 exports.executeAddTask = executeAddTask;
 exports.executeUpdateTask = executeUpdateTask;
 exports.executeMarkActionDone = executeMarkActionDone;
+exports.executeLogRoutineHit = executeLogRoutineHit;
+exports.executeMarkBlockDone = executeMarkBlockDone;
 exports.executeGetAssistantMessages = executeGetAssistantMessages;
 exports.executeDeleteAssistantMessage = executeDeleteAssistantMessage;
 exports.executeGetOrionQueue = executeGetOrionQueue;
@@ -982,6 +984,55 @@ async function executeMarkActionDone(uid, projectId, taskId, actionId, done) {
     tasks[taskIdx] = Object.assign(Object.assign({}, tasks[taskIdx]), { actions });
     await ref.update({ tasks, updatedAt: db_1.FieldValue.serverTimestamp() });
     return `✅ Sous-action "${actionTitle}" ${done ? "marquée faite" : "démarquée"}.`;
+}
+async function executeLogRoutineHit(uid, activityId) {
+    var _a;
+    if (!activityId)
+        return "activityId requis.";
+    const ymd = todayInParis().replace(/-/g, "");
+    const hpCol = db_1.db.collection(`users/${uid}/habitProgress`);
+    // Incrément du compteur du jour (clé logique activityId + yyyymmdd, doc id = uuid).
+    const existing = await hpCol
+        .where("activityId", "==", activityId)
+        .where("yyyymmdd", "==", ymd)
+        .limit(1)
+        .get();
+    if (!existing.empty) {
+        const doc = existing.docs[0];
+        const cur = (_a = doc.data().value) !== null && _a !== void 0 ? _a : 0;
+        await doc.ref.update({ value: cur + 1 });
+    }
+    else {
+        const id = (0, uuid_1.v4)();
+        await hpCol.doc(id).set({ id, activityId, yyyymmdd: ymd, value: 1 });
+    }
+    // Trace du hit (historique des incréments).
+    const hitId = (0, uuid_1.v4)();
+    await db_1.db.collection(`users/${uid}/habitHits`).doc(hitId).set({
+        id: hitId,
+        habitId: activityId,
+        ts: new Date().toISOString(),
+        contextActivityId: null,
+    });
+    return "✅ Routine incrémentée pour aujourd'hui.";
+}
+async function executeMarkBlockDone(uid, date, blockId, done) {
+    var _a;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
+        return `Date invalide : ${date}. Format attendu : YYYY-MM-DD`;
+    const ref = db_1.db.doc(`users/${uid}/daily_schedules/${date}`);
+    const snap = await ref.get();
+    if (!snap.exists)
+        return `Aucun programme pour le ${date}.`;
+    const data = snap.data();
+    const blocks = (data.blocks || []).slice();
+    const idx = blocks.findIndex((b) => b.id === blockId);
+    if (idx === -1)
+        return `Bloc introuvable : ${blockId}`;
+    const title = (_a = blocks[idx].title) !== null && _a !== void 0 ? _a : blockId;
+    blocks[idx] = Object.assign(Object.assign({}, blocks[idx]), { status: done ? "done" : "pending", doneAt: done ? new Date().toISOString() : null });
+    await ref.update({ blocks });
+    return `✅ Bloc "${title}" ${done ? "marqué fait" : "remis à faire"}.`;
 }
 async function executeGetAssistantMessages(uid) {
     const [pendingSnap, shownSnap] = await Promise.all([

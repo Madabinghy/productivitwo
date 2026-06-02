@@ -2229,6 +2229,7 @@ class _AppRootState extends State<AppRoot>
       logic.updateGanttCounts(_dashboardProjects);
     }
     WidgetService.update(logic);
+    WidgetService.provisionAuth(_sync); // expose uid+token aux widgets actionnables (1×/session)
 
     // ✅ Refresh UI (ton code, inchangé)
     if (!mounted) return;

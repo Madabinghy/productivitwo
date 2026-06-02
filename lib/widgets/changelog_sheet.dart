@@ -10,6 +10,11 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.56', '2 juin 2026', [
+    (Icons.touch_app_outlined, 'Widgets actionnables (iOS 17+) : coche une routine, un bloc du programme ou une sous-action de tâche directement depuis l\'écran d\'accueil'),
+    (Icons.checklist_rtl, 'Nouveau widget « Tâche du jour » : la tâche du haut avec ses actions cochables sans ouvrir l\'app'),
+    (Icons.open_in_new, 'Fix : le widget Projets ouvre le bon projet même quand l\'app était fermée'),
+  ]),
   _Entry('5.55', '2 juin 2026', [
     (Icons.today_outlined, 'Nouveau widget « Programme du jour » : tes blocs horaires sur l\'écran d\'accueil (Medium / Large)'),
     (Icons.repeat_rounded, 'Nouveau widget « Routines » : anneau de progression + uniquement les routines qu\'il te reste à faire (Small / Medium / Large)'),

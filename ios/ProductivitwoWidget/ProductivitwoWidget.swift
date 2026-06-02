@@ -3,6 +3,8 @@
 
 import WidgetKit
 import SwiftUI
+import Foundation
+import AppIntents
 
 // MARK: - Constantes
 
@@ -373,9 +375,128 @@ private func hexColor(_ s: String?, fallback: Color = brandPurple) -> Color {
 
 private func appDefaults() -> UserDefaults? { UserDefaults(suiteName: appGroup) }
 
+// MARK: ════════ INTERACTIVITÉ (App Intents iOS 17+) ════════
+
+private func todayISO() -> String {
+    let f = DateFormatter()
+    f.dateFormat = "yyyy-MM-dd"
+    return f.string(from: Date())
+}
+
+/// Appel authentifié à mcpHandler (JSON-RPC tools/call) avec uid + token de l'App Group.
+private func widgetMcpCall(tool: String, args: [String: Any]) async {
+    let d = appDefaults()
+    guard let uid = d?.string(forKey: "mcp_uid"),
+          let token = d?.string(forKey: "mcp_token"),
+          !uid.isEmpty, !token.isEmpty,
+          let url = URL(string: "https://mcphandler-dzos75b65q-uc.a.run.app/mcp/\(uid)/\(token)")
+    else { return }
+    var req = URLRequest(url: url)
+    req.httpMethod = "POST"
+    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    let body: [String: Any] = [
+        "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": ["name": tool, "arguments": args],
+    ]
+    req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+    _ = try? await URLSession.shared.data(for: req)
+}
+
+/// Lit un JSON array de dicts dans l'App Group, le mute, le réécrit (optimiste).
+private func mutateAppGroupArray(key: String, _ transform: (inout [[String: Any]]) -> Void) {
+    let d = appDefaults()
+    guard let raw = d?.string(forKey: key), let data = raw.data(using: .utf8),
+          var arr = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else { return }
+    transform(&arr)
+    if let out = try? JSONSerialization.data(withJSONObject: arr),
+       let s = String(data: out, encoding: .utf8) { d?.set(s, forKey: key) }
+}
+
+/// Idem pour un objet JSON unique (focus_task_json).
+private func mutateAppGroupObject(key: String, _ transform: (inout [String: Any]) -> Void) {
+    let d = appDefaults()
+    guard let raw = d?.string(forKey: key), let data = raw.data(using: .utf8),
+          var obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return }
+    transform(&obj)
+    if let out = try? JSONSerialization.data(withJSONObject: obj),
+       let s = String(data: out, encoding: .utf8) { d?.set(s, forKey: key) }
+}
+
+@available(iOS 17.0, *)
+struct MarkRoutineDoneIntent: AppIntent {
+    static var title: LocalizedStringResource = "Cocher une routine"
+    @Parameter(title: "Routine") var activityId: String
+    init() {}
+    init(activityId: String) { self.activityId = activityId }
+    func perform() async throws -> some IntentResult {
+        let id = activityId
+        mutateAppGroupArray(key: "routines_json") { arr in
+            guard let i = arr.firstIndex(where: { ($0["id"] as? String) == id }) else { return }
+            let done = (arr[i]["done"] as? Int) ?? 0
+            let target = (arr[i]["target"] as? Int) ?? 1
+            arr[i]["done"] = done + 1
+            if done + 1 >= target {
+                let d = appDefaults()
+                d?.set((d?.integer(forKey: "routines_done") ?? 0) + 1, forKey: "routines_done")
+            }
+        }
+        WidgetCenter.shared.reloadAllTimelines()
+        await widgetMcpCall(tool: "log_routine_hit", args: ["activityId": id])
+        return .result()
+    }
+}
+
+@available(iOS 17.0, *)
+struct MarkBlockDoneIntent: AppIntent {
+    static var title: LocalizedStringResource = "Marquer un bloc fait"
+    @Parameter(title: "Bloc") var blockId: String
+    init() {}
+    init(blockId: String) { self.blockId = blockId }
+    func perform() async throws -> some IntentResult {
+        let id = blockId
+        mutateAppGroupArray(key: "schedule_json") { arr in
+            if let i = arr.firstIndex(where: { ($0["id"] as? String) == id }) {
+                arr[i]["status"] = "done"
+            }
+        }
+        WidgetCenter.shared.reloadAllTimelines()
+        await widgetMcpCall(tool: "mark_block_done", args: ["date": todayISO(), "blockId": id])
+        return .result()
+    }
+}
+
+@available(iOS 17.0, *)
+struct MarkTaskActionIntent: AppIntent {
+    static var title: LocalizedStringResource = "Cocher une action"
+    @Parameter(title: "Projet") var projectId: String
+    @Parameter(title: "Tâche") var taskId: String
+    @Parameter(title: "Action") var actionId: String
+    @Parameter(title: "Fait") var done: Bool
+    init() {}
+    init(projectId: String, taskId: String, actionId: String, done: Bool) {
+        self.projectId = projectId; self.taskId = taskId; self.actionId = actionId; self.done = done
+    }
+    func perform() async throws -> some IntentResult {
+        let aid = actionId, newDone = done
+        mutateAppGroupObject(key: "focus_task_json") { obj in
+            if var actions = obj["actions"] as? [[String: Any]],
+               let i = actions.firstIndex(where: { ($0["id"] as? String) == aid }) {
+                actions[i]["done"] = newDone
+                obj["actions"] = actions
+            }
+        }
+        WidgetCenter.shared.reloadAllTimelines()
+        await widgetMcpCall(tool: "mark_action_done", args: [
+            "projectId": projectId, "taskId": taskId, "actionId": aid, "done": newDone,
+        ])
+        return .result()
+    }
+}
+
 // MARK: ════════ WIDGET PROGRAMME DU JOUR ════════
 
 struct ScheduleItem: Decodable {
+    var id: String? = nil   // absent des anciens payloads → ligne non-actionnable
     let time: String
     let title: String
     let cat: String
@@ -434,22 +555,43 @@ struct ScheduleWidgetView: View {
             } else {
                 let max = family == .systemLarge ? 8 : 4
                 ForEach(Array(items.prefix(max).enumerated()), id: \.offset) { _, b in
-                    HStack(spacing: 8) {
-                        Text(b.time).font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .foregroundColor(.secondary).frame(width: 38, alignment: .leading)
-                        Circle().fill(b.color).frame(width: 6, height: 6)
-                        Text(b.title).font(.system(size: 13, weight: .medium))
-                            .foregroundColor(b.isDone ? .secondary : .primary)
-                            .strikethrough(b.isDone, color: .secondary).lineLimit(1)
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.vertical, 4)
+                    row(b)
                 }
                 Spacer(minLength: 0)
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    @ViewBuilder
+    func row(_ b: ScheduleItem) -> some View {
+        HStack(spacing: 8) {
+            checkButton(b)
+            Text(b.time).font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundColor(.secondary).frame(width: 38, alignment: .leading)
+            Text(b.title).font(.system(size: 13, weight: .medium))
+                .foregroundColor(b.isDone ? .secondary : .primary)
+                .strikethrough(b.isDone, color: .secondary).lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    func checkButton(_ b: ScheduleItem) -> some View {
+        let check = Image(systemName: b.isDone ? "checkmark.circle.fill" : "circle")
+            .font(.system(size: 15))
+            .foregroundColor(b.isDone ? b.color : .secondary.opacity(0.45))
+        if #available(iOS 17.0, *) {
+            if let id = b.id {
+                Button(intent: MarkBlockDoneIntent(blockId: id)) { check }.buttonStyle(.plain)
+            } else {
+                check
+            }
+        } else {
+            check
+        }
     }
 }
 
@@ -468,6 +610,7 @@ struct ScheduleWidget: Widget {
 // MARK: ════════ WIDGET ROUTINES (anneau + reste à faire) ════════
 
 struct RoutineItem: Decodable {
+    var id: String? = nil   // absent des anciens payloads → ligne non-actionnable
     let label: String
     let done: Int
     let target: Int
@@ -532,15 +675,7 @@ struct RoutinesWidgetView: View {
                     } else {
                         let max = family == .systemLarge ? 7 : 3
                         ForEach(Array(remaining.prefix(max).enumerated()), id: \.offset) { _, r in
-                            HStack(spacing: 7) {
-                                Circle().fill(hexColor(r.color)).frame(width: 7, height: 7)
-                                Text(r.label).font(.system(size: 13)).lineLimit(1)
-                                Spacer(minLength: 0)
-                                if r.target > 1 {
-                                    Text("\(r.done)/\(r.target)").font(.system(size: 10))
-                                        .foregroundColor(.secondary)
-                                }
-                            }.padding(.vertical, 3.5)
+                            row(r)
                         }
                     }
                     Spacer(minLength: 0)
@@ -548,6 +683,35 @@ struct RoutinesWidgetView: View {
             }
             .padding(.horizontal, 14).padding(.vertical, 12)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+    }
+
+    @ViewBuilder
+    func row(_ r: RoutineItem) -> some View {
+        HStack(spacing: 7) {
+            checkButton(r)
+            Text(r.label).font(.system(size: 13)).lineLimit(1)
+            Spacer(minLength: 0)
+            if r.target > 1 {
+                Text("\(r.done)/\(r.target)").font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+        }.padding(.vertical, 3.5)
+    }
+
+    @ViewBuilder
+    func checkButton(_ r: RoutineItem) -> some View {
+        let check = Image(systemName: "circle")
+            .font(.system(size: 14))
+            .foregroundColor(hexColor(r.color))
+        if #available(iOS 17.0, *) {
+            if let id = r.id {
+                Button(intent: MarkRoutineDoneIntent(activityId: id)) { check }.buttonStyle(.plain)
+            } else {
+                check
+            }
+        } else {
+            check
         }
     }
 
@@ -662,6 +826,110 @@ struct ProjectsWidget: Widget {
         }
         .configurationDisplayName("Projets")
         .description("Tes projets — tap pour ouvrir")
+        .supportedFamilies([.systemMedium, .systemLarge])
+    }
+}
+
+// MARK: ════════ WIDGET TÂCHE (sous-actions cochables) ════════
+
+struct FocusAction: Decodable, Identifiable {
+    let id: String
+    let title: String
+    let done: Bool
+}
+
+struct FocusTask: Decodable {
+    let projectId: String
+    let taskId: String
+    let projectTitle: String
+    let title: String
+    let actions: [FocusAction]
+}
+
+struct FocusTaskEntry: TimelineEntry { let date: Date; let task: FocusTask? }
+
+struct FocusTaskProvider: TimelineProvider {
+    func load() -> FocusTask? {
+        guard let raw = appDefaults()?.string(forKey: "focus_task_json"),
+              let data = raw.data(using: .utf8),
+              let t = try? JSONDecoder().decode(FocusTask.self, from: data) else { return nil }
+        return t
+    }
+    func placeholder(in c: Context) -> FocusTaskEntry {
+        FocusTaskEntry(date: Date(), task: FocusTask(
+            projectId: "1", taskId: "1", projectTitle: "Lancement Formation", title: "Tourner le module 3",
+            actions: [
+                FocusAction(id: "a", title: "Écrire le script", done: true),
+                FocusAction(id: "b", title: "Préparer les slides", done: false),
+                FocusAction(id: "c", title: "Enregistrer", done: false),
+            ]))
+    }
+    func getSnapshot(in c: Context, completion: @escaping (FocusTaskEntry) -> Void) {
+        completion(FocusTaskEntry(date: Date(), task: load()))
+    }
+    func getTimeline(in c: Context, completion: @escaping (Timeline<FocusTaskEntry>) -> Void) {
+        let next = Calendar.current.date(byAdding: .minute, value: 15, to: Date())!
+        completion(Timeline(entries: [FocusTaskEntry(date: Date(), task: load())], policy: .after(next)))
+    }
+}
+
+struct FocusTaskWidgetView: View {
+    let task: FocusTask?
+    @Environment(\.widgetFamily) var family
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let t = task {
+                Text(t.projectTitle.uppercased())
+                    .font(.system(size: 10, weight: .semibold)).tracking(0.8)
+                    .foregroundColor(brandPurple.opacity(0.9)).lineLimit(1)
+                Text(t.title).font(.system(size: 15, weight: .bold)).lineLimit(2)
+                    .padding(.top, 2).padding(.bottom, 8)
+                let max = family == .systemLarge ? 8 : 4
+                ForEach(t.actions.prefix(max)) { a in
+                    row(projectId: t.projectId, taskId: t.taskId, a: a)
+                }
+                Spacer(minLength: 0)
+            } else {
+                Spacer()
+                Text("Aucune tâche active").font(.system(size: 13)).italic()
+                    .foregroundColor(.secondary.opacity(0.6))
+                Spacer()
+            }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    @ViewBuilder
+    func row(projectId: String, taskId: String, a: FocusAction) -> some View {
+        let check = Image(systemName: a.done ? "checkmark.circle.fill" : "circle")
+            .font(.system(size: 15))
+            .foregroundColor(a.done ? brandPurple : .secondary.opacity(0.45))
+        HStack(spacing: 8) {
+            if #available(iOS 17.0, *) {
+                Button(intent: MarkTaskActionIntent(
+                    projectId: projectId, taskId: taskId, actionId: a.id, done: !a.done
+                )) { check }.buttonStyle(.plain)
+            } else {
+                check
+            }
+            Text(a.title).font(.system(size: 13))
+                .foregroundColor(a.done ? .secondary : .primary)
+                .strikethrough(a.done, color: .secondary).lineLimit(1)
+            Spacer(minLength: 0)
+        }.padding(.vertical, 4)
+    }
+}
+
+struct FocusTaskWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "FocusTaskWidget", provider: FocusTaskProvider()) { entry in
+            FocusTaskWidgetView(task: entry.task)
+                .containerBackground(.fill.tertiary, for: .widget)
+        }
+        .configurationDisplayName("Tâche du jour")
+        .description("La tâche du haut — coche ses actions sans ouvrir l'app")
         .supportedFamilies([.systemMedium, .systemLarge])
     }
 }

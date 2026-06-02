@@ -12,6 +12,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/services.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 
@@ -50,6 +51,33 @@ class WidgetService {
   WidgetService._();
 
   static WidgetDiag? lastDiag;
+  static bool _authProvisioned = false;
+
+  /// Écrit (une fois par session) uid + token API dans l'App Group pour que les
+  /// widgets actionnables puissent appeler mcpHandler. Sans secret brut local
+  /// (réinstall / nouvel appareil), on n'écrit rien — le widget reste lecture seule.
+  static Future<void> provisionAuth(FirestoreSync sync) async {
+    if (_authProvisioned) return;
+    if (!Platform.isIOS && !Platform.isAndroid) return;
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+      final token = await sync.ensureWidgetToken();
+      final raw = token.rawToken;
+      if (raw == null || raw.isEmpty) return;
+      if (Platform.isIOS) {
+        await _kIosWidgetChannel
+            .invokeMethod('setString', {'key': 'mcp_uid', 'value': uid});
+        await _kIosWidgetChannel
+            .invokeMethod('setString', {'key': 'mcp_token', 'value': raw});
+      } else {
+        await HomeWidget.setAppGroupId(_kAppGroup);
+        await HomeWidget.saveWidgetData<String>('mcp_uid', uid);
+        await HomeWidget.saveWidgetData<String>('mcp_token', raw);
+      }
+      _authProvisioned = true;
+    } catch (_) {}
+  }
 
   /// Pousse l'état courant vers tous les widgets home screen.
   /// Appelé depuis _saveAndRefresh(), au chargement initial, et sur le stream projets.
@@ -85,6 +113,7 @@ class WidgetService {
       // --- Routines (liste + couleur domaine, pour le "reste à faire") ---
       final routinesJson = jsonEncode(routineItems
           .map((it) => {
+                'id': it.activity.id,
                 'label': it.label,
                 'done': it.done,
                 'target': it.target,
@@ -107,6 +136,32 @@ class WidgetService {
         };
       }).toList());
 
+      // --- Tâche du haut (widget Tâche actionnable) ---
+      // Première tâche non terminée du premier projet actif.
+      String focusTaskJson = 'null';
+      for (final p in logic.currentProjects) {
+        if (p.status == 'archived' || p.status == 'done') continue;
+        ProjectTask? task;
+        for (final t in p.tasks) {
+          if (t.status != 'done' && t.status != 'skipped') {
+            task = t;
+            break;
+          }
+        }
+        if (task == null) continue;
+        focusTaskJson = jsonEncode({
+          'projectId': p.id,
+          'taskId': task.id,
+          'projectTitle': p.title,
+          'title': task.title,
+          'actions': task.actions
+              .take(8)
+              .map((a) => {'id': a.id, 'title': a.title, 'done': a.done})
+              .toList(),
+        });
+        break;
+      }
+
       // --- Programme du jour (blocs horaires depuis Firestore) ---
       final now = DateTime.now();
       final todayStr =
@@ -124,6 +179,7 @@ class WidgetService {
             scheduleJson = jsonEncode(sched.blocks
                 .where((b) => b.status != 'deleted')
                 .map((b) => {
+                      'id': b.id,
                       'time': b.startTime,
                       'title': b.title,
                       'cat': b.category,
@@ -143,6 +199,7 @@ class WidgetService {
           _kIosWidgetChannel.invokeMethod('setString', {'key': 'routines_json', 'value': routinesJson}),
           _kIosWidgetChannel.invokeMethod('setString', {'key': 'projects_json', 'value': projectsJson}),
           _kIosWidgetChannel.invokeMethod('setString', {'key': 'schedule_json', 'value': scheduleJson}),
+          _kIosWidgetChannel.invokeMethod('setString', {'key': 'focus_task_json', 'value': focusTaskJson}),
         ]);
         await _kIosWidgetChannel.invokeMethod('reload');
       } else {
@@ -155,6 +212,7 @@ class WidgetService {
           HomeWidget.saveWidgetData<String>('routines_json', routinesJson),
           HomeWidget.saveWidgetData<String>('projects_json', projectsJson),
           HomeWidget.saveWidgetData<String>('schedule_json', scheduleJson),
+          HomeWidget.saveWidgetData<String>('focus_task_json', focusTaskJson),
         ]);
         await HomeWidget.updateWidget(
           androidName: 'ProductivitwoWidget',

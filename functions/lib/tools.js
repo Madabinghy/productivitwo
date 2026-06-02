@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
+exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
 const GET_USER_CONTEXT_TOOL = {
     name: "get_user_context",
     description: "APPELLE CET OUTIL EN PREMIER dans toute conversation liée à la productivité. " +
@@ -622,6 +622,36 @@ const MARK_ACTION_DONE_TOOL = {
     },
 };
 exports.MARK_ACTION_DONE_TOOL = MARK_ACTION_DONE_TOOL;
+const LOG_ROUTINE_HIT_TOOL = {
+    name: "log_routine_hit",
+    description: "Incrémente d'une unité une routine (habit) pour aujourd'hui : ajoute un HabitHit et " +
+        "augmente la progression du jour. Utilisé notamment par le widget iOS quand l'utilisateur " +
+        "coche une routine depuis l'écran d'accueil. Récupère activityId via get_user_context.",
+    inputSchema: {
+        type: "object",
+        required: ["activityId"],
+        properties: {
+            activityId: { type: "string", description: "id de l'activité routine (type habit)" },
+        },
+    },
+};
+exports.LOG_ROUTINE_HIT_TOOL = LOG_ROUTINE_HIT_TOOL;
+const MARK_BLOCK_DONE_TOOL = {
+    name: "mark_block_done",
+    description: "Marque (ou démarque) un bloc du programme horaire du jour comme fait, sans toucher au reste " +
+        "du programme. Préfère cet outil à schedule_day quand l'utilisateur valide un seul bloc. " +
+        "Récupère blockId via get_day_schedule.",
+    inputSchema: {
+        type: "object",
+        required: ["date", "blockId"],
+        properties: {
+            date: { type: "string", description: "jour du programme, format YYYY-MM-DD" },
+            blockId: { type: "string", description: "id du bloc (get_day_schedule)" },
+            done: { type: "boolean", description: "true (défaut) pour marquer fait, false pour démarquer" },
+        },
+    },
+};
+exports.MARK_BLOCK_DONE_TOOL = MARK_BLOCK_DONE_TOOL;
 exports.PLAN_DAY_TOOL = {
     name: "plan_day",
     description: "Agrège tout le contexte nécessaire pour planifier une journée : contexte utilisateur, " +
