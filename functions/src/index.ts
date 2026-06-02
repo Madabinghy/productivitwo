@@ -2128,14 +2128,72 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
 // pousser dans Productivitwo pendant les sessions de travail (sans passe-plat
 // avec le MCP de Claude.ai). Secret stocké en Firebase Secret Manager.
 
-// Statut Pro effectif depuis un doc formation_access : un grant daté
-// (proUntil > maintenant) prime ; sinon fallback sur le booléen isPro (legacy
-// / futur webhook RevenueCat sans expiration).
+// Statut Pro effectif depuis un doc formation_access. Sources combinées (l'une
+// suffit, aucune n'écrase l'autre) :
+//   - subscriptionUntil : abonné RevenueCat (iOS/Android), posé par le webhook
+//   - proUntil          : grant daté (formation / comp admin)
+//   - isPro (bool)      : legacy / sans expiration
 function effectivePro(d: Record<string, unknown> | undefined): boolean {
-  const until = d?.proUntil as { toMillis?: () => number } | undefined;
-  if (until && typeof until.toMillis === "function") return until.toMillis() > Date.now();
+  const now = Date.now();
+  const active = (v: unknown): boolean => {
+    const t = v as { toMillis?: () => number } | undefined;
+    return !!t && typeof t.toMillis === "function" && t.toMillis() > now;
+  };
+  if (active(d?.subscriptionUntil)) return true;
+  if (active(d?.proUntil)) return true;
   return d?.isPro === true;
 }
+
+// Entitlement RevenueCat surveillé (doit matcher kEntitlementPro côté app).
+const kEntitlementPro = "pro";
+
+// ── revenueCatWebhook ─────────────────────────────────────────────────────────
+//
+// Webhook RevenueCat (iOS ET Android — RevenueCat unifie les deux stores).
+// Configuré dans RevenueCat → Integrations → Webhooks, avec un header
+// Authorization: Bearer <REVENUECAT_WEBHOOK_SECRET>.
+//
+// On écrit l'expiration de l'entitlement `pro` dans formation_access/{uid}.
+// subscriptionUntil → effectivePro la lit. Le app_user_id RevenueCat = le
+// Firebase uid (on appelle Purchases.logIn(uid) côté app). Pas de logique par
+// type d'event : on stocke expiration_at, la comparaison > now fait le reste.
+export const revenueCatWebhook = onRequest(
+  { invoker: "public", secrets: ["REVENUECAT_WEBHOOK_SECRET"] },
+  async (req, res) => {
+    if (req.method !== "POST") { res.status(405).json({ error: "Method Not Allowed" }); return; }
+    const expected = (process.env.REVENUECAT_WEBHOOK_SECRET ?? "").trim();
+    const auth = (req.headers["authorization"] as string | undefined)?.trim();
+    if (!expected || auth !== `Bearer ${expected}`) {
+      res.status(401).json({ error: "Unauthorized" }); return;
+    }
+    try {
+      const event = (req.body?.event ?? {}) as Record<string, unknown>;
+      const uid = (event.app_user_id as string | undefined)?.trim();
+      const type = (event.type as string | undefined) ?? "UNKNOWN";
+      if (!uid) { res.status(200).json({ ok: true, skipped: "no app_user_id" }); return; }
+
+      const entitlements = (event.entitlement_ids as string[] | undefined) ?? null;
+      const concernsPro = entitlements === null || entitlements.includes(kEntitlementPro);
+      const expMs = event.expiration_at_ms as number | undefined;
+
+      const patch: Record<string, unknown> = {
+        rcLastEvent: type,
+        rcUpdatedAt: FieldValue.serverTimestamp(),
+      };
+      if (concernsPro && typeof expMs === "number") {
+        patch.subscriptionUntil = admin.firestore.Timestamp.fromMillis(expMs);
+        patch.subscriptionStore = (event.store as string | undefined) ?? null;
+        patch.subscriptionProductId = (event.product_id as string | undefined) ?? null;
+      }
+      await db.collection("formation_access").doc(uid).set(patch, { merge: true });
+      res.status(200).json({ ok: true });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("revenueCatWebhook error:", msg);
+      res.status(500).json({ error: "fail" });
+    }
+  }
+);
 
 export const adminProductivitwo = onRequest(
   { cors: true, invoker: "public", secrets: ["ADMIN_PUSH_SECRET"] },

@@ -11,7 +11,7 @@ var __rest = (this && this.__rest) || function (s, e) {
     return t;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.applyFormationProfile = exports.getVisionAccess = exports.generateFormationAccess = exports.adminProductivitwo = exports.onboardingChat = exports.structureProject = exports.orionCron = exports.orionBrief = exports.orionRunCount = exports.orionSaveConfig = exports.githubWebhook = exports.orionWebhook = exports.mcpHandler = exports.sendMagicLink = exports.getCustomToken = exports.pushAssistantMessage = exports.markPlanItemDone = exports.pushGantt = void 0;
+exports.applyFormationProfile = exports.getVisionAccess = exports.generateFormationAccess = exports.adminProductivitwo = exports.revenueCatWebhook = exports.onboardingChat = exports.structureProject = exports.orionCron = exports.orionBrief = exports.orionRunCount = exports.orionSaveConfig = exports.githubWebhook = exports.orionWebhook = exports.mcpHandler = exports.sendMagicLink = exports.getCustomToken = exports.pushAssistantMessage = exports.markPlanItemDone = exports.pushGantt = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
@@ -2090,15 +2090,76 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
 // Endpoint protégé par secret pour permettre à Claude Code d'inspecter et
 // pousser dans Productivitwo pendant les sessions de travail (sans passe-plat
 // avec le MCP de Claude.ai). Secret stocké en Firebase Secret Manager.
-// Statut Pro effectif depuis un doc formation_access : un grant daté
-// (proUntil > maintenant) prime ; sinon fallback sur le booléen isPro (legacy
-// / futur webhook RevenueCat sans expiration).
+// Statut Pro effectif depuis un doc formation_access. Sources combinées (l'une
+// suffit, aucune n'écrase l'autre) :
+//   - subscriptionUntil : abonné RevenueCat (iOS/Android), posé par le webhook
+//   - proUntil          : grant daté (formation / comp admin)
+//   - isPro (bool)      : legacy / sans expiration
 function effectivePro(d) {
-    const until = d === null || d === void 0 ? void 0 : d.proUntil;
-    if (until && typeof until.toMillis === "function")
-        return until.toMillis() > Date.now();
+    const now = Date.now();
+    const active = (v) => {
+        const t = v;
+        return !!t && typeof t.toMillis === "function" && t.toMillis() > now;
+    };
+    if (active(d === null || d === void 0 ? void 0 : d.subscriptionUntil))
+        return true;
+    if (active(d === null || d === void 0 ? void 0 : d.proUntil))
+        return true;
     return (d === null || d === void 0 ? void 0 : d.isPro) === true;
 }
+// Entitlement RevenueCat surveillé (doit matcher kEntitlementPro côté app).
+const kEntitlementPro = "pro";
+// ── revenueCatWebhook ─────────────────────────────────────────────────────────
+//
+// Webhook RevenueCat (iOS ET Android — RevenueCat unifie les deux stores).
+// Configuré dans RevenueCat → Integrations → Webhooks, avec un header
+// Authorization: Bearer <REVENUECAT_WEBHOOK_SECRET>.
+//
+// On écrit l'expiration de l'entitlement `pro` dans formation_access/{uid}.
+// subscriptionUntil → effectivePro la lit. Le app_user_id RevenueCat = le
+// Firebase uid (on appelle Purchases.logIn(uid) côté app). Pas de logique par
+// type d'event : on stocke expiration_at, la comparaison > now fait le reste.
+exports.revenueCatWebhook = (0, https_1.onRequest)({ invoker: "public", secrets: ["REVENUECAT_WEBHOOK_SECRET"] }, async (req, res) => {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+    if (req.method !== "POST") {
+        res.status(405).json({ error: "Method Not Allowed" });
+        return;
+    }
+    const expected = ((_a = process.env.REVENUECAT_WEBHOOK_SECRET) !== null && _a !== void 0 ? _a : "").trim();
+    const auth = (_b = req.headers["authorization"]) === null || _b === void 0 ? void 0 : _b.trim();
+    if (!expected || auth !== `Bearer ${expected}`) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+    }
+    try {
+        const event = ((_d = (_c = req.body) === null || _c === void 0 ? void 0 : _c.event) !== null && _d !== void 0 ? _d : {});
+        const uid = (_e = event.app_user_id) === null || _e === void 0 ? void 0 : _e.trim();
+        const type = (_f = event.type) !== null && _f !== void 0 ? _f : "UNKNOWN";
+        if (!uid) {
+            res.status(200).json({ ok: true, skipped: "no app_user_id" });
+            return;
+        }
+        const entitlements = (_g = event.entitlement_ids) !== null && _g !== void 0 ? _g : null;
+        const concernsPro = entitlements === null || entitlements.includes(kEntitlementPro);
+        const expMs = event.expiration_at_ms;
+        const patch = {
+            rcLastEvent: type,
+            rcUpdatedAt: db_1.FieldValue.serverTimestamp(),
+        };
+        if (concernsPro && typeof expMs === "number") {
+            patch.subscriptionUntil = admin.firestore.Timestamp.fromMillis(expMs);
+            patch.subscriptionStore = (_h = event.store) !== null && _h !== void 0 ? _h : null;
+            patch.subscriptionProductId = (_j = event.product_id) !== null && _j !== void 0 ? _j : null;
+        }
+        await db_1.db.collection("formation_access").doc(uid).set(patch, { merge: true });
+        res.status(200).json({ ok: true });
+    }
+    catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error("revenueCatWebhook error:", msg);
+        res.status(500).json({ error: "fail" });
+    }
+});
 exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "public", secrets: ["ADMIN_PUSH_SECRET"] }, async (req, res) => {
     var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r, _s;
     if (req.method === "OPTIONS") {
