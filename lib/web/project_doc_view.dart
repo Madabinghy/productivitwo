@@ -36,9 +36,7 @@ class ProjectDocView extends StatefulWidget {
 
 class _ProjectDocViewState extends State<ProjectDocView> {
   bool _loading = true;
-  bool _editing = false;
   Map<String, dynamic>? _doc;
-  final _editCtrl = TextEditingController();
 
   Color get _accent => widget.accentColor;
 
@@ -48,44 +46,161 @@ class _ProjectDocViewState extends State<ProjectDocView> {
     _load();
   }
 
-  @override
-  void dispose() {
-    _editCtrl.dispose();
-    super.dispose();
-  }
-
+  // À l'ouverture, le document est un MIROIR du Gantt : on le crée s'il n'existe
+  // pas, sinon on le resynchronise. La structure (cartes, cases, titres, état
+  // coché) vient du Gantt ; les notes riches (objectif de bloc, notes ⚠️/★,
+  // descriptions) sont conservées et rattachées par id d'action/tâche.
   Future<void> _load() async {
     setState(() => _loading = true);
     final docs = await widget.sync.fetchDocuments(projectId: widget.project.id);
     final pb = docs.where((d) => (d['category'] as String?) == 'playbook').toList();
-    if (!mounted) return;
-    setState(() {
-      _doc = pb.isNotEmpty ? Map<String, dynamic>.from(pb.first) : null;
-      _loading = false;
-    });
-    _reconcileLinkedState();
-  }
+    final hasMirrorable = widget.project.tasks.any((t) => !t.isMilestone);
 
-  // À l'ouverture : aligne l'état [x] des items liés sur l'état réel des actions
-  // Gantt (au cas où elles ont été cochées ailleurs — onglet Actions, Claude…).
-  Future<void> _reconcileLinkedState() async {
-    if (_doc == null || !_content.contains('^task:')) return;
-    final refRe = RegExp(r'\^task:([\w-]+)/([\w-]+)');
-    final lines = _content.split('\n');
-    var changed = false;
-    for (var i = 0; i < lines.length; i++) {
-      final m = refRe.firstMatch(lines[i]);
-      if (m == null) continue;
-      final a = _resolveAction('${m.group(1)}/${m.group(2)}');
-      if (a == null) continue;
-      final desired = a.done ? '[x]' : '[ ]';
-      final fixed = lines[i].replaceFirst(RegExp(r'\[[ xX]\]'), desired);
-      if (fixed != lines[i]) {
-        lines[i] = fixed;
-        changed = true;
+    Map<String, dynamic>? doc =
+        pb.isNotEmpty ? Map<String, dynamic>.from(pb.first) : null;
+
+    if (doc == null) {
+      // Pas de document : on le génère depuis le Gantt (s'il y a de quoi).
+      if (hasMirrorable) {
+        final now = DateTime.now().toIso8601String();
+        doc = <String, dynamic>{
+          'id': _uuid.v4(),
+          'title': 'Pilotage — ${widget.project.title}',
+          'content': _buildFromGantt(_Preserved()),
+          'category': 'playbook',
+          'projectId': widget.project.id,
+          'createdAt': now,
+          'updatedAt': now,
+        };
+        await widget.sync.saveDocument(doc);
+      }
+    } else {
+      // Document existant : on resynchronise sur le Gantt en préservant les notes.
+      final preserved = _extractPreserved((doc['content'] as String?) ?? '');
+      final rebuilt = _buildFromGantt(preserved);
+      if (rebuilt != (doc['content'] as String?)) {
+        doc['content'] = rebuilt;
+        doc['updatedAt'] = DateTime.now().toIso8601String();
+        await widget.sync.saveDocument(doc);
       }
     }
-    if (changed) await _saveContent(lines.join('\n'));
+
+    if (!mounted) return;
+    setState(() {
+      _doc = doc;
+      _loading = false;
+    });
+  }
+
+  // Reconstruit le markdown depuis l'état réel du Gantt, en réinjectant les notes
+  // riches conservées (clé = id de tâche / d'action). Le Gantt fait foi sur la
+  // structure et les titres ; le document fait foi sur les notes.
+  String _buildFromGantt(_Preserved p) {
+    final sb = StringBuffer();
+    final header = p.header.isNotEmpty
+        ? p.header.trimRight()
+        : '# ${widget.project.title}\n\n'
+            '> 💡 Document de pilotage — synchronisé automatiquement avec le Gantt.';
+    sb.write(header);
+    sb.write('\n');
+
+    for (final task in widget.project.tasks) {
+      if (task.isMilestone) continue;
+      sb.write('\n## ${task.title}\n');
+
+      final leading = p.taskLeading[task.id];
+      if (leading != null && leading.isNotEmpty) {
+        sb.write('\n${leading.join('\n')}\n');
+      }
+      if (task.actions.isNotEmpty) sb.write('\n');
+
+      for (final a in task.actions) {
+        final box = a.done ? '[x]' : '[ ]';
+        final desc = p.actionDesc[a.id];
+        final title =
+            (desc != null && desc.isNotEmpty) ? '${a.title} — $desc' : a.title;
+        sb.write('- $box $title ^task:${task.id}/${a.id}\n');
+        for (final n in (p.actionNotes[a.id] ?? const <String>[])) {
+          sb.write('  $n\n');
+        }
+      }
+
+      final trailing = p.taskTrailing[task.id];
+      if (trailing != null && trailing.isNotEmpty) {
+        sb.write('\n${trailing.join('\n')}\n');
+      }
+    }
+    return '${sb.toString().trimRight()}\n';
+  }
+
+  // Extrait du markdown existant tout ce qui n'est PAS dérivable du Gantt :
+  // l'en-tête (hero), et par carte/action les notes riches à reconduire.
+  _Preserved _extractPreserved(String content) {
+    final p = _Preserved();
+    final lines = content.split('\n');
+    final headRe = RegExp(r'^##\s');
+    final actionRe = RegExp(r'^[-*]\s+\[[ xX]\]\s?(.*)$');
+    final refRe = RegExp(r'\s*\^task:([\w-]+)/([\w-]+)\s*$');
+
+    var i = 0;
+    final headerLines = <String>[];
+    while (i < lines.length && !headRe.hasMatch(lines[i])) {
+      headerLines.add(lines[i]);
+      i++;
+    }
+    p.header = headerLines.join('\n').trimRight();
+
+    while (i < lines.length) {
+      i++; // saute la ligne '## ' (régénérée depuis le Gantt)
+      String? curTaskId;
+      String? lastActionId;
+      var sawAction = false;
+      final leading = <String>[];
+      final trailing = <String>[];
+
+      while (i < lines.length && !headRe.hasMatch(lines[i])) {
+        final raw = lines[i];
+        final indented = raw.startsWith('  ') || raw.startsWith('\t');
+        final am = indented ? null : actionRe.firstMatch(raw);
+
+        if (am != null) {
+          var text = am.group(1)!.trim();
+          final rm = refRe.firstMatch(text);
+          if (rm != null) {
+            curTaskId = rm.group(1);
+            lastActionId = rm.group(2);
+            text = text.replaceFirst(refRe, '').trim();
+            final dash = text.indexOf(' — ');
+            if (dash > 0) p.actionDesc[lastActionId!] = text.substring(dash + 3).trim();
+          } else {
+            lastActionId = null;
+          }
+          sawAction = true;
+          i++;
+          continue;
+        }
+        if (indented && lastActionId != null && raw.trim().isNotEmpty) {
+          (p.actionNotes[lastActionId] ??= []).add(raw.trim());
+          i++;
+          continue;
+        }
+        (sawAction ? trailing : leading).add(raw);
+        i++;
+      }
+
+      if (curTaskId != null) {
+        p.taskLeading[curTaskId] = _trimBlankEdges(leading);
+        p.taskTrailing[curTaskId] = _trimBlankEdges(trailing);
+      }
+    }
+    return p;
+  }
+
+  List<String> _trimBlankEdges(List<String> l) {
+    var start = 0, end = l.length;
+    while (start < end && l[start].trim().isEmpty) start++;
+    while (end > start && l[end - 1].trim().isEmpty) end--;
+    return l.sublist(start, end);
   }
 
   String get _content => (_doc?['content'] as String?) ?? '';
@@ -97,27 +212,6 @@ class _ProjectDocViewState extends State<ProjectDocView> {
     doc['updatedAt'] = DateTime.now().toIso8601String();
     setState(() => _doc = doc);
     await widget.sync.saveDocument(doc);
-  }
-
-  Future<void> _createStarter() async {
-    final now = DateTime.now().toIso8601String();
-    final starter = '# 🚀 ${widget.project.title}\n\n'
-        '> 💡 Document de pilotage — demande à Claude de l\'enrichir, ou édite-le ici.\n\n'
-        '## Étapes\n\n'
-        '- [ ] 1 · Première étape — courte description\n'
-        '- [ ] 2 · Deuxième étape\n';
-    final doc = <String, dynamic>{
-      'id': _uuid.v4(),
-      'title': 'Pilotage — ${widget.project.title}',
-      'content': starter,
-      'category': 'playbook',
-      'projectId': widget.project.id,
-      'createdAt': now,
-      'updatedAt': now,
-    };
-    await widget.sync.saveDocument(doc);
-    if (!mounted) return;
-    setState(() => _doc = doc);
   }
 
   Future<void> _toggleCheck(int lineIndex, bool checked) async {
@@ -156,7 +250,6 @@ class _ProjectDocViewState extends State<ProjectDocView> {
     final cs = Theme.of(context).colorScheme;
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_doc == null) return _emptyState(cs);
-    if (_editing) return _editor(cs);
 
     final nodes = _parse(_content);
     String? heroTitle;
@@ -224,14 +317,11 @@ class _ProjectDocViewState extends State<ProjectDocView> {
           Text(t == 0 ? 'Document de pilotage' : '$d/$t fait',
               style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: cs.onSurface.withOpacity(.6))),
           const Spacer(),
-          TextButton.icon(
-            icon: const Icon(Icons.edit_outlined, size: 15),
-            label: const Text('Éditer'),
-            onPressed: () {
-              _editCtrl.text = _content;
-              setState(() => _editing = true);
-            },
-          ),
+          Icon(Icons.sync_rounded, size: 13, color: cs.onSurface.withOpacity(.35)),
+          const SizedBox(width: 5),
+          Text('Synchronisé avec le Gantt',
+              style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(.35))),
+          const SizedBox(width: 8),
         ],
       ),
     );
@@ -586,69 +676,17 @@ class _ProjectDocViewState extends State<ProjectDocView> {
           children: [
             Icon(Icons.description_outlined, size: 40, color: cs.onSurface.withOpacity(.3)),
             const SizedBox(height: 14),
-            Text('Aucun document de pilotage',
+            Text('Document de pilotage indisponible',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: cs.onSurface.withOpacity(.7))),
             const SizedBox(height: 6),
             Text(
-              'Demande à Claude de créer le document de pilotage de ce projet,\nou pars d\'un document vierge.',
+              'Ce document se génère automatiquement à partir des tâches du Gantt.\nAjoute au moins une tâche au projet pour qu\'il apparaisse.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 12.5, color: cs.onSurface.withOpacity(.45), height: 1.5),
-            ),
-            const SizedBox(height: 18),
-            FilledButton.icon(
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('Créer un document vierge'),
-              onPressed: _createStarter,
             ),
           ],
         ),
       ),
-    );
-  }
-
-  Widget _editor(ColorScheme cs) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.fromLTRB(20, 8, 12, 8),
-          decoration: BoxDecoration(
-            border: Border(bottom: BorderSide(color: cs.outlineVariant.withOpacity(.4))),
-          ),
-          child: Row(
-            children: [
-              Text('Édition markdown',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: cs.onSurface.withOpacity(.6))),
-              const Spacer(),
-              TextButton(onPressed: () => setState(() => _editing = false), child: const Text('Annuler')),
-              const SizedBox(width: 4),
-              FilledButton(
-                onPressed: () async {
-                  await _saveContent(_editCtrl.text);
-                  if (mounted) setState(() => _editing = false);
-                },
-                child: const Text('Enregistrer'),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: TextField(
-              controller: _editCtrl,
-              maxLines: null,
-              expands: true,
-              textAlignVertical: TextAlignVertical.top,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 13, height: 1.5),
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                hintText: '# Titre\n\n> 💡 Sous-titre\n\n## Bloc\n\n- [ ] 1 · Étape — description\n  ⚠️ note',
-                alignLabelWithHint: true,
-              ),
-            ),
-          ),
-        ),
-      ],
     );
   }
 }
@@ -679,4 +717,14 @@ class _CardData {
   final String heading;
   final List<_Node> children = [];
   _CardData(this.heading);
+}
+
+// Contenu riche du playbook NON dérivable du Gantt, conservé entre 2 resyncs.
+// Clés : id de tâche (objectif/call-outs de carte) et id d'action (desc/notes).
+class _Preserved {
+  String header = '';
+  final Map<String, List<String>> taskLeading = {}; // taskId → lignes avant les items
+  final Map<String, List<String>> taskTrailing = {}; // taskId → lignes après les items
+  final Map<String, String> actionDesc = {}; // actionId → description (après ' — ')
+  final Map<String, List<String>> actionNotes = {}; // actionId → notes indentées
 }
