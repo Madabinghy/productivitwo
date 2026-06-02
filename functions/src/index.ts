@@ -270,6 +270,26 @@ export const sendMagicLink = onRequest(
       return;
     }
 
+    // Accès réservé (beta) : compte déjà provisionné (acheteur formation ou
+    // connexion antérieure) OU email pré-autorisé dans la collection `allowlist`
+    // (ajoute un doc `allowlist/{email}` pour inviter un beta-testeur).
+    // Les inconnus sont bloqués → funnel contrôlé, pas de compte fantôme.
+    let authorized = false;
+    try {
+      await admin.auth().getUserByEmail(cleanEmail);
+      authorized = true;
+    } catch {
+      const allow = await db.collection("allowlist").doc(cleanEmail).get();
+      authorized = allow.exists;
+    }
+    if (!authorized) {
+      res.status(403).json({
+        code: "NO_ACCESS",
+        error: "Cet email n'a pas encore accès — il est réservé à la formation pour le moment.",
+      });
+      return;
+    }
+
     const apiKey = process.env.SENDGRID_API_KEY;
     if (!apiKey) { res.status(500).json({ error: "SENDGRID_API_KEY non configurée" }); return; }
 
