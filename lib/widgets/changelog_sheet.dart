@@ -10,7 +10,7 @@ class _Entry {
 }
 
 const _changelog = [
-  _Entry('5.48', '2 juin 2026', [
+  _Entry('5.49', '2 juin 2026', [
     (Icons.auto_awesome, 'ORION repensé : le brief stratège du jour est dans l\'onglet ORION, et tu lui donnes une demande → il exécute et te répond. Fini les messages qui s\'accumulent.'),
     (Icons.warning_amber_outlined, 'Brief : alerte « À ne pas rater aujourd\'hui » mise en avant quand un élément est urgent'),
   ]),

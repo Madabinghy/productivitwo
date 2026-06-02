@@ -53,6 +53,9 @@ workflows:
       - name: Apply signing profiles to Xcode project
         script: xcode-project use-profiles
 
+      - name: Force CocoaPods (désactive Swift Package Manager)
+        script: flutter config --no-enable-swift-package-manager
+
       - name: Get Flutter dependencies
         script: flutter pub get
 
