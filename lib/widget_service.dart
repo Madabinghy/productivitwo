@@ -84,6 +84,7 @@ class WidgetService {
           _kIosWidgetChannel.invokeMethod('setInt', {'key': 'routines_done', 'value': routinesDone}),
           _kIosWidgetChannel.invokeMethod('setInt', {'key': 'routines_total', 'value': routinesTotal}),
           _kIosWidgetChannel.invokeMethod('setString', {'key': 'gantt_json', 'value': ganttJson}),
+          _kIosWidgetChannel.invokeMethod('setString', {'key': 'last_update', 'value': DateTime.now().toIso8601String()}),
         ]);
         await _kIosWidgetChannel.invokeMethod('reload');
       } else {
