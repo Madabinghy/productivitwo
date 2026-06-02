@@ -1,7 +1,7 @@
 name: productivitwo_v1
 description: "Starter V1 for Productivitwo: local JSON storage, activities, timers, daily total."
 publish_to: "none"
-version: 1.0.2+10
+version: 1.0.2+11
 
 environment:
   sdk: ">=3.0.0 <4.0.0"

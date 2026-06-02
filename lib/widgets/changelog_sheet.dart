@@ -10,6 +10,11 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.51', '2 juin 2026', [
+    (Icons.repeat_rounded, 'Lancer une routine : la liste est triée par domaine, comme le lanceur d\'activité'),
+    (Icons.auto_awesome, 'ORION : sa réponse à ta demande s\'affiche dans l\'onglet, avec un effet machine à écrire rétro'),
+    (Icons.grid_view_rounded, 'Accueil : heatmap du temps par domaine + barres des 12 dernières semaines, sous la productivité'),
+  ]),
   _Entry('5.50', '2 juin 2026', [
     (Icons.auto_awesome, 'ORION : correction — plus de blocage « token API requis » après une connexion par email sur un nouvel appareil ; l\'accès se rétablit tout seul'),
   ]),
