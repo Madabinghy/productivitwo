@@ -218,6 +218,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                       domains: _domains,
                       sync: _sync,
                       onRefresh: _load,
+                      documentsByProject: _documentsByProject,
                     ),
                     _FocusView(
                       projects: _projects
@@ -3120,7 +3121,7 @@ class _ProjectCard extends StatelessWidget {
                       color: cs.primary.withOpacity(0.7),
                     ),
                     label: Text(
-                      documents.length == 1 ? 'Voir le programme' : 'Voir les programmes (${documents.length})',
+                      documents.length == 1 ? 'Voir le document' : 'Voir les documents (${documents.length})',
                       style: TextStyle(
                         fontSize: 12,
                         color: cs.primary.withOpacity(0.7),
@@ -5522,11 +5523,13 @@ class _SimpleProjectsView extends StatefulWidget {
   final List<Domain> domains;
   final FirestoreSync sync;
   final VoidCallback onRefresh;
+  final Map<String, List<Map<String, dynamic>>> documentsByProject;
   const _SimpleProjectsView({
     required this.projects,
     required this.domains,
     required this.sync,
     required this.onRefresh,
+    required this.documentsByProject,
   });
   @override
   State<_SimpleProjectsView> createState() => _SimpleProjectsViewState();
@@ -5627,10 +5630,11 @@ class _SimpleProjectsViewState extends State<_SimpleProjectsView> {
             _ProjectCard(
               project: p,
               domains: widget.domains,
-              documents: const [],
+              documents: widget.documentsByProject[p.id] ?? const [],
               sync: widget.sync,
               onTap: () => openGantt(p),
               onArchive: () => _archiveProject(p, true),
+              onDocumentDeleted: widget.onRefresh,
             ),
             const SizedBox(height: 10),
           ],
@@ -5663,10 +5667,11 @@ class _SimpleProjectsViewState extends State<_SimpleProjectsView> {
                 _ProjectCard(
                   project: p,
                   domains: widget.domains,
-                  documents: const [],
+                  documents: widget.documentsByProject[p.id] ?? const [],
                   sync: widget.sync,
                   onTap: () => openGantt(p),
                   onArchive: () => _archiveProject(p, true),
+                  onDocumentDeleted: widget.onRefresh,
                 ),
                 const SizedBox(height: 10),
               ],
