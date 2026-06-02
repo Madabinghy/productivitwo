@@ -1300,10 +1300,10 @@ class _GanttGrid extends StatelessWidget {
           child: IgnorePointer(
             child: DecoratedBox(
               decoration: BoxDecoration(
-                color: _kTealGrid.withOpacity(0.08),
+                color: _kTealGrid.withOpacity(0.05),
                 border: Border(
-                  left: BorderSide(color: _kTealGrid.withOpacity(0.35), width: 1),
-                  right: BorderSide(color: _kTealGrid.withOpacity(0.35), width: 1),
+                  left: BorderSide(color: _kTealGrid.withOpacity(0.20), width: 1),
+                  right: BorderSide(color: _kTealGrid.withOpacity(0.20), width: 1),
                 ),
               ),
             ),
