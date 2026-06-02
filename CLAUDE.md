@@ -112,27 +112,27 @@ Utiliser `deleted: true` (domaines, activités, routines) ou `status: archived/d
 
 ## Cloud Functions (`functions/src/index.ts`)
 
-4 exports HTTP :
+~19 Cloud Functions HTTP (Node 20, 2nd Gen), groupées par rôle (👤 = action user, 🔌 = webhook/cron/MCP, 🛠 = admin) :
 
-| Fonction | URL | Usage |
-|----------|-----|-------|
-| `pushGantt` | `https://pushgantt-dzos75b65q-uc.a.run.app` | HTTP endpoint pour le MCP local |
-| `pushAssistantMessage` | `https://pushassistantmessage-dzos75b65q-uc.a.run.app` | HTTP endpoint pour le MCP local |
-| `getCustomToken` | `https://getcustomtoken-dzos75b65q-uc.a.run.app` | Auth web via token API |
-| `mcpHandler` | `https://mcphandler-dzos75b65q-uc.a.run.app` | MCP remote JSON-RPC (claude.ai) |
+**MCP & Gantt** — `mcpHandler` (MCP remote JSON-RPC, connecteur claude.ai) · `pushGantt`, `pushAssistantMessage` (endpoints du MCP local) · `structureProject` · `markPlanItemDone` (widget iOS)
+**ORION** — `orionWebhook` 👤 (cycle sur demande) · `orionCron` 🔌 (cycle auto) · `orionBrief`, `orionRunCount`, `orionSaveConfig`
+**Auth & accès web** — `sendMagicLink` 👤 (**gaté** : allowlist / compte existant / acheteur formation) · `getCustomToken` · `getVisionAccess` (statut Vision/Pro)
+**Pro / Entitlements** — `revenueCatWebhook` 🔌 (RevenueCat iOS+Android → écrit `subscriptionUntil`)
+**Formation / Onboarding** — `generateFormationAccess` 🔌 (webhook systeme.io) · `applyFormationProfile` · `onboardingChat` (Vision)
+**Admin / Dev** — `adminProductivitwo` 🛠 (UI `/admin.html` ; actions globales `listUsers`, `addAllowlist`, `removeAllowlist`, `deleteUser`, `checkAccess`, `setPro` + édition Gantt par uid) · `githubWebhook` 🔌 (notif PR)
 
 **Fichiers Cloud Functions** :
 
 | Fichier | Rôle |
 |---------|------|
-| `index.ts` | Exports HTTP (pushGantt, mcpHandler, orionWebhook…) |
+| `index.ts` | Tous les exports HTTP (MCP, ORION, auth, Pro, admin, webhooks) |
 | `execute.ts` | Implémentation de chaque outil MCP |
 | `tools.ts` | Définitions inputSchema des outils MCP |
 | `models.ts` | Constantes `MODELS` (Haiku/Sonnet), `getModel(taskType)`, `logTokenUsage()` |
 | `orion.ts` | Cycle ORION (boucle LLM + tools) |
 | `orion_tasks.ts` | Tâches déterministes ORION (sans LLM) |
 | `prompts.ts` | Prompts MCP et template HTML document |
-| `db.ts` | Instance Firestore admin |
+| `db.ts` | Instance Firestore admin + helper **`effectivePro(data)`** (statut Pro) |
 | `types.ts` | Types TypeScript partagés |
 
 **Ajouter un outil MCP** = 4 étapes :
@@ -145,6 +145,29 @@ Après modification : `npm run build` dans `functions/`, puis `firebase deploy -
 
 **Attention** : `executePushGantt` dans `execute.ts` doit toujours appeler `normalizeTasks()`
 pour convertir les actions `string[]` en `TaskAction` maps — ne pas faire de spread direct `{ ...t }`.
+
+---
+
+## Pro / Entitlements & Accès web
+
+**Statut Pro** — source de vérité serveur : collection `formation_access/{uid}` (nom historique). 3 sources combinées par `effectivePro(data)` (`db.ts`) — l'une suffit, aucune n'écrase l'autre :
+- `subscriptionUntil` (Timestamp) — abonné **RevenueCat**, posé par `revenueCatWebhook` (iOS+Android, un seul webhook ; `app_user_id` = Firebase uid via `Purchases.logIn`).
+- `proUntil` (Timestamp) — **grant daté** (comp admin via `setPro`, ou formation). ⚠️ un grant ne pose QUE `proUntil` (jamais `isPro:true`, sinon il n'expirerait jamais).
+- `isPro` (bool) — **legacy** / sans expiration. À éviter.
+
+`isPro effectif = subscriptionUntil>now OU proUntil>now OU isPro===true`.
+
+**Lecteurs** : `getVisionAccess` + `onboardingChat` (web/serveur) · **`ProManager`** mobile (`isPro = RevenueCat OU grant` ; lit `formation_access/{uid}.proUntil`, règle Firestore self-read) · `adminProductivitwo.listUsers` (affiche la source : Abo / Grant / Legacy).
+
+> ⚠️ `ProManager.init()` lit le grant Firestore → **doit tourner APRÈS `Firebase.initializeApp()`** (sinon crash/écran blanc au démarrage). Ordre garanti dans `main.dart`.
+
+**Limites ORION** : enforcées **côté serveur** dans `runOrionCycle` via `effectivePro` (free 1/j, pro 5/j) — pas seulement côté client.
+
+**Accès web (beta)** : `sendMagicLink` n'envoie le lien que si l'email est autorisé = compte Firebase existant OU doc dans la collection **`allowlist`** (id = email minuscule). Inviter un beta = créer `allowlist/{email}` (via `/admin.html`). Inconnu → 403.
+
+**Vision** : 1ʳᵉ session gratuite (tous) ; **révisions Vision = Pro** (gate serveur dans `onboardingChat` sur `effectivePro`).
+
+**Offre** : Free (Vision 1ʳᵉ session, tracking, ORION 1/j) · Pro (Vision révisions, ORION 5/j, stats, rapport temps, app web) · Formation = cours premium + grant Pro. **Règle : une feature = un TIER, jamais un canal d'achat.**
 
 ---
 
@@ -257,6 +280,6 @@ actions: [
 - Soft-delete systématique (jamais de `delete()` direct sur domains/activities)
 - `YYYY-MM-DD` = format ISO pour tout (projets, sessions, MCP)
 - Les documents HTML sont toujours liés à `projectId` + `taskId` quand applicable
-- `activityId` obligatoire sur toute routine/action récurrente
+- Routine = `Activity` `type: habit`, mesurable (`habitFreq` + `habitTarget`), rattachée à un domaine ; `activityId` (lien vers une activité temps) **optionnel** — full routines, plus de « recurring action »
 - Les actions de tâches Gantt (`ProjectTask.actions`) sont des `TaskAction` maps en Firestore —
   `ProjectTask.from()` gère les deux formats (string et map) pour compatibilité ascendante
