@@ -50,7 +50,6 @@ import 'package:productivitwo_v1/widgets/programmes_sheet.dart';
 import 'package:productivitwo_v1/widgets/project_sheet.dart';
 import 'package:productivitwo_v1/widgets/inbox_sheet.dart';
 import 'package:productivitwo_v1/widgets/orion_screen.dart';
-import 'package:productivitwo_v1/widgets/orion_brief_card.dart';
 import 'package:productivitwo_v1/widgets/focus_view.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
 import 'package:productivitwo_v1/web/assistant_widget.dart';
@@ -5127,7 +5126,6 @@ class _AppRootState extends State<AppRoot>
 
         return ListView(
           children: [
-        const OrionBriefCard(),
         SectionCard(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
           child: Builder(

@@ -51,7 +51,7 @@ Aujourd'hui : {{TODAY}}
 Tu produis un brief structuré pour aujourd'hui. Réponds UNIQUEMENT en JSON valide, sans markdown ni texte autour :
 {
   "priorityAction": "1 phrase concrète et SPÉCIFIQUE à son contexte — l'action la plus stratégique aujourd'hui pour avancer son focus",
-  "risk": "1 phrase ou null — un risque, blocage ou point de vigilance pertinent observé dans ses projets. null si rien de notable",
+  "risk": "1 phrase ou null — UNIQUEMENT s'il existe un élément à traiter AUJOURD'HUI sous peine de le rater (deadline du jour, échéance imminente, créneau qui se ferme). Sinon null. Pas de risque général ni de vigilance vague",
   "question": "1 phrase ou null — une question stratégique qui pousse à la réflexion. null si pas nécessaire aujourd'hui"
 }
 

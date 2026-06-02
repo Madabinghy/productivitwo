@@ -853,7 +853,7 @@ async function executePushGantt(uid, input) {
     const isUpdate = !!project.id;
     return (`✅ Projet "${project.title}" ${isUpdate ? "mis à jour" : "créé"} dans Productivitwo !\n` +
         `• ${(project.tasks || []).length} tâche(s) · ${(project.phases || []).length} phase(s)\n` +
-        `• Voir sur : https://productivitwo-app.web.app\n` +
+        `• Voir sur : https://app.productivitwo.com\n` +
         `• projectId : ${projectId}`);
 }
 async function executeAddTask(uid, projectId, task) {

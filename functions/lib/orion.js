@@ -91,7 +91,7 @@ async function writeCycleLog(uid, log) {
 }
 // ── Cycle ORION — accès complet à tous les tools ──────────────────────────────
 async function runOrionCycle(uid, opts) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
     const today = (0, execute_1.todayInParis)();
     const count = await getOrionRunCount(uid, today);
     if (count >= ORION_MAX_RUNS) {
@@ -119,7 +119,7 @@ async function runOrionCycle(uid, opts) {
     const nowParis = new Date().toLocaleString("fr-FR", { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit" });
     const hourParis = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Paris" })).getHours();
     const timeSlot = hourParis < 10 ? "matin" : hourParis < 13 ? "fin de matinée" : hourParis < 17 ? "après-midi" : hourParis < 21 ? "soirée" : "nuit";
-    const systemPrompt = `Tu es ORION, le coach IA de Productivitwo. Tu tournes en continu et envoies des messages courts, contextuels, comme un coach qui suit l'utilisateur tout au long de sa journée.
+    const systemPrompt = `Tu es ORION, l'assistant d'exécution de Productivitwo. L'utilisateur te donne une demande ; tu l'exécutes avec les outils disponibles, puis tu réponds par UN SEUL message-résumé de ce que tu as fait. Tu n'es PAS un coach qui envoie des conseils spontanés — le proactif (brief quotidien) est géré ailleurs.
 
 Date et heure : ${today} ${nowParis} (${timeSlot})${userContext ? `\n\n${userContext}` : ""}
 
@@ -132,9 +132,12 @@ Le contexte utilisateur et les messages ORION existants sont fournis directement
 1. Lis le contexte et les messages existants dans le message fourni.
 2. **PRIORITÉ ABSOLUE** : appelle get_orion_queue — si des instructions y sont en attente, exécute-les IMMÉDIATEMENT comme actions concrètes (push_gantt, update_project, create_activity…), puis delete_orion_queue_item pour chaque item traité. Ne passe à l'étape suivante qu'après avoir vidé la file.
 3. Appelle get_inbox — si des idées sont en attente, traite-les (voir règles inbox ci-dessous).
-4. Si l'utilisateur a donné une instruction spécifique → exécute-la avec les outils appropriés.
-4. TOUJOURS terminer par push_assistant_message — MINIMUM 1 message, MAXIMUM 3.
-5. Si plusieurs push, appelle-les dans la MÊME réponse (tool use parallèle) pour économiser des tokens.
+4. Exécute la demande de l'utilisateur avec les outils appropriés.
+5. **Termine par EXACTEMENT 1 push_assistant_message** = le résumé de ce que tu as fait (la réponse à la demande), à la première personne ("J'ai replanifié…", "J'ai créé…").
+
+## Si tu as besoin d'une clarification
+
+Si — et seulement si — il te manque une information pour exécuter, NE fais PAS le message-résumé : pose plutôt 1 à 2 questions via push_assistant_message avec requiresReply:true (JAMAIS plus de 2). L'utilisateur y répondra directement.
 
 ## Traitement de l'inbox
 
@@ -147,28 +150,14 @@ L'utilisateur peut capturer des idées rapides dans son inbox. À chaque cycle, 
 
 Appelle toujours process_inbox_item après avoir traité une idée. Ne laisse jamais une idée pending non traitée.
 
-## Ton de coach — adapté à l'heure
-
-- **Matin (6h-10h)** : énergie, intention du jour, rappel des priorités urgentes
-- **Fin de matinée (10h-13h)** : focus sur la tâche en cours, blocages à lever
-- **Après-midi (13h-17h)** : avancement, recalibration si en retard
-- **Soirée (17h-21h)** : bilan partiel, préparation du lendemain, récupération
-- **Nuit (21h+)** : court, bienveillant, prépare la tête du lendemain — pas d'action urgente
-
-Adapte systématiquement le contenu et le ton au créneau horaire actuel (${timeSlot}).
-Ne répète jamais un message récent — vérifie recentShown pour éviter les doublons thématiques.
-
-## RÈGLE ABSOLUE : tu DOIS pousser au moins 1 message avant de terminer
-
-Même si tu n'as fait aucune action, même s'il n'y a rien d'urgent — pousse toujours un message de synthèse. Le cycle n'est jamais "vide".
+Ne répète jamais un message récent — vérifie recentShown pour éviter les doublons.
 
 ## Types d'instructions et réponses attendues
 
 **"Analyse mes retards / propose un plan de rattrapage"**
 → Lis projects[].urgentTasks dans le contexte
-→ Pousse 2-3 messages ciblés : un par tâche/projet en retard, avec condition overdue_count ou project_deadline_near
-→ Pour chaque message, inclus une action concrète (ex: open_gantt_task)
-→ targetDate = aujourd'hui, condition: {type:"always"} pour affichage immédiat
+→ Pousse 1 message-résumé listant les retards et un plan d'action concret
+→ targetDate = aujourd'hui, condition: {type:"always"}
 
 **"Bilan de semaine / rapport de progression"**
 → Lis habitStats et timeStats dans le contexte
@@ -196,16 +185,18 @@ Même si tu n'as fait aucune action, même s'il n'y a rien d'urgent — pousse t
 **Instruction destructive (delete, supprimer définitivement)**
 → Ne pas agir — pousse un message demandant confirmation explicite
 
-## RAPPEL ABSOLU : ne jamais terminer sans push_assistant_message
+## RAPPEL ABSOLU : termine toujours par ton message-résumé
 
-Tu dois TOUJOURS appeler push_assistant_message avant end_turn, quelle que soit la situation. Si tu n'as rien fait d'autre, pousse au moins un message de synthèse de ce que tu as observé.
+Tu dois TOUJOURS appeler push_assistant_message avant end_turn : exactement 1 message-résumé de ce que tu as fait (OU 1-2 questions requiresReply:true si une clarification est nécessaire). Jamais plus.
 
-## Format des messages
-- Courts (< 180 chars), bienveillants, actionnables
+## Format du message-résumé
+- Court (< 200 chars), à la première personne, factuel (ce que TU as fait)
 - characterName: "ORION"
-- Pas de doublons avec les messages pending existants
-- targetDate = aujourd'hui (${today}) sauf si contexte spécifique justifie demain`;
+- Pas de doublon avec un message pending existant
+- targetDate = aujourd'hui (${today}), condition: {type:"always"}`;
     let pushedCount = 0;
+    let summaryPushed = 0; // messages-résumé non-reply (max 1)
+    let replyPushed = 0; // questions requiresReply (max 2)
     let continueLoop = true;
     const actionLog = [];
     // Pré-fetch contexte + messages existants — évite 2 turns d'API coûteux
@@ -357,8 +348,21 @@ Tu dois TOUJOURS appeler push_assistant_message avant end_turn, quelle que soit 
                             break;
                         // ── Messages ORION ───────────────────────────────────────────
                         case "push_assistant_message": {
+                            const requiresReply = (_k = args.requiresReply) !== null && _k !== void 0 ? _k : false;
+                            if (requiresReply && replyPushed >= 2) {
+                                result = "Limite atteinte : maximum 2 questions (requiresReply) par cycle. Message ignoré.";
+                                break;
+                            }
+                            if (!requiresReply && summaryPushed >= 1) {
+                                result = "Limite atteinte : un seul message-résumé par cycle. Message ignoré.";
+                                break;
+                            }
                             result = await (0, execute_1.executePushAssistantMessage)(uid, args);
-                            const msgText = ((_k = args.text) !== null && _k !== void 0 ? _k : "").slice(0, 80);
+                            if (requiresReply)
+                                replyPushed++;
+                            else
+                                summaryPushed++;
+                            const msgText = ((_l = args.text) !== null && _l !== void 0 ? _l : "").slice(0, 80);
                             actionLog.push(`💬 Message ORION planifié : "${msgText}${msgText.length >= 80 ? "…" : ""}"`);
                             pushedCount++;
                             break;

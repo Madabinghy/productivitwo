@@ -594,17 +594,18 @@ class _OrionBriefCardState extends State<OrionBriefCard>
           style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 1.2, color: _kGold),
         ),
         const SizedBox(height: 10),
+        // Ligne urgente épinglée en tête (si présente) — la seule alerte du jour
+        if (b.risk != null && b.risk!.isNotEmpty) ...[
+          FadeTransition(
+            opacity: _fadeAnims[1],
+            child: _urgentBanner(cs, b.risk!),
+          ),
+          const SizedBox(height: 10),
+        ],
         FadeTransition(
           opacity: _fadeAnims[0],
           child: _briefRow(cs, '→', 'Action prioritaire', b.priorityAction, _kGold),
         ),
-        if (b.risk != null && b.risk!.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          FadeTransition(
-            opacity: _fadeAnims[1],
-            child: _briefRow(cs, '⚠', 'Point de vigilance', b.risk!, _kRisk),
-          ),
-        ],
         if (b.question != null && b.question!.isNotEmpty) ...[
           const SizedBox(height: 10),
           FadeTransition(
@@ -617,6 +618,49 @@ class _OrionBriefCardState extends State<OrionBriefCard>
         const SizedBox(height: 10),
         _buildFeedbackRow(cs),
       ],
+    );
+  }
+
+  Widget _urgentBanner(ColorScheme cs, String text) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: _kRisk.withOpacity(.16),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _kRisk.withOpacity(.55), width: 1.2),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('⚠', style: TextStyle(fontSize: 14, color: _kRisk)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'À NE PAS RATER AUJOURD\'HUI',
+                  style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: _kRisk,
+                      letterSpacing: 0.4),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  text,
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurface.withOpacity(.9),
+                      height: 1.5),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 

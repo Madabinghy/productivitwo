@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/pro_manager.dart';
+import 'package:productivitwo_v1/widgets/orion_brief_card.dart';
 import 'package:productivitwo_v1/widgets/paywall_sheet.dart';
 
 // Palette ORION
@@ -57,8 +58,9 @@ class _OrionScreenState extends State<OrionScreen>
   final _needsCtrl = TextEditingController();
 
   String? _uid;
-  List<_OrionMessage> _replyMessages = [];   // clarifications sans limite
-  List<_OrionMessage> _messages = [];        // messages normaux, max 5
+  List<_OrionMessage> _replyMessages = [];   // questions d'ORION, max 2
+  _OrionMessage? _lastResponse;              // dernière réponse d'ORION (du jour)
+  bool _settingsExpanded = false;            // bloc « Réglages ORION » dépliable
 
   late final AnimationController _pulseCtrl;
   late final Animation<double> _pulseAnim;
@@ -151,8 +153,33 @@ class _OrionScreenState extends State<OrionScreen>
         return db.compareTo(da);
       });
 
-      _replyMessages = allMessages.where((m) => m.requiresReply).toList();
-      _messages = allMessages.where((m) => !m.requiresReply).take(5).toList();
+      _replyMessages = allMessages.where((m) => m.requiresReply).take(2).toList();
+
+      // Réponse la plus récente d'ORION (résultat de ta dernière demande) : on n'en garde
+      // qu'une, du jour. Les autres messages non-reply sont archivés (dismissed) pour ne
+      // rien laisser traîner dans l'onglet.
+      final now = DateTime.now();
+      bool isToday(_OrionMessage m) {
+        final d = m.shownAt ?? m.createdAt;
+        if (d != null) {
+          return d.year == now.year && d.month == now.month && d.day == now.day;
+        }
+        return m.targetDate ==
+            '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      }
+
+      _OrionMessage? latest;
+      for (final m in allMessages.where((m) => !m.requiresReply)) {
+        if (latest == null && isToday(m)) {
+          latest = m; // la plus récente du jour (liste déjà triée desc)
+        } else {
+          FirebaseFirestore.instance
+              .collection('users/$uid/assistant_messages')
+              .doc(m.id)
+              .update({'status': 'dismissed'});
+        }
+      }
+      _lastResponse = latest;
 
       if (results.length > 2 && results[2] is http.Response) {
         final resp = results[2] as http.Response;
@@ -210,8 +237,8 @@ class _OrionScreenState extends State<OrionScreen>
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text(
               skipped
-                  ? 'Limite atteinte — cycle ignoré'
-                  : 'ORION a généré $pushed message${pushed > 1 ? 's' : ''}',
+                  ? 'Limite atteinte — demande ignorée'
+                  : (pushed > 0 ? '✅ ORION a répondu' : 'ORION a traité ta demande'),
             ),
             behavior: SnackBarBehavior.floating,
             backgroundColor: _surface2,
@@ -310,12 +337,15 @@ class _OrionScreenState extends State<OrionScreen>
   }
 
   Widget _buildBody(bool isPro) {
-    final isFirstLaunch = _userNeeds.isEmpty && _messages.isEmpty;
+    final isFirstLaunch =
+        _userNeeds.isEmpty && _replyMessages.isEmpty && _lastResponse == null;
 
     return ListView(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
       children: [
+        const OrionBriefCard(),
+        const SizedBox(height: 6),
         _StatusCard(isPro: isPro, runCount: _runCount),
         const SizedBox(height: 10),
         const _TipCard(),
@@ -325,43 +355,81 @@ class _OrionScreenState extends State<OrionScreen>
           _OnboardingCard(
             needsDone: _userNeeds.isNotEmpty,
             activateDone: _runCount > 0,
-            messagesDone: _messages.isNotEmpty,
+            messagesDone: _lastResponse != null || _replyMessages.isNotEmpty,
           ),
         ],
 
-        const SizedBox(height: 20),
-        _SectionLabel('INSTRUCTIONS PERMANENTES'),
-        const SizedBox(height: 4),
-        const Text(
-          'Lues à chaque cycle automatique (toutes les 6h)',
-          style: TextStyle(fontFamily: 'monospace', fontSize: 10, color: _muted),
-        ),
-        const SizedBox(height: 8),
-        _buildNeedsField(),
+        // Réponse récente d'ORION (résultat de ta dernière demande)
+        if (_lastResponse != null) ...[
+          const SizedBox(height: 24),
+          _SectionLabel('RÉPONSE D\'ORION'),
+          const SizedBox(height: 8),
+          _MessageCard(
+              message: _lastResponse!, sync: widget.sync, uid: _uid ?? ''),
+        ],
+
+        // Questions auxquelles ORION attend ta réponse (max 2)
+        if (_replyMessages.isNotEmpty) ...[
+          const SizedBox(height: 24),
+          _SectionLabel('ORION ATTEND TA RÉPONSE (${_replyMessages.length})'),
+          const SizedBox(height: 8),
+          for (final m in _replyMessages)
+            _MessageCard(message: m, sync: widget.sync, uid: _uid ?? ''),
+        ],
+
+        // Réglages ORION (instructions permanentes) — repliable
+        const SizedBox(height: 24),
+        _buildSettingsSection(),
 
         if (_error != null) ...[
           const SizedBox(height: 12),
           _ErrorBanner(message: _error!),
         ],
+      ],
+    );
+  }
 
-        const SizedBox(height: 28),
-        _SectionLabel('MESSAGES ORION'),
-        const SizedBox(height: 12),
-
-        if (_replyMessages.isEmpty && _messages.isEmpty)
-          _buildEmptyState()
-        else ...[
-          if (_replyMessages.isNotEmpty) ...[
-            _SectionLabel('EN ATTENTE DE TA RÉPONSE (${_replyMessages.length})'),
-            const SizedBox(height: 8),
-            for (final m in _replyMessages) _MessageCard(message: m, sync: widget.sync, uid: _uid ?? ''),
-            const SizedBox(height: 16),
-          ],
-          if (_messages.isNotEmpty) ...[
-            if (_replyMessages.isNotEmpty) _SectionLabel('RÉCENTS'),
-            if (_replyMessages.isNotEmpty) const SizedBox(height: 8),
-            for (final m in _messages) _MessageCard(message: m, sync: widget.sync, uid: _uid ?? ''),
-          ],
+  Widget _buildSettingsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _settingsExpanded = !_settingsExpanded),
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(
+              children: [
+                Icon(
+                    _settingsExpanded
+                        ? Icons.expand_less
+                        : Icons.expand_more,
+                    size: 16,
+                    color: _muted),
+                const SizedBox(width: 6),
+                const Text(
+                  'RÉGLAGES ORION',
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.5,
+                    color: _muted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_settingsExpanded) ...[
+          const SizedBox(height: 8),
+          const Text(
+            'Instructions permanentes — lues à chaque demande',
+            style:
+                TextStyle(fontFamily: 'monospace', fontSize: 10, color: _muted),
+          ),
+          const SizedBox(height: 8),
+          _buildNeedsField(),
         ],
       ],
     );
@@ -399,33 +467,6 @@ class _OrionScreenState extends State<OrionScreen>
     );
   }
 
-  Widget _buildEmptyState() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 36),
-      child: Column(
-        children: const [
-          Text('◉',
-              style: TextStyle(color: _muted, fontSize: 28),
-              textAlign: TextAlign.center),
-          SizedBox(height: 12),
-          Text(
-            'Aucun message pour l\'instant.',
-            style: TextStyle(
-                fontFamily: 'monospace', fontSize: 13, color: _muted),
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: 4),
-          Text(
-            'Active ORION pour recevoir tes premiers conseils.',
-            style: TextStyle(
-                fontFamily: 'monospace', fontSize: 11, color: _muted),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildReplyBar(bool isPro, bool limitReached) {
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final safePadding = MediaQuery.of(context).padding.bottom;
@@ -441,7 +482,7 @@ class _OrionScreenState extends State<OrionScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Réponse ponctuelle — envoyée au prochain cycle, puis effacée',
+            'Demande à ORION — il exécute et te répond',
             style: TextStyle(fontFamily: 'monospace', fontSize: 10, color: _muted),
           ),
           const SizedBox(height: 6),
@@ -455,7 +496,7 @@ class _OrionScreenState extends State<OrionScreen>
                   style: const TextStyle(
                       fontFamily: 'monospace', fontSize: 13, color: _text),
                   decoration: InputDecoration(
-                    hintText: 'Ex : le projet X est repoussé, ignore-le…',
+                    hintText: 'Ex : réorganise ma semaine, prépare demain…',
                     hintStyle: const TextStyle(
                         fontFamily: 'monospace', fontSize: 11, color: _muted),
                     filled: true,
@@ -1024,7 +1065,7 @@ class _ActivateButton extends StatelessWidget {
                     strokeWidth: 2, color: _muted),
               )
             : Text(
-                limitReached ? 'Limite' : 'Activer',
+                limitReached ? 'Limite' : 'Envoyer',
                 style: TextStyle(
                   fontFamily: 'monospace',
                   fontSize: 12,
