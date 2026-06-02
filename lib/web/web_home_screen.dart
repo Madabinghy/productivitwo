@@ -72,9 +72,11 @@ class _WebHomeScreenState extends State<WebHomeScreen>
       if (!mounted) return;
       final tokens = results[2] as List;
       final allDocs = results[4] as List<Map<String, dynamic>>;
-      // Group documents by projectId
+      // Group documents by projectId (hors playbooks : ils ont leur vue dédiée
+      // sous le Gantt — pas dans l'ancien viewer HTML « Voir le document »).
       final byProject = <String, List<Map<String, dynamic>>>{};
       for (final doc in allDocs) {
+        if ((doc['category'] as String?) == 'playbook') continue;
         final pid = doc['projectId'] as String?;
         if (pid != null && pid.isNotEmpty) {
           byProject.putIfAbsent(pid, () => []).add(doc);

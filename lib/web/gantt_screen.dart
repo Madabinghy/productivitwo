@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/web/gantt_pdf_exporter.dart';
+import 'package:productivitwo_v1/web/project_doc_view.dart';
 import 'package:uuid/uuid.dart';
 
 const _uuid = Uuid();
@@ -96,6 +97,7 @@ class _GanttScreenState extends State<GanttScreen> {
   late Project _project;
   final _sync = FirestoreSync();
   bool _forceLight = false;
+  bool _docView = false; // false = Gantt, true = Document de pilotage
   StrategicObjective? _objective;
 
   @override
@@ -506,16 +508,52 @@ class _GanttScreenState extends State<GanttScreen> {
       ),
       body: Column(
         children: [
-          _GanttDashboard(project: _project),
-          Expanded(child: _GanttBody(
-            project: _project,
-            onTaskTap: _onTaskTap,
-            forceLight: _forceLight,
-            onToggleLight: () => setState(() => _forceLight = !_forceLight),
-            onAddTask: _addTask,
-            onPhaseTap: _editPhase,
-          )),
+          _buildViewToggle(cs),
+          if (_docView)
+            Expanded(
+                child: ProjectDocView(
+              project: _project,
+              sync: _sync,
+              accentColor: _accentColor(),
+              onProjectChanged: () => setState(() {}),
+            ))
+          else ...[
+            _GanttDashboard(project: _project),
+            Expanded(child: _GanttBody(
+              project: _project,
+              onTaskTap: _onTaskTap,
+              forceLight: _forceLight,
+              onToggleLight: () => setState(() => _forceLight = !_forceLight),
+              onAddTask: _addTask,
+              onPhaseTap: _editPhase,
+            )),
+          ],
         ],
+      ),
+    );
+  }
+
+  // Couleur d'accent du document = couleur du domaine du projet (sinon or).
+  Color _accentColor() {
+    final dom = widget.domains.where((d) => d.id == _project.domainId).firstOrNull;
+    final cv = dom?.colorValue;
+    return cv != null ? Color(cv) : const Color(0xFFC9A84C);
+  }
+
+  Widget _buildViewToggle(ColorScheme cs) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      child: Center(
+        child: SegmentedButton<bool>(
+          showSelectedIcon: false,
+          style: const ButtonStyle(visualDensity: VisualDensity.compact),
+          segments: const [
+            ButtonSegment(value: false, label: Text('Gantt'), icon: Icon(Icons.timeline, size: 16)),
+            ButtonSegment(value: true, label: Text('Document'), icon: Icon(Icons.checklist_rounded, size: 16)),
+          ],
+          selected: {_docView},
+          onSelectionChanged: (s) => setState(() => _docView = s.first),
+        ),
       ),
     );
   }
