@@ -2091,7 +2091,7 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
 // pousser dans Productivitwo pendant les sessions de travail (sans passe-plat
 // avec le MCP de Claude.ai). Secret stocké en Firebase Secret Manager.
 exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "public", secrets: ["ADMIN_PUSH_SECRET"] }, async (req, res) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m;
     if (req.method === "OPTIONS") {
         res.status(204).send("");
         return;
@@ -2103,6 +2103,74 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
     const { adminSecret, uid, action, payload } = req.body;
     if (!adminSecret || adminSecret.trim() !== ((_a = process.env.ADMIN_PUSH_SECRET) !== null && _a !== void 0 ? _a : "").trim()) {
         res.status(401).json({ error: "Secret invalide" });
+        return;
+    }
+    // ── Actions globales (sans uid) : gestion des utilisateurs / allowlist ──────
+    try {
+        if (action === "listUsers") {
+            const [authList, allowSnap, faSnap] = await Promise.all([
+                admin.auth().listUsers(1000),
+                db_1.db.collection("allowlist").get(),
+                db_1.db.collection("formation_access").get(),
+            ]);
+            const allowEmails = new Set(allowSnap.docs.map((d) => d.id.toLowerCase()));
+            const faByUid = {};
+            faSnap.docs.forEach((d) => { faByUid[d.id] = d.data(); });
+            const tsToIso = (v) => v && typeof v.toDate === "function"
+                ? v.toDate().toISOString() : null;
+            const seen = new Set();
+            const users = authList.users.map((u) => {
+                var _a, _b, _c, _d;
+                const email = ((_a = u.email) !== null && _a !== void 0 ? _a : "").toLowerCase();
+                seen.add(email);
+                const providers = u.providerData.map((p) => p.providerId);
+                const fa = faByUid[u.uid];
+                return {
+                    uid: u.uid,
+                    email: (_b = u.email) !== null && _b !== void 0 ? _b : null,
+                    providers,
+                    source: providers.includes("apple.com") ? "iOS (Apple)"
+                        : fa ? "Formation" : "Web (email)",
+                    createdAt: (_c = u.metadata.creationTime) !== null && _c !== void 0 ? _c : null,
+                    lastSignIn: (_d = u.metadata.lastSignInTime) !== null && _d !== void 0 ? _d : null,
+                    formation: !!fa,
+                    purchasedAt: fa ? tsToIso(fa.purchasedAt) : null,
+                    onboardingDone: (fa === null || fa === void 0 ? void 0 : fa.onboardingDone) === true,
+                    isPro: (fa === null || fa === void 0 ? void 0 : fa.isPro) === true,
+                    lastVisionAt: fa ? tsToIso(fa.lastVisionAt) : null,
+                    allowlisted: allowEmails.has(email),
+                };
+            });
+            // Emails dans l'allowlist sans compte encore créé (invités en attente).
+            const invited = [...allowEmails].filter((e) => !seen.has(e)).map((e) => ({
+                uid: null, email: e, providers: [], source: "Invité (allowlist)",
+                createdAt: null, lastSignIn: null, formation: false, purchasedAt: null,
+                onboardingDone: false, isPro: false, lastVisionAt: null, allowlisted: true,
+            }));
+            res.status(200).json({ users: [...users, ...invited] });
+            return;
+        }
+        if (action === "addAllowlist") {
+            const email = ((_b = payload === null || payload === void 0 ? void 0 : payload.email) !== null && _b !== void 0 ? _b : "").trim().toLowerCase();
+            if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+                res.status(400).json({ error: "Email invalide" });
+                return;
+            }
+            await db_1.db.collection("allowlist").doc(email).set({ addedAt: db_1.FieldValue.serverTimestamp(), addedBy: "admin" }, { merge: true });
+            res.status(200).json({ success: true, email });
+            return;
+        }
+        if (action === "removeAllowlist") {
+            const email = ((_c = payload === null || payload === void 0 ? void 0 : payload.email) !== null && _c !== void 0 ? _c : "").trim().toLowerCase();
+            await db_1.db.collection("allowlist").doc(email).delete();
+            res.status(200).json({ success: true, email });
+            return;
+        }
+    }
+    catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error("admin global action error:", msg);
+        res.status(500).json({ error: msg });
         return;
     }
     if (!uid) {
@@ -2155,7 +2223,7 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
                 res.status(404).json({ error: "Projet introuvable" });
                 return;
             }
-            const rawTasks = (_c = (_b = snap.data()) === null || _b === void 0 ? void 0 : _b.tasks) !== null && _c !== void 0 ? _c : [];
+            const rawTasks = (_e = (_d = snap.data()) === null || _d === void 0 ? void 0 : _d.tasks) !== null && _e !== void 0 ? _e : [];
             const tasks = rawTasks.map(t => JSON.parse(JSON.stringify(t, (_k, v) => v && typeof v === "object" && typeof v.toDate === "function" ? v.toDate().toISOString() : v)));
             const idx = tasks.findIndex(t => t.id === taskId);
             if (idx === -1) {
@@ -2205,13 +2273,13 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
                 res.status(404).json({ error: "Projet introuvable" });
                 return;
             }
-            const tasks = ((_e = (_d = snap.data()) === null || _d === void 0 ? void 0 : _d.tasks) !== null && _e !== void 0 ? _e : []).map(t => JSON.parse(JSON.stringify(t, (_k, v) => v && typeof v === "object" && typeof v.toDate === "function" ? v.toDate().toISOString() : v)));
+            const tasks = ((_g = (_f = snap.data()) === null || _f === void 0 ? void 0 : _f.tasks) !== null && _g !== void 0 ? _g : []).map(t => JSON.parse(JSON.stringify(t, (_k, v) => v && typeof v === "object" && typeof v.toDate === "function" ? v.toDate().toISOString() : v)));
             const idx = tasks.findIndex(t => t.id === taskId);
             if (idx === -1) {
                 res.status(404).json({ error: "Tâche introuvable" });
                 return;
             }
-            const actions = ((_f = tasks[idx].actions) !== null && _f !== void 0 ? _f : []).slice();
+            const actions = ((_h = tasks[idx].actions) !== null && _h !== void 0 ? _h : []).slice();
             const newAction = { id: (0, uuid_1.v4)(), title, done: false, doneAt: null, createdAt: new Date().toISOString() };
             actions.push(newAction);
             tasks[idx] = Object.assign(Object.assign({}, tasks[idx]), { actions });
@@ -2227,13 +2295,13 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
                 res.status(404).json({ error: "Projet introuvable" });
                 return;
             }
-            const tasks = ((_h = (_g = snap.data()) === null || _g === void 0 ? void 0 : _g.tasks) !== null && _h !== void 0 ? _h : []).map(t => JSON.parse(JSON.stringify(t, (_k, v) => v && typeof v === "object" && typeof v.toDate === "function" ? v.toDate().toISOString() : v)));
+            const tasks = ((_l = (_j = snap.data()) === null || _j === void 0 ? void 0 : _j.tasks) !== null && _l !== void 0 ? _l : []).map(t => JSON.parse(JSON.stringify(t, (_k, v) => v && typeof v === "object" && typeof v.toDate === "function" ? v.toDate().toISOString() : v)));
             const tIdx = tasks.findIndex(t => t.id === taskId);
             if (tIdx === -1) {
                 res.status(404).json({ error: "Tâche introuvable" });
                 return;
             }
-            const actions = ((_j = tasks[tIdx].actions) !== null && _j !== void 0 ? _j : []).slice();
+            const actions = ((_m = tasks[tIdx].actions) !== null && _m !== void 0 ? _m : []).slice();
             const aIdx = actions.findIndex(a => a.id === actionId);
             if (aIdx === -1) {
                 res.status(404).json({ error: "Action introuvable" });
@@ -2301,7 +2369,7 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
             return;
         }
         if (action === "updateProject") {
-            const _l = payload, { projectId } = _l, updates = __rest(_l, ["projectId"]);
+            const _o = payload, { projectId } = _o, updates = __rest(_o, ["projectId"]);
             await db_1.db.collection(`users/${uid}/projects`).doc(projectId).update(Object.assign(Object.assign({}, updates), { updatedAt: db_1.FieldValue.serverTimestamp() }));
             res.status(200).json({ success: true });
             return;

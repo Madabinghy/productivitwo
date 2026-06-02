@@ -2137,13 +2137,84 @@ export const adminProductivitwo = onRequest(
     const { adminSecret, uid, action, payload } = req.body as {
       adminSecret?: string;
       uid?: string;
-      action?: "inspect" | "addTask" | "updateTask" | "addProject" | "updateProject" | "addActionToTask" | "markActionDone" | "setSchedule";
+      action?: "inspect" | "addTask" | "updateTask" | "addProject" | "updateProject" | "addActionToTask" | "markActionDone" | "setSchedule" | "listUsers" | "addAllowlist" | "removeAllowlist";
       payload?: Record<string, unknown>;
     };
 
     if (!adminSecret || adminSecret.trim() !== (process.env.ADMIN_PUSH_SECRET ?? "").trim()) {
       res.status(401).json({ error: "Secret invalide" }); return;
     }
+
+    // ── Actions globales (sans uid) : gestion des utilisateurs / allowlist ──────
+    try {
+      if (action === "listUsers") {
+        const [authList, allowSnap, faSnap] = await Promise.all([
+          admin.auth().listUsers(1000),
+          db.collection("allowlist").get(),
+          db.collection("formation_access").get(),
+        ]);
+        const allowEmails = new Set(allowSnap.docs.map((d) => d.id.toLowerCase()));
+        const faByUid: Record<string, Record<string, unknown>> = {};
+        faSnap.docs.forEach((d) => { faByUid[d.id] = d.data(); });
+        const tsToIso = (v: unknown): string | null =>
+          v && typeof (v as { toDate?: unknown }).toDate === "function"
+            ? (v as { toDate: () => Date }).toDate().toISOString() : null;
+
+        const seen = new Set<string>();
+        const users = authList.users.map((u) => {
+          const email = (u.email ?? "").toLowerCase();
+          seen.add(email);
+          const providers = u.providerData.map((p) => p.providerId);
+          const fa = faByUid[u.uid];
+          return {
+            uid: u.uid,
+            email: u.email ?? null,
+            providers,
+            source: providers.includes("apple.com") ? "iOS (Apple)"
+              : fa ? "Formation" : "Web (email)",
+            createdAt: u.metadata.creationTime ?? null,
+            lastSignIn: u.metadata.lastSignInTime ?? null,
+            formation: !!fa,
+            purchasedAt: fa ? tsToIso(fa.purchasedAt) : null,
+            onboardingDone: fa?.onboardingDone === true,
+            isPro: fa?.isPro === true,
+            lastVisionAt: fa ? tsToIso(fa.lastVisionAt) : null,
+            allowlisted: allowEmails.has(email),
+          };
+        });
+        // Emails dans l'allowlist sans compte encore créé (invités en attente).
+        const invited = [...allowEmails].filter((e) => !seen.has(e)).map((e) => ({
+          uid: null, email: e, providers: [] as string[], source: "Invité (allowlist)",
+          createdAt: null, lastSignIn: null, formation: false, purchasedAt: null,
+          onboardingDone: false, isPro: false, lastVisionAt: null, allowlisted: true,
+        }));
+        res.status(200).json({ users: [...users, ...invited] });
+        return;
+      }
+
+      if (action === "addAllowlist") {
+        const email = ((payload?.email as string) ?? "").trim().toLowerCase();
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+          res.status(400).json({ error: "Email invalide" }); return;
+        }
+        await db.collection("allowlist").doc(email).set(
+          { addedAt: FieldValue.serverTimestamp(), addedBy: "admin" }, { merge: true });
+        res.status(200).json({ success: true, email });
+        return;
+      }
+
+      if (action === "removeAllowlist") {
+        const email = ((payload?.email as string) ?? "").trim().toLowerCase();
+        await db.collection("allowlist").doc(email).delete();
+        res.status(200).json({ success: true, email });
+        return;
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("admin global action error:", msg);
+      res.status(500).json({ error: msg }); return;
+    }
+
     if (!uid) { res.status(400).json({ error: "uid requis" }); return; }
 
     try {
