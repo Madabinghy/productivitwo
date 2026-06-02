@@ -1806,7 +1806,7 @@ exports.onboardingChat = (0, https_1.onRequest)({ cors: true, invoker: "public",
     const accessDoc = await db_1.db.collection("formation_access").doc(uid).get();
     const accessData = (_a = accessDoc.data()) !== null && _a !== void 0 ? _a : {};
     const onboardingDone = accessData.onboardingDone === true;
-    const isPro = accessData.isPro === true; // positionné via RevenueCat webhook (TODO)
+    const isPro = effectivePro(accessData);
     // ── Actions hors-chat ─────────────────────────────────────────────────────
     if (action === "checkSession") {
         const snap = await db_1.db.collection("formation_sessions").doc(uid).get();
@@ -2090,8 +2090,17 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
 // Endpoint protégé par secret pour permettre à Claude Code d'inspecter et
 // pousser dans Productivitwo pendant les sessions de travail (sans passe-plat
 // avec le MCP de Claude.ai). Secret stocké en Firebase Secret Manager.
+// Statut Pro effectif depuis un doc formation_access : un grant daté
+// (proUntil > maintenant) prime ; sinon fallback sur le booléen isPro (legacy
+// / futur webhook RevenueCat sans expiration).
+function effectivePro(d) {
+    const until = d === null || d === void 0 ? void 0 : d.proUntil;
+    if (until && typeof until.toMillis === "function")
+        return until.toMillis() > Date.now();
+    return (d === null || d === void 0 ? void 0 : d.isPro) === true;
+}
 exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "public", secrets: ["ADMIN_PUSH_SECRET"] }, async (req, res) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r, _s;
     if (req.method === "OPTIONS") {
         res.status(204).send("");
         return;
@@ -2144,7 +2153,8 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
                     formation: !!fa,
                     purchasedAt: fa ? tsToIso(fa.purchasedAt) : null,
                     onboardingDone: (fa === null || fa === void 0 ? void 0 : fa.onboardingDone) === true,
-                    isPro: (fa === null || fa === void 0 ? void 0 : fa.isPro) === true,
+                    isPro: effectivePro(fa),
+                    proUntil: fa ? tsToIso(fa.proUntil) : null,
                     lastVisionAt: fa ? tsToIso(fa.lastVisionAt) : null,
                     allowlisted: allowEmails.has(email),
                     projects,
@@ -2176,9 +2186,43 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
             res.status(200).json({ success: true, email });
             return;
         }
+        if (action === "setPro") {
+            // Accorde / révoque un grant Pro daté sur formation_access/{uid}.
+            // until = "YYYY-MM-DD" → Pro jusqu'à cette date (incluse) ; null → révoque.
+            const targetUid = (_d = payload === null || payload === void 0 ? void 0 : payload.uid) === null || _d === void 0 ? void 0 : _d.trim();
+            if (!targetUid) {
+                res.status(400).json({ error: "uid requis" });
+                return;
+            }
+            const untilStr = (_e = payload === null || payload === void 0 ? void 0 : payload.until) !== null && _e !== void 0 ? _e : null;
+            const patch = {
+                proSource: "admin",
+                proUpdatedAt: db_1.FieldValue.serverTimestamp(),
+            };
+            if (untilStr) {
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(untilStr)) {
+                    res.status(400).json({ error: "Date invalide (YYYY-MM-DD)" });
+                    return;
+                }
+                const d = new Date(`${untilStr}T23:59:59`);
+                if (isNaN(d.getTime())) {
+                    res.status(400).json({ error: "Date invalide" });
+                    return;
+                }
+                patch.proUntil = admin.firestore.Timestamp.fromDate(d);
+                patch.isPro = true;
+            }
+            else {
+                patch.proUntil = db_1.FieldValue.delete();
+                patch.isPro = false;
+            }
+            await db_1.db.collection("formation_access").doc(targetUid).set(patch, { merge: true });
+            res.status(200).json({ success: true, uid: targetUid, until: untilStr });
+            return;
+        }
         if (action === "checkAccess") {
             // Rejoue la logique du gate sendMagicLink pour un email donné.
-            const email = ((_d = payload === null || payload === void 0 ? void 0 : payload.email) !== null && _d !== void 0 ? _d : "").trim().toLowerCase();
+            const email = ((_f = payload === null || payload === void 0 ? void 0 : payload.email) !== null && _f !== void 0 ? _f : "").trim().toLowerCase();
             if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
                 res.status(400).json({ error: "Email invalide" });
                 return;
@@ -2192,7 +2236,7 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
                 targetUid = u.uid;
                 providers = u.providerData.map((p) => p.providerId);
             }
-            catch ( /* pas de compte */_r) { /* pas de compte */ }
+            catch ( /* pas de compte */_t) { /* pas de compte */ }
             const allowlisted = (await db_1.db.collection("allowlist").doc(email).get()).exists;
             const pass = hasAccount || allowlisted;
             const reason = hasAccount ? "compte existant" : allowlisted ? "allowlisté" : "aucun compte, pas d'allowlist";
@@ -2202,8 +2246,8 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
         if (action === "deleteUser") {
             // Suppression DÉFINITIVE : compte Auth + toutes les données Firestore du
             // user + son formation_access + son entrée allowlist. Irréversible.
-            const targetUid = (_e = payload === null || payload === void 0 ? void 0 : payload.uid) === null || _e === void 0 ? void 0 : _e.trim();
-            const email = ((_f = payload === null || payload === void 0 ? void 0 : payload.email) !== null && _f !== void 0 ? _f : "").trim().toLowerCase();
+            const targetUid = (_g = payload === null || payload === void 0 ? void 0 : payload.uid) === null || _g === void 0 ? void 0 : _g.trim();
+            const email = ((_h = payload === null || payload === void 0 ? void 0 : payload.email) !== null && _h !== void 0 ? _h : "").trim().toLowerCase();
             if (!targetUid && !email) {
                 res.status(400).json({ error: "uid ou email requis" });
                 return;
@@ -2281,7 +2325,7 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
                 res.status(404).json({ error: "Projet introuvable" });
                 return;
             }
-            const rawTasks = (_h = (_g = snap.data()) === null || _g === void 0 ? void 0 : _g.tasks) !== null && _h !== void 0 ? _h : [];
+            const rawTasks = (_l = (_j = snap.data()) === null || _j === void 0 ? void 0 : _j.tasks) !== null && _l !== void 0 ? _l : [];
             const tasks = rawTasks.map(t => JSON.parse(JSON.stringify(t, (_k, v) => v && typeof v === "object" && typeof v.toDate === "function" ? v.toDate().toISOString() : v)));
             const idx = tasks.findIndex(t => t.id === taskId);
             if (idx === -1) {
@@ -2331,13 +2375,13 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
                 res.status(404).json({ error: "Projet introuvable" });
                 return;
             }
-            const tasks = ((_l = (_j = snap.data()) === null || _j === void 0 ? void 0 : _j.tasks) !== null && _l !== void 0 ? _l : []).map(t => JSON.parse(JSON.stringify(t, (_k, v) => v && typeof v === "object" && typeof v.toDate === "function" ? v.toDate().toISOString() : v)));
+            const tasks = ((_o = (_m = snap.data()) === null || _m === void 0 ? void 0 : _m.tasks) !== null && _o !== void 0 ? _o : []).map(t => JSON.parse(JSON.stringify(t, (_k, v) => v && typeof v === "object" && typeof v.toDate === "function" ? v.toDate().toISOString() : v)));
             const idx = tasks.findIndex(t => t.id === taskId);
             if (idx === -1) {
                 res.status(404).json({ error: "Tâche introuvable" });
                 return;
             }
-            const actions = ((_m = tasks[idx].actions) !== null && _m !== void 0 ? _m : []).slice();
+            const actions = ((_p = tasks[idx].actions) !== null && _p !== void 0 ? _p : []).slice();
             const newAction = { id: (0, uuid_1.v4)(), title, done: false, doneAt: null, createdAt: new Date().toISOString() };
             actions.push(newAction);
             tasks[idx] = Object.assign(Object.assign({}, tasks[idx]), { actions });
@@ -2353,13 +2397,13 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
                 res.status(404).json({ error: "Projet introuvable" });
                 return;
             }
-            const tasks = ((_p = (_o = snap.data()) === null || _o === void 0 ? void 0 : _o.tasks) !== null && _p !== void 0 ? _p : []).map(t => JSON.parse(JSON.stringify(t, (_k, v) => v && typeof v === "object" && typeof v.toDate === "function" ? v.toDate().toISOString() : v)));
+            const tasks = ((_r = (_q = snap.data()) === null || _q === void 0 ? void 0 : _q.tasks) !== null && _r !== void 0 ? _r : []).map(t => JSON.parse(JSON.stringify(t, (_k, v) => v && typeof v === "object" && typeof v.toDate === "function" ? v.toDate().toISOString() : v)));
             const tIdx = tasks.findIndex(t => t.id === taskId);
             if (tIdx === -1) {
                 res.status(404).json({ error: "Tâche introuvable" });
                 return;
             }
-            const actions = ((_q = tasks[tIdx].actions) !== null && _q !== void 0 ? _q : []).slice();
+            const actions = ((_s = tasks[tIdx].actions) !== null && _s !== void 0 ? _s : []).slice();
             const aIdx = actions.findIndex(a => a.id === actionId);
             if (aIdx === -1) {
                 res.status(404).json({ error: "Action introuvable" });
@@ -2427,7 +2471,7 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
             return;
         }
         if (action === "updateProject") {
-            const _s = payload, { projectId } = _s, updates = __rest(_s, ["projectId"]);
+            const _u = payload, { projectId } = _u, updates = __rest(_u, ["projectId"]);
             await db_1.db.collection(`users/${uid}/projects`).doc(projectId).update(Object.assign(Object.assign({}, updates), { updatedAt: db_1.FieldValue.serverTimestamp() }));
             res.status(200).json({ success: true });
             return;
@@ -2559,7 +2603,7 @@ exports.getVisionAccess = (0, https_1.onRequest)({ cors: true, invoker: "public"
     }
     const accessDoc = await db_1.db.collection("formation_access").doc(uid).get();
     const accessData = (_c = accessDoc.data()) !== null && _c !== void 0 ? _c : {};
-    const isPro = accessData.isPro === true;
+    const isPro = effectivePro(accessData);
     const onboardingDone = accessData.onboardingDone === true;
     const lastVisionAt = (_d = accessData.lastVisionAt) === null || _d === void 0 ? void 0 : _d.toDate();
     const now = Date.now();

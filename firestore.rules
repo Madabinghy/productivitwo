@@ -4,5 +4,9 @@ service cloud.firestore {
     match /users/{userId}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
+    // Statut d'accès/Pro : l'utilisateur lit le sien (écrit uniquement côté serveur).
+    match /formation_access/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+    }
   }
 }

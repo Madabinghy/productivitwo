@@ -1809,7 +1809,7 @@ export const onboardingChat = onRequest(
     const accessDoc = await db.collection("formation_access").doc(uid).get();
     const accessData = accessDoc.data() ?? {};
     const onboardingDone = accessData.onboardingDone === true;
-    const isPro = accessData.isPro === true; // positionné via RevenueCat webhook (TODO)
+    const isPro = effectivePro(accessData);
 
     // ── Actions hors-chat ─────────────────────────────────────────────────────
 
@@ -2128,6 +2128,15 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
 // pousser dans Productivitwo pendant les sessions de travail (sans passe-plat
 // avec le MCP de Claude.ai). Secret stocké en Firebase Secret Manager.
 
+// Statut Pro effectif depuis un doc formation_access : un grant daté
+// (proUntil > maintenant) prime ; sinon fallback sur le booléen isPro (legacy
+// / futur webhook RevenueCat sans expiration).
+function effectivePro(d: Record<string, unknown> | undefined): boolean {
+  const until = d?.proUntil as { toMillis?: () => number } | undefined;
+  if (until && typeof until.toMillis === "function") return until.toMillis() > Date.now();
+  return d?.isPro === true;
+}
+
 export const adminProductivitwo = onRequest(
   { cors: true, invoker: "public", secrets: ["ADMIN_PUSH_SECRET"] },
   async (req, res) => {
@@ -2137,7 +2146,7 @@ export const adminProductivitwo = onRequest(
     const { adminSecret, uid, action, payload } = req.body as {
       adminSecret?: string;
       uid?: string;
-      action?: "inspect" | "addTask" | "updateTask" | "addProject" | "updateProject" | "addActionToTask" | "markActionDone" | "setSchedule" | "listUsers" | "addAllowlist" | "removeAllowlist" | "deleteUser" | "checkAccess";
+      action?: "inspect" | "addTask" | "updateTask" | "addProject" | "updateProject" | "addActionToTask" | "markActionDone" | "setSchedule" | "listUsers" | "addAllowlist" | "removeAllowlist" | "deleteUser" | "checkAccess" | "setPro";
       payload?: Record<string, unknown>;
     };
 
@@ -2185,7 +2194,8 @@ export const adminProductivitwo = onRequest(
             formation: !!fa,
             purchasedAt: fa ? tsToIso(fa.purchasedAt) : null,
             onboardingDone: fa?.onboardingDone === true,
-            isPro: fa?.isPro === true,
+            isPro: effectivePro(fa),
+            proUntil: fa ? tsToIso(fa.proUntil) : null,
             lastVisionAt: fa ? tsToIso(fa.lastVisionAt) : null,
             allowlisted: allowEmails.has(email),
             projects,
@@ -2217,6 +2227,31 @@ export const adminProductivitwo = onRequest(
         const email = ((payload?.email as string) ?? "").trim().toLowerCase();
         await db.collection("allowlist").doc(email).delete();
         res.status(200).json({ success: true, email });
+        return;
+      }
+
+      if (action === "setPro") {
+        // Accorde / révoque un grant Pro daté sur formation_access/{uid}.
+        // until = "YYYY-MM-DD" → Pro jusqu'à cette date (incluse) ; null → révoque.
+        const targetUid = (payload?.uid as string | undefined)?.trim();
+        if (!targetUid) { res.status(400).json({ error: "uid requis" }); return; }
+        const untilStr = (payload?.until as string | null | undefined) ?? null;
+        const patch: Record<string, unknown> = {
+          proSource: "admin",
+          proUpdatedAt: FieldValue.serverTimestamp(),
+        };
+        if (untilStr) {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(untilStr)) { res.status(400).json({ error: "Date invalide (YYYY-MM-DD)" }); return; }
+          const d = new Date(`${untilStr}T23:59:59`);
+          if (isNaN(d.getTime())) { res.status(400).json({ error: "Date invalide" }); return; }
+          patch.proUntil = admin.firestore.Timestamp.fromDate(d);
+          patch.isPro = true;
+        } else {
+          patch.proUntil = FieldValue.delete();
+          patch.isPro = false;
+        }
+        await db.collection("formation_access").doc(targetUid).set(patch, { merge: true });
+        res.status(200).json({ success: true, uid: targetUid, until: untilStr });
         return;
       }
 
@@ -2619,7 +2654,7 @@ export const getVisionAccess = onRequest(
 
     const accessDoc = await db.collection("formation_access").doc(uid).get();
     const accessData = accessDoc.data() ?? {};
-    const isPro = accessData.isPro === true;
+    const isPro = effectivePro(accessData);
     const onboardingDone = accessData.onboardingDone === true;
     const lastVisionAt = (accessData.lastVisionAt as admin.firestore.Timestamp | undefined)?.toDate();
 

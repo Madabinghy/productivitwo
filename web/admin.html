@@ -213,7 +213,9 @@ function render() {
       <td class="email">${u.email || "<span class='muted'>(sans email)</span>"}</td>
       <td><span class="src ${srcClass(u.source)}">${u.source}</span></td>
       <td>${dataCell}</td>
-      <td><span class="tag ${u.isPro ? "pro" : "free"}">${u.isPro ? "PRO" : "Free"}</span></td>
+      <td>${u.uid
+        ? `<span class="tag ${u.isPro ? "pro" : "free"}" style="cursor:pointer" title="Cliquer pour accorder / révoquer Pro" onclick="setPro('${u.uid}', ${u.proUntil ? `'${u.proUntil}'` : "null"})">${u.isPro ? "PRO" : "Free"}${u.isPro && u.proUntil ? " · " + fmt(u.proUntil) : ""}</span>`
+        : `<span class="tag free">Free</span>`}</td>
       <td><span class="tag ${u.onboardingDone ? "ok" : "no"}">${u.onboardingDone ? "Fait" : "—"}</span></td>
       <td>${fmt(u.purchasedAt)}</td>
       <td>${fmt(u.lastSignIn)}</td>
@@ -240,6 +242,18 @@ async function addAllow(preset) {
     await call("addAllowlist", { email });
     flash(`✅ ${email} autorisé.`, true);
     document.getElementById("newEmail").value = "";
+    load();
+  } catch (e) { flash(e.message, false); }
+}
+async function setPro(uid, untilIso) {
+  const cur = untilIso ? untilIso.slice(0, 10) : "";
+  const def = cur || new Date(Date.now() + 90 * 864e5).toISOString().slice(0, 10);
+  const ans = prompt("Pro jusqu'au (AAAA-MM-JJ) — laisser vide pour RÉVOQUER :", def);
+  if (ans === null) return;
+  const until = ans.trim() || null;
+  try {
+    await call("setPro", { uid, until });
+    flash(until ? `✅ Pro accordé jusqu'au ${until}.` : "Pro révoqué.", true);
     load();
   } catch (e) { flash(e.message, false); }
 }
