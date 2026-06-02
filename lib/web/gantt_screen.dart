@@ -1222,7 +1222,26 @@ class _GanttGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final groups = _buildGroups(project.tasks);
 
-    return Column(
+    // Repère « aujourd'hui » : colonne du jour surlignée (cf. vue Focus).
+    final now = DateTime.now();
+    final todayD = DateTime(now.year, now.month, now.day);
+    final offsetDays = todayD.difference(projectStart).inDays;
+    double? todayLeft;
+    double todayW = 0;
+    if (dayView) {
+      if (offsetDays >= 0 && offsetDays < totalDays) {
+        todayLeft = _kLabelW + offsetDays * _kDayCellW;
+        todayW = _kDayCellW;
+      }
+    } else {
+      final wi = offsetDays ~/ 7;
+      if (offsetDays >= 0 && wi < totalWeeks) {
+        todayLeft = _kLabelW + wi * _kCellW;
+        todayW = _kCellW;
+      }
+    }
+
+    final column = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // ── Phase header ──────────────────────────────────────
@@ -1266,6 +1285,30 @@ class _GanttGrid extends StatelessWidget {
         ],
         // Padding bas
         SizedBox(height: 24, width: totalW),
+      ],
+    );
+
+    if (todayLeft == null) return column;
+    return Stack(
+      children: [
+        column,
+        Positioned(
+          left: todayLeft,
+          top: 0,
+          bottom: 0,
+          width: todayW,
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: _kTealGrid.withOpacity(0.08),
+                border: Border(
+                  left: BorderSide(color: _kTealGrid.withOpacity(0.35), width: 1),
+                  right: BorderSide(color: _kTealGrid.withOpacity(0.35), width: 1),
+                ),
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }
