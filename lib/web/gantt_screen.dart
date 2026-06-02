@@ -24,19 +24,12 @@ const double _kPhaseH = 28.0;
 const double _kWeekH = 26.0;
 const double _kBarVPad = 8.0;
 
-// Couleurs de grille — vert teal subtil en sombre, gris en clair
-const _kTealGrid   = Color(0xFF1D9E75);
-const _kGridLine   = Color(0xFFE8E8E8); // placeholder remplacé au runtime
-const _kGridLineAlt = Color(0xFFF5F5F5);
+// Couleur de grille — vert teal subtil en sombre, gris discret en clair
+const _kTealGrid = Color(0xFF1D9E75);
 
 Color _gridColor(BuildContext ctx) {
   final dark = Theme.of(ctx).brightness == Brightness.dark;
   return dark ? _kTealGrid.withOpacity(0.18) : const Color(0xFFE8E8E8);
-}
-
-Color _gridColorAlt(BuildContext ctx) {
-  final dark = Theme.of(ctx).brightness == Brightness.dark;
-  return dark ? _kTealGrid.withOpacity(0.10) : const Color(0xFFF5F5F5);
 }
 
 // ── Entrée publique pour afficher la dialog tâche depuis d'autres écrans ──────
@@ -1055,7 +1048,7 @@ class _GanttBody extends StatefulWidget {
 
 class _GanttBodyState extends State<_GanttBody> {
   late final TransformationController _ctrl;
-  bool _dayView = false;
+  bool _dayView = true; // vue Jour par défaut (plus lisible que Semaine)
   bool _exportingPng = false;
   final _gridKey = GlobalKey();
 
@@ -1400,6 +1393,7 @@ class _WeekHeaderRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final grid = _gridColor(context);
     return SizedBox(
       height: _kWeekH,
       width: _kLabelW + timeW,
@@ -1416,9 +1410,9 @@ class _WeekHeaderRow extends StatelessWidget {
                 child: Container(
                   decoration: BoxDecoration(
                     color: isWeekend ? const Color(0x11AAAAAA) : null,
-                    border: const Border(
-                      left: BorderSide(color: _kGridLine, width: 1),
-                      bottom: BorderSide(color: _kGridLine, width: 1),
+                    border: Border(
+                      left: BorderSide(color: grid, width: 1),
+                      bottom: BorderSide(color: grid, width: 1),
                     ),
                   ),
                   alignment: Alignment.center,
@@ -1441,10 +1435,10 @@ class _WeekHeaderRow extends StatelessWidget {
                 width: _kCellW,
                 height: _kWeekH,
                 child: Container(
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     border: Border(
-                      left: BorderSide(color: _kGridLine, width: 1),
-                      bottom: BorderSide(color: _kGridLine, width: 1),
+                      left: BorderSide(color: grid, width: 1),
+                      bottom: BorderSide(color: grid, width: 1),
                     ),
                   ),
                   alignment: Alignment.center,
@@ -1559,9 +1553,9 @@ class _TaskRow extends StatelessWidget {
             child: InkWell(
               onTap: onTap,
               child: Container(
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   border: Border(
-                      bottom: BorderSide(color: _kGridLine, width: 1)),
+                      bottom: BorderSide(color: _gridColor(context), width: 1)),
                 ),
                 alignment: Alignment.centerLeft,
                 padding: const EdgeInsets.only(left: 16, right: 8),
@@ -1611,8 +1605,8 @@ class _TaskRow extends StatelessWidget {
             height: _kRowH,
             child: Stack(
               children: [
-                // Fond avec bordures de colonnes
-                ..._buildGridLines(timeW),
+                // Fond épuré : séparateur de ligne subtil, sans lignes verticales
+                ..._buildGridLines(context, timeW),
                 // Bar ou Milestone
                 if (task.isMilestone)
                   _buildMilestone()
@@ -1626,29 +1620,18 @@ class _TaskRow extends StatelessWidget {
     );
   }
 
-  List<Widget> _buildGridLines(double timeW) {
-    final count = dayView ? totalDays : totalWeeks;
-    final cellW = dayView ? _kDayCellW : _kCellW;
+  List<Widget> _buildGridLines(BuildContext context, double timeW) {
+    // Style épuré (cf. vue Focus) : uniquement un séparateur de ligne discret,
+    // pas de lignes verticales de colonnes.
     return [
-      // Fond global
       Positioned.fill(
-        child: Container(
-          decoration: const BoxDecoration(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
             border: Border(
-                bottom: BorderSide(color: _kGridLine, width: 1)),
+                bottom: BorderSide(color: _gridColor(context), width: 1)),
           ),
         ),
       ),
-      // Lignes verticales
-      ...List.generate(count, (i) {
-        return Positioned(
-          left: i * cellW,
-          top: 0,
-          bottom: 0,
-          width: 1,
-          child: Container(color: _kGridLineAlt),
-        );
-      }),
     ];
   }
 
