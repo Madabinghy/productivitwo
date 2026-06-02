@@ -10,6 +10,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.47', '1 juin 2026', [
+    (Icons.auto_awesome, 'ORION repensé : le brief stratège du jour est dans l\'onglet ORION, et tu lui donnes une demande → il exécute et te répond. Fini les messages qui s\'accumulent.'),
+    (Icons.warning_amber_outlined, 'Brief : alerte « À ne pas rater aujourd\'hui » mise en avant quand un élément est urgent'),
+  ]),
   _Entry('5.46', '30 mai 2026', [
     (Icons.email_outlined, 'Connexion par email fiabilisée — fonctionne aussi quand ton compte a déjà été créé (web, formation)'),
   ]),
