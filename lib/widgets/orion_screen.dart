@@ -464,9 +464,47 @@ class _OrionScreenState extends State<OrionScreen>
           ),
           const SizedBox(height: 8),
           _buildNeedsField(),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: _saveNeeds,
+              style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact, foregroundColor: _gold),
+              icon: const Icon(Icons.save_outlined, size: 15),
+              label: const Text('Enregistrer',
+                  style: TextStyle(
+                      fontFamily: 'monospace', fontSize: 12, letterSpacing: 0.5)),
+            ),
+          ),
         ],
       ],
     );
+  }
+
+  // Enregistre (ou efface si vide) les instructions permanentes ORION,
+  // directement en Firestore — indépendant d'une demande à ORION.
+  Future<void> _saveNeeds() async {
+    final uid = widget.sync.uid;
+    if (uid == null) return;
+    final value = _needsCtrl.text.trim();
+    try {
+      await FirebaseFirestore.instance
+          .collection('users/$uid/orion_config')
+          .doc('main')
+          .set({'userNeeds': value, 'updatedAt': FieldValue.serverTimestamp()},
+              SetOptions(merge: true));
+      if (!mounted) return;
+      setState(() => _userNeeds = value);
+      FocusScope.of(context).unfocus();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(value.isEmpty
+            ? 'Instructions effacées'
+            : 'Instructions enregistrées'),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: _surface2,
+      ));
+    } catch (_) {}
   }
 
   Widget _buildNeedsField() {
