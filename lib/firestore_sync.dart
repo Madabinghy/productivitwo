@@ -524,12 +524,20 @@ class FirestoreSync {
     await prefs.remove(_rawTokenPrefsKey(tokenId));
   }
 
-  /// Retourne le premier token actif existant, ou en crée un silencieusement.
-  /// Utilisé à l'onboarding pour éviter de demander au user de configurer un token.
+  /// Retourne le premier token actif UTILISABLE (secret brut dispo en local), ou
+  /// en crée un silencieusement. Utilisé à l'onboarding et par ORION pour éviter
+  /// de demander au user de configurer un token.
+  ///
+  /// Un token dont seul le hash existe en base mais dont le rawToken n'est pas
+  /// dans le SharedPreferences de cet appareil (ex : connexion magic link sur un
+  /// nouvel appareil, réinstall) est INUTILISABLE pour signer les appels ORION —
+  /// on en régénère donc un frais plutôt que de le réutiliser à vide.
   Future<ApiToken> ensureOnboardingToken() async {
     final tokens = await fetchApiTokens();
-    final active = tokens.where((t) => t.active).toList();
-    if (active.isNotEmpty) return active.first;
+    final usable = tokens
+        .where((t) => t.active && (t.rawToken?.isNotEmpty ?? false))
+        .toList();
+    if (usable.isNotEmpty) return usable.first;
     return createApiToken('ORION');
   }
 
@@ -537,7 +545,11 @@ class FirestoreSync {
   /// Stocke automatiquement token + uid dans l'App Group UserDefaults via WidgetService.
   Future<ApiToken> ensureWidgetToken() async {
     final tokens = await fetchApiTokens();
-    final existing = tokens.where((t) => t.active && t.label == 'Widget iOS').firstOrNull;
+    // Réutilisable seulement si le secret brut est présent en local (sinon le
+    // widget recevrait un token vide). Voir ensureOnboardingToken.
+    final existing = tokens
+        .where((t) => t.active && t.label == 'Widget iOS' && (t.rawToken?.isNotEmpty ?? false))
+        .firstOrNull;
     if (existing != null) return existing;
     return createApiToken('Widget iOS');
   }

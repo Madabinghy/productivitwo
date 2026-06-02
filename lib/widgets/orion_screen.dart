@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import 'package:productivitwo_v1/firestore_sync.dart';
-import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/pro_manager.dart';
 import 'package:productivitwo_v1/widgets/orion_brief_card.dart';
 import 'package:productivitwo_v1/widgets/paywall_sheet.dart';
@@ -97,13 +96,18 @@ class _OrionScreenState extends State<OrionScreen>
       _uid = uid;
 
       final tokens = await widget.sync.fetchApiTokens();
-      final activeTokens = tokens.where((t) => t.active).toList();
-      if (activeTokens.isEmpty) {
-        // Aucun token actif — on en crée un automatiquement
+      // Utilisable = actif ET secret brut présent en local (le hash seul ne suffit
+      // pas pour signer les appels ORION). Cas magic link / nouvel appareil : le
+      // doc token existe mais son rawToken n'est pas sur cet appareil → on en
+      // régénère un automatiquement au lieu de planter.
+      final usableTokens = tokens
+          .where((t) => t.active && (t.rawToken?.isNotEmpty ?? false))
+          .toList();
+      if (usableTokens.isNotEmpty) {
+        _activeToken = usableTokens.first.rawToken;
+      } else {
         final created = await widget.sync.ensureOnboardingToken();
         _activeToken = created.rawToken;
-      } else {
-        _activeToken = activeTokens.first.rawToken;
       }
 
       final futures = <Future>[

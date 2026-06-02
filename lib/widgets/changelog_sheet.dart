@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.50', '2 juin 2026', [
+    (Icons.auto_awesome, 'ORION : correction — plus de blocage « token API requis » après une connexion par email sur un nouvel appareil ; l\'accès se rétablit tout seul'),
+  ]),
   _Entry('5.49', '2 juin 2026', [
     (Icons.auto_awesome, 'ORION repensé : le brief stratège du jour est dans l\'onglet ORION, et tu lui donnes une demande → il exécute et te répond. Fini les messages qui s\'accumulent.'),
     (Icons.warning_amber_outlined, 'Brief : alerte « À ne pas rater aujourd\'hui » mise en avant quand un élément est urgent'),
