@@ -2144,7 +2144,7 @@ exports.revenueCatWebhook = (0, https_1.onRequest)({ invoker: "public", secrets:
     }
 });
 exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "public", secrets: ["ADMIN_PUSH_SECRET"] }, async (req, res) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r, _s;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w;
     if (req.method === "OPTIONS") {
         res.status(204).send("");
         return;
@@ -2167,6 +2167,8 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
                 db_1.db.collection("formation_access").get(),
             ]);
             const allowEmails = new Set(allowSnap.docs.map((d) => d.id.toLowerCase()));
+            const allowGroups = {};
+            allowSnap.docs.forEach((d) => { var _a; allowGroups[d.id.toLowerCase()] = (_a = d.data().groups) !== null && _a !== void 0 ? _a : []; });
             const faByUid = {};
             faSnap.docs.forEach((d) => { faByUid[d.id] = d.data(); });
             const tsToIso = (v) => v && typeof v.toDate === "function"
@@ -2178,7 +2180,7 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
             };
             const seen = new Set();
             const users = await Promise.all(authList.users.map(async (u) => {
-                var _a, _b, _c, _d;
+                var _a, _b, _c, _d, _e, _f;
                 const email = ((_a = u.email) !== null && _a !== void 0 ? _a : "").toLowerCase();
                 seen.add(email);
                 const providers = u.providerData.map((p) => p.providerId);
@@ -2211,16 +2213,24 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
                     subscriptionUntil: fa ? tsToIso(fa.subscriptionUntil) : null,
                     lastVisionAt: fa ? tsToIso(fa.lastVisionAt) : null,
                     allowlisted: allowEmails.has(email),
+                    groups: Array.from(new Set([
+                        ...(((_e = fa === null || fa === void 0 ? void 0 : fa.groups) !== null && _e !== void 0 ? _e : [])),
+                        ...((_f = allowGroups[email]) !== null && _f !== void 0 ? _f : []),
+                    ])),
                     projects,
                     activities,
                 };
             }));
             // Emails dans l'allowlist sans compte encore créé (invités en attente).
-            const invited = [...allowEmails].filter((e) => !seen.has(e)).map((e) => ({
-                uid: null, email: e, providers: [], source: "Invité (allowlist)",
-                createdAt: null, lastSignIn: null, formation: false, purchasedAt: null,
-                onboardingDone: false, isPro: false, lastVisionAt: null, allowlisted: true,
-            }));
+            const invited = [...allowEmails].filter((e) => !seen.has(e)).map((e) => {
+                var _a;
+                return ({
+                    uid: null, email: e, providers: [], source: "Invité (allowlist)",
+                    createdAt: null, lastSignIn: null, formation: false, purchasedAt: null,
+                    onboardingDone: false, isPro: false, lastVisionAt: null, allowlisted: true,
+                    groups: (_a = allowGroups[e]) !== null && _a !== void 0 ? _a : [],
+                });
+            });
             res.status(200).json({ users: [...users, ...invited] });
             return;
         }
@@ -2276,9 +2286,41 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
             res.status(200).json({ success: true, uid: targetUid, until: untilStr });
             return;
         }
+        if (action === "setGroups") {
+            // Gère les groupes/tags d'un user. Compte → formation_access/{uid} ;
+            // invité (sans compte) → allowlist/{email}. payload : set[] (remplace)
+            // OU add (1 groupe) OU remove (1 groupe).
+            const targetUid = (_f = payload === null || payload === void 0 ? void 0 : payload.uid) === null || _f === void 0 ? void 0 : _f.trim();
+            const email = ((_g = payload === null || payload === void 0 ? void 0 : payload.email) !== null && _g !== void 0 ? _g : "").trim().toLowerCase();
+            if (!targetUid && !email) {
+                res.status(400).json({ error: "uid ou email requis" });
+                return;
+            }
+            const ref = targetUid
+                ? db_1.db.collection("formation_access").doc(targetUid)
+                : db_1.db.collection("allowlist").doc(email);
+            const set = payload === null || payload === void 0 ? void 0 : payload.set;
+            const add = (_h = payload === null || payload === void 0 ? void 0 : payload.add) === null || _h === void 0 ? void 0 : _h.trim();
+            const remove = (_j = payload === null || payload === void 0 ? void 0 : payload.remove) === null || _j === void 0 ? void 0 : _j.trim();
+            if (set !== undefined) {
+                await ref.set({ groups: set.map((s) => s.trim()).filter(Boolean) }, { merge: true });
+            }
+            else if (add) {
+                await ref.set({ groups: db_1.FieldValue.arrayUnion(add) }, { merge: true });
+            }
+            else if (remove) {
+                await ref.set({ groups: db_1.FieldValue.arrayRemove(remove) }, { merge: true });
+            }
+            else {
+                res.status(400).json({ error: "set, add ou remove requis" });
+                return;
+            }
+            res.status(200).json({ success: true });
+            return;
+        }
         if (action === "checkAccess") {
             // Rejoue la logique du gate sendMagicLink pour un email donné.
-            const email = ((_f = payload === null || payload === void 0 ? void 0 : payload.email) !== null && _f !== void 0 ? _f : "").trim().toLowerCase();
+            const email = ((_l = payload === null || payload === void 0 ? void 0 : payload.email) !== null && _l !== void 0 ? _l : "").trim().toLowerCase();
             if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
                 res.status(400).json({ error: "Email invalide" });
                 return;
@@ -2292,7 +2334,7 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
                 targetUid = u.uid;
                 providers = u.providerData.map((p) => p.providerId);
             }
-            catch ( /* pas de compte */_t) { /* pas de compte */ }
+            catch ( /* pas de compte */_x) { /* pas de compte */ }
             const allowlisted = (await db_1.db.collection("allowlist").doc(email).get()).exists;
             const pass = hasAccount || allowlisted;
             const reason = hasAccount ? "compte existant" : allowlisted ? "allowlisté" : "aucun compte, pas d'allowlist";
@@ -2302,8 +2344,8 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
         if (action === "deleteUser") {
             // Suppression DÉFINITIVE : compte Auth + toutes les données Firestore du
             // user + son formation_access + son entrée allowlist. Irréversible.
-            const targetUid = (_g = payload === null || payload === void 0 ? void 0 : payload.uid) === null || _g === void 0 ? void 0 : _g.trim();
-            const email = ((_h = payload === null || payload === void 0 ? void 0 : payload.email) !== null && _h !== void 0 ? _h : "").trim().toLowerCase();
+            const targetUid = (_m = payload === null || payload === void 0 ? void 0 : payload.uid) === null || _m === void 0 ? void 0 : _m.trim();
+            const email = ((_o = payload === null || payload === void 0 ? void 0 : payload.email) !== null && _o !== void 0 ? _o : "").trim().toLowerCase();
             if (!targetUid && !email) {
                 res.status(400).json({ error: "uid ou email requis" });
                 return;
@@ -2381,7 +2423,7 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
                 res.status(404).json({ error: "Projet introuvable" });
                 return;
             }
-            const rawTasks = (_l = (_j = snap.data()) === null || _j === void 0 ? void 0 : _j.tasks) !== null && _l !== void 0 ? _l : [];
+            const rawTasks = (_q = (_p = snap.data()) === null || _p === void 0 ? void 0 : _p.tasks) !== null && _q !== void 0 ? _q : [];
             const tasks = rawTasks.map(t => JSON.parse(JSON.stringify(t, (_k, v) => v && typeof v === "object" && typeof v.toDate === "function" ? v.toDate().toISOString() : v)));
             const idx = tasks.findIndex(t => t.id === taskId);
             if (idx === -1) {
@@ -2431,13 +2473,13 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
                 res.status(404).json({ error: "Projet introuvable" });
                 return;
             }
-            const tasks = ((_o = (_m = snap.data()) === null || _m === void 0 ? void 0 : _m.tasks) !== null && _o !== void 0 ? _o : []).map(t => JSON.parse(JSON.stringify(t, (_k, v) => v && typeof v === "object" && typeof v.toDate === "function" ? v.toDate().toISOString() : v)));
+            const tasks = ((_s = (_r = snap.data()) === null || _r === void 0 ? void 0 : _r.tasks) !== null && _s !== void 0 ? _s : []).map(t => JSON.parse(JSON.stringify(t, (_k, v) => v && typeof v === "object" && typeof v.toDate === "function" ? v.toDate().toISOString() : v)));
             const idx = tasks.findIndex(t => t.id === taskId);
             if (idx === -1) {
                 res.status(404).json({ error: "Tâche introuvable" });
                 return;
             }
-            const actions = ((_p = tasks[idx].actions) !== null && _p !== void 0 ? _p : []).slice();
+            const actions = ((_t = tasks[idx].actions) !== null && _t !== void 0 ? _t : []).slice();
             const newAction = { id: (0, uuid_1.v4)(), title, done: false, doneAt: null, createdAt: new Date().toISOString() };
             actions.push(newAction);
             tasks[idx] = Object.assign(Object.assign({}, tasks[idx]), { actions });
@@ -2453,13 +2495,13 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
                 res.status(404).json({ error: "Projet introuvable" });
                 return;
             }
-            const tasks = ((_r = (_q = snap.data()) === null || _q === void 0 ? void 0 : _q.tasks) !== null && _r !== void 0 ? _r : []).map(t => JSON.parse(JSON.stringify(t, (_k, v) => v && typeof v === "object" && typeof v.toDate === "function" ? v.toDate().toISOString() : v)));
+            const tasks = ((_v = (_u = snap.data()) === null || _u === void 0 ? void 0 : _u.tasks) !== null && _v !== void 0 ? _v : []).map(t => JSON.parse(JSON.stringify(t, (_k, v) => v && typeof v === "object" && typeof v.toDate === "function" ? v.toDate().toISOString() : v)));
             const tIdx = tasks.findIndex(t => t.id === taskId);
             if (tIdx === -1) {
                 res.status(404).json({ error: "Tâche introuvable" });
                 return;
             }
-            const actions = ((_s = tasks[tIdx].actions) !== null && _s !== void 0 ? _s : []).slice();
+            const actions = ((_w = tasks[tIdx].actions) !== null && _w !== void 0 ? _w : []).slice();
             const aIdx = actions.findIndex(a => a.id === actionId);
             if (aIdx === -1) {
                 res.status(404).json({ error: "Action introuvable" });
@@ -2527,7 +2569,7 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
             return;
         }
         if (action === "updateProject") {
-            const _u = payload, { projectId } = _u, updates = __rest(_u, ["projectId"]);
+            const _y = payload, { projectId } = _y, updates = __rest(_y, ["projectId"]);
             await db_1.db.collection(`users/${uid}/projects`).doc(projectId).update(Object.assign(Object.assign({}, updates), { updatedAt: db_1.FieldValue.serverTimestamp() }));
             res.status(200).json({ success: true });
             return;

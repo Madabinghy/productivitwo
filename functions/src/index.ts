@@ -2188,7 +2188,7 @@ export const adminProductivitwo = onRequest(
     const { adminSecret, uid, action, payload } = req.body as {
       adminSecret?: string;
       uid?: string;
-      action?: "inspect" | "addTask" | "updateTask" | "addProject" | "updateProject" | "addActionToTask" | "markActionDone" | "setSchedule" | "listUsers" | "addAllowlist" | "removeAllowlist" | "deleteUser" | "checkAccess" | "setPro";
+      action?: "inspect" | "addTask" | "updateTask" | "addProject" | "updateProject" | "addActionToTask" | "markActionDone" | "setSchedule" | "listUsers" | "addAllowlist" | "removeAllowlist" | "deleteUser" | "checkAccess" | "setPro" | "setGroups";
       payload?: Record<string, unknown>;
     };
 
@@ -2205,6 +2205,8 @@ export const adminProductivitwo = onRequest(
           db.collection("formation_access").get(),
         ]);
         const allowEmails = new Set(allowSnap.docs.map((d) => d.id.toLowerCase()));
+        const allowGroups: Record<string, string[]> = {};
+        allowSnap.docs.forEach((d) => { allowGroups[d.id.toLowerCase()] = (d.data().groups as string[]) ?? []; });
         const faByUid: Record<string, Record<string, unknown>> = {};
         faSnap.docs.forEach((d) => { faByUid[d.id] = d.data(); });
         const tsToIso = (v: unknown): string | null =>
@@ -2250,6 +2252,10 @@ export const adminProductivitwo = onRequest(
             subscriptionUntil: fa ? tsToIso(fa.subscriptionUntil) : null,
             lastVisionAt: fa ? tsToIso(fa.lastVisionAt) : null,
             allowlisted: allowEmails.has(email),
+            groups: Array.from(new Set([
+              ...(((fa?.groups as string[]) ?? [])),
+              ...(allowGroups[email] ?? []),
+            ])),
             projects,
             activities,
           };
@@ -2259,6 +2265,7 @@ export const adminProductivitwo = onRequest(
           uid: null, email: e, providers: [] as string[], source: "Invité (allowlist)",
           createdAt: null, lastSignIn: null, formation: false, purchasedAt: null,
           onboardingDone: false, isPro: false, lastVisionAt: null, allowlisted: true,
+          groups: allowGroups[e] ?? [],
         }));
         res.status(200).json({ users: [...users, ...invited] });
         return;
@@ -2306,6 +2313,32 @@ export const adminProductivitwo = onRequest(
         }
         await db.collection("formation_access").doc(targetUid).set(patch, { merge: true });
         res.status(200).json({ success: true, uid: targetUid, until: untilStr });
+        return;
+      }
+
+      if (action === "setGroups") {
+        // Gère les groupes/tags d'un user. Compte → formation_access/{uid} ;
+        // invité (sans compte) → allowlist/{email}. payload : set[] (remplace)
+        // OU add (1 groupe) OU remove (1 groupe).
+        const targetUid = (payload?.uid as string | undefined)?.trim();
+        const email = ((payload?.email as string) ?? "").trim().toLowerCase();
+        if (!targetUid && !email) { res.status(400).json({ error: "uid ou email requis" }); return; }
+        const ref = targetUid
+          ? db.collection("formation_access").doc(targetUid)
+          : db.collection("allowlist").doc(email);
+        const set = payload?.set as string[] | undefined;
+        const add = (payload?.add as string | undefined)?.trim();
+        const remove = (payload?.remove as string | undefined)?.trim();
+        if (set !== undefined) {
+          await ref.set({ groups: set.map((s) => s.trim()).filter(Boolean) }, { merge: true });
+        } else if (add) {
+          await ref.set({ groups: FieldValue.arrayUnion(add) }, { merge: true });
+        } else if (remove) {
+          await ref.set({ groups: FieldValue.arrayRemove(remove) }, { merge: true });
+        } else {
+          res.status(400).json({ error: "set, add ou remove requis" }); return;
+        }
+        res.status(200).json({ success: true });
         return;
       }
 

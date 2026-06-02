@@ -49,6 +49,12 @@
   #bulkbar { display:none; align-items:center; gap:14px; padding:10px 14px; margin-bottom:14px;
     background:rgba(224,91,91,.10); border:1px solid rgba(224,91,91,.32); border-radius:8px; }
   #bulkbar.show { display:flex; }
+  .chip { display:inline-block; padding:1px 8px; margin:1px 2px; border-radius:99px; font-size:10px;
+    background:rgba(122,162,255,.14); color:#7aa2ff; border:1px solid rgba(122,162,255,.3); cursor:pointer; white-space:nowrap; }
+  .chip:hover { border-color:#7aa2ff; }
+  .chip.active { background:#7aa2ff; color:#12141a; border-color:#7aa2ff; font-weight:700; }
+  .chipbar { display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
+  .chipbar .lbl { font-size:11px; color:var(--muted); margin-right:4px; }
   .muted { color:var(--muted); font-size:12px; }
   .msg { padding:10px 14px; border-radius:8px; margin-bottom:14px; font-size:13px; }
   .msg.err { background:rgba(224,91,91,.12); border:1px solid rgba(224,91,91,.35); color:#f0a0a0; }
@@ -86,8 +92,11 @@
     <button class="ghost" onclick="clearSel()">Désélectionner</button>
   </div>
 
+  <div class="bar chipbar" id="groupFilter"></div>
+
   <div id="bulkbar">
     <strong id="bulkcount"></strong>
+    <button class="ghost" onclick="bulkAddGroup()">+ Groupe à la sélection</button>
     <button class="primary" style="background:var(--red);border-color:var(--red);color:#fff" onclick="bulkDelete()">🗑 Supprimer la sélection</button>
   </div>
 
@@ -95,11 +104,11 @@
     <thead>
       <tr>
         <th class="sel"><input type="checkbox" id="selAll" onclick="toggleAll(this.checked)" /></th>
-        <th>Email</th><th>Source</th><th>Données</th><th>Statut</th><th>Onboarding</th>
+        <th>Email</th><th>Source</th><th>Groupes</th><th>Données</th><th>Statut</th><th>Onboarding</th>
         <th>Achat formation</th><th>Dernière connexion</th><th>Allowlist</th><th></th>
       </tr>
     </thead>
-    <tbody id="rows"><tr><td colspan="10" class="empty">Chargement…</td></tr></tbody>
+    <tbody id="rows"><tr><td colspan="11" class="empty">Chargement…</td></tr></tbody>
   </table>
 
   <div class="note">
@@ -159,9 +168,46 @@ async function checkAccess() {
   } catch (e) { el.innerHTML = `<span style="color:var(--red)">${e.message}</span>`; }
 }
 const SELECTED = new Set();
+let GROUPFILTER = null;
 function visibleRows() {
   const f = (document.getElementById("filter").value || "").toLowerCase();
-  return USERS.filter(u => !f || (u.email || "").toLowerCase().includes(f) || u.source.toLowerCase().includes(f));
+  return USERS.filter(u => {
+    if (GROUPFILTER && !(u.groups || []).includes(GROUPFILTER)) return false;
+    if (!f) return true;
+    return (u.email || "").toLowerCase().includes(f)
+      || u.source.toLowerCase().includes(f)
+      || (u.groups || []).some(g => g.toLowerCase().includes(f));
+  });
+}
+function setGroupFilter(g) { GROUPFILTER = (GROUPFILTER === g) ? null : g; render(); }
+function renderGroupFilter() {
+  const all = Array.from(new Set(USERS.flatMap(u => u.groups || []))).sort();
+  const el = document.getElementById("groupFilter");
+  if (!all.length) { el.innerHTML = ""; return; }
+  el.innerHTML = `<span class="lbl">Groupes :</span>` + all.map(g =>
+    `<span class="chip ${GROUPFILTER === g ? "active" : ""}" onclick="setGroupFilter('${g.replace(/'/g,"")}')">${g}</span>`).join("")
+    + (GROUPFILTER ? `<span class="chip" style="background:none;border-color:var(--border);color:var(--muted)" onclick="setGroupFilter(null)">✕ tout</span>` : "");
+}
+function editGroups(uid, email) {
+  const u = USERS.find(x => (uid && x.uid === uid) || (!uid && x.email === email));
+  const ans = prompt("Groupes (séparés par des virgules) :", (u && u.groups ? u.groups.join(", ") : ""));
+  if (ans === null) return;
+  const set = ans.split(",").map(s => s.trim()).filter(Boolean);
+  call("setGroups", uid ? { uid, set } : { email, set })
+    .then(() => { flash("Groupes mis à jour.", true); load(); })
+    .catch(e => flash(e.message, false));
+}
+async function bulkAddGroup() {
+  const ids = [...SELECTED];
+  if (!ids.length) return;
+  const g = (prompt("Ajouter le groupe à la sélection :") || "").trim();
+  if (!g) return;
+  let ok = 0;
+  for (const uid of ids) {
+    try { await call("setGroups", { uid, add: g }); ok++; } catch (e) {}
+  }
+  flash(`Groupe « ${g} » ajouté à ${ok} compte(s).`, true);
+  load();
 }
 function toggleSel(uid, on) { on ? SELECTED.add(uid) : SELECTED.delete(uid); updateBulk(); }
 function toggleAll(on) { visibleRows().filter(u => u.uid).forEach(u => on ? SELECTED.add(u.uid) : SELECTED.delete(u.uid)); render(); }
@@ -195,7 +241,7 @@ function render() {
   const list = visibleRows();
   document.getElementById("count").textContent = `${USERS.length} utilisateurs`;
   const rows = document.getElementById("rows");
-  if (!list.length) { rows.innerHTML = `<tr><td colspan="10" class="empty">Aucun utilisateur</td></tr>`; updateBulk(); return; }
+  if (!list.length) { rows.innerHTML = `<tr><td colspan="11" class="empty">Aucun utilisateur</td></tr>`; renderGroupFilter(); updateBulk(); return; }
   rows.innerHTML = list.map(u => {
     const em = (u.email || "").replace(/'/g, "");
     const allowBtn = u.allowlisted
@@ -207,11 +253,15 @@ function render() {
     const dataCell = u.uid
       ? `<span class="${u.anonymous && (u.projects || u.activities) ? "warn" : "muted"}">${u.projects}p · ${u.activities}a</span>`
       : "<span class='muted'>—</span>";
+    const groupsCell = (u.groups || []).map(g =>
+      `<span class="chip" title="Filtrer" onclick="setGroupFilter('${g.replace(/'/g,"")}')">${g}</span>`).join("")
+      + `<button class="ghost" style="padding:2px 6px;font-size:11px;margin-left:2px" title="Éditer les groupes" onclick="editGroups('${u.uid||""}','${em}')">✎</button>`;
     return `
     <tr>
       <td class="sel">${cb}</td>
       <td class="email">${u.email || "<span class='muted'>(sans email)</span>"}</td>
       <td><span class="src ${srcClass(u.source)}">${u.source}</span></td>
+      <td>${groupsCell}</td>
       <td>${dataCell}</td>
       <td>${u.uid
         ? `<span class="tag ${u.isPro ? "pro" : "free"}" style="cursor:pointer" title="Cliquer pour accorder / révoquer un grant Pro" onclick="setPro('${u.uid}', ${u.proUntil ? `'${u.proUntil}'` : "null"})">${u.isPro ? "PRO" + (u.proSource ? " · " + u.proSource : "") + ((u.proUntil || u.subscriptionUntil) ? " · " + fmt(u.proUntil || u.subscriptionUntil) : "") : "Free"}</span>`
@@ -222,6 +272,7 @@ function render() {
       <td>${u.allowlisted ? "<span class='tag ok'>✓</span>" : "<span class='muted'>—</span>"}</td>
       <td style="display:flex;gap:6px;">${allowBtn}${delBtn}</td>
     </tr>`; }).join("");
+  renderGroupFilter();
   updateBulk();
 }
 async function load() {
