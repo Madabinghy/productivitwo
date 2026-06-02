@@ -2330,8 +2330,10 @@ class _AppRootState extends State<AppRoot>
           GoalsView(
             domains: _state?.domains ?? [],
             activities: _state?.activities ?? [],
-            header: _buildTodayPrioritiesSection(
-                context, Theme.of(context).colorScheme),
+            header: logic.state.showTodayPriorities
+                ? _buildTodayPrioritiesSection(
+                    context, Theme.of(context).colorScheme)
+                : null,
             onStartTimer: (activity, project, task) {
               logic.start(activity.id);
               setState(() {
@@ -4442,6 +4444,23 @@ class _AppRootState extends State<AppRoot>
                     fontWeight: FontWeight.w800,
                     color: Theme.of(context).colorScheme.onSurface,
                   ),
+                ),
+              ),
+              // Affichage : Priorités du jour (désactivé par défaut)
+              StatefulBuilder(
+                builder: (ctx, setLocal) => SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  secondary: const Icon(Icons.star_outline),
+                  title: const Text('Priorités du jour'),
+                  subtitle: const Text(
+                      'Section en tête de l\'onglet Projets'),
+                  value: logic.state.showTodayPriorities,
+                  onChanged: (v) {
+                    logic.state.showTodayPriorities = v;
+                    logic.onChange();
+                    setLocal(() {});
+                    setState(() {});
+                  },
                 ),
               ),
               // Compte Apple

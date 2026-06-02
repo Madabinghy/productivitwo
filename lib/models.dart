@@ -598,6 +598,7 @@ class AppState {
 
   List<String> focusTodayIds;
   bool sortTodayByDashboard;
+  bool showTodayPriorities; // section "Priorités du jour" en tête de l'onglet Projets
   bool onboardingDone;
 
   // ✅ Habits context (associations)
@@ -657,6 +658,7 @@ class AppState {
     List<InboxItem>? inbox,
     List<String>? focusTodayIds,
     this.sortTodayByDashboard = false,
+    this.showTodayPriorities = false,
     this.onboardingDone = false,
     this.lastRolloverYmd,
     this.lastCarryYmd,
@@ -731,6 +733,7 @@ class AppState {
 
         'focusTodayIds': focusTodayIds,
         'sortTodayByDashboard': sortTodayByDashboard,
+        'showTodayPriorities': showTodayPriorities,
         'onboardingDone': onboardingDone,
 
         // ✅ persist
@@ -823,6 +826,7 @@ class AppState {
       focusTodayIds:
           (j['focusTodayIds'] as List?)?.cast<String>() ?? <String>[],
       sortTodayByDashboard: (j['sortTodayByDashboard'] as bool?) ?? false,
+      showTodayPriorities: (j['showTodayPriorities'] as bool?) ?? false,
       onboardingDone: (j['onboardingDone'] as bool?) ?? false,
       habitHits: _list(j['habitHits'], (e) => HabitHit.from(e)),
       habitPinnedActivity: _mapSS(j['habitPinnedActivity']),
