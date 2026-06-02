@@ -2985,6 +2985,26 @@ class _AppRootState extends State<AppRoot>
     final today = DateTime.now();
     final todayD = DateTime(today.year, today.month, today.day);
 
+    // Tri par domaine (comme le lanceur d'activité) : en-têtes de domaine + cartes.
+    final domainById = {for (final d in logic.state.activeDomains) d.id: d};
+    final Map<String, List<Activity>> byDomain = {};
+    for (final r in routines) {
+      (byDomain[r.domainId] ??= []).add(r);
+    }
+    final domainOrder = logic.state.activeDomains.map((d) => d.id).toList()
+      ..add(''); // domaines orphelins en dernier
+    // En-têtes de domaine affichés sauf en pré-filtre (quand une activité tourne,
+    // le titre du sheet nomme déjà le domaine → en-tête redondant).
+    final showDomainHeaders = runningDomainId == null;
+    // Liste à plat : String = en-tête de domaine, Activity = routine.
+    final List<Object> rows = [];
+    for (final domId in domainOrder) {
+      final list = byDomain[domId];
+      if (list == null) continue;
+      if (showDomainHeaders) rows.add(domainById[domId]?.name ?? 'Sans domaine');
+      rows.addAll(list);
+    }
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -3050,9 +3070,24 @@ class _AppRootState extends State<AppRoot>
                       child: ListView.builder(
                         controller: scroll,
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-                        itemCount: routines.length,
+                        itemCount: rows.length,
                         itemBuilder: (ctx, i) {
-                          final r = routines[i];
+                          final row = rows[i];
+                          if (row is String) {
+                            return Padding(
+                              padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
+                              child: Text(
+                                row,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.6,
+                                  color: cs.onSurface.withOpacity(.45),
+                                ),
+                              ),
+                            );
+                          }
+                          final r = row as Activity;
                           final value = logic.habitValueOn(r.id, todayD);
                           final target = logic.effectiveHabitTarget(r);
                           final isDone = value >= target;
