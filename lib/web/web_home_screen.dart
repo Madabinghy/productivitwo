@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:html' as html;
@@ -44,16 +45,23 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   bool _loading = true;
   late TabController _mainTabs;
   List<AssistantMessageData> _assistantMessages = [];
+  StreamSubscription<List<Project>>? _projectsSub;
 
   @override
   void initState() {
     super.initState();
     _mainTabs = TabController(length: 4, vsync: this, initialIndex: 1);
     _load();
+    // Sync temps réel des projets : les tâches/actions validées (ici, sur un
+    // autre appareil, ou par Claude/MCP) se reflètent sans recharger la page.
+    _projectsSub = _sync.streamProjects().listen((projects) {
+      if (mounted) setState(() => _projects = projects);
+    });
   }
 
   @override
   void dispose() {
+    _projectsSub?.cancel();
     _mainTabs.dispose();
     super.dispose();
   }
