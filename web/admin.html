@@ -124,7 +124,14 @@ function render() {
   document.getElementById("count").textContent = `${USERS.length} utilisateurs`;
   const rows = document.getElementById("rows");
   if (!list.length) { rows.innerHTML = `<tr><td colspan="8" class="empty">Aucun utilisateur</td></tr>`; return; }
-  rows.innerHTML = list.map(u => `
+  rows.innerHTML = list.map(u => {
+    const em = (u.email || "").replace(/'/g, "");
+    const allowBtn = u.allowlisted
+      ? `<button class="danger" onclick="removeAllow('${em}')">retirer allowlist</button>`
+      : (u.email ? `<button class="ghost" style="padding:4px 8px" onclick="addAllow('${em}')">autoriser</button>` : "");
+    const delBtn = u.uid
+      ? `<button class="danger" onclick="delUser('${u.uid}','${em}')">🗑 supprimer</button>` : "";
+    return `
     <tr>
       <td class="email">${u.email || "<span class='muted'>(sans email)</span>"}</td>
       <td><span class="src ${srcClass(u.source)}">${u.source}</span></td>
@@ -133,8 +140,8 @@ function render() {
       <td>${fmt(u.purchasedAt)}</td>
       <td>${fmt(u.lastSignIn)}</td>
       <td>${u.allowlisted ? "<span class='tag ok'>✓</span>" : "<span class='muted'>—</span>"}</td>
-      <td>${u.allowlisted ? `<button class="danger" onclick="removeAllow('${(u.email||'').replace(/'/g,"")}')">retirer</button>` : (u.email ? `<button class="ghost" style="padding:4px 8px" onclick="addAllow('${(u.email||'').replace(/'/g,"")}')">autoriser</button>` : "")}</td>
-    </tr>`).join("");
+      <td style="display:flex;gap:6px;">${allowBtn}${delBtn}</td>
+    </tr>`; }).join("");
 }
 async function load() {
   flash("");
@@ -154,6 +161,14 @@ async function addAllow(preset) {
     await call("addAllowlist", { email });
     flash(`✅ ${email} autorisé.`, true);
     document.getElementById("newEmail").value = "";
+    load();
+  } catch (e) { flash(e.message, false); }
+}
+async function delUser(uid, email) {
+  if (!confirm(`Supprimer DÉFINITIVEMENT ${email || uid} ?\n\nCompte Auth + TOUTES ses données Firestore (domaines, projets, sessions…).\nIrréversible.`)) return;
+  try {
+    const r = await call("deleteUser", { uid, email });
+    flash(`🗑 ${email || uid} supprimé (${(r.done || []).join(", ")}).`, true);
     load();
   } catch (e) { flash(e.message, false); }
 }

@@ -2137,7 +2137,7 @@ export const adminProductivitwo = onRequest(
     const { adminSecret, uid, action, payload } = req.body as {
       adminSecret?: string;
       uid?: string;
-      action?: "inspect" | "addTask" | "updateTask" | "addProject" | "updateProject" | "addActionToTask" | "markActionDone" | "setSchedule" | "listUsers" | "addAllowlist" | "removeAllowlist";
+      action?: "inspect" | "addTask" | "updateTask" | "addProject" | "updateProject" | "addActionToTask" | "markActionDone" | "setSchedule" | "listUsers" | "addAllowlist" | "removeAllowlist" | "deleteUser";
       payload?: Record<string, unknown>;
     };
 
@@ -2207,6 +2207,31 @@ export const adminProductivitwo = onRequest(
         const email = ((payload?.email as string) ?? "").trim().toLowerCase();
         await db.collection("allowlist").doc(email).delete();
         res.status(200).json({ success: true, email });
+        return;
+      }
+
+      if (action === "deleteUser") {
+        // Suppression DÉFINITIVE : compte Auth + toutes les données Firestore du
+        // user + son formation_access + son entrée allowlist. Irréversible.
+        const targetUid = (payload?.uid as string | undefined)?.trim();
+        const email = ((payload?.email as string) ?? "").trim().toLowerCase();
+        if (!targetUid && !email) {
+          res.status(400).json({ error: "uid ou email requis" }); return;
+        }
+        const done: string[] = [];
+        if (targetUid) {
+          await db.recursiveDelete(db.doc(`users/${targetUid}`));
+          done.push("données users/*");
+          await db.collection("formation_access").doc(targetUid).delete().catch(() => {});
+          done.push("formation_access");
+          await admin.auth().deleteUser(targetUid).catch(() => {});
+          done.push("compte Auth");
+        }
+        if (email) {
+          await db.collection("allowlist").doc(email).delete().catch(() => {});
+          done.push("allowlist");
+        }
+        res.status(200).json({ success: true, uid: targetUid ?? null, email: email || null, done });
         return;
       }
     } catch (e: unknown) {
