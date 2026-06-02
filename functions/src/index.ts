@@ -2296,11 +2296,13 @@ export const adminProductivitwo = onRequest(
           if (!/^\d{4}-\d{2}-\d{2}$/.test(untilStr)) { res.status(400).json({ error: "Date invalide (YYYY-MM-DD)" }); return; }
           const d = new Date(`${untilStr}T23:59:59`);
           if (isNaN(d.getTime())) { res.status(400).json({ error: "Date invalide" }); return; }
+          // SEULEMENT proUntil (pas isPro:true) — sinon le grant n'expirerait
+          // jamais (effectivePro retomberait sur le fallback Legacy).
           patch.proUntil = admin.firestore.Timestamp.fromDate(d);
-          patch.isPro = true;
+          patch.isPro = FieldValue.delete();
         } else {
           patch.proUntil = FieldValue.delete();
-          patch.isPro = false;
+          patch.isPro = FieldValue.delete();
         }
         await db.collection("formation_access").doc(targetUid).set(patch, { merge: true });
         res.status(200).json({ success: true, uid: targetUid, until: untilStr });

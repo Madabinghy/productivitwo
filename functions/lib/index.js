@@ -2263,12 +2263,14 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
                     res.status(400).json({ error: "Date invalide" });
                     return;
                 }
+                // SEULEMENT proUntil (pas isPro:true) — sinon le grant n'expirerait
+                // jamais (effectivePro retomberait sur le fallback Legacy).
                 patch.proUntil = admin.firestore.Timestamp.fromDate(d);
-                patch.isPro = true;
+                patch.isPro = db_1.FieldValue.delete();
             }
             else {
                 patch.proUntil = db_1.FieldValue.delete();
-                patch.isPro = false;
+                patch.isPro = db_1.FieldValue.delete();
             }
             await db_1.db.collection("formation_access").doc(targetUid).set(patch, { merge: true });
             res.status(200).json({ success: true, uid: targetUid, until: untilStr });
