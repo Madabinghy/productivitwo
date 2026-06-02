@@ -75,6 +75,13 @@
   </div>
 
   <div class="bar">
+    <input id="checkEmail" type="email" placeholder="Vérifier l'accès d'un email…"
+           onkeydown="if(event.key==='Enter')checkAccess()" />
+    <button class="ghost" onclick="checkAccess()">🔍 Vérifier</button>
+    <span id="checkResult" class="muted"></span>
+  </div>
+
+  <div class="bar">
     <button class="ghost" onclick="selectAnonEmpty()">☑ Anonymes sans données</button>
     <button class="ghost" onclick="clearSel()">Désélectionner</button>
   </div>
@@ -135,6 +142,21 @@ function srcClass(s) {
   if (s.startsWith("Web")) return "web";
   if (s.startsWith("Anonyme")) return "anon";
   return "invite";
+}
+async function checkAccess() {
+  const email = (document.getElementById("checkEmail").value || "").trim().toLowerCase();
+  const el = document.getElementById("checkResult");
+  if (!email) { el.innerHTML = ""; return; }
+  el.textContent = "…";
+  try {
+    const r = await call("checkAccess", { email });
+    const safe = email.replace(/'/g, "");
+    el.innerHTML = r.pass
+      ? `<span style="color:var(--green);font-weight:700">✅ Passe</span> — ${r.reason}`
+      : `<span style="color:var(--red);font-weight:700">🚫 Bloqué</span> — ${r.reason}
+         <button class="primary" style="padding:4px 10px;margin-left:8px"
+                 onclick="addAllow('${safe}');checkAccess()">Autoriser</button>`;
+  } catch (e) { el.innerHTML = `<span style="color:var(--red)">${e.message}</span>`; }
 }
 const SELECTED = new Set();
 function visibleRows() {

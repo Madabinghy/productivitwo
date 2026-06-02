@@ -2137,7 +2137,7 @@ export const adminProductivitwo = onRequest(
     const { adminSecret, uid, action, payload } = req.body as {
       adminSecret?: string;
       uid?: string;
-      action?: "inspect" | "addTask" | "updateTask" | "addProject" | "updateProject" | "addActionToTask" | "markActionDone" | "setSchedule" | "listUsers" | "addAllowlist" | "removeAllowlist" | "deleteUser";
+      action?: "inspect" | "addTask" | "updateTask" | "addProject" | "updateProject" | "addActionToTask" | "markActionDone" | "setSchedule" | "listUsers" | "addAllowlist" | "removeAllowlist" | "deleteUser" | "checkAccess";
       payload?: Record<string, unknown>;
     };
 
@@ -2217,6 +2217,24 @@ export const adminProductivitwo = onRequest(
         const email = ((payload?.email as string) ?? "").trim().toLowerCase();
         await db.collection("allowlist").doc(email).delete();
         res.status(200).json({ success: true, email });
+        return;
+      }
+
+      if (action === "checkAccess") {
+        // Rejoue la logique du gate sendMagicLink pour un email donné.
+        const email = ((payload?.email as string) ?? "").trim().toLowerCase();
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+          res.status(400).json({ error: "Email invalide" }); return;
+        }
+        let hasAccount = false; let targetUid: string | null = null; let providers: string[] = [];
+        try {
+          const u = await admin.auth().getUserByEmail(email);
+          hasAccount = true; targetUid = u.uid; providers = u.providerData.map((p) => p.providerId);
+        } catch { /* pas de compte */ }
+        const allowlisted = (await db.collection("allowlist").doc(email).get()).exists;
+        const pass = hasAccount || allowlisted;
+        const reason = hasAccount ? "compte existant" : allowlisted ? "allowlisté" : "aucun compte, pas d'allowlist";
+        res.status(200).json({ email, pass, reason, hasAccount, allowlisted, uid: targetUid, providers });
         return;
       }
 
