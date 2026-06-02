@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -124,12 +125,19 @@ class _OrionScreenState extends State<OrionScreen>
           http.get(Uri.parse('$_countUrl?uid=$uid&token=$_activeToken'))
         else
           Future.value(null),
+        // Messages encore 'pending' : on y cherche le résumé-réponse du jour
+        // (condition always) que seul le web faisait passer en 'shown'.
+        FirebaseFirestore.instance
+            .collection('users/$uid/assistant_messages')
+            .where('status', isEqualTo: 'pending')
+            .get(),
       ];
 
       final results = await Future.wait(futures);
 
       final configSnap = results[0] as DocumentSnapshot;
       final msgsSnap = results[1] as QuerySnapshot;
+      final pendingSnap = results[3] as QuerySnapshot;
 
       if (configSnap.exists) {
         final d = configSnap.data() as Map<String, dynamic>;
@@ -137,13 +145,32 @@ class _OrionScreenState extends State<OrionScreen>
         _needsCtrl.text = _userNeeds;
       }
 
-      final allMessages = msgsSnap.docs.map((doc) {
+      // Résumé-réponse du jour resté en 'pending' (condition always, non-reply) :
+      // on le passe à 'shown' — exactement ce que fait assistant_engine côté web.
+      final nowStr = DateTime.now();
+      final todayStr =
+          '${nowStr.year}-${nowStr.month.toString().padLeft(2, '0')}-${nowStr.day.toString().padLeft(2, '0')}';
+      final pendingResponseDocs = pendingSnap.docs.where((doc) {
+        final d = doc.data() as Map<String, dynamic>;
+        final cond = (d['condition'] as Map?)?.cast<String, dynamic>();
+        return (d['requiresReply'] as bool? ?? false) == false &&
+            cond?['type'] == 'always' &&
+            d['targetDate'] == todayStr;
+      }).toList();
+      for (final doc in pendingResponseDocs) {
+        doc.reference.update({
+          'status': 'shown',
+          'shownAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      final allMessages = [...msgsSnap.docs, ...pendingResponseDocs].map((doc) {
         final d = doc.data() as Map<String, dynamic>;
         return _OrionMessage(
           id: d['id'] as String? ?? doc.id,
           text: d['text'] as String? ?? '',
           characterName: d['characterName'] as String? ?? 'ORION',
-          status: d['status'] as String? ?? 'pending',
+          status: 'shown',
           targetDate: d['targetDate'] as String? ?? '',
           shownAt: _toDate(d['shownAt']),
           createdAt: _toDate(d['createdAt']),
@@ -369,7 +396,10 @@ class _OrionScreenState extends State<OrionScreen>
           _SectionLabel('RÉPONSE D\'ORION'),
           const SizedBox(height: 8),
           _MessageCard(
-              message: _lastResponse!, sync: widget.sync, uid: _uid ?? ''),
+              message: _lastResponse!,
+              sync: widget.sync,
+              uid: _uid ?? '',
+              typewriter: true),
         ],
 
         // Questions auxquelles ORION attend ta réponse (max 2)
@@ -833,7 +863,13 @@ class _MessageCard extends StatelessWidget {
   final _OrionMessage message;
   final FirestoreSync sync;
   final String uid;
-  const _MessageCard({required this.message, required this.sync, required this.uid});
+  final bool typewriter; // effet rétro lettre par lettre (réponse à une demande)
+  const _MessageCard({
+    required this.message,
+    required this.sync,
+    required this.uid,
+    this.typewriter = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -890,15 +926,27 @@ class _MessageCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 10),
-            Text(
-              message.text,
-              style: const TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 13,
-                height: 1.65,
-                color: _text,
+            if (typewriter)
+              _TypewriterText(
+                key: ValueKey(message.id),
+                text: message.text,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 13,
+                  height: 1.65,
+                  color: _text,
+                ),
+              )
+            else
+              Text(
+                message.text,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 13,
+                  height: 1.65,
+                  color: _text,
+                ),
               ),
-            ),
             if (message.requiresReply) ...[
               const SizedBox(height: 10),
               GestureDetector(
@@ -1084,6 +1132,105 @@ class _ActivateButton extends StatelessWidget {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
+
+// Effet « machine à écrire » rétro/terminal — le texte s'écrit lettre par lettre
+// avec un curseur clignotant. Tap pour passer directement au texte complet.
+const _kTypeSpeed = Duration(milliseconds: 18);
+
+class _TypewriterText extends StatefulWidget {
+  final String text;
+  final TextStyle style;
+  const _TypewriterText({super.key, required this.text, required this.style});
+
+  @override
+  State<_TypewriterText> createState() => _TypewriterTextState();
+}
+
+class _TypewriterTextState extends State<_TypewriterText>
+    with SingleTickerProviderStateMixin {
+  String _displayed = '';
+  bool _typing = false;
+  Timer? _timer;
+  late final AnimationController _cursor;
+
+  @override
+  void initState() {
+    super.initState();
+    _cursor = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    )..repeat();
+    _start();
+  }
+
+  @override
+  void didUpdateWidget(covariant _TypewriterText old) {
+    super.didUpdateWidget(old);
+    if (old.text != widget.text) _start();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _cursor.dispose();
+    super.dispose();
+  }
+
+  void _start() {
+    _timer?.cancel();
+    final full = widget.text;
+    var i = 0;
+    setState(() {
+      _displayed = '';
+      _typing = true;
+    });
+    _timer = Timer.periodic(_kTypeSpeed, (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      if (i >= full.length) {
+        t.cancel();
+        setState(() => _typing = false);
+        return;
+      }
+      setState(() => _displayed = full.substring(0, ++i));
+    });
+  }
+
+  void _skip() {
+    if (!_typing) return;
+    _timer?.cancel();
+    setState(() {
+      _displayed = widget.text;
+      _typing = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: _skip,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedBuilder(
+        animation: _cursor,
+        builder: (_, __) {
+          final showCursor = _typing && _cursor.value > 0.5;
+          return RichText(
+            text: TextSpan(
+              style: widget.style,
+              children: [
+                TextSpan(text: _displayed),
+                if (showCursor)
+                  const TextSpan(text: '█', style: TextStyle(color: _gold)),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
 
 class _SectionLabel extends StatelessWidget {
   final String text;
