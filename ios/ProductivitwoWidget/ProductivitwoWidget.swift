@@ -359,3 +359,309 @@ struct ProductivitwoWidgetEntryView: View {
         }
     }
 }
+
+// MARK: - Helpers partagés
+
+private func hexColor(_ s: String?, fallback: Color = brandPurple) -> Color {
+    guard var h = s else { return fallback }
+    h = h.replacingOccurrences(of: "#", with: "")
+    guard h.count == 6, let v = Int(h, radix: 16) else { return fallback }
+    return Color(red: Double((v >> 16) & 0xFF) / 255.0,
+                 green: Double((v >> 8) & 0xFF) / 255.0,
+                 blue: Double(v & 0xFF) / 255.0)
+}
+
+private func appDefaults() -> UserDefaults? { UserDefaults(suiteName: appGroup) }
+
+// MARK: ════════ WIDGET PROGRAMME DU JOUR ════════
+
+struct ScheduleItem: Decodable {
+    let time: String
+    let title: String
+    let cat: String
+    let status: String
+    var isDone: Bool { status == "done" }
+    var color: Color {
+        switch cat {
+        case "routine": return Color(red: 0.11, green: 0.62, blue: 0.46)
+        case "personal": return Color(red: 0.36, green: 0.55, blue: 0.94)
+        case "break": return Color.gray
+        default: return brandPurple
+        }
+    }
+}
+
+struct ScheduleEntry: TimelineEntry { let date: Date; let items: [ScheduleItem] }
+
+struct ScheduleProvider: TimelineProvider {
+    func loadItems() -> [ScheduleItem] {
+        guard let raw = appDefaults()?.string(forKey: "schedule_json"),
+              let data = raw.data(using: .utf8),
+              let arr = try? JSONDecoder().decode([ScheduleItem].self, from: data) else { return [] }
+        return arr
+    }
+    func placeholder(in c: Context) -> ScheduleEntry {
+        ScheduleEntry(date: Date(), items: [
+            ScheduleItem(time: "09:00", title: "Deep Work", cat: "project", status: "pending"),
+            ScheduleItem(time: "11:00", title: "Prospection", cat: "project", status: "done"),
+            ScheduleItem(time: "14:00", title: "Sport", cat: "routine", status: "pending"),
+        ])
+    }
+    func getSnapshot(in c: Context, completion: @escaping (ScheduleEntry) -> Void) {
+        completion(ScheduleEntry(date: Date(), items: loadItems()))
+    }
+    func getTimeline(in c: Context, completion: @escaping (Timeline<ScheduleEntry>) -> Void) {
+        let next = Calendar.current.date(byAdding: .minute, value: 15, to: Date())!
+        completion(Timeline(entries: [ScheduleEntry(date: Date(), items: loadItems())], policy: .after(next)))
+    }
+}
+
+struct ScheduleWidgetView: View {
+    let items: [ScheduleItem]
+    @Environment(\.widgetFamily) var family
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("PROGRAMME DU JOUR")
+                .font(.system(size: 10, weight: .semibold)).tracking(0.8)
+                .foregroundColor(brandPurple.opacity(0.9))
+                .padding(.bottom, 8)
+            if items.isEmpty {
+                Spacer()
+                Text("Aucun bloc planifié").font(.system(size: 13)).italic()
+                    .foregroundColor(.secondary.opacity(0.6))
+                Spacer()
+            } else {
+                let max = family == .systemLarge ? 8 : 4
+                ForEach(Array(items.prefix(max).enumerated()), id: \.offset) { _, b in
+                    HStack(spacing: 8) {
+                        Text(b.time).font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundColor(.secondary).frame(width: 38, alignment: .leading)
+                        Circle().fill(b.color).frame(width: 6, height: 6)
+                        Text(b.title).font(.system(size: 13, weight: .medium))
+                            .foregroundColor(b.isDone ? .secondary : .primary)
+                            .strikethrough(b.isDone, color: .secondary).lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, 4)
+                }
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+struct ScheduleWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "ScheduleWidget", provider: ScheduleProvider()) { entry in
+            ScheduleWidgetView(items: entry.items)
+                .containerBackground(.fill.tertiary, for: .widget)
+        }
+        .configurationDisplayName("Programme du jour")
+        .description("Tes blocs horaires du jour")
+        .supportedFamilies([.systemMedium, .systemLarge])
+    }
+}
+
+// MARK: ════════ WIDGET ROUTINES (anneau + reste à faire) ════════
+
+struct RoutineItem: Decodable {
+    let label: String
+    let done: Int
+    let target: Int
+    let color: String?
+    var isDone: Bool { done >= target }
+}
+
+struct RoutinesEntry: TimelineEntry { let date: Date; let done: Int; let total: Int; let items: [RoutineItem] }
+
+struct RoutinesProvider: TimelineProvider {
+    func load() -> RoutinesEntry {
+        let d = appDefaults()
+        var items: [RoutineItem] = []
+        if let raw = d?.string(forKey: "routines_json"), let data = raw.data(using: .utf8),
+           let arr = try? JSONDecoder().decode([RoutineItem].self, from: data) { items = arr }
+        return RoutinesEntry(date: Date(),
+                             done: d?.integer(forKey: "routines_done") ?? 0,
+                             total: d?.integer(forKey: "routines_total") ?? 0,
+                             items: items)
+    }
+    func placeholder(in c: Context) -> RoutinesEntry {
+        RoutinesEntry(date: Date(), done: 2, total: 5, items: [
+            RoutineItem(label: "Méditation", done: 0, target: 1, color: "#1d9e75"),
+            RoutineItem(label: "Boire de l'eau", done: 3, target: 8, color: "#3b82f6"),
+            RoutineItem(label: "Lecture", done: 0, target: 1, color: "#c9a84c"),
+        ])
+    }
+    func getSnapshot(in c: Context, completion: @escaping (RoutinesEntry) -> Void) { completion(load()) }
+    func getTimeline(in c: Context, completion: @escaping (Timeline<RoutinesEntry>) -> Void) {
+        let next = Calendar.current.date(byAdding: .minute, value: 15, to: Date())!
+        completion(Timeline(entries: [load()], policy: .after(next)))
+    }
+}
+
+struct RoutinesWidgetView: View {
+    let entry: RoutinesEntry
+    @Environment(\.widgetFamily) var family
+    var ratio: Double { entry.total > 0 ? Double(entry.done) / Double(entry.total) : 0 }
+    var remaining: [RoutineItem] { entry.items.filter { !$0.isDone } }
+
+    var body: some View {
+        if family == .systemSmall {
+            VStack(spacing: 6) {
+                ring(size: 80, line: 10, font: 18)
+                Text("Routines").font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.secondary).textCase(.uppercase).tracking(0.8)
+            }
+        } else {
+            HStack(alignment: .top, spacing: 14) {
+                VStack(spacing: 4) {
+                    ring(size: 54, line: 7, font: 13)
+                    Text("\(entry.done)/\(entry.total)").font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.secondary)
+                }.frame(width: 60)
+                Rectangle().fill(brandPurple.opacity(0.15)).frame(width: 1)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("À FAIRE").font(.system(size: 10, weight: .semibold)).tracking(0.6)
+                        .foregroundColor(.secondary).padding(.bottom, 6)
+                    if remaining.isEmpty {
+                        Text("Tout est fait 🎉").font(.system(size: 13)).italic()
+                            .foregroundColor(.secondary.opacity(0.7))
+                    } else {
+                        let max = family == .systemLarge ? 7 : 3
+                        ForEach(Array(remaining.prefix(max).enumerated()), id: \.offset) { _, r in
+                            HStack(spacing: 7) {
+                                Circle().fill(hexColor(r.color)).frame(width: 7, height: 7)
+                                Text(r.label).font(.system(size: 13)).lineLimit(1)
+                                Spacer(minLength: 0)
+                                if r.target > 1 {
+                                    Text("\(r.done)/\(r.target)").font(.system(size: 10))
+                                        .foregroundColor(.secondary)
+                                }
+                            }.padding(.vertical, 3.5)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(.horizontal, 14).padding(.vertical, 12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+    }
+
+    func ring(size: CGFloat, line: CGFloat, font: CGFloat) -> some View {
+        ZStack {
+            Circle().stroke(brandPurple.opacity(0.18), lineWidth: line)
+            Circle().trim(from: 0, to: ratio)
+                .stroke(brandPurple, style: StrokeStyle(lineWidth: line, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            Text("\(Int(ratio * 100))%").font(.system(size: font, weight: .bold, design: .rounded))
+                .foregroundColor(brandPurple)
+        }.frame(width: size, height: size)
+    }
+}
+
+struct RoutinesWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "RoutinesWidget", provider: RoutinesProvider()) { entry in
+            RoutinesWidgetView(entry: entry)
+                .containerBackground(.fill.tertiary, for: .widget)
+        }
+        .configurationDisplayName("Routines")
+        .description("Anneau de progression + routines restantes")
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+    }
+}
+
+// MARK: ════════ WIDGET PROJETS (navigable) ════════
+
+struct ProjectItem: Decodable, Identifiable {
+    let id: String
+    let title: String
+    let done: Int
+    let total: Int
+    let color: String?
+    var progress: Double { total > 0 ? Double(done) / Double(total) : 0 }
+    var url: URL { URL(string: "com.madabinghy.productivitwo://project/\(id)")! }
+}
+
+struct ProjectsEntry: TimelineEntry { let date: Date; let items: [ProjectItem] }
+
+struct ProjectsProvider: TimelineProvider {
+    func loadItems() -> [ProjectItem] {
+        guard let raw = appDefaults()?.string(forKey: "projects_json"),
+              let data = raw.data(using: .utf8),
+              let arr = try? JSONDecoder().decode([ProjectItem].self, from: data) else { return [] }
+        return arr
+    }
+    func placeholder(in c: Context) -> ProjectsEntry {
+        ProjectsEntry(date: Date(), items: [
+            ProjectItem(id: "1", title: "Lancement Formation", done: 4, total: 12, color: "#c9a84c"),
+            ProjectItem(id: "2", title: "Dev Productivitwo", done: 8, total: 20, color: "#6366f1"),
+        ])
+    }
+    func getSnapshot(in c: Context, completion: @escaping (ProjectsEntry) -> Void) {
+        completion(ProjectsEntry(date: Date(), items: loadItems()))
+    }
+    func getTimeline(in c: Context, completion: @escaping (Timeline<ProjectsEntry>) -> Void) {
+        let next = Calendar.current.date(byAdding: .minute, value: 30, to: Date())!
+        completion(Timeline(entries: [ProjectsEntry(date: Date(), items: loadItems())], policy: .after(next)))
+    }
+}
+
+struct ProjectsWidgetView: View {
+    let items: [ProjectItem]
+    @Environment(\.widgetFamily) var family
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("PROJETS").font(.system(size: 10, weight: .semibold)).tracking(0.8)
+                .foregroundColor(brandPurple.opacity(0.9)).padding(.bottom, 8)
+            if items.isEmpty {
+                Spacer()
+                Text("Aucun projet actif").font(.system(size: 13)).italic()
+                    .foregroundColor(.secondary.opacity(0.6))
+                Spacer()
+            } else {
+                let max = family == .systemLarge ? 7 : 3
+                ForEach(items.prefix(max)) { p in
+                    Link(destination: p.url) {
+                        HStack(spacing: 8) {
+                            Circle().fill(hexColor(p.color)).frame(width: 7, height: 7)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(p.title).font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(.primary).lineLimit(1)
+                                GeometryReader { geo in
+                                    ZStack(alignment: .leading) {
+                                        RoundedRectangle(cornerRadius: 2).fill(hexColor(p.color).opacity(0.15)).frame(height: 3)
+                                        RoundedRectangle(cornerRadius: 2).fill(hexColor(p.color)).frame(width: geo.size.width * p.progress, height: 3)
+                                    }
+                                }.frame(height: 3)
+                            }
+                            Text("\(p.done)/\(p.total)").font(.system(size: 10))
+                                .foregroundColor(.secondary).frame(width: 30, alignment: .trailing)
+                            Image(systemName: "chevron.right").font(.system(size: 9)).foregroundColor(.secondary.opacity(0.5))
+                        }.padding(.vertical, 5)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+struct ProjectsWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "ProjectsWidget", provider: ProjectsProvider()) { entry in
+            ProjectsWidgetView(items: entry.items)
+                .containerBackground(.fill.tertiary, for: .widget)
+        }
+        .configurationDisplayName("Projets")
+        .description("Tes projets — tap pour ouvrir")
+        .supportedFamilies([.systemMedium, .systemLarge])
+    }
+}

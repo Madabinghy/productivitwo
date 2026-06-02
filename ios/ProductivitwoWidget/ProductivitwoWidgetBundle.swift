@@ -12,5 +12,8 @@ import SwiftUI
 struct ProductivitwoWidgetBundle: WidgetBundle {
     var body: some Widget {
         ProductivitwoWidget()
+        ScheduleWidget()
+        RoutinesWidget()
+        ProjectsWidget()
     }
 }

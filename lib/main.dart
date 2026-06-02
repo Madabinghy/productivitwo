@@ -1798,6 +1798,12 @@ class _AppRootState extends State<AppRoot>
   }
 
   Future<void> _handleDeepLink(Uri uri) async {
+    // Widget Projets → ouvrir un projet :
+    //   com.madabinghy.productivitwo://project/<projectId>
+    if (uri.host == 'project' && uri.pathSegments.isNotEmpty) {
+      _openProjectSheet(uri.pathSegments.first);
+      return;
+    }
     // Format 1 : com.madabinghy.productivitwo://email-signin?link=ENCODED_URL
     //   → lien Firebase encodé dans le param 'link' (depuis la page relay web)
     // Format 2 : lien Firebase direct (deep link natif iOS, fallback)

@@ -10,6 +10,13 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.55', '2 juin 2026', [
+    (Icons.today_outlined, 'Nouveau widget « Programme du jour » : tes blocs horaires sur l\'écran d\'accueil (Medium / Large)'),
+    (Icons.repeat_rounded, 'Nouveau widget « Routines » : anneau de progression + uniquement les routines qu\'il te reste à faire (Small / Medium / Large)'),
+    (Icons.folder_open_rounded, 'Nouveau widget « Projets » : tes projets en cours — tap sur un projet pour l\'ouvrir directement dans l\'app'),
+    (Icons.auto_awesome, 'ORION : bouton « Enregistrer » pour modifier tes instructions permanentes'),
+    (Icons.tune, 'Paramètres : option pour activer / désactiver les « Priorités du jour » (désactivé par défaut)'),
+  ]),
   _Entry('5.51', '2 juin 2026', [
     (Icons.repeat_rounded, 'Lancer une routine : la liste est triée par domaine, comme le lanceur d\'activité'),
     (Icons.auto_awesome, 'ORION : sa réponse à ta demande s\'affiche dans l\'onglet, avec un effet machine à écrire rétro'),
