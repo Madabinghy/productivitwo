@@ -26,7 +26,6 @@ struct WidgetData {
     let routinesDone: Int
     let routinesTotal: Int
     let ganttTasks: [GanttTask]
-    let lastUpdate: String?   // sentinel écrit par l'app — diagnostic App Group
 
     static func load() -> WidgetData {
         let defaults = UserDefaults(suiteName: appGroup)
@@ -38,18 +37,11 @@ struct WidgetData {
            let decoded = try? JSONDecoder().decode([GanttTask].self, from: data) {
             tasks = decoded
         }
-        let last = defaults?.string(forKey: "last_update")
-        return WidgetData(routinesDone: done, routinesTotal: total, ganttTasks: tasks, lastUpdate: last)
+        return WidgetData(routinesDone: done, routinesTotal: total, ganttTasks: tasks)
     }
 
     var routineRatio: Double {
         routinesTotal > 0 ? Double(routinesDone) / Double(routinesTotal) : 0
-    }
-
-    // Ligne de diagnostic temporaire (App Group / données partagées).
-    var diagText: String {
-        let maj = lastUpdate.map { String($0.suffix(8)) } ?? "jamais"
-        return "sync \(maj) · R\(routinesTotal) G\(ganttTasks.count)"
     }
 }
 
@@ -69,8 +61,7 @@ struct ProductivitwoProvider: TimelineProvider {
                 GanttTask(project: "Mon App", task: "Design UI", done: 3, total: 3),
                 GanttTask(project: "Lancement", task: "Rédiger la landing page", done: 0, total: 4),
                 GanttTask(project: "Lancement", task: "Préparer les visuels", done: 1, total: 2),
-            ],
-            lastUpdate: "preview"
+            ]
         ))
     }
 
@@ -184,8 +175,8 @@ struct MediumWidgetView: View {
                         .padding(.bottom, 6)
 
                     if data.ganttTasks.isEmpty {
-                        Text("Aucune tâche active\n\(data.diagText)")
-                            .font(.system(size: 11))
+                        Text("Aucune tâche active")
+                            .font(.system(size: 12))
                             .foregroundColor(.secondary.opacity(0.6))
                             .italic()
                     } else {
@@ -243,8 +234,8 @@ struct LargeWidgetView: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Projets actifs")
                             .font(.system(size: 14, weight: .bold))
-                        Text("\(data.ganttTasks.count) tâche\(data.ganttTasks.count > 1 ? "s" : "") · \(data.routinesDone)/\(data.routinesTotal) rout. · \(data.diagText)")
-                            .font(.system(size: 10))
+                        Text("\(data.ganttTasks.count) tâche\(data.ganttTasks.count > 1 ? "s" : "") · \(data.routinesDone)/\(data.routinesTotal) routines")
+                            .font(.system(size: 11))
                             .foregroundColor(.secondary)
                     }
                     Spacer()
