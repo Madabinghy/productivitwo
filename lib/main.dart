@@ -1661,6 +1661,8 @@ class _AppRootState extends State<AppRoot>
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   StreamSubscription<Uri?>? _deepLinkSub;
+  // Lien reçu au cold-start avant que l'état soit chargé → rejoué quand l'app est prête.
+  Uri? _pendingDeepLink;
   StreamSubscription<List<Domain>>? _domainsSub;
   StreamSubscription<List<Project>>? _projectsSub;
   StreamSubscription<List<CaptureItem>>? _inboxSub;
@@ -1713,7 +1715,7 @@ class _AppRootState extends State<AppRoot>
       },
     ).catchError((e) {
       devLog.error('_init() exception non catchée', tag: 'MAIN', error: e);
-    });
+    }).whenComplete(_drainPendingDeepLink);
 
     // Ouvre le bon sheet quand l'utilisateur tape une notification
     NotificationService.onNotificationTap = (id) {
@@ -1797,10 +1799,24 @@ class _AppRootState extends State<AppRoot>
     _deepLinkSub = appLinks.uriLinkStream.listen(_handleDeepLink);
   }
 
+  // Rejoue un lien mémorisé au cold-start, une fois l'état chargé.
+  void _drainPendingDeepLink() {
+    final uri = _pendingDeepLink;
+    if (uri == null || !mounted) return;
+    _pendingDeepLink = null;
+    _handleDeepLink(uri);
+  }
+
   Future<void> _handleDeepLink(Uri uri) async {
     // Widget Projets → ouvrir un projet :
     //   com.madabinghy.productivitwo://project/<projectId>
     if (uri.host == 'project' && uri.pathSegments.isNotEmpty) {
+      // Cold-start : l'app n'a pas fini de charger → on mémorise et on rejoue
+      // une fois l'état prêt (sinon le lien retombe sur le dashboard et est perdu).
+      if (_state == null) {
+        _pendingDeepLink = uri;
+        return;
+      }
       _openProjectSheet(uri.pathSegments.first);
       return;
     }
