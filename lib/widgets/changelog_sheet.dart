@@ -10,6 +10,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.61', '3 juin 2026', [
+    (Icons.auto_awesome, 'ORION cale tes cibles de temps : au lieu d\'un 30 min par défaut sur chaque activité, il pose une intention réaliste dès le départ et la recalibre selon ton réalisé — tes jauges de temps reflètent enfin quelque chose de juste'),
+    (Icons.push_pin_outlined, 'Si tu règles une cible de temps à la main, elle est épinglée : ORION ne la touche plus'),
+  ]),
   _Entry('5.60', '3 juin 2026', [
     (Icons.auto_awesome, 'ORION : nouveau « Levier du jour » dans le brief — quand une dimension de ta productivité décroche (routines, temps ou projets), ORION te dit laquelle rattraper en priorité et comment'),
   ]),

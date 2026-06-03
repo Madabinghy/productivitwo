@@ -6943,7 +6943,10 @@ class _AppRootState extends State<AppRoot>
                               ),
                             );
                             if (result == null) return;
-                            setGoal(() => a.goalMin = result);
+                            setGoal(() {
+                              a.goalMin = result;
+                              a.targetSource = 'user'; // épinglage manuel : ORION n'y touche plus
+                            });
                             logic.onChange();
                           },
                           icon: const Icon(Icons.timer_outlined, size: 14),

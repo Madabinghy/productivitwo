@@ -476,6 +476,43 @@ async function executeUpdateActivityGoal(
   return `✅ Objectif de "${name}" mis à jour. Visible dans Productivitwo à la prochaine synchronisation.`;
 }
 
+async function executeSetActivityTargets(
+  uid: string,
+  args: { targets: { activityId: string; goalMin: number }[] }
+): Promise<string> {
+  const targets = args.targets ?? [];
+  if (targets.length === 0) return "Aucune cible fournie.";
+
+  const set: string[] = [];
+  const pinned: string[] = [];
+  const missing: string[] = [];
+
+  for (const t of targets) {
+    const ref = db.collection(`users/${uid}/activities`).doc(t.activityId);
+    const snap = await ref.get();
+    if (!snap.exists) {
+      missing.push(t.activityId);
+      continue;
+    }
+    const data = snap.data() ?? {};
+    const name = data.name ?? t.activityId;
+    if (data.targetSource === "user") {
+      pinned.push(name);
+      continue;
+    }
+    const goalMin = Math.max(1, Math.round(t.goalMin));
+    await ref.set({ goalMin, targetSource: "orion" }, { merge: true });
+    set.push(`${name} → ${goalMin} min/j`);
+  }
+
+  const lines: string[] = [];
+  if (set.length) lines.push(`✅ Intentions posées : ${set.join(", ")}.`);
+  if (pinned.length) lines.push(`🔒 Ignorées (épinglées par l'utilisateur) : ${pinned.join(", ")}.`);
+  if (missing.length) lines.push(`⚠️ Introuvables : ${missing.join(", ")}.`);
+  lines.push("Visible dans Productivitwo à la prochaine synchronisation.");
+  return lines.join("\n");
+}
+
 async function executeCreateRoutine(
   uid: string,
   args: { name: string; domainId: string; activityId?: string; unit?: string; habitFreq?: number; habitTarget?: number }
@@ -1280,7 +1317,7 @@ async function executeGetOrionContext(uid: string): Promise<string> {
   activitiesSnap.docs.forEach((d) => { const v = d.data(); activityMap.set(v.id, v.name); });
 
   const activities = activitiesSnap.docs.map((d) => d.data()).filter((v) => !v.deleted)
-    .map((v) => ({ id: v.id, name: v.name, type: v.type, domainId: v.domainId, goalMin: v.goalMin ?? null }));
+    .map((v) => ({ id: v.id, name: v.name, type: v.type, domainId: v.domainId, goalMin: v.goalMin ?? null, targetSource: v.targetSource ?? "default" }));
 
   // Habitudes : hits 7j par activité
   const hitsByHabit = new Map<string, number>();
@@ -1700,7 +1737,7 @@ async function executeComputeTimeBudget(uid: string): Promise<string> {
     workflow: calibrated.length > 0
       ? [
           "1. Si 'Sommeil' est absent (id: null) → create_activity(name='Sommeil', type='time', domainId=<domaine Santé>)",
-          "2. Pour chaque activité avec hasEnoughData=true et id non-null → update_activity_goal(activityId, goalMin=recommendedGoalMin)",
+          "2. set_activity_targets(targets:[{activityId, goalMin=recommendedGoalMin}, …]) pour toutes les activités hasEnoughData=true et id non-null, EN UN SEUL appel (les cibles épinglées par l'utilisateur sont préservées automatiquement)",
           "3. push_assistant_message : liste les objectifs rééquilibrés (±X min/j) + temps sommeil",
           uncalibrated.length > 0
             ? `4. push_assistant_message pour les ${uncalibrated.length} activité(s) non calibrée(s) : demander à l'utilisateur de logger ses premières sessions pour activer le budget 24h`
@@ -1709,7 +1746,7 @@ async function executeComputeTimeBudget(uid: string): Promise<string> {
       : [
           "Aucune activité n'a assez de données (min 2 semaines de sessions).",
           "push_assistant_message : encourager l'utilisateur à logger ses activités pour activer le budget 24h automatique.",
-          "Ne pas appeler update_activity_goal — les goalMin à 1min par défaut ne seraient pas améliorés.",
+          "Ne pas recalibrer depuis le réalisé (pas assez de data). En revanche, si des activités ont targetSource='default' (valeur d'onboarding) → poser une intention de départ réaliste via set_activity_targets pour que les jauges ne soient pas à 30min arbitraires.",
         ],
   }, null, 2);
 }
@@ -1743,6 +1780,7 @@ export {
   executeGetUserContext,
   executeGetOrionContext,
   executeUpdateActivityGoal,
+  executeSetActivityTargets,
   executeCreateRoutine,
   executeGetDayBlocks,
   executeCreateActivity,

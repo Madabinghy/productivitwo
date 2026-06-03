@@ -23,6 +23,7 @@ const ORION_TOOLS = [
     { name: "create_activity", description: "Crée une activité (temps ou habitude).", input_schema: { type: "object", properties: { name: { type: "string" }, type: { type: "string" }, domainId: { type: "string" } }, required: ["name", "type", "domainId"] } },
     { name: "update_activity", description: "Met à jour une activité.", input_schema: { type: "object", properties: { activityId: { type: "string" } }, required: ["activityId"] } },
     { name: "update_activity_goal", description: "Met à jour l'objectif quotidien d'une activité.", input_schema: { type: "object", properties: { activityId: { type: "string" }, goalMin: { type: "number" } }, required: ["activityId"] } },
+    { name: "set_activity_targets", description: "Pose/ajuste en lot l'intention de temps (goalMin) de plusieurs activités. Respecte les cibles épinglées par l'utilisateur (jamais écrasées). N'affecte PAS le score, seulement la jauge de temps. À utiliser pour le seed de démarrage et le rééquilibrage du budget temps.", input_schema: { type: "object", required: ["targets"], properties: { targets: { type: "array", items: { type: "object", required: ["activityId", "goalMin"], properties: { activityId: { type: "string" }, goalMin: { type: "number" } } } } } } },
     { name: "delete_activity", description: "Supprime (soft-delete) une activité.", input_schema: { type: "object", properties: { activityId: { type: "string" } }, required: ["activityId"] } },
     { name: "create_routine", description: "Crée une routine mesurable (habitude trackée : fréquence + cible).", input_schema: { type: "object", properties: { name: { type: "string" }, domainId: { type: "string" }, unit: { type: "string" }, habitFreq: { type: "number", description: "0=daily, 1=weekly, 2=monthly" }, habitTarget: { type: "number" }, activityId: { type: "string", description: "optionnel" } }, required: ["name", "domainId"] } },
     { name: "delete_routine", description: "Supprime une routine.", input_schema: { type: "object", properties: { routineId: { type: "string" } }, required: ["routineId"] } },
@@ -178,8 +179,14 @@ Ne répète jamais un message récent — vérifie recentShown pour éviter les 
 → Si le domaine n'est pas précisé, choisis le plus cohérent parmi les domaines existants dans le contexte
 → Pousse ensuite un push_assistant_message confirmant ce qui a été créé (titre du projet, nb de phases/tâches)
 
+**Démarrage / activités sans intention de temps (seed J0)**
+→ Repère les activités 'time' encore à la valeur d'onboarding par défaut (targetSource:"default", typiquement goalMin=30) et avec peu/pas de temps loggué (timeStats vide).
+→ Estime pour chacune une intention RÉALISTE et CONSERVATRICE (sous-engage au début pour créer des wins) à partir de son nom, son domaine et la Vision si disponible. Ex: Méditation 10-15min, Lecture 20-30min, Deep Work 60-90min, Sport 30-45min.
+→ Pose-les en UN appel set_activity_targets(targets:[{activityId, goalMin}, …]).
+→ push_assistant_message : explique brièvement que tu as posé des intentions de temps de départ, ajustables à la main.
+
 **Lundi matin — rééquilibrage du budget temps 24h**
-→ compute_time_budget → pour chaque activité avec id non-null : update_activity_goal(activityId, goalMin=recommendedGoalMin)
+→ compute_time_budget → set_activity_targets(targets:[{activityId, goalMin=recommendedGoalMin}, …]) pour toutes les activités avec id non-null EN UN SEUL appel (respecte automatiquement les cibles épinglées par l'utilisateur).
 → Si l'activité "Sommeil" est absente (id: null) → create_activity(name="Sommeil", domainId=<domaine Santé/Bien-être>)
 → push_assistant_message : liste concise des objectifs rééquilibrés (ex: "Sport : 45min/j → 49min/j · Sommeil : 7h30")
 → Ne pas exécuter si déjà fait cette semaine (vérifie recentShown pour un message de type "budget")
@@ -288,6 +295,10 @@ Tu dois TOUJOURS appeler push_assistant_message avant end_turn : exactement 1 me
                         case "update_activity_goal":
                             result = await (0, execute_1.executeUpdateActivityGoal)(uid, args.activityId, args);
                             actionLog.push(`🎯 Objectif activité mis à jour`);
+                            break;
+                        case "set_activity_targets":
+                            result = await (0, execute_1.executeSetActivityTargets)(uid, args);
+                            actionLog.push(`🎯 Intentions de temps posées`);
                             break;
                         case "delete_activity":
                             result = await (0, execute_1.executeDeleteActivity)(uid, args.activityId);

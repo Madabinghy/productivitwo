@@ -52,6 +52,34 @@ const UPDATE_ACTIVITY_GOAL_TOOL = {
   },
 };
 
+const SET_ACTIVITY_TARGETS_TOOL = {
+  name: "set_activity_targets",
+  description:
+    "Pose ou ajuste l'INTENTION de temps quotidienne (goalMin, en minutes) de plusieurs activités 'time' en un seul appel. " +
+    "Sert à (1) remplacer la valeur d'onboarding par défaut (30 min) par une cible réaliste dès le démarrage, " +
+    "et (2) recalibrer dans la durée selon l'écart entre l'intention et le réalisé (timeLogged de get_user_context). " +
+    "N'écrase JAMAIS une cible épinglée à la main par l'utilisateur (targetSource='user'). " +
+    "N'affecte PAS le score de productivité — uniquement la jauge de temps. Sois conservateur (sous-engage au début, monte par paliers).",
+  inputSchema: {
+    type: "object",
+    required: ["targets"],
+    properties: {
+      targets: {
+        type: "array",
+        description: "Liste des cibles à poser",
+        items: {
+          type: "object",
+          required: ["activityId", "goalMin"],
+          properties: {
+            activityId: { type: "string", description: "id de l'activité time (via get_user_context)" },
+            goalMin: { type: "number", description: "Intention de minutes/jour (réaliste, conservatrice)" },
+          },
+        },
+      },
+    },
+  },
+};
+
 const CREATE_ROUTINE_TOOL = {
   name: "create_routine",
   description:
@@ -692,6 +720,7 @@ const MARK_BLOCK_DONE_TOOL = {
 export {
 GET_USER_CONTEXT_TOOL,
 UPDATE_ACTIVITY_GOAL_TOOL,
+SET_ACTIVITY_TARGETS_TOOL,
 CREATE_ROUTINE_TOOL,
 CREATE_ACTIVITY_TOOL,
 CREATE_DOMAIN_TOOL,

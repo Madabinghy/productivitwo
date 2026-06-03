@@ -365,6 +365,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         name: sug.name,
         type: 'time',
         goalMin: 30,
+        targetSource: 'default',
         iconCode: sug.icon.codePoint,
       );
       logic.state.activities.add(act);
@@ -1347,7 +1348,8 @@ class _CatalogueSheetState extends State<CatalogueSheet> {
       final sug = entry.value.sug;
       final act = Activity(
         domainId: domainIds[entry.value.domain] ?? state.domains.firstOrNull?.id ?? '',
-        name: sug.name, type: 'time', goalMin: 30, iconCode: sug.icon.codePoint,
+        name: sug.name, type: 'time', goalMin: 30, targetSource: 'default',
+        iconCode: sug.icon.codePoint,
       );
       state.activities.add(act);
       allTimeActivities[sug.name] = act;

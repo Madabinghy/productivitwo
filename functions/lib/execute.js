@@ -6,6 +6,7 @@ exports.validateToken = validateToken;
 exports.executeGetUserContext = executeGetUserContext;
 exports.executeGetOrionContext = executeGetOrionContext;
 exports.executeUpdateActivityGoal = executeUpdateActivityGoal;
+exports.executeSetActivityTargets = executeSetActivityTargets;
 exports.executeCreateRoutine = executeCreateRoutine;
 exports.executeGetDayBlocks = executeGetDayBlocks;
 exports.executeCreateActivity = executeCreateActivity;
@@ -422,6 +423,41 @@ async function executeUpdateActivityGoal(uid, activityId, updates) {
     await ref.update(patch);
     const name = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : activityId;
     return `✅ Objectif de "${name}" mis à jour. Visible dans Productivitwo à la prochaine synchronisation.`;
+}
+async function executeSetActivityTargets(uid, args) {
+    var _a, _b, _c;
+    const targets = (_a = args.targets) !== null && _a !== void 0 ? _a : [];
+    if (targets.length === 0)
+        return "Aucune cible fournie.";
+    const set = [];
+    const pinned = [];
+    const missing = [];
+    for (const t of targets) {
+        const ref = db_1.db.collection(`users/${uid}/activities`).doc(t.activityId);
+        const snap = await ref.get();
+        if (!snap.exists) {
+            missing.push(t.activityId);
+            continue;
+        }
+        const data = (_b = snap.data()) !== null && _b !== void 0 ? _b : {};
+        const name = (_c = data.name) !== null && _c !== void 0 ? _c : t.activityId;
+        if (data.targetSource === "user") {
+            pinned.push(name);
+            continue;
+        }
+        const goalMin = Math.max(1, Math.round(t.goalMin));
+        await ref.set({ goalMin, targetSource: "orion" }, { merge: true });
+        set.push(`${name} → ${goalMin} min/j`);
+    }
+    const lines = [];
+    if (set.length)
+        lines.push(`✅ Intentions posées : ${set.join(", ")}.`);
+    if (pinned.length)
+        lines.push(`🔒 Ignorées (épinglées par l'utilisateur) : ${pinned.join(", ")}.`);
+    if (missing.length)
+        lines.push(`⚠️ Introuvables : ${missing.join(", ")}.`);
+    lines.push("Visible dans Productivitwo à la prochaine synchronisation.");
+    return lines.join("\n");
 }
 async function executeCreateRoutine(uid, args) {
     var _a, _b, _c, _d;
@@ -1119,7 +1155,7 @@ async function executeGetOrionContext(uid) {
     const activityMap = new Map();
     activitiesSnap.docs.forEach((d) => { const v = d.data(); activityMap.set(v.id, v.name); });
     const activities = activitiesSnap.docs.map((d) => d.data()).filter((v) => !v.deleted)
-        .map((v) => { var _a; return ({ id: v.id, name: v.name, type: v.type, domainId: v.domainId, goalMin: (_a = v.goalMin) !== null && _a !== void 0 ? _a : null }); });
+        .map((v) => { var _a, _b; return ({ id: v.id, name: v.name, type: v.type, domainId: v.domainId, goalMin: (_a = v.goalMin) !== null && _a !== void 0 ? _a : null, targetSource: (_b = v.targetSource) !== null && _b !== void 0 ? _b : "default" }); });
     // Habitudes : hits 7j par activité
     const hitsByHabit = new Map();
     habitHitsSnap.docs.forEach((d) => { const v = d.data(); hitsByHabit.set(v.habitId, (hitsByHabit.get(v.habitId) || 0) + 1); });
@@ -1497,7 +1533,7 @@ async function executeComputeTimeBudget(uid) {
         workflow: calibrated.length > 0
             ? [
                 "1. Si 'Sommeil' est absent (id: null) → create_activity(name='Sommeil', type='time', domainId=<domaine Santé>)",
-                "2. Pour chaque activité avec hasEnoughData=true et id non-null → update_activity_goal(activityId, goalMin=recommendedGoalMin)",
+                "2. set_activity_targets(targets:[{activityId, goalMin=recommendedGoalMin}, …]) pour toutes les activités hasEnoughData=true et id non-null, EN UN SEUL appel (les cibles épinglées par l'utilisateur sont préservées automatiquement)",
                 "3. push_assistant_message : liste les objectifs rééquilibrés (±X min/j) + temps sommeil",
                 uncalibrated.length > 0
                     ? `4. push_assistant_message pour les ${uncalibrated.length} activité(s) non calibrée(s) : demander à l'utilisateur de logger ses premières sessions pour activer le budget 24h`
@@ -1506,7 +1542,7 @@ async function executeComputeTimeBudget(uid) {
             : [
                 "Aucune activité n'a assez de données (min 2 semaines de sessions).",
                 "push_assistant_message : encourager l'utilisateur à logger ses activités pour activer le budget 24h automatique.",
-                "Ne pas appeler update_activity_goal — les goalMin à 1min par défaut ne seraient pas améliorés.",
+                "Ne pas recalibrer depuis le réalisé (pas assez de data). En revanche, si des activités ont targetSource='default' (valeur d'onboarding) → poser une intention de départ réaliste via set_activity_targets pour que les jauges ne soient pas à 30min arbitraires.",
             ],
     }, null, 2);
 }

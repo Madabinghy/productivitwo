@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
+exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
 const GET_USER_CONTEXT_TOOL = {
     name: "get_user_context",
     description: "APPELLE CET OUTIL EN PREMIER dans toute conversation liée à la productivité. " +
@@ -53,6 +53,33 @@ const UPDATE_ACTIVITY_GOAL_TOOL = {
     },
 };
 exports.UPDATE_ACTIVITY_GOAL_TOOL = UPDATE_ACTIVITY_GOAL_TOOL;
+const SET_ACTIVITY_TARGETS_TOOL = {
+    name: "set_activity_targets",
+    description: "Pose ou ajuste l'INTENTION de temps quotidienne (goalMin, en minutes) de plusieurs activités 'time' en un seul appel. " +
+        "Sert à (1) remplacer la valeur d'onboarding par défaut (30 min) par une cible réaliste dès le démarrage, " +
+        "et (2) recalibrer dans la durée selon l'écart entre l'intention et le réalisé (timeLogged de get_user_context). " +
+        "N'écrase JAMAIS une cible épinglée à la main par l'utilisateur (targetSource='user'). " +
+        "N'affecte PAS le score de productivité — uniquement la jauge de temps. Sois conservateur (sous-engage au début, monte par paliers).",
+    inputSchema: {
+        type: "object",
+        required: ["targets"],
+        properties: {
+            targets: {
+                type: "array",
+                description: "Liste des cibles à poser",
+                items: {
+                    type: "object",
+                    required: ["activityId", "goalMin"],
+                    properties: {
+                        activityId: { type: "string", description: "id de l'activité time (via get_user_context)" },
+                        goalMin: { type: "number", description: "Intention de minutes/jour (réaliste, conservatrice)" },
+                    },
+                },
+            },
+        },
+    },
+};
+exports.SET_ACTIVITY_TARGETS_TOOL = SET_ACTIVITY_TARGETS_TOOL;
 const CREATE_ROUTINE_TOOL = {
     name: "create_routine",
     description: "Crée une **routine** : habitude mesurable trackée avec compteur ou fréquence (ex: Méditation, Gainage, Eau). " +

@@ -15,6 +15,7 @@ import {
   GET_USER_CONTEXT_TOOL, GET_DAY_BLOCKS_TOOL,
   LIST_PROJECTS_TOOL, GET_PROJECT_TOOL, PUSH_GANTT_MCP_TOOL,
   ARCHIVE_PROJECT_TOOL, DELETE_PROJECT_TOOL, UPDATE_ACTIVITY_GOAL_TOOL,
+  SET_ACTIVITY_TARGETS_TOOL,
   CREATE_ROUTINE_TOOL, DELETE_ROUTINE_TOOL,
   CREATE_ACTIVITY_TOOL, UPDATE_ACTIVITY_TOOL, UPDATE_TASK_STATUS_TOOL,
   UPDATE_PROJECT_TOOL, DELETE_ACTIVITY_TOOL,
@@ -31,6 +32,7 @@ import {
   validateToken, sendFcmPush, pickProject, pickStrategicObjective, checkRateLimit, todayInParis,
   executePushAssistantMessage, executeGetAssistantMessages, executeDeleteAssistantMessage,
   executeGetUserContext, executeUpdateActivityGoal,
+  executeSetActivityTargets,
   executeCreateRoutine,
   executeGetDayBlocks, executeCreateActivity,
   executeSaveDocument, executeGetDocuments, executeGetArchives,
@@ -393,6 +395,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
             GET_USER_CONTEXT_TOOL, GET_DAY_BLOCKS_TOOL,
             LIST_PROJECTS_TOOL, GET_PROJECT_TOOL, PUSH_GANTT_MCP_TOOL,
             ARCHIVE_PROJECT_TOOL, DELETE_PROJECT_TOOL, UPDATE_ACTIVITY_GOAL_TOOL,
+            SET_ACTIVITY_TARGETS_TOOL,
             CREATE_ROUTINE_TOOL, DELETE_ROUTINE_TOOL,
             CREATE_ACTIVITY_TOOL, UPDATE_ACTIVITY_TOOL, UPDATE_TASK_STATUS_TOOL,
             UPDATE_PROJECT_TOOL, DELETE_ACTIVITY_TOOL,
@@ -442,6 +445,8 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
           text = await executeUpdateActivity(uid, args.activityId as string, args);
         } else if (toolName === "update_activity_goal") {
           text = await executeUpdateActivityGoal(uid, args.activityId as string, args);
+        } else if (toolName === "set_activity_targets") {
+          text = await executeSetActivityTargets(uid, args as Parameters<typeof executeSetActivityTargets>[1]);
         } else if (toolName === "delete_activity") {
           text = await executeDeleteActivity(uid, args.activityId as string);
         } else if (toolName === "create_routine") {

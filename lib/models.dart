@@ -172,6 +172,11 @@ class Activity {
   /// Si true (par défaut), la routine peut être ajustée automatiquement.
   bool autoTune;
 
+  /// Origine de la cible de temps (`goalMin`) : "default" (valeur d'onboarding),
+  /// "orion" (posée/ajustée par ORION), "user" (épinglée à la main). ORION ne
+  /// touche jamais une cible "user".
+  String targetSource;
+
   /// Métadonnées
   final DateTime createdAt;
   DateTime? lastTuneAt;
@@ -201,6 +206,7 @@ class Activity {
     this.habitTarget,
     this.manualTarget = false,
     this.autoTune = true,
+    this.targetSource = 'default',
     DateTime? createdAt,
     this.lastTuneAt,
     this.linkedActivityId,
@@ -235,6 +241,7 @@ class Activity {
         'habitTarget': habitTarget,
         'manualTarget': manualTarget,
         'autoTune': autoTune,
+        'targetSource': targetSource,
         'linkedActivityId':linkedActivityId,
         'createdAt': createdAt.toIso8601String(),
         'lastTuneAt': lastTuneAt?.toIso8601String(),
@@ -280,6 +287,7 @@ class Activity {
       habitTarget: parsedTarget,
       manualTarget: j['manualTarget'] ?? false,
       autoTune: j['autoTune'] ?? true,
+      targetSource: j['targetSource'] ?? 'default',
       linkedActivityId:j['linkedActivityId'],
       createdAt: _parseDate(j['createdAt']),
       lastTuneAt: _parseDateOrNull(j['lastTuneAt']),
@@ -303,6 +311,7 @@ class Activity {
     int? habitTarget,
     bool? manualTarget,
     bool? autoTune,
+    String? targetSource,
     DateTime? createdAt,
     DateTime? lastTuneAt,
     String? linkedActivityId,
@@ -318,6 +327,7 @@ class Activity {
       habitTarget: habitTarget ?? this.habitTarget,
       manualTarget: manualTarget ?? this.manualTarget,
       autoTune: autoTune ?? this.autoTune,
+      targetSource: targetSource ?? this.targetSource,
       createdAt: createdAt ?? this.createdAt,
       lastTuneAt: lastTuneAt ?? this.lastTuneAt,
       linkedActivityId: linkedActivityId ?? null,
@@ -327,7 +337,7 @@ class Activity {
   @override
   String toString() => 'Activity($id, $name, type=$type, '
       'goalMin=$goalMin, freq=$habitFreq, target=$habitTarget, '
-      'manual=$manualTarget, auto=$autoTune)';
+      'manual=$manualTarget, auto=$autoTune, src=$targetSource)';
 
   @override
   bool operator ==(Object other) {
@@ -342,6 +352,7 @@ class Activity {
         other.habitTarget == habitTarget &&
         other.manualTarget == manualTarget &&
         other.autoTune == autoTune &&
+        other.targetSource == targetSource &&
         other.createdAt == createdAt &&
         other.lastTuneAt == lastTuneAt&&
         other.linkedActivityId == linkedActivityId ;
@@ -359,6 +370,7 @@ class Activity {
         habitTarget,
         manualTarget,
         autoTune,
+        targetSource,
         createdAt,
         lastTuneAt,
         linkedActivityId,
