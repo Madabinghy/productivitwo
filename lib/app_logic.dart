@@ -79,6 +79,26 @@ class HabitTrendPoint {
 // ===============  LOGIQUE PRINCIPALE  ================
 // =====================================================
 
+/// Contexte de scoring d'une fenêtre : références p90 (temps / projets),
+/// minutes totales/jour, et quelles dimensions sont actives pour l'utilisateur.
+typedef ScoreCtx = ({
+  double timeRef,
+  double ganttRef,
+  Map<String, int> totalMinByDay,
+  bool timeActive,
+  bool ganttActive,
+});
+
+/// Sous-score d'une dimension de productivité du jour (pour la triade visuelle).
+/// [isFocus] = dimension active la plus basse (le levier à travailler).
+typedef DimScore = ({
+  String key,
+  String label,
+  double score,
+  String detail,
+  bool isFocus,
+});
+
 class AppLogic {
   AppState state;
 
@@ -1806,10 +1826,7 @@ class AppLogic {
 
   // Score journalier pour un jour passé (daily habits uniquement).
   /// Score moyen sur une semaine (lundi → until, excluant les jours vides).
-  double _weekScore(DateTime monday,
-      {DateTime? until,
-      ({double timeRef, double ganttRef, Map<String, int> totalMinByDay})?
-          ctx}) {
+  double _weekScore(DateTime monday, {DateTime? until, ScoreCtx? ctx}) {
     final c = ctx ?? _scoreContext();
     final end = until ?? DateTime.now();
     final endDay = DateTime(end.year, end.month, end.day);
@@ -1875,10 +1892,9 @@ class AppLogic {
   }
 
   /// Contexte de calcul du score de productivité sur une fenêtre : références
-  /// "pleine journée" (p90 du standard propre de l'user) + minutes totales/jour.
-  /// Calculé UNE fois par lot de scores (la heatmap génère 84 jours).
-  ({double timeRef, double ganttRef, Map<String, int> totalMinByDay})
-      _scoreContext({int days = 84}) {
+  /// "pleine journée" (p90 du standard propre de l'user) + minutes totales/jour
+  /// + dimensions actives. Calculé UNE fois par lot de scores (heatmap = 84 j).
+  ScoreCtx _scoreContext({int days = 84}) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final start = today.subtract(Duration(days: days - 1));
@@ -1904,7 +1920,15 @@ class AppLogic {
     final ganttRef =
         percentileOf(ganttVals, 0.90).clamp(1.0, double.infinity);
 
-    return (timeRef: timeRef, ganttRef: ganttRef, totalMinByDay: totalMin);
+    // Une dimension n'entre dans le score que si l'user la pratique sur la
+    // fenêtre (sinon ne pas la pénaliser : un user sans projets ne plafonne pas).
+    return (
+      timeRef: timeRef,
+      ganttRef: ganttRef,
+      totalMinByDay: totalMin,
+      timeActive: totalMin.isNotEmpty,
+      ganttActive: ganttVals.isNotEmpty,
+    );
   }
 
   /// Scores journaliers des N derniers jours pour la heatmap.
@@ -1942,13 +1966,16 @@ class AppLogic {
     return _dailyScoreFor(DateTime(parts[0], parts[1], parts[2]), _scoreContext());
   }
 
-  /// Score de productivité du jour = meilleur des 3 signaux, chacun normalisé sur
-  /// le standard propre de l'utilisateur (p90). Une grosse journée dans N'IMPORTE
-  /// quelle dimension (routines, temps, projets) suffit à atteindre 100%.
-  double _dailyScoreFor(
-    DateTime day,
-    ({double timeRef, double ganttRef, Map<String, int> totalMinByDay}) ctx,
-  ) {
+  /// Plancher par dimension dans la moyenne géométrique : une dimension à zéro
+  /// tire le score vers le bas sans tout annuler.
+  static const double _scoreFloor = 0.20;
+
+  /// Score de productivité du jour = moyenne GÉOMÉTRIQUE des dimensions actives
+  /// (routines / temps / projets), chacune normalisée sur le standard propre de
+  /// l'utilisateur (p90) puis planchée à [_scoreFloor]. La géométrique valorise
+  /// l'équilibre : être bon partout bat cartonner sur une seule dimension, et
+  /// négliger une dimension coûte plus qu'avec une moyenne simple.
+  double _dailyScoreFor(DateTime day, ScoreCtx ctx) {
     final d = DateTime(day.year, day.month, day.day);
     final ymd = yyyymmdd(d);
 
@@ -1960,12 +1987,92 @@ class AppLogic {
       routinesTotal++;
       if (habitValueOn(act.id, d) >= quota) routinesDone++;
     }
-    final routineScore = routinesTotal == 0 ? 0.0 : routinesDone / routinesTotal;
-    final timeScore = (ctx.totalMinByDay[ymd] ?? 0) / ctx.timeRef;
-    final ganttScore = (_ganttDonePerDay[ymd] ?? 0) / ctx.ganttRef;
 
-    final best = math.max(routineScore, math.max(timeScore, ganttScore));
-    return best > 1.0 ? 1.0 : best;
+    double cap1(double v) => v > 1.0 ? 1.0 : v;
+    final scores = <double>[];
+    if (routinesTotal > 0) scores.add(cap1(routinesDone / routinesTotal));
+    if (ctx.timeActive) scores.add(cap1((ctx.totalMinByDay[ymd] ?? 0) / ctx.timeRef));
+    if (ctx.ganttActive) scores.add(cap1((_ganttDonePerDay[ymd] ?? 0) / ctx.ganttRef));
+
+    if (scores.isEmpty) return 0.0;
+    if (scores.length == 1) return scores.first; // une seule dimension : pas de plancher
+    final product = scores.fold<double>(
+        1.0, (p, s) => p * (s < _scoreFloor ? _scoreFloor : s));
+    return math.pow(product, 1.0 / scores.length).toDouble();
+  }
+
+  String _fmtHmShort(int mins) {
+    if (mins < 60) return '${mins}min';
+    final h = mins ~/ 60;
+    final m = mins % 60;
+    return m == 0 ? '${h}h' : '${h}h${m.toString().padLeft(2, '0')}';
+  }
+
+  /// Sous-scores de productivité d'AUJOURD'HUI par dimension active, pour la
+  /// triade visuelle. La dimension active la plus basse porte isFocus = true
+  /// (le levier qui fera le plus monter le score géométrique du jour).
+  List<DimScore> todayDimensionScores() {
+    final ctx = _scoreContext();
+    final now = DateTime.now();
+    final d = DateTime(now.year, now.month, now.day);
+    final ymd = yyyymmdd(d);
+
+    final raw = <({String key, String label, double score, String detail})>[];
+
+    int rDone = 0, rTotal = 0;
+    for (final act in state.activeActivities.where((a) => a.isHabit)) {
+      if (effectiveHabitFreq(act) != HabitFreq.daily) continue;
+      final quota = dayQuotaFor(act);
+      if (quota <= 0) continue;
+      rTotal++;
+      if (habitValueOn(act.id, d) >= quota) rDone++;
+    }
+    if (rTotal > 0) {
+      raw.add((
+        key: 'routines',
+        label: 'Routines',
+        score: (rDone / rTotal).clamp(0.0, 1.0),
+        detail: '$rDone/$rTotal',
+      ));
+    }
+    if (ctx.timeActive) {
+      final mins = ctx.totalMinByDay[ymd] ?? 0;
+      raw.add((
+        key: 'time',
+        label: 'Temps',
+        score: (mins / ctx.timeRef).clamp(0.0, 1.0),
+        detail: _fmtHmShort(mins),
+      ));
+    }
+    if (ctx.ganttActive) {
+      final n = _ganttDonePerDay[ymd] ?? 0;
+      raw.add((
+        key: 'gantt',
+        label: 'Projets',
+        score: (n / ctx.ganttRef).clamp(0.0, 1.0),
+        detail: '$n action${n > 1 ? 's' : ''}',
+      ));
+    }
+
+    if (raw.isEmpty) return const [];
+    var minScore = 2.0;
+    for (final r in raw) {
+      if (r.score < minScore) minScore = r.score;
+    }
+    final result = <DimScore>[];
+    var focusUsed = false;
+    for (final r in raw) {
+      final isFocus = !focusUsed && raw.length > 1 && r.score == minScore;
+      if (isFocus) focusUsed = true;
+      result.add((
+        key: r.key,
+        label: r.label,
+        score: r.score,
+        detail: r.detail,
+        isFocus: isFocus,
+      ));
+    }
+    return result;
   }
 
   /// Vérifie tous les paliers et ajoute les badges manquants dans `state.earnedBadges`.

@@ -22,6 +22,7 @@ class ProductivityStatsCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final weekdayAvgs = logic.weekdayAverageScores();
     final dailyScores = logic.recentDailyScores();
+    final dims = logic.todayDimensionScores();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -42,7 +43,7 @@ class ProductivityStatsCard extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                'Meilleur de : routines · temps · projets',
+                'Équilibre : routines · temps · projets',
                 style: TextStyle(
                   fontSize: 11,
                   color: cs.onSurface.withOpacity(.4),
@@ -51,6 +52,12 @@ class ProductivityStatsCard extends StatelessWidget {
             ],
           ),
         ),
+
+        // ── Triade du jour (levier de progression) ────────────────────────
+        if (dims.length >= 2) ...[
+          _DimensionTriad(dims: dims, cs: cs, scoreColor: _scoreColor),
+          const SizedBox(height: 20),
+        ],
 
         // ── Heatmap ───────────────────────────────────────────────────────
         _HeatmapSection(
@@ -63,6 +70,124 @@ class ProductivityStatsCard extends StatelessWidget {
             cs: cs,
             scoreColor: _scoreColor,
             dayLabels: _dayLabels),
+      ],
+    );
+  }
+}
+
+// ── Triade du jour ──────────────────────────────────────────────────────────────
+
+class _DimensionTriad extends StatelessWidget {
+  final List<DimScore> dims;
+  final ColorScheme cs;
+  final Color Function(double, ColorScheme, bool) scoreColor;
+  const _DimensionTriad(
+      {required this.dims, required this.cs, required this.scoreColor});
+
+  @override
+  Widget build(BuildContext context) {
+    DimScore? focus;
+    for (final d in dims) {
+      if (d.isFocus) focus = d;
+    }
+    // On ne pousse le « levier » que s'il reste une vraie marge.
+    final lever = (focus != null && focus.score < 0.85) ? focus : null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          "Aujourd'hui",
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 13,
+            color: cs.onSurface.withOpacity(.6),
+          ),
+        ),
+        const SizedBox(height: 8),
+        for (final d in dims) ...[
+          _row(d),
+          const SizedBox(height: 8),
+        ],
+        if (lever != null)
+          Row(
+            children: [
+              Icon(Icons.arrow_upward_rounded, size: 13, color: cs.primary),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  'Levier du jour : ${lever.label.toLowerCase()} · ${lever.detail}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontStyle: FontStyle.italic,
+                    color: cs.onSurface.withOpacity(.55),
+                  ),
+                ),
+              ),
+            ],
+          )
+        else
+          Text(
+            'Belle journée équilibrée 👌',
+            style: TextStyle(
+              fontSize: 11,
+              fontStyle: FontStyle.italic,
+              color: cs.onSurface.withOpacity(.45),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _row(DimScore d) {
+    final color = scoreColor(d.score, cs, true);
+    return Row(
+      children: [
+        SizedBox(
+          width: 64,
+          child: Text(
+            d.label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: d.isFocus ? FontWeight.w700 : FontWeight.w500,
+              color: cs.onSurface.withOpacity(d.isFocus ? .85 : .6),
+            ),
+          ),
+        ),
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: d.score,
+              minHeight: 7,
+              backgroundColor: cs.onSurface.withOpacity(.08),
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 34,
+          child: Text(
+            '${(d.score * 100).round()}%',
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: cs.onSurface.withOpacity(.7),
+            ),
+          ),
+        ),
+        const SizedBox(width: 6),
+        SizedBox(
+          width: 50,
+          child: Text(
+            d.detail,
+            textAlign: TextAlign.right,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 10, color: cs.onSurface.withOpacity(.4)),
+          ),
+        ),
       ],
     );
   }
