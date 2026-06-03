@@ -777,6 +777,12 @@ void main() async {
   }
   try {
     await Alarm.init();
+    // Avertissement (FR) affiché si l'app est tuée alors qu'un minuteur tourne :
+    // sur iOS, une app fermée ne peut pas faire sonner l'alarme.
+    await Alarm.setWarningNotificationOnKill(
+      'Minuteur interrompu',
+      'Garde Productivitwo en arrière-plan (ne la ferme pas) pour que l\'alarme sonne à la fin.',
+    );
   } catch (e) {
     devLog.error('Alarm.init FAIL', tag: 'MAIN', error: e);
   }
@@ -2363,6 +2369,11 @@ class _AppRootState extends State<AppRoot>
       ),
     );
 
+    // Filet de secours : une notification programmée fire même si l'app est TUÉE
+    // (déclenchée par l'OS) — au moins un bip + bannière là où l'alarme ne peut plus sonner.
+    NotificationService.scheduleTimerEnd(
+        activityName: activityName, minutes: minutes);
+
     // Tic d'affichage : quand le temps est écoulé, on laisse l'alarme prendre le relais.
     _countdownTimer = Timer(Duration(minutes: minutes), () {
       _countdownTimer = null;
@@ -2374,6 +2385,7 @@ class _AppRootState extends State<AppRoot>
   Future<void> _onAlarmRing(AlarmSettings settings) async {
     if (settings.id != _timerAlarmId) return;
     final name = _countdownActivityName ?? 'activité';
+    NotificationService.cancelTimerEnd(); // l'alarme a sonné dans l'app → notif redondante
     final stopped = logic.stopActive();
     if (stopped != null) _saveAndRefresh();
     if (!mounted) {
@@ -2398,6 +2410,7 @@ class _AppRootState extends State<AppRoot>
     _countdownTimer?.cancel();
     _countdownTimer = null;
     Alarm.stop(_timerAlarmId);
+    NotificationService.cancelTimerEnd();
     _countdownActivityName = null;
     setState(() => _countdownEndsAt = null);
   }
