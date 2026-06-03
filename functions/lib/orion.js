@@ -185,10 +185,9 @@ Ne répète jamais un message récent — vérifie recentShown pour éviter les 
 → Pose-les en UN appel set_activity_targets(targets:[{activityId, goalMin}, …]).
 → push_assistant_message : explique brièvement que tu as posé des intentions de temps de départ, ajustables à la main.
 
-**Lundi matin — rééquilibrage du budget temps 24h**
-→ compute_time_budget → set_activity_targets(targets:[{activityId, goalMin=recommendedGoalMin}, …]) pour toutes les activités avec id non-null EN UN SEUL appel (respecte automatiquement les cibles épinglées par l'utilisateur).
-→ Si l'activité "Sommeil" est absente (id: null) → create_activity(name="Sommeil", domainId=<domaine Santé/Bien-être>)
-→ push_assistant_message : liste concise des objectifs rééquilibrés (ex: "Sport : 45min/j → 49min/j · Sommeil : 7h30")
+**Lundi matin — recalibrage des cibles de temps**
+→ compute_time_budget (cible = p90 des jours actifs, sommeil découplé) → suis le champ "workflow" retourné : set_activity_targets EN UN SEUL appel avec toutes les activités à recommendedGoalMin non-null + les intentions de départ pour les non calibrées en targetSource='default'.
+→ push_assistant_message : liste concise des cibles posées (ex: "Sport : 45→49min/j · Vaisselle : 5→15min/j · Sommeil : 8h")
 → Ne pas exécuter si déjà fait cette semaine (vérifie recentShown pour un message de type "budget")
 
 **Instruction ambiguë (sans supression/delete)**

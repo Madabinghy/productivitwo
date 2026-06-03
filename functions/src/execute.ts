@@ -1649,9 +1649,10 @@ async function executeComputeTimeBudget(uid: string): Promise<string> {
     .map((d) => d.data())
     .filter((v) => !v.deleted && v.type === "time");
 
-  // Indexer les sessions par activité : totalMin + semaines distinctes
-  const minByActivity = new Map<string, number>();
-  const weeksByActivity = new Map<string, Set<string>>();
+  // Indexer les sessions par activité ET par jour (jours actifs = jours où l'activité a été loggée).
+  // La cible = p90 des minutes des JOURS ACTIFS — pas une moyenne diluée sur 84 jours (qui écrase
+  // les activités faites par à-coups à ~1 min). Cohérent avec la réf p90 du score de productivité.
+  const dailyMinByActivity = new Map<string, Map<string, number>>();
   for (const doc of sessionsSnap.docs) {
     const v = doc.data();
     if (!v.endAt) continue;
@@ -1659,95 +1660,72 @@ async function executeComputeTimeBudget(uid: string): Promise<string> {
       (new Date(v.endAt).getTime() - new Date(v.startAt).getTime()) / 60000
     );
     if (mins <= 0) continue;
-    minByActivity.set(v.activityId, (minByActivity.get(v.activityId) || 0) + mins);
-    // Numéro de semaine ISO pour détecter la richesse des données
-    const sessionDate = new Date(v.startAt as string);
-    const weekKey = `${sessionDate.getFullYear()}-W${String(Math.ceil(sessionDate.getDate() / 7)).padStart(2, "0")}`;
-    if (!weeksByActivity.has(v.activityId)) weeksByActivity.set(v.activityId, new Set());
-    weeksByActivity.get(v.activityId)!.add(weekKey);
+    const dayKey = todayInParis(new Date(v.startAt as string));
+    if (!dailyMinByActivity.has(v.activityId)) dailyMinByActivity.set(v.activityId, new Map());
+    const days = dailyMinByActivity.get(v.activityId)!;
+    days.set(dayKey, (days.get(dayKey) || 0) + mins);
   }
 
-  const MIN_WEEKS_TO_CALIBRATE = 2;
-  const PERIOD_DAYS = 84;
-  const TOTAL_DAY_MIN = 1440;
-  const STRETCH = 1.10;
-  const MIN_SLEEP_MIN = 420; // 7h plancher
+  const MIN_ACTIVE_DAYS = 3;       // assez de jours actifs pour un p90 fiable
+  const FLOOR_MIN = 5;             // une cible de jauge sous 5 min n'a pas de sens
+  const DEFAULT_SLEEP_MIN = 480;   // 8h par défaut quand le sommeil n'est pas loggué
+
+  const p90 = (vals: number[]): number => {
+    if (vals.length === 0) return 0;
+    const sorted = [...vals].sort((a, b) => a - b);
+    const idx = Math.min(sorted.length - 1, Math.floor(0.90 * sorted.length));
+    return sorted[idx];
+  };
 
   const budgets = activities.map((a) => {
-    const total = minByActivity.get(a.id as string) ?? 0;
-    const weeksOfData = weeksByActivity.get(a.id as string)?.size ?? 0;
+    const dailyTotals = Array.from(dailyMinByActivity.get(a.id as string)?.values() ?? []);
+    const activeDays = dailyTotals.length;
     const isSleep = /sommeil|sleep/i.test(a.name as string);
-    const hasEnoughData = weeksOfData >= MIN_WEEKS_TO_CALIBRATE;
-    const avgPerDay = hasEnoughData ? total / PERIOD_DAYS : 0;
+    const hasEnoughData = activeDays >= MIN_ACTIVE_DAYS;
+    const p90ActiveDay = hasEnoughData ? Math.round(p90(dailyTotals)) : 0;
+
+    // Cible : p90 des jours actifs (planché). Sommeil découplé : son propre p90, ou 8h par défaut
+    // (jamais le résidu des 24h — c'est ce qui produisait des 22h45 absurdes).
+    let recommendedGoalMin: number | null;
+    if (isSleep) {
+      recommendedGoalMin = hasEnoughData ? Math.max(FLOOR_MIN, p90ActiveDay) : DEFAULT_SLEEP_MIN;
+    } else {
+      recommendedGoalMin = hasEnoughData ? Math.max(FLOOR_MIN, p90ActiveDay) : null;
+    }
+
     return {
       id: a.id as string,
       name: a.name as string,
       currentGoalMin: (a.goalMin as number) ?? null,
-      avgMinPerDay: Math.round(avgPerDay),
-      weeksOfData,
+      targetSource: (a.targetSource as string) ?? "default",
+      activeDays,
+      p90MinActiveDay: p90ActiveDay,
       hasEnoughData,
       isSleep,
+      recommendedGoalMin,
     };
   });
 
-  const nonSleep = budgets.filter((b) => !b.isSleep);
-  const sleepActivity = budgets.find((b) => b.isSleep);
-
-  // Seules les activités avec assez de données reçoivent un stretch target
-  const withStretch = nonSleep.map((b) => ({
-    ...b,
-    recommendedGoalMin: b.hasEnoughData
-      ? Math.max(1, Math.round(b.avgMinPerDay * STRETCH))
-      : null, // null = pas assez de données, ne pas modifier goalMin
-  }));
-
-  const calibrated = withStretch.filter((b) => b.recommendedGoalMin !== null);
-  const uncalibrated = withStretch.filter((b) => b.recommendedGoalMin === null);
-
-  const nonSleepTotal = calibrated.reduce((s, b) => s + (b.recommendedGoalMin ?? 0), 0);
-  const sleepGoal = Math.max(MIN_SLEEP_MIN, TOTAL_DAY_MIN - nonSleepTotal);
-
-  const result = [
-    ...withStretch,
-    sleepActivity
-      ? { ...sleepActivity, recommendedGoalMin: calibrated.length > 0 ? sleepGoal : null }
-      : {
-          id: null as string | null,
-          name: "Sommeil (manquant)",
-          currentGoalMin: null as number | null,
-          avgMinPerDay: null as number | null,
-          weeksOfData: 0,
-          hasEnoughData: false,
-          isSleep: true,
-          recommendedGoalMin: calibrated.length > 0 ? sleepGoal : null,
-          missingNote: "Créer une activité 'Sommeil' (type: time) pour activer le suivi budget 24h.",
-        },
-  ];
-
-  const totalCheck = (calibrated.reduce((s, b) => s + (b.recommendedGoalMin ?? 0), 0)) +
-    (calibrated.length > 0 ? sleepGoal : 0);
+  const calibrated = budgets.filter((b) => b.recommendedGoalMin !== null);
+  const uncalibrated = budgets.filter((b) => b.recommendedGoalMin === null);
+  const hasSleep = budgets.some((b) => b.isSleep);
 
   return JSON.stringify({
     analysedPeriod: `${todayInParis(twelveWeeksAgo)} → ${today}`,
-    totalDayMin: TOTAL_DAY_MIN,
+    method: "p90 des minutes sur les jours actifs (jours où l'activité a été loggée). Sommeil découplé (8h par défaut), plus de budget résiduel 24h.",
     calibratedActivities: calibrated.length,
     uncalibratedActivities: uncalibrated.length,
-    budgetCheck: calibrated.length > 0 ? `${totalCheck} / ${TOTAL_DAY_MIN} min` : "Données insuffisantes — budget non calculable",
-    activities: result,
-    workflow: calibrated.length > 0
-      ? [
-          "1. Si 'Sommeil' est absent (id: null) → create_activity(name='Sommeil', type='time', domainId=<domaine Santé>)",
-          "2. set_activity_targets(targets:[{activityId, goalMin=recommendedGoalMin}, …]) pour toutes les activités hasEnoughData=true et id non-null, EN UN SEUL appel (les cibles épinglées par l'utilisateur sont préservées automatiquement)",
-          "3. push_assistant_message : liste les objectifs rééquilibrés (±X min/j) + temps sommeil",
-          uncalibrated.length > 0
-            ? `4. push_assistant_message pour les ${uncalibrated.length} activité(s) non calibrée(s) : demander à l'utilisateur de logger ses premières sessions pour activer le budget 24h`
-            : "",
-        ].filter(Boolean)
-      : [
-          "Aucune activité n'a assez de données (min 2 semaines de sessions).",
-          "push_assistant_message : encourager l'utilisateur à logger ses activités pour activer le budget 24h automatique.",
-          "Ne pas recalibrer depuis le réalisé (pas assez de data). En revanche, si des activités ont targetSource='default' (valeur d'onboarding) → poser une intention de départ réaliste via set_activity_targets pour que les jauges ne soient pas à 30min arbitraires.",
-        ],
+    activities: budgets,
+    workflow: [
+      hasSleep
+        ? ""
+        : "0. Optionnel : si tu veux suivre le sommeil → create_activity(name='Sommeil', type='time', domainId=<domaine Santé>) puis cible 480 min (8h) par défaut.",
+      "1. set_activity_targets(targets:[{activityId, goalMin=recommendedGoalMin}, …]) pour toutes les activités avec recommendedGoalMin non-null, EN UN SEUL appel (les cibles targetSource='user' sont préservées automatiquement).",
+      uncalibrated.length > 0
+        ? `2. Pour les ${uncalibrated.length} activité(s) sans assez de sessions (recommendedGoalMin=null) ET targetSource='default' : pose une intention de DÉPART réaliste et conservatrice depuis le nom/domaine (ex: Méditation 10-15, Lecture 20-30, Deep Work 60-90, Sport 30-45) via le MÊME appel set_activity_targets — ne les laisse PAS à 30 min arbitraire.`
+        : "",
+      "3. push_assistant_message : 1 résumé concis des cibles posées (ex: 'Sport 30→42 · Vaisselle 5→15 · Sommeil 8h'). Mentionne brièvement que ce sont des intentions ajustables à la main.",
+    ].filter(Boolean),
   }, null, 2);
 }
 
