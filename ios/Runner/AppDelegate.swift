@@ -1,6 +1,8 @@
 import UIKit
 import Flutter
 import WidgetKit
+import UserNotifications
+import alarm
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -12,6 +14,12 @@ import WidgetKit
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
+
+    // Package `alarm` : délégué notifications + enregistrement des background tasks
+    if #available(iOS 10.0, *) {
+      UNUserNotificationCenter.current().delegate = self as UNUserNotificationCenterDelegate
+    }
+    SwiftAlarmPlugin.registerBackgroundTasks()
 
     // Method channel pour écrire directement dans le UserDefaults de l'App Group
     // — bypass home_widget plugin qui peut écrire dans la mauvaise suite sur iOS.

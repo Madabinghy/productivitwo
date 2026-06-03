@@ -27,6 +27,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/storage.dart';
 import 'package:productivitwo_v1/notifications.dart';
+import 'package:alarm/alarm.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
@@ -774,6 +775,11 @@ void main() async {
   } catch (e) {
     devLog.error('NotificationService.init FAIL', tag: 'MAIN', error: e);
   }
+  try {
+    await Alarm.init();
+  } catch (e) {
+    devLog.error('Alarm.init FAIL', tag: 'MAIN', error: e);
+  }
   runApp(const ProductivitwoApp());
 }
 
@@ -1470,6 +1476,76 @@ class _RunningBannerGlobalState extends State<RunningBannerGlobal> {
   }
 }
 
+/// Bouton doré « Challenge me » en tête du lanceur d'activité.
+class _ChallengeMeButton extends StatelessWidget {
+  final int streak;
+  final VoidCallback onTap;
+  const _ChallengeMeButton({required this.streak, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            gradient: const LinearGradient(
+              colors: [Color(0xFFE7C66B), Color(0xFFB8860B)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFFB8860B).withOpacity(.35),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.smart_toy_rounded, color: Colors.white, size: 22),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Challenge me',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15)),
+                    Text('ORION choisit, tu relèves',
+                        style: TextStyle(color: Colors.white70, fontSize: 11)),
+                  ],
+                ),
+              ),
+              if (streak > 0)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(.22),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text('🔥 $streak',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13)),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _Last24hSessionsSheet extends StatelessWidget {
   final dynamic logic;
   final FirestoreSync? sync;
@@ -1656,6 +1732,10 @@ class _AppRootState extends State<AppRoot>
   Timer? _saveDebounce;
   Timer? _countdownTimer;
   DateTime? _countdownEndsAt;
+  // Minuteur d'activité → vraie alarme (package `alarm`, sonne même en arrière-plan).
+  static const int _timerAlarmId = 42;
+  StreamSubscription<AlarmSettings>? _alarmRingSub;
+  String? _countdownActivityName;
   bool _saveQueued = false;
   bool _saving = false;
 
@@ -1699,6 +1779,8 @@ class _AppRootState extends State<AppRoot>
     _startMinuteHeartbeat();
     _startConnectivityListener();
     _initDeepLinks();
+    // Sonnerie du minuteur : déclenchée par le package `alarm` (même app en arrière-plan).
+    _alarmRingSub = Alarm.ringStream.stream.listen(_onAlarmRing);
     // Timeout global 15s sur _init() — l'app s'ouvre toujours en local si ça bloque
     _init().timeout(
       const Duration(seconds: 15),
@@ -1762,6 +1844,7 @@ class _AppRootState extends State<AppRoot>
   void dispose() {
     _heartbeat?.cancel();
     _countdownTimer?.cancel();
+    _alarmRingSub?.cancel();
     _connectivitySub?.cancel();
     _deepLinkSub?.cancel();
     _domainsSub?.cancel();
@@ -2249,31 +2332,73 @@ class _AppRootState extends State<AppRoot>
 
   // ---------- MINUTEUR DE DÉMARRAGE ----------
 
-  /// Lance un minuteur N minutes → auto-stop + notification à la fin.
+  /// Lance un minuteur N minutes → vraie alarme (sonne même téléphone verrouillé /
+  /// app en arrière-plan, jusqu'à ce que l'utilisateur l'arrête). Le Timer Dart ne
+  /// sert plus qu'à rafraîchir l'affichage du temps restant.
   void _startCountdown(int minutes, String activityName) {
     _countdownTimer?.cancel();
-    _countdownEndsAt = DateTime.now().add(Duration(minutes: minutes));
-    NotificationService.scheduleTimerEnd(activityName: activityName, minutes: minutes);
+    final endsAt = DateTime.now().add(Duration(minutes: minutes));
+    _countdownEndsAt = endsAt;
+    _countdownActivityName = activityName;
+
+    Alarm.set(
+      alarmSettings: AlarmSettings(
+        id: _timerAlarmId,
+        dateTime: endsAt,
+        assetAudioPath: 'assets/audio/alarm.wav',
+        loopAudio: true,
+        vibrate: true,
+        warningNotificationOnKill: Platform.isIOS,
+        androidFullScreenIntent: true,
+        volumeSettings: VolumeSettings.fade(
+          volume: 0.9,
+          fadeDuration: const Duration(seconds: 3),
+          volumeEnforced: true,
+        ),
+        notificationSettings: NotificationSettings(
+          title: '⏱ Minuteur terminé',
+          body: '$minutes min — $activityName',
+          stopButton: 'Arrêter',
+        ),
+      ),
+    );
+
+    // Tic d'affichage : quand le temps est écoulé, on laisse l'alarme prendre le relais.
     _countdownTimer = Timer(Duration(minutes: minutes), () {
-      if (!mounted) return;
-      final stopped = logic.stopActive();
-      if (stopped != null) {
-        _saveAndRefresh();
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('⏱ $minutes min terminées — $activityName'),
-          duration: const Duration(seconds: 4),
-        ));
-      }
-      NotificationService.cancelTimerEnd();
       _countdownTimer = null;
-      setState(() => _countdownEndsAt = null);
+      if (mounted) setState(() {});
     });
+  }
+
+  /// Appelé quand l'alarme du minuteur sonne (app vivante ou réouverte).
+  Future<void> _onAlarmRing(AlarmSettings settings) async {
+    if (settings.id != _timerAlarmId) return;
+    final name = _countdownActivityName ?? 'activité';
+    final stopped = logic.stopActive();
+    if (stopped != null) _saveAndRefresh();
+    if (!mounted) {
+      await Alarm.stop(_timerAlarmId);
+      return;
+    }
+    setState(() {
+      _countdownEndsAt = null;
+      _countdownActivityName = null;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('⏱ Minuteur terminé — $name'),
+      duration: const Duration(seconds: 6),
+      action: SnackBarAction(
+        label: 'Arrêter',
+        onPressed: () => Alarm.stop(_timerAlarmId),
+      ),
+    ));
   }
 
   void _cancelCountdown() {
     _countdownTimer?.cancel();
     _countdownTimer = null;
-    NotificationService.cancelTimerEnd();
+    Alarm.stop(_timerAlarmId);
+    _countdownActivityName = null;
     setState(() => _countdownEndsAt = null);
   }
 
@@ -2461,6 +2586,59 @@ class _AppRootState extends State<AppRoot>
 
   // ---------- UI ----------
 
+  /// Défi ORION : choisit localement l'activité la plus en retard sur sa cible
+  /// du jour, propose un minuteur, et lance l'activité + l'alarme si accepté.
+  Future<void> _showChallenge() async {
+    final a = logic.challengeActivity();
+    if (a == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('🤖 Tes cibles du jour sont à jour — rien à rattraper 💪'),
+        duration: Duration(seconds: 3),
+      ));
+      return;
+    }
+    final minutes = logic.challengeDurationFor(a);
+    final cs = Theme.of(context).colorScheme;
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        icon: const Icon(Icons.smart_toy_rounded,
+            color: Color(0xFFB8860B), size: 32),
+        title: const Text('ORION te défie'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('$minutes min de « ${a.name} »',
+                textAlign: TextAlign.center,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 8),
+            Text('Maintenant. Le minuteur se lance, l\'alarme sonne à la fin.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: cs.onSurface.withOpacity(.6))),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(d, false),
+              child: const Text('Pas maintenant')),
+          FilledButton(
+              onPressed: () => Navigator.pop(d, true),
+              child: const Text('Je relève 🔥')),
+        ],
+      ),
+    );
+    if (accepted != true) return;
+    logic.start(a.id);
+    _startCountdown(minutes, a.name);
+    final now = DateTime.now();
+    final ymd =
+        '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+    logic.recordChallengeAccepted(ymd);
+    if (mounted) setState(() => _tab = _Tab.maintenant);
+  }
+
   Future<void> _showLaunchActivitySheet(BuildContext context) async {
     final activities = logic.state.activities
         .where((a) => !a.isHabit && a.role != ActivityRole.shopping)
@@ -2534,6 +2712,17 @@ class _AppRootState extends State<AppRoot>
                 child: ListView(
                   controller: scrollCtrl,
                   children: [
+                    // ── Bouton doré « Challenge me » (défi ORION) ──────────
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                      child: _ChallengeMeButton(
+                        streak: logic.state.challengeStreak,
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _showChallenge();
+                        },
+                      ),
+                    ),
                     for (final domId in domainOrder)
                       if (byDomain.containsKey(domId)) ...[
                         Padding(
@@ -2563,15 +2752,12 @@ class _AppRootState extends State<AppRoot>
                               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                               child: InkWell(
                                 borderRadius: BorderRadius.circular(12),
-                                onTap: () {
-                                  if (isRunning) {
-                                    logic.stopActive();
-                                  } else {
-                                    logic.start(a.id);
-                                    setState(() => _tab = _Tab.maintenant);
-                                  }
-                                  setState(() {});
+                                onTap: () async {
                                   Navigator.pop(ctx);
+                                  // Ouvre le sheet de l'activité : l'user voit ses stats
+                                  // et choisit chrono libre OU minuteur avant de lancer.
+                                  await _openActivitySheet(a);
+                                  if (mounted) setState(() {});
                                 },
                                 child: Container(
                                   padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -6818,6 +7004,9 @@ class _AppRootState extends State<AppRoot>
                         child: FilledButton.icon(
                           onPressed: () {
                             logic.start(a.id);
+                            if (_sheetMinutes > 0) {
+                              _startCountdown(_sheetMinutes, a.name);
+                            }
                             Navigator.pop(ctx, true);
                             setState(() => _tab = _Tab.maintenant);
                           },

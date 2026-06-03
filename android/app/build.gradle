@@ -67,7 +67,8 @@ android {
 
     defaultConfig {
         applicationId "com.madabinghy.productivitwo"
-        minSdkVersion flutter.minSdkVersion
+        minSdkVersion 23 // requis par le package `alarm`
+        multiDexEnabled true
         targetSdkVersion flutter.targetSdkVersion
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName

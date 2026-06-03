@@ -661,6 +661,11 @@ class AppState {
   bool midDayNotifEnabled;
   bool domainIdBackfilledOnce;
 
+  // Défis « Challenge me » (suivi léger : compteur + streak de jours)
+  int challengesDone;          // total de défis relevés
+  int challengeStreak;         // jours consécutifs avec ≥1 défi
+  String? lastChallengeYmd;    // dernier jour (YYYYMMDD) où un défi a été relevé
+
   AppState({
     required this.domains,
     required this.activities,
@@ -700,6 +705,9 @@ class AppState {
     this.midDayNotifMinute = 0,
     this.midDayNotifEnabled = true,
     this.domainIdBackfilledOnce = false,
+    this.challengesDone = 0,
+    this.challengeStreak = 0,
+    this.lastChallengeYmd,
     // ✅ NOUVEAU
     Map<String, List<String>>? nowSkippedByYmd,
     Map<String, List<String>>? nowDoneByYmd,
@@ -769,6 +777,9 @@ class AppState {
         'disabledBlocksByYmd': disabledBlocksByYmd,
         'earnedBadges': earnedBadges.map((e) => e.toJson()).toList(),
         'skippedChallengeDates': skippedChallengeDates,
+        'challengesDone': challengesDone,
+        'challengeStreak': challengeStreak,
+        'lastChallengeYmd': lastChallengeYmd,
         'weeklyScoreTarget': weeklyScoreTarget,
         'notifHour': notifHour,
         'notifMinute': notifMinute,
@@ -860,6 +871,9 @@ class AppState {
           .toList(),
       skippedChallengeDates:
           (j['skippedChallengeDates'] as List?)?.cast<String>() ?? <String>[],
+      challengesDone: (j['challengesDone'] as int?) ?? 0,
+      challengeStreak: (j['challengeStreak'] as int?) ?? 0,
+      lastChallengeYmd: j['lastChallengeYmd'] as String?,
       weeklyScoreTarget: (j['weeklyScoreTarget'] as int?) ?? 80,
       notifHour: (j['notifHour'] as int?) ?? 9,
       notifMinute: (j['notifMinute'] as int?) ?? 0,

@@ -1762,6 +1762,60 @@ class AppLogic {
     if (state.skippedChallengeDates.remove(todayYmd)) onChange();
   }
 
+  // ───────── « Challenge me » (défi ORION sur une activité temps) ─────────
+
+  /// Activité « temps » la plus en retard sur sa cible du jour (goalMin).
+  /// C'est le levier d'action : « fais ça maintenant ». Null si tout est à jour.
+  Activity? challengeActivity() {
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    Activity? worst;
+    double worstRemaining = 0;
+    for (final a in state.activeActivities) {
+      if (a.isHabit || a.role == ActivityRole.shopping) continue;
+      final target = a.goalMin;
+      if (target <= 0) continue;
+      final doneMin = totalForRangeByActivity(a.id, todayStart, now).inMinutes;
+      if (doneMin >= target) continue; // déjà atteinte aujourd'hui
+      final remaining = (target - doneMin) / target; // 1.0 = rien fait
+      if (remaining > worstRemaining) {
+        worstRemaining = remaining;
+        worst = a;
+      }
+    }
+    return worst;
+  }
+
+  /// Durée suggérée du défi en minutes : le reste vers la cible (ou le minuteur
+  /// préféré), borné à [10, 45] et arrondi à 5.
+  int challengeDurationFor(Activity a) {
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final doneMin = totalForRangeByActivity(a.id, todayStart, now).inMinutes;
+    final base = a.timerMin ?? (a.goalMin - doneMin);
+    final clamped = base.clamp(10, 45);
+    return (clamped / 5).round() * 5;
+  }
+
+  /// Enregistre un défi relevé : compteur total + streak de jours consécutifs.
+  void recordChallengeAccepted(String todayYmd) {
+    final last = state.lastChallengeYmd;
+    if (last != todayYmd) {
+      final d = DateTime(
+        int.parse(todayYmd.substring(0, 4)),
+        int.parse(todayYmd.substring(4, 6)),
+        int.parse(todayYmd.substring(6, 8)),
+      );
+      final y = d.subtract(const Duration(days: 1));
+      final yYmd =
+          '${y.year}${y.month.toString().padLeft(2, '0')}${y.day.toString().padLeft(2, '0')}';
+      state.challengeStreak = (last == yYmd) ? state.challengeStreak + 1 : 1;
+      state.lastChallengeYmd = todayYmd;
+    }
+    state.challengesDone += 1;
+    onChange();
+  }
+
   // ─── Niveau global ────────────────────────────────────────────────────────
 
   static const _levelThresholds = [0, 30, 80, 200, 450, 800, 1500, 2500, 4000, 7000];

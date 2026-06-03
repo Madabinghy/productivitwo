@@ -37,6 +37,7 @@ dependencies:
   app_links: ^6.0.0
   pdf: ^3.11.0
   printing: ^5.13.2
+  alarm: ^5.4.1
 
 
 dev_dependencies:
@@ -45,3 +46,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/audio/

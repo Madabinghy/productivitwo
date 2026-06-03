@@ -212,6 +212,9 @@ class FirestoreSync {
             .whereType<EarnedBadge>()
             .toList(),
         onboardingDone: meta['onboardingDone'] ?? false,
+        challengesDone: meta['challengesDone'] ?? 0,
+        challengeStreak: meta['challengeStreak'] ?? 0,
+        lastChallengeYmd: meta['lastChallengeYmd'] as String?,
         weeklyScoreTarget: meta['weeklyScoreTarget'] ?? 80,
         notifHour: meta['notifHour'] ?? 9,
         notifMinute: meta['notifMinute'] ?? 0,
@@ -286,6 +289,13 @@ class FirestoreSync {
       habitProgress: mergedHp.values.toList(),
       // Méta scalaire : valeurs locales (préférences de l'appareil actif)
       onboardingDone:        local.onboardingDone,
+      // Défis : on garde la progression la plus avancée entre les appareils
+      challengesDone:        local.challengesDone > remote.challengesDone
+                                 ? local.challengesDone : remote.challengesDone,
+      challengeStreak:       (local.lastChallengeYmd ?? '').compareTo(remote.lastChallengeYmd ?? '') >= 0
+                                 ? local.challengeStreak : remote.challengeStreak,
+      lastChallengeYmd:      (local.lastChallengeYmd ?? '').compareTo(remote.lastChallengeYmd ?? '') >= 0
+                                 ? local.lastChallengeYmd : remote.lastChallengeYmd,
       weeklyScoreTarget:     local.weeklyScoreTarget,
       notifHour:             local.notifHour,
       notifMinute:           local.notifMinute,
@@ -333,6 +343,9 @@ class FirestoreSync {
 
   Map<String, dynamic> _encodeMeta(AppState st) => {
         'onboardingDone': st.onboardingDone,
+        'challengesDone': st.challengesDone,
+        'challengeStreak': st.challengeStreak,
+        'lastChallengeYmd': st.lastChallengeYmd,
         'weeklyScoreTarget': st.weeklyScoreTarget,
         'notifHour': st.notifHour,
         'notifMinute': st.notifMinute,
