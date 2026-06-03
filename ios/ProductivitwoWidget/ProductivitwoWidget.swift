@@ -430,18 +430,25 @@ struct MarkRoutineDoneIntent: AppIntent {
     init(activityId: String) { self.activityId = activityId }
     func perform() async throws -> some IntentResult {
         let id = activityId
+        // Tap normal = +1 ; une routine déjà complétée (done >= target) se décrémente (-1).
+        var delta = 1
         mutateAppGroupArray(key: "routines_json") { arr in
             guard let i = arr.firstIndex(where: { ($0["id"] as? String) == id }) else { return }
             let done = (arr[i]["done"] as? Int) ?? 0
             let target = (arr[i]["target"] as? Int) ?? 1
-            arr[i]["done"] = done + 1
-            if done + 1 >= target {
+            let wasComplete = done >= target
+            delta = wasComplete ? -1 : 1
+            let newDone = Swift.max(0, done + delta)
+            arr[i]["done"] = newDone
+            let nowComplete = newDone >= target
+            if nowComplete != wasComplete {
                 let d = appDefaults()
-                d?.set((d?.integer(forKey: "routines_done") ?? 0) + 1, forKey: "routines_done")
+                let cur = d?.integer(forKey: "routines_done") ?? 0
+                d?.set(Swift.max(0, cur + (nowComplete ? 1 : -1)), forKey: "routines_done")
             }
         }
         WidgetCenter.shared.reloadAllTimelines()
-        await widgetMcpCall(tool: "log_routine_hit", args: ["activityId": id])
+        await widgetMcpCall(tool: "log_routine_hit", args: ["activityId": id, "delta": delta])
         return .result()
     }
 }
@@ -454,13 +461,17 @@ struct MarkBlockDoneIntent: AppIntent {
     init(blockId: String) { self.blockId = blockId }
     func perform() async throws -> some IntentResult {
         let id = blockId
+        // Toggle : un bloc déjà fait repasse à "pending".
+        var newDone = true
         mutateAppGroupArray(key: "schedule_json") { arr in
             if let i = arr.firstIndex(where: { ($0["id"] as? String) == id }) {
-                arr[i]["status"] = "done"
+                newDone = (arr[i]["status"] as? String) != "done"
+                arr[i]["status"] = newDone ? "done" : "pending"
             }
         }
         WidgetCenter.shared.reloadAllTimelines()
-        await widgetMcpCall(tool: "mark_block_done", args: ["date": todayISO(), "blockId": id])
+        await widgetMcpCall(tool: "mark_block_done",
+                            args: ["date": todayISO(), "blockId": id, "done": newDone])
         return .result()
     }
 }
@@ -649,7 +660,8 @@ struct RoutinesWidgetView: View {
     let entry: RoutinesEntry
     @Environment(\.widgetFamily) var family
     var ratio: Double { entry.total > 0 ? Double(entry.done) / Double(entry.total) : 0 }
-    var remaining: [RoutineItem] { entry.items.filter { !$0.isDone } }
+    // Toutes les routines, non faites d'abord — les faites restent visibles (et décochables).
+    var visible: [RoutineItem] { entry.items.sorted { !$0.isDone && $1.isDone } }
 
     var body: some View {
         if family == .systemSmall {
@@ -667,14 +679,14 @@ struct RoutinesWidgetView: View {
                 }.frame(width: 60)
                 Rectangle().fill(brandPurple.opacity(0.15)).frame(width: 1)
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("À FAIRE").font(.system(size: 10, weight: .semibold)).tracking(0.6)
+                    Text("ROUTINES").font(.system(size: 10, weight: .semibold)).tracking(0.6)
                         .foregroundColor(.secondary).padding(.bottom, 6)
-                    if remaining.isEmpty {
-                        Text("Tout est fait 🎉").font(.system(size: 13)).italic()
+                    if visible.isEmpty {
+                        Text("Aucune routine aujourd'hui").font(.system(size: 13)).italic()
                             .foregroundColor(.secondary.opacity(0.7))
                     } else {
                         let max = family == .systemLarge ? 7 : 3
-                        ForEach(Array(remaining.prefix(max).enumerated()), id: \.offset) { _, r in
+                        ForEach(Array(visible.prefix(max).enumerated()), id: \.offset) { _, r in
                             row(r)
                         }
                     }
@@ -691,6 +703,8 @@ struct RoutinesWidgetView: View {
         HStack(spacing: 7) {
             checkButton(r)
             Text(r.label).font(.system(size: 13)).lineLimit(1)
+                .foregroundColor(r.isDone ? .secondary : .primary)
+                .strikethrough(r.isDone, color: .secondary)
             Spacer(minLength: 0)
             if r.target > 1 {
                 Text("\(r.done)/\(r.target)").font(.system(size: 10))
@@ -701,9 +715,9 @@ struct RoutinesWidgetView: View {
 
     @ViewBuilder
     func checkButton(_ r: RoutineItem) -> some View {
-        let check = Image(systemName: "circle")
+        let check = Image(systemName: r.isDone ? "checkmark.circle.fill" : "circle")
             .font(.system(size: 14))
-            .foregroundColor(hexColor(r.color))
+            .foregroundColor(r.isDone ? hexColor(r.color) : Color.secondary.opacity(0.45))
         if #available(iOS 17.0, *) {
             if let id = r.id {
                 Button(intent: MarkRoutineDoneIntent(activityId: id)) { check }.buttonStyle(.plain)

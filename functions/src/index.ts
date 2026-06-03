@@ -501,7 +501,11 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
             args.done as boolean,
           );
         } else if (toolName === "log_routine_hit") {
-          text = await executeLogRoutineHit(uid, args.activityId as string);
+          text = await executeLogRoutineHit(
+            uid,
+            args.activityId as string,
+            args.delta === undefined ? 1 : (args.delta as number),
+          );
         } else if (toolName === "mark_block_done") {
           text = await executeMarkBlockDone(
             uid,

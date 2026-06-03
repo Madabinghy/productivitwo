@@ -47,6 +47,21 @@ String fmtCompact(Duration d) {
 
 DateTime dayKey(DateTime dt) => DateTime(dt.year, dt.month, dt.day);
 
+/// Percentile (interpolation linéaire) d'une liste de valeurs entières.
+/// Utilisé comme référence "pleine couleur" par domaine/activité dans les
+/// heatmaps : p90 des jours actifs = robuste aux pics isolés, adapté au
+/// standard propre de chaque ligne.
+double percentileOf(List<int> values, double p) {
+  if (values.isEmpty) return 0;
+  final sorted = [...values]..sort();
+  if (sorted.length == 1) return sorted.first.toDouble();
+  final rank = p * (sorted.length - 1);
+  final lo = rank.floor();
+  final hi = rank.ceil();
+  if (lo == hi) return sorted[lo].toDouble();
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (rank - lo);
+}
+
 double _avgMinutesPerDayTrailing({
   required Map<DateTime, int> minutesByDay,
   required DateTime endDay, // jour d (à minuit)

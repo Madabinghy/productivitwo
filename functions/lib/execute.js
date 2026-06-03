@@ -985,13 +985,14 @@ async function executeMarkActionDone(uid, projectId, taskId, actionId, done) {
     await ref.update({ tasks, updatedAt: db_1.FieldValue.serverTimestamp() });
     return `✅ Sous-action "${actionTitle}" ${done ? "marquée faite" : "démarquée"}.`;
 }
-async function executeLogRoutineHit(uid, activityId) {
+async function executeLogRoutineHit(uid, activityId, delta = 1) {
     var _a;
     if (!activityId)
         return "activityId requis.";
+    const dec = delta < 0;
     const ymd = todayInParis().replace(/-/g, "");
     const hpCol = db_1.db.collection(`users/${uid}/habitProgress`);
-    // Incrément du compteur du jour (clé logique activityId + yyyymmdd, doc id = uuid).
+    // Compteur du jour (clé logique activityId + yyyymmdd, doc id = uuid).
     const existing = await hpCol
         .where("activityId", "==", activityId)
         .where("yyyymmdd", "==", ymd)
@@ -1000,15 +1001,27 @@ async function executeLogRoutineHit(uid, activityId) {
     if (!existing.empty) {
         const doc = existing.docs[0];
         const cur = (_a = doc.data().value) !== null && _a !== void 0 ? _a : 0;
-        await doc.ref.update({ value: cur + 1 });
+        await doc.ref.update({ value: Math.max(0, cur + (dec ? -1 : 1)) });
     }
-    else {
+    else if (!dec) {
         const id = (0, uuid_1.v4)();
         await hpCol.doc(id).set({ id, activityId, yyyymmdd: ymd, value: 1 });
     }
+    const hitsCol = db_1.db.collection(`users/${uid}/habitHits`);
+    if (dec) {
+        // Retire le hit le plus récent du jour pour cette routine.
+        // Requête à égalité seule (pas d'index composite) + tri en mémoire.
+        const dayPrefix = todayInParis();
+        const todayHits = (await hitsCol.where("habitId", "==", activityId).get()).docs
+            .filter((doc) => { var _a; return String((_a = doc.data().ts) !== null && _a !== void 0 ? _a : "").startsWith(dayPrefix); })
+            .sort((a, b) => String(b.data().ts).localeCompare(String(a.data().ts)));
+        if (todayHits.length)
+            await todayHits[0].ref.delete();
+        return "↩️ Routine décrémentée pour aujourd'hui.";
+    }
     // Trace du hit (historique des incréments).
     const hitId = (0, uuid_1.v4)();
-    await db_1.db.collection(`users/${uid}/habitHits`).doc(hitId).set({
+    await hitsCol.doc(hitId).set({
         id: hitId,
         habitId: activityId,
         ts: new Date().toISOString(),

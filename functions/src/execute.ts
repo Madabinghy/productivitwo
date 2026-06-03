@@ -1133,11 +1133,12 @@ async function executeMarkActionDone(
   return `✅ Sous-action "${actionTitle}" ${done ? "marquée faite" : "démarquée"}.`;
 }
 
-async function executeLogRoutineHit(uid: string, activityId: string): Promise<string> {
+async function executeLogRoutineHit(uid: string, activityId: string, delta = 1): Promise<string> {
   if (!activityId) return "activityId requis.";
+  const dec = delta < 0;
   const ymd = todayInParis().replace(/-/g, "");
   const hpCol = db.collection(`users/${uid}/habitProgress`);
-  // Incrément du compteur du jour (clé logique activityId + yyyymmdd, doc id = uuid).
+  // Compteur du jour (clé logique activityId + yyyymmdd, doc id = uuid).
   const existing = await hpCol
     .where("activityId", "==", activityId)
     .where("yyyymmdd", "==", ymd)
@@ -1146,14 +1147,25 @@ async function executeLogRoutineHit(uid: string, activityId: string): Promise<st
   if (!existing.empty) {
     const doc = existing.docs[0];
     const cur = (doc.data().value as number) ?? 0;
-    await doc.ref.update({ value: cur + 1 });
-  } else {
+    await doc.ref.update({ value: Math.max(0, cur + (dec ? -1 : 1)) });
+  } else if (!dec) {
     const id = uuidv4();
     await hpCol.doc(id).set({ id, activityId, yyyymmdd: ymd, value: 1 });
   }
+  const hitsCol = db.collection(`users/${uid}/habitHits`);
+  if (dec) {
+    // Retire le hit le plus récent du jour pour cette routine.
+    // Requête à égalité seule (pas d'index composite) + tri en mémoire.
+    const dayPrefix = todayInParis();
+    const todayHits = (await hitsCol.where("habitId", "==", activityId).get()).docs
+      .filter((doc) => String((doc.data().ts as string) ?? "").startsWith(dayPrefix))
+      .sort((a, b) => String(b.data().ts).localeCompare(String(a.data().ts)));
+    if (todayHits.length) await todayHits[0].ref.delete();
+    return "↩️ Routine décrémentée pour aujourd'hui.";
+  }
   // Trace du hit (historique des incréments).
   const hitId = uuidv4();
-  await db.collection(`users/${uid}/habitHits`).doc(hitId).set({
+  await hitsCol.doc(hitId).set({
     id: hitId,
     habitId: activityId,
     ts: new Date().toISOString(),

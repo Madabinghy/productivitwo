@@ -511,6 +511,18 @@ class _DomainHeatmapSectionState extends State<_DomainHeatmapSection> {
   AppLogic get logic => widget.logic;
   ColorScheme get cs => widget.cs;
 
+  // Percentile (interpolation linéaire) d'une liste de minutes journalières.
+  double _percentile(List<int> values, double p) {
+    if (values.isEmpty) return 0;
+    final sorted = [...values]..sort();
+    if (sorted.length == 1) return sorted.first.toDouble();
+    final rank = p * (sorted.length - 1);
+    final lo = rank.floor();
+    final hi = rank.ceil();
+    if (lo == hi) return sorted[lo].toDouble();
+    return sorted[lo] + (sorted[hi] - sorted[lo]) * (rank - lo);
+  }
+
   @override
   Widget build(BuildContext context) {
     const cellSize = 13.0;
@@ -529,12 +541,6 @@ class _DomainHeatmapSectionState extends State<_DomainHeatmapSection> {
     final minutesMap = logic.timeMinutesPerDomainPerDay(start, end);
     final domains = logic.state.domains;
 
-    // Référence fixe : 5h = pleine couleur, en-dessous = proportionnel.
-    // Permet de voir les domaines peu actifs (Environnement, Skills…)
-    // sans qu'ils soient écrasés par les domaines dominants (Santé, Business).
-    // Les jours > 5h sont clampés à couleur max.
-    const referenceMinutes = 5 * 60; // 300 min
-
     // Filtre les domaines qui ont au moins une session
     final activeDomains =
         domains.where((d) => minutesMap.containsKey(d.id)).toList();
@@ -545,6 +551,16 @@ class _DomainHeatmapSectionState extends State<_DomainHeatmapSection> {
         style: TextStyle(color: cs.onSurface.withOpacity(.4), fontSize: 12),
       );
     }
+
+    // Référence "pleine couleur" PROPRE À CHAQUE DOMAINE = 90e percentile de ses
+    // jours actifs. Chaque domaine est valorisé selon son propre standard : un
+    // petit domaine atteint 100% à son pic, un gros (ex. Business ~10h/j) garde
+    // un dégradé. Le percentile ignore les rushes isolés (qui clampent à 100%
+    // sans laver le reste). On abandonne l'ancienne référence fixe de 5h.
+    final domainRef = <String, double>{
+      for (final d in activeDomains)
+        d.id: _percentile(minutesMap[d.id]!.values.toList(), 0.90),
+    };
 
     String fmtDate(DateTime d) =>
         '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
@@ -621,8 +637,10 @@ class _DomainHeatmapSectionState extends State<_DomainHeatmapSection> {
                               '${d.year}${d.month.toString().padLeft(2, '0')}${d.day.toString().padLeft(2, '0')}';
                           final mins =
                               minutesMap[activeDomains[di].id]?[ymd] ?? 0;
-                          final intensity =
-                              mins == 0 ? 0.0 : (mins / referenceMinutes).clamp(0.12, 1.0);
+                          final ref = domainRef[activeDomains[di].id] ?? 1.0;
+                          final intensity = mins == 0
+                              ? 0.0
+                              : (mins / (ref <= 0 ? 1.0 : ref)).clamp(0.12, 1.0);
                           final domColor = domainColor(
                                   activeDomains[di].id, domains) ??
                               kDomainPalette[di % kDomainPalette.length];

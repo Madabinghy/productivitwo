@@ -520,7 +520,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                     text = await (0, execute_1.executeMarkActionDone)(uid, args.projectId, args.taskId, args.actionId, args.done);
                 }
                 else if (toolName === "log_routine_hit") {
-                    text = await (0, execute_1.executeLogRoutineHit)(uid, args.activityId);
+                    text = await (0, execute_1.executeLogRoutineHit)(uid, args.activityId, args.delta === undefined ? 1 : args.delta);
                 }
                 else if (toolName === "mark_block_done") {
                     text = await (0, execute_1.executeMarkBlockDone)(uid, args.date, args.blockId, args.done === undefined ? true : args.done);

@@ -10,6 +10,12 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.57', '2 juin 2026', [
+    (Icons.undo_rounded, 'Widgets : re-tap pour décocher — un bloc du programme repasse à faire, une routine déjà complétée se décrémente'),
+    (Icons.repeat_rounded, 'Widget Routines : les routines complétées restent visibles (et décochables) au lieu de disparaître'),
+    (Icons.grid_view_rounded, 'Heatmap du temps : chaque domaine et activité est coloré selon son propre standard (jour bien chargé) — les domaines peu chronophages ne sont plus délavés'),
+    (Icons.person_outline, 'Paramètres : « Compte Apple » renommé « Compte »'),
+  ]),
   _Entry('5.56', '2 juin 2026', [
     (Icons.touch_app_outlined, 'Widgets actionnables (iOS 17+) : coche une routine, un bloc du programme ou une sous-action de tâche directement depuis l\'écran d\'accueil'),
     (Icons.checklist_rtl, 'Nouveau widget « Tâche du jour » : la tâche du haut avec ses actions cochables sans ouvrir l\'app'),

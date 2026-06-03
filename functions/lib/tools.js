@@ -624,14 +624,16 @@ const MARK_ACTION_DONE_TOOL = {
 exports.MARK_ACTION_DONE_TOOL = MARK_ACTION_DONE_TOOL;
 const LOG_ROUTINE_HIT_TOOL = {
     name: "log_routine_hit",
-    description: "Incrémente d'une unité une routine (habit) pour aujourd'hui : ajoute un HabitHit et " +
-        "augmente la progression du jour. Utilisé notamment par le widget iOS quand l'utilisateur " +
-        "coche une routine depuis l'écran d'accueil. Récupère activityId via get_user_context.",
+    description: "Incrémente (ou décrémente) d'une unité une routine (habit) pour aujourd'hui : ajoute ou " +
+        "retire un HabitHit et ajuste la progression du jour. Utilisé notamment par le widget iOS " +
+        "quand l'utilisateur coche/décoche une routine depuis l'écran d'accueil. " +
+        "Récupère activityId via get_user_context.",
     inputSchema: {
         type: "object",
         required: ["activityId"],
         properties: {
             activityId: { type: "string", description: "id de l'activité routine (type habit)" },
+            delta: { type: "number", description: "+1 (défaut) pour cocher, -1 pour décocher (retire un hit)" },
         },
     },
 };

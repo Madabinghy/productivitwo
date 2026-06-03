@@ -4486,11 +4486,11 @@ class _AppRootState extends State<AppRoot>
                   },
                 ),
               ),
-              // Compte Apple
+              // Compte
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.person_outline),
-                title: const Text('Compte Apple'),
+                title: const Text('Compte'),
                 trailing: const Icon(Icons.chevron_right, size: 18),
                 onTap: () {
                   Navigator.pop(sheetCtx);
@@ -6518,9 +6518,10 @@ class _AppRootState extends State<AppRoot>
             cursor = dayEnd;
           }
         }
-        // Référence = min(max de l'activité, 5h) — évite les heatmaps pâles pour les activités courtes
-        final maxActivity = countByYmd.values.fold(0, (m, v) => v > m ? v : m);
-        final referenceCount = maxActivity.clamp(1, 10); // 1 unité min, 10 = 5h max
+        // Référence = 90e percentile des jours actifs (1 unité = 30 min) : valorise
+        // l'activité selon son propre standard, robuste aux pics isolés. Plus de plafond 5h.
+        final referenceCount =
+            percentileOf(countByYmd.values.toList(), 0.90).clamp(1.0, double.infinity);
 
         // Helper chips masquage
         Widget snoozeChip(String label, VoidCallback onTap) => GestureDetector(
@@ -7758,8 +7759,8 @@ class _AppRootState extends State<AppRoot>
                   cursor = dayEnd;
                 }
               }
-              final maxCount = countByYmd.values.fold(1, (m, v) => v > m ? v : m);
-              final reference = maxCount.clamp(1, 10);
+              final reference =
+                  percentileOf(countByYmd.values.toList(), 0.90).clamp(1.0, double.infinity);
               final heatmap = Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: List.generate(12, (col) => Padding(
