@@ -11,7 +11,8 @@ class _Entry {
 
 const _changelog = [
   _Entry('5.62', '3 juin 2026', [
-    (Icons.timer_rounded, 'Minuteur d\'activité = vraie alarme : elle sonne jusqu\'à ce que tu l\'arrêtes, même téléphone verrouillé ou app fermée — fini la notif silencieuse qu\'on rate'),
+    (Icons.timer_rounded, 'Minuteur d\'activité = vraie alarme : elle sonne en boucle jusqu\'à ce que tu l\'arrêtes quand l\'app tourne en arrière-plan, et une sonnerie de ~30s prend le relais même si tu as fermé l\'app'),
+    (Icons.play_arrow_rounded, 'À la fin du minuteur : « Continuer » pour enchaîner en chrono sur ta lancée, ou « Terminer » → ta fiche d\'activité se rouvre avec ta progression à jour pour t\'inviter à remettre un coup'),
     (Icons.touch_app_outlined, 'Lancer une activité ouvre désormais sa fiche (stats + cible) où tu choisis chrono libre OU minuteur, au lieu de démarrer le chrono à l\'aveugle'),
     (Icons.smart_toy_rounded, 'Nouveau « Challenge me » : ORION te défie sur l\'activité la plus en retard du jour, lance le minuteur, et compte ta série de défis relevés 🔥'),
   ]),

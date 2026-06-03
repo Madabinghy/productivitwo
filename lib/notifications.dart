@@ -28,7 +28,9 @@ class NotificationService {
   static const _midDayChannelId = 'midday_score';
   static const _midDayNotifId = 5;
   // IDs 10–29 réservés aux rappels de blocs
-  static const _timerEndChannelId = 'timer_end';
+  // v2 : nouveau canal pour appliquer le son d'alarme custom (le son d'un canal
+  // Android est figé à sa création — changer de son = changer d'id de canal).
+  static const _timerEndChannelId = 'timer_end_alarm';
   static const _timerEndNotifId = 30;
 
   static bool get _supported => !kIsWeb && (Platform.isAndroid || Platform.isIOS);
@@ -347,10 +349,17 @@ class NotificationService {
         android: AndroidNotificationDetails(
           _timerEndChannelId, 'Minuteur',
           channelDescription: 'Fin d\'un minuteur de démarrage',
-          importance: Importance.high,
+          importance: Importance.max,
           priority: Priority.high,
+          // Son d'alarme ~29s (res/raw/timer_alarm.wav) — joue même app tuée.
+          sound: RawResourceAndroidNotificationSound('timer_alarm'),
+          playSound: true,
+          audioAttributesUsage: AudioAttributesUsage.alarm,
+          fullScreenIntent: true,
+          category: AndroidNotificationCategory.alarm,
         ),
-        iOS: DarwinNotificationDetails(),
+        // Son custom iOS (timer_alarm.caf dans le bundle Runner), ≤30s.
+        iOS: DarwinNotificationDetails(sound: 'timer_alarm.caf'),
       ),
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       uiLocalNotificationDateInterpretation:

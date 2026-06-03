@@ -2382,28 +2382,59 @@ class _AppRootState extends State<AppRoot>
   }
 
   /// Appelé quand l'alarme du minuteur sonne (app vivante ou réouverte).
+  /// La session NE s'arrête PAS d'office : on propose de continuer en chrono
+  /// (sur sa lancée) ou de terminer — auquel cas la fiche de l'activité se
+  /// rouvre pour voir sa progression (et éventuellement remettre un coup).
   Future<void> _onAlarmRing(AlarmSettings settings) async {
     if (settings.id != _timerAlarmId) return;
-    final name = _countdownActivityName ?? 'activité';
-    NotificationService.cancelTimerEnd(); // l'alarme a sonné dans l'app → notif redondante
-    final stopped = logic.stopActive();
-    if (stopped != null) _saveAndRefresh();
+    NotificationService.cancelTimerEnd();
     if (!mounted) {
       await Alarm.stop(_timerAlarmId);
       return;
     }
-    setState(() {
-      _countdownEndsAt = null;
-      _countdownActivityName = null;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('⏱ Minuteur terminé — $name'),
-      duration: const Duration(seconds: 6),
-      action: SnackBarAction(
-        label: 'Arrêter',
-        onPressed: () => Alarm.stop(_timerAlarmId),
+    final running = logic.runningActivity();
+    final name = running?.name ?? _countdownActivityName ?? 'activité';
+
+    // Fin du décompte : on retire l'overlay → l'UI repasse en chrono (temps écoulé).
+    setState(() => _countdownEndsAt = null);
+
+    final choice = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (d) => AlertDialog(
+        icon: const Icon(Icons.timer_off_rounded, size: 32),
+        title: const Text('Minuteur terminé'),
+        content: Text('« $name » — tu continues sur ta lancée ou tu t\'arrêtes ?',
+            textAlign: TextAlign.center),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(d, 'stop'),
+              child: const Text('Terminer')),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(d, 'continue'),
+            icon: const Icon(Icons.play_arrow_rounded, size: 18),
+            label: const Text('Continuer'),
+          ),
+        ],
       ),
-    ));
+    );
+
+    await Alarm.stop(_timerAlarmId);
+    _countdownActivityName = null;
+
+    if (choice == 'continue') {
+      // La session tourne toujours → bascule naturelle en chrono count-up.
+      if (mounted) setState(() {});
+      return;
+    }
+
+    // Terminer : on arrête, on logue, puis on rouvre la fiche (progression à jour).
+    logic.stopActive();
+    _saveAndRefresh();
+    if (running != null && mounted) {
+      await _openActivitySheet(running);
+      if (mounted) setState(() {});
+    }
   }
 
   void _cancelCountdown() {
