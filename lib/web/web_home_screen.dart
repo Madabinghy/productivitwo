@@ -1351,7 +1351,10 @@ class _FocusView extends StatelessWidget {
     final barDays = barEnd.difference(barStart).inDays + 1;
     final barWidth = barDays * dayW;
 
-    final resolvedColor = _parseTaskColor(task.color) ?? domainColor;
+    final phase = project.phases.where((p) => p.id == task.phaseId).firstOrNull ??
+        project.phases.where((p) => p.label == task.groupLabel).firstOrNull;
+    final resolvedColor =
+        _parseTaskColor(task.color) ?? _parseTaskColor(phase?.color) ?? domainColor;
     final barColor = isDone
         ? resolvedColor.withOpacity(0.35)
         : resolvedColor.withOpacity(0.75);
@@ -1936,7 +1939,10 @@ class _WideGanttDialog extends StatelessWidget {
     final startOffset = barStart.difference(startDate).inDays * dayW;
     final barDays = barEnd.difference(barStart).inDays + 1;
     final barWidth = barDays * dayW;
-    final resolvedColor = _parseTaskColor(task.color) ?? domainColor;
+    final phase = project.phases.where((p) => p.id == task.phaseId).firstOrNull ??
+        project.phases.where((p) => p.label == task.groupLabel).firstOrNull;
+    final resolvedColor =
+        _parseTaskColor(task.color) ?? _parseTaskColor(phase?.color) ?? domainColor;
     final barColor = isDone ? resolvedColor.withOpacity(0.35) : resolvedColor.withOpacity(0.75);
 
     return SizedBox(
