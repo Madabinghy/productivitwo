@@ -514,6 +514,7 @@ class _GanttScreenState extends State<GanttScreen> {
             _GanttDashboard(project: _project),
             Expanded(child: _GanttBody(
               project: _project,
+              domainColor: _domainColor(),
               onTaskTap: _onTaskTap,
               forceLight: _forceLight,
               onToggleLight: () => setState(() => _forceLight = !_forceLight),
@@ -531,6 +532,13 @@ class _GanttScreenState extends State<GanttScreen> {
     final dom = widget.domains.where((d) => d.id == _project.domainId).firstOrNull;
     final cv = dom?.colorValue;
     return cv != null ? Color(cv) : const Color(0xFFC9A84C);
+  }
+
+  // Couleur du domaine du projet, ou null s'il n'en a pas (fallback des barres Gantt).
+  Color? _domainColor() {
+    final dom = widget.domains.where((d) => d.id == _project.domainId).firstOrNull;
+    final cv = dom?.colorValue;
+    return cv != null ? Color(cv) : null;
   }
 
   Widget _buildViewToggle(ColorScheme cs) {
@@ -1028,6 +1036,7 @@ class _ZoomHint extends StatelessWidget {
 
 class _GanttBody extends StatefulWidget {
   final Project project;
+  final Color? domainColor;
   final void Function(ProjectTask)? onTaskTap;
   final void Function(ProjectPhase)? onPhaseTap;
   final bool forceLight;
@@ -1035,6 +1044,7 @@ class _GanttBody extends StatefulWidget {
   final VoidCallback? onAddTask;
   const _GanttBody({
     required this.project,
+    this.domainColor,
     this.onTaskTap,
     this.onPhaseTap,
     required this.forceLight,
@@ -1176,6 +1186,7 @@ class _GanttBodyState extends State<_GanttBody> {
                 key: _gridKey,
                 child: _GanttGrid(
                   project: widget.project,
+                  domainColor: widget.domainColor,
                   projectStart: start,
                   totalWeeks: weeks,
                   dayView: _dayView,
@@ -1195,6 +1206,7 @@ class _GanttBodyState extends State<_GanttBody> {
 
 class _GanttGrid extends StatelessWidget {
   final Project project;
+  final Color? domainColor;
   final DateTime projectStart;
   final int totalWeeks;
   final bool dayView;
@@ -1203,6 +1215,7 @@ class _GanttGrid extends StatelessWidget {
 
   const _GanttGrid({
     required this.project,
+    this.domainColor,
     required this.projectStart,
     required this.totalWeeks,
     this.dayView = false,
@@ -1217,6 +1230,14 @@ class _GanttGrid extends StatelessWidget {
 
   double get timeW => dayView ? totalDays * _kDayCellW : totalWeeks * _kCellW;
   double get totalW => _kLabelW + timeW;
+
+  // Couleur de repli d'une barre quand la tâche n'a pas de couleur propre :
+  // couleur de sa phase → couleur du domaine → violet.
+  Color _taskFallbackColor(ProjectTask task) {
+    final phase = project.phases.where((p) => p.id == task.phaseId).firstOrNull ??
+        project.phases.where((p) => p.label == task.groupLabel).firstOrNull;
+    return _hex(phase?.color, domainColor ?? const Color(0xFF6B57F0));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1275,6 +1296,7 @@ class _GanttGrid extends StatelessWidget {
           for (final task in group.tasks)
             _TaskRow(
               task: task,
+              fallbackColor: _taskFallbackColor(task),
               projectStart: projectStart,
               totalWeeks: totalWeeks,
               totalDays: totalDays,
@@ -1562,6 +1584,7 @@ class _GroupRow extends StatelessWidget {
 
 class _TaskRow extends StatelessWidget {
   final ProjectTask task;
+  final Color fallbackColor;
   final DateTime projectStart;
   final int totalWeeks;
   final int totalDays;
@@ -1571,6 +1594,7 @@ class _TaskRow extends StatelessWidget {
 
   const _TaskRow({
     required this.task,
+    required this.fallbackColor,
     required this.projectStart,
     required this.totalWeeks,
     required this.totalDays,
@@ -1692,7 +1716,7 @@ class _TaskRow extends StatelessWidget {
 
     final barColor = isDone
         ? const Color(0xFFCCCCCC)
-        : _hex(task.color, const Color(0xFF6B57F0));
+        : _hex(task.color, fallbackColor);
     final textColor = _isDark(barColor)
         ? Colors.white.withOpacity(0.9)
         : barColor.withOpacity(0.7).computeLuminance() > 0.5
@@ -1739,7 +1763,7 @@ class _TaskRow extends StatelessWidget {
     final inDays = task.startDate.difference(projectStart).inDays;
     final cellHalf = dayView ? _kDayCellW / 2 : _kCellW / 2;
     final centerX = _toX(inDays) + cellHalf;
-    final color = _hex(task.color, const Color(0xFF6B57F0));
+    final color = _hex(task.color, fallbackColor);
     const size = 13.0;
 
     return Positioned(
