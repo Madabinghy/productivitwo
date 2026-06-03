@@ -34,21 +34,26 @@ Le FOCUS ACTUEL de l'utilisateur :
 
 Aujourd'hui : {{TODAY}}
 
+Productivité du jour (équilibre routines / temps / projets) :
+{{LEVER}}
+
 Tu produis un brief structuré pour aujourd'hui. Réponds UNIQUEMENT en JSON valide, sans markdown ni texte autour :
 {
   "priorityAction": "1 phrase concrète et SPÉCIFIQUE à son contexte — l'action la plus stratégique aujourd'hui pour avancer son focus",
   "risk": "1 phrase ou null — UNIQUEMENT s'il existe un élément à traiter AUJOURD'HUI sous peine de le rater (deadline du jour, échéance imminente, créneau qui se ferme). Sinon null. Pas de risque général ni de vigilance vague",
-  "question": "1 phrase ou null — une question stratégique qui pousse à la réflexion. null si pas nécessaire aujourd'hui"
+  "question": "1 phrase ou null — une question stratégique qui pousse à la réflexion. null si pas nécessaire aujourd'hui",
+  "productivityLever": "1 phrase ou null — UNIQUEMENT si un levier (dimension en retard) est fourni ci-dessus. Coaching concret pour rattraper cette dimension aujourd'hui, relié à son focus si possible. Sinon null"
 }
 
 RÈGLES STRICTES :
 - Tout doit converger vers son FOCUS
 - Concret et spécifique — JAMAIS de motivation creuse ou de conseil générique (genre "fais du sport")
 - Si rien de pertinent pour risk ou question, mets null. Ne remplis pas pour remplir
+- productivityLever : ne le remplis QUE si une dimension en retard est explicitement fournie dans « Productivité du jour ». Sinon null. N'invente JAMAIS de levier
 - Ton ferme et direct — tu es un stratège, pas un coach mou
 - Maximum 25 mots par champ`;
 async function buildBriefContext(uid) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d;
     // Projets actifs avec leur progression
     const projectsSnap = await db_1.db.collection(`users/${uid}/projects`)
         .where("status", "==", "active")
@@ -89,15 +94,36 @@ async function buildBriefContext(uid) {
         .slice(0, 5)
         .map(([name, min]) => `${name}: ${min}min`)
         .join(", ");
-    return [
+    // Snapshot productivité du jour (écrit par l'app) → levier du jour.
+    // hasLever uniquement si le snapshot est d'aujourd'hui ET qu'une dimension décroche.
+    let leverBlock = "Aucun levier (journée équilibrée ou données indisponibles).";
+    let hasLever = false;
+    try {
+        const snap = await db_1.db.doc(`users/${uid}/data/productivity_today`).get();
+        const sd = snap.data();
+        if (sd && sd.date === todayInParis() && sd.lever) {
+            const lv = sd.lever;
+            const dims = (_d = sd.dimensions) !== null && _d !== void 0 ? _d : [];
+            const dimStr = dims
+                .map((d) => { var _a; return `${d.label} ${Math.round(((_a = d.score) !== null && _a !== void 0 ? _a : 0) * 100)}% (${d.detail})`; })
+                .join(" · ");
+            leverBlock = `${dimStr}. Dimension en retard aujourd'hui : ${lv.label} (${lv.detail}).`;
+            hasLever = true;
+        }
+    }
+    catch (_) {
+        /* pas de snapshot lisible → pas de levier */
+    }
+    const text = [
         `Domaines : ${domains || "aucun"}`,
         `Projets actifs (max 8) :`,
         projects.length ? projects.join("\n") : "  (aucun projet actif)",
         `Temps loggué 3 derniers jours : ${topActivities || "rien"}`,
     ].join("\n");
+    return { text, leverBlock, hasLever };
 }
 async function getOrCreateBrief(uid) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s;
     const date = todayInParis();
     const ref = db_1.db.collection(`users/${uid}/orion_briefs`).doc(date);
     const existing = await ref.get();
@@ -109,9 +135,10 @@ async function getOrCreateBrief(uid) {
             priorityAction: d.priorityAction,
             risk: (_b = d.risk) !== null && _b !== void 0 ? _b : null,
             question: (_c = d.question) !== null && _c !== void 0 ? _c : null,
-            feedback: (_d = d.feedback) !== null && _d !== void 0 ? _d : null,
-            feedbackAt: (_h = (_g = (_f = (_e = d.feedbackAt) === null || _e === void 0 ? void 0 : _e.toDate) === null || _f === void 0 ? void 0 : _f.call(_e)) === null || _g === void 0 ? void 0 : _g.toISOString()) !== null && _h !== void 0 ? _h : null,
-            createdAt: (_m = (_l = (_k = (_j = d.createdAt) === null || _j === void 0 ? void 0 : _j.toDate) === null || _k === void 0 ? void 0 : _k.call(_j)) === null || _l === void 0 ? void 0 : _l.toISOString()) !== null && _m !== void 0 ? _m : new Date().toISOString(),
+            productivityLever: (_d = d.productivityLever) !== null && _d !== void 0 ? _d : null,
+            feedback: (_e = d.feedback) !== null && _e !== void 0 ? _e : null,
+            feedbackAt: (_j = (_h = (_g = (_f = d.feedbackAt) === null || _f === void 0 ? void 0 : _f.toDate) === null || _g === void 0 ? void 0 : _g.call(_f)) === null || _h === void 0 ? void 0 : _h.toISOString()) !== null && _j !== void 0 ? _j : null,
+            createdAt: (_o = (_m = (_l = (_k = d.createdAt) === null || _k === void 0 ? void 0 : _k.toDate) === null || _l === void 0 ? void 0 : _l.call(_k)) === null || _m === void 0 ? void 0 : _m.toISOString()) !== null && _o !== void 0 ? _o : new Date().toISOString(),
         };
     }
     // Génère le brief
@@ -122,7 +149,8 @@ async function getOrCreateBrief(uid) {
     const context = await buildBriefContext(uid);
     const prompt = BRIEF_PROMPT
         .replace("{{FOCUS}}", focus)
-        .replace("{{CONTEXT}}", context)
+        .replace("{{CONTEXT}}", context.text)
+        .replace("{{LEVER}}", context.leverBlock)
         .replace("{{TODAY}}", date);
     const client = new sdk_1.default({ apiKey: process.env.ANTHROPIC_API_KEY });
     const message = await client.messages.create({
@@ -139,9 +167,11 @@ async function getOrCreateBrief(uid) {
     const briefData = {
         date,
         focus,
-        priorityAction: (_o = parsed.priorityAction) !== null && _o !== void 0 ? _o : "",
-        risk: (_p = parsed.risk) !== null && _p !== void 0 ? _p : null,
-        question: (_q = parsed.question) !== null && _q !== void 0 ? _q : null,
+        priorityAction: (_p = parsed.priorityAction) !== null && _p !== void 0 ? _p : "",
+        risk: (_q = parsed.risk) !== null && _q !== void 0 ? _q : null,
+        question: (_r = parsed.question) !== null && _r !== void 0 ? _r : null,
+        // Anti-hallucination : pas de levier dans le contexte → on force null.
+        productivityLever: context.hasLever ? (_s = parsed.productivityLever) !== null && _s !== void 0 ? _s : null : null,
         feedback: null,
         feedbackAt: null,
         createdAt: db_1.FieldValue.serverTimestamp(),
@@ -153,6 +183,7 @@ async function getOrCreateBrief(uid) {
         priorityAction: briefData.priorityAction,
         risk: briefData.risk,
         question: briefData.question,
+        productivityLever: briefData.productivityLever,
         feedback: null,
         feedbackAt: null,
         createdAt: new Date().toISOString(),
@@ -170,7 +201,7 @@ async function listBriefs(uid, limit = 30) {
         .limit(limit)
         .get();
     return snap.docs.map((doc) => {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
         const d = doc.data();
         return {
             date: doc.id,
@@ -178,9 +209,10 @@ async function listBriefs(uid, limit = 30) {
             priorityAction: d.priorityAction,
             risk: (_b = d.risk) !== null && _b !== void 0 ? _b : null,
             question: (_c = d.question) !== null && _c !== void 0 ? _c : null,
-            feedback: (_d = d.feedback) !== null && _d !== void 0 ? _d : null,
-            feedbackAt: (_h = (_g = (_f = (_e = d.feedbackAt) === null || _e === void 0 ? void 0 : _e.toDate) === null || _f === void 0 ? void 0 : _f.call(_e)) === null || _g === void 0 ? void 0 : _g.toISOString()) !== null && _h !== void 0 ? _h : null,
-            createdAt: (_m = (_l = (_k = (_j = d.createdAt) === null || _j === void 0 ? void 0 : _j.toDate) === null || _k === void 0 ? void 0 : _k.call(_j)) === null || _l === void 0 ? void 0 : _l.toISOString()) !== null && _m !== void 0 ? _m : "",
+            productivityLever: (_d = d.productivityLever) !== null && _d !== void 0 ? _d : null,
+            feedback: (_e = d.feedback) !== null && _e !== void 0 ? _e : null,
+            feedbackAt: (_j = (_h = (_g = (_f = d.feedbackAt) === null || _f === void 0 ? void 0 : _f.toDate) === null || _g === void 0 ? void 0 : _g.call(_f)) === null || _h === void 0 ? void 0 : _h.toISOString()) !== null && _j !== void 0 ? _j : null,
+            createdAt: (_o = (_m = (_l = (_k = d.createdAt) === null || _k === void 0 ? void 0 : _k.toDate) === null || _l === void 0 ? void 0 : _l.call(_k)) === null || _m === void 0 ? void 0 : _m.toISOString()) !== null && _o !== void 0 ? _o : "",
         };
     });
 }

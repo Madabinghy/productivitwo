@@ -1905,6 +1905,7 @@ class _AppRootState extends State<AppRoot>
           await store.save(_state!);
         }
       }
+      _sync.pushProductivitySnapshot(logic.productivitySnapshot());
     }
   }
 
@@ -2056,6 +2057,7 @@ class _AppRootState extends State<AppRoot>
         setState(() => _dashboardProjects = projects);
         _checkGanttBadges();
         WidgetService.update(logic); // widget Large : tâches Gantt fraîches
+        _sync.pushProductivitySnapshot(logic.productivitySnapshot());
       });
     }
 
@@ -2068,6 +2070,7 @@ class _AppRootState extends State<AppRoot>
       if (projects.isNotEmpty && mounted) {
         logic.updateGanttCounts(projects);
         WidgetService.update(logic);
+        _sync.pushProductivitySnapshot(logic.productivitySnapshot());
       }
       final messages = await AssistantEngine.evaluate(
         projects: projects,
@@ -2230,6 +2233,7 @@ class _AppRootState extends State<AppRoot>
     }
     WidgetService.update(logic);
     WidgetService.provisionAuth(_sync); // expose uid+token aux widgets actionnables (1×/session)
+    _sync.pushProductivitySnapshot(logic.productivitySnapshot()); // → ORION (levier du jour)
 
     // ✅ Refresh UI (ton code, inchangé)
     if (!mounted) return;

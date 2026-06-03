@@ -11,6 +11,7 @@ const _kGold = Color(0xFFe8c94a);
 const _kGoldDim = Color(0xFF8a7420);
 const _kRisk = Color(0xFFE07B39);
 const _kQuestion = Color(0xFF7AB8E5);
+const _kLever = Color(0xFF8E7BE5);
 
 const _kPrefFocus = 'orion_brief_focus';
 const _kPrefBrief = 'orion_brief_cache';
@@ -24,6 +25,7 @@ class _Brief {
   final String priorityAction;
   final String? risk;
   final String? question;
+  final String? productivityLever;
   final String? feedback;
 
   const _Brief({
@@ -32,6 +34,7 @@ class _Brief {
     required this.priorityAction,
     this.risk,
     this.question,
+    this.productivityLever,
     this.feedback,
   });
 
@@ -41,6 +44,7 @@ class _Brief {
         priorityAction: j['priorityAction'] as String? ?? '',
         risk: j['risk'] as String?,
         question: j['question'] as String?,
+        productivityLever: j['productivityLever'] as String?,
         feedback: j['feedback'] as String?,
       );
 
@@ -50,6 +54,7 @@ class _Brief {
         'priorityAction': priorityAction,
         if (risk != null) 'risk': risk,
         if (question != null) 'question': question,
+        if (productivityLever != null) 'productivityLever': productivityLever,
         if (feedback != null) 'feedback': feedback,
       };
 
@@ -59,6 +64,7 @@ class _Brief {
         priorityAction: priorityAction,
         risk: risk,
         question: question,
+        productivityLever: productivityLever,
         feedback: feedback ?? this.feedback,
       );
 }
@@ -611,6 +617,13 @@ class _OrionBriefCardState extends State<OrionBriefCard>
           FadeTransition(
             opacity: _fadeAnims[2],
             child: _briefRow(cs, '?', 'Question stratégique', b.question!, _kQuestion),
+          ),
+        ],
+        if (b.productivityLever != null && b.productivityLever!.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          FadeTransition(
+            opacity: _fadeAnims[2],
+            child: _briefRow(cs, '📊', 'Levier du jour', b.productivityLever!, _kLever),
           ),
         ],
         const SizedBox(height: 14),

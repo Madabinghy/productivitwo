@@ -687,4 +687,14 @@ class FirestoreSync {
       SetOptions(merge: true),
     ).ignore();
   }
+
+  /// Snapshot productivité du jour → lu par ORION (Cloud Function) pour générer
+  /// le « levier du jour » de son brief. Doc singleton, écrit en merge.
+  void pushProductivitySnapshot(Map<String, dynamic> snap) {
+    if (uid == null) return;
+    _db.doc('users/$uid/data/productivity_today').set(
+      {...snap, 'updatedAt': FieldValue.serverTimestamp()},
+      SetOptions(merge: true),
+    ).ignore();
+  }
 }

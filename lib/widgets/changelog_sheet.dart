@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.60', '3 juin 2026', [
+    (Icons.auto_awesome, 'ORION : nouveau « Levier du jour » dans le brief — quand une dimension de ta productivité décroche (routines, temps ou projets), ORION te dit laquelle rattraper en priorité et comment'),
+  ]),
   _Entry('5.59', '3 juin 2026', [
     (Icons.balance_outlined, 'Productivité du jour : score d\'équilibre — être bon sur plusieurs dimensions (routines · temps · projets) compte plus que cartonner sur une seule, et négliger une dimension pèse désormais sur ta journée'),
     (Icons.insights_outlined, 'Nouvelle triade « Aujourd\'hui » sous la heatmap : tes jauges routines / temps / projets avec le « levier du jour » mis en avant — tu vois d\'un coup sur quoi te concentrer pour faire monter ton score'),

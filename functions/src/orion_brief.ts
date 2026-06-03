@@ -10,6 +10,7 @@ export type Brief = {
   priorityAction: string;
   risk: string | null;
   question: string | null;
+  productivityLever: string | null;
   feedback: "useful" | "skip" | null;
   feedbackAt: string | null;
   createdAt: string;
@@ -48,21 +49,28 @@ Le FOCUS ACTUEL de l'utilisateur :
 
 Aujourd'hui : {{TODAY}}
 
+Productivité du jour (équilibre routines / temps / projets) :
+{{LEVER}}
+
 Tu produis un brief structuré pour aujourd'hui. Réponds UNIQUEMENT en JSON valide, sans markdown ni texte autour :
 {
   "priorityAction": "1 phrase concrète et SPÉCIFIQUE à son contexte — l'action la plus stratégique aujourd'hui pour avancer son focus",
   "risk": "1 phrase ou null — UNIQUEMENT s'il existe un élément à traiter AUJOURD'HUI sous peine de le rater (deadline du jour, échéance imminente, créneau qui se ferme). Sinon null. Pas de risque général ni de vigilance vague",
-  "question": "1 phrase ou null — une question stratégique qui pousse à la réflexion. null si pas nécessaire aujourd'hui"
+  "question": "1 phrase ou null — une question stratégique qui pousse à la réflexion. null si pas nécessaire aujourd'hui",
+  "productivityLever": "1 phrase ou null — UNIQUEMENT si un levier (dimension en retard) est fourni ci-dessus. Coaching concret pour rattraper cette dimension aujourd'hui, relié à son focus si possible. Sinon null"
 }
 
 RÈGLES STRICTES :
 - Tout doit converger vers son FOCUS
 - Concret et spécifique — JAMAIS de motivation creuse ou de conseil générique (genre "fais du sport")
 - Si rien de pertinent pour risk ou question, mets null. Ne remplis pas pour remplir
+- productivityLever : ne le remplis QUE si une dimension en retard est explicitement fournie dans « Productivité du jour ». Sinon null. N'invente JAMAIS de levier
 - Ton ferme et direct — tu es un stratège, pas un coach mou
 - Maximum 25 mots par champ`;
 
-async function buildBriefContext(uid: string): Promise<string> {
+async function buildBriefContext(
+  uid: string
+): Promise<{ text: string; leverBlock: string; hasLever: boolean }> {
   // Projets actifs avec leur progression
   const projectsSnap = await db.collection(`users/${uid}/projects`)
     .where("status", "==", "active")
@@ -106,12 +114,35 @@ async function buildBriefContext(uid: string): Promise<string> {
     .map(([name, min]) => `${name}: ${min}min`)
     .join(", ");
 
-  return [
+  // Snapshot productivité du jour (écrit par l'app) → levier du jour.
+  // hasLever uniquement si le snapshot est d'aujourd'hui ET qu'une dimension décroche.
+  let leverBlock = "Aucun levier (journée équilibrée ou données indisponibles).";
+  let hasLever = false;
+  try {
+    const snap = await db.doc(`users/${uid}/data/productivity_today`).get();
+    const sd = snap.data();
+    if (sd && sd.date === todayInParis() && sd.lever) {
+      const lv = sd.lever as { label?: string; detail?: string };
+      const dims =
+        (sd.dimensions as Array<{ label?: string; detail?: string; score?: number }>) ?? [];
+      const dimStr = dims
+        .map((d) => `${d.label} ${Math.round((d.score ?? 0) * 100)}% (${d.detail})`)
+        .join(" · ");
+      leverBlock = `${dimStr}. Dimension en retard aujourd'hui : ${lv.label} (${lv.detail}).`;
+      hasLever = true;
+    }
+  } catch (_) {
+    /* pas de snapshot lisible → pas de levier */
+  }
+
+  const text = [
     `Domaines : ${domains || "aucun"}`,
     `Projets actifs (max 8) :`,
     projects.length ? projects.join("\n") : "  (aucun projet actif)",
     `Temps loggué 3 derniers jours : ${topActivities || "rien"}`,
   ].join("\n");
+
+  return { text, leverBlock, hasLever };
 }
 
 export async function getOrCreateBrief(uid: string): Promise<Brief> {
@@ -126,6 +157,7 @@ export async function getOrCreateBrief(uid: string): Promise<Brief> {
       priorityAction: d.priorityAction as string,
       risk: (d.risk as string) ?? null,
       question: (d.question as string) ?? null,
+      productivityLever: (d.productivityLever as string) ?? null,
       feedback: (d.feedback as "useful" | "skip") ?? null,
       feedbackAt: (d.feedbackAt as { toDate?: () => Date })?.toDate?.()?.toISOString() ?? null,
       createdAt: (d.createdAt as { toDate?: () => Date })?.toDate?.()?.toISOString() ?? new Date().toISOString(),
@@ -141,7 +173,8 @@ export async function getOrCreateBrief(uid: string): Promise<Brief> {
   const context = await buildBriefContext(uid);
   const prompt = BRIEF_PROMPT
     .replace("{{FOCUS}}", focus)
-    .replace("{{CONTEXT}}", context)
+    .replace("{{CONTEXT}}", context.text)
+    .replace("{{LEVER}}", context.leverBlock)
     .replace("{{TODAY}}", date);
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -160,6 +193,7 @@ export async function getOrCreateBrief(uid: string): Promise<Brief> {
     priorityAction: string;
     risk: string | null;
     question: string | null;
+    productivityLever?: string | null;
   };
 
   const briefData = {
@@ -168,6 +202,8 @@ export async function getOrCreateBrief(uid: string): Promise<Brief> {
     priorityAction: parsed.priorityAction ?? "",
     risk: parsed.risk ?? null,
     question: parsed.question ?? null,
+    // Anti-hallucination : pas de levier dans le contexte → on force null.
+    productivityLever: context.hasLever ? parsed.productivityLever ?? null : null,
     feedback: null,
     feedbackAt: null,
     createdAt: FieldValue.serverTimestamp(),
@@ -180,6 +216,7 @@ export async function getOrCreateBrief(uid: string): Promise<Brief> {
     priorityAction: briefData.priorityAction,
     risk: briefData.risk,
     question: briefData.question,
+    productivityLever: briefData.productivityLever,
     feedback: null,
     feedbackAt: null,
     createdAt: new Date().toISOString(),
@@ -210,6 +247,7 @@ export async function listBriefs(uid: string, limit = 30): Promise<Brief[]> {
       priorityAction: d.priorityAction as string,
       risk: (d.risk as string) ?? null,
       question: (d.question as string) ?? null,
+      productivityLever: (d.productivityLever as string) ?? null,
       feedback: (d.feedback as "useful" | "skip") ?? null,
       feedbackAt: (d.feedbackAt as { toDate?: () => Date })?.toDate?.()?.toISOString() ?? null,
       createdAt: (d.createdAt as { toDate?: () => Date })?.toDate?.()?.toISOString() ?? "",

@@ -2075,6 +2075,46 @@ class AppLogic {
     return result;
   }
 
+  /// Seuil sous lequel une dimension "décroche" → ORION en parle dans son brief.
+  static const double _leverThreshold = 0.60;
+
+  /// Snapshot sérialisable de la productivité d'aujourd'hui, écrit dans Firestore
+  /// pour qu'ORION (Cloud Function) coache le « levier du jour ». Le levier n'est
+  /// renseigné QUE si la dimension la plus faible décroche (< [_leverThreshold]).
+  Map<String, dynamic> productivitySnapshot() {
+    final now = DateTime.now();
+    final ymd = yyyymmdd(DateTime(now.year, now.month, now.day));
+    final dims = todayDimensionScores();
+
+    Map<String, dynamic>? lever;
+    for (final d in dims) {
+      if (d.isFocus && d.score < _leverThreshold) {
+        lever = {
+          'key': d.key,
+          'label': d.label,
+          'detail': d.detail,
+          'score': d.score,
+        };
+      }
+    }
+
+    return {
+      'date': ymd,
+      'score': dailyScore(ymd),
+      'dimensions': [
+        for (final d in dims)
+          {
+            'key': d.key,
+            'label': d.label,
+            'score': d.score,
+            'detail': d.detail,
+            'isFocus': d.isFocus,
+          }
+      ],
+      'lever': lever,
+    };
+  }
+
   /// Vérifie tous les paliers et ajoute les badges manquants dans `state.earnedBadges`.
   /// Retourne la liste des badges nouvellement débloqués.
   /// [ganttDoneCount] = nombre total de tâches Gantt validées (passé depuis main).
