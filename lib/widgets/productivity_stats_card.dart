@@ -29,13 +29,26 @@ class ProductivityStatsCard extends StatelessWidget {
         // ── Titre section ──────────────────────────────────────────────────
         Padding(
           padding: const EdgeInsets.fromLTRB(0, 0, 0, 12),
-          child: Text(
-            'Productivité',
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 14,
-              color: cs.onSurface.withOpacity(.6),
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Productivité',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                  color: cs.onSurface.withOpacity(.6),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Meilleur de : routines · temps · projets',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: cs.onSurface.withOpacity(.4),
+                ),
+              ),
+            ],
           ),
         ),
 

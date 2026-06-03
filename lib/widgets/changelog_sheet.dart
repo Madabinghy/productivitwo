@@ -10,6 +10,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.58', '2 juin 2026', [
+    (Icons.insights_outlined, 'Productivité du jour : compte désormais le temps travaillé et les actions de projet cochées, pas seulement les routines — chaque dimension valorisée selon ton propre standard (meilleur des trois)'),
+    (Icons.grid_view_rounded, 'Heatmap productivité : une journée de deep work ou de gros avancement projet n\'est plus pénalisée parce qu\'il manquait des routines'),
+  ]),
   _Entry('5.57', '2 juin 2026', [
     (Icons.undo_rounded, 'Widgets : re-tap pour décocher — un bloc du programme repasse à faire, une routine déjà complétée se décrémente'),
     (Icons.repeat_rounded, 'Widget Routines : les routines complétées restent visibles (et décochables) au lieu de disparaître'),

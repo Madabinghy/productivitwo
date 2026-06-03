@@ -90,49 +90,32 @@ class AppLogic {
 
   // Score Gantt par jour (ymd -> 0.0..1.0) : progression moyenne des tâches travaillées ce jour
   // Mis à jour depuis main.dart à chaque changement du stream projets
-  final Map<String, double> _ganttDailyScores = {};
+  // Actions Gantt cochées par jour (yyyymmdd → nombre). Sert de signal "projets"
+  // dans le score de productivité, normalisé sur le standard propre de l'user (p90).
+  final Map<String, int> _ganttDonePerDay = {};
 
   // Snapshot des projets actifs — mis à jour par updateGanttCounts()
   List<Project> currentProjects = [];
 
   void updateGanttCounts(List<Project> projects) {
     currentProjects = projects;
-    _ganttDailyScores.clear();
+    _ganttDonePerDay.clear();
 
-    // Score du jour D = actions cochées ce jour / actions qui existaient fin du jour D
-    // Le dénominateur inclut TOUTES les tâches actives, même celles non touchées ce jour.
-    // createdAt est utilisé pour que les actions ajoutées APRÈS le jour D ne réduisent
-    // pas rétrospectivement le score de D.
-    final Map<String, int> donePerDay = {};
-    final List<DateTime> allCreatedAts = [];
-
+    // Nombre d'actions cochées par jour (clé = doneAt). Le score de productivité
+    // normalise ensuite ce count sur le standard propre de l'utilisateur (p90),
+    // au lieu de l'ancien dénominateur « backlog total » qui plombait le score
+    // dès qu'on avait beaucoup d'actions planifiées.
     for (final project in projects) {
       if (project.status == 'archived') continue;
       for (final task in project.tasks) {
         if (task.status == 'skipped') continue;
         for (final action in task.actions) {
-          allCreatedAts.add(action.createdAt);
           if (action.done && action.doneAt != null) {
             final ymd = yyyymmdd(action.doneAt!);
-            donePerDay[ymd] = (donePerDay[ymd] ?? 0) + 1;
+            _ganttDonePerDay[ymd] = (_ganttDonePerDay[ymd] ?? 0) + 1;
           }
         }
       }
-    }
-
-    for (final ymd in donePerDay.keys) {
-      final y = int.parse(ymd.substring(0, 4));
-      final m = int.parse(ymd.substring(4, 6));
-      final d = int.parse(ymd.substring(6, 8));
-      final endOfDay = DateTime(y, m, d + 1); // fin du jour J = début du J+1
-
-      // Dénominateur : actions existantes à la fin du jour J (pas les futures)
-      final totalOnDay =
-          allCreatedAts.where((c) => c.isBefore(endOfDay)).length;
-      if (totalOnDay == 0) continue;
-
-      _ganttDailyScores[ymd] =
-          (donePerDay[ymd]! / totalOnDay).clamp(0.0, 1.0);
     }
   }
 
@@ -1823,7 +1806,11 @@ class AppLogic {
 
   // Score journalier pour un jour passé (daily habits uniquement).
   /// Score moyen sur une semaine (lundi → until, excluant les jours vides).
-  double _weekScore(DateTime monday, {DateTime? until}) {
+  double _weekScore(DateTime monday,
+      {DateTime? until,
+      ({double timeRef, double ganttRef, Map<String, int> totalMinByDay})?
+          ctx}) {
+    final c = ctx ?? _scoreContext();
     final end = until ?? DateTime.now();
     final endDay = DateTime(end.year, end.month, end.day);
     double sum = 0;
@@ -1831,13 +1818,12 @@ class AppLogic {
     for (int i = 0; i < 7; i++) {
       final d = monday.add(Duration(days: i));
       if (d.isAfter(endDay)) break;
-      final ymd = yyyymmdd(d);
       final hasRoutines = state.activeActivities.any((a) =>
           a.isHabit &&
           effectiveHabitFreq(a) == HabitFreq.daily &&
           dayQuotaFor(a) > 0);
       if (!hasRoutines) continue;
-      sum += _dailyScoreFor(d);
+      sum += _dailyScoreFor(d, c);
       count++;
     }
     return count == 0 ? 0.0 : sum / count;
@@ -1851,14 +1837,15 @@ class AppLogic {
     final monday = today.subtract(Duration(days: today.weekday - 1));
     final prevMonday = monday.subtract(const Duration(days: 7));
 
-    final current = _weekScore(monday);
-    final previous =
-        _weekScore(prevMonday, until: prevMonday.add(const Duration(days: 6)));
+    final ctx = _scoreContext();
+    final current = _weekScore(monday, ctx: ctx);
+    final previous = _weekScore(prevMonday,
+        until: prevMonday.add(const Duration(days: 6)), ctx: ctx);
 
     final days7 = List.generate(7, (i) {
       final d = monday.add(Duration(days: i));
       if (d.isAfter(today)) return -1.0;
-      return _dailyScoreFor(d);
+      return _dailyScoreFor(d, ctx);
     });
 
     return (current: current, previous: previous, days7: days7);
@@ -1870,6 +1857,7 @@ class AppLogic {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final byWeekday = List.generate(7, (_) => <double>[]);
+    final ctx = _scoreContext(days: weeks * 7);
 
     for (int i = 0; i < weeks * 7; i++) {
       final d = today.subtract(Duration(days: i));
@@ -1877,7 +1865,7 @@ class AppLogic {
       final hasRoutines = state.activeActivities.any(
           (a) => a.isHabit && effectiveHabitFreq(a) == HabitFreq.daily);
       if (!hasRoutines) continue;
-      byWeekday[d.weekday - 1].add(_dailyScoreFor(d));
+      byWeekday[d.weekday - 1].add(_dailyScoreFor(d, ctx));
     }
 
     return byWeekday.map((scores) {
@@ -1886,23 +1874,61 @@ class AppLogic {
     }).toList();
   }
 
+  /// Contexte de calcul du score de productivité sur une fenêtre : références
+  /// "pleine journée" (p90 du standard propre de l'user) + minutes totales/jour.
+  /// Calculé UNE fois par lot de scores (la heatmap génère 84 jours).
+  ({double timeRef, double ganttRef, Map<String, int> totalMinByDay})
+      _scoreContext({int days = 84}) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final start = today.subtract(Duration(days: days - 1));
+    final end = today.add(const Duration(days: 1));
+
+    // Temps total loggué par jour (somme de tous les domaines).
+    final perDomain = timeMinutesPerDomainPerDay(start, end);
+    final totalMin = <String, int>{};
+    for (final dayMap in perDomain.values) {
+      dayMap.forEach((ymd, m) => totalMin[ymd] = (totalMin[ymd] ?? 0) + m);
+    }
+    // Référence temps = p90 des jours actifs, planchée à 60 min (évite qu'une
+    // seule courte journée ne rende la barre dérisoire).
+    final timeRef =
+        percentileOf(totalMin.values.toList(), 0.90).clamp(60.0, double.infinity);
+
+    // Référence Gantt = p90 des actions cochées/jour dans la fenêtre, plancher 1.
+    final startYmd = yyyymmdd(start);
+    final ganttVals = <int>[];
+    _ganttDonePerDay.forEach((ymd, c) {
+      if (ymd.compareTo(startYmd) >= 0) ganttVals.add(c);
+    });
+    final ganttRef =
+        percentileOf(ganttVals, 0.90).clamp(1.0, double.infinity);
+
+    return (timeRef: timeRef, ganttRef: ganttRef, totalMinByDay: totalMin);
+  }
+
   /// Scores journaliers des N derniers jours pour la heatmap.
   List<({String ymd, double score, bool hasData})> recentDailyScores(
       {int days = 84}) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
+    final ctx = _scoreContext(days: days);
     final hasRoutines = state.activeActivities
         .any((a) => a.isHabit && effectiveHabitFreq(a) == HabitFreq.daily);
+    // Du contenu existe si l'user a des routines OU du temps loggué OU des
+    // actions Gantt cochées — sinon la heatmap reste grise.
+    final hasTracking = hasRoutines ||
+        ctx.totalMinByDay.isNotEmpty ||
+        _ganttDonePerDay.isNotEmpty;
 
     return List.generate(days, (i) {
       final d = today.subtract(Duration(days: days - 1 - i));
       final ymd = yyyymmdd(d);
-      final hasData = hasRoutines;
       final isFuture = d.isAfter(today);
       return (
         ymd: ymd,
-        score: isFuture ? 0.0 : _dailyScoreFor(d),
-        hasData: hasData && !isFuture,
+        score: isFuture ? 0.0 : _dailyScoreFor(d, ctx),
+        hasData: hasTracking && !isFuture,
       );
     });
   }
@@ -1913,11 +1939,19 @@ class AppLogic {
       int.parse(ymd.substring(4, 6)),
       int.parse(ymd.substring(6, 8)),
     ];
-    return _dailyScoreFor(DateTime(parts[0], parts[1], parts[2]));
+    return _dailyScoreFor(DateTime(parts[0], parts[1], parts[2]), _scoreContext());
   }
 
-  double _dailyScoreFor(DateTime day) {
+  /// Score de productivité du jour = meilleur des 3 signaux, chacun normalisé sur
+  /// le standard propre de l'utilisateur (p90). Une grosse journée dans N'IMPORTE
+  /// quelle dimension (routines, temps, projets) suffit à atteindre 100%.
+  double _dailyScoreFor(
+    DateTime day,
+    ({double timeRef, double ganttRef, Map<String, int> totalMinByDay}) ctx,
+  ) {
     final d = DateTime(day.year, day.month, day.day);
+    final ymd = yyyymmdd(d);
+
     int routinesDone = 0, routinesTotal = 0;
     for (final act in state.activeActivities.where((a) => a.isHabit)) {
       if (effectiveHabitFreq(act) != HabitFreq.daily) continue;
@@ -1927,12 +1961,11 @@ class AppLogic {
       if (habitValueOn(act.id, d) >= quota) routinesDone++;
     }
     final routineScore = routinesTotal == 0 ? 0.0 : routinesDone / routinesTotal;
+    final timeScore = (ctx.totalMinByDay[ymd] ?? 0) / ctx.timeRef;
+    final ganttScore = (_ganttDonePerDay[ymd] ?? 0) / ctx.ganttRef;
 
-    // Journées deep work : progression moyenne des tâches Gantt travaillées ce jour
-    final ganttScore = _ganttDailyScores[yyyymmdd(d)] ?? 0.0;
-
-    // On retient le meilleur des deux scores
-    return math.max(routineScore, ganttScore);
+    final best = math.max(routineScore, math.max(timeScore, ganttScore));
+    return best > 1.0 ? 1.0 : best;
   }
 
   /// Vérifie tous les paliers et ajoute les badges manquants dans `state.earnedBadges`.
@@ -1987,10 +2020,12 @@ class AppLogic {
       award(BadgeId.scoreFirst100);
 
       // Vérifie N jours consécutifs passés à 80%+
+      final scoreCtx = _scoreContext();
       bool consecutiveDaysAt80(int days) {
         final base = DateTime(now.year, now.month, now.day);
         for (int i = 1; i <= days; i++) {
-          if (_dailyScoreFor(base.subtract(Duration(days: i))) < 0.80) {
+          if (_dailyScoreFor(base.subtract(Duration(days: i)), scoreCtx) <
+              0.80) {
             return false;
           }
         }
