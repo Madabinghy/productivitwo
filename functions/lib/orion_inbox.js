@@ -58,16 +58,23 @@ async function processInboxToProjects(uid, opts) {
     if (!(opts === null || opts === void 0 ? void 0 : opts.force) && gate.exists && ((_a = gate.data()) === null || _a === void 0 ? void 0 : _a.lastSweepYmd) === today) {
         return null; // déjà passé aujourd'hui
     }
+    // Pas d'orderBy ici → évite un index composite (status+createdAt). On trie en
+    // mémoire (l'inbox est petite).
     const inboxSnap = await db_1.db
         .collection(`users/${uid}/captures`)
         .where("status", "==", "pending")
-        .orderBy("createdAt", "asc")
         .get();
     if (inboxSnap.empty) {
         await gateRef.set({ lastSweepYmd: today }, { merge: true });
         return { created: 0, appended: 0, skipped: 0 };
     }
-    const ideas = inboxSnap.docs.map((d) => {
+    const sortedDocs = inboxSnap.docs.slice().sort((a, b) => {
+        var _a, _b, _c, _d, _e, _f;
+        const ta = (_c = (_b = (_a = a.data().createdAt) === null || _a === void 0 ? void 0 : _a.toMillis) === null || _b === void 0 ? void 0 : _b.call(_a)) !== null && _c !== void 0 ? _c : 0;
+        const tb = (_f = (_e = (_d = b.data().createdAt) === null || _d === void 0 ? void 0 : _d.toMillis) === null || _e === void 0 ? void 0 : _e.call(_d)) !== null && _f !== void 0 ? _f : 0;
+        return ta - tb;
+    });
+    const ideas = sortedDocs.map((d) => {
         var _a, _b, _c, _d, _e, _f, _g, _h;
         const v = d.data();
         return {

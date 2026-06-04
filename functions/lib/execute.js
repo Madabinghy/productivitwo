@@ -1217,13 +1217,18 @@ async function executeDeleteOrionQueueItem(uid, itemId) {
     return `✅ Instruction traitée et retirée de la file.`;
 }
 async function executeGetInbox(uid) {
+    // Sans orderBy (évite l'index composite status+createdAt) → tri en mémoire.
     const snap = await db_1.db.collection(`users/${uid}/captures`)
         .where("status", "==", "pending")
-        .orderBy("createdAt", "asc")
         .get();
     if (snap.empty)
         return "Aucune idée en attente dans l'inbox.";
-    const items = snap.docs.map((d) => {
+    const sorted = snap.docs.slice().sort((a, b) => {
+        var _a, _b, _c, _d, _e, _f;
+        return ((_c = (_b = (_a = a.data().createdAt) === null || _a === void 0 ? void 0 : _a.toMillis) === null || _b === void 0 ? void 0 : _b.call(_a)) !== null && _c !== void 0 ? _c : 0) -
+            ((_f = (_e = (_d = b.data().createdAt) === null || _d === void 0 ? void 0 : _d.toMillis) === null || _e === void 0 ? void 0 : _e.call(_d)) !== null && _f !== void 0 ? _f : 0);
+    });
+    const items = sorted.map((d) => {
         var _a, _b, _c, _d, _e;
         const v = d.data();
         return { id: v.id, text: v.text, createdAt: (_e = (_d = (_c = (_b = (_a = v.createdAt) === null || _a === void 0 ? void 0 : _a.toDate) === null || _b === void 0 ? void 0 : _b.call(_a)) === null || _c === void 0 ? void 0 : _c.toISOString) === null || _d === void 0 ? void 0 : _d.call(_c)) !== null && _e !== void 0 ? _e : null };

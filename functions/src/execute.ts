@@ -1389,12 +1389,16 @@ async function executeDeleteOrionQueueItem(uid: string, itemId: string): Promise
 }
 
 async function executeGetInbox(uid: string): Promise<string> {
+  // Sans orderBy (évite l'index composite status+createdAt) → tri en mémoire.
   const snap = await db.collection(`users/${uid}/captures`)
     .where("status", "==", "pending")
-    .orderBy("createdAt", "asc")
     .get();
   if (snap.empty) return "Aucune idée en attente dans l'inbox.";
-  const items = snap.docs.map((d) => {
+  const sorted = snap.docs.slice().sort((a, b) =>
+    ((a.data().createdAt?.toMillis?.() as number) ?? 0) -
+    ((b.data().createdAt?.toMillis?.() as number) ?? 0)
+  );
+  const items = sorted.map((d) => {
     const v = d.data();
     return { id: v.id, text: v.text, createdAt: v.createdAt?.toDate?.()?.toISOString?.() ?? null };
   });

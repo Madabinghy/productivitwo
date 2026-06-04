@@ -85,10 +85,11 @@ export async function processInboxToProjects(
     return null; // déjà passé aujourd'hui
   }
 
+  // Pas d'orderBy ici → évite un index composite (status+createdAt). On trie en
+  // mémoire (l'inbox est petite).
   const inboxSnap = await db
     .collection(`users/${uid}/captures`)
     .where("status", "==", "pending")
-    .orderBy("createdAt", "asc")
     .get();
 
   if (inboxSnap.empty) {
@@ -96,7 +97,13 @@ export async function processInboxToProjects(
     return { created: 0, appended: 0, skipped: 0 };
   }
 
-  const ideas: Idea[] = inboxSnap.docs.map((d) => {
+  const sortedDocs = inboxSnap.docs.slice().sort((a, b) => {
+    const ta = (a.data().createdAt?.toMillis?.() as number) ?? 0;
+    const tb = (b.data().createdAt?.toMillis?.() as number) ?? 0;
+    return ta - tb;
+  });
+
+  const ideas: Idea[] = sortedDocs.map((d) => {
     const v = d.data();
     return {
       id: (v.id as string) ?? d.id,
