@@ -392,8 +392,11 @@ class AppLogic {
       stopActive();
     }
 
-    // 2) supprime l’activité
-    state.activities.removeWhere((a) => a.id == id);
+    // 2) soft-delete : marque deleted=true (JAMAIS removeWhere — sinon le merge
+    //    Firestore la fait réapparaître à la réouverture, le remote la gardant
+    //    en deleted:false). Même pattern que la suppression de domaine.
+    final idx = state.activities.indexWhere((a) => a.id == id);
+    if (idx >= 0) state.activities[idx].deleted = true;
 
     // 3) purge filtres
     state.filters.activityIds.remove(id);

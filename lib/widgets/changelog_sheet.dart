@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.66', '4 juin 2026', [
+    (Icons.delete_outline, 'Correction : supprimer une activité depuis un domaine est désormais persistant — elle ne réapparaît plus à la réouverture de l\'app'),
+  ]),
   _Entry('5.65', '4 juin 2026', [
     (Icons.local_fire_department_rounded, 'Challenge me : tu peux désormais PROGRAMMER un défi pour demain matin (ou plus tard) au lieu de le relever sur le champ — il s\'ajoute à ton plan du jour à l\'heure choisie, te rappelle avant (la veille au soir par défaut, ajustable), et sonne le moment venu'),
     (Icons.check_circle_outline, 'Un défi programmé est gagné automatiquement dès que tu le coches OU que tu logges le temps sur l\'activité ce jour-là'),
