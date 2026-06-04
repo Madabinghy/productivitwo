@@ -131,7 +131,7 @@ class _FocusViewState extends State<FocusView> {
             const SizedBox(height: 24),
 
             // Programme horaire (stream Firestore)
-            DailyScheduleView(date: todayStr),
+            DailyScheduleView(date: todayStr, logic: logic),
 
             const SizedBox(height: 24),
 
@@ -321,7 +321,7 @@ class _FocusViewState extends State<FocusView> {
             // Programme du jour — masqué pendant un minuteur (mode focus pur)
             if (!isCountdown) ...[
               const SizedBox(height: 32),
-              DailyScheduleView(date: todayStr),
+              DailyScheduleView(date: todayStr, logic: logic),
             ],
           ],
         ),

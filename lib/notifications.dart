@@ -32,6 +32,10 @@ class NotificationService {
   // Android est figé à sa création — changer de son = changer d'id de canal).
   static const _timerEndChannelId = 'timer_end_alarm';
   static const _timerEndNotifId = 30;
+  // Challenges programmés : notif-alarme à l'heure (réutilise le canal alarme) +
+  // rappel en amont (canal dédié, importance haute, sans son d'alarme).
+  // IDs dérivés du block.id (plages 40000 / 50000 — voir challengeNotifIds).
+  static const _challengeSchedChannelId = 'challenge_scheduled';
 
   static bool get _supported => !kIsWeb && (Platform.isAndroid || Platform.isIOS);
 
@@ -371,5 +375,75 @@ class NotificationService {
   static Future<void> cancelTimerEnd() async {
     if (!_supported) return;
     await _plugin.cancel(_timerEndNotifId);
+  }
+
+  // ── Challenge programmé ─────────────────────────────────────────────────────
+
+  /// IDs de notification déterministes pour un bloc-défi donné (pour pouvoir
+  /// annuler quand le bloc est supprimé). atTime = alarme à l'heure, reminder
+  /// = rappel en amont.
+  static ({int atTime, int reminder}) challengeNotifIds(String blockId) {
+    final h = blockId.hashCode & 0x7fff;
+    return (atTime: 40000 + h, reminder: 50000 + h);
+  }
+
+  /// Planifie une notification one-shot à une date absolue (pas de répétition).
+  /// [alarm] true → son d'alarme + plein écran (l'instant du défi) ; false →
+  /// rappel discret en amont. Ne fait rien si [when] est déjà passé.
+  static Future<void> scheduleChallengeAt({
+    required int id,
+    required DateTime when,
+    required String title,
+    required String body,
+    bool alarm = false,
+  }) async {
+    if (!_supported) return;
+    if (!_initialized) await init();
+    final fireAt = tz.TZDateTime.from(when, tz.local);
+    if (fireAt.isBefore(tz.TZDateTime.now(tz.local))) return;
+    await _plugin.cancel(id);
+
+    final details = alarm
+        ? const NotificationDetails(
+            android: AndroidNotificationDetails(
+              _timerEndChannelId, 'Minuteur',
+              channelDescription: 'Alarme de défi programmé',
+              importance: Importance.max,
+              priority: Priority.high,
+              sound: RawResourceAndroidNotificationSound('timer_alarm'),
+              playSound: true,
+              audioAttributesUsage: AudioAttributesUsage.alarm,
+              fullScreenIntent: true,
+              category: AndroidNotificationCategory.alarm,
+            ),
+            iOS: DarwinNotificationDetails(sound: 'timer_alarm.caf'),
+          )
+        : const NotificationDetails(
+            android: AndroidNotificationDetails(
+              _challengeSchedChannelId, 'Défi programmé',
+              channelDescription: 'Rappel d\'un défi programmé',
+              importance: Importance.high,
+              priority: Priority.high,
+            ),
+            iOS: DarwinNotificationDetails(),
+          );
+
+    await _plugin.zonedSchedule(
+      id,
+      title,
+      body,
+      fireAt,
+      details,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+    );
+  }
+
+  /// Annule les notifications (alarme + rappel) d'un défi programmé.
+  static Future<void> cancelChallenge(int idAtTime, int idReminder) async {
+    if (!_supported) return;
+    await _plugin.cancel(idAtTime);
+    await _plugin.cancel(idReminder);
   }
 }

@@ -2683,7 +2683,7 @@ class _AppRootState extends State<AppRoot>
     }
     final minutes = logic.challengeDurationFor(a);
     final cs = Theme.of(context).colorScheme;
-    final accepted = await showDialog<bool>(
+    final choice = await showDialog<String>(
       context: context,
       builder: (d) => AlertDialog(
         icon: const Icon(Icons.smart_toy_rounded,
@@ -2697,22 +2697,31 @@ class _AppRootState extends State<AppRoot>
                 style:
                     const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
             const SizedBox(height: 8),
-            Text('Maintenant. Le minuteur se lance, l\'alarme sonne à la fin.',
+            Text(
+                'Maintenant, ou programme-le pour plus tard (il rejoint ton plan du jour).',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: cs.onSurface.withOpacity(.6))),
           ],
         ),
+        actionsOverflowDirection: VerticalDirection.down,
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(d, false),
+              onPressed: () => Navigator.pop(d, null),
               child: const Text('Pas maintenant')),
+          TextButton(
+              onPressed: () => Navigator.pop(d, 'schedule'),
+              child: const Text('Programmer 📅')),
           FilledButton(
-              onPressed: () => Navigator.pop(d, true),
+              onPressed: () => Navigator.pop(d, 'now'),
               child: const Text('Je relève 🔥')),
         ],
       ),
     );
-    if (accepted != true) return;
+    if (choice == 'schedule') {
+      await _programChallenge(a, minutes);
+      return;
+    }
+    if (choice != 'now') return;
     logic.start(a.id);
     _startCountdown(minutes, a.name);
     final now = DateTime.now();
@@ -2720,6 +2729,221 @@ class _AppRootState extends State<AppRoot>
         '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
     logic.recordChallengeAccepted(ymd);
     if (mounted) setState(() => _tab = _Tab.maintenant);
+  }
+
+  /// Programme un défi dans le futur : pose un bloc 🔥 dans le plan du jour
+  /// cible + une notif-alarme à l'heure + un rappel en amont. Le défi est
+  /// « gagné » plus tard quand l'user le coche ou logge le temps (voir
+  /// DailyScheduleView). Ne compte PAS de défi à la programmation.
+  Future<void> _programChallenge(Activity a, int minutes) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    var day = today.add(const Duration(days: 1)); // demain par défaut
+    var time = const TimeOfDay(hour: 8, minute: 0);
+    var reminder = 'eve'; // eve | h1 | m15 | at
+
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        return StatefulBuilder(builder: (ctx, setSheet) {
+          final cs = Theme.of(ctx).colorScheme;
+          final tomorrow = today.add(const Duration(days: 1));
+          final afterTomorrow = today.add(const Duration(days: 2));
+          DateTime scheduledAt() =>
+              DateTime(day.year, day.month, day.day, time.hour, time.minute);
+          final isTomorrow = day == tomorrow;
+          final isAfter = day == afterTomorrow;
+          String dayLabel() {
+            const mois = [
+              'janv', 'févr', 'mars', 'avr', 'mai', 'juin',
+              'juil', 'août', 'sept', 'oct', 'nov', 'déc'
+            ];
+            if (day == today) return 'aujourd\'hui';
+            if (isTomorrow) return 'demain';
+            if (isAfter) return 'après-demain';
+            return '${day.day} ${mois[day.month - 1]}';
+          }
+
+          Widget reminderChip(String value, String label) => ChoiceChip(
+                label: Text(label),
+                selected: reminder == value,
+                onSelected: (_) => setSheet(() => reminder = value),
+              );
+
+          final past = !scheduledAt().isAfter(now);
+
+          return Padding(
+            padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+                left: 20,
+                right: 20,
+                top: 4),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Programmer le défi',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 4),
+                Text('🔥 $minutes min de « ${a.name} »',
+                    style: TextStyle(color: cs.onSurface.withOpacity(.7))),
+                const SizedBox(height: 16),
+                Text('Quand',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: cs.onSurface.withOpacity(.8))),
+                const SizedBox(height: 8),
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  ChoiceChip(
+                    label: const Text('Demain matin'),
+                    selected: isTomorrow,
+                    onSelected: (_) => setSheet(() {
+                      day = tomorrow;
+                      time = const TimeOfDay(hour: 8, minute: 0);
+                    }),
+                  ),
+                  ChoiceChip(
+                    label: const Text('Après-demain matin'),
+                    selected: isAfter,
+                    onSelected: (_) => setSheet(() {
+                      day = afterTomorrow;
+                      time = const TimeOfDay(hour: 8, minute: 0);
+                    }),
+                  ),
+                  ActionChip(
+                    avatar: const Icon(Icons.calendar_month_rounded, size: 18),
+                    label: const Text('Autre…'),
+                    onPressed: () async {
+                      final picked = await showDatePicker(
+                        context: ctx,
+                        initialDate: day,
+                        firstDate: today,
+                        lastDate: today.add(const Duration(days: 365)),
+                      );
+                      if (picked != null) {
+                        setSheet(() =>
+                            day = DateTime(picked.year, picked.month, picked.day));
+                      }
+                    },
+                  ),
+                ]),
+                const SizedBox(height: 12),
+                Row(children: [
+                  Icon(Icons.schedule_rounded,
+                      size: 18, color: cs.onSurface.withOpacity(.6)),
+                  const SizedBox(width: 8),
+                  Text('${dayLabel()} à ${time.format(ctx)}',
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () async {
+                      final t = await showTimePicker(
+                          context: ctx, initialTime: time);
+                      if (t != null) setSheet(() => time = t);
+                    },
+                    child: const Text('Modifier l\'heure'),
+                  ),
+                ]),
+                const SizedBox(height: 8),
+                Text('Rappel',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: cs.onSurface.withOpacity(.8))),
+                const SizedBox(height: 8),
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  reminderChip('eve', 'La veille au soir'),
+                  reminderChip('h1', '1h avant'),
+                  reminderChip('m15', '15 min avant'),
+                  reminderChip('at', 'À l\'heure'),
+                ]),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: past ? null : () => Navigator.pop(ctx, true),
+                    icon: const Icon(Icons.notifications_active_rounded),
+                    label: Text(past ? 'Choisis un horaire futur' : 'Programmer'),
+                  ),
+                ),
+              ],
+            ),
+          );
+        });
+      },
+    );
+    if (confirmed != true) return;
+
+    final at = DateTime(day.year, day.month, day.day, time.hour, time.minute);
+    final ymd =
+        '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+    final hhmm =
+        '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+
+    final block = ScheduleBlock(
+      startTime: hhmm,
+      durationMin: minutes,
+      title: '🔥 Défi : ${a.name}',
+      category: 'personal',
+      activityId: a.id,
+      challenge: true,
+    );
+    await FirestoreSync().addScheduleBlock(ymd, block);
+
+    DateTime? remAt;
+    switch (reminder) {
+      case 'eve':
+        final eve = DateTime(day.year, day.month, day.day)
+            .subtract(const Duration(days: 1));
+        remAt = DateTime(eve.year, eve.month, eve.day, 20, 0);
+        break;
+      case 'h1':
+        remAt = at.subtract(const Duration(hours: 1));
+        break;
+      case 'm15':
+        remAt = at.subtract(const Duration(minutes: 15));
+        break;
+      case 'at':
+        remAt = null; // l'alarme à l'heure suffit
+        break;
+    }
+
+    final ids = NotificationService.challengeNotifIds(block.id);
+    await NotificationService.scheduleChallengeAt(
+      id: ids.atTime,
+      when: at,
+      title: '🔥 Défi : ${a.name}',
+      body: '$minutes min — c\'est le moment 💪',
+      alarm: true,
+    );
+    if (remAt != null) {
+      await NotificationService.scheduleChallengeAt(
+        id: ids.reminder,
+        when: remAt,
+        title: 'Défi prévu : ${a.name}',
+        body: 'À $hhmm • $minutes min',
+        alarm: false,
+      );
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('🔥 Défi programmé ${_relativeDayLabel(day)} à $hhmm'),
+        duration: const Duration(seconds: 3),
+      ));
+    }
+  }
+
+  String _relativeDayLabel(DateTime day) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final diff = day.difference(today).inDays;
+    if (diff == 0) return 'aujourd\'hui';
+    if (diff == 1) return 'demain';
+    if (diff == 2) return 'après-demain';
+    return 'le ${day.day}/${day.month}';
   }
 
   Future<void> _showLaunchActivitySheet(BuildContext context) async {

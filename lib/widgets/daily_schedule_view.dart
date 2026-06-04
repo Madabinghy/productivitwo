@@ -1,12 +1,15 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/notifications.dart';
 
 class DailyScheduleView extends StatefulWidget {
   final String date; // YYYY-MM-DD
+  final AppLogic logic;
 
-  const DailyScheduleView({super.key, required this.date});
+  const DailyScheduleView({super.key, required this.date, required this.logic});
 
   @override
   State<DailyScheduleView> createState() => _DailyScheduleViewState();
@@ -16,6 +19,8 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   final _sync = FirestoreSync();
   DailySchedule? _schedule;
   StreamSubscription<DailySchedule?>? _sub;
+  // Défis déjà comptés (tap OU auto) — évite tout double comptage par bloc.
+  final Set<String> _won = {};
 
   @override
   void initState() {
@@ -36,10 +41,47 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   Future<void> _toggleDone(ScheduleBlock block) async {
     final newStatus = block.status == 'done' ? 'pending' : 'done';
     await _sync.updateBlockStatus(widget.date, block.id, newStatus);
+    if (block.challenge && newStatus == 'done' && !_won.contains(block.id)) {
+      _won.add(block.id);
+      widget.logic.recordChallengeAccepted(widget.date.replaceAll('-', ''));
+    }
   }
 
   Future<void> _deleteBlock(ScheduleBlock block) async {
     await _sync.updateBlockStatus(widget.date, block.id, 'deleted');
+    if (block.challenge) {
+      final ids = NotificationService.challengeNotifIds(block.id);
+      NotificationService.cancelChallenge(ids.atTime, ids.reminder);
+    }
+  }
+
+  /// Défi programmé gagné automatiquement si du temps a été loggué sur
+  /// l'activité le jour cible (≥ 60 % de la durée prévue, plancher 10 min).
+  /// Appelé en post-frame depuis build (FocusView rebuild quand on logge).
+  void _maybeAutoWin() {
+    if (!mounted) return;
+    final now = DateTime.now();
+    final todayStr =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    if (widget.date != todayStr) return;
+    final dayStart = DateTime(now.year, now.month, now.day);
+    for (final b in _schedule?.blocks ?? <ScheduleBlock>[]) {
+      if (!b.challenge ||
+          b.status != 'pending' ||
+          b.activityId == null ||
+          _won.contains(b.id)) {
+        continue;
+      }
+      final loggedMin = widget.logic
+          .totalForRangeByActivity(b.activityId!, dayStart, now)
+          .inMinutes;
+      final threshold = (b.durationMin * 0.6).round();
+      if (loggedMin >= (threshold < 10 ? 10 : threshold)) {
+        _won.add(b.id);
+        _sync.updateBlockStatus(widget.date, b.id, 'done');
+        widget.logic.recordChallengeAccepted(widget.date.replaceAll('-', ''));
+      }
+    }
   }
 
   Future<void> _reorder(int oldIndex, int newIndex) async {
@@ -76,6 +118,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final visible = _schedule?.blocks.where((b) => b.status != 'deleted').toList() ?? [];
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeAutoWin());
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -124,7 +167,9 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   Widget _buildBlock(BuildContext context, ColorScheme cs, ScheduleBlock block,
       {required Key key}) {
     final isDone = block.status == 'done';
-    final color = _categoryColor(block.category, cs);
+    // Défi programmé = teinte dorée distincte (cohérent avec « Challenge me »).
+    final color =
+        block.challenge ? const Color(0xFFB8860B) : _categoryColor(block.category, cs);
 
     return Dismissible(
       key: key,

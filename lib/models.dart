@@ -1374,6 +1374,7 @@ class ScheduleBlock {
   String? activityId;
   String status;      // pending | done | skipped
   DateTime? doneAt;
+  bool challenge;     // bloc né d'un « Challenge me » programmé (badge 🔥 + streak)
 
   ScheduleBlock({
     String? id,
@@ -1386,6 +1387,7 @@ class ScheduleBlock {
     this.activityId,
     this.status = 'pending',
     this.doneAt,
+    this.challenge = false,
   }) : id = id ?? _uuid.v4();
 
   Map<String, dynamic> toJson() => {
@@ -1399,6 +1401,7 @@ class ScheduleBlock {
         'activityId': activityId,
         'status': status,
         'doneAt': doneAt?.toIso8601String(),
+        'challenge': challenge,
       };
 
   static ScheduleBlock from(Map j) => ScheduleBlock(
@@ -1412,6 +1415,7 @@ class ScheduleBlock {
         activityId: j['activityId'],
         status: j['status'] ?? 'pending',
         doneAt: _parseDateOrNull(j['doneAt']),
+        challenge: j['challenge'] == true,
       );
 }
 

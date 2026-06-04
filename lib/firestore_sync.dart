@@ -686,6 +686,30 @@ class FirestoreSync {
     await ref.update({'blocks': blocks});
   }
 
+  /// Ajoute un bloc au programme d'un jour (read-modify-write). Crée le doc
+  /// `daily_schedules/{date}` s'il n'existe pas encore. Utilisé pour poser un
+  /// défi programmé dans le plan du jour cible.
+  Future<void> addScheduleBlock(String date, ScheduleBlock block) async {
+    if (uid == null) return;
+    final ref = _db.doc('users/$uid/daily_schedules/$date');
+    final snap = await ref.get();
+    if (!snap.exists) {
+      await ref.set(DailySchedule(
+        date: date,
+        generatedBy: 'user',
+        blocks: [block],
+      ).toJson());
+      return;
+    }
+    final data = snap.data() as Map;
+    final blocks = (data['blocks'] as List?)
+            ?.map((b) => Map<String, dynamic>.from(b as Map))
+            .toList() ??
+        [];
+    blocks.add(block.toJson());
+    await ref.update({'blocks': blocks});
+  }
+
   /// Inscrit l'utilisateur au cron ORION (fire-and-forget).
   /// Appelé au démarrage — permet au backend de l'inclure dans runOrionCycle
   /// même sans token MCP.
