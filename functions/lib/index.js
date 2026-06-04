@@ -17,6 +17,7 @@ const scheduler_1 = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
 const crypto_1 = require("crypto");
 const orion_1 = require("./orion");
+const orion_inbox_1 = require("./orion_inbox");
 const orion_brief_1 = require("./orion_brief");
 const models_1 = require("./models");
 const sdk_1 = require("@anthropic-ai/sdk");
@@ -383,7 +384,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                         tools_1.GET_USER_CONTEXT_TOOL, tools_1.GET_DAY_BLOCKS_TOOL,
                         tools_1.LIST_PROJECTS_TOOL, tools_1.GET_PROJECT_TOOL, tools_1.PUSH_GANTT_MCP_TOOL,
                         tools_1.ARCHIVE_PROJECT_TOOL, tools_1.DELETE_PROJECT_TOOL, tools_1.UPDATE_ACTIVITY_GOAL_TOOL,
-                        tools_1.SET_ACTIVITY_TARGETS_TOOL,
+                        tools_1.SET_ACTIVITY_TARGETS_TOOL, tools_1.SWEEP_INBOX_TOOL,
                         tools_1.CREATE_ROUTINE_TOOL, tools_1.DELETE_ROUTINE_TOOL,
                         tools_1.CREATE_ACTIVITY_TOOL, tools_1.UPDATE_ACTIVITY_TOOL, tools_1.UPDATE_TASK_STATUS_TOOL,
                         tools_1.UPDATE_PROJECT_TOOL, tools_1.DELETE_ACTIVITY_TOOL,
@@ -447,6 +448,12 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                 }
                 else if (toolName === "set_activity_targets") {
                     text = await (0, execute_1.executeSetActivityTargets)(uid, args);
+                }
+                else if (toolName === "sweep_inbox") {
+                    const r = await (0, orion_inbox_1.processInboxToProjects)(uid, { force: true });
+                    text = r
+                        ? `✅ Inbox balayée : ${r.created} projet(s) créé(s), ${r.appended} tâche(s) ajoutée(s) à des projets existants, ${r.skipped} idée(s) laissée(s) (trop petites/vagues).`
+                        : "Rien à faire (inbox vide, ou routage indisponible).";
                 }
                 else if (toolName === "delete_activity") {
                     text = await (0, execute_1.executeDeleteActivity)(uid, args.activityId);

@@ -18,6 +18,7 @@ const MODEL_ROUTING = {
     analyze_week: exports.MODELS.SONNET,
     coaching: exports.MODELS.SONNET,
     onboarding: exports.MODELS.SONNET,
+    inbox_routing: exports.MODELS.SONNET, // routage/agrégation idées→projets (jugement sémantique)
 };
 function getModel(taskType) {
     var _a;

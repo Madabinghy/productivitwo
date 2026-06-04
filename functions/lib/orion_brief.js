@@ -8,6 +8,7 @@ exports.listBriefs = listBriefs;
 const sdk_1 = require("@anthropic-ai/sdk");
 const db_1 = require("./db");
 const models_1 = require("./models");
+const orion_inbox_1 = require("./orion_inbox");
 function todayInParis(d = new Date()) {
     return d.toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" });
 }
@@ -177,6 +178,14 @@ async function getOrCreateBrief(uid) {
         createdAt: db_1.FieldValue.serverTimestamp(),
     };
     await ref.set(briefData);
+    // 1× par jour (gaté côté processInboxToProjects) : ORION balaie la boîte à idées
+    // et crée/enrichit des projets en autonomie. Best-effort — ne casse jamais le brief.
+    try {
+        await (0, orion_inbox_1.processInboxToProjects)(uid);
+    }
+    catch (e) {
+        console.error("inbox sweep failed (non bloquant)", e);
+    }
     return {
         date,
         focus,

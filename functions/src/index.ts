@@ -3,6 +3,7 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as admin from "firebase-admin";
 import { createHmac, timingSafeEqual } from "crypto";
 import { runOrionCycle, getOrionRunCount, incrementOrionRunCount, saveOrionConfig, writeCycleLog } from "./orion";
+import { processInboxToProjects } from "./orion_inbox";
 import { getOrCreateBrief, setFocus, getFocus, setBriefFeedback, listBriefs } from "./orion_brief";
 import { MODELS, getModel, logTokenUsage } from "./models";
 import Anthropic from "@anthropic-ai/sdk";
@@ -15,7 +16,7 @@ import {
   GET_USER_CONTEXT_TOOL, GET_DAY_BLOCKS_TOOL,
   LIST_PROJECTS_TOOL, GET_PROJECT_TOOL, PUSH_GANTT_MCP_TOOL,
   ARCHIVE_PROJECT_TOOL, DELETE_PROJECT_TOOL, UPDATE_ACTIVITY_GOAL_TOOL,
-  SET_ACTIVITY_TARGETS_TOOL,
+  SET_ACTIVITY_TARGETS_TOOL, SWEEP_INBOX_TOOL,
   CREATE_ROUTINE_TOOL, DELETE_ROUTINE_TOOL,
   CREATE_ACTIVITY_TOOL, UPDATE_ACTIVITY_TOOL, UPDATE_TASK_STATUS_TOOL,
   UPDATE_PROJECT_TOOL, DELETE_ACTIVITY_TOOL,
@@ -395,7 +396,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
             GET_USER_CONTEXT_TOOL, GET_DAY_BLOCKS_TOOL,
             LIST_PROJECTS_TOOL, GET_PROJECT_TOOL, PUSH_GANTT_MCP_TOOL,
             ARCHIVE_PROJECT_TOOL, DELETE_PROJECT_TOOL, UPDATE_ACTIVITY_GOAL_TOOL,
-            SET_ACTIVITY_TARGETS_TOOL,
+            SET_ACTIVITY_TARGETS_TOOL, SWEEP_INBOX_TOOL,
             CREATE_ROUTINE_TOOL, DELETE_ROUTINE_TOOL,
             CREATE_ACTIVITY_TOOL, UPDATE_ACTIVITY_TOOL, UPDATE_TASK_STATUS_TOOL,
             UPDATE_PROJECT_TOOL, DELETE_ACTIVITY_TOOL,
@@ -447,6 +448,11 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
           text = await executeUpdateActivityGoal(uid, args.activityId as string, args);
         } else if (toolName === "set_activity_targets") {
           text = await executeSetActivityTargets(uid, args as Parameters<typeof executeSetActivityTargets>[1]);
+        } else if (toolName === "sweep_inbox") {
+          const r = await processInboxToProjects(uid, { force: true });
+          text = r
+            ? `✅ Inbox balayée : ${r.created} projet(s) créé(s), ${r.appended} tâche(s) ajoutée(s) à des projets existants, ${r.skipped} idée(s) laissée(s) (trop petites/vagues).`
+            : "Rien à faire (inbox vide, ou routage indisponible).";
         } else if (toolName === "delete_activity") {
           text = await executeDeleteActivity(uid, args.activityId as string);
         } else if (toolName === "create_routine") {

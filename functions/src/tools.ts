@@ -80,6 +80,14 @@ const SET_ACTIVITY_TARGETS_TOOL = {
   },
 };
 
+const SWEEP_INBOX_TOOL = {
+  name: "sweep_inbox",
+  description:
+    "Balaie la boîte à idées (inbox) : transforme les idées vraiment stratégiques en projets Gantt (taggés ORION) ou les rattache à un projet actif existant, agrège les idées liées, et vide les idées traitées. " +
+    "Garde-fou granularité : une simple tâche / course / note vague est laissée, pas transformée en projet. Force l'exécution même si déjà fait aujourd'hui (utile pour tester).",
+  inputSchema: { type: "object", properties: {}, required: [] },
+};
+
 const CREATE_ROUTINE_TOOL = {
   name: "create_routine",
   description:
@@ -721,6 +729,7 @@ export {
 GET_USER_CONTEXT_TOOL,
 UPDATE_ACTIVITY_GOAL_TOOL,
 SET_ACTIVITY_TARGETS_TOOL,
+SWEEP_INBOX_TOOL,
 CREATE_ROUTINE_TOOL,
 CREATE_ACTIVITY_TOOL,
 CREATE_DOMAIN_TOOL,

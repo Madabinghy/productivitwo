@@ -1093,6 +1093,17 @@ class ProjectTask {
       );
 }
 
+/// Provenance d'un projet auto-créé par ORION : l'idée inbox qui l'a nourri.
+class ProjectOriginIdea {
+  final String text;
+  final String date; // YYYY-MM-DD
+  const ProjectOriginIdea({required this.text, required this.date});
+
+  Map<String, dynamic> toJson() => {'text': text, 'date': date};
+  static ProjectOriginIdea from(Map j) =>
+      ProjectOriginIdea(text: j['text'] ?? '', date: j['date'] ?? '');
+}
+
 class Project {
   String id;
   String title;
@@ -1106,6 +1117,11 @@ class Project {
   List<ProjectTask> tasks;
   String createdBy; // uid Firebase
   String sourceType; // manual | claude_api | coach
+  /// Origine fonctionnelle : "user" (manuel/MCP) ou "orion" (auto-créé depuis
+  /// les idées) — pilote le style visuel distinct.
+  String source;
+  /// Idées inbox qui ont donné naissance / nourri ce projet (effet « wow »).
+  List<ProjectOriginIdea> originIdeas;
   DateTime createdAt;
   DateTime? updatedAt;
 
@@ -1122,9 +1138,12 @@ class Project {
     List<ProjectTask>? tasks,
     required this.createdBy,
     this.sourceType = 'manual',
+    this.source = 'user',
+    List<ProjectOriginIdea>? originIdeas,
     DateTime? createdAt,
     this.updatedAt,
   })  : id = id ?? _uuid.v4(),
+        originIdeas = originIdeas ?? [],
         createdAt = createdAt ?? DateTime.now(),
         phases = phases ?? [],
         tasks = tasks ?? [];
@@ -1142,6 +1161,8 @@ class Project {
         'tasks': tasks.map((t) => t.toJson()).toList(),
         'createdBy': createdBy,
         'sourceType': sourceType,
+        'source': source,
+        'originIdeas': originIdeas.map((o) => o.toJson()).toList(),
         'createdAt': createdAt.toIso8601String(),
         'updatedAt': updatedAt?.toIso8601String(),
       };
@@ -1159,6 +1180,11 @@ class Project {
         tasks: (j['tasks'] as List?)?.map((t) => ProjectTask.from(t)).toList() ?? [],
         createdBy: j['createdBy'] ?? '',
         sourceType: j['sourceType'] ?? 'manual',
+        source: j['source'] ?? 'user',
+        originIdeas: (j['originIdeas'] as List?)
+                ?.map((o) => ProjectOriginIdea.from(o as Map))
+                .toList() ??
+            [],
         createdAt: _parseDate(j['createdAt']),
         updatedAt: _parseDateOrNull(j['updatedAt']),
       );

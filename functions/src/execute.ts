@@ -980,7 +980,11 @@ async function executeGetProject(uid: string, projectId: string): Promise<string
   return JSON.stringify(d, null, 2);
 }
 
-async function executePushGantt(uid: string, input: PushGanttBody): Promise<string> {
+async function executePushGantt(
+  uid: string,
+  input: PushGanttBody,
+  opts?: { source?: string; originIdeas?: { text: string; date: string }[] }
+): Promise<string> {
   const { project, strategicObjective } = input;
 
   let pickedProject: Record<string, unknown>;
@@ -1009,6 +1013,12 @@ async function executePushGantt(uid: string, input: PushGanttBody): Promise<stri
       id: projectId,
       createdBy: uid,
       sourceType: "claude_mcp",
+      // source = origine fonctionnelle : "orion" pour les projets auto-créés depuis
+      // les idées (style visuel distinct), sinon laissé tel quel (défaut UI = "user").
+      ...(opts?.source ? { source: opts.source } : {}),
+      ...(opts?.originIdeas && opts.originIdeas.length
+        ? { originIdeas: FieldValue.arrayUnion(...opts.originIdeas) }
+        : {}),
       status: "active",
       ...(strategicObjectiveId ? { strategicObjectiveId } : {}),
       updatedAt: FieldValue.serverTimestamp(),

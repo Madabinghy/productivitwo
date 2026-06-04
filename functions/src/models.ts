@@ -13,7 +13,8 @@ type TaskType =
   | "generate_document"
   | "analyze_week"
   | "coaching"
-  | "onboarding";
+  | "onboarding"
+  | "inbox_routing";
 
 const MODEL_ROUTING: Record<TaskType, string> = {
   orion_cycle:       MODELS.SONNET, // test perf vs Haiku
@@ -26,6 +27,7 @@ const MODEL_ROUTING: Record<TaskType, string> = {
   analyze_week:      MODELS.SONNET,
   coaching:          MODELS.SONNET,
   onboarding:        MODELS.SONNET,
+  inbox_routing:     MODELS.SONNET, // routage/agrégation idées→projets (jugement sémantique)
 };
 
 export function getModel(taskType: TaskType): string {

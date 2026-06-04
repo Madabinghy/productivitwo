@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { db, FieldValue } from "./db";
 import { MODELS, logTokenUsage } from "./models";
+import { processInboxToProjects } from "./orion_inbox";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -209,6 +210,14 @@ export async function getOrCreateBrief(uid: string): Promise<Brief> {
     createdAt: FieldValue.serverTimestamp(),
   };
   await ref.set(briefData);
+
+  // 1× par jour (gaté côté processInboxToProjects) : ORION balaie la boîte à idées
+  // et crée/enrichit des projets en autonomie. Best-effort — ne casse jamais le brief.
+  try {
+    await processInboxToProjects(uid);
+  } catch (e) {
+    console.error("inbox sweep failed (non bloquant)", e);
+  }
 
   return {
     date,
