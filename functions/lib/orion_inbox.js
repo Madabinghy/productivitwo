@@ -14,6 +14,12 @@ function todayParis(d = new Date()) {
         day: "2-digit",
     }).format(d);
 }
+/** Ajoute n jours à un YYYY-MM-DD et renvoie un YYYY-MM-DD. */
+function addDays(ymd, n) {
+    const d = new Date(`${ymd}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+}
 const ROUTING_PROMPT = `Tu es ORION, l'assistant de Productivitwo. Tu traites la boîte à idées de l'utilisateur : transformer des idées en projets Gantt, les rattacher à des projets existants, ou les laisser.
 
 ## RÈGLE D'OR (granularité — la plus importante)
@@ -25,7 +31,13 @@ Dans le doute : skip. Mieux vaut laisser une idée que créer un projet bidon.
 1. Préfère TOUJOURS enrichir un projet ACTIF existant (appendTo) plutôt que créer, si l'idée s'y rattache sémantiquement.
 2. AGRÈGE : si plusieurs idées concernent le même sujet, regroupe-les — soit dans UN seul newProject (plusieurs ideaIds), soit en plusieurs tâches d'un même projet.
 3. Chaque idée apparaît EXACTEMENT une fois (dans newProjects, appendTo, OU skip).
-4. Pour un nouveau projet : titre court et clair, 2-4 tâches concrètes (verbe d'action), domainId le plus cohérent parmi les domaines (ou null).
+4. Pour un nouveau projet : titre court et clair, domainId le plus cohérent parmi les domaines (ou null), et 2-4 tâches qui forment un VRAI Gantt :
+   - chaque tâche = un verbe d'action + 2-4 **sous-actions** concrètes (\`actions\`) qui détaillent comment la faire,
+   - chaque tâche a une **durée réaliste** en jours (\`durationDays\`, 1 à 15) — les tâches seront ENCHAÎNÉES dans le temps (l'une après l'autre), donne donc un ordre logique d'exécution.
+5. PLANIFICATION RÉALISTE (important) : l'utilisateur a DÉJÀ des projets en cours avec des tâches planifiées (voir leurs dates). Ne surcharge PAS les prochains jours. Donne à chaque nouveau projet un \`startOffsetDays\` (dans combien de jours il démarre) pour ÉTALER la charge : tiens compte des tâches existantes ET des autres nouveaux projets (ne les fais pas tous démarrer en même temps). Un projet peu urgent peut démarrer dans 1-3 semaines.
+
+## Message léger (nudge) — optionnel
+Les projets créés apparaissent EN SILENCE (effet de surprise). MAIS si une idée est laissée (skip) et mérite un petit rappel, tu peux proposer "nudge": { "text": "..." } = UN message court à la 1ère personne d'ORION qui évoque cette idée — SANS JAMAIS dire que tu as traité l'inbox ni mentionner les projets créés. Ex: "Pense à boucler ta dernière facture SOF 😉" ou "Tu avais noté l'idée X — tu veux en faire quoi ?". Un seul nudge max, et seulement si pertinent (sinon omets-le).
 
 ## Idées en attente
 {{IDEAS}}
@@ -40,9 +52,10 @@ Date du jour : {{TODAY}}
 
 Réponds UNIQUEMENT avec ce JSON (rien d'autre) :
 {
-  "newProjects": [ { "title": "...", "description": "...", "domainId": "<id|null>", "ideaIds": ["..."], "tasks": [ {"title":"..."} ] } ],
-  "appendTo": [ { "projectId": "...", "ideaIds": ["..."], "tasks": [ {"title":"..."} ] } ],
-  "skip": ["ideaId", ...]
+  "newProjects": [ { "title": "...", "description": "...", "domainId": "<id|null>", "ideaIds": ["..."], "startOffsetDays": 0, "tasks": [ {"title":"...", "actions":["...","..."], "durationDays": 2} ] } ],
+  "appendTo": [ { "projectId": "...", "ideaIds": ["..."], "tasks": [ {"title":"...", "actions":["..."]} ] } ],
+  "skip": ["ideaId", ...],
+  "nudge": { "text": "..." }
 }`;
 /**
  * Sweep autonome de l'inbox → projets. Gaté 1×/jour (déclenché en lazy à
@@ -51,7 +64,7 @@ Réponds UNIQUEMENT avec ce JSON (rien d'autre) :
  * la provenance des idées (originIdeas) pour le style distinct + l'effet « wow ».
  */
 async function processInboxToProjects(uid, opts) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r;
     const today = todayParis();
     const gateRef = db_1.db.doc(`users/${uid}/data/inbox_sweep`);
     const gate = await gateRef.get();
@@ -88,13 +101,26 @@ async function processInboxToProjects(uid, opts) {
         db_1.db.collection(`users/${uid}/domains`).get(),
     ]);
     const projects = projSnap.docs.map((d) => {
-        var _a, _b;
+        var _a, _b, _c;
         const v = d.data();
+        // Tâches déjà planifiées (non terminées) avec dates → permet à Sonnet de
+        // placer les nouveaux projets SANS surcharger les jours déjà occupés.
+        const activeTasks = ((_a = v.tasks) !== null && _a !== void 0 ? _a : [])
+            .filter((t) => t.status !== "done" && t.status !== "skipped")
+            .map((t) => {
+            var _a, _b;
+            return ({
+                title: t.title,
+                startDate: (_a = t.startDate) !== null && _a !== void 0 ? _a : null,
+                endDate: (_b = t.endDate) !== null && _b !== void 0 ? _b : null,
+            });
+        });
         return {
             id: v.id,
             title: v.title,
-            description: (_a = v.description) !== null && _a !== void 0 ? _a : "",
-            domainId: (_b = v.domainId) !== null && _b !== void 0 ? _b : null,
+            description: (_b = v.description) !== null && _b !== void 0 ? _b : "",
+            domainId: (_c = v.domainId) !== null && _c !== void 0 ? _c : null,
+            activeTasks,
         };
     });
     const domains = domSnap.docs
@@ -110,7 +136,7 @@ async function processInboxToProjects(uid, opts) {
         const client = new sdk_1.default({ apiKey: process.env.ANTHROPIC_API_KEY });
         const msg = await client.messages.create({
             model: (0, models_1.getModel)("inbox_routing"),
-            max_tokens: 1500,
+            max_tokens: 3000,
             messages: [{ role: "user", content: prompt }],
         });
         (0, models_1.logTokenUsage)("inbox_routing", (0, models_1.getModel)("inbox_routing"), msg.usage);
@@ -135,37 +161,64 @@ async function processInboxToProjects(uid, opts) {
             .map((i) => ({ text: i.text, date: i.date }));
         if (origin.length === 0)
             continue;
-        const tasks = (((_d = np.tasks) === null || _d === void 0 ? void 0 : _d.length) ? np.tasks : [{ title: np.title }]).map((t, i) => ({ id: `task-${i + 1}`, title: t.title, startDate: today }));
+        // Tâches ENCHAÎNÉES dans le temps (staircase Gantt) + sous-actions.
+        // Démarrage décalé (startOffsetDays) pour étaler la charge vs les en-cours.
+        const offset = Math.min(120, Math.max(0, Math.round((_d = np.startOffsetDays) !== null && _d !== void 0 ? _d : 0)));
+        const projectStart = addDays(today, offset);
+        const rawTasks = ((_e = np.tasks) === null || _e === void 0 ? void 0 : _e.length) ? np.tasks : [{ title: np.title }];
+        let cursor = projectStart;
+        const tasks = rawTasks.map((t, i) => {
+            var _a, _b;
+            const dur = Math.min(15, Math.max(1, Math.round((_a = t.durationDays) !== null && _a !== void 0 ? _a : 2)));
+            const startDate = cursor;
+            const endDate = addDays(startDate, dur);
+            cursor = addDays(endDate, 1); // la tâche suivante démarre après celle-ci
+            return {
+                id: `task-${i + 1}`,
+                title: t.title,
+                phaseId: "phase-1",
+                startDate,
+                endDate,
+                actions: ((_b = t.actions) !== null && _b !== void 0 ? _b : []).slice(0, 6),
+            };
+        });
+        const lastEnd = tasks.length ? (_f = tasks[tasks.length - 1].endDate) !== null && _f !== void 0 ? _f : projectStart : projectStart;
+        const phases = [
+            { id: "phase-1", label: "Réalisation", startDate: projectStart, endDate: lastEnd },
+        ];
         await (0, execute_1.executePushGantt)(uid, {
             uid,
             project: {
                 title: np.title,
                 description: np.description,
-                domainId: (_e = np.domainId) !== null && _e !== void 0 ? _e : undefined,
-                startDate: today,
+                domainId: (_g = np.domainId) !== null && _g !== void 0 ? _g : undefined,
+                startDate: projectStart,
+                endDate: lastEnd,
+                phases,
                 tasks,
             },
         }, { source: "orion", originIdeas: origin });
-        for (const id of (_f = np.ideaIds) !== null && _f !== void 0 ? _f : []) {
+        for (const id of (_h = np.ideaIds) !== null && _h !== void 0 ? _h : []) {
             if (ideaById.has(id)) {
                 await (0, execute_1.executeProcessInboxItem)(uid, id, `→ projet ORION « ${np.title} »`);
             }
         }
         created++;
     }
-    for (const ap of (_g = decision.appendTo) !== null && _g !== void 0 ? _g : []) {
+    for (const ap of (_j = decision.appendTo) !== null && _j !== void 0 ? _j : []) {
         const proj = projects.find((p) => p.id === ap.projectId);
         if (!proj)
             continue;
-        for (const t of (_h = ap.tasks) !== null && _h !== void 0 ? _h : []) {
+        for (const t of (_k = ap.tasks) !== null && _k !== void 0 ? _k : []) {
             await (0, execute_1.executeAddTask)(uid, ap.projectId, {
                 id: (0, uuid_1.v4)(),
                 title: t.title,
                 startDate: today,
+                actions: ((_l = t.actions) !== null && _l !== void 0 ? _l : []).slice(0, 6),
             });
             appended++;
         }
-        const origin = ((_j = ap.ideaIds) !== null && _j !== void 0 ? _j : [])
+        const origin = ((_m = ap.ideaIds) !== null && _m !== void 0 ? _m : [])
             .map((id) => ideaById.get(id))
             .filter((i) => !!i)
             .map((i) => ({ text: i.text, date: i.date }));
@@ -174,13 +227,30 @@ async function processInboxToProjects(uid, opts) {
                 .doc(`users/${uid}/projects/${ap.projectId}`)
                 .set({ originIdeas: db_1.FieldValue.arrayUnion(...origin) }, { merge: true });
         }
-        for (const id of (_k = ap.ideaIds) !== null && _k !== void 0 ? _k : []) {
+        for (const id of (_o = ap.ideaIds) !== null && _o !== void 0 ? _o : []) {
             if (ideaById.has(id)) {
                 await (0, execute_1.executeProcessInboxItem)(uid, id, `→ ajoutée au projet « ${proj.title} »`);
             }
         }
     }
-    const skipped = ((_l = decision.skip) !== null && _l !== void 0 ? _l : []).filter((id) => ideaById.has(id)).length;
+    const skipped = ((_p = decision.skip) !== null && _p !== void 0 ? _p : []).filter((id) => ideaById.has(id)).length;
+    // Silence sur les projets créés (effet « wow »). Seul message éventuel : un
+    // nudge léger sur une idée laissée, sans révéler le traitement de l'inbox.
+    const nudgeText = (_r = (_q = decision.nudge) === null || _q === void 0 ? void 0 : _q.text) === null || _r === void 0 ? void 0 : _r.trim();
+    if (nudgeText) {
+        try {
+            await (0, execute_1.executePushAssistantMessage)(uid, {
+                targetDate: today,
+                text: nudgeText,
+                condition: { type: "always" },
+                characterName: "ORION",
+                expiresAfterDays: 3,
+            });
+        }
+        catch (e) {
+            console.error("nudge push failed (non bloquant)", e);
+        }
+    }
     await gateRef.set({
         lastSweepYmd: today,
         lastResult: { found: ideas.length, created, appended, skipped },
