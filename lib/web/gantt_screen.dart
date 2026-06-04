@@ -785,8 +785,7 @@ class _GanttDashboardState extends State<_GanttDashboard> {
                                       fontSize: 13,
                                       color: cs.onSurface.withOpacity(0.8))),
                             ),
-                            if (m.startDate != null)
-                              Text(_fmtDate(m.startDate),
+                            Text(_fmtDate(m.startDate),
                                   style: TextStyle(
                                       fontSize: 11,
                                       color: cs.onSurface.withOpacity(0.4))),

@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -239,7 +238,7 @@ class _FocusViewState extends State<FocusView> {
             if (isCountdown) ...[
               Center(
                 child: _CountdownRing(
-                  remaining: remaining!,
+                  remaining: remaining,
                   totalSec: widget.countdownTotalSec ?? remaining.inSeconds,
                   color: color,
                 ),

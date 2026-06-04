@@ -17,7 +17,6 @@ import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
 import 'package:productivitwo_v1/widgets/habit_tile_full.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/widgets/goals_view.dart';
-import 'package:productivitwo_v1/widgets/day_block_sheet.dart';
 import 'package:productivitwo_v1/widgets/new_routine_sheet.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
 import 'package:productivitwo_v1/widgets/day_review_sheet.dart';
@@ -42,13 +41,11 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/dev_logger.dart';
 import 'package:productivitwo_v1/pro_manager.dart';
 import 'package:productivitwo_v1/fcm_service.dart';
-import 'package:uuid/uuid.dart';
 import 'package:productivitwo_v1/widgets/paywall_sheet.dart';
 import 'package:productivitwo_v1/widgets/apple_sign_in_button.dart';
 import 'package:productivitwo_v1/widgets/email_sign_in_tile.dart';
 import 'package:app_links/app_links.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:productivitwo_v1/widgets/programmes_sheet.dart';
 import 'package:productivitwo_v1/widgets/project_sheet.dart';
 import 'package:productivitwo_v1/widgets/inbox_sheet.dart';
 import 'package:productivitwo_v1/widgets/orion_screen.dart';
@@ -1303,7 +1300,7 @@ class _RunningActivityBannerState extends State<RunningActivityBanner>
               Icon(Icons.timer_outlined, size: 13, color: timeColor),
             if (isCountdown) const SizedBox(width: 4),
             Text(
-              isCountdown ? _fmt(remaining!) : _fmt(elapsed),
+              isCountdown ? _fmt(remaining) : _fmt(elapsed),
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
@@ -3575,7 +3572,7 @@ class _AppRootState extends State<AppRoot>
               ListTile(
                 leading: const Icon(Icons.play_circle_outline),
                 title: Text('Démarrer le minuteur (${r.timerMin} min)'),
-                subtitle: Text('Sur « ${linked!.name} »'),
+                subtitle: Text('Sur « ${linked.name} »'),
                 onTap: () {
                   Navigator.pop(ctx);
                   Navigator.pop(sheetCtx); // ferme aussi le lanceur
@@ -8954,9 +8951,7 @@ class _AppRootState extends State<AppRoot>
 
             // Routines sans domaine assigné
             final noDomain = baseVisible
-                .where((a) =>
-                    a.domainId == null ||
-                    !domains.any((d) => d.id == a.domainId))
+                .where((a) => !domains.any((d) => d.id == a.domainId))
                 .toList();
             if (noDomain.isNotEmpty) {
               widgets.add(_sectionTitle("Sans domaine"));
