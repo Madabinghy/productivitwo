@@ -695,36 +695,6 @@ class _GoalsViewState extends State<GoalsView> {
     if (activity != null) widget.onStartTimer?.call(activity, project, task);
   }
 
-  void _showWebHint(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      builder: (_) => Padding(
-        padding: const EdgeInsets.fromLTRB(24, 8, 24, 48),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Créer un projet',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            const Text(
-              'Les projets Gantt se créent depuis l\'app web. '
-              'Ouvre app.productivitwo.com et utilise le tab Projets.',
-              style: TextStyle(fontSize: 14),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Tu peux aussi demander à Claude de créer un projet via MCP.',
-              style: TextStyle(
-                  fontSize: 13,
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(.5)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 // ── Gantt task card ───────────────────────────────────────────────────────────

@@ -313,31 +313,6 @@ class _OrionBriefCardState extends State<OrionBriefCard>
     }
   }
 
-  Future<void> _generateBrief() async {
-    final newFocus = _focusCtrl.text.trim();
-    if (newFocus.isEmpty) return;
-
-    // If focus changed, save it first
-    if (newFocus != _focus) {
-      await _saveFocus();
-      return;
-    }
-
-    setState(() => _generating = true);
-    final idToken = await _getIdToken();
-    if (idToken == null) { setState(() => _generating = false); return; }
-
-    try {
-      // Invalidate cache to force regeneration (server returns existing doc for today)
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_kPrefBriefDate);
-      await _loadFromServer();
-    } catch (_) {
-      if (mounted) setState(() { _generating = false; _error = 'ORION est indisponible, réessaie dans quelques instants'; });
-    }
-    if (mounted) setState(() => _generating = false);
-  }
-
   Future<void> _sendFeedback(String value) async {
     final brief = _brief;
     if (brief == null || _feedbackSent) return;

@@ -2485,11 +2485,6 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
 
   // ── Upload fichier ───────────────────────────────────────────────────────────
 
-  static const _textExts = {
-    'txt', 'md', 'html', 'htm', 'json', 'xml', 'csv',
-    'dart', 'js', 'ts', 'py', 'swift', 'kt', 'java',
-    'yaml', 'yml', 'toml', 'ini', 'cfg', 'log', 'sh',
-  };
   static const _imageExts = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'};
   static const _codeExts = {
     'json', 'xml', 'dart', 'js', 'ts', 'py', 'swift', 'kt', 'java',

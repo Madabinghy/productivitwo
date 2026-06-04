@@ -582,52 +582,6 @@ class _ExampleCard extends StatelessWidget {
   }
 }
 
-class _FeatureRow extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String body;
-  const _FeatureRow(
-      {required this.icon, required this.title, required this.body});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 34, height: 34,
-            decoration: BoxDecoration(
-              color: cs.primaryContainer.withOpacity(0.6),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, size: 17, color: cs.primary),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title,
-                    style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 3),
-                Text(body,
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: cs.onSurface.withOpacity(0.6),
-                        height: 1.4)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _InfoBox extends StatelessWidget {
   final IconData icon;
   final String text;

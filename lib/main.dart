@@ -1730,7 +1730,6 @@ class _AppRootState extends State<AppRoot>
   TimeScope scope = TimeScope.day;
   Timer? _heartbeat;
   _Tab _tab = _Tab.dashboard;
-  String? _weekHighlightYmd; // jour à mettre en avant dans la vue semaine
 // affiché une seule fois tant que l'app reste ouverte
 
   Timer? _saveDebounce;
@@ -2563,22 +2562,7 @@ class _AppRootState extends State<AppRoot>
   Widget _buildBody(BuildContext context) {
     final st = _state!;
 
-    final f = logic.state.filters;
 
-    final running = logic.runningActivity();
-
-    bool isActivitySnoozedNow(String? activityId) {
-      final id = (activityId ?? '').trim();
-      if (id.isEmpty) return false;
-
-      final iso = logic.state.snoozedUntil[id];
-      if (iso == null || iso.isEmpty) return false;
-
-      final until = DateTime.tryParse(iso);
-      if (until == null) return false;
-
-      return until.isAfter(DateTime.now());
-    }
 
     return FadeTransition(
       opacity: _tabFade,
@@ -3188,35 +3172,6 @@ class _AppRootState extends State<AppRoot>
     );
   }
 
-  Future<String?> _pickDomainId(BuildContext context) async {
-    final domains = logic.state.activeDomains;
-
-    return showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) {
-        return SafeArea(
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              const ListTile(
-                title: Text(
-                  "Choisir un domaine",
-                  style: TextStyle(fontWeight: FontWeight.w800),
-                ),
-              ),
-              for (final d in domains)
-                ListTile(
-                  title: Text(d.name),
-                  onTap: () => Navigator.pop(ctx, d.id),
-                ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   Future<void> _createRoutineFromNow(BuildContext context) async {
     final result = await showNewRoutineSheet(context, logic: logic);
     if (result == null) return;
@@ -3476,59 +3431,6 @@ class _AppRootState extends State<AppRoot>
         ),
       ],
     );
-  }
-
-  Future<void> _startFocusFromFab(BuildContext context) async {
-    final activities = (_state?.activeActivities ?? [])
-        .where((a) => !a.isHabit)
-        .toList();
-    if (activities.isEmpty) return;
-
-    Activity? activity;
-    if (activities.length == 1) {
-      activity = activities.first;
-    } else {
-      activity = await showModalBottomSheet<Activity>(
-        context: context,
-        showDragHandle: true,
-        builder: (ctx) {
-          final cs = Theme.of(ctx).colorScheme;
-          return SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-                  child: Text('Sur quelle activité ?',
-                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-                ),
-                for (final a in activities)
-                  ListTile(
-                    title: Text(a.name),
-                    subtitle: Text(
-                      (_state?.activeDomains ?? [])
-                              .where((d) => d.id == a.domainId)
-                              .firstOrNull
-                              ?.name ?? '',
-                      style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.45)),
-                    ),
-                    onTap: () => Navigator.pop(ctx, a),
-                  ),
-                const SizedBox(height: 8),
-              ],
-            ),
-          );
-        },
-      );
-    }
-    if (activity == null || !mounted) return;
-
-    logic.start(activity.id);
-    setState(() {
-      _focusProject = null;
-      _focusTask = null;
-    });
   }
 
   /// Lance le minuteur d'une routine : démarre l'activité liée + le décompte
@@ -3988,226 +3890,6 @@ class _AppRootState extends State<AppRoot>
     }
 
     final filtersOn = logic.state.filters.isActive;
-
-    void _showRoutineProgressSheet(BuildContext context) {
-      double _roughRoutineRatioAt(DateTime day) {
-        final habits = logic.state.activities.where((a) => a.isHabit).toList();
-
-        int reached = 0;
-        int total = 0;
-
-        for (final a in habits) {
-          final target = logic.activeHabitTarget(a);
-          if (target <= 0) continue;
-
-          total++;
-
-          final done = logic.habitValueOn(a.id, day);
-          if (done >= target) {
-            reached++;
-          }
-        }
-
-        return total == 0 ? 0.0 : reached / total;
-      }
-
-      List<double> _routineCatchupRatio30d() {
-        final now = DateTime.now();
-        final out = <double>[];
-
-        for (int i = 0; i < 29; i++) {
-          final day = DateTime(now.year, now.month, now.day)
-              .subtract(Duration(days: 29 - i));
-
-          // logique provisoire / approximative pour les jours passés
-          out.add(_roughRoutineRatioAt(day));
-        }
-
-        // dernier point = logique exacte du sheet
-        final summary = logic.routineProgressSummaryForCurrentPeriod();
-        out.add(summary.total == 0 ? 0.0 : summary.reached / summary.total);
-
-        return out;
-      }
-
-      final items = logic.routineProgressItemsForCurrentPeriod();
-
-      final under = items.where((e) => e.isCatchup).toList();
-      final over = items.where((e) => e.isReached).toList();
-
-      void _openRoutineInNowTab(Activity activity) {
-        setState(() {
-          _tab = _Tab.maintenant;
-        });
-      }
-
-      final ratio30 = _routineCatchupRatio30d();
-
-      showModalBottomSheet<void>(
-        context: context,
-        showDragHandle: true,
-        isScrollControlled: true,
-        builder: (ctx) {
-          final theme = Theme.of(ctx);
-          final cs = theme.colorScheme;
-
-          return SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-              child: ListView(
-                shrinkWrap: true,
-                children: [
-                  /// ---------- Titre ----------
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.emoji_events_rounded,
-                        color: cs.primary,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Progression habitudes',
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Navigator.pop(ctx),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  Text(
-                    'Évolution sur 30 jours',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: cs.surfaceContainerLow,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: cs.outlineVariant.withValues(alpha: .4),
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        TinyRatioBars(values: ratio30),
-                        const SizedBox(height: 8),
-                        Text(
-                          '${(ratio30.isNotEmpty ? ratio30.last * 100 : 0).round()}% à jour',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: cs.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  /// ---------- À rattraper ----------
-                  if (under.isNotEmpty) ...[
-                    Text(
-                      'À rattraper',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    ...under.map(
-                      (e) => ListTile(
-                        onTap: () {
-                          showModalBottomSheet(
-                            context: context,
-                            showDragHandle: true,
-                            isScrollControlled: true,
-                            builder: (_) => RoutineDetailSheet(
-                              logic: logic,
-                              st: logic.state,
-                              habitId: e.activity.id,
-                              day: DateTime.now(),
-                            ),
-                          );
-                        },
-                        leading: const Icon(Icons.radio_button_unchecked),
-                        title: Text(e.label),
-                        subtitle: Text('${e.done} / ${e.target}'),
-                        trailing: SizedBox(
-                          width: 60,
-                          child: LinearProgressIndicator(
-                            value: e.progress,
-                            minHeight: 6,
-                            backgroundColor: cs.surfaceContainerHighest,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-
-                  /// ---------- Déjà atteint ----------
-                  if (over.isNotEmpty) ...[
-                    Text(
-                      'Déjà atteint',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    ...over.map(
-                      (e) => ListTile(
-                        onTap: () {
-                          showModalBottomSheet(
-                            context: context,
-                            showDragHandle: true,
-                            isScrollControlled: true,
-                            builder: (_) => RoutineDetailSheet(
-                              logic: logic,
-                              st: logic.state,
-                              habitId: e.activity.id,
-                              day: DateTime.now(),
-                            ),
-                          );
-                        },
-                        leading: const Icon(
-                          Icons.check_circle,
-                          color: Colors.green,
-                        ),
-                        title: Text(e.label),
-                        subtitle: Text('${e.done} / ${e.target}'),
-                      ),
-                    ),
-                  ],
-
-                  /// ---------- Cas vide ----------
-                  if (under.isEmpty && over.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 40),
-                      child: Center(
-                        child: Text(
-                          "Aucune habitude active",
-                          style: theme.textTheme.bodyMedium,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          );
-        },
-      );
-    }
 
     void _showDailyScoreSheet(BuildContext context, int done, int total) {
       final now = DateTime.now();
@@ -4741,16 +4423,6 @@ class _AppRootState extends State<AppRoot>
         done: displayDone,
         total: displayTotal,
         onTap: () => _showDailyScoreSheet(context, done, total),
-      );
-    }
-
-    Widget _buildRoutineChip(BuildContext context) {
-      final summary = logic.routineProgressSummaryForCurrentPeriod();
-      if (summary.total == 0) return const SizedBox.shrink();
-      return RoutineAppBarChip(
-        summary: summary,
-        trend30d: logic.habitDailyAdherenceRates(30),
-        onTap: () => _showRoutineProgressSheet(context),
       );
     }
 
@@ -6018,14 +5690,7 @@ class _AppRootState extends State<AppRoot>
                           todayIndex: now.weekday - 1,
                           cs: cs,
                           onDayTap: (i) {
-                            final monday = now.subtract(
-                                Duration(days: now.weekday - 1));
-                            final tappedDay = DateTime(
-                              monday.year, monday.month,
-                              monday.day + i,
-                            );
                             setState(() {
-                              _weekHighlightYmd = yyyymmdd(tappedDay);
                               _tab = _Tab.dashboard;
                             });
                           },
@@ -6733,9 +6398,6 @@ class _AppRootState extends State<AppRoot>
     final start7Inc = today0.subtract(const Duration(days: 6));
     final end7Inc = tomorrow;
 
-    final start90Inc = today0.subtract(const Duration(days: 89));
-    final end90Inc = tomorrow;
-
     final (startCal, endCal, days) = _rangeForScope(now);
 
     const haloReachedThreshold = 0.99;
@@ -6747,13 +6409,6 @@ class _AppRootState extends State<AppRoot>
     // ✅ TEMPS: maps calculées 1 seule fois par tick
     final totalsTodayAll = logic.timeTotalsByDomain(today0, now);
     final totals7All = logic.timeTotalsByDomain(start7Inc, end7Inc);
-    final totals90All = logic.timeTotalsByDomain(start90Inc, end90Inc);
-
-    // ✅ TOTAL 90h global (pour share)
-    final done90HoursAll = totals90All.values
-            .fold<Duration>(Duration.zero, (a, b) => a + b)
-            .inMinutes /
-        60.0;
 
     // ✅ ROUTINES: comptage binaire "atteinte ou non" par domaine
     final routineItems = logic.routineProgressItemsForCurrentPeriod();
@@ -6767,22 +6422,11 @@ class _AppRootState extends State<AppRoot>
       }
     }
 
-    double domainShare90(String domainId) {
-      if (done90HoursAll <= 0) return 0.0;
-      final h = (totals90All[domainId]?.inMinutes ?? 0) / 60.0;
-      return (h / done90HoursAll).clamp(0.0, 1.0);
-    }
-
     return [
         ...sortedDomains.map((d) {
           // ---- ROUTINES domain (binaire : atteinte ou non)
           final routinesReached = routineReachedByDomain[d.id] ?? 0;
           final routinesTotal = routineTotalByDomain[d.id] ?? 0;
-          final routinesProgress = routinesTotal == 0
-              ? 0.0
-              : (routinesReached / routinesTotal).clamp(0.0, 1.0);
-          final routinesLabelD =
-              routinesTotal == 0 ? '' : '$routinesReached / $routinesTotal';
 
           // ---- TIME domain
           final dailyTargetMinD = _state!.activeActivities
@@ -6794,22 +6438,12 @@ class _AppRootState extends State<AppRoot>
 
           final doneTodayHoursD = (totalsTodayAll[d.id]?.inMinutes ?? 0) / 60.0;
           final done7HoursD = (totals7All[d.id]?.inMinutes ?? 0) / 60.0;
-          final done90HoursD = (totals90All[d.id]?.inMinutes ?? 0) / 60.0;
-
-          final outerProgressTime = dailyTargetHoursD > 0
-              ? (doneTodayHoursD / dailyTargetHoursD).clamp(0.0, 1.0)
-              : 0.0;
 
           final target7HoursD = dailyTargetHoursD * 7.0;
           final bigProgressTime = target7HoursD > 0
               ? (done7HoursD / target7HoursD).clamp(0.0, 1.0)
               : 0.0;
 
-          final total90HoursAbs = 90.0 * 24.0;
-          final smallProgressTime =
-              (done90HoursD / total90HoursAbs).clamp(0.0, 1.0);
-
-          final share = domainShare90(d.id);
           final timeLabel = _fmtHoursHM(doneTodayHoursD);
 
           final dColor = domainColor(d.id, _state!.activeDomains) ?? cs.primary;
@@ -7767,29 +7401,6 @@ class _AppRootState extends State<AppRoot>
     }
 
     return changed == true;
-  }
-
-  Widget _statChip(String label, String value, ColorScheme cs) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerHighest.withOpacity(.5),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Column(
-          children: [
-            Text(value,
-                style: const TextStyle(
-                    fontWeight: FontWeight.w800, fontSize: 15)),
-            const SizedBox(height: 2),
-            Text(label,
-                style: TextStyle(
-                    fontSize: 10, color: cs.onSurface.withOpacity(.5))),
-          ],
-        ),
-      ),
-    );
   }
 
   Widget _miniStat(String label, String value, ColorScheme cs) {
@@ -9097,49 +8708,6 @@ class _AppRootState extends State<AppRoot>
     return Colors.redAccent;
   }
 
-  Widget _buildProgressRow({
-    required IconData icon,
-    required String label,
-    required double progress,
-    required Color color,
-    VoidCallback? onTap,
-  }) {
-    final p = progress.clamp(0.0, 1.0);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(
-          children: [
-            Icon(icon, size: 14, color: color),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(label,
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.white.withOpacity(0.7))),
-                  const SizedBox(height: 3),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(2),
-                    child: LinearProgressIndicator(
-                      value: p,
-                      minHeight: 6,
-                      backgroundColor: color.withOpacity(0.15),
-                      valueColor: AlwaysStoppedAnimation<Color>(color),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 class ChallengeActivityChip extends StatelessWidget {
@@ -9253,8 +8821,6 @@ class AppBarProductivityBars extends StatelessWidget {
     final m = mins % 60;
     return "${h}h${m.toString().padLeft(2, '0')}/j";
   }
-
-  String _fmtPct(int mins) => "${((mins / 1440.0) * 100).round()}%";
 
   Widget _bar(BuildContext context, double p) {
     final bg = Theme.of(context).colorScheme.onSurface.withOpacity(0.10);

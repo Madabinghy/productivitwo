@@ -342,77 +342,10 @@ class _FocusViewState extends State<FocusView> {
 
   // ── Flow démarrage ───────────────────────────────────────────────────────────
 
-  Future<void> _showStartFlow(BuildContext context) async {
-    // Étape 1 : choisir une activité
-    final activity = await _pickActivity(context, domainId: null);
-    if (activity == null || !mounted) return;
-
-    // Étape 2 : choisir une tâche (optionnel)
-    final result = await _pickTask(context, activity);
-    if (!mounted) return;
-
-    widget.onStartTimer(activity, result?.$1, result?.$2);
-  }
-
   Future<void> _showTaskPicker(BuildContext context, Activity activity) async {
     final result = await _pickTask(context, activity);
     if (result == null || !mounted) return;
     widget.onStartTimer(activity, result.$1, result.$2);
-  }
-
-  Future<Activity?> _pickActivity(BuildContext context,
-      {String? domainId}) async {
-    final activities = domainId != null
-        ? st.activeActivities.where((a) => a.domainId == domainId).toList()
-        : st.activeActivities.where((a) => !a.isHabit).toList();
-
-    if (activities.isEmpty) return null;
-    if (activities.length == 1) return activities.first;
-
-    return showModalBottomSheet<Activity>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) {
-        final cs = Theme.of(ctx).colorScheme;
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-                child: Text('Sur quelle activité ?',
-                    style: const TextStyle(
-                        fontSize: 17, fontWeight: FontWeight.bold)),
-              ),
-              for (final a in activities)
-                ListTile(
-                  leading: Container(
-                    width: 10, height: 10,
-                    decoration: BoxDecoration(
-                      color: domainColor(a.domainId, st.activeDomains) ??
-                          cs.primary,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  title: Text(a.name),
-                  subtitle: Text(
-                    st.activeDomains
-                            .where((d) => d.id == a.domainId)
-                            .firstOrNull
-                            ?.name ??
-                        '',
-                    style: TextStyle(
-                        fontSize: 12, color: cs.onSurface.withOpacity(.45)),
-                  ),
-                  onTap: () => Navigator.pop(ctx, a),
-                ),
-              const SizedBox(height: 8),
-            ],
-          ),
-        );
-      },
-    );
   }
 
   Future<(Project, ProjectTask)?> _pickTask(

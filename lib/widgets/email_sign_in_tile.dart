@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/storage.dart';
 import 'package:productivitwo_v1/pro_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -45,26 +44,6 @@ class _EmailSignInTileState extends State<EmailSignInTile> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('email_sign_in_pending', email);
       if (mounted) setState(() { _loading = false; _linkSent = true; });
-    } catch (e) {
-      if (mounted) setState(() {
-        _loading = false;
-        _error = e.toString().replaceAll('Exception: ', '');
-      });
-    }
-  }
-
-  Future<void> _onEmailLinkReceived(String email, String link) async {
-    setState(() { _loading = true; _error = null; });
-    try {
-      final result = await widget.sync.signInWithEmailLink(email, link);
-      await ProManager.loginUser(result.uid);
-      if (!result.isNew) {
-        final remote = await widget.sync.pull();
-        if (remote != null && mounted) await FileStore().save(remote);
-      } else {
-        await widget.sync.pushAll(widget.state);
-      }
-      if (mounted) widget.onDataChanged();
     } catch (e) {
       if (mounted) setState(() {
         _loading = false;

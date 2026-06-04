@@ -38,10 +38,8 @@ class _WebHomeScreenState extends State<WebHomeScreen>
     with SingleTickerProviderStateMixin {
   final _sync = FirestoreSync();
   List<Project> _projects = [];
-  List<StrategicObjective> _objectives = [];
   List<Domain> _domains = [];
   Map<String, List<Map<String, dynamic>>> _documentsByProject = {};
-  String? _selectedDomainId;
   bool _loading = true;
   late TabController _mainTabs;
   List<AssistantMessageData> _assistantMessages = [];
@@ -66,7 +64,6 @@ class _WebHomeScreenState extends State<WebHomeScreen>
     super.dispose();
   }
 
-  bool _hasIosData = false;
 
   Future<void> _load() async {
     try {
@@ -78,7 +75,6 @@ class _WebHomeScreenState extends State<WebHomeScreen>
         _sync.fetchDocuments(),
       ]);
       if (!mounted) return;
-      final tokens = results[2] as List;
       final allDocs = results[4] as List<Map<String, dynamic>>;
       // Group documents by projectId (hors playbooks : ils ont leur vue dédiée
       // sous le Gantt — pas dans l'ancien viewer HTML « Voir le document »).
@@ -95,10 +91,8 @@ class _WebHomeScreenState extends State<WebHomeScreen>
 
       setState(() {
         _projects = loadedProjects;
-        _objectives = results[1] as List<StrategicObjective>;
         _domains = loadedDomains;
         _documentsByProject = byProject;
-        _hasIosData = tokens.isNotEmpty;
         _loading = false;
       });
 
@@ -126,10 +120,6 @@ class _WebHomeScreenState extends State<WebHomeScreen>
       builder: (_) => _TokensPanel(sync: _sync),
     );
   }
-
-  StrategicObjective? _objectiveFor(Project p) => p.strategicObjectiveId == null
-      ? null
-      : _objectives.where((o) => o.id == p.strategicObjectiveId).firstOrNull;
 
   @override
   Widget build(BuildContext context) {
@@ -272,16 +262,6 @@ class _WebHomeScreenState extends State<WebHomeScreen>
     return cs.primary;
   }
 
-
-  Future<void> _archiveProject(Project p, bool archive) async {
-    await _sync.saveProject(p..status = archive ? 'archived' : 'active');
-    _load();
-  }
-
-  Future<void> _deleteProject(Project p) async {
-    await _sync.deleteProject(p.id);
-    _load();
-  }
 
   void _handleAssistantAction(AssistantActionData action) {
     switch (action.type) {
@@ -2067,7 +2047,6 @@ class _VisionSidebarSectionState extends State<_VisionSidebarSection> {
   bool _onboardingDone = false;
   DateTime? _nextAvailableAt;
   String? _accessUrl;
-  String? _error;
 
   @override
   void initState() {
@@ -2079,7 +2058,7 @@ class _VisionSidebarSectionState extends State<_VisionSidebarSection> {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
-        setState(() { _loading = false; _error = 'Non connecté'; });
+        setState(() { _loading = false; });
         return;
       }
       final idToken = await user.getIdToken();
@@ -2092,7 +2071,7 @@ class _VisionSidebarSectionState extends State<_VisionSidebarSection> {
       );
       if (!mounted) return;
       if (res.statusCode != 200) {
-        setState(() { _loading = false; _error = 'Erreur ${res.statusCode}'; });
+        setState(() { _loading = false; });
         return;
       }
       final body = jsonDecode(res.body) as Map<String, dynamic>;
@@ -2106,7 +2085,7 @@ class _VisionSidebarSectionState extends State<_VisionSidebarSection> {
         _nextAvailableAt = nextStr != null ? DateTime.tryParse(nextStr) : null;
       });
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+      if (mounted) setState(() { _loading = false; });
     }
   }
 
@@ -2755,28 +2734,6 @@ class _BriefHistoryViewState extends State<_BriefHistoryView> {
 
 // ── Peintre ligne pointillée ──────────────────────────────────────────────────
 
-class _DashedLinePainter extends CustomPainter {
-  final Color color;
-  const _DashedLinePainter({required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 1;
-    const dashWidth = 4.0;
-    const dashSpace = 4.0;
-    double x = 0;
-    while (x < size.width) {
-      canvas.drawLine(Offset(x, 0), Offset(x + dashWidth, 0), paint);
-      x += dashWidth + dashSpace;
-    }
-  }
-
-  @override
-  bool shouldRepaint(_DashedLinePainter old) => old.color != color;
-}
-
 // ── Sidebar widgets ───────────────────────────────────────────────────────────
 
 class _SidebarCard extends StatelessWidget {
@@ -2945,49 +2902,6 @@ class _ProjectProgressItem extends StatelessWidget {
 }
 
 // ── Objectif stratégique header ───────────────────────────────────────────────
-
-class _ObjectiveHeader extends StatelessWidget {
-  final StrategicObjective objective;
-  const _ObjectiveHeader({required this.objective});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Row(
-      children: [
-        Icon(Icons.flag_outlined, size: 16, color: cs.primary),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            objective.title.toUpperCase(),
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.1,
-              color: cs.primary,
-            ),
-          ),
-        ),
-        if (objective.kpiTarget != null)
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: cs.primaryContainer,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              objective.kpiTarget!,
-              style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: cs.primary),
-            ),
-          ),
-      ],
-    );
-  }
-}
 
 // ── Carte projet ──────────────────────────────────────────────────────────────
 
@@ -4335,19 +4249,6 @@ class _ArchivesViewState extends State<_ArchivesView> {
                   : () => _archive('domains', d.id),
             ),
           ]),
-        );
-
-    Widget subsectionLabel(String text) => Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 0, 6),
-          child: Text(
-            text.toUpperCase(),
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.9,
-              color: cs.onSurface.withOpacity(0.3),
-            ),
-          ),
         );
 
     Widget actRow(Activity a) => Padding(

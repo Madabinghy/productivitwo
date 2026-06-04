@@ -9,12 +9,10 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
 import 'package:productivitwo_v1/widgets/appbar_routines_summery.dart';
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
-import 'package:uuid/uuid.dart';
 import 'package:productivitwo_v1/models.dart';
 
 // ---------- Constantes ----------
 const int kMinDailyGoalMin = 1; // plancher dur pour activités "time"
-final _uuid = const Uuid();
 
 // ---------- Périodes / compteurs ----------
 class PeriodCount {
@@ -152,14 +150,6 @@ class AppLogic {
 
   void bumpRev() => rev.value++;
 
-  DateTime _parseYmd(String ymd) {
-    // ymd = "YYYYMMDD"
-    final y = int.parse(ymd.substring(0, 4));
-    final m = int.parse(ymd.substring(4, 6));
-    final d = int.parse(ymd.substring(6, 8));
-    return DateTime(y, m, d);
-  }
-
   Future<void> attachLinkedActivityToRoutine(
     String habitId,
     String? linkedTimeActivityId,
@@ -247,15 +237,6 @@ class AppLogic {
             ))
         .where((it) => it.target > 0)
         .toList();
-  }
-
-  Activity? _activityById(String? id) {
-    final actId = (id ?? '').trim();
-    if (actId.isEmpty) return null;
-    for (final a in state.activeActivities) {
-      if (a.id == actId) return a;
-    }
-    return null;
   }
 
   Activity? getActivityById(String id) {
@@ -1064,7 +1045,6 @@ class AppLogic {
       state.habitProgress[prevIdx].value = v < 0 ? 0 : v;
     }
 
-    final currentDay = DateTime(day.year, day.month, day.day);
 
     HabitAssocEvent? assocEvent;
 
@@ -1202,7 +1182,6 @@ class AppLogic {
     }
 
     // --- après MAJ compteur ---
-    final currentDay = DateTime(day.year, day.month, day.day);
 
     if (delta > 0) {
       final running = runningActivity();
@@ -1633,9 +1612,6 @@ class AppLogic {
   }
 
   // ---------- Aujourd’hui / Demain ----------
-  String _todayKey() => yyyymmdd(DateTime.now());
-  String _tomorrowKey() =>
-      yyyymmdd(DateTime.now().add(const Duration(days: 1)));
 
 // app_logic.dart
   void applyHabitSettings(
@@ -2621,11 +2597,6 @@ extension TodayLogic on AppLogic {
       haloReachedByDomain: haloReachedByDomain,
     );
     return domainRankFromSorted(sorted);
-  }
-
-  String _todayKeyLocal() {
-    final now = DateTime.now();
-    return yyyymmdd(DateTime(now.year, now.month, now.day));
   }
 
   Activity? shoppingActivity() {
