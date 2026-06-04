@@ -4951,9 +4951,14 @@ class _AppRootState extends State<AppRoot>
         totalsToday.values.fold<Duration>(Duration.zero, (a, b) => a + b);
     final totalTodayHours = totalTodayDur.inMinutes / 60.0;
 
-    final dailyTargetMinAll = _state!.activeActivities
+    final dailyTargetMinRaw = _state!.activeActivities
         .where((a) => a.type == 'time' && a.goalMin > 0)
         .fold<int>(0, (sum, a) => sum + a.goalMin);
+    // Plafond 24h : la cible globale = somme des cibles p90 de chaque domaine
+    // (on vise le meilleur jour de chacun), ce qui peut dépasser une journée.
+    // On bride l'objectif VISIBLE à 24h pour que le % reste lisible.
+    final dailyTargetMinAll =
+        dailyTargetMinRaw > 24 * 60 ? 24 * 60 : dailyTargetMinRaw;
 
     final dailyTargetHoursAll = dailyTargetMinAll / 60.0;
 
