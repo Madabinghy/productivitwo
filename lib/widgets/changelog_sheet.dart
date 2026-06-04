@@ -10,6 +10,11 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.63', '4 juin 2026', [
+    (Icons.timelapse_rounded, 'Minuteur en cours : onglet Maintenant en mode focus — un grand anneau de décompte remplace le chrono et le programme du jour se masque ; à la fin tu choisis « Continuer » (en chrono) ou « Terminer »'),
+    (Icons.restore_rounded, 'Le minuteur survit si tu quittes et rouvres l\'app : tu retrouves ton décompte là où il en était'),
+    (Icons.donut_large_rounded, 'Anneau du temps de l\'accueil : l\'objectif global est plafonné à 24h — fini le pourcentage qui paraissait bas un jour bien rempli'),
+  ]),
   _Entry('5.62', '3 juin 2026', [
     (Icons.timer_rounded, 'Minuteur d\'activité = vraie alarme : elle sonne en boucle jusqu\'à ce que tu l\'arrêtes quand l\'app tourne en arrière-plan, et une sonnerie de ~30s prend le relais même si tu as fermé l\'app'),
     (Icons.play_arrow_rounded, 'À la fin du minuteur : « Continuer » pour enchaîner en chrono sur ta lancée, ou « Terminer » → ta fiche d\'activité se rouvre avec ta progression à jour pour t\'inviter à remettre un coup'),
