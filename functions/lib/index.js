@@ -320,7 +320,7 @@ exports.sendMagicLink = (0, https_1.onRequest)({ cors: true, invoker: "public", 
 // ── mcpHandler ────────────────────────────────────────────────────────────────
 //
 // URL : /mcp/{uid}/{token} — protocole MCP JSON-RPC 2.0 (Streamable HTTP, stateless)
-exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, async (req, res) => {
+exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", secrets: ["ANTHROPIC_API_KEY"] }, async (req, res) => {
     var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q;
     if (req.method === "OPTIONS") {
         res.status(204).send("");

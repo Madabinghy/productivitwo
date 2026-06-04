@@ -335,7 +335,7 @@ export const sendMagicLink = onRequest(
 //
 // URL : /mcp/{uid}/{token} — protocole MCP JSON-RPC 2.0 (Streamable HTTP, stateless)
 
-export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (req, res) => {
+export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["ANTHROPIC_API_KEY"] }, async (req, res) => {
   if (req.method === "OPTIONS") { res.status(204).send(""); return; }
 
   const parts = (req.path || "").replace(/^\/+mcp\/*/, "").split("/");
