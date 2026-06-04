@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.67', '4 juin 2026', [
+    (Icons.delete_outline, 'Supprimer une activité ou une routine directement depuis sa fiche (bouton 🗑 dans l\'en-tête) — plus besoin de chercher où supprimer'),
+  ]),
   _Entry('5.66', '4 juin 2026', [
     (Icons.delete_outline, 'Correction : supprimer une activité depuis un domaine est désormais persistant — elle ne réapparaît plus à la réouverture de l\'app'),
   ]),

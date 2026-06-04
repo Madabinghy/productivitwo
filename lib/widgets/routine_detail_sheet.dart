@@ -178,6 +178,36 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                   onPressed: _rename,
                 ),
                 IconButton(
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  tooltip: 'Supprimer',
+                  onPressed: () async {
+                    final name = act.name;
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (dctx) => AlertDialog(
+                        title: Text('Supprimer « $name » ?'),
+                        content: const Text(
+                            'Cette routine sera supprimée et retirée des plans.'),
+                        actions: [
+                          TextButton(
+                              onPressed: () => Navigator.pop(dctx, false),
+                              child: const Text('Annuler')),
+                          FilledButton(
+                              onPressed: () => Navigator.pop(dctx, true),
+                              child: const Text('Supprimer')),
+                        ],
+                      ),
+                    );
+                    if (ok != true) return;
+                    logic.deleteActivityCascade(act.id);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Supprimé : $name')));
+                      Navigator.pop(context);
+                    }
+                  },
+                ),
+                IconButton(
                   icon: const Icon(Icons.close),
                   onPressed: () => Navigator.pop(context),
                 ),

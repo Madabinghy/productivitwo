@@ -7100,6 +7100,37 @@ class _AppRootState extends State<AppRoot>
                         },
                       ),
                       IconButton(
+                        icon: const Icon(Icons.delete_outline, size: 18),
+                        tooltip: 'Supprimer',
+                        onPressed: () async {
+                          final ok = await showDialog<bool>(
+                            context: ctx,
+                            builder: (dctx) => AlertDialog(
+                              title: Text('Supprimer « ${a.name} » ?'),
+                              content: Text(a.isHabit
+                                  ? 'Cette routine sera supprimée et retirée des plans.'
+                                  : 'Cette activité sera supprimée et retirée des plans.'),
+                              actions: [
+                                TextButton(
+                                    onPressed: () => Navigator.pop(dctx, false),
+                                    child: const Text('Annuler')),
+                                FilledButton(
+                                    onPressed: () => Navigator.pop(dctx, true),
+                                    child: const Text('Supprimer')),
+                              ],
+                            ),
+                          );
+                          if (ok != true) return;
+                          final name = a.name;
+                          logic.deleteActivityCascade(a.id);
+                          if (ctx.mounted) Navigator.pop(ctx, true);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Supprimé : $name')));
+                          }
+                        },
+                      ),
+                      IconButton(
                         icon: const Icon(Icons.close, size: 18),
                         onPressed: () => Navigator.pop(ctx, false),
                       ),
