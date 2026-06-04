@@ -11,6 +11,7 @@ import 'firebase_options.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
 import 'package:productivitwo_v1/widgets/alarm_ringtone_sheet.dart';
+import 'package:productivitwo_v1/widgets/scheduled_challenges_sheet.dart';
 import 'package:productivitwo_v1/widgets/appbar_routines_summery.dart';
 import 'package:productivitwo_v1/widgets/filters_sheet.dart';
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
@@ -4816,6 +4817,12 @@ class _AppRootState extends State<AppRoot>
             ),
             const Spacer(),
             _buildDailyScoreChip(context),
+            IconButton(
+              icon: const Icon(Icons.bolt_rounded, size: 20),
+              tooltip: 'Défis en cours',
+              onPressed: () =>
+                  showScheduledChallengesSheet(context, logic, _sync),
+            ),
             Stack(
               clipBehavior: Clip.none,
               children: [

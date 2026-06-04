@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.74', '4 juin 2026', [
+    (Icons.bolt_rounded, 'Nouveau bouton ⚡ dans la barre du haut : ouvre « Défis en cours » — la liste de tes défis programmés (jour, heure, durée) que tu peux annuler d\'un geste'),
+  ]),
   _Entry('5.73', '4 juin 2026', [
     (Icons.local_fire_department_rounded, 'Challenge me ne propose plus une activité qui a déjà un défi programmé — il t\'en propose une autre, pour que tu étales tes défis sur le moment où tu seras dispo'),
   ]),

@@ -740,6 +740,37 @@ class FirestoreSync {
     return ids;
   }
 
+  /// Liste les défis programmés encore en attente (aujourd'hui/futur), triés par
+  /// date puis heure. Pour l'écran « défis en cours » (bouton ⚡ de l'app bar).
+  Future<List<({String date, ScheduleBlock block})>>
+      fetchScheduledChallenges() async {
+    if (uid == null) return [];
+    final now = DateTime.now();
+    final todayYmd =
+        '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final out = <({String date, ScheduleBlock block})>[];
+    try {
+      final snap = await _col('daily_schedules')
+          .where(FieldPath.documentId, isGreaterThanOrEqualTo: todayYmd)
+          .get();
+      for (final doc in snap.docs) {
+        final sched = DailySchedule.from(doc.data() as Map);
+        for (final b in sched.blocks) {
+          if (b.challenge && b.status == 'pending') {
+            out.add((date: sched.date, block: b));
+          }
+        }
+      }
+    } catch (_) {
+      // index manquant / aucun programme → liste vide
+    }
+    out.sort((a, b) {
+      final c = a.date.compareTo(b.date);
+      return c != 0 ? c : a.block.startTime.compareTo(b.block.startTime);
+    });
+    return out;
+  }
+
   /// Inscrit l'utilisateur au cron ORION (fire-and-forget).
   /// Appelé au démarrage — permet au backend de l'inclure dans runOrionCycle
   /// même sans token MCP.
