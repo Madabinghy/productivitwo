@@ -1708,7 +1708,10 @@ async function executeComputeTimeBudget(uid: string): Promise<string> {
 
     let recommendedGoalMin: number | null;
     if (isSleep) {
-      recommendedGoalMin = hasEnoughData ? Math.max(FLOOR_MIN, stat) : DEFAULT_SLEEP_MIN;
+      // Plancher 8h pour le sommeil : c'est la seule activité où viser son
+      // « typique » entérinerait une dette de sommeil. La cible ne descend jamais
+      // sous 8h ; elle monte au-dessus seulement si les données le justifient.
+      recommendedGoalMin = Math.max(DEFAULT_SLEEP_MIN, stat);
     } else {
       recommendedGoalMin = hasEnoughData ? Math.max(FLOOR_MIN, stat) : null;
     }
