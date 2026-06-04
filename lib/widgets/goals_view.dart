@@ -71,7 +71,6 @@ class _GoalsViewState extends State<GoalsView> {
     final cs = Theme.of(context).colorScheme;
     final now = DateTime.now();
     final todayD = DateTime(now.year, now.month, now.day);
-    final horizon = todayD.add(const Duration(days: 30));
 
     final activeProjects = _projects.where((p) => p.status != 'archived').toList();
     final archivedProjects = _projects.where((p) => p.status == 'archived').toList()
@@ -664,7 +663,6 @@ class _GoalsViewState extends State<GoalsView> {
         context: context,
         showDragHandle: true,
         builder: (ctx) {
-          final cs = Theme.of(ctx).colorScheme;
           return SafeArea(
             child: Column(
               mainAxisSize: MainAxisSize.min,

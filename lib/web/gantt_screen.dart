@@ -425,7 +425,6 @@ class _GanttScreenState extends State<GanttScreen> {
 
   Widget _buildScaffold(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       backgroundColor: cs.surfaceContainerLowest,
       appBar: AppBar(

@@ -1405,7 +1405,6 @@ class _RunningBannerGlobalState extends State<RunningBannerGlobal> {
     );
 
     final dur = DateTime.now().difference(s.startAt);
-    final cs = Theme.of(context).colorScheme;
     final domainCol = domainColor(a.domainId, st.activeDomains);
     final runColor = domainCol ?? Colors.green;
 
@@ -2565,10 +2564,8 @@ class _AppRootState extends State<AppRoot>
     final st = _state!;
 
     final f = logic.state.filters;
-    final manualActive = f.domainIds.isNotEmpty || f.activityIds.isNotEmpty;
 
     final running = logic.runningActivity();
-    final runningId = running?.id;
 
     bool isActivitySnoozedNow(String? activityId) {
       final id = (activityId ?? '').trim();
@@ -3259,7 +3256,6 @@ class _AppRootState extends State<AppRoot>
   Future<void> _loadDemoData() async {
     final st = logic.state;
     final now = DateTime.now();
-    final today = yyyymmdd(now);
 
     // ── Domaines ──────────────────────────────────────────────────────────────
     final dSante = Domain(name: 'Santé');
@@ -5543,7 +5539,6 @@ class _AppRootState extends State<AppRoot>
 
   Widget _buildTodayPrioritiesSection(BuildContext context, ColorScheme cs) {
     final today = DateTime.now();
-    final todayD = DateTime(today.year, today.month, today.day);
     final todayKey =
         '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
 
@@ -7944,7 +7939,6 @@ class _AppRootState extends State<AppRoot>
             required Activity habit,
             VoidCallback? onSaved, // optional: pour rafraîchir l'écran parent
           }) async {
-            final cs = Theme.of(context).colorScheme;
 
             // État local (copié de l'activité pour édition non destructive)
             HabitFreq freq = habit.habitFreq ?? HabitFreq.monthly;

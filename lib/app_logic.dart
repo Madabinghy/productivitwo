@@ -1064,9 +1064,7 @@ class AppLogic {
       state.habitProgress[prevIdx].value = v < 0 ? 0 : v;
     }
 
-    final act = state.activeActivities.firstWhere((a) => a.id == activityId);
     final currentDay = DateTime(day.year, day.month, day.day);
-    final doneOnDay = habitValueOn(activityId, currentDay);
 
     HabitAssocEvent? assocEvent;
 
@@ -1204,9 +1202,7 @@ class AppLogic {
     }
 
     // --- après MAJ compteur ---
-    final act = state.activeActivities.firstWhere((a) => a.id == activityId);
     final currentDay = DateTime(day.year, day.month, day.day);
-    final doneOnDay = habitValueOn(activityId, currentDay);
 
     if (delta > 0) {
       final running = runningActivity();
@@ -1749,7 +1745,6 @@ class AppLogic {
 
   /// Routines quotidiennes avec streak ≥ 3 non encore validées aujourd'hui.
   List<String> streakAtRiskNames() {
-    final today = DateTime.now();
     return state.activeActivities
         .where((a) =>
             a.isHabit &&

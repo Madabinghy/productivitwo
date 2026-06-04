@@ -386,7 +386,6 @@ class _WeeklyBarsSection extends StatelessWidget {
       );
     });
 
-    final now = DateTime.now();
     final thisWeekIdx = weekData.length - 1;
 
     return SizedBox(
