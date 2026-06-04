@@ -256,6 +256,7 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                     );
                     if (ok != true) return;
                     logic.deleteActivityCascade(act.id);
+                    widget.onSaved?.call();
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(content: Text('Supprimé : $name')));

@@ -3636,39 +3636,17 @@ class _AppRootState extends State<AppRoot>
   }
 
   void _showRoutinesSheet(BuildContext context) {
-    final allRoutines = logic.state.activities
-        .where((a) => a.isHabit && !a.deleted)
-        .toList()
-      ..sort((a, b) => a.order.compareTo(b.order));
-
     final runningDomainId = logic.runningDomainId();
-    // Si une activité tourne, pré-filtrer sur son domaine
-    final routines = runningDomainId != null
-        ? allRoutines.where((a) => a.domainId == runningDomainId).toList()
-        : allRoutines;
 
     final today = DateTime.now();
     final todayD = DateTime(today.year, today.month, today.day);
 
-    // Tri par domaine (comme le lanceur d'activité) : en-têtes de domaine + cartes.
     final domainById = {for (final d in logic.state.activeDomains) d.id: d};
-    final Map<String, List<Activity>> byDomain = {};
-    for (final r in routines) {
-      (byDomain[r.domainId] ??= []).add(r);
-    }
     final domainOrder = logic.state.activeDomains.map((d) => d.id).toList()
       ..add(''); // domaines orphelins en dernier
     // En-têtes de domaine affichés sauf en pré-filtre (quand une activité tourne,
     // le titre du sheet nomme déjà le domaine → en-tête redondant).
     final showDomainHeaders = runningDomainId == null;
-    // Liste à plat : String = en-tête de domaine, Activity = routine.
-    final List<Object> rows = [];
-    for (final domId in domainOrder) {
-      final list = byDomain[domId];
-      if (list == null) continue;
-      if (showDomainHeaders) rows.add(domainById[domId]?.name ?? 'Sans domaine');
-      rows.addAll(list);
-    }
 
     showModalBottomSheet(
       context: context,
@@ -3678,6 +3656,32 @@ class _AppRootState extends State<AppRoot>
         return StatefulBuilder(
           builder: (ctx, setS) {
             final cs = Theme.of(ctx).colorScheme;
+            // Recalculé à chaque rebuild (setS) pour refléter les suppressions.
+            final allRoutines = logic.state.activities
+                .where((a) => a.isHabit && !a.deleted)
+                .toList()
+              ..sort((a, b) => a.order.compareTo(b.order));
+            // Si une activité tourne, pré-filtrer sur son domaine
+            final routines = runningDomainId != null
+                ? allRoutines
+                    .where((a) => a.domainId == runningDomainId)
+                    .toList()
+                : allRoutines;
+            // Tri par domaine (comme le lanceur d'activité) : en-têtes + cartes.
+            final Map<String, List<Activity>> byDomain = {};
+            for (final r in routines) {
+              (byDomain[r.domainId] ??= []).add(r);
+            }
+            // Liste à plat : String = en-tête de domaine, Activity = routine.
+            final List<Object> rows = [];
+            for (final domId in domainOrder) {
+              final list = byDomain[domId];
+              if (list == null) continue;
+              if (showDomainHeaders) {
+                rows.add(domainById[domId]?.name ?? 'Sans domaine');
+              }
+              rows.addAll(list);
+            }
             return DraggableScrollableSheet(
               initialChildSize: 0.55,
               maxChildSize: 0.92,
@@ -8275,11 +8279,14 @@ class _AppRootState extends State<AppRoot>
           List<Activity> base = isHabitsTab
               ? logic.state.activities
                   .where((a) =>
-                      a.isHabit && (domainId == null || a.domainId == domainId))
+                      a.isHabit &&
+                      !a.deleted &&
+                      (domainId == null || a.domainId == domainId))
                   .toList()
               : logic.state.activities
                   .where((a) =>
                       !a.isHabit &&
+                      !a.deleted &&
                       (domainId == null || a.domainId == domainId))
                   .toList();
 
