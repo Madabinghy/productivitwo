@@ -1742,6 +1742,7 @@ class _AppRootState extends State<AppRoot>
   static const int _timerAlarmId = 42;
   StreamSubscription<AlarmSettings>? _alarmRingSub;
   String? _countdownActivityName;
+  int? _countdownTotalSec; // durée totale du minuteur en cours (pour l'anneau)
   bool _saveQueued = false;
   bool _saving = false;
 
@@ -1803,7 +1804,7 @@ class _AppRootState extends State<AppRoot>
       },
     ).catchError((e) {
       devLog.error('_init() exception non catchée', tag: 'MAIN', error: e);
-    }).whenComplete(_drainPendingDeepLink);
+    }).whenComplete(_drainPendingDeepLink).whenComplete(_restoreCountdownFromAlarm);
 
     // Ouvre le bon sheet quand l'utilisateur tape une notification
     NotificationService.onNotificationTap = (id) {
@@ -1979,6 +1980,7 @@ class _AppRootState extends State<AppRoot>
     if (_state == null) return; // pas encore initialisé
     if (state == AppLifecycleState.resumed) {
       FcmService.clearOrionBadge();
+      _restoreCountdownFromAlarm(); // le minuteur survit au quitter/rouvrir
       // évite de scanner trop souvent (ex: toutes les 6h)
       if (DateTime.now().difference(_lastGlobalScan) >
           const Duration(hours: 6)) {
@@ -2346,6 +2348,7 @@ class _AppRootState extends State<AppRoot>
     final endsAt = DateTime.now().add(Duration(minutes: minutes));
     _countdownEndsAt = endsAt;
     _countdownActivityName = activityName;
+    _countdownTotalSec = minutes * 60;
 
     Alarm.set(
       alarmSettings: AlarmSettings(
@@ -2366,6 +2369,8 @@ class _AppRootState extends State<AppRoot>
           body: '$minutes min — $activityName',
           stopButton: 'Arrêter',
         ),
+        // Durée totale (s) — permet de restaurer l'anneau de décompte au resume.
+        payload: '${minutes * 60}',
       ),
     );
 
@@ -2396,7 +2401,10 @@ class _AppRootState extends State<AppRoot>
     final name = running?.name ?? _countdownActivityName ?? 'activité';
 
     // Fin du décompte : on retire l'overlay → l'UI repasse en chrono (temps écoulé).
-    setState(() => _countdownEndsAt = null);
+    setState(() {
+      _countdownEndsAt = null;
+      _countdownTotalSec = null;
+    });
 
     final choice = await showDialog<String>(
       context: context,
@@ -2437,12 +2445,34 @@ class _AppRootState extends State<AppRoot>
     }
   }
 
+  /// Restaure l'overlay de décompte depuis l'alarme persistée par le package
+  /// (le minuteur survit ainsi à un quitter/rouvrir de l'app, au lieu de
+  /// retomber en chrono). Ne restaure que si l'alarme est encore à venir ET
+  /// qu'une activité tourne.
+  Future<void> _restoreCountdownFromAlarm() async {
+    try {
+      final a = await Alarm.getAlarm(_timerAlarmId);
+      final now = DateTime.now();
+      final running = logic.runningActivity();
+      if (a != null && a.dateTime.isAfter(now) && running != null) {
+        if (!mounted) return;
+        setState(() {
+          _countdownEndsAt = a.dateTime;
+          _countdownTotalSec = int.tryParse(a.payload ?? '') ??
+              a.dateTime.difference(now).inSeconds;
+          _countdownActivityName = running.name;
+        });
+      }
+    } catch (_) {}
+  }
+
   void _cancelCountdown() {
     _countdownTimer?.cancel();
     _countdownTimer = null;
     Alarm.stop(_timerAlarmId);
     NotificationService.cancelTimerEnd();
     _countdownActivityName = null;
+    _countdownTotalSec = null;
     setState(() => _countdownEndsAt = null);
   }
 
@@ -2556,6 +2586,8 @@ class _AppRootState extends State<AppRoot>
             state: st,
             focusProject: _focusProject,
             focusTask: _focusTask,
+            countdownEndsAt: _countdownEndsAt,
+            countdownTotalSec: _countdownTotalSec,
             onGoToProjects: () => setState(() => _tab = _Tab.projets),
             onStartTimer: (activity, project, task) {
               logic.start(activity.id);
@@ -2564,7 +2596,14 @@ class _AppRootState extends State<AppRoot>
                 _focusTask = task;
               });
             },
+            // Couper le minuteur AVANT la fin → bascule en chrono (session continue).
+            onStopCountdown: () {
+              _cancelCountdown();
+              setState(() {});
+            },
+            // Arrêter (mode chrono) → stoppe la session pour de bon.
             onStopTimer: () {
+              _cancelCountdown(); // sécurité si un décompte traînait
               logic.stopActive();
               setState(() {
                 _focusProject = null;

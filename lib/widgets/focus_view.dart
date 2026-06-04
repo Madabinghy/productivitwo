@@ -17,6 +17,11 @@ class FocusView extends StatefulWidget {
   final void Function(Activity activity, Project? project, ProjectTask? task)
       onStartTimer;
   final VoidCallback onStopTimer;
+  // Décompte du minuteur en cours (null = pas de minuteur → chrono normal).
+  final DateTime? countdownEndsAt;
+  final int? countdownTotalSec;
+  // Coupe le minuteur SANS arrêter la session (bascule en chrono).
+  final VoidCallback onStopCountdown;
   final void Function(Project project, ProjectTask task) onClearFocusTask;
   final void Function(Project project, ProjectTask task)? onTaskTap;
 
@@ -27,6 +32,9 @@ class FocusView extends StatefulWidget {
     required this.onGoToProjects,
     required this.onStartTimer,
     required this.onStopTimer,
+    required this.onStopCountdown,
+    this.countdownEndsAt,
+    this.countdownTotalSec,
     required this.onClearFocusTask,
     this.focusProject,
     this.focusTask,
@@ -158,6 +166,10 @@ class _FocusViewState extends State<FocusView> {
     final todayStr =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
+    final endsAt = widget.countdownEndsAt;
+    final remaining = endsAt != null ? endsAt.difference(now) : null;
+    final isCountdown = remaining != null && remaining > Duration.zero;
+
 
     return SafeArea(
       child: SingleChildScrollView(
@@ -223,34 +235,57 @@ class _FocusViewState extends State<FocusView> {
               const SizedBox(height: 20),
             ],
 
-            // Timer
-            Center(
-              child: Text(
-                _fmtDuration(elapsed),
-                style: TextStyle(
-                  fontSize: 52,
-                  fontWeight: FontWeight.w200,
-                  letterSpacing: 2,
-                  color: cs.onSurface,
-                  fontFeatures: const [FontFeature.tabularFigures()],
+            // Minuteur (anneau de décompte) OU chrono (temps écoulé)
+            if (isCountdown) ...[
+              Center(
+                child: _CountdownRing(
+                  remaining: remaining!,
+                  totalSec: widget.countdownTotalSec ?? remaining.inSeconds,
+                  color: color,
                 ),
               ),
-            ),
-            const SizedBox(height: 20),
-            Center(
-              child: FilledButton.icon(
-                icon: const Icon(Icons.stop_rounded, size: 20),
-                label: const Text('Arrêter'),
-                onPressed: widget.onStopTimer,
-                style: FilledButton.styleFrom(
-                  backgroundColor: cs.error,
-                  foregroundColor: cs.onError,
-                  minimumSize: const Size(160, 48),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+              const SizedBox(height: 20),
+              Center(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.timer_off_outlined, size: 18),
+                  label: const Text('Arrêter le minuteur'),
+                  onPressed: widget.onStopCountdown,
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(200, 48),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
                 ),
               ),
-            ),
+            ] else ...[
+              Center(
+                child: Text(
+                  _fmtDuration(elapsed),
+                  style: TextStyle(
+                    fontSize: 52,
+                    fontWeight: FontWeight.w200,
+                    letterSpacing: 2,
+                    color: cs.onSurface,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Center(
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.stop_rounded, size: 20),
+                  label: const Text('Arrêter'),
+                  onPressed: widget.onStopTimer,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: cs.error,
+                    foregroundColor: cs.onError,
+                    minimumSize: const Size(160, 48),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+            ],
 
             // Sous-actions de la tâche
             if (task != null && task.actions.isNotEmpty) ...[
@@ -283,9 +318,11 @@ class _FocusViewState extends State<FocusView> {
               ),
             ],
 
-            // Programme du jour — toujours visible même pendant une activité
-            const SizedBox(height: 32),
-            DailyScheduleView(date: todayStr),
+            // Programme du jour — masqué pendant un minuteur (mode focus pur)
+            if (!isCountdown) ...[
+              const SizedBox(height: 32),
+              DailyScheduleView(date: todayStr),
+            ],
           ],
         ),
       ),
@@ -445,6 +482,74 @@ class _FocusViewState extends State<FocusView> {
             const SizedBox(height: 8),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ── Anneau de décompte (mode minuteur) ───────────────────────────────────────
+
+class _CountdownRing extends StatelessWidget {
+  final Duration remaining;
+  final int totalSec;
+  final Color color;
+  const _CountdownRing(
+      {required this.remaining, required this.totalSec, required this.color});
+
+  String _fmt(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return h > 0 ? '$h:$m:$s' : '$m:$s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final progress =
+        totalSec > 0 ? (remaining.inSeconds / totalSec).clamp(0.0, 1.0) : 0.0;
+    final urgent = remaining.inSeconds <= 60;
+    final ringColor = urgent ? Colors.red.shade400 : color;
+    return SizedBox(
+      width: 240,
+      height: 240,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          SizedBox(
+            width: 240,
+            height: 240,
+            child: CircularProgressIndicator(
+              value: progress,
+              strokeWidth: 12,
+              strokeCap: StrokeCap.round,
+              backgroundColor: cs.surfaceContainerHighest.withOpacity(.4),
+              valueColor: AlwaysStoppedAnimation<Color>(ringColor),
+            ),
+          ),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _fmt(remaining),
+                style: TextStyle(
+                  fontSize: 46,
+                  fontWeight: FontWeight.w300,
+                  letterSpacing: 1,
+                  color: cs.onSurface,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text('restant',
+                  style: TextStyle(
+                      fontSize: 11,
+                      letterSpacing: 2,
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurface.withOpacity(.45))),
+            ],
+          ),
+        ],
       ),
     );
   }
