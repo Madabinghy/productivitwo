@@ -26,7 +26,14 @@ function addDays(ymd: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-type Idea = { id: string; text: string; date: string };
+type Idea = { id: string; text: string; date: string; ageDays: number };
+
+/** Nombre de jours entre deux YYYY-MM-DD (b - a). */
+function daysBetween(a: string, b: string): number {
+  const da = new Date(`${a}T00:00:00Z`).getTime();
+  const db = new Date(`${b}T00:00:00Z`).getTime();
+  return Math.max(0, Math.round((db - da) / 86400000));
+}
 
 type RoutingTask = {
   title: string;
@@ -70,7 +77,12 @@ Dans le doute : skip. Mieux vaut laisser une idée que créer un projet bidon.
 5. PLANIFICATION RÉALISTE (important) : l'utilisateur a DÉJÀ des projets en cours avec des tâches planifiées (voir leurs dates). Ne surcharge PAS les prochains jours. Donne à chaque nouveau projet un \`startOffsetDays\` (dans combien de jours il démarre) pour ÉTALER la charge : tiens compte des tâches existantes ET des autres nouveaux projets (ne les fais pas tous démarrer en même temps). Un projet peu urgent peut démarrer dans 1-3 semaines.
 
 ## Message léger (nudge) — optionnel
-Les projets créés apparaissent EN SILENCE (effet de surprise). MAIS si une idée est laissée (skip) et mérite un petit rappel, tu peux proposer "nudge": { "text": "..." } = UN message court à la 1ère personne d'ORION qui évoque cette idée — SANS JAMAIS dire que tu as traité l'inbox ni mentionner les projets créés. Ex: "Pense à boucler ta dernière facture SOF 😉" ou "Tu avais noté l'idée X — tu veux en faire quoi ?". Un seul nudge max, et seulement si pertinent (sinon omets-le).
+Les projets créés apparaissent EN SILENCE (effet de surprise). MAIS si une idée est laissée (skip), tu peux proposer "nudge": { "text": "..." } = UN message court à la 1ère personne d'ORION qui évoque cette idée — SANS JAMAIS dire que tu as traité l'inbox ni mentionner les projets créés. Un seul nudge max.
+PRIORISE l'idée laissée qui traîne depuis le PLUS LONGTEMPS (\`ageDays\` le plus élevé), et adapte le ton à l'âge :
+- récente (≤ 3j) : pas forcément de nudge (laisse infuser), ou rappel très léger ;
+- une à deux semaines : rappel amical (ex: "Pense à boucler ta facture SOF 😉") ;
+- ancienne (> 2-3 semaines) : invite à trancher (ex: "Ça fait {ageDays} jours que tu as noté « X » — tu veux t'y mettre ou je la classe sans suite ?").
+Omets le nudge si rien ne le mérite.
 
 ## Idées en attente
 {{IDEAS}}
@@ -129,13 +141,15 @@ export async function processInboxToProjects(
 
   const ideas: Idea[] = sortedDocs.map((d) => {
     const v = d.data();
+    const date =
+      (v.createdAt?.toDate?.() as Date | undefined)
+        ?.toISOString?.()
+        ?.slice(0, 10) ?? today;
     return {
       id: (v.id as string) ?? d.id,
       text: (v.text as string) ?? "",
-      date:
-        (v.createdAt?.toDate?.() as Date | undefined)
-          ?.toISOString?.()
-          ?.slice(0, 10) ?? today,
+      date,
+      ageDays: daysBetween(date, today),
     };
   });
 
