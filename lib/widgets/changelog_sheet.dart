@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.72', '4 juin 2026', [
+    (Icons.notifications_active_outlined, 'Sonneries Cloche, Carillon et Digital désormais sélectionnables dans les Paramètres (sons placeholder, remplaçables plus tard) — le minuteur et les défis programmés peuvent enfin changer de son'),
+  ]),
   _Entry('5.71', '4 juin 2026', [
     (Icons.play_arrow_rounded, 'Lanceur de routines (FAB) : boutons de lancement direct sur chaque carte — ▶ démarre le chrono sur l\'activité liée, ⏱ démarre le minuteur si réglé (les routines sans activité liée gardent leur pastille de fréquence)'),
   ]),

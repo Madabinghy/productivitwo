@@ -23,8 +23,9 @@ class AlarmRingtone {
       this.iosCaf, this.androidChannel);
 }
 
-/// Sonneries disponibles. La 1ʳᵉ (`default`) est livrée ; les autres
-/// nécessitent l'ajout des fichiers (assets/audio + res/raw + .caf bundle).
+/// Sonneries disponibles. Toutes livrées avec leurs fichiers son
+/// (assets/audio + res/raw Android + .caf bundle iOS) — bell/chime/digital
+/// sont des tons placeholder synthétisés, remplaçables par de vrais sons.
 const kAlarmRingtones = <AlarmRingtone>[
   AlarmRingtone('default', 'Alarme classique', 'alarm.wav', 'timer_alarm',
       'timer_alarm.caf', 'timer_end_alarm'),

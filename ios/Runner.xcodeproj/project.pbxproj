@@ -18,6 +18,9 @@
 		D76236A638BBBEE2BFC45E56 /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 620C4549E9CBD0356C9172CC /* Pods_Runner.framework */; };
 		F864F7532FB7AC76008B223C /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = F864F7522FB7AC75008B223C /* GoogleService-Info.plist */; };
 		AACAF0000000000000000002 /* timer_alarm.caf in Resources */ = {isa = PBXBuildFile; fileRef = AACAF0000000000000000001 /* timer_alarm.caf */; };
+		AACAF0000000000000000004 /* bell.caf in Resources */ = {isa = PBXBuildFile; fileRef = AACAF0000000000000000003 /* bell.caf */; };
+		AACAF0000000000000000006 /* chime.caf in Resources */ = {isa = PBXBuildFile; fileRef = AACAF0000000000000000005 /* chime.caf */; };
+		AACAF0000000000000000008 /* digital.caf in Resources */ = {isa = PBXBuildFile; fileRef = AACAF0000000000000000007 /* digital.caf */; };
 		F8B8536B2FC4FE1B00AA74AA /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F8B8536A2FC4FE1B00AA74AA /* WidgetKit.framework */; };
 		F8B8536D2FC4FE1B00AA74AA /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F8B8536C2FC4FE1B00AA74AA /* SwiftUI.framework */; };
 		F8B853702FC4FE1C00AA74AA /* ProductivitwoWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8B8536F2FC4FE1C00AA74AA /* ProductivitwoWidgetBundle.swift */; };
@@ -93,6 +96,9 @@
 		E4C52A305B6176DA1CF29B26 /* Pods-RunnerTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.release.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.release.xcconfig"; sourceTree = "<group>"; };
 		F864F7522FB7AC75008B223C /* GoogleService-Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		AACAF0000000000000000001 /* timer_alarm.caf */ = {isa = PBXFileReference; lastKnownFileType = file; path = timer_alarm.caf; sourceTree = "<group>"; };
+		AACAF0000000000000000003 /* bell.caf */ = {isa = PBXFileReference; lastKnownFileType = file; path = bell.caf; sourceTree = "<group>"; };
+		AACAF0000000000000000005 /* chime.caf */ = {isa = PBXFileReference; lastKnownFileType = file; path = chime.caf; sourceTree = "<group>"; };
+		AACAF0000000000000000007 /* digital.caf */ = {isa = PBXFileReference; lastKnownFileType = file; path = digital.caf; sourceTree = "<group>"; };
 		F8B853692FC4FE1B00AA74AA /* ProductivitwoWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ProductivitwoWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		F8B8536A2FC4FE1B00AA74AA /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		F8B8536C2FC4FE1B00AA74AA /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
@@ -202,6 +208,9 @@
 			children = (
 				F864F7522FB7AC75008B223C /* GoogleService-Info.plist */,
 				AACAF0000000000000000001 /* timer_alarm.caf */,
+				AACAF0000000000000000003 /* bell.caf */,
+				AACAF0000000000000000005 /* chime.caf */,
+				AACAF0000000000000000007 /* digital.caf */,
 				97C146FA1CF9000F007C117D /* Main.storyboard */,
 				97C146FD1CF9000F007C117D /* Assets.xcassets */,
 				97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */,
@@ -349,6 +358,9 @@
 				3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */,
 				F864F7532FB7AC76008B223C /* GoogleService-Info.plist in Resources */,
 				AACAF0000000000000000002 /* timer_alarm.caf in Resources */,
+				AACAF0000000000000000004 /* bell.caf in Resources */,
+				AACAF0000000000000000006 /* chime.caf in Resources */,
+				AACAF0000000000000000008 /* digital.caf in Resources */,
 				97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */,
 				97C146FC1CF9000F007C117D /* Main.storyboard in Resources */,
 			);
