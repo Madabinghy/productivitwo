@@ -1683,7 +1683,8 @@ async function executeComputeTimeBudget(uid: string): Promise<string> {
   const MIN_ACTIVE_DAYS = 3;       // minimum pour calculer une cible
   const P90_MIN_DAYS = 30;         // sous ce seuil, p90 ≈ max → on prend la médiane
   const FLOOR_MIN = 5;             // une cible de jauge sous 5 min n'a pas de sens
-  const DEFAULT_SLEEP_MIN = 480;   // 8h par défaut quand le sommeil n'est pas loggué
+  const SLEEP_FLOOR_MIN = 360;     // plancher sommeil 6h : minimum santé quasi-universel
+                                   // (objectif à atteindre si on dort moins), pas une norme imposée
 
   const percentile = (vals: number[], p: number): number => {
     if (vals.length === 0) return 0;
@@ -1708,10 +1709,10 @@ async function executeComputeTimeBudget(uid: string): Promise<string> {
 
     let recommendedGoalMin: number | null;
     if (isSleep) {
-      // Plancher 8h pour le sommeil : c'est la seule activité où viser son
-      // « typique » entérinerait une dette de sommeil. La cible ne descend jamais
-      // sous 8h ; elle monte au-dessus seulement si les données le justifient.
-      recommendedGoalMin = Math.max(DEFAULT_SLEEP_MIN, stat);
+      // Plancher 6h pour le sommeil : minimum santé quasi-universel. Si tu dors
+      // plus, c'est ta médiane/p90 qui est prise ; le plancher ne mord que si tu
+      // logges réellement moins de 6h (et devient alors un objectif à atteindre).
+      recommendedGoalMin = Math.max(SLEEP_FLOOR_MIN, stat);
     } else {
       recommendedGoalMin = hasEnoughData ? Math.max(FLOOR_MIN, stat) : null;
     }
