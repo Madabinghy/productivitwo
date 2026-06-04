@@ -1768,13 +1768,14 @@ class AppLogic {
 
   /// Activité « temps » la plus en retard sur sa cible du jour (goalMin).
   /// C'est le levier d'action : « fais ça maintenant ». Null si tout est à jour.
-  Activity? challengeActivity() {
+  Activity? challengeActivity({Set<String> exclude = const {}}) {
     final now = DateTime.now();
     final todayStart = DateTime(now.year, now.month, now.day);
     Activity? worst;
     double worstRemaining = 0;
     for (final a in state.activeActivities) {
       if (a.isHabit || a.role == ActivityRole.shopping) continue;
+      if (exclude.contains(a.id)) continue; // défi déjà programmé sur cette activité
       final target = a.goalMin;
       if (target <= 0) continue;
       final doneMin = totalForRangeByActivity(a.id, todayStart, now).inMinutes;

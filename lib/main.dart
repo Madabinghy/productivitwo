@@ -2707,7 +2707,11 @@ class _AppRootState extends State<AppRoot>
   /// Défi ORION : choisit localement l'activité la plus en retard sur sa cible
   /// du jour, propose un minuteur, et lance l'activité + l'alarme si accepté.
   Future<void> _showChallenge() async {
-    final a = logic.challengeActivity();
+    // Exclut les activités ayant déjà un défi programmé (aujourd'hui/futur) →
+    // ORION propose autre chose, l'utilisateur étale ses défis.
+    final scheduledIds = await _sync.fetchScheduledChallengeActivityIds();
+    if (!mounted) return;
+    final a = logic.challengeActivity(exclude: scheduledIds);
     if (a == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(

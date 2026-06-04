@@ -710,6 +710,36 @@ class FirestoreSync {
     await ref.update({'blocks': blocks});
   }
 
+  /// Renvoie les `activityId` ayant un défi (challenge) encore en attente,
+  /// programmé aujourd'hui ou dans le futur — pour que « Challenge me » ne
+  /// re-propose pas une activité déjà planifiée. Doc id = date (YYYY-MM-DD),
+  /// comparaison lexicographique = chronologique.
+  Future<Set<String>> fetchScheduledChallengeActivityIds() async {
+    if (uid == null) return {};
+    final now = DateTime.now();
+    final todayYmd =
+        '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final ids = <String>{};
+    try {
+      final snap = await _col('daily_schedules')
+          .where(FieldPath.documentId, isGreaterThanOrEqualTo: todayYmd)
+          .get();
+      for (final doc in snap.docs) {
+        final sched = DailySchedule.from(doc.data() as Map);
+        for (final b in sched.blocks) {
+          if (b.challenge &&
+              b.status == 'pending' &&
+              (b.activityId ?? '').isNotEmpty) {
+            ids.add(b.activityId!);
+          }
+        }
+      }
+    } catch (_) {
+      // pas de programme / index manquant → aucune exclusion
+    }
+    return ids;
+  }
+
   /// Inscrit l'utilisateur au cron ORION (fire-and-forget).
   /// Appelé au démarrage — permet au backend de l'inclure dans runOrionCycle
   /// même sans token MCP.
