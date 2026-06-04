@@ -50,8 +50,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   Future<void> _deleteBlock(ScheduleBlock block) async {
     await _sync.updateBlockStatus(widget.date, block.id, 'deleted');
     if (block.challenge) {
-      final ids = NotificationService.challengeNotifIds(block.id);
-      NotificationService.cancelChallenge(ids.atTime, ids.reminder);
+      NotificationService.cancelChallengeAll(block.id);
     }
   }
 

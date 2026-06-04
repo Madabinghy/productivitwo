@@ -2903,16 +2903,6 @@ class _AppRootState extends State<AppRoot>
     final hhmm =
         '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
 
-    final block = ScheduleBlock(
-      startTime: hhmm,
-      durationMin: minutes,
-      title: '🔥 Défi : ${a.name}',
-      category: 'personal',
-      activityId: a.id,
-      challenge: true,
-    );
-    await FirestoreSync().addScheduleBlock(ymd, block);
-
     DateTime? remAt;
     switch (reminder) {
       case 'eve':
@@ -2930,6 +2920,17 @@ class _AppRootState extends State<AppRoot>
         remAt = null; // l'alarme à l'heure suffit
         break;
     }
+
+    final block = ScheduleBlock(
+      startTime: hhmm,
+      durationMin: minutes,
+      title: '🔥 Défi : ${a.name}',
+      category: 'personal',
+      activityId: a.id,
+      challenge: true,
+      reminders: remAt != null ? [remAt.toIso8601String()] : [],
+    );
+    await FirestoreSync().addScheduleBlock(ymd, block);
 
     final ids = NotificationService.challengeNotifIds(block.id);
     await NotificationService.scheduleChallengeAt(

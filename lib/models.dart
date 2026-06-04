@@ -1379,6 +1379,7 @@ class ScheduleBlock {
   String status;      // pending | done | skipped
   DateTime? doneAt;
   bool challenge;     // bloc né d'un « Challenge me » programmé (badge 🔥 + streak)
+  List<String> reminders; // dates ISO des rappels programmés (max 2 pour un défi)
 
   ScheduleBlock({
     String? id,
@@ -1392,7 +1393,9 @@ class ScheduleBlock {
     this.status = 'pending',
     this.doneAt,
     this.challenge = false,
-  }) : id = id ?? _uuid.v4();
+    List<String>? reminders,
+  })  : id = id ?? _uuid.v4(),
+        reminders = reminders ?? [];
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -1406,6 +1409,7 @@ class ScheduleBlock {
         'status': status,
         'doneAt': doneAt?.toIso8601String(),
         'challenge': challenge,
+        'reminders': reminders,
       };
 
   static ScheduleBlock from(Map j) => ScheduleBlock(
@@ -1420,6 +1424,7 @@ class ScheduleBlock {
         status: j['status'] ?? 'pending',
         doneAt: _parseDateOrNull(j['doneAt']),
         challenge: j['challenge'] == true,
+        reminders: (j['reminders'] as List?)?.map((e) => e.toString()).toList(),
       );
 }
 

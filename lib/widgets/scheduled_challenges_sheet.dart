@@ -42,8 +42,92 @@ class _ScheduledChallengesSheetState extends State<_ScheduledChallengesSheet> {
 
   Future<void> _delete(String date, ScheduleBlock block) async {
     await widget.sync.updateBlockStatus(date, block.id, 'deleted');
+    await NotificationService.cancelChallengeAll(block.id);
+    await _load();
+  }
+
+  /// Ajoute un rappel (max 2 au total) à un défi déjà programmé.
+  Future<void> _addReminder(String date, ScheduleBlock block) async {
+    if (block.reminders.length >= 2) return;
+    final dp = date.split('-');
+    final tp = block.startTime.split(':');
+    if (dp.length != 3 || tp.length != 2) return;
+    final at = DateTime(int.parse(dp[0]), int.parse(dp[1]), int.parse(dp[2]),
+        int.parse(tp[0]), int.parse(tp[1]));
+
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Ajouter un rappel',
+                    style:
+                        TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+              ),
+            ),
+            ListTile(
+                leading: const Icon(Icons.nightlight_round),
+                title: const Text('La veille au soir'),
+                onTap: () => Navigator.pop(ctx, 'eve')),
+            ListTile(
+                leading: const Icon(Icons.schedule),
+                title: const Text('1h avant'),
+                onTap: () => Navigator.pop(ctx, 'h1')),
+            ListTile(
+                leading: const Icon(Icons.timelapse),
+                title: const Text('15 min avant'),
+                onTap: () => Navigator.pop(ctx, 'm15')),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (choice == null) return;
+
+    DateTime remAt;
+    switch (choice) {
+      case 'eve':
+        final eve = DateTime(at.year, at.month, at.day)
+            .subtract(const Duration(days: 1));
+        remAt = DateTime(eve.year, eve.month, eve.day, 20, 0);
+        break;
+      case 'h1':
+        remAt = at.subtract(const Duration(hours: 1));
+        break;
+      default:
+        remAt = at.subtract(const Duration(minutes: 15));
+    }
+    if (!remAt.isAfter(DateTime.now())) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Ce rappel serait déjà passé.')));
+      }
+      return;
+    }
+    final iso = remAt.toIso8601String();
+    if (block.reminders.contains(iso)) return;
+
     final ids = NotificationService.challengeNotifIds(block.id);
-    await NotificationService.cancelChallenge(ids.atTime, ids.reminder);
+    final notifId = block.reminders.isEmpty ? ids.reminder : ids.reminder2;
+    await NotificationService.scheduleChallengeAt(
+      id: notifId,
+      when: remAt,
+      title: 'Défi prévu : ${block.title.replaceFirst('🔥 Défi : ', '')}',
+      body: 'À ${block.startTime} • ${block.durationMin} min',
+      alarm: false,
+    );
+    await widget.sync
+        .setChallengeReminders(date, block.id, [...block.reminders, iso]);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Rappel ajouté ✅')));
+    }
     await _load();
   }
 
@@ -119,11 +203,24 @@ class _ScheduledChallengesSheetState extends State<_ScheduledChallengesSheet> {
                           color: Color(0xFFB8860B)),
                       title: Text(b.title),
                       subtitle: Text(
-                          '${_dayLabel(it.date)} à ${b.startTime} • ${b.durationMin} min'),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete_outline, size: 20),
-                        tooltip: 'Annuler ce défi',
-                        onPressed: () => _delete(it.date, b),
+                          '${_dayLabel(it.date)} à ${b.startTime} • ${b.durationMin} min'
+                          '${b.reminders.isNotEmpty ? ' • ${b.reminders.length} rappel${b.reminders.length > 1 ? 's' : ''}' : ''}'),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (b.reminders.length < 2)
+                            IconButton(
+                              icon: const Icon(Icons.add_alert_outlined,
+                                  size: 20),
+                              tooltip: 'Ajouter un rappel',
+                              onPressed: () => _addReminder(it.date, b),
+                            ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline, size: 20),
+                            tooltip: 'Annuler ce défi',
+                            onPressed: () => _delete(it.date, b),
+                          ),
+                        ],
                       ),
                     );
                   },

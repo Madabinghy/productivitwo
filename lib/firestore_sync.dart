@@ -686,6 +686,27 @@ class FirestoreSync {
     await ref.update({'blocks': blocks});
   }
 
+  /// Met à jour la liste des rappels (dates ISO) d'un bloc (read-modify-write).
+  Future<void> setChallengeReminders(
+      String date, String blockId, List<String> reminders) async {
+    if (uid == null) return;
+    final ref = _db.doc('users/$uid/daily_schedules/$date');
+    final snap = await ref.get();
+    if (!snap.exists) return;
+    final data = snap.data() as Map;
+    final blocks = (data['blocks'] as List?)
+            ?.map((b) => Map<String, dynamic>.from(b as Map))
+            .toList() ??
+        [];
+    for (final b in blocks) {
+      if (b['id'] == blockId) {
+        b['reminders'] = reminders;
+        break;
+      }
+    }
+    await ref.update({'blocks': blocks});
+  }
+
   /// Ajoute un bloc au programme d'un jour (read-modify-write). Crée le doc
   /// `daily_schedules/{date}` s'il n'existe pas encore. Utilisé pour poser un
   /// défi programmé dans le plan du jour cible.

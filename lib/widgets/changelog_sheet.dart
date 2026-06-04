@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.75', '4 juin 2026', [
+    (Icons.add_alert_outlined, 'Défis programmés : tu peux maintenant avoir jusqu\'à 2 rappels par défi — depuis « Défis en cours » (bouton ⚡), ajoute un 2ᵉ rappel (la veille, 1h avant ou 15 min avant) à un défi déjà créé'),
+  ]),
   _Entry('5.74', '4 juin 2026', [
     (Icons.bolt_rounded, 'Nouveau bouton ⚡ dans la barre du haut : ouvre « Défis en cours » — la liste de tes défis programmés (jour, heure, durée) que tu peux annuler d\'un geste'),
   ]),

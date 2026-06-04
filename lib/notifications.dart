@@ -421,9 +421,16 @@ class NotificationService {
   /// IDs de notification déterministes pour un bloc-défi donné (pour pouvoir
   /// annuler quand le bloc est supprimé). atTime = alarme à l'heure, reminder
   /// = rappel en amont.
-  static ({int atTime, int reminder}) challengeNotifIds(String blockId) {
+  static ({int atTime, int reminder, int reminder2}) challengeNotifIds(
+      String blockId) {
     final h = blockId.hashCode & 0x7fff;
-    return (atTime: 40000 + h, reminder: 50000 + h);
+    return (atTime: 40000 + h, reminder: 50000 + h, reminder2: 60000 + h);
+  }
+
+  /// IDs des rappels (max 2) d'un défi, dans l'ordre.
+  static List<int> challengeReminderIds(String blockId) {
+    final ids = challengeNotifIds(blockId);
+    return [ids.reminder, ids.reminder2];
   }
 
   /// Planifie une notification one-shot à une date absolue (pas de répétition).
@@ -468,10 +475,12 @@ class NotificationService {
     );
   }
 
-  /// Annule les notifications (alarme + rappel) d'un défi programmé.
-  static Future<void> cancelChallenge(int idAtTime, int idReminder) async {
+  /// Annule toutes les notifications (alarme + rappels) d'un défi programmé.
+  static Future<void> cancelChallengeAll(String blockId) async {
     if (!_supported) return;
-    await _plugin.cancel(idAtTime);
-    await _plugin.cancel(idReminder);
+    final ids = challengeNotifIds(blockId);
+    await _plugin.cancel(ids.atTime);
+    await _plugin.cancel(ids.reminder);
+    await _plugin.cancel(ids.reminder2);
   }
 }
