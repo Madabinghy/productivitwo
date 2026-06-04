@@ -3635,6 +3635,61 @@ class _AppRootState extends State<AppRoot>
     );
   }
 
+  /// Contrôles de lancement d'une routine dans le lanceur (FAB) :
+  /// ▶ chrono (si activité liée) et ⏱ minuteur (si minuteur réglé).
+  /// Sans activité liée, retombe sur la pastille de fréquence.
+  Widget _routineLaunchControl(
+      BuildContext sheetCtx, Activity r, ColorScheme cs, Color? dColor) {
+    final linkedId = (r.linkedActivityId ?? '').trim();
+    final linked = linkedId.isEmpty
+        ? null
+        : logic.state.activities.firstWhereOrNull((a) => a.id == linkedId);
+    if (linked == null) {
+      return _freqPill(logic.effectiveHabitFreq(r), cs);
+    }
+    final accent = dColor ?? cs.primary;
+    final hasTimer = (r.timerMin ?? 0) > 0;
+
+    Widget btn(IconData icon, String tooltip, VoidCallback onTap) {
+      return Tooltip(
+        message: tooltip,
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            margin: const EdgeInsets.only(left: 6),
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(
+              color: accent.withOpacity(.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 16, color: accent),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Lancement temps (chrono libre sur l'activité liée)
+        btn(Icons.play_arrow_rounded, 'Démarrer le chrono sur « ${linked.name} »',
+            () {
+          logic.start(linked.id);
+          logic.rev.value++;
+          Navigator.pop(sheetCtx); // ferme le lanceur
+          setState(() => _tab = _Tab.maintenant);
+        }),
+        // Lancement minuteur (si réglé)
+        if (hasTimer)
+          btn(Icons.timer_outlined, 'Démarrer le minuteur (${r.timerMin} min)',
+              () {
+            Navigator.pop(sheetCtx); // ferme le lanceur
+            _startRoutineTimer(r);
+          }),
+      ],
+    );
+  }
+
   void _showRoutinesSheet(BuildContext context) {
     final runningDomainId = logic.runningDomainId();
 
@@ -3819,9 +3874,10 @@ class _AppRootState extends State<AppRoot>
                                         ],
                                       ),
                                     ),
-                                    // Pastille fréquence
-                                    _freqPill(
-                                        logic.effectiveHabitFreq(r), cs),
+                                    // Lancement temps / minuteur (selon réglage),
+                                    // sinon pastille de fréquence
+                                    _routineLaunchControl(
+                                        ctx, r, cs, dColor),
                                     const SizedBox(width: 6),
                                     // Étoile priorité du jour
                                     GestureDetector(

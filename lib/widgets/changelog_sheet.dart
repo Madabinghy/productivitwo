@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.71', '4 juin 2026', [
+    (Icons.play_arrow_rounded, 'Lanceur de routines (FAB) : boutons de lancement direct sur chaque carte — ▶ démarre le chrono sur l\'activité liée, ⏱ démarre le minuteur si réglé (les routines sans activité liée gardent leur pastille de fréquence)'),
+  ]),
   _Entry('5.70', '4 juin 2026', [
     (Icons.bug_report_outlined, 'Correction : supprimer une routine depuis sa fiche la retire aussitôt du lanceur (FAB) — elle ne reste plus affichée et ne plante plus'),
     (Icons.bug_report_outlined, 'Correction : supprimer une activité par balayage depuis un domaine ne plante plus — la carte disparaît immédiatement'),
