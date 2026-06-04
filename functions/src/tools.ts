@@ -80,6 +80,13 @@ const SET_ACTIVITY_TARGETS_TOOL = {
   },
 };
 
+const COMPUTE_TIME_BUDGET_TOOL = {
+  name: "compute_time_budget",
+  description:
+    "Analyse 12 semaines de sessions et retourne, par activité 'time', la cible quotidienne recommandée (recommendedGoalMin) : MÉDIANE des jours actifs si < 30 jours loggués (échantillon trop petit pour un p90 fiable), p90 si ≥ 30 jours. Sommeil découplé (8h par défaut). Retourne aussi un champ 'workflow'. À chaîner avec set_activity_targets pour appliquer les cibles.",
+  inputSchema: { type: "object", properties: {}, required: [] },
+};
+
 const SWEEP_INBOX_TOOL = {
   name: "sweep_inbox",
   description:
@@ -729,6 +736,7 @@ export {
 GET_USER_CONTEXT_TOOL,
 UPDATE_ACTIVITY_GOAL_TOOL,
 SET_ACTIVITY_TARGETS_TOOL,
+COMPUTE_TIME_BUDGET_TOOL,
 SWEEP_INBOX_TOOL,
 CREATE_ROUTINE_TOOL,
 CREATE_ACTIVITY_TOOL,
