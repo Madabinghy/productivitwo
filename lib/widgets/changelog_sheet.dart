@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.68', '4 juin 2026', [
+    (Icons.notifications_active_outlined, 'Paramètres : choix de la sonnerie de l\'alarme (minuteur + défis programmés) parmi plusieurs sons'),
+  ]),
   _Entry('5.67', '4 juin 2026', [
     (Icons.delete_outline, 'Supprimer une activité ou une routine directement depuis sa fiche (bouton 🗑 dans l\'en-tête) — plus besoin de chercher où supprimer'),
   ]),

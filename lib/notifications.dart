@@ -6,6 +6,38 @@ import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
+/// Une sonnerie d'alarme sélectionnable. Chaque son existe sous 3 formes :
+/// - [asset] : fichier dans assets/audio/ (joué par le package `alarm`, app vivante),
+/// - [androidRaw] : nom (sans extension) dans android/.../res/raw/ (notif de secours Android),
+/// - [iosCaf] : fichier .caf du bundle Runner (notif de secours iOS).
+/// Le son d'un canal Android étant figé à sa création, chaque sonnerie a son
+/// propre [androidChannel].
+class AlarmRingtone {
+  final String key;
+  final String label;
+  final String asset;
+  final String androidRaw;
+  final String iosCaf;
+  final String androidChannel;
+  const AlarmRingtone(this.key, this.label, this.asset, this.androidRaw,
+      this.iosCaf, this.androidChannel);
+}
+
+/// Sonneries disponibles. La 1ʳᵉ (`default`) est livrée ; les autres
+/// nécessitent l'ajout des fichiers (assets/audio + res/raw + .caf bundle).
+const kAlarmRingtones = <AlarmRingtone>[
+  AlarmRingtone('default', 'Alarme classique', 'alarm.wav', 'timer_alarm',
+      'timer_alarm.caf', 'timer_end_alarm'),
+  AlarmRingtone('bell', 'Cloche', 'bell.wav', 'bell', 'bell.caf', 'alarm_bell'),
+  AlarmRingtone(
+      'chime', 'Carillon', 'chime.wav', 'chime', 'chime.caf', 'alarm_chime'),
+  AlarmRingtone('digital', 'Digital', 'digital.wav', 'digital', 'digital.caf',
+      'alarm_digital'),
+];
+
+AlarmRingtone ringtoneByKey(String? key) => kAlarmRingtones
+    .firstWhere((r) => r.key == key, orElse: () => kAlarmRingtones.first);
+
 class NotificationService {
   static final _plugin = FlutterLocalNotificationsPlugin();
   static bool _initialized = false;
@@ -28,9 +60,8 @@ class NotificationService {
   static const _midDayChannelId = 'midday_score';
   static const _midDayNotifId = 5;
   // IDs 10–29 réservés aux rappels de blocs
-  // v2 : nouveau canal pour appliquer le son d'alarme custom (le son d'un canal
-  // Android est figé à sa création — changer de son = changer d'id de canal).
-  static const _timerEndChannelId = 'timer_end_alarm';
+  // Canal d'alarme : un par sonnerie (le son d'un canal Android est figé à sa
+  // création) — voir AlarmRingtone.androidChannel + _alarmDetails.
   static const _timerEndNotifId = 30;
   // Challenges programmés : notif-alarme à l'heure (réutilise le canal alarme) +
   // rappel en amont (canal dédié, importance haute, sans son d'alarme).
@@ -334,10 +365,31 @@ class NotificationService {
     await _plugin.cancelAll();
   }
 
+  /// Détails de notification « alarme » (son fort ~30s, plein écran, joue même
+  /// app tuée) pour une [AlarmRingtone] donnée. Chaque sonnerie a son propre
+  /// canal Android (le son d'un canal est figé à sa création).
+  static NotificationDetails _alarmDetails(AlarmRingtone r, String desc) {
+    return NotificationDetails(
+      android: AndroidNotificationDetails(
+        r.androidChannel, 'Alarme — ${r.label}',
+        channelDescription: desc,
+        importance: Importance.max,
+        priority: Priority.high,
+        sound: RawResourceAndroidNotificationSound(r.androidRaw),
+        playSound: true,
+        audioAttributesUsage: AudioAttributesUsage.alarm,
+        fullScreenIntent: true,
+        category: AndroidNotificationCategory.alarm,
+      ),
+      iOS: DarwinNotificationDetails(sound: r.iosCaf),
+    );
+  }
+
   /// Minuteur de démarrage — planifie une notification de fin dans [minutes] min.
   static Future<void> scheduleTimerEnd({
     required String activityName,
     required int minutes,
+    AlarmRingtone? ringtone,
   }) async {
     if (!_supported) return;
     if (!_initialized) await init();
@@ -349,22 +401,8 @@ class NotificationService {
       'Productivitwo ⏱',
       '$activityName — $minutes min écoulées !',
       fireAt,
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          _timerEndChannelId, 'Minuteur',
-          channelDescription: 'Fin d\'un minuteur de démarrage',
-          importance: Importance.max,
-          priority: Priority.high,
-          // Son d'alarme ~29s (res/raw/timer_alarm.wav) — joue même app tuée.
-          sound: RawResourceAndroidNotificationSound('timer_alarm'),
-          playSound: true,
-          audioAttributesUsage: AudioAttributesUsage.alarm,
-          fullScreenIntent: true,
-          category: AndroidNotificationCategory.alarm,
-        ),
-        // Son custom iOS (timer_alarm.caf dans le bundle Runner), ≤30s.
-        iOS: DarwinNotificationDetails(sound: 'timer_alarm.caf'),
-      ),
+      _alarmDetails(ringtone ?? kAlarmRingtones.first,
+          'Fin d\'un minuteur de démarrage'),
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
@@ -396,6 +434,7 @@ class NotificationService {
     required String title,
     required String body,
     bool alarm = false,
+    AlarmRingtone? ringtone,
   }) async {
     if (!_supported) return;
     if (!_initialized) await init();
@@ -404,20 +443,8 @@ class NotificationService {
     await _plugin.cancel(id);
 
     final details = alarm
-        ? const NotificationDetails(
-            android: AndroidNotificationDetails(
-              _timerEndChannelId, 'Minuteur',
-              channelDescription: 'Alarme de défi programmé',
-              importance: Importance.max,
-              priority: Priority.high,
-              sound: RawResourceAndroidNotificationSound('timer_alarm'),
-              playSound: true,
-              audioAttributesUsage: AudioAttributesUsage.alarm,
-              fullScreenIntent: true,
-              category: AndroidNotificationCategory.alarm,
-            ),
-            iOS: DarwinNotificationDetails(sound: 'timer_alarm.caf'),
-          )
+        ? _alarmDetails(
+            ringtone ?? kAlarmRingtones.first, 'Alarme de défi programmé')
         : const NotificationDetails(
             android: AndroidNotificationDetails(
               _challengeSchedChannelId, 'Défi programmé',

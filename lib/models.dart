@@ -660,6 +660,7 @@ class AppState {
   int midDayNotifMinute;
   bool midDayNotifEnabled;
   bool domainIdBackfilledOnce;
+  String alarmSound;       // clé de la sonnerie d'alarme (voir kAlarmRingtones)
 
   // Défis « Challenge me » (suivi léger : compteur + streak de jours)
   int challengesDone;          // total de défis relevés
@@ -705,6 +706,7 @@ class AppState {
     this.midDayNotifMinute = 0,
     this.midDayNotifEnabled = true,
     this.domainIdBackfilledOnce = false,
+    this.alarmSound = 'default',
     this.challengesDone = 0,
     this.challengeStreak = 0,
     this.lastChallengeYmd,
@@ -797,6 +799,7 @@ class AppState {
         'midDayNotifMinute': midDayNotifMinute,
         'midDayNotifEnabled': midDayNotifEnabled,
         'domainIdBackfilledOnce': domainIdBackfilledOnce,
+        'alarmSound': alarmSound,
       };
 
   static AppState from(Map j) {
@@ -891,6 +894,7 @@ class AppState {
       midDayNotifMinute: (j['midDayNotifMinute'] as int?) ?? 0,
       midDayNotifEnabled: (j['midDayNotifEnabled'] as bool?) ?? true,
       domainIdBackfilledOnce: (j['domainIdBackfilledOnce'] as bool?) ?? false,
+      alarmSound: (j['alarmSound'] as String?) ?? 'default',
     );
   }
 

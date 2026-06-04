@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'firebase_options.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
+import 'package:productivitwo_v1/widgets/alarm_ringtone_sheet.dart';
 import 'package:productivitwo_v1/widgets/appbar_routines_summery.dart';
 import 'package:productivitwo_v1/widgets/filters_sheet.dart';
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
@@ -2350,11 +2351,12 @@ class _AppRootState extends State<AppRoot>
     _countdownActivityName = activityName;
     _countdownTotalSec = minutes * 60;
 
+    final ringtone = ringtoneByKey(logic.state.alarmSound);
     Alarm.set(
       alarmSettings: AlarmSettings(
         id: _timerAlarmId,
         dateTime: endsAt,
-        assetAudioPath: 'assets/audio/alarm.wav',
+        assetAudioPath: 'assets/audio/${ringtone.asset}',
         loopAudio: true,
         vibrate: true,
         warningNotificationOnKill: Platform.isIOS,
@@ -2377,7 +2379,7 @@ class _AppRootState extends State<AppRoot>
     // Filet de secours : une notification programmée fire même si l'app est TUÉE
     // (déclenchée par l'OS) — au moins un bip + bannière là où l'alarme ne peut plus sonner.
     NotificationService.scheduleTimerEnd(
-        activityName: activityName, minutes: minutes);
+        activityName: activityName, minutes: minutes, ringtone: ringtone);
 
     // Tic d'affichage : quand le temps est écoulé, on laisse l'alarme prendre le relais.
     _countdownTimer = Timer(Duration(minutes: minutes), () {
@@ -2917,6 +2919,7 @@ class _AppRootState extends State<AppRoot>
       title: '🔥 Défi : ${a.name}',
       body: '$minutes min — c\'est le moment 💪',
       alarm: true,
+      ringtone: ringtoneByKey(logic.state.alarmSound),
     );
     if (remAt != null) {
       await NotificationService.scheduleChallengeAt(
@@ -4978,6 +4981,21 @@ class _AppRootState extends State<AppRoot>
                   onChanged: (v) {
                     logic.state.showTodayPriorities = v;
                     logic.onChange();
+                    setLocal(() {});
+                    setState(() {});
+                  },
+                ),
+              ),
+              // Sonnerie de l'alarme
+              StatefulBuilder(
+                builder: (ctx, setLocal) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.notifications_active_outlined),
+                  title: const Text('Sonnerie de l\'alarme'),
+                  subtitle: Text(ringtoneByKey(logic.state.alarmSound).label),
+                  trailing: const Icon(Icons.chevron_right, size: 18),
+                  onTap: () async {
+                    await showAlarmRingtoneSheet(context, logic);
                     setLocal(() {});
                     setState(() {});
                   },
