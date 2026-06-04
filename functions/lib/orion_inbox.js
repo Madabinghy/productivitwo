@@ -66,7 +66,7 @@ async function processInboxToProjects(uid, opts) {
         .get();
     if (inboxSnap.empty) {
         await gateRef.set({ lastSweepYmd: today }, { merge: true });
-        return { created: 0, appended: 0, skipped: 0 };
+        return { found: 0, created: 0, appended: 0, skipped: 0 };
     }
     const sortedDocs = inboxSnap.docs.slice().sort((a, b) => {
         var _a, _b, _c, _d, _e, _f;
@@ -183,9 +183,9 @@ async function processInboxToProjects(uid, opts) {
     const skipped = ((_l = decision.skip) !== null && _l !== void 0 ? _l : []).filter((id) => ideaById.has(id)).length;
     await gateRef.set({
         lastSweepYmd: today,
-        lastResult: { created, appended, skipped },
+        lastResult: { found: ideas.length, created, appended, skipped },
         at: db_1.FieldValue.serverTimestamp(),
     }, { merge: true });
-    return { created, appended, skipped };
+    return { found: ideas.length, created, appended, skipped };
 }
 //# sourceMappingURL=orion_inbox.js.map

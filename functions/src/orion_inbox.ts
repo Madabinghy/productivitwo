@@ -76,7 +76,7 @@ Réponds UNIQUEMENT avec ce JSON (rien d'autre) :
 export async function processInboxToProjects(
   uid: string,
   opts?: { force?: boolean }
-): Promise<{ created: number; appended: number; skipped: number } | null> {
+): Promise<{ found: number; created: number; appended: number; skipped: number } | null> {
   const today = todayParis();
   const gateRef = db.doc(`users/${uid}/data/inbox_sweep`);
 
@@ -94,7 +94,7 @@ export async function processInboxToProjects(
 
   if (inboxSnap.empty) {
     await gateRef.set({ lastSweepYmd: today }, { merge: true });
-    return { created: 0, appended: 0, skipped: 0 };
+    return { found: 0, created: 0, appended: 0, skipped: 0 };
   }
 
   const sortedDocs = inboxSnap.docs.slice().sort((a, b) => {
@@ -225,11 +225,11 @@ export async function processInboxToProjects(
   await gateRef.set(
     {
       lastSweepYmd: today,
-      lastResult: { created, appended, skipped },
+      lastResult: { found: ideas.length, created, appended, skipped },
       at: FieldValue.serverTimestamp(),
     },
     { merge: true }
   );
 
-  return { created, appended, skipped };
+  return { found: ideas.length, created, appended, skipped };
 }

@@ -451,8 +451,8 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public" }, async (re
         } else if (toolName === "sweep_inbox") {
           const r = await processInboxToProjects(uid, { force: true });
           text = r
-            ? `✅ Inbox balayée : ${r.created} projet(s) créé(s), ${r.appended} tâche(s) ajoutée(s) à des projets existants, ${r.skipped} idée(s) laissée(s) (trop petites/vagues).`
-            : "Rien à faire (inbox vide, ou routage indisponible).";
+            ? `✅ Inbox balayée (uid ${uid}) : ${r.found} idée(s) trouvée(s) → ${r.created} projet(s) créé(s), ${r.appended} tâche(s) ajoutée(s), ${r.skipped} idée(s) laissée(s).`
+            : "Routage indisponible (erreur LLM). Réessaie.";
         } else if (toolName === "delete_activity") {
           text = await executeDeleteActivity(uid, args.activityId as string);
         } else if (toolName === "create_routine") {

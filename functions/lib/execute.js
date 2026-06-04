@@ -1480,14 +1480,15 @@ async function executeComputeTimeBudget(uid) {
         const days = dailyMinByActivity.get(v.activityId);
         days.set(dayKey, (days.get(dayKey) || 0) + mins);
     }
-    const MIN_ACTIVE_DAYS = 3; // assez de jours actifs pour un p90 fiable
+    const MIN_ACTIVE_DAYS = 3; // minimum pour calculer une cible
+    const P90_MIN_DAYS = 30; // sous ce seuil, p90 ≈ max → on prend la médiane
     const FLOOR_MIN = 5; // une cible de jauge sous 5 min n'a pas de sens
     const DEFAULT_SLEEP_MIN = 480; // 8h par défaut quand le sommeil n'est pas loggué
-    const p90 = (vals) => {
+    const percentile = (vals, p) => {
         if (vals.length === 0)
             return 0;
         const sorted = [...vals].sort((a, b) => a - b);
-        const idx = Math.min(sorted.length - 1, Math.floor(0.90 * sorted.length));
+        const idx = Math.min(sorted.length - 1, Math.floor(p * sorted.length));
         return sorted[idx];
     };
     const budgets = activities.map((a) => {
@@ -1496,15 +1497,19 @@ async function executeComputeTimeBudget(uid) {
         const activeDays = dailyTotals.length;
         const isSleep = /sommeil|sleep/i.test(a.name);
         const hasEnoughData = activeDays >= MIN_ACTIVE_DAYS;
-        const p90ActiveDay = hasEnoughData ? Math.round(p90(dailyTotals)) : 0;
-        // Cible : p90 des jours actifs (planché). Sommeil découplé : son propre p90, ou 8h par défaut
-        // (jamais le résidu des 24h — c'est ce qui produisait des 22h45 absurdes).
+        // Cible adaptative : sous 30 jours loggués, le p90 colle au MAX (échantillon
+        // trop petit, floor(0.9·n) = dernier point) → on prend la MÉDIANE (jour typique,
+        // robuste). À ≥30 jours, le p90 devient un vrai « top 10% » aspirationnel.
+        const usesP90 = activeDays >= P90_MIN_DAYS;
+        const stat = hasEnoughData
+            ? Math.round(percentile(dailyTotals, usesP90 ? 0.90 : 0.50))
+            : 0;
         let recommendedGoalMin;
         if (isSleep) {
-            recommendedGoalMin = hasEnoughData ? Math.max(FLOOR_MIN, p90ActiveDay) : DEFAULT_SLEEP_MIN;
+            recommendedGoalMin = hasEnoughData ? Math.max(FLOOR_MIN, stat) : DEFAULT_SLEEP_MIN;
         }
         else {
-            recommendedGoalMin = hasEnoughData ? Math.max(FLOOR_MIN, p90ActiveDay) : null;
+            recommendedGoalMin = hasEnoughData ? Math.max(FLOOR_MIN, stat) : null;
         }
         return {
             id: a.id,
@@ -1512,7 +1517,8 @@ async function executeComputeTimeBudget(uid) {
             currentGoalMin: (_c = a.goalMin) !== null && _c !== void 0 ? _c : null,
             targetSource: (_d = a.targetSource) !== null && _d !== void 0 ? _d : "default",
             activeDays,
-            p90MinActiveDay: p90ActiveDay,
+            statMinActiveDay: stat,
+            statBasis: hasEnoughData ? (usesP90 ? "p90" : "median") : "none",
             hasEnoughData,
             isSleep,
             recommendedGoalMin,

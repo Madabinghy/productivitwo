@@ -452,8 +452,8 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                 else if (toolName === "sweep_inbox") {
                     const r = await (0, orion_inbox_1.processInboxToProjects)(uid, { force: true });
                     text = r
-                        ? `✅ Inbox balayée : ${r.created} projet(s) créé(s), ${r.appended} tâche(s) ajoutée(s) à des projets existants, ${r.skipped} idée(s) laissée(s) (trop petites/vagues).`
-                        : "Rien à faire (inbox vide, ou routage indisponible).";
+                        ? `✅ Inbox balayée (uid ${uid}) : ${r.found} idée(s) trouvée(s) → ${r.created} projet(s) créé(s), ${r.appended} tâche(s) ajoutée(s), ${r.skipped} idée(s) laissée(s).`
+                        : "Routage indisponible (erreur LLM). Réessaie.";
                 }
                 else if (toolName === "delete_activity") {
                     text = await (0, execute_1.executeDeleteActivity)(uid, args.activityId);
