@@ -181,7 +181,7 @@ class Activity {
   final DateTime createdAt;
   DateTime? lastTuneAt;
 
-  final String? linkedActivityId;
+  String? linkedActivityId; // mutable : modifiable depuis la fiche routine
 
   int order;
 

@@ -10,6 +10,12 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.69', '4 juin 2026', [
+    (Icons.repeat_rounded, 'Lanceur de routines (FAB) : toutes les routines sont visibles (quotidiennes, hebdo, mensuelles) avec une pastille de fréquence'),
+    (Icons.play_circle_outline, 'Tap sur une routine → mini-menu : démarrer son minuteur (si configuré), marquer fait, ou réglages'),
+    (Icons.timer_outlined, 'Routine : minuteur par défaut optionnel (nécessite une activité liée) — à la fin, la routine se coche et le temps est loggué sur l\'activité'),
+    (Icons.link, 'Fiche routine : lier, changer ou retirer l\'activité associée'),
+  ]),
   _Entry('5.68', '4 juin 2026', [
     (Icons.notifications_active_outlined, 'Paramètres : choix de la sonnerie de l\'alarme (minuteur + défis programmés) parmi plusieurs sons'),
   ]),

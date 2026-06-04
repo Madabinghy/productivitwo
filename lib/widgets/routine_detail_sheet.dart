@@ -70,6 +70,62 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
     setState(() {});
   }
 
+  /// Lier / changer / délier l'activité temps de la routine. « Aucune » délie.
+  Future<void> _pickLinkedActivity() async {
+    final acts = st.activities
+        .where((a) =>
+            !a.isHabit && !a.deleted && a.role != ActivityRole.shopping)
+        .toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    final sameDomain = acts.where((a) => a.domainId == act.domainId).toList();
+    final list = sameDomain.isNotEmpty ? sameDomain : acts;
+    final currentId = (act.linkedActivityId ?? '').trim();
+
+    final picked = await showModalBottomSheet<String?>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.only(bottom: 16),
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: Text('Activité liée',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            ),
+            ListTile(
+              leading: const Icon(Icons.block),
+              title: const Text('Aucune'),
+              trailing:
+                  currentId.isEmpty ? const Icon(Icons.check, size: 18) : null,
+              onTap: () => Navigator.pop(ctx, '__none__'),
+            ),
+            if (list.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(20),
+                child: Text('Aucune activité temps disponible.',
+                    style: TextStyle(fontStyle: FontStyle.italic)),
+              ),
+            for (final a in list)
+              ListTile(
+                leading: const Icon(Icons.timer_outlined),
+                title: Text(a.name),
+                trailing:
+                    currentId == a.id ? const Icon(Icons.check, size: 18) : null,
+                onTap: () => Navigator.pop(ctx, a.id),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null) return; // sheet fermé sans choix
+    act.linkedActivityId = picked == '__none__' ? null : picked;
+    // Délier ⇒ plus de minuteur possible (minuteur ⇒ activité liée).
+    if (act.linkedActivityId == null) act.timerMin = null;
+    _applySetting();
+  }
+
   Future<void> _rename() async {
     final ctrl = TextEditingController(text: act.name);
     ctrl.selection = TextSelection(baseOffset: 0, extentOffset: act.name.length);
@@ -384,8 +440,24 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
             ],
 
             // ── Activité liée ────────────────────────────────────────────────
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Text('ACTIVITÉ LIÉE',
+                    style: TextStyle(
+                      fontSize: 10, fontWeight: FontWeight.w700,
+                      letterSpacing: 1.2, color: cs.onSurface.withOpacity(.4))),
+                const Spacer(),
+                TextButton.icon(
+                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                  icon: Icon(hasLinked ? Icons.swap_horiz : Icons.add_link, size: 16),
+                  label: Text(hasLinked ? 'Changer' : 'Lier'),
+                  onPressed: _pickLinkedActivity,
+                ),
+              ],
+            ),
             if (hasLinked) ...[
-              const SizedBox(height: 14),
+              const SizedBox(height: 4),
               FilledButton.icon(
                 icon: Icon(isRunningThis ? Icons.stop : Icons.play_arrow, size: 20),
                 label: Text(
@@ -409,6 +481,40 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                   logic.onChange();
                   setState(() {});
                 },
+              ),
+              const SizedBox(height: 12),
+              Text('MINUTEUR PAR DÉFAUT',
+                  style: TextStyle(
+                    fontSize: 10, fontWeight: FontWeight.w700,
+                    letterSpacing: 1.1, color: cs.onSurface.withOpacity(.4))),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6, runSpacing: 6,
+                children: [
+                  for (final m in const [0, 5, 10, 15, 25])
+                    ChoiceChip(
+                      label: Text(m == 0 ? 'Aucun' : '$m min'),
+                      selected: (act.timerMin ?? 0) == m,
+                      onSelected: (_) {
+                        act.timerMin = m == 0 ? null : m;
+                        _applySetting();
+                      },
+                    ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Lancée depuis le FAB, la routine démarrera « ${linkedAct.name} » '
+                'pour cette durée et se cochera à la fin.',
+                style:
+                    TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(.45)),
+              ),
+            ] else ...[
+              const SizedBox(height: 2),
+              Text(
+                'Lie une activité temps pour chronométrer cette routine (le temps sera loggué dessus).',
+                style:
+                    TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(.45)),
               ),
             ],
 

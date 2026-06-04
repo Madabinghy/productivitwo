@@ -1744,6 +1744,7 @@ class _AppRootState extends State<AppRoot>
   StreamSubscription<AlarmSettings>? _alarmRingSub;
   String? _countdownActivityName;
   int? _countdownTotalSec; // durée totale du minuteur en cours (pour l'anneau)
+  String? _countdownRoutineId; // si le minuteur a été lancé pour une routine
   bool _saveQueued = false;
   bool _saving = false;
 
@@ -2344,12 +2345,13 @@ class _AppRootState extends State<AppRoot>
   /// Lance un minuteur N minutes → vraie alarme (sonne même téléphone verrouillé /
   /// app en arrière-plan, jusqu'à ce que l'utilisateur l'arrête). Le Timer Dart ne
   /// sert plus qu'à rafraîchir l'affichage du temps restant.
-  void _startCountdown(int minutes, String activityName) {
+  void _startCountdown(int minutes, String activityName, {String? routineId}) {
     _countdownTimer?.cancel();
     final endsAt = DateTime.now().add(Duration(minutes: minutes));
     _countdownEndsAt = endsAt;
     _countdownActivityName = activityName;
     _countdownTotalSec = minutes * 60;
+    _countdownRoutineId = routineId;
 
     final ringtone = ringtoneByKey(logic.state.alarmSound);
     Alarm.set(
@@ -2371,8 +2373,9 @@ class _AppRootState extends State<AppRoot>
           body: '$minutes min — $activityName',
           stopButton: 'Arrêter',
         ),
-        // Durée totale (s) — permet de restaurer l'anneau de décompte au resume.
-        payload: '${minutes * 60}',
+        // Durée totale (s) [+ routine liée] — restaure l'anneau au resume et
+        // permet de retrouver la routine à créditer si l'app a été tuée.
+        payload: '${minutes * 60}${routineId != null ? '|r:$routineId' : ''}',
       ),
     );
 
@@ -2399,6 +2402,39 @@ class _AppRootState extends State<AppRoot>
       await Alarm.stop(_timerAlarmId);
       return;
     }
+
+    // Minuteur de ROUTINE : pas de dialog Continuer/Terminer. On arrête (logge
+    // le temps sur l'activité liée qui tourne), on coche la routine, point.
+    String? routineId = _countdownRoutineId;
+    if (routineId == null) {
+      final p = settings.payload ?? '';
+      final i = p.indexOf('|r:');
+      if (i >= 0) routineId = p.substring(i + 3);
+    }
+    if (routineId != null) {
+      setState(() {
+        _countdownEndsAt = null;
+        _countdownTotalSec = null;
+      });
+      await Alarm.stop(_timerAlarmId);
+      _countdownActivityName = null;
+      _countdownRoutineId = null;
+      if (logic.runningActivity() != null) logic.stopActive(); // logge le temps
+      final now = DateTime.now();
+      logic.incHabit(routineId, 1, DateTime(now.year, now.month, now.day));
+      _saveAndRefresh();
+      if (mounted) {
+        final rName = logic.state.activities
+                .firstWhereOrNull((a) => a.id == routineId)
+                ?.name ??
+            'Routine';
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('✓ $rName — fait 🔥')));
+        setState(() {});
+      }
+      return;
+    }
+
     final running = logic.runningActivity();
     final name = running?.name ?? _countdownActivityName ?? 'activité';
 
@@ -3497,12 +3533,111 @@ class _AppRootState extends State<AppRoot>
     });
   }
 
+  /// Lance le minuteur d'une routine : démarre l'activité liée + le décompte
+  /// (l'anneau s'affiche), et la routine sera cochée à la fin (voir _onAlarmRing).
+  void _startRoutineTimer(Activity r) {
+    final linkedId = (r.linkedActivityId ?? '').trim();
+    final linked = linkedId.isEmpty
+        ? null
+        : logic.state.activities.firstWhereOrNull((a) => a.id == linkedId);
+    final minutes = r.timerMin ?? 0;
+    if (linked == null || minutes <= 0) return;
+    logic.start(linked.id);
+    _startCountdown(minutes, linked.name, routineId: r.id);
+    setState(() => _tab = _Tab.maintenant);
+  }
+
+  /// Mini-menu d'actions au tap d'une routine dans le lanceur (FAB).
+  Future<void> _showRoutineActions(BuildContext sheetCtx, Activity r,
+      DateTime todayD, void Function(VoidCallback) setS) async {
+    final linkedId = (r.linkedActivityId ?? '').trim();
+    final linked = linkedId.isEmpty
+        ? null
+        : logic.state.activities.firstWhereOrNull((a) => a.id == linkedId);
+    final canTimer = linked != null && (r.timerMin ?? 0) > 0;
+    await showModalBottomSheet<void>(
+      context: sheetCtx,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(r.name,
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w800)),
+              ),
+            ),
+            if (canTimer)
+              ListTile(
+                leading: const Icon(Icons.play_circle_outline),
+                title: Text('Démarrer le minuteur (${r.timerMin} min)'),
+                subtitle: Text('Sur « ${linked!.name} »'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Navigator.pop(sheetCtx); // ferme aussi le lanceur
+                  _startRoutineTimer(r);
+                },
+              ),
+            ListTile(
+              leading: const Icon(Icons.check_circle_outline),
+              title: const Text('Marquer comme fait'),
+              onTap: () {
+                logic.incHabit(r.id, 1, todayD);
+                _saveAndRefresh();
+                Navigator.pop(ctx);
+                setS(() {});
+                setState(() {});
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.tune),
+              title: const Text('Réglages'),
+              onTap: () {
+                Navigator.pop(ctx);
+                showRoutineSheet(
+                  sheetCtx,
+                  logic: logic,
+                  habitId: r.id,
+                  day: todayD,
+                  onSaved: () => setS(() {}),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Pastille de fréquence affichée sur chaque carte de routine.
+  Widget _freqPill(HabitFreq f, ColorScheme cs) {
+    final label = switch (f) {
+      HabitFreq.daily => 'Quotidien',
+      HabitFreq.weekly => 'Hebdo',
+      HabitFreq.monthly => 'Mensuel',
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withOpacity(.7),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(label,
+          style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: cs.onSurface.withOpacity(.55))),
+    );
+  }
+
   void _showRoutinesSheet(BuildContext context) {
     final allRoutines = logic.state.activities
-        .where((a) =>
-            a.isHabit &&
-            logic.effectiveHabitFreq(a) == HabitFreq.daily &&
-            !a.deleted)
+        .where((a) => a.isHabit && !a.deleted)
         .toList()
       ..sort((a, b) => a.order.compareTo(b.order));
 
@@ -3589,7 +3724,7 @@ class _AppRootState extends State<AppRoot>
                     Padding(
                       padding: const EdgeInsets.all(24),
                       child: Text(
-                        'Aucune routine quotidienne configurée.',
+                        'Aucune routine configurée.',
                         style: TextStyle(
                             color: cs.onSurface.withOpacity(.4),
                             fontStyle: FontStyle.italic),
@@ -3628,13 +3763,8 @@ class _AppRootState extends State<AppRoot>
                             padding: const EdgeInsets.only(bottom: 8),
                             child: InkWell(
                               borderRadius: BorderRadius.circular(12),
-                              onTap: () => showRoutineSheet(
-                                ctx,
-                                logic: logic,
-                                habitId: r.id,
-                                day: todayD,
-                                onSaved: () => setS(() {}),
-                              ),
+                              onTap: () =>
+                                  _showRoutineActions(ctx, r, todayD, setS),
                               child: Container(
                                 padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
                                 decoration: BoxDecoration(
@@ -3685,6 +3815,10 @@ class _AppRootState extends State<AppRoot>
                                         ],
                                       ),
                                     ),
+                                    // Pastille fréquence
+                                    _freqPill(
+                                        logic.effectiveHabitFreq(r), cs),
+                                    const SizedBox(width: 6),
                                     // Étoile priorité du jour
                                     GestureDetector(
                                       onTap: () async {
