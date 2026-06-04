@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.64', '4 juin 2026', [
+    (Icons.auto_awesome, 'ORION range ta boîte à idées tout seul à l\'ouverture de l\'app : tes idées se regroupent en nouveaux projets ou rejoignent un projet existant, et il te relance en douceur sur l\'idée qui traîne depuis le plus longtemps'),
+  ]),
   _Entry('5.63', '4 juin 2026', [
     (Icons.timelapse_rounded, 'Minuteur en cours : onglet Maintenant en mode focus — un grand anneau de décompte remplace le chrono et le programme du jour se masque ; à la fin tu choisis « Continuer » (en chrono) ou « Terminer »'),
     (Icons.restore_rounded, 'Le minuteur survit si tu quittes et rouvres l\'app : tu retrouves ton décompte là où il en était'),

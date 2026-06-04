@@ -201,7 +201,13 @@ export async function processInboxToProjects(
     decision = JSON.parse(m[0]) as RoutingDecision;
   } catch (e) {
     console.error("inbox routing failed", e);
-    await gateRef.set({ lastSweepYmd: today, error: String(e) }, { merge: true });
+    // NE PAS avancer lastSweepYmd en cas d'échec : le sweep doit pouvoir réessayer
+    // le jour même. Sinon un seul plantage (ex: secret LLM indisponible) gèle le tri
+    // de l'inbox pendant 24h. On consigne juste l'erreur pour diagnostic.
+    await gateRef.set(
+      { lastError: String(e), lastErrorAt: FieldValue.serverTimestamp() },
+      { merge: true }
+    );
     return null;
   }
 

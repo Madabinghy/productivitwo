@@ -149,6 +149,16 @@ async function buildBriefContext(
 export async function getOrCreateBrief(uid: string): Promise<Brief> {
   const date = todayInParis();
   const ref = db.collection(`users/${uid}/orion_briefs`).doc(date);
+
+  // Sweep de la boîte à idées (gaté 1×/jour côté processInboxToProjects) —
+  // AVANT l'early-return du brief en cache, sinon il ne tournerait jamais les
+  // jours où le brief du jour existe déjà. Best-effort, ne casse jamais le brief.
+  try {
+    await processInboxToProjects(uid);
+  } catch (e) {
+    console.error("inbox sweep failed (non bloquant)", e);
+  }
+
   const existing = await ref.get();
   if (existing.exists) {
     const d = existing.data() as Record<string, unknown>;
@@ -210,14 +220,6 @@ export async function getOrCreateBrief(uid: string): Promise<Brief> {
     createdAt: FieldValue.serverTimestamp(),
   };
   await ref.set(briefData);
-
-  // 1× par jour (gaté côté processInboxToProjects) : ORION balaie la boîte à idées
-  // et crée/enrichit des projets en autonomie. Best-effort — ne casse jamais le brief.
-  try {
-    await processInboxToProjects(uid);
-  } catch (e) {
-    console.error("inbox sweep failed (non bloquant)", e);
-  }
 
   return {
     date,
