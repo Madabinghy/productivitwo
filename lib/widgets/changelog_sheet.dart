@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.88', '5 juin 2026', [
+    (Icons.emoji_events_outlined, 'Classement plus clair : ton rang « 🫵 Toi » (pseudo, niveau, XP) s\'affiche en tête, et un message t\'explique quoi faire quand tu es encore seul — ton XP est déjà compté en attendant les autres'),
+  ]),
   _Entry('5.87', '5 juin 2026', [
     (Icons.local_library_outlined, 'Nouveau : Bibliothèque de défis partagée ! Découvre des défis proposés par la communauté (organisés et notés par Orion), abonne-toi, et propose les tiens. Accès via l\'éclair ⚡ → « Bibliothèque »'),
   ]),

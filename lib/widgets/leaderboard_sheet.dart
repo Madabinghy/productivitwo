@@ -28,6 +28,7 @@ class _LeaderboardSheet extends StatefulWidget {
 
 class _LeaderboardSheetState extends State<_LeaderboardSheet> {
   Map<String, dynamic>? _profile;
+  Map<String, dynamic>? _myEntry;
   List<Map<String, dynamic>> _entries = [];
   bool _loading = true;
   String _period = 'xpWeek';
@@ -53,9 +54,11 @@ class _LeaderboardSheetState extends State<_LeaderboardSheet> {
     final profile = await widget.sync.fetchMyProfile();
     final optedIn = profile?['optedIn'] == true;
     final entries = optedIn ? await widget.sync.fetchLeaderboard(_period) : <Map<String, dynamic>>[];
+    final myEntry = optedIn ? await widget.sync.fetchMyLeaderboardEntry() : null;
     if (mounted) {
       setState(() {
         _profile = profile;
+        _myEntry = myEntry;
         _entries = entries;
         _loading = false;
       });
@@ -186,10 +189,49 @@ class _LeaderboardSheetState extends State<_LeaderboardSheet> {
           ],
         ),
         const SizedBox(height: 12),
+        // Carte « Toi » : standing de l'utilisateur, robuste même si la liste tarde.
+        if (_myEntry != null) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: cs.primary.withOpacity(.10),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: cs.primary.withOpacity(.25)),
+            ),
+            child: Row(
+              children: [
+                const Text('🫵', style: TextStyle(fontSize: 18)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '${_myEntry!['pseudo'] ?? 'Toi'} — Nv ${_myEntry!['level'] ?? 1}',
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w800),
+                  ),
+                ),
+                Text('⭐ ${(_myEntry![_period] as num?)?.toInt() ?? 0}',
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: cs.primary)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (_entries.length <= 1)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                'Tu es seul·e pour l\'instant 🎯 Partage l\'app : le classement s\'animera quand d\'autres rejoindront. Ton XP est déjà compté !',
+                style:
+                    TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.6)),
+              ),
+            ),
+        ],
         if (_entries.isEmpty)
           Padding(
             padding: const EdgeInsets.all(20),
-            child: Text('Personne dans le classement pour l\'instant.',
+            child: Text('Le classement se prépare… reviens dans un instant.',
                 style: TextStyle(
                     color: cs.onSurface.withOpacity(.5),
                     fontStyle: FontStyle.italic)),

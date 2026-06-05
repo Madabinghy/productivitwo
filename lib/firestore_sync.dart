@@ -840,6 +840,17 @@ class FirestoreSync {
     }
   }
 
+  /// Entrée de classement de l'utilisateur courant (son propre rang/XP).
+  Future<Map<String, dynamic>?> fetchMyLeaderboardEntry() async {
+    if (uid == null) return null;
+    try {
+      final snap = await _db.doc('leaderboard_entries/$uid').get();
+      return snap.exists ? snap.data() as Map<String, dynamic> : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Top 50 du classement pour une période : 'xpTotal' | 'xpWeek' | 'xpMonth'.
   /// Retourne [{uid, pseudo, xp, level}], trié décroissant.
   Future<List<Map<String, dynamic>>> fetchLeaderboard(String field) async {
