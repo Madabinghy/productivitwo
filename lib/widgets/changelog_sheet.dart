@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.77', '4 juin 2026', [
+    (Icons.apple, 'Correction : la connexion avec Apple aboutit correctement même si la synchronisation des données échoue juste après — plus de message d\'erreur trompeur (et l\'annulation ne montre plus d\'erreur)'),
+  ]),
   _Entry('5.76', '4 juin 2026', [
     (Icons.flag_outlined, 'Réglages ORION plus clairs : « instructions permanentes » devient « Ta priorité du moment » avec une explication (ORION la lit chaque matin et à chaque demande pour cadrer ses suggestions) et un exemple'),
   ]),

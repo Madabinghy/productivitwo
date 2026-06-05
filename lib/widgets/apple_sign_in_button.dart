@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/pro_manager.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -32,27 +34,55 @@ class _AppleSignInTileState extends State<AppleSignInTile> {
     try {
       final result = await widget.sync.signInWithApple();
 
-      await ProManager.loginUser(result.uid);
-
-      if (!result.isNew) {
-        // Compte existant : tente de récupérer les données distantes
-        final remote = await widget.sync.pull();
-        if (remote != null && mounted) {
-          await FileStore().save(remote);
+      // ── À partir d'ici, la connexion Apple a RÉUSSI. ────────────────────────
+      // La suite (entitlements + migration des données) ne doit jamais faire
+      // ressembler un succès de connexion à un échec : on l'isole et on avale
+      // les erreurs non bloquantes (sinon un échec d'écriture Firestore sur un
+      // compte neuf affiche « une erreur est survenue » → rejet App Review).
+      try {
+        await ProManager.loginUser(result.uid);
+        if (!result.isNew) {
+          final remote = await widget.sync.pull();
+          if (remote != null && mounted) {
+            await FileStore().save(remote);
+          }
+        } else {
+          await widget.sync.pushAll(widget.state);
         }
-      } else {
-        // Nouveau compte : upload les données locales
-        await widget.sync.pushAll(widget.state);
+      } catch (e) {
+        debugPrint('Sync post-connexion Apple échouée (non bloquant) : $e');
       }
 
-      // Toujours recharger l'app après un sign-in réussi
-      // (que pull() ait retourné des données ou non)
+      // Recharger l'app : la connexion est valide quoi qu'il arrive ensuite.
       if (mounted) widget.onDataChanged();
+    } on SignInWithAppleAuthorizationException catch (e) {
+      // Annulation par l'utilisateur → pas d'erreur affichée.
+      if (e.code == AuthorizationErrorCode.canceled) {
+        if (mounted) setState(() => _loading = false);
+        return;
+      }
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'Connexion Apple impossible. Réessaie.';
+        });
+      }
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = e.code == 'account-exists-with-different-credential'
+              ? 'Un compte existe déjà avec cet email. Connecte-toi par lien email.'
+              : 'Connexion impossible (${e.code}). Réessaie.';
+        });
+      }
     } catch (e) {
-      if (mounted) setState(() {
-        _loading = false;
-        _error = e.toString().replaceAll('Exception: ', '');
-      });
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = e.toString().replaceAll('Exception: ', '');
+        });
+      }
     }
   }
 
