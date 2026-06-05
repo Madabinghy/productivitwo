@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.85', '5 juin 2026', [
+    (Icons.person_outline, 'Paramètres → Compte plus clair : une fois connecté, on n\'affiche que ton compte (l\'option de connexion par email disparaît quand tu es déjà connecté)'),
+  ]),
   _Entry('5.84', '5 juin 2026', [
     (Icons.emoji_events_outlined, 'Nouveau : Classement XP ! Choisis un pseudo, rejoins le classement (opt-in) et compare ton XP avec les autres — par semaine, par mois ou en total. Tape l\'étoile ⭐ en haut pour l\'ouvrir'),
   ]),

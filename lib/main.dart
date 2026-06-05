@@ -4972,15 +4972,20 @@ class _AppRootState extends State<AppRoot>
                                   fontWeight: FontWeight.w800,
                                   color: Theme.of(context).colorScheme.onSurface)),
                           const SizedBox(height: 12),
-                          EmailSignInTile(
-                            sync: _sync,
-                            state: _state!,
-                            onDataChanged: () {
-                              Navigator.pop(context);
-                              _init();
-                            },
-                          ),
-                          const Divider(height: 24),
+                          // Connexion email proposée seulement si pas encore
+                          // connecté : une fois un compte lié, on n'affiche que
+                          // ce compte (pas d'option de connexion redondante).
+                          if (_sync.isAnonymous) ...[
+                            EmailSignInTile(
+                              sync: _sync,
+                              state: _state!,
+                              onDataChanged: () {
+                                Navigator.pop(context);
+                                _init();
+                              },
+                            ),
+                            const Divider(height: 24),
+                          ],
                           AppleSignInTile(
                             sync: _sync,
                             state: _state!,

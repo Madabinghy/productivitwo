@@ -149,7 +149,7 @@ class _AppleSignInTileState extends State<AppleSignInTile> {
               ),
               child: const Icon(Icons.check, color: Colors.green, size: 18),
             ),
-            title: const Text('Compte Apple connecté',
+            title: const Text('Compte connecté',
                 style: TextStyle(fontWeight: FontWeight.w600)),
             subtitle: email != null
                 ? Text(email, style: const TextStyle(fontSize: 12))
