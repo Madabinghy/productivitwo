@@ -144,7 +144,9 @@ class _InboxSheetState extends State<_InboxSheet> {
           Expanded(
             child: ListView(
               controller: ctrl,
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+              // + viewInsets : le champ d'édition reste visible au-dessus du clavier.
+              padding: EdgeInsets.fromLTRB(
+                  16, 0, 16, 32 + MediaQuery.of(context).viewInsets.bottom),
               children: [
                 // ── En attente ───────────────────────────────────────────────
                 if (_pending.isEmpty)
@@ -277,10 +279,13 @@ class _InboxSheetState extends State<_InboxSheet> {
                 child: TextField(
                   controller: _editCtrl,
                   autofocus: true,
+                  maxLines: null,
+                  minLines: 1,
+                  keyboardType: TextInputType.multiline,
+                  textCapitalization: TextCapitalization.sentences,
                   style: const TextStyle(fontSize: 14),
                   decoration: const InputDecoration(
                       isDense: true, border: InputBorder.none),
-                  onSubmitted: (_) => _saveEdit(item),
                 ),
               ),
               IconButton(

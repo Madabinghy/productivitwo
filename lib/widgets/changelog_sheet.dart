@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.79', '4 juin 2026', [
+    (Icons.keyboard_outlined, 'Inbox : modifier une idée ne passe plus sous le clavier — le champ reste visible, et l\'édition est désormais multi-ligne pour les idées longues'),
+  ]),
   _Entry('5.78', '4 juin 2026', [
     (Icons.checklist_rtl, 'Onglet Maintenant : les boutons flottants (FAB) ne masquent plus les dernières lignes du programme du jour — tout reste cochable'),
     (Icons.local_fire_department_rounded, 'Défi programmé relevé : un message confirme « Défi relevé ! » avec ta série quand tu logges le temps (le bloc se coche et sort des défis en cours automatiquement)'),
