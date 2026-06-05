@@ -116,7 +116,9 @@ class _FocusViewState extends State<FocusView> {
 
     return SafeArea(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+        // Padding bas généreux : dégage la pile de boutons du FAB (~156px) pour
+        // que les derniers items du programme restent cochables.
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 140),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -172,7 +174,9 @@ class _FocusViewState extends State<FocusView> {
 
     return SafeArea(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+        // Padding bas généreux : le programme du jour est en bas ici, il doit
+        // rester cochable sous la pile de boutons du FAB (~156px).
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 140),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

@@ -79,6 +79,16 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         _won.add(b.id);
         _sync.updateBlockStatus(widget.date, b.id, 'done');
         widget.logic.recordChallengeAccepted(widget.date.replaceAll('-', ''));
+        // Feedback visible : sinon le user ne sait pas que le défi a compté.
+        if (mounted) {
+          final name = b.title.replaceFirst('🔥 Défi : ', '');
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(
+                '🔥 Défi relevé : $name ! Série : ${widget.logic.state.challengeStreak} 🔥'),
+            duration: const Duration(seconds: 4),
+          ));
+          setState(() {});
+        }
       }
     }
   }
