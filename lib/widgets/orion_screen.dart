@@ -458,7 +458,17 @@ class _OrionScreenState extends State<OrionScreen>
         if (_settingsExpanded) ...[
           const SizedBox(height: 8),
           const Text(
-            'Instructions permanentes — lues à chaque demande',
+            'TA PRIORITÉ DU MOMENT',
+            style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1,
+                color: _text),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Orion la lit chaque matin et à chaque demande pour cadrer ses suggestions. Mets-la à jour quand ta priorité change.',
             style:
                 TextStyle(fontFamily: 'monospace', fontSize: 10, color: _muted),
           ),
@@ -517,7 +527,7 @@ class _OrionScreenState extends State<OrionScreen>
           fontFamily: 'monospace', fontSize: 13, color: _text, height: 1.6),
       decoration: InputDecoration(
         hintText:
-            'Ex: Rappelle-moi mes deadlines. Sois bref et actionnable.',
+            'Ex : Je veux avancer la formation cette semaine. Pas de défis sport.',
         hintStyle: const TextStyle(
             fontFamily: 'monospace', fontSize: 12, color: _muted),
         filled: true,

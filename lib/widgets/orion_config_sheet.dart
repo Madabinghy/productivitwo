@@ -211,15 +211,20 @@ class _OrionConfigSheetState extends State<OrionConfigSheet> {
               ),
             ],
 
-            // ── Instructions persistantes ────────────────────────────────────
+            // ── Priorité du moment (cadrage permanent d'ORION) ───────────────
             const SizedBox(height: 24),
-            _Label('Mes besoins / instructions pour ORION'),
+            _Label('Ta priorité du moment'),
+            const SizedBox(height: 4),
+            Text(
+              'ORION la lit chaque matin et à chaque demande pour cadrer ses suggestions. Mets-la à jour quand ta priorité change.',
+              style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.5)),
+            ),
             const SizedBox(height: 8),
             TextField(
               controller: _needsCtrl,
               maxLines: 4,
               decoration: InputDecoration(
-                hintText: 'Ex : Je veux des rappels pour mes deadlines projets. Sois bref et actionnable.',
+                hintText: 'Ex : Je veux avancer la formation cette semaine. Pas de défis sport.',
                 hintStyle: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(.35)),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                 filled: true,

@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.76', '4 juin 2026', [
+    (Icons.flag_outlined, 'Réglages ORION plus clairs : « instructions permanentes » devient « Ta priorité du moment » avec une explication (ORION la lit chaque matin et à chaque demande pour cadrer ses suggestions) et un exemple'),
+  ]),
   _Entry('5.75', '4 juin 2026', [
     (Icons.add_alert_outlined, 'Défis programmés : tu peux maintenant avoir jusqu\'à 2 rappels par défi — depuis « Défis en cours » (bouton ⚡), ajoute un 2ᵉ rappel (la veille, 1h avant ou 15 min avant) à un défi déjà créé'),
   ]),
