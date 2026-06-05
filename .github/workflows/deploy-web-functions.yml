@@ -82,18 +82,15 @@ jobs:
             target_sha="$HEAD_SHA"
             should=true
           else
-            # schedule → reprise idempotente : déploie le dernier tag v* s'il n'est
-            # pas déjà marqué déployé. Sans tag, ne fait rien.
-            target_ref="$(git tag -l 'v*' --sort=-v:refname | head -n1)"
-            if [ -z "$target_ref" ]; then
-              echo "Aucun tag v* — rien à reprendre."
-              echo "should_deploy=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            target_sha="$(git rev-list -n1 "$target_ref")"
+            # schedule → reprise idempotente : redéploie main HEAD s'il n'est pas
+            # déjà marqué déployé (échec transitoire / quota épuisé). Le modèle est
+            # « deploy on merge (main) » — les tags v* sont obsolètes (déployer le
+            # dernier v5.61 supprimerait les fonctions récentes → échec en boucle).
+            target_ref="$HEAD_SHA"
+            target_sha="$HEAD_SHA"
             deployed_sha="$(git rev-list -n1 "$DEPLOYED_MARKER" 2>/dev/null || echo '')"
             if [ "$target_sha" = "$deployed_sha" ]; then
-              echo "✅ $target_ref déjà déployé — skip."
+              echo "✅ main HEAD déjà déployé — skip."
               should=false
             else
               should=true
