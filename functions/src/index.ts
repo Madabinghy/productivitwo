@@ -2907,4 +2907,4 @@ export const applyFormationProfile = onRequest(
 );
 
 // ── Couche sociale (Phase 1) ────────────────────────────────────────────────
-export { claimPseudo, recomputeLeaderboards } from "./social";
+export { claimPseudo, recomputeLeaderboards, submitChallenge, subscribeChallenge, superOrionCron } from "./social";

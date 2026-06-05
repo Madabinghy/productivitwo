@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.recomputeLeaderboards = exports.claimPseudo = void 0;
+exports.superOrionCron = exports.subscribeChallenge = exports.submitChallenge = exports.recomputeLeaderboards = exports.claimPseudo = void 0;
 // ── Couche sociale (Phase 1) : pseudos + classement XP global ────────────────
 // claimPseudo (réservation unique + opt-in) · recomputeLeaderboards (cron).
 // L'XP de classement est RECALCULÉ CÔTÉ SERVEUR depuis les données réelles de
@@ -8,6 +8,8 @@ exports.recomputeLeaderboards = exports.claimPseudo = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
+const sdk_1 = require("@anthropic-ai/sdk");
+const models_1 = require("./models");
 const db_1 = require("./db");
 const BANNED = ["admin", "fuck", "shit", "putain", "merde", "connard", "nazi"];
 // YYYYMMDD en heure de Paris (cohérent avec yyyymmdd côté app).
@@ -206,5 +208,202 @@ exports.recomputeLeaderboards = (0, scheduler_1.onSchedule)({ schedule: "every 3
         }
     }
     console.log(`recomputeLeaderboards: ${profs.size} profils`);
+});
+// ── Phase 2 : bibliothèque de challenges + super-Orion ───────────────────────
+async function authUid(req) {
+    var _a;
+    const h = (_a = req.headers.authorization) !== null && _a !== void 0 ? _a : "";
+    if (!h.startsWith("Bearer "))
+        return null;
+    try {
+        return (await admin.auth().verifyIdToken(h.slice(7).trim())).uid;
+    }
+    catch (_b) {
+        return null;
+    }
+}
+// POST { title, description } · soumet un challenge à la modération super-Orion.
+exports.submitChallenge = (0, https_1.onRequest)({ cors: true, invoker: "public" }, async (req, res) => {
+    var _a;
+    if (req.method === "OPTIONS") {
+        res.status(204).send("");
+        return;
+    }
+    if (req.method !== "POST") {
+        res.status(405).json({ error: "Method Not Allowed" });
+        return;
+    }
+    const uid = await authUid(req);
+    if (!uid) {
+        res.status(401).json({ error: "Non autorisé" });
+        return;
+    }
+    const { title, description } = req.body;
+    const t = (title !== null && title !== void 0 ? title : "").trim();
+    const d = (description !== null && description !== void 0 ? description : "").trim();
+    if (t.length < 3 || t.length > 80) {
+        res.status(400).json({ error: "Titre : 3 à 80 caractères" });
+        return;
+    }
+    if (d.length > 300) {
+        res.status(400).json({ error: "Description : 300 caractères max" });
+        return;
+    }
+    const profSnap = await db_1.db.collection("profiles").doc(uid).get();
+    const pseudo = (_a = profSnap.get("pseudo")) !== null && _a !== void 0 ? _a : "Anonyme";
+    await db_1.db.collection("challenge_submissions").add({
+        uid,
+        pseudo,
+        title: t,
+        description: d,
+        status: "pending",
+        createdAt: db_1.FieldValue.serverTimestamp(),
+    });
+    res.status(200).json({ success: true });
+});
+// POST { libraryId, subscribe } · (dé)abonnement à un challenge de la bibliothèque.
+exports.subscribeChallenge = (0, https_1.onRequest)({ cors: true, invoker: "public" }, async (req, res) => {
+    if (req.method === "OPTIONS") {
+        res.status(204).send("");
+        return;
+    }
+    if (req.method !== "POST") {
+        res.status(405).json({ error: "Method Not Allowed" });
+        return;
+    }
+    const uid = await authUid(req);
+    if (!uid) {
+        res.status(401).json({ error: "Non autorisé" });
+        return;
+    }
+    const { libraryId, subscribe } = req.body;
+    if (!libraryId) {
+        res.status(400).json({ error: "libraryId requis" });
+        return;
+    }
+    const libRef = db_1.db.collection("challenge_library").doc(libraryId);
+    const lib = await libRef.get();
+    if (!lib.exists) {
+        res.status(404).json({ error: "Challenge introuvable" });
+        return;
+    }
+    const subRef = db_1.db.collection("users").doc(uid).collection("challenge_subs").doc(libraryId);
+    const already = (await subRef.get()).exists;
+    if (subscribe === false) {
+        if (already) {
+            await subRef.delete();
+            await libRef.update({ subscriberCount: db_1.FieldValue.increment(-1) });
+        }
+    }
+    else {
+        if (!already) {
+            await subRef.set({
+                libraryId,
+                title: lib.get("title"),
+                subscribedAt: db_1.FieldValue.serverTimestamp(),
+            });
+            await libRef.update({ subscriberCount: db_1.FieldValue.increment(1) });
+        }
+    }
+    res.status(200).json({ success: true });
+});
+// Cron quotidien : super-Orion modère/catégorise/dédoublonne les soumissions
+// (LLM Haiku) → écrit les challenges approuvés dans challenge_library.
+exports.superOrionCron = (0, scheduler_1.onSchedule)({ schedule: "every 24 hours", timeZone: "Europe/Paris", secrets: ["ANTHROPIC_API_KEY"] }, async () => {
+    var _a, _b, _c, _d, _e, _f;
+    const pending = await db_1.db.collection("challenge_submissions")
+        .where("status", "==", "pending")
+        .limit(30)
+        .get();
+    if (pending.empty) {
+        console.log("superOrion: rien à traiter");
+        return;
+    }
+    const lib = await db_1.db.collection("challenge_library")
+        .where("status", "==", "approved")
+        .limit(200)
+        .get();
+    const existing = lib.docs.map((d) => ({ id: d.id, title: d.get("title") }));
+    const subs = pending.docs.map((d) => {
+        var _a;
+        return ({
+            id: d.id,
+            title: d.get("title"),
+            description: (_a = d.get("description")) !== null && _a !== void 0 ? _a : "",
+        });
+    });
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+        console.error("superOrion: ANTHROPIC_API_KEY manquante");
+        return;
+    }
+    const client = new sdk_1.default({ apiKey });
+    const prompt = `Tu es "super-Orion", le curateur d'une bibliothèque de défis de productivité partagée entre utilisateurs.
+Pour chaque soumission, décide :
+- "approve" : défi clair, sain, utile → fournis title (nettoyé, <60 car.), description (<200 car.), category (parmi: sport, focus, bien-être, apprentissage, social, créativité, autre), durationMin (5-90), xp (5-50 selon difficulté/effort).
+- "reject" : inapproprié, spam, dangereux, vide de sens.
+- "merge" : quasi-doublon d'un défi existant → fournis mergeId (l'id existant).
+
+Soumissions :
+${JSON.stringify(subs)}
+
+Bibliothèque existante (pour détecter les doublons) :
+${JSON.stringify(existing)}
+
+Réponds UNIQUEMENT avec un tableau JSON, un objet par soumission :
+[{"id":"<submissionId>","action":"approve|reject|merge","title":"","description":"","category":"","durationMin":0,"xp":0,"mergeId":""}]`;
+    const response = await client.messages.create({
+        model: models_1.MODELS.HAIKU,
+        max_tokens: 4096,
+        messages: [{ role: "user", content: prompt }],
+    });
+    (0, models_1.logTokenUsage)("super_orion", models_1.MODELS.HAIKU, response.usage);
+    const text = response.content
+        .filter((b) => b.type === "text")
+        .map((b) => b.text)
+        .join("");
+    const jsonStr = text.slice(text.indexOf("["), text.lastIndexOf("]") + 1);
+    let decisions;
+    try {
+        decisions = JSON.parse(jsonStr);
+    }
+    catch (e) {
+        console.error("superOrion: parse JSON échoué", e, text.slice(0, 200));
+        return;
+    }
+    const subById = new Map(pending.docs.map((d) => [d.id, d]));
+    let approved = 0, merged = 0, rejected = 0;
+    for (const dec of decisions) {
+        const subId = dec.id;
+        const subDoc = subById.get(subId);
+        if (!subDoc)
+            continue;
+        const action = dec.action;
+        if (action === "approve") {
+            await db_1.db.collection("challenge_library").add({
+                title: (_a = dec.title) !== null && _a !== void 0 ? _a : subDoc.get("title"),
+                description: (_b = dec.description) !== null && _b !== void 0 ? _b : "",
+                category: (_c = dec.category) !== null && _c !== void 0 ? _c : "autre",
+                suggestedDurationMin: (_d = dec.durationMin) !== null && _d !== void 0 ? _d : 15,
+                xpReward: (_e = dec.xp) !== null && _e !== void 0 ? _e : 10,
+                createdByPseudo: (_f = subDoc.get("pseudo")) !== null && _f !== void 0 ? _f : "Anonyme",
+                status: "approved",
+                subscriberCount: 0,
+                createdAt: db_1.FieldValue.serverTimestamp(),
+            });
+            await subDoc.ref.update({ status: "approved" });
+            approved++;
+        }
+        else if (action === "merge") {
+            const mergeId = dec.mergeId;
+            await subDoc.ref.update({ status: "merged", mergedInto: mergeId !== null && mergeId !== void 0 ? mergeId : null });
+            merged++;
+        }
+        else {
+            await subDoc.ref.update({ status: "rejected" });
+            rejected++;
+        }
+    }
+    console.log(`superOrion: ${approved} approuvés, ${merged} fusionnés, ${rejected} rejetés`);
 });
 //# sourceMappingURL=social.js.map

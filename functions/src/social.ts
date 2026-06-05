@@ -5,6 +5,8 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as admin from "firebase-admin";
+import Anthropic from "@anthropic-ai/sdk";
+import { MODELS, logTokenUsage } from "./models";
 import { db, FieldValue } from "./db";
 
 const BANNED = ["admin", "fuck", "shit", "putain", "merde", "connard", "nazi"];
@@ -223,5 +225,183 @@ export const recomputeLeaderboards = onSchedule(
       }
     }
     console.log(`recomputeLeaderboards: ${profs.size} profils`);
+  },
+);
+
+// ── Phase 2 : bibliothèque de challenges + super-Orion ───────────────────────
+
+async function authUid(req: { headers: { authorization?: string } }): Promise<string | null> {
+  const h = (req.headers.authorization as string | undefined) ?? "";
+  if (!h.startsWith("Bearer ")) return null;
+  try {
+    return (await admin.auth().verifyIdToken(h.slice(7).trim())).uid;
+  } catch {
+    return null;
+  }
+}
+
+// POST { title, description } · soumet un challenge à la modération super-Orion.
+export const submitChallenge = onRequest(
+  { cors: true, invoker: "public" },
+  async (req, res) => {
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST") { res.status(405).json({ error: "Method Not Allowed" }); return; }
+    const uid = await authUid(req);
+    if (!uid) { res.status(401).json({ error: "Non autorisé" }); return; }
+
+    const { title, description } = req.body as { title?: string; description?: string };
+    const t = (title ?? "").trim();
+    const d = (description ?? "").trim();
+    if (t.length < 3 || t.length > 80) {
+      res.status(400).json({ error: "Titre : 3 à 80 caractères" }); return;
+    }
+    if (d.length > 300) {
+      res.status(400).json({ error: "Description : 300 caractères max" }); return;
+    }
+
+    const profSnap = await db.collection("profiles").doc(uid).get();
+    const pseudo = (profSnap.get("pseudo") as string | undefined) ?? "Anonyme";
+
+    await db.collection("challenge_submissions").add({
+      uid,
+      pseudo,
+      title: t,
+      description: d,
+      status: "pending",
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    res.status(200).json({ success: true });
+  },
+);
+
+// POST { libraryId, subscribe } · (dé)abonnement à un challenge de la bibliothèque.
+export const subscribeChallenge = onRequest(
+  { cors: true, invoker: "public" },
+  async (req, res) => {
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST") { res.status(405).json({ error: "Method Not Allowed" }); return; }
+    const uid = await authUid(req);
+    if (!uid) { res.status(401).json({ error: "Non autorisé" }); return; }
+
+    const { libraryId, subscribe } = req.body as { libraryId?: string; subscribe?: boolean };
+    if (!libraryId) { res.status(400).json({ error: "libraryId requis" }); return; }
+    const libRef = db.collection("challenge_library").doc(libraryId);
+    const lib = await libRef.get();
+    if (!lib.exists) { res.status(404).json({ error: "Challenge introuvable" }); return; }
+
+    const subRef = db.collection("users").doc(uid).collection("challenge_subs").doc(libraryId);
+    const already = (await subRef.get()).exists;
+    if (subscribe === false) {
+      if (already) {
+        await subRef.delete();
+        await libRef.update({ subscriberCount: FieldValue.increment(-1) });
+      }
+    } else {
+      if (!already) {
+        await subRef.set({
+          libraryId,
+          title: lib.get("title"),
+          subscribedAt: FieldValue.serverTimestamp(),
+        });
+        await libRef.update({ subscriberCount: FieldValue.increment(1) });
+      }
+    }
+    res.status(200).json({ success: true });
+  },
+);
+
+// Cron quotidien : super-Orion modère/catégorise/dédoublonne les soumissions
+// (LLM Haiku) → écrit les challenges approuvés dans challenge_library.
+export const superOrionCron = onSchedule(
+  { schedule: "every 24 hours", timeZone: "Europe/Paris", secrets: ["ANTHROPIC_API_KEY"] },
+  async () => {
+    const pending = await db.collection("challenge_submissions")
+      .where("status", "==", "pending")
+      .limit(30)
+      .get();
+    if (pending.empty) { console.log("superOrion: rien à traiter"); return; }
+
+    const lib = await db.collection("challenge_library")
+      .where("status", "==", "approved")
+      .limit(200)
+      .get();
+    const existing = lib.docs.map((d) => ({ id: d.id, title: d.get("title") as string }));
+
+    const subs = pending.docs.map((d) => ({
+      id: d.id,
+      title: d.get("title") as string,
+      description: (d.get("description") as string) ?? "",
+    }));
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) { console.error("superOrion: ANTHROPIC_API_KEY manquante"); return; }
+    const client = new Anthropic({ apiKey });
+
+    const prompt = `Tu es "super-Orion", le curateur d'une bibliothèque de défis de productivité partagée entre utilisateurs.
+Pour chaque soumission, décide :
+- "approve" : défi clair, sain, utile → fournis title (nettoyé, <60 car.), description (<200 car.), category (parmi: sport, focus, bien-être, apprentissage, social, créativité, autre), durationMin (5-90), xp (5-50 selon difficulté/effort).
+- "reject" : inapproprié, spam, dangereux, vide de sens.
+- "merge" : quasi-doublon d'un défi existant → fournis mergeId (l'id existant).
+
+Soumissions :
+${JSON.stringify(subs)}
+
+Bibliothèque existante (pour détecter les doublons) :
+${JSON.stringify(existing)}
+
+Réponds UNIQUEMENT avec un tableau JSON, un objet par soumission :
+[{"id":"<submissionId>","action":"approve|reject|merge","title":"","description":"","category":"","durationMin":0,"xp":0,"mergeId":""}]`;
+
+    const response = await client.messages.create({
+      model: MODELS.HAIKU,
+      max_tokens: 4096,
+      messages: [{ role: "user", content: prompt }],
+    });
+    logTokenUsage("super_orion", MODELS.HAIKU, response.usage as Parameters<typeof logTokenUsage>[2]);
+
+    const text = response.content
+      .filter((b): b is Anthropic.TextBlock => b.type === "text")
+      .map((b) => b.text)
+      .join("");
+    const jsonStr = text.slice(text.indexOf("["), text.lastIndexOf("]") + 1);
+    let decisions: Array<Record<string, unknown>>;
+    try {
+      decisions = JSON.parse(jsonStr);
+    } catch (e) {
+      console.error("superOrion: parse JSON échoué", e, text.slice(0, 200));
+      return;
+    }
+
+    const subById = new Map(pending.docs.map((d) => [d.id, d]));
+    let approved = 0, merged = 0, rejected = 0;
+    for (const dec of decisions) {
+      const subId = dec.id as string;
+      const subDoc = subById.get(subId);
+      if (!subDoc) continue;
+      const action = dec.action as string;
+      if (action === "approve") {
+        await db.collection("challenge_library").add({
+          title: (dec.title as string) ?? subDoc.get("title"),
+          description: (dec.description as string) ?? "",
+          category: (dec.category as string) ?? "autre",
+          suggestedDurationMin: (dec.durationMin as number) ?? 15,
+          xpReward: (dec.xp as number) ?? 10,
+          createdByPseudo: subDoc.get("pseudo") ?? "Anonyme",
+          status: "approved",
+          subscriberCount: 0,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+        await subDoc.ref.update({ status: "approved" });
+        approved++;
+      } else if (action === "merge") {
+        const mergeId = dec.mergeId as string | undefined;
+        await subDoc.ref.update({ status: "merged", mergedInto: mergeId ?? null });
+        merged++;
+      } else {
+        await subDoc.ref.update({ status: "rejected" });
+        rejected++;
+      }
+    }
+    console.log(`superOrion: ${approved} approuvés, ${merged} fusionnés, ${rejected} rejetés`);
   },
 );

@@ -3,6 +3,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/notifications.dart';
+import 'package:productivitwo_v1/widgets/challenge_library_sheet.dart';
 
 /// Sheet « Défis en cours » (bouton ⚡ de l'app bar) : liste les défis programmés
 /// encore en attente (aujourd'hui/futur) et permet de les annuler.
@@ -171,6 +172,13 @@ class _ScheduledChallengesSheetState extends State<_ScheduledChallengesSheet> {
                           fontSize: 18,
                           fontWeight: FontWeight.w800,
                           color: cs.onSurface)),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: () =>
+                        showChallengeLibrarySheet(context, widget.sync),
+                    icon: const Text('📚', style: TextStyle(fontSize: 14)),
+                    label: const Text('Bibliothèque'),
+                  ),
                 ],
               ),
             ),

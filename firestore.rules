@@ -23,5 +23,16 @@ service cloud.firestore {
       allow read: if resource.data.optedIn == true;
       allow write: if false;
     }
+    // Bibliothèque de challenges (Phase 2) : lecture publique des approuvés ;
+    // écriture serveur only (super-Orion). Soumissions : créées par l'auteur.
+    match /challenge_library/{id} {
+      allow read: if resource.data.status == 'approved';
+      allow write: if false;
+    }
+    match /challenge_submissions/{id} {
+      allow read: if request.auth != null && request.auth.uid == resource.data.uid;
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if false;
+    }
   }
 }

@@ -864,6 +864,82 @@ class FirestoreSync {
     }
   }
 
+  // ── Social Phase 2 : bibliothèque de challenges ─────────────────────────────
+  static const _submitChallengeUrl =
+      'https://submitchallenge-dzos75b65q-uc.a.run.app';
+  static const _subscribeChallengeUrl =
+      'https://subscribechallenge-dzos75b65q-uc.a.run.app';
+
+  Future<String?> _postAuthed(String url, Map<String, dynamic> body) async {
+    final user = _auth.currentUser;
+    if (user == null) return 'Non connecté';
+    try {
+      final idToken = await user.getIdToken();
+      final res = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Authorization': 'Bearer $idToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(body),
+      );
+      if (res.statusCode == 200) return null;
+      final m = jsonDecode(res.body) as Map<String, dynamic>;
+      return (m['error'] as String?) ?? 'Erreur (${res.statusCode})';
+    } catch (_) {
+      return 'Erreur réseau';
+    }
+  }
+
+  /// Soumet un challenge à la bibliothèque (modération super-Orion). null = OK.
+  Future<String?> submitChallenge(String title, String description) =>
+      _postAuthed(_submitChallengeUrl, {'title': title, 'description': description});
+
+  /// (Dé)abonnement à un challenge de la bibliothèque. null = OK.
+  Future<String?> subscribeChallenge(String libraryId, bool subscribe) =>
+      _postAuthed(_subscribeChallengeUrl,
+          {'libraryId': libraryId, 'subscribe': subscribe});
+
+  /// Challenges approuvés de la bibliothèque (triés par popularité côté client).
+  Future<List<Map<String, dynamic>>> fetchChallengeLibrary() async {
+    try {
+      final snap = await _db
+          .collection('challenge_library')
+          .where('status', isEqualTo: 'approved')
+          .limit(100)
+          .get();
+      final list = snap.docs.map((d) {
+        final m = d.data();
+        return {
+          'id': d.id,
+          'title': m['title'] ?? '',
+          'description': m['description'] ?? '',
+          'category': m['category'] ?? 'autre',
+          'durationMin': (m['suggestedDurationMin'] as num?)?.toInt() ?? 15,
+          'xp': (m['xpReward'] as num?)?.toInt() ?? 10,
+          'pseudo': m['createdByPseudo'] ?? '',
+          'subscribers': (m['subscriberCount'] as num?)?.toInt() ?? 0,
+        };
+      }).toList()
+        ..sort((a, b) =>
+            (b['subscribers'] as int).compareTo(a['subscribers'] as int));
+      return list;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Ids des challenges auxquels l'utilisateur est abonné.
+  Future<Set<String>> fetchMySubscriptions() async {
+    if (uid == null) return {};
+    try {
+      final snap = await _col('challenge_subs').get();
+      return snap.docs.map((d) => d.id).toSet();
+    } catch (_) {
+      return {};
+    }
+  }
+
   /// Inscrit l'utilisateur au cron ORION (fire-and-forget).
   /// Appelé au démarrage — permet au backend de l'inclure dans runOrionCycle
   /// même sans token MCP.

@@ -11,7 +11,7 @@ var __rest = (this && this.__rest) || function (s, e) {
     return t;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.recomputeLeaderboards = exports.claimPseudo = exports.applyFormationProfile = exports.getVisionAccess = exports.generateFormationAccess = exports.adminProductivitwo = exports.revenueCatWebhook = exports.onboardingChat = exports.structureProject = exports.orionCron = exports.orionBrief = exports.orionRunCount = exports.orionSaveConfig = exports.githubWebhook = exports.orionWebhook = exports.mcpHandler = exports.sendMagicLink = exports.getCustomToken = exports.pushAssistantMessage = exports.markPlanItemDone = exports.pushGantt = void 0;
+exports.superOrionCron = exports.subscribeChallenge = exports.submitChallenge = exports.recomputeLeaderboards = exports.claimPseudo = exports.applyFormationProfile = exports.getVisionAccess = exports.generateFormationAccess = exports.adminProductivitwo = exports.revenueCatWebhook = exports.onboardingChat = exports.structureProject = exports.orionCron = exports.orionBrief = exports.orionRunCount = exports.orionSaveConfig = exports.githubWebhook = exports.orionWebhook = exports.mcpHandler = exports.sendMagicLink = exports.getCustomToken = exports.pushAssistantMessage = exports.markPlanItemDone = exports.pushGantt = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
@@ -2843,4 +2843,7 @@ exports.applyFormationProfile = (0, https_1.onRequest)({ cors: true, invoker: "p
 var social_1 = require("./social");
 Object.defineProperty(exports, "claimPseudo", { enumerable: true, get: function () { return social_1.claimPseudo; } });
 Object.defineProperty(exports, "recomputeLeaderboards", { enumerable: true, get: function () { return social_1.recomputeLeaderboards; } });
+Object.defineProperty(exports, "submitChallenge", { enumerable: true, get: function () { return social_1.submitChallenge; } });
+Object.defineProperty(exports, "subscribeChallenge", { enumerable: true, get: function () { return social_1.subscribeChallenge; } });
+Object.defineProperty(exports, "superOrionCron", { enumerable: true, get: function () { return social_1.superOrionCron; } });
 //# sourceMappingURL=index.js.map

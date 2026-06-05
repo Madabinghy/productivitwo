@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.87', '5 juin 2026', [
+    (Icons.local_library_outlined, 'Nouveau : Bibliothèque de défis partagée ! Découvre des défis proposés par la communauté (organisés et notés par Orion), abonne-toi, et propose les tiens. Accès via l\'éclair ⚡ → « Bibliothèque »'),
+  ]),
   _Entry('5.86', '5 juin 2026', [
     (Icons.schedule, 'Programme du jour trié par heure : les défis programmés apparaissent désormais à leur créneau (ex. 6h, 7h) au lieu d\'être ajoutés en bas de la liste'),
   ]),
