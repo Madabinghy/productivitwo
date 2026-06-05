@@ -92,8 +92,8 @@ class _AppleSignInTileState extends State<AppleSignInTile> {
       builder: (ctx) => AlertDialog(
         title: const Text('Se déconnecter ?'),
         content: const Text(
-            'Vos données restent sur cet appareil. '
-            'Reconnectez-vous pour les synchroniser.'),
+            'Vos données sont sauvegardées sur votre compte. '
+            'Cet appareil sera nettoyé ; reconnectez-vous pour les retrouver.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -108,7 +108,15 @@ class _AppleSignInTileState extends State<AppleSignInTile> {
     setState(() => _loading = true);
     await widget.sync.signOut();
     await ProManager.logoutUser();
-    if (mounted) setState(() => _loading = false);
+    // Étanchéité entre comptes : on vide les données locales du compte qu'on
+    // quitte (elles restent dans le cloud, restaurées à la reconnexion) pour
+    // qu'elles ne fuitent pas vers le compte suivant sur le même appareil.
+    await FileStore().wipe();
+    if (mounted) {
+      widget.onDataChanged();
+    } else {
+      setState(() => _loading = false);
+    }
   }
 
   @override

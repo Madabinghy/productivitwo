@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.81', '5 juin 2026', [
+    (Icons.lock_outline, 'Étanchéité des comptes : la déconnexion nettoie désormais les données locales de l\'appareil — elles ne « débordent » plus sur le compte suivant connecté sur le même téléphone (tes données restent sauvegardées sur ton compte et sont restaurées à la reconnexion)'),
+  ]),
   _Entry('5.80', '4 juin 2026', [
     (Icons.apple, 'Correction majeure : la connexion avec Apple fonctionne à nouveau (le token Apple est désormais transmis complet à Firebase) — débloque l\'inscription/restauration via Apple'),
   ]),
