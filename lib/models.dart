@@ -666,7 +666,8 @@ class AppState {
   int challengesDone;          // total de défis relevés
   int challengeStreak;         // jours consécutifs avec ≥1 défi
   String? lastChallengeYmd;    // dernier jour (YYYYMMDD) où un défi a été relevé
-  int ganttActionsDoneTotal;   // compteur cumulatif d'actions Gantt cochées (XP)
+  Map<String, int> ganttActionsByDay;  // actions Gantt cochées par jour (XP)
+  Map<String, int> challengeWinsByDay; // défis relevés par jour (XP du jour)
 
   AppState({
     required this.domains,
@@ -711,7 +712,8 @@ class AppState {
     this.challengesDone = 0,
     this.challengeStreak = 0,
     this.lastChallengeYmd,
-    this.ganttActionsDoneTotal = 0,
+    Map<String, int>? ganttActionsByDay,
+    Map<String, int>? challengeWinsByDay,
     // ✅ NOUVEAU
     Map<String, List<String>>? nowSkippedByYmd,
     Map<String, List<String>>? nowDoneByYmd,
@@ -741,7 +743,9 @@ class AppState {
         todayItems = todayItems ?? <TodayItem>[],
         disabledBlocksByYmd = disabledBlocksByYmd ?? <String, List<String>>{},
         earnedBadges = earnedBadges ?? <EarnedBadge>[],
-        skippedChallengeDates = skippedChallengeDates ?? <String>[];
+        skippedChallengeDates = skippedChallengeDates ?? <String>[],
+        ganttActionsByDay = ganttActionsByDay ?? <String, int>{},
+        challengeWinsByDay = challengeWinsByDay ?? <String, int>{};
 
   Map<String, dynamic> toJson() => {
         'domains': domains.map((e) => e.toJson()).toList(),
@@ -784,7 +788,8 @@ class AppState {
         'challengesDone': challengesDone,
         'challengeStreak': challengeStreak,
         'lastChallengeYmd': lastChallengeYmd,
-        'ganttActionsDoneTotal': ganttActionsDoneTotal,
+        'ganttActionsByDay': ganttActionsByDay,
+        'challengeWinsByDay': challengeWinsByDay,
         'weeklyScoreTarget': weeklyScoreTarget,
         'notifHour': notifHour,
         'notifMinute': notifMinute,
@@ -880,7 +885,12 @@ class AppState {
       challengesDone: (j['challengesDone'] as int?) ?? 0,
       challengeStreak: (j['challengeStreak'] as int?) ?? 0,
       lastChallengeYmd: j['lastChallengeYmd'] as String?,
-      ganttActionsDoneTotal: (j['ganttActionsDoneTotal'] as int?) ?? 0,
+      ganttActionsByDay: (j['ganttActionsByDay'] as Map?)
+              ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ??
+          <String, int>{},
+      challengeWinsByDay: (j['challengeWinsByDay'] as Map?)
+              ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ??
+          <String, int>{},
       weeklyScoreTarget: (j['weeklyScoreTarget'] as int?) ?? 80,
       notifHour: (j['notifHour'] as int?) ?? 9,
       notifMinute: (j['notifMinute'] as int?) ?? 0,

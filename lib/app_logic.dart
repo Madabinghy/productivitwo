@@ -1787,6 +1787,8 @@ class AppLogic {
       state.lastChallengeYmd = todayYmd;
     }
     state.challengesDone += 1;
+    state.challengeWinsByDay[todayYmd] =
+        (state.challengeWinsByDay[todayYmd] ?? 0) + 1;
     onChange();
   }
 
@@ -1844,10 +1846,34 @@ class AppLogic {
       if (tgt > 0 && hp.value >= tgt) routineCompletions++;
     }
 
+    final ganttTotal =
+        state.ganttActionsByDay.values.fold(0, (a, b) => a + b);
     return hours +
         routineCompletions * 2 +
         state.challengesDone * 5 +
-        state.ganttActionsDoneTotal;
+        ganttTotal;
+  }
+
+  /// XP gagné un jour donné (pour « XP du jour » + courbe 7 jours).
+  /// temps 1/h · routine complétée 2 · défi 5 · action Gantt 1.
+  int xpForDay(DateTime day) {
+    final d = DateTime(day.year, day.month, day.day);
+    final ymd =
+        '${d.year}${d.month.toString().padLeft(2, '0')}${d.day.toString().padLeft(2, '0')}';
+    final hours = totalForDay(d).inMinutes ~/ 60;
+
+    final byId = {for (final a in state.activities) a.id: a};
+    int routines = 0;
+    for (final hp in state.habitProgress) {
+      if (hp.yyyymmdd != ymd) continue;
+      final a = byId[hp.activityId];
+      if (a == null || !a.isHabit) continue;
+      final tgt = activeHabitTarget(a);
+      if (tgt > 0 && hp.value >= tgt) routines++;
+    }
+    final challenges = state.challengeWinsByDay[ymd] ?? 0;
+    final gantt = state.ganttActionsByDay[ymd] ?? 0;
+    return hours + routines * 2 + challenges * 5 + gantt;
   }
 
   static String _roman(int n) {

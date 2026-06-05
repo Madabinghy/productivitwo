@@ -341,9 +341,13 @@ class _FocusViewState extends State<FocusView> {
       action.done = value;
       action.doneAt = value ? DateTime.now() : null;
     });
-    // XP : action Gantt cochée (compteur cumulatif, jamais décrémenté).
+    // XP : action Gantt cochée (par jour, jamais décrémenté).
     if (value && !wasDone) {
-      widget.logic.state.ganttActionsDoneTotal++;
+      final now = DateTime.now();
+      final ymd =
+          '${now.year.toString().padLeft(4, '0')}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+      final m = widget.logic.state.ganttActionsByDay;
+      m[ymd] = (m[ymd] ?? 0) + 1;
       widget.logic.onChange();
     }
     final sync = FirestoreSync();

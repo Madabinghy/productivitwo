@@ -90,6 +90,26 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
           _ScoreCard(score: score, scorePct: scorePct, cs: cs),
           const SizedBox(height: 20),
 
+          // ── XP du jour ────────────────────────────────────────────────────
+          Builder(builder: (_) {
+            final todayXp = logic.xpForDay(today);
+            if (todayXp <= 0) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 20),
+              child: Row(
+                children: [
+                  const Text('⭐', style: TextStyle(fontSize: 18)),
+                  const SizedBox(width: 8),
+                  Text('+$todayXp XP aujourd\'hui',
+                      style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: cs.primary)),
+                ],
+              ),
+            );
+          }),
+
           // ── Sous-actions Gantt cochées aujourd'hui ────────────────────────
           if (ganttDone.isNotEmpty) ...[
             _sectionHeader(

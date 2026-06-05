@@ -3972,11 +3972,9 @@ class _AppRootState extends State<AppRoot>
                   // Section niveau global
                   Builder(builder: (ctx) {
                     final lv = logic.userLevelData();
-                    final isMax = lv.level >= 10;
-                    final progress = isMax
-                        ? 1.0
-                        : (lv.xp - lv.xpCurrent) /
-                            (lv.xpNext - lv.xpCurrent).clamp(1, 99999);
+                    // Prestige Élite I/II… : il y a toujours un palier suivant.
+                    final progress = (lv.xp - lv.xpCurrent) /
+                        (lv.xpNext - lv.xpCurrent).clamp(1, 99999);
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -4064,14 +4062,68 @@ class _AppRootState extends State<AppRoot>
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    isMax
-                                        ? '${lv.xp} XP — niveau max !'
-                                        : '${lv.xp} / ${lv.xpNext} XP',
+                                    '${lv.xp} / ${lv.xpNext} XP',
                                     style: TextStyle(
                                       fontSize: 11,
                                       color: cs.onSurface.withValues(alpha: .5),
                                     ),
                                   ),
+                                  const SizedBox(height: 10),
+                                  // XP du jour + courbe 7 jours
+                                  Builder(builder: (_) {
+                                    final now = DateTime.now();
+                                    final today = logic.xpForDay(now);
+                                    final vals = List.generate(
+                                        7,
+                                        (i) => logic.xpForDay(now
+                                            .subtract(Duration(days: 6 - i))));
+                                    final maxV = vals
+                                        .fold(1, (a, b) => b > a ? b : a);
+                                    return Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text("Aujourd'hui : +$today XP",
+                                            style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w700,
+                                                color: cs.primary)),
+                                        const SizedBox(height: 6),
+                                        SizedBox(
+                                          height: 26,
+                                          child: Row(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.end,
+                                            children: [
+                                              for (int i = 0; i < 7; i++) ...[
+                                                Expanded(
+                                                  child: Container(
+                                                    height: (24 *
+                                                            vals[i] /
+                                                            maxV)
+                                                        .clamp(2, 24)
+                                                        .toDouble(),
+                                                    decoration: BoxDecoration(
+                                                      color: i == 6
+                                                          ? cs.primary
+                                                          : cs.primary
+                                                              .withValues(
+                                                                  alpha: .35),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              2),
+                                                    ),
+                                                  ),
+                                                ),
+                                                if (i < 6)
+                                                  const SizedBox(width: 3),
+                                              ],
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  }),
                                 ],
                               ),
                             ),

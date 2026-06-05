@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.83', '5 juin 2026', [
+    (Icons.show_chart, 'Gamification : ton bloc niveau affiche maintenant l\'XP gagné aujourd\'hui et une mini-courbe des 7 derniers jours ; le résumé du jour montre « +X XP aujourd\'hui »'),
+  ]),
   _Entry('5.82', '5 juin 2026', [
     (Icons.star_rounded, 'XP enrichi : tu gagnes des points en continu — 1 XP / heure loggée, 2 / routine complétée, 5 / défi relevé, 1 / action de projet cochée — qui s\'ajoutent à l\'XP des badges et font monter ton niveau'),
     (Icons.workspace_premium_outlined, 'Niveaux prolongés : au-delà d\'Élite, tu passes Élite I, II, III… (toujours un palier à viser). Total d\'XP affiché discrètement en haut de l\'écran ⭐'),
