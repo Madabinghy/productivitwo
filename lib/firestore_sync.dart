@@ -54,6 +54,9 @@ class FirestoreSync {
     final oauthCredential = OAuthProvider('apple.com').credential(
       idToken: idToken,
       rawNonce: rawNonce,
+      // firebase_auth ≥ 5.2 exige aussi l'accessToken (= authorizationCode Apple) :
+      // sans lui, Firebase rejette avec « Invalid OAuth response from apple.com ».
+      accessToken: appleCredential.authorizationCode,
     );
 
     // Connexion directe sans linkWithCredential :

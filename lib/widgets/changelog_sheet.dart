@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.80', '4 juin 2026', [
+    (Icons.apple, 'Correction majeure : la connexion avec Apple fonctionne à nouveau (le token Apple est désormais transmis complet à Firebase) — débloque l\'inscription/restauration via Apple'),
+  ]),
   _Entry('5.79', '4 juin 2026', [
     (Icons.keyboard_outlined, 'Inbox : modifier une idée ne passe plus sous le clavier — le champ reste visible, et l\'édition est désormais multi-ligne pour les idées longues'),
   ]),
