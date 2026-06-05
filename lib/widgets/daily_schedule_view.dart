@@ -93,21 +93,6 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     }
   }
 
-  Future<void> _reorder(int oldIndex, int newIndex) async {
-    final schedule = _schedule;
-    if (schedule == null) return;
-    if (newIndex > oldIndex) newIndex--;
-    final visible = schedule.blocks.where((b) => b.status != 'deleted').toList();
-    final deleted = schedule.blocks.where((b) => b.status == 'deleted').toList();
-    final moved = visible.removeAt(oldIndex);
-    visible.insert(newIndex, moved);
-    await _sync.saveDailySchedule(DailySchedule(
-      date: schedule.date,
-      generatedBy: schedule.generatedBy,
-      generatedAt: schedule.generatedAt,
-      blocks: [...visible, ...deleted],
-    ));
-  }
 
   Future<void> _saveBlock(ScheduleBlock updated) async {
     final schedule = _schedule;
@@ -126,7 +111,10 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final visible = _schedule?.blocks.where((b) => b.status != 'deleted').toList() ?? [];
+    // Tri chronologique : les défis (ajoutés en fin de tableau) se placent à
+    // leur heure dans le programme, pas en bas de liste.
+    final visible = (_schedule?.blocks.where((b) => b.status != 'deleted').toList() ?? [])
+      ..sort((a, b) => a.startTime.compareTo(b.startTime));
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeAutoWin());
 
     return Column(
@@ -154,18 +142,10 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         if (visible.isEmpty)
           _buildEmptyState(cs)
         else
-          ReorderableListView.builder(
+          ListView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: visible.length,
-            onReorder: _reorder,
-            proxyDecorator: (child, index, anim) => Material(
-              color: Colors.transparent,
-              elevation: 6,
-              shadowColor: Colors.black26,
-              borderRadius: BorderRadius.circular(12),
-              child: child,
-            ),
             itemBuilder: (context, i) =>
                 _buildBlock(context, cs, visible[i], key: ValueKey(visible[i].id)),
           ),
