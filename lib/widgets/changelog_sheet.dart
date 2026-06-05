@@ -10,6 +10,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.82', '5 juin 2026', [
+    (Icons.star_rounded, 'XP enrichi : tu gagnes des points en continu — 1 XP / heure loggée, 2 / routine complétée, 5 / défi relevé, 1 / action de projet cochée — qui s\'ajoutent à l\'XP des badges et font monter ton niveau'),
+    (Icons.workspace_premium_outlined, 'Niveaux prolongés : au-delà d\'Élite, tu passes Élite I, II, III… (toujours un palier à viser). Total d\'XP affiché discrètement en haut de l\'écran ⭐'),
+  ]),
   _Entry('5.81', '5 juin 2026', [
     (Icons.lock_outline, 'Étanchéité des comptes : la déconnexion nettoie désormais les données locales de l\'appareil — elles ne « débordent » plus sur le compte suivant connecté sur le même téléphone (tes données restent sauvegardées sur ton compte et sont restaurées à la reconnexion)'),
   ]),

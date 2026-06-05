@@ -4485,6 +4485,27 @@ class _AppRootState extends State<AppRoot>
               },
             ),
             const Spacer(),
+            // Chip XP discret (total cumulé)
+            Builder(builder: (ctx) {
+              final lv = logic.userLevelData();
+              final cs = Theme.of(ctx).colorScheme;
+              return Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest.withOpacity(.5),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text('⭐ ${lv.xp}',
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: cs.onSurface.withOpacity(.7))),
+                ),
+              );
+            }),
             _buildDailyScoreChip(context),
             IconButton(
               icon: const Icon(Icons.bolt_rounded, size: 20),

@@ -666,6 +666,7 @@ class AppState {
   int challengesDone;          // total de défis relevés
   int challengeStreak;         // jours consécutifs avec ≥1 défi
   String? lastChallengeYmd;    // dernier jour (YYYYMMDD) où un défi a été relevé
+  int ganttActionsDoneTotal;   // compteur cumulatif d'actions Gantt cochées (XP)
 
   AppState({
     required this.domains,
@@ -710,6 +711,7 @@ class AppState {
     this.challengesDone = 0,
     this.challengeStreak = 0,
     this.lastChallengeYmd,
+    this.ganttActionsDoneTotal = 0,
     // ✅ NOUVEAU
     Map<String, List<String>>? nowSkippedByYmd,
     Map<String, List<String>>? nowDoneByYmd,
@@ -782,6 +784,7 @@ class AppState {
         'challengesDone': challengesDone,
         'challengeStreak': challengeStreak,
         'lastChallengeYmd': lastChallengeYmd,
+        'ganttActionsDoneTotal': ganttActionsDoneTotal,
         'weeklyScoreTarget': weeklyScoreTarget,
         'notifHour': notifHour,
         'notifMinute': notifMinute,
@@ -877,6 +880,7 @@ class AppState {
       challengesDone: (j['challengesDone'] as int?) ?? 0,
       challengeStreak: (j['challengeStreak'] as int?) ?? 0,
       lastChallengeYmd: j['lastChallengeYmd'] as String?,
+      ganttActionsDoneTotal: (j['ganttActionsDoneTotal'] as int?) ?? 0,
       weeklyScoreTarget: (j['weeklyScoreTarget'] as int?) ?? 80,
       notifHour: (j['notifHour'] as int?) ?? 9,
       notifMinute: (j['notifMinute'] as int?) ?? 0,

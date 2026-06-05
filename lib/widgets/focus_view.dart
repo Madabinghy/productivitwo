@@ -336,10 +336,16 @@ class _FocusViewState extends State<FocusView> {
     final task = widget.focusTask;
     final project = widget.focusProject;
     if (task == null || project == null) return;
+    final wasDone = action.done;
     setState(() {
       action.done = value;
       action.doneAt = value ? DateTime.now() : null;
     });
+    // XP : action Gantt cochée (compteur cumulatif, jamais décrémenté).
+    if (value && !wasDone) {
+      widget.logic.state.ganttActionsDoneTotal++;
+      widget.logic.onChange();
+    }
     final sync = FirestoreSync();
     await sync.saveProjectTasks(project.id, project.tasks);
   }

@@ -1825,9 +1825,70 @@ class AppLogic {
     }
   }
 
-  /// XP total, niveau (1-10), titre, XP du palier courant, XP du palier suivant.
+  /// XP « action » cumulatif (en plus de l'XP de badges) :
+  /// temps 1/h · routine complétée 2 · défi 5 · action Gantt 1.
+  int actionXp() {
+    int totalMin = 0;
+    for (final s in state.sessions) {
+      final end = s.endAt ?? DateTime.now();
+      totalMin += end.difference(s.startAt).inMinutes;
+    }
+    final hours = totalMin ~/ 60;
+
+    final byId = {for (final a in state.activities) a.id: a};
+    int routineCompletions = 0;
+    for (final hp in state.habitProgress) {
+      final a = byId[hp.activityId];
+      if (a == null || !a.isHabit) continue;
+      final tgt = activeHabitTarget(a);
+      if (tgt > 0 && hp.value >= tgt) routineCompletions++;
+    }
+
+    return hours +
+        routineCompletions * 2 +
+        state.challengesDone * 5 +
+        state.ganttActionsDoneTotal;
+  }
+
+  static String _roman(int n) {
+    const numerals = [
+      [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I'],
+    ];
+    var v = n;
+    final sb = StringBuffer();
+    for (final pair in numerals) {
+      final value = pair[0] as int;
+      final sym = pair[1] as String;
+      while (v >= value) {
+        sb.write(sym);
+        v -= value;
+      }
+    }
+    return sb.toString();
+  }
+
+  /// XP total (badges + actions), niveau + titre, bornes du palier courant.
+  /// Niveaux 1-10 (Débutant→Élite) ; au-delà de 7000 : prestige Élite I/II/…
+  /// par crans de 2000 XP (toujours un palier suivant).
   ({int xp, int level, String title, int xpCurrent, int xpNext}) userLevelData() {
-    final xp = state.earnedBadges.fold(0, (sum, b) => sum + _xpForBadge(b.id));
+    final badgeXp = state.earnedBadges.fold(0, (sum, b) => sum + _xpForBadge(b.id));
+    final xp = badgeXp + actionXp();
+
+    const eliteThreshold = 7000;
+    const prestigeStep = 2000;
+
+    if (xp >= eliteThreshold) {
+      final prestige = (xp - eliteThreshold) ~/ prestigeStep; // 0,1,2…
+      final title = prestige == 0 ? 'Élite' : 'Élite ${_roman(prestige)}';
+      final xpCurrent = eliteThreshold + prestige * prestigeStep;
+      return (
+        xp: xp,
+        level: 10 + prestige,
+        title: title,
+        xpCurrent: xpCurrent,
+        xpNext: xpCurrent + prestigeStep,
+      );
+    }
 
     int level = 1;
     for (int i = _levelThresholds.length - 1; i >= 0; i--) {
@@ -1836,17 +1897,12 @@ class AppLogic {
         break;
       }
     }
-
-    final isMax = level >= _levelThresholds.length;
-    final xpCurrent = _levelThresholds[level - 1];
-    final xpNext = isMax ? xp : _levelThresholds[level];
-
     return (
       xp: xp,
       level: level,
       title: _levelTitles[level - 1],
-      xpCurrent: xpCurrent,
-      xpNext: xpNext,
+      xpCurrent: _levelThresholds[level - 1],
+      xpNext: _levelThresholds[level],
     );
   }
 
