@@ -61,10 +61,12 @@ class _AppleSignInTileState extends State<AppleSignInTile> {
         if (mounted) setState(() => _loading = false);
         return;
       }
+      // Diagnostic : on affiche le code + message Apple exacts (rejet App Review
+      // SIWA) pour identifier la cause précise depuis un build TestFlight.
       if (mounted) {
         setState(() {
           _loading = false;
-          _error = 'Connexion Apple impossible. Réessaie.';
+          _error = 'Apple [${e.code.name}] : ${e.message}';
         });
       }
     } on FirebaseAuthException catch (e) {
@@ -73,14 +75,14 @@ class _AppleSignInTileState extends State<AppleSignInTile> {
           _loading = false;
           _error = e.code == 'account-exists-with-different-credential'
               ? 'Un compte existe déjà avec cet email. Connecte-toi par lien email.'
-              : 'Connexion impossible (${e.code}). Réessaie.';
+              : 'Firebase [${e.code}] : ${e.message ?? ''}';
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _loading = false;
-          _error = e.toString().replaceAll('Exception: ', '');
+          _error = 'Erreur : ${e.toString().replaceAll('Exception: ', '')}';
         });
       }
     }
