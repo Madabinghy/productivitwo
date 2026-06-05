@@ -12,6 +12,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
 import 'package:productivitwo_v1/widgets/alarm_ringtone_sheet.dart';
 import 'package:productivitwo_v1/widgets/scheduled_challenges_sheet.dart';
+import 'package:productivitwo_v1/widgets/leaderboard_sheet.dart';
 import 'package:productivitwo_v1/widgets/appbar_routines_summery.dart';
 import 'package:productivitwo_v1/widgets/filters_sheet.dart';
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
@@ -4543,18 +4544,21 @@ class _AppRootState extends State<AppRoot>
               final cs = Theme.of(ctx).colorScheme;
               return Padding(
                 padding: const EdgeInsets.only(right: 4),
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: cs.surfaceContainerHighest.withOpacity(.5),
-                    borderRadius: BorderRadius.circular(999),
+                child: GestureDetector(
+                  onTap: () => showLeaderboardSheet(context, _sync),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHighest.withOpacity(.5),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text('⭐ ${lv.xp}',
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: cs.onSurface.withOpacity(.7))),
                   ),
-                  child: Text('⭐ ${lv.xp}',
-                      style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: cs.onSurface.withOpacity(.7))),
                 ),
               );
             }),

@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.84', '5 juin 2026', [
+    (Icons.emoji_events_outlined, 'Nouveau : Classement XP ! Choisis un pseudo, rejoins le classement (opt-in) et compare ton XP avec les autres — par semaine, par mois ou en total. Tape l\'étoile ⭐ en haut pour l\'ouvrir'),
+  ]),
   _Entry('5.83', '5 juin 2026', [
     (Icons.show_chart, 'Gamification : ton bloc niveau affiche maintenant l\'XP gagné aujourd\'hui et une mini-courbe des 7 derniers jours ; le résumé du jour montre « +X XP aujourd\'hui »'),
   ]),

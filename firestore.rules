@@ -8,5 +8,20 @@ service cloud.firestore {
     match /formation_access/{userId} {
       allow read: if request.auth != null && request.auth.uid == userId;
     }
+
+    // ── Couche sociale (Phase 1) ─────────────────────────────────────────────
+    // Lecture publique des profils/classements opt-in ; écriture serveur only.
+    match /profiles/{uid} {
+      allow read: if resource.data.optedIn == true;
+      allow write: if false;
+    }
+    match /pseudos/{p} {
+      allow read: if true;   // vérifier la dispo d'un pseudo
+      allow write: if false;
+    }
+    match /leaderboard_entries/{uid} {
+      allow read: if resource.data.optedIn == true;
+      allow write: if false;
+    }
   }
 }

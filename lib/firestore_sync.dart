@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
 import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -218,6 +219,10 @@ class FirestoreSync {
         challengesDone: meta['challengesDone'] ?? 0,
         challengeStreak: meta['challengeStreak'] ?? 0,
         lastChallengeYmd: meta['lastChallengeYmd'] as String?,
+        ganttActionsByDay: (meta['ganttActionsByDay'] as Map?)
+            ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
+        challengeWinsByDay: (meta['challengeWinsByDay'] as Map?)
+            ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
         weeklyScoreTarget: meta['weeklyScoreTarget'] ?? 80,
         notifHour: meta['notifHour'] ?? 9,
         notifMinute: meta['notifMinute'] ?? 0,
@@ -349,6 +354,8 @@ class FirestoreSync {
         'challengesDone': st.challengesDone,
         'challengeStreak': st.challengeStreak,
         'lastChallengeYmd': st.lastChallengeYmd,
+        'ganttActionsByDay': st.ganttActionsByDay,
+        'challengeWinsByDay': st.challengeWinsByDay,
         'weeklyScoreTarget': st.weeklyScoreTarget,
         'notifHour': st.notifHour,
         'notifMinute': st.notifMinute,
@@ -793,6 +800,68 @@ class FirestoreSync {
       return c != 0 ? c : a.block.startTime.compareTo(b.block.startTime);
     });
     return out;
+  }
+
+  // ── Social (Phase 1) : pseudo + classement XP ───────────────────────────────
+  static const _claimPseudoUrl =
+      'https://claimpseudo-dzos75b65q-uc.a.run.app';
+
+  /// Réserve/définit un pseudo + opt-in classement. Retourne null si OK, sinon
+  /// un message d'erreur (pseudo pris, invalide…).
+  Future<String?> claimPseudo(String pseudo, bool optedIn) async {
+    final user = _auth.currentUser;
+    if (user == null) return 'Non connecté';
+    try {
+      final idToken = await user.getIdToken();
+      final res = await http.post(
+        Uri.parse(_claimPseudoUrl),
+        headers: {
+          'Authorization': 'Bearer $idToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'pseudo': pseudo, 'optedIn': optedIn}),
+      );
+      if (res.statusCode == 200) return null;
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      return (body['error'] as String?) ?? 'Erreur (${res.statusCode})';
+    } catch (e) {
+      return 'Erreur réseau';
+    }
+  }
+
+  /// Profil public de l'utilisateur courant (pseudo + opt-in), ou null.
+  Future<Map<String, dynamic>?> fetchMyProfile() async {
+    if (uid == null) return null;
+    try {
+      final snap = await _db.doc('profiles/$uid').get();
+      return snap.exists ? snap.data() as Map<String, dynamic> : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Top 50 du classement pour une période : 'xpTotal' | 'xpWeek' | 'xpMonth'.
+  /// Retourne [{uid, pseudo, xp, level}], trié décroissant.
+  Future<List<Map<String, dynamic>>> fetchLeaderboard(String field) async {
+    try {
+      final snap = await _db
+          .collection('leaderboard_entries')
+          .where('optedIn', isEqualTo: true)
+          .orderBy(field, descending: true)
+          .limit(50)
+          .get();
+      return snap.docs.map((d) {
+        final m = d.data();
+        return {
+          'uid': d.id,
+          'pseudo': m['pseudo'] ?? '—',
+          'xp': (m[field] as num?)?.toInt() ?? 0,
+          'level': (m['level'] as num?)?.toInt() ?? 1,
+        };
+      }).toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   /// Inscrit l'utilisateur au cron ORION (fire-and-forget).

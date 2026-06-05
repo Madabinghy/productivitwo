@@ -2905,3 +2905,6 @@ export const applyFormationProfile = onRequest(
     res.status(200).json({ success: true, uid });
   }
 );
+
+// ── Couche sociale (Phase 1) ────────────────────────────────────────────────
+export { claimPseudo, recomputeLeaderboards } from "./social";

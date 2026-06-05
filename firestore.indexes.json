@@ -1,0 +1,29 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "leaderboard_entries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "optedIn", "order": "ASCENDING" },
+        { "fieldPath": "xpTotal", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "leaderboard_entries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "optedIn", "order": "ASCENDING" },
+        { "fieldPath": "xpWeek", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "leaderboard_entries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "optedIn", "order": "ASCENDING" },
+        { "fieldPath": "xpMonth", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
