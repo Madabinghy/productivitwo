@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.96-test', '9 juin 2026', [
+    (Icons.science_outlined, 'Build de test : dans « Mon or », un encart « 🧪 Test expédition » permet de comparer les deux versions de la mini-carte de déblocage (V1 chemin à nœuds · 2D explorable) sans condition d\'XP. Temporaire, pour choisir la direction'),
+  ]),
   _Entry('5.95', '9 juin 2026', [
     (Icons.map_outlined, 'Nouveau : l\'Expédition ! Atteindre l\'XP d\'un niveau ne suffit plus — son titre reste secret. Pour le débloquer, tu traverses une petite carte sinueuse : chaque pas se franchit avec un outil (🥾 pas, ⛏️ pioche, 🔑 clé, 🪏 pelle) acheté en boutique. Des forks te font arbitrer (route courte chère vs longue bon marché), des trésors récompensent les détours. Le niveau se gagne, il n\'est plus juste « atteint »'),
     (Icons.handyman_outlined, 'Outils d\'expédition en boutique : achète tes pas/pioches/clés/pelles pour avancer sur la carte. Tu continues à gagner XP et or normalement pendant l\'exploration — la carte est l\'objectif que tu finances en bossant tes routines et projets'),

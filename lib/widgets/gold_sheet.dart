@@ -5,6 +5,7 @@ import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/gold_purchase.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/expedition_sheet.dart';
+import 'package:productivitwo_v1/widgets/expedition_map_game.dart';
 import 'package:productivitwo_v1/widgets/gold_shop_sheet.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
 
@@ -190,6 +191,46 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
               ]),
             ),
           ],
+          // 🧪 BUILD DE TEST — compare les 2 versions d'expédition, sans gate XP.
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withOpacity(.4),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: cs.outlineVariant.withOpacity(.6)),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('🧪 Test expédition · niveau ${logic.effectiveLevel() + 1}',
+                  style: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w700)),
+              Text('Compare les deux versions sans condition d\'XP (build de test).',
+                  style: TextStyle(
+                      fontSize: 11, color: cs.onSurface.withOpacity(.55))),
+              const SizedBox(height: 8),
+              Row(children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () async {
+                      await showExpeditionSheet(context, logic, sync);
+                      if (context.mounted) setState(() {});
+                    },
+                    child: const Text('V1 · chemin'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () async {
+                      await showExpeditionGame(context, logic, sync);
+                      if (context.mounted) setState(() {});
+                    },
+                    child: const Text('2D · carte'),
+                  ),
+                ),
+              ]),
+            ]),
+          ),
           const SizedBox(height: 20),
 
           // ── Routines du jour ──────────────────────────────────────────────
