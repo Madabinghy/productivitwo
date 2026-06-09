@@ -3,6 +3,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/widgets/gold_icon.dart';
 
 /// Boutique d'Or (Phase D) : dépense de pièces d'or en consommables stratégiques
 /// (gel de série, sursis, joker) et cosmétiques (titres). Achats transactionnels.
@@ -164,9 +165,8 @@ class _GoldShopSheetState extends State<_GoldShopSheet> {
             const Text('Boutique',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const Spacer(),
-            Text('$_gold 🪙',
-                style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.bold, color: _kGold)),
+            goldAmount('$_gold',
+                fontSize: 16, weight: FontWeight.bold, color: _kGold),
           ]),
           const SizedBox(height: 4),
           Text('Dépense ton or pour te protéger des pertes.',
@@ -177,7 +177,7 @@ class _GoldShopSheetState extends State<_GoldShopSheet> {
           _ShopItem(
             emoji: '🧊',
             title: 'Gel de série',
-            subtitle: 'Protège une routine d\'un jour off (annule le −1 🪙/j).',
+            subtitle: 'Protège une routine d\'un jour off (annule le −1 or/j).',
             price: GoldEconomy.shopGel,
             owned: _inv('gel'),
             affordable: _gold >= GoldEconomy.shopGel,
@@ -315,7 +315,11 @@ class _ShopItem extends StatelessWidget {
                 visualDensity: VisualDensity.compact,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 4)),
-            child: Text('$price 🪙', style: const TextStyle(fontSize: 12)),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Text('$price', style: const TextStyle(fontSize: 12)),
+              const SizedBox(width: 3),
+              const GoldIcon(size: 13, color: Colors.white),
+            ]),
           ),
         ]),
       ]),
@@ -373,7 +377,11 @@ class _TitleItem extends StatelessWidget {
                 visualDensity: VisualDensity.compact,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 4)),
-            child: Text('$price 🪙', style: const TextStyle(fontSize: 12)),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Text('$price', style: const TextStyle(fontSize: 12)),
+              const SizedBox(width: 3),
+              const GoldIcon(size: 13, color: Colors.white),
+            ]),
           ),
       ]),
     );

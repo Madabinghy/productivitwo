@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/widgets/gold_sheet.dart';
+import 'package:productivitwo_v1/widgets/gold_icon.dart';
 import 'package:productivitwo_v1/widgets/leaderboard_sheet.dart';
 import 'package:productivitwo_v1/widgets/scheduled_challenges_sheet.dart';
 
@@ -46,11 +47,17 @@ class _GamificationHub extends StatelessWidget {
             labelColor: cs.primary,
             unselectedLabelColor: cs.onSurface.withValues(alpha: .55),
             indicatorColor: cs.primary,
-            tabs: const [
-              Tab(text: '🪙 Mon or'),
-              Tab(text: '🎯 Score'),
-              Tab(text: '🏆 Classement'),
-              Tab(text: '🔥 Défis'),
+            tabs: [
+              Tab(
+                child: Row(mainAxisSize: MainAxisSize.min, children: const [
+                  GoldIcon(size: 15),
+                  SizedBox(width: 5),
+                  Text('Mon or'),
+                ]),
+              ),
+              const Tab(text: '🎯 Score'),
+              const Tab(text: '🏆 Classement'),
+              const Tab(text: '🔥 Défis'),
             ],
           ),
           Expanded(

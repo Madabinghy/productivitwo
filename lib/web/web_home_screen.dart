@@ -2912,6 +2912,7 @@ class _ProjectCard extends StatelessWidget {
   final List<Map<String, dynamic>> documents;
   final VoidCallback onTap;
   final VoidCallback? onArchive;
+  final VoidCallback? onDelete;
   final FirestoreSync sync;
   final VoidCallback? onDocumentDeleted;
   const _ProjectCard({
@@ -2921,8 +2922,37 @@ class _ProjectCard extends StatelessWidget {
     required this.onTap,
     required this.sync,
     this.onArchive,
+    this.onDelete,
     this.onDocumentDeleted,
   });
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    final cs = Theme.of(context).colorScheme;
+    final billed = project.status != 'draft';
+    final actions = project.tasks.fold<int>(0, (s, t) => s + t.actions.length);
+    final cost = GoldEconomy.deleteProjectCost(project.tasks.length, actions);
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer le projet ?'),
+        content: Text(
+          'Le projet « ${project.title} » sera supprimé définitivement.'
+          '${billed && cost > 0 ? ' Coût : $cost or (selon son contenu).' : ''}',
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annuler')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: cs.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(billed && cost > 0 ? 'Supprimer (−$cost or)' : 'Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) onDelete?.call();
+  }
 
   String _fmt(DateTime d) {
     const m = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin', 'juil', 'aoû', 'sep', 'oct', 'nov', 'déc'];
@@ -2973,6 +3003,15 @@ class _ProjectCard extends StatelessWidget {
                       tooltip: 'Mettre en veille',
                       visualDensity: VisualDensity.compact,
                       onPressed: onArchive,
+                    ),
+                  ],
+                  if (onDelete != null) ...[
+                    IconButton(
+                      icon: Icon(Icons.delete_outline,
+                          size: 16, color: cs.error.withOpacity(0.45)),
+                      tooltip: 'Supprimer',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => _confirmDelete(context),
                     ),
                   ],
                   const SizedBox(width: 4),
@@ -3241,7 +3280,7 @@ class _ArchivedProjectCard extends StatelessWidget {
                       title: const Text('Supprimer définitivement ?'),
                       content: Text(
                         'Le projet "${project.title}" sera supprimé définitivement. '
-                        'Cette action est irréversible et coûte $cost 🪙 (selon son contenu).',
+                        'Cette action est irréversible et coûte $cost or (selon son contenu).',
                       ),
                       actions: [
                         TextButton(
@@ -3252,7 +3291,7 @@ class _ArchivedProjectCard extends StatelessWidget {
                           style: FilledButton.styleFrom(
                               backgroundColor: cs.error),
                           onPressed: () => Navigator.pop(ctx, true),
-                          child: Text('Supprimer (−$cost 🪙)'),
+                          child: Text('Supprimer (−$cost or)'),
                         ),
                       ],
                     ),
@@ -5504,7 +5543,9 @@ class _SimpleProjectsViewState extends State<_SimpleProjectsView> {
     // Coût d'or : proportionnel au contenu (déduction douce). Un joker l'annule.
     final actions = p.tasks.fold<int>(0, (s, t) => s + t.actions.length);
     final cost = GoldEconomy.deleteProjectCost(p.tasks.length, actions);
-    if (cost > 0 && p.status == 'active') {
+    // Brouillon = gratuit (jamais entré dans l'économie) ; tout projet réel
+    // (actif / terminé / archivé) coûte à supprimer — « tu paies le ménage ».
+    if (cost > 0 && p.status != 'draft') {
       final usedJoker = await widget.sync.consumeJoker();
       if (usedJoker) {
         if (mounted) {
@@ -5611,6 +5652,7 @@ class _SimpleProjectsViewState extends State<_SimpleProjectsView> {
               sync: widget.sync,
               onTap: () => openGantt(p),
               onArchive: () => _archiveProject(p, true),
+              onDelete: () => _deleteProject(p),
               onDocumentDeleted: widget.onRefresh,
             ),
             const SizedBox(height: 10),
@@ -5648,6 +5690,7 @@ class _SimpleProjectsViewState extends State<_SimpleProjectsView> {
                   sync: widget.sync,
                   onTap: () => openGantt(p),
                   onArchive: () => _archiveProject(p, true),
+                  onDelete: () => _deleteProject(p),
                   onDocumentDeleted: widget.onRefresh,
                 ),
                 const SizedBox(height: 10),

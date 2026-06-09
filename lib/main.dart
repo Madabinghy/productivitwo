@@ -52,6 +52,7 @@ import 'package:productivitwo_v1/widgets/proposals_sheet.dart';
 import 'package:productivitwo_v1/widgets/weekly_review_sheet.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/widgets/gamification_hub_sheet.dart';
+import 'package:productivitwo_v1/widgets/gold_icon.dart';
 import 'package:productivitwo_v1/widgets/orion_screen.dart';
 import 'package:productivitwo_v1/widgets/focus_view.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
@@ -4597,7 +4598,7 @@ class _AppRootState extends State<AppRoot>
           scoreTab: (ctx) => _scoreHubTab(ctx, done, total));
     }
 
-    // Indicateur composite : ⭐ gains du jour · anneau de score (sans %) · 🪙 net
+    // Indicateur composite : ⭐ gains du jour · anneau de score (sans %) · pièce d'or net
     // projeté ce soir. Tap → hub gamification (Mon or / Score / Classement / Défis).
     Widget _buildGamificationIndicator(BuildContext context) {
       final cs = Theme.of(context).colorScheme;
@@ -4646,7 +4647,9 @@ class _AppRootState extends State<AppRoot>
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Text('🪙 ${net >= 0 ? '+' : '−'}${net.abs()}',
+                  const GoldIcon(size: 13),
+                  const SizedBox(width: 3),
+                  Text('${net >= 0 ? '+' : '−'}${net.abs()}',
                       style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w800,

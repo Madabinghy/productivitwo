@@ -10,9 +10,15 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.92', '9 juin 2026', [
+    (Icons.delete_sweep_outlined, 'Suppression de projet repensée : « Mettre en veille » garde ton historique gratuitement ; « Supprimer » (désormais possible directement, sans archiver d\'abord) efface définitivement et coûte de l\'or — sauf pour un brouillon. Tu paies pour faire le ménage, pas pour ranger'),
+    (Icons.monetization_on_outlined, 'L\'or s\'affiche maintenant avec une vraie pièce dorée (au lieu de la pièce grise)'),
+    (Icons.tips_and_updates_outlined, 'Onglet « Mon or » allégé : les routines/​tâches qui te coûtent sont listées de façon compacte, avec une pastille ⓘ qui explique le principe'),
+    (Icons.local_library_outlined, 'Bibliothèque de défis : pour partager un défi, tu choisis désormais l\'un de tes défis actifs au lieu d\'en réécrire un de zéro'),
+  ]),
   _Entry('5.91', '9 juin 2026', [
     (Icons.edit_note_outlined, 'Nouveau : mode planification ! Un projet créé (par toi ou par ORION) naît en « brouillon » — tu le retravailles librement, sans rien gagner ni perdre en or, et hors score. Quand il te convient, « Valider le plan » l\'active : il compte alors vraiment. Repère-les au badge « Plan »'),
-    (Icons.workspace_premium_outlined, 'Barre du haut simplifiée : un seul indicateur regroupe tes gains du jour ⭐, ton score (l\'anneau) et ton or net projeté pour ce soir 🪙 (vert si tu finis dans le positif, rouge sinon)'),
+    (Icons.workspace_premium_outlined, 'Barre du haut simplifiée : un seul indicateur regroupe tes gains du jour ⭐, ton score (l\'anneau) et ton or net projeté pour ce soir (vert si tu finis dans le positif, rouge sinon)'),
     (Icons.dashboard_customize_outlined, 'Nouveau hub gamification : tape l\'indicateur pour ouvrir un seul écran à onglets — Mon or · Score · Classement · Défis (avec accès aux statistiques complètes). Fini les boutons éparpillés'),
   ]),
   _Entry('5.90', '9 juin 2026', [
@@ -20,7 +26,7 @@ const _changelog = [
     (Icons.add_box_outlined, 'Nouveau projet : tu peux maintenant créer un projet vide « sans IA » (titre + domaine + date cible), en plus de la structuration automatique par ORION'),
   ]),
   _Entry('5.89', '8 juin 2026', [
-    (Icons.monetization_on_outlined, 'Nouveau : l\'économie d\'Or ! Tu gagnes des pièces d\'or par l\'effort (routines +2/j, temps, projets) et tu en perds par la procrastination (routine manquée −1/j) ou les retards. Supprimer coûte de l\'or (selon le contenu), déplacer/réorganiser est gratuit. Ton niveau, lui, ne descend jamais. Tout est dans « 🪙 Mon or » (menu ⋮)'),
+    (Icons.monetization_on_outlined, 'Nouveau : l\'économie d\'Or ! Tu gagnes des pièces d\'or par l\'effort (routines +2/j, temps, projets) et tu en perds par la procrastination (routine manquée −1/j) ou les retards. Supprimer coûte de l\'or (selon le contenu), déplacer/réorganiser est gratuit. Ton niveau, lui, ne descend jamais. Tout est dans « Mon or » (menu ⋮)'),
     (Icons.shopping_cart_outlined, 'Boutique d\'Or : dépense ton or pour te protéger — gel de série 🧊 (un jour off sans pénalité), sursis de deadline ⏳, joker de suppression 🗑️, et titres à débloquer'),
     (Icons.fact_check_outlined, 'ORION propose, tu valides : les idées de la boîte à idées deviennent des propositions à accepter / refuser / rediriger (file « À valider », badge dans la barre du haut) — fini les projets créés d\'office'),
     (Icons.account_tree_outlined, 'Sous-projets & réorganisation directe : déplace une tâche vers un autre projet, une action vers une autre tâche, ou transforme une action en sous-projet — sans passer par ORION'),

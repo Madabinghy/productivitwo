@@ -2897,11 +2897,11 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
                 icon: Icon(Icons.delete_outline,
                     size: 16, color: cs.onSurface.withOpacity(.3)),
                 visualDensity: VisualDensity.compact,
-                tooltip: 'Supprimer (−${GoldEconomy.deleteAction} 🪙)',
+                tooltip: 'Supprimer (−${GoldEconomy.deleteAction} or)',
                 onPressed: () {
                   setState(() => _task.actions.remove(a));
                   _save();
-                  final billed = widget.project.status == 'active';
+                  final billed = widget.project.status != 'draft';
                   if (billed) {
                     widget.sync.applyGold(GoldLedgerEntry(
                       delta: -GoldEconomy.deleteAction,
@@ -2915,7 +2915,7 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                     duration: const Duration(seconds: 2),
                     content: Text(billed
-                        ? 'Action supprimée · −${GoldEconomy.deleteAction} 🪙'
+                        ? 'Action supprimée · −${GoldEconomy.deleteAction} or'
                         : 'Action supprimée'),
                   ));
                 },

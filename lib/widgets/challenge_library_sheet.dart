@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
+import 'package:productivitwo_v1/models.dart';
 
 /// Bibliothèque de challenges partagée (Phase 2) : parcourir les défis approuvés
 /// (curés par super-Orion), s'abonner, et soumettre les siens.
@@ -65,48 +66,73 @@ class _ChallengeLibrarySheetState extends State<_ChallengeLibrarySheet> {
     });
   }
 
+  /// Proposer un défi = choisir l'un de SES défis actifs (programmés) à partager,
+  /// plutôt que d'écrire un texte de zéro.
   Future<void> _submit() async {
-    final titleCtrl = TextEditingController();
-    final descCtrl = TextEditingController();
-    final ok = await showDialog<bool>(
+    final active = await widget.sync.fetchScheduledChallenges();
+    if (!mounted) return;
+    // Dédupe par titre (un même défi peut être programmé plusieurs jours).
+    final seen = <String>{};
+    final choices = <ScheduleBlock>[];
+    for (final e in active) {
+      final t = e.block.title.trim();
+      if (t.isEmpty || !seen.add(t.toLowerCase())) continue;
+      choices.add(e.block);
+    }
+    if (choices.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text(
+            'Programme d\'abord un défi (bouton ⚡) pour pouvoir le partager.'),
+      ));
+      return;
+    }
+    final picked = await showModalBottomSheet<ScheduleBlock>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Proposer un défi'),
-        content: Column(
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TextField(
-              controller: titleCtrl,
-              maxLength: 80,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(hintText: 'Titre du défi'),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 4, 16, 4),
+              child: Text('Proposer un de tes défis',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
             ),
-            TextField(
-              controller: descCtrl,
-              maxLength: 300,
-              maxLines: 3,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(hintText: 'Description (optionnel)'),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(
+                  'Choisis un défi actif à partager dans la bibliothèque.',
+                  style: TextStyle(fontSize: 12.5)),
             ),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final b in choices)
+                    ListTile(
+                      leading: const Text('🔥', style: TextStyle(fontSize: 18)),
+                      title: Text(b.title),
+                      subtitle: Text('${b.durationMin} min'),
+                      onTap: () => Navigator.pop(ctx, b),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Soumettre')),
-        ],
       ),
     );
-    final title = titleCtrl.text.trim();
-    final desc = descCtrl.text.trim();
-    titleCtrl.dispose();
-    descCtrl.dispose();
-    if (ok != true || title.length < 3) return;
-    final err = await widget.sync.submitChallenge(title, desc);
+    if (picked == null || !mounted) return;
+    final err =
+        await widget.sync.submitChallenge(picked.title, '${picked.durationMin} min');
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(err ??
           'Défi soumis ✅ — il apparaîtra après validation par Orion.'),
     ));
+    _load();
   }
 
   @override

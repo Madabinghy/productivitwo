@@ -132,6 +132,62 @@ class _ProjectSheetState extends State<_ProjectSheet> {
         content: Text('Plan validé — le projet est actif. 🚀')));
   }
 
+  /// Supprime le projet. Gratuit en brouillon ; sinon coût d'or (un joker
+  /// l'annule). Archiver reste l'option gratuite pour garder l'historique.
+  Future<void> _deleteProject() async {
+    final billed = _project.status != 'draft';
+    final actions =
+        _project.tasks.fold<int>(0, (s, t) => s + t.actions.length);
+    final cost = GoldEconomy.deleteProjectCost(_project.tasks.length, actions);
+    final showCost = billed && cost > 0;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer le projet ?'),
+        content: Text(
+          'Le projet « ${_project.title} » et tout son contenu seront supprimés.'
+          '${showCost ? ' Coût : $cost or.' : ''}'
+          '\n\nAstuce : « Mettre en veille » garde l\'historique gratuitement.',
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annuler')),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(ctx).colorScheme.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(showCost ? 'Supprimer (−$cost or)' : 'Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    if (showCost) {
+      final usedJoker = await _sync.consumeJoker();
+      if (!usedJoker) {
+        _sync.applyGold(GoldLedgerEntry(
+          delta: -cost,
+          category: 'loss',
+          reasonCode: 'delete_project',
+          label: 'Suppression du projet « ${_project.title} »',
+          refType: 'project',
+          refId: _project.id,
+        ));
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('🗑️ Joker utilisé — suppression gratuite.')));
+      }
+    }
+    await _sync.deleteProject(_project.id);
+    if (!mounted) return;
+    Navigator.pop(context);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(showCost
+            ? 'Projet supprimé · −$cost or'
+            : 'Projet supprimé')));
+  }
+
   Color _domainColor(ColorScheme cs) {
     if (widget.project.domainId == null) return cs.primary;
     final idx = widget.domains.indexWhere((d) => d.id == widget.project.domainId);
@@ -264,6 +320,13 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                             : 'Mettre en veille',
                         visualDensity: VisualDensity.compact,
                         onPressed: () => _toggleArchive(context, cs),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.delete_outline,
+                            size: 20, color: cs.error.withOpacity(.5)),
+                        tooltip: 'Supprimer le projet',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: _deleteProject,
                       ),
                       IconButton(
                         icon: const Icon(Icons.close_outlined, size: 20),
@@ -1024,7 +1087,7 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
 
   Future<void> _deleteTask() async {
     // Brouillon = CRUD libre, suppression gratuite (hors économie).
-    final billed = widget.project.status == 'active';
+    final billed = widget.project.status != 'draft';
     final cost = GoldEconomy.deleteTaskCost(_task.actions.length);
     final ok = await showDialog<bool>(
       context: context,
@@ -1032,7 +1095,7 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
         title: const Text('Supprimer la tâche ?'),
         content: Text(
             'La tâche « ${_task.title} » et ses ${_task.actions.length} action(s) '
-            'seront supprimées.${billed ? ' Coût : $cost 🪙.' : ''}'),
+            'seront supprimées.${billed ? ' Coût : $cost or.' : ''}'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -1041,7 +1104,7 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
             style: FilledButton.styleFrom(
                 backgroundColor: Theme.of(ctx).colorScheme.error),
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(billed ? 'Supprimer (−$cost 🪙)' : 'Supprimer'),
+            child: Text(billed ? 'Supprimer (−$cost or)' : 'Supprimer'),
           ),
         ],
       ),
@@ -1063,7 +1126,7 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
     if (!mounted) return;
     Navigator.pop(context);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(billed ? 'Tâche supprimée · −$cost 🪙' : 'Tâche supprimée')));
+        content: Text(billed ? 'Tâche supprimée · −$cost or' : 'Tâche supprimée')));
   }
 
   String _fmtD(DateTime d) {
@@ -1327,7 +1390,7 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                                       setState(() => _task.actions.remove(a));
                                       _save();
                                       final billed =
-                                          widget.project.status == 'active';
+                                          widget.project.status != 'draft';
                                       if (billed) {
                                         widget.sync.applyGold(GoldLedgerEntry(
                                           delta: -GoldEconomy.deleteAction,
@@ -1343,7 +1406,7 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                                           .showSnackBar(SnackBar(
                                         duration: const Duration(seconds: 2),
                                         content: Text(billed
-                                            ? 'Action supprimée · −${GoldEconomy.deleteAction} 🪙'
+                                            ? 'Action supprimée · −${GoldEconomy.deleteAction} or'
                                             : 'Action supprimée'),
                                       ));
                                     },

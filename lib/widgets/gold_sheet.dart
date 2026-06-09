@@ -4,6 +4,7 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/gold_shop_sheet.dart';
+import 'package:productivitwo_v1/widgets/gold_icon.dart';
 
 /// Tableau de bord d'Or (Phase C) : solde + niveau, ce qui rapporte, ce qui
 /// coûte/risque (routines qui saignent, tâches en retard), et l'historique.
@@ -64,7 +65,7 @@ class GoldSheetBody extends StatelessWidget {
           // ── Solde + niveau ────────────────────────────────────────────────
           Row(
             children: [
-              const Text('🪙', style: TextStyle(fontSize: 26)),
+              const GoldIcon(size: 28),
               const SizedBox(width: 10),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -82,11 +83,17 @@ class GoldSheetBody extends StatelessWidget {
               const Spacer(),
               Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                 if (provisional > 0)
-                  Text('+$provisional 🪙 aujourd\'hui',
-                      style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.green.shade700)),
+                  Text.rich(
+                    TextSpan(children: [
+                      TextSpan(text: '+$provisional'),
+                      goldIconSpan(size: 12),
+                      const TextSpan(text: ' aujourd\'hui'),
+                    ]),
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.green.shade700),
+                  ),
                 const SizedBox(height: 4),
                 FilledButton.icon(
                   icon: const Text('🛒', style: TextStyle(fontSize: 13)),
@@ -131,8 +138,38 @@ class GoldSheetBody extends StatelessWidget {
                   color: cs.onSurface.withOpacity(.4))),
           const SizedBox(height: 20),
 
-          // ── Ce qui te coûte / risque ──────────────────────────────────────
-          _SectionTitle('⚠️ Ce qui te coûte / risque', cs),
+          // ── Ce qui te coûte ───────────────────────────────────────────────
+          Row(
+            children: [
+              Text('⚠️ Ce qui te coûte',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: .5,
+                      color: cs.onSurface.withOpacity(.6))),
+              const SizedBox(width: 6),
+              _InfoDot(
+                onTap: () => showDialog(
+                  context: context,
+                  builder: (_) => AlertDialog(
+                    title: const Text('Ce qui te coûte de l\'or'),
+                    content: const Text(
+                      'Une routine que tu as déjà lancée mais que tu ne fais pas, '
+                      'ou une tâche en retard, te coûtent −1 or par jour jusqu\'à '
+                      'régularisation.\n\nPour stopper : fais la routine (+2 or) ou '
+                      'termine / replanifie la tâche.',
+                    ),
+                    actions: [
+                      TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Compris')),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
           if (bleeding.isEmpty && late.isEmpty)
             _Hint('Rien ne saigne — tout est sous contrôle. 👌', cs)
           else ...[
@@ -140,35 +177,18 @@ class GoldSheetBody extends StatelessWidget {
               _RiskRow(
                 icon: Icons.local_fire_department_outlined,
                 color: Colors.deepOrange,
-                title: 'Routine « ${b.activity.name} » non faite',
-                detail:
-                    '−1 🪙/jour tant que tu ne la fais pas · a rapporté ${b.earned} 🪙',
+                title: 'Routine « ${b.activity.name} »',
                 cs: cs,
               ),
             for (final l in late)
               _RiskRow(
                 icon: Icons.schedule_outlined,
                 color: Colors.red,
-                title: '« ${l.task.title} » en retard',
-                detail:
-                    '${l.daysLate} j de retard · −1 🪙/jour (déjà −${l.daysLate} 🪙)',
+                title: '« ${l.task.title} »',
+                subtitle: '${l.daysLate} j de retard',
                 cs: cs,
               ),
-          ],
-          const SizedBox(height: 20),
-
-          // ── Ce que tu devrais faire ───────────────────────────────────────
-          if (bleeding.isNotEmpty || late.isNotEmpty) ...[
-            _SectionTitle('💡 Pour stopper l\'hémorragie', cs),
-            if (bleeding.isNotEmpty)
-              _Hint(
-                  'Fais ${bleeding.length == 1 ? 'ta routine' : 'tes ${bleeding.length} routines'} aujourd\'hui : +2 🪙 chacune et fin du −1 🪙/jour.',
-                  cs),
-            if (late.isNotEmpty)
-              _Hint(
-                  'Termine (ou replanifie) ${late.length == 1 ? 'ta tâche en retard' : 'tes ${late.length} tâches en retard'} pour arrêter le −1 🪙/jour.',
-                  cs),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             OutlinedButton.icon(
               icon: const Icon(Icons.auto_awesome, size: 16),
               label: const Text('Demander conseil à ORION'),
@@ -183,8 +203,8 @@ class GoldSheetBody extends StatelessWidget {
                 }
               },
             ),
-            const SizedBox(height: 20),
           ],
+          const SizedBox(height: 20),
 
           // ── Historique ────────────────────────────────────────────────────
           _SectionTitle('Historique', cs),
@@ -236,22 +256,38 @@ class _Hint extends StatelessWidget {
       );
 }
 
+/// Petite pastille « ⓘ » qui ouvre une explication (pour alléger le texte).
+class _InfoDot extends StatelessWidget {
+  final VoidCallback onTap;
+  const _InfoDot({required this.onTap});
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return InkResponse(
+      onTap: onTap,
+      radius: 16,
+      child: Icon(Icons.info_outline,
+          size: 15, color: cs.onSurface.withOpacity(.4)),
+    );
+  }
+}
+
 class _RiskRow extends StatelessWidget {
   final IconData icon;
   final Color color;
   final String title;
-  final String detail;
+  final String? subtitle;
   final ColorScheme cs;
   const _RiskRow(
       {required this.icon,
       required this.color,
       required this.title,
-      required this.detail,
+      this.subtitle,
       required this.cs});
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(children: [
           Icon(icon, size: 18, color: color),
           const SizedBox(width: 10),
           Expanded(
@@ -259,13 +295,29 @@ class _RiskRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                         fontSize: 13, fontWeight: FontWeight.w600)),
-                Text(detail,
-                    style: TextStyle(
-                        fontSize: 11.5, color: cs.onSurface.withOpacity(.55))),
+                if (subtitle != null)
+                  Text(subtitle!,
+                      style: TextStyle(
+                          fontSize: 11, color: cs.onSurface.withOpacity(.5))),
               ],
             ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+            decoration: BoxDecoration(
+              color: cs.errorContainer.withOpacity(.5),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text('−1/j',
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: cs.error)),
           ),
         ]),
       );
@@ -304,9 +356,8 @@ class _LedgerRow extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
-        Text('${pos ? '+' : ''}${entry.delta} 🪙',
-            style: TextStyle(
-                fontSize: 13, fontWeight: FontWeight.w700, color: c)),
+        goldAmount('${pos ? '+' : ''}${entry.delta}',
+            fontSize: 13, weight: FontWeight.w700, color: c),
       ]),
     );
   }
