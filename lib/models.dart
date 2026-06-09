@@ -669,6 +669,15 @@ class AppState {
   Map<String, int> ganttActionsByDay;  // actions Gantt cochées par jour (XP)
   Map<String, int> challengeWinsByDay; // défis relevés par jour (XP du jour)
 
+  // ── Économie d'Or (système stratégique : gagner/perdre/dépenser) ──────────
+  int gold;                    // solde de pièces d'or courant (plancher 0)
+  int goldLifetime;            // or brut gagné à vie (monotone) → pilote le niveau
+  String? goldLastProcessedDay;// YYYYMMDD : curseur du rattrapage idempotent
+  Map<String, int> goldInventory; // consommables achetés : {gel, sursis, joker}
+  List<String> goldGelDays;    // jours de routine gelés : "activityId_YYYYMMDD"
+  List<String> cosmeticsOwned; // cosmétiques possédés (ex: titres)
+  String? activeTitle;         // titre cosmétique actif (override du titre de niveau)
+
   AppState({
     required this.domains,
     required this.activities,
@@ -714,6 +723,13 @@ class AppState {
     this.lastChallengeYmd,
     Map<String, int>? ganttActionsByDay,
     Map<String, int>? challengeWinsByDay,
+    this.gold = 0,
+    this.goldLifetime = 0,
+    this.goldLastProcessedDay,
+    Map<String, int>? goldInventory,
+    List<String>? goldGelDays,
+    List<String>? cosmeticsOwned,
+    this.activeTitle,
     // ✅ NOUVEAU
     Map<String, List<String>>? nowSkippedByYmd,
     Map<String, List<String>>? nowDoneByYmd,
@@ -745,7 +761,10 @@ class AppState {
         earnedBadges = earnedBadges ?? <EarnedBadge>[],
         skippedChallengeDates = skippedChallengeDates ?? <String>[],
         ganttActionsByDay = ganttActionsByDay ?? <String, int>{},
-        challengeWinsByDay = challengeWinsByDay ?? <String, int>{};
+        challengeWinsByDay = challengeWinsByDay ?? <String, int>{},
+        goldInventory = goldInventory ?? <String, int>{},
+        goldGelDays = goldGelDays ?? <String>[],
+        cosmeticsOwned = cosmeticsOwned ?? <String>[];
 
   Map<String, dynamic> toJson() => {
         'domains': domains.map((e) => e.toJson()).toList(),
@@ -790,6 +809,13 @@ class AppState {
         'lastChallengeYmd': lastChallengeYmd,
         'ganttActionsByDay': ganttActionsByDay,
         'challengeWinsByDay': challengeWinsByDay,
+        'gold': gold,
+        'goldLifetime': goldLifetime,
+        'goldLastProcessedDay': goldLastProcessedDay,
+        'goldInventory': goldInventory,
+        'goldGelDays': goldGelDays,
+        'cosmeticsOwned': cosmeticsOwned,
+        'activeTitle': activeTitle,
         'weeklyScoreTarget': weeklyScoreTarget,
         'notifHour': notifHour,
         'notifMinute': notifMinute,
@@ -891,6 +917,15 @@ class AppState {
       challengeWinsByDay: (j['challengeWinsByDay'] as Map?)
               ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ??
           <String, int>{},
+      gold: (j['gold'] as num?)?.toInt() ?? 0,
+      goldLifetime: (j['goldLifetime'] as num?)?.toInt() ?? 0,
+      goldLastProcessedDay: j['goldLastProcessedDay'] as String?,
+      goldInventory: (j['goldInventory'] as Map?)
+              ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ??
+          <String, int>{},
+      goldGelDays: (j['goldGelDays'] as List?)?.cast<String>() ?? <String>[],
+      cosmeticsOwned: (j['cosmeticsOwned'] as List?)?.cast<String>() ?? <String>[],
+      activeTitle: j['activeTitle'] as String?,
       weeklyScoreTarget: (j['weeklyScoreTarget'] as int?) ?? 80,
       notifHour: (j['notifHour'] as int?) ?? 9,
       notifMinute: (j['notifMinute'] as int?) ?? 0,
@@ -1128,6 +1163,9 @@ class Project {
   String? description;
   String? strategicObjectiveId;
   String? domainId;
+  /// Projet parent (null = projet racine). Hiérarchie en adjacency list —
+  /// l'arbre est reconstruit côté client. Rétro-compatible : absent = racine.
+  String? parentProjectId;
   DateTime startDate;
   DateTime? endDate;
   String status; // draft | active | done | archived
@@ -1149,6 +1187,7 @@ class Project {
     this.description,
     this.strategicObjectiveId,
     this.domainId,
+    this.parentProjectId,
     required this.startDate,
     this.endDate,
     this.status = 'active',
@@ -1172,6 +1211,7 @@ class Project {
         'description': description,
         'strategicObjectiveId': strategicObjectiveId,
         'domainId': domainId,
+        'parentProjectId': parentProjectId,
         'startDate': startDate.toIso8601String(),
         'endDate': endDate?.toIso8601String(),
         'status': status,
@@ -1191,6 +1231,7 @@ class Project {
         description: j['description'],
         strategicObjectiveId: j['strategicObjectiveId'],
         domainId: j['domainId'],
+        parentProjectId: j['parentProjectId'],
         startDate: _parseDate(j['startDate']),
         endDate: _parseDateOrNull(j['endDate']),
         status: j['status'] ?? 'active',
@@ -1348,6 +1389,101 @@ class CaptureItem {
         status: j['status'] ?? 'pending',
         orionNote: j['orionNote'],
         processedAt: _parseDateOrNull(j['processedAt']),
+      );
+}
+
+/// Proposition de réorganisation émise par ORION autonome (file « À valider »).
+/// L'utilisateur accepte/refuse/redirige ; l'acceptation applique la mutation
+/// côté client (déterministe, sans LLM). Voir `FirestoreSync.applyProposal`.
+class OrionProposal {
+  String id;
+  String kind; // new_project | attach_idea_as_task | create_subproject | archive_project
+  String title; // résumé humain
+  String rationale; // justification
+  String? sourceCaptureId;
+  Map<String, dynamic> payload;
+  String status; // pending | accepted | rejected
+  DateTime? createdAt;
+
+  OrionProposal({
+    String? id,
+    required this.kind,
+    required this.title,
+    this.rationale = '',
+    this.sourceCaptureId,
+    Map<String, dynamic>? payload,
+    this.status = 'pending',
+    this.createdAt,
+  })  : id = id ?? _uuid.v4(),
+        payload = payload ?? {};
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'kind': kind,
+        'title': title,
+        'rationale': rationale,
+        'sourceCaptureId': sourceCaptureId,
+        'payload': payload,
+        'status': status,
+        'createdAt': createdAt?.toIso8601String(),
+      };
+
+  static OrionProposal from(Map j) => OrionProposal(
+        id: j['id'] ?? _uuid.v4(),
+        kind: j['kind'] ?? '',
+        title: j['title'] ?? '',
+        rationale: j['rationale'] ?? '',
+        sourceCaptureId: j['sourceCaptureId'],
+        payload: (j['payload'] as Map?)?.cast<String, dynamic>() ?? {},
+        status: j['status'] ?? 'pending',
+        createdAt: _parseDateOrNull(j['createdAt']),
+      );
+}
+
+/// Entrée du grand livre d'Or (append-only) : un gain, une perte ou une dépense.
+/// Stockée dans `users/{uid}/gold_ledger/{id}`. Alimente l'historique de la sheet.
+class GoldLedgerEntry {
+  String id;
+  DateTime ts;
+  int delta;          // +gain / −perte / −dépense
+  String category;    // gain | loss | spend
+  String reasonCode;  // ex: routine_met, routine_missed, late_task, delete_project…
+  String label;       // libellé humain affichable
+  String? refType;    // ex: activity | project | task
+  String? refId;
+
+  GoldLedgerEntry({
+    String? id,
+    DateTime? ts,
+    required this.delta,
+    required this.category,
+    required this.reasonCode,
+    required this.label,
+    this.refType,
+    this.refId,
+  })  : id = id ?? _uuid.v4(),
+        ts = ts ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'ts': ts.toIso8601String(),
+        'delta': delta,
+        'category': category,
+        'reasonCode': reasonCode,
+        'label': label,
+        'refType': refType,
+        'refId': refId,
+      };
+
+  static GoldLedgerEntry from(Map j) => GoldLedgerEntry(
+        id: j['id'] ?? _uuid.v4(),
+        ts: _parseDate(j['ts']),
+        delta: (j['delta'] as num?)?.toInt() ?? 0,
+        category: j['category'] ?? 'gain',
+        reasonCode: j['reasonCode'] ?? '',
+        label: j['label'] ?? '',
+        refType: j['refType'],
+        refId: j['refId'],
       );
 }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/gold_economy.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 
 // ── Entrée publique ───────────────────────────────────────────────────────────
@@ -583,6 +584,167 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
     _save();
   }
 
+  // ── Opérations structurelles (déplacer / promouvoir) ──────────────────────
+  // Mêmes helpers FirestoreSync que la vue web : ils relisent Firestore puis
+  // écrivent ; ici on reflète le retrait local + on notifie le parent.
+
+  Future<Project?> _pickProject(String title, {String? excludeId}) async {
+    final projects = await widget.sync.fetchProjects();
+    if (!mounted) return null;
+    final candidates = projects
+        .where((p) => p.id != excludeId && p.status != 'archived')
+        .toList()
+      ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+    if (candidates.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Aucun autre projet disponible.')));
+      return null;
+    }
+    return showModalBottomSheet<Project>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(title,
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+            ),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final p in candidates)
+                    ListTile(
+                      title: Text(p.title),
+                      onTap: () => Navigator.pop(ctx, p),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<ProjectTask?> _pickTask(Project project, {String? excludeTaskId}) async {
+    final tasks = project.tasks.where((t) => t.id != excludeTaskId).toList();
+    if (!mounted) return null;
+    if (tasks.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('« ${project.title} » n\'a aucune autre tâche.')));
+      return null;
+    }
+    return showModalBottomSheet<ProjectTask>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text('Tâche cible — ${project.title}',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+            ),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final t in tasks)
+                    ListTile(
+                      title: Text(t.title),
+                      onTap: () => Navigator.pop(ctx, t),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _moveTaskToAnotherProject() async {
+    final target = await _pickProject('Déplacer la tâche vers…',
+        excludeId: widget.project.id);
+    if (target == null) return;
+    setState(() => _saving = true);
+    await widget.sync
+        .moveTaskToProject(widget.project.id, target.id, _task.id);
+    widget.project.tasks.removeWhere((t) => t.id == _task.id);
+    widget.onChanged();
+    if (!mounted) return;
+    Navigator.pop(context); // la tâche a quitté ce projet
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Tâche déplacée vers « ${target.title} ».')));
+  }
+
+  Future<void> _moveActionToAnotherTask(TaskAction a) async {
+    final target = await _pickProject('Déplacer l\'action vers…');
+    if (target == null) return;
+    final excludeTaskId = target.id == widget.project.id ? _task.id : null;
+    final targetTask = await _pickTask(target, excludeTaskId: excludeTaskId);
+    if (targetTask == null) return;
+    setState(() => _saving = true);
+    await widget.sync.moveActionToTask(
+      fromProjectId: widget.project.id,
+      fromTaskId: _task.id,
+      toProjectId: target.id,
+      toTaskId: targetTask.id,
+      actionId: a.id,
+    );
+    _task.actions.removeWhere((x) => x.id == a.id);
+    if (target.id == widget.project.id) {
+      widget.project.tasks
+          .where((t) => t.id == targetTask.id)
+          .firstOrNull
+          ?.actions
+          .add(a);
+    }
+    widget.onChanged();
+    if (!mounted) return;
+    setState(() => _saving = false);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Action déplacée vers « ${targetTask.title} ».')));
+  }
+
+  Future<void> _promoteActionToSubproject(TaskAction a) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Promouvoir en sous-projet'),
+        content: Text(
+            'Créer un sous-projet « ${a.title} » sous « ${widget.project.title} » ? '
+            'L\'action sera retirée de cette tâche.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Créer')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _saving = true);
+    final child = await widget.sync.promoteActionToSubproject(
+      parentProjectId: widget.project.id,
+      taskId: _task.id,
+      actionId: a.id,
+    );
+    _task.actions.removeWhere((x) => x.id == a.id);
+    widget.onChanged();
+    if (!mounted) return;
+    setState(() => _saving = false);
+    if (child != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Sous-projet « ${child.title} » créé.')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -614,6 +776,20 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                   const SizedBox(
                       width: 16, height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2)),
+                PopupMenuButton<String>(
+                  tooltip: 'Déplacer',
+                  icon: Icon(Icons.drive_file_move_outline,
+                      size: 20, color: cs.onSurface.withOpacity(.45)),
+                  onSelected: (v) {
+                    if (v == 'move_task') _moveTaskToAnotherProject();
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: 'move_task',
+                      child: Text('Déplacer vers un autre projet'),
+                    ),
+                  ],
+                ),
                 // Toggle done
                 TextButton.icon(
                   icon: Icon(
@@ -799,6 +975,21 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                                     onDismissed: (_) {
                                       setState(() => _task.actions.remove(a));
                                       _save();
+                                      widget.sync.applyGold(GoldLedgerEntry(
+                                        delta: -GoldEconomy.deleteAction,
+                                        category: 'loss',
+                                        reasonCode: 'delete_action',
+                                        label:
+                                            'Suppression action « ${a.title} »',
+                                        refType: 'task',
+                                        refId: _task.id,
+                                      ));
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(SnackBar(
+                                        duration: const Duration(seconds: 2),
+                                        content: Text(
+                                            'Action supprimée · −${GoldEconomy.deleteAction} 🪙'),
+                                      ));
                                     },
                                     child: ListTile(
                                       key: ValueKey('tile_todo_${a.title}_$i'),
@@ -855,10 +1046,42 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                                             fontSize: 14,
                                             color: cs.onSurface,
                                           )),
-                                      trailing: ReorderableDragStartListener(
-                                        index: i,
-                                        child: Icon(Icons.drag_handle,
-                                            color: cs.onSurface.withOpacity(.3)),
+                                      trailing: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          PopupMenuButton<String>(
+                                            tooltip: 'Réorganiser',
+                                            icon: Icon(Icons.more_vert,
+                                                size: 18,
+                                                color: cs.onSurface
+                                                    .withOpacity(.3)),
+                                            padding: EdgeInsets.zero,
+                                            onSelected: (v) {
+                                              if (v == 'move')
+                                                _moveActionToAnotherTask(a);
+                                              if (v == 'promote')
+                                                _promoteActionToSubproject(a);
+                                            },
+                                            itemBuilder: (_) => const [
+                                              PopupMenuItem(
+                                                value: 'move',
+                                                child: Text(
+                                                    'Déplacer vers une autre tâche'),
+                                              ),
+                                              PopupMenuItem(
+                                                value: 'promote',
+                                                child: Text(
+                                                    'Promouvoir en sous-projet'),
+                                              ),
+                                            ],
+                                          ),
+                                          ReorderableDragStartListener(
+                                            index: i,
+                                            child: Icon(Icons.drag_handle,
+                                                color: cs.onSurface
+                                                    .withOpacity(.3)),
+                                          ),
+                                        ],
                                       ),
                                     ),
                                   );

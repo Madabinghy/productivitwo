@@ -46,7 +46,7 @@ lib/
 | `DayBlock` | `blocks` | Blocs de journée (Matin, Midi, Soir…) |
 | `Session` | `sessions` | Session de temps loggué |
 | `HabitHit` | `habitHits` | Incrément de routine |
-| `Project` | `projects` | Projet Gantt (phases + tasks embarquées) |
+| `Project` | `projects` | Projet Gantt (phases + tasks embarquées) ; `parentProjectId?` = hiérarchie (null = racine, adjacency list, arbre reconstruit côté client) |
 | `StrategicObjective` | `strategic_objectives` | Objectif lié à un projet Gantt |
 | `Document` | `documents` | Programmes HTML, briefs, livrables |
 | `ApiToken` | `api_tokens` | Tokens Bearer pour le MCP |
@@ -283,3 +283,10 @@ actions: [
 - Routine = `Activity` `type: habit`, mesurable (`habitFreq` + `habitTarget`), rattachée à un domaine ; `activityId` (lien vers une activité temps) **optionnel** — full routines, plus de « recurring action »
 - Les actions de tâches Gantt (`ProjectTask.actions`) sont des `TaskAction` maps en Firestore —
   `ProjectTask.from()` gère les deux formats (string et map) pour compatibilité ascendante
+- **Édition structurelle directe autorisée** (le dogme « tout par l'IA » est levé pour la
+  structure) : déplacer une tâche entre projets, une action entre tâches, promouvoir une
+  action en sous-projet. Helpers centralisés dans `FirestoreSync` (`moveTaskToProject`,
+  `moveActionToTask`, `promoteActionToSubproject`, `setProjectParent`) — réutilisés par les
+  fiches tâche web (`gantt_screen.dart`) et mobile (`project_sheet.dart`). L'IA (Orion
+  autonome) **propose**, l'utilisateur dispose ; le chemin MCP/conversation à la demande
+  garde le write direct.

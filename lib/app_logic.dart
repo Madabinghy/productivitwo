@@ -10,6 +10,8 @@ import 'package:productivitwo_v1/utils/time_scope.dart';
 import 'package:productivitwo_v1/widgets/appbar_routines_summery.dart';
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/firestore_sync.dart';
+import 'package:productivitwo_v1/gold_economy.dart';
 
 // ---------- Constantes ----------
 const int kMinDailyGoalMin = 1; // plancher dur pour activités "time"
@@ -101,6 +103,10 @@ class AppLogic {
 
   final void Function() onChange;
   AppLogic(this.state, this.onChange);
+
+  /// Accès Firestore pour les écritures autoritatives d'or (posé après
+  /// construction dans main.dart). Null tant que non configuré.
+  FirestoreSync? sync;
 
   String? nowHabitId; // habitId actuellement affichée dans Maintenant (routine)
   String? _checkYmd; // pour reset journalier
@@ -376,7 +382,21 @@ class AppLogic {
     //    Firestore la fait réapparaître à la réouverture, le remote la gardant
     //    en deleted:false). Même pattern que la suppression de domaine.
     final idx = state.activities.indexWhere((a) => a.id == id);
-    if (idx >= 0) state.activities[idx].deleted = true;
+    if (idx >= 0) {
+      final act = state.activities[idx];
+      // Coût d'or : supprimer une routine (habit) coûte (déduction douce, plancher 0).
+      if (act.isHabit && sync != null) {
+        sync!.applyGold(GoldLedgerEntry(
+          delta: -GoldEconomy.deleteRoutine,
+          category: 'loss',
+          reasonCode: 'delete_routine',
+          label: 'Suppression routine « ${act.name} »',
+          refType: 'activity',
+          refId: act.id,
+        ));
+      }
+      act.deleted = true;
+    }
 
     // 3) purge filtres
     state.filters.activityIds.remove(id);
@@ -1896,9 +1916,16 @@ class AppLogic {
   /// XP total (badges + actions), niveau + titre, bornes du palier courant.
   /// Niveaux 1-10 (Débutant→Élite) ; au-delà de 7000 : prestige Élite I/II/…
   /// par crans de 2000 XP (toujours un palier suivant).
-  ({int xp, int level, String title, int xpCurrent, int xpNext}) userLevelData() {
+  /// XP « historique » dérivé (ancien système, badges + actions cumulées).
+  /// Sert uniquement à initialiser l'or à la migration (voir `seedGoldIfNeeded`).
+  int legacyDerivedXp() {
     final badgeXp = state.earnedBadges.fold(0, (sum, b) => sum + _xpForBadge(b.id));
-    final xp = badgeXp + actionXp();
+    return badgeXp + actionXp();
+  }
+
+  ({int xp, int level, String title, int xpCurrent, int xpNext}) userLevelData() {
+    // Le niveau/rang suit désormais l'or brut gagné à vie (monotone), pas l'XP dérivé.
+    final xp = state.goldLifetime;
 
     const eliteThreshold = 7000;
     const prestigeStep = 2000;

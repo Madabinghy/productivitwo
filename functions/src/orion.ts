@@ -13,7 +13,7 @@ import {
   executeDeleteRoutine,
   executeGetDocuments, executeSaveDocument, executeGetDocumentTemplate,
   executeGetArchives, executeRestoreItem,
-  executeGetInbox, executeProcessInboxItem,
+  executeGetInbox, executeProcessInboxItem, executeProposeChange,
   executeGetDaySchedule, executeScheduleDay, executeUpdateScheduleBlock,
   executeComputeTimeBudget,
   executeGetOrionQueue, executeDeleteOrionQueueItem,
@@ -52,6 +52,7 @@ const ORION_TOOLS: PromptCachingBetaTool[] = [
   { name: "delete_orion_queue_item", description: "Supprime un item de la file après traitement.",                                                                                                                                                                                                         input_schema: { type: "object", properties: { itemId: { type: "string" } }, required: ["itemId"] } },
   { name: "get_inbox",               description: "Idées et notes capturées par l'utilisateur en attente de traitement.",                                                                  input_schema: { type: "object", properties: {}, required: [] } },
   { name: "process_inbox_item",      description: "Marque une idée inbox comme traitée avec une note expliquant l'action prise.",                                                          input_schema: { type: "object", properties: { itemId: { type: "string" }, note: { type: "string", description: "Ce qu'ORION a fait : ex: 'ajouté comme tâche dans Projet X' ou 'message reminder planifié'" } }, required: ["itemId", "note"] } },
+  { name: "propose_change",          description: "Au lieu de modifier directement les projets, ENREGISTRE une proposition que l'utilisateur validera dans la file « À valider » (accepter/refuser/rediriger). À utiliser pour TOUTE réorganisation structurelle issue de l'inbox : créer un projet, rattacher une idée comme tâche d'un projet, créer un sous-projet, archiver un projet inactif. Tu NE crées PAS le projet/la tâche toi-même — l'app applique la mutation à l'acceptation.", input_schema: { type: "object", required: ["kind", "title", "rationale"], properties: { kind: { type: "string", enum: ["new_project", "attach_idea_as_task", "create_subproject", "archive_project"], description: "new_project = nouveau projet · attach_idea_as_task = ajouter une tâche à un projet existant · create_subproject = sous-projet d'un projet existant · archive_project = archiver un projet inactif" }, title: { type: "string", description: "Résumé humain court, ex: 'Créer le projet « Refonte site »'" }, rationale: { type: "string", description: "Pourquoi, en 1 phrase, basé sur le contexte/l'idée" }, sourceCaptureId: { type: "string", description: "id de l'idée inbox d'origine (la capture passera en 'proposed')" }, payload: { type: "object", description: "Données pour appliquer la mutation selon kind : new_project={projectTitle, domainId?, description?} · attach_idea_as_task={projectId, taskTitle, description?} · create_subproject={parentProjectId, projectTitle, domainId?} · archive_project={projectId}", properties: { projectId: { type: "string" }, parentProjectId: { type: "string" }, projectTitle: { type: "string" }, taskTitle: { type: "string" }, domainId: { type: "string" }, description: { type: "string" } } } } } },
   { name: "get_day_schedule",        description: "Lit le programme horaire d'une journée.",                                                                                               input_schema: { type: "object", properties: { date: { type: "string", description: "YYYY-MM-DD" } }, required: ["date"] } },
   { name: "update_schedule_block",   description: "Met à jour le statut d'un bloc du programme du jour (done/skipped/deleted/pending) sans écraser tout le programme.",                   input_schema: { type: "object", properties: { date: { type: "string", description: "YYYY-MM-DD" }, blockTitle: { type: "string", description: "Titre (partiel) du bloc à modifier" }, status: { type: "string", enum: ["done", "skipped", "deleted", "pending"] } }, required: ["date", "blockTitle", "status"] } },
   { name: "compute_time_budget",     description: "Analyse 12 semaines de sessions → cible quotidienne par activité (recommendedGoalMin) : médiane des jours actifs si <30 jours loggués, p90 si ≥30. Sommeil découplé (8h défaut). Suivre le champ 'workflow' retourné, puis appliquer via set_activity_targets.",                input_schema: { type: "object", properties: {}, required: [] } },
@@ -187,16 +188,31 @@ Le contexte utilisateur et les messages ORION existants sont fournis directement
 
 Si — et seulement si — il te manque une information pour exécuter, NE fais PAS le message-résumé : pose plutôt 1 à 2 questions via push_assistant_message avec requiresReply:true (JAMAIS plus de 2). L'utilisateur y répondra directement.
 
-## Traitement de l'inbox
+## Traitement de l'inbox — tu PROPOSES, l'utilisateur dispose
 
-L'utilisateur peut capturer des idées rapides dans son inbox. À chaque cycle, tu lis ces idées et tu les traites selon leur nature :
+L'utilisateur capture des idées rapides dans son inbox. ⚠️ RÈGLE CENTRALE : pour toute
+réorganisation STRUCTURELLE des projets issue de l'inbox, tu ne crées/modifies RIEN
+directement — tu enregistres une **proposition** via propose_change. L'utilisateur la
+validera (accepter / refuser / rediriger) dans la file « À valider ». Cela évite que des
+projets fourre-tout ou mal cadrés se créent tout seuls.
 
-- **Note ponctuelle** ("acheter du lait", "appeler X", rappel) → push_assistant_message avec condition always pour aujourd'hui ou demain + process_inbox_item(note: "message reminder planifié pour le [date]")
-- **Idée liée à un projet existant** → ajoute une sous-action à la tâche pertinente ou mets à jour le projet + process_inbox_item(note: "ajouté comme sous-action dans [projet > tâche]")
-- **Nouvelle initiative / projet** → push_gantt pour créer le projet + process_inbox_item(note: "projet '[titre]' créé")
-- **Idée vague ou hors scope** → process_inbox_item(note: "noté — pas d'action immédiate") + optionnel: push_assistant_message pour demander de clarifier
+Selon la nature de l'idée :
 
-Appelle toujours process_inbox_item après avoir traité une idée. Ne laisse jamais une idée pending non traitée.
+- **Note ponctuelle** ("acheter du lait", "appeler X", rappel) → ce n'est PAS de la structure :
+  push_assistant_message (condition always, aujourd'hui ou demain) + process_inbox_item(note: "rappel planifié pour le [date]")
+- **Idée liée à un projet existant** → propose_change(kind:"attach_idea_as_task", sourceCaptureId:<id>,
+  payload:{projectId, taskTitle}) — NE PAS appeler process_inbox_item (la capture passe en "proposed" automatiquement)
+- **Nouvelle initiative / projet** → propose_change(kind:"new_project", sourceCaptureId:<id>,
+  payload:{projectTitle, domainId?}) — propose un TITRE et un domaine, PAS de fausses sous-tâches inventées
+- **Idée qui est en fait un sous-projet d'un projet existant** → propose_change(kind:"create_subproject",
+  sourceCaptureId:<id>, payload:{parentProjectId, projectTitle})
+- **Idée vague ou hors scope** → process_inbox_item(note: "noté — pas d'action immédiate") + optionnel push_assistant_message pour clarifier
+
+Tu peux aussi proposer d'archiver un projet manifestement inactif : propose_change(kind:"archive_project", payload:{projectId}).
+
+IMPORTANT : quand tu appelles propose_change avec sourceCaptureId, NE PAS appeler aussi
+process_inbox_item sur la même idée (la capture est déjà retirée de l'inbox via le statut
+"proposed"). N'utilise process_inbox_item QUE pour les rappels et les idées vagues.
 
 Ne répète jamais un message récent — vérifie recentShown pour éviter les doublons.
 
@@ -430,6 +446,10 @@ Tu dois TOUJOURS appeler push_assistant_message avant end_turn : exactement 1 me
             case "get_inbox":           result = await executeGetInbox(uid); break;
             case "process_inbox_item":  result = await executeProcessInboxItem(uid, args.itemId as string, args.note as string);
               actionLog.push(`💡 Idée traitée depuis l'inbox`);
+              break;
+            case "propose_change":
+              result = await executeProposeChange(uid, args as Parameters<typeof executeProposeChange>[1]);
+              actionLog.push(`📋 Proposition : ${(args.title as string) ?? ""}`);
               break;
             // ── Programme du jour ──────────────────────────────────────────
             case "compute_time_budget":

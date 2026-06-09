@@ -10,6 +10,13 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.89', '8 juin 2026', [
+    (Icons.monetization_on_outlined, 'Nouveau : l\'économie d\'Or ! Tu gagnes des pièces d\'or par l\'effort (routines +2/j, temps, projets) et tu en perds par la procrastination (routine manquée −1/j) ou les retards. Supprimer coûte de l\'or (selon le contenu), déplacer/réorganiser est gratuit. Ton niveau, lui, ne descend jamais. Tout est dans « 🪙 Mon or » (menu ⋮)'),
+    (Icons.shopping_cart_outlined, 'Boutique d\'Or : dépense ton or pour te protéger — gel de série 🧊 (un jour off sans pénalité), sursis de deadline ⏳, joker de suppression 🗑️, et titres à débloquer'),
+    (Icons.fact_check_outlined, 'ORION propose, tu valides : les idées de la boîte à idées deviennent des propositions à accepter / refuser / rediriger (file « À valider », badge dans la barre du haut) — fini les projets créés d\'office'),
+    (Icons.account_tree_outlined, 'Sous-projets & réorganisation directe : déplace une tâche vers un autre projet, une action vers une autre tâche, ou transforme une action en sous-projet — sans passer par ORION'),
+    (Icons.cleaning_services_outlined, 'Revue de la semaine (menu ⋮) : un point clair sur les projets en sommeil, les idées en attente et les tâches à classer ; ORION peut t\'alerter quand une routine qui rapporte va casser'),
+  ]),
   _Entry('5.88', '5 juin 2026', [
     (Icons.emoji_events_outlined, 'Classement plus clair : ton rang « 🫵 Toi » (pseudo, niveau, XP) s\'affiche en tête, et un message t\'explique quoi faire quand tu es encore seul — ton XP est déjà compté en attendant les autres'),
   ]),

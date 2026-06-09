@@ -302,14 +302,42 @@ class _GoalsViewState extends State<GoalsView> {
 
         // Header projet (si plusieurs projets dans le même domaine)
         if (byProject.length > 1) {
+          final parentTitle = project.parentProjectId == null
+              ? null
+              : _projects
+                  .where((x) => x.id == project.parentProjectId)
+                  .firstOrNull
+                  ?.title;
           widgets.add(SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-              child: Text(
-                project.title,
-                style: TextStyle(
-                    fontSize: 12, fontWeight: FontWeight.w700,
-                    color: cs.onSurface.withOpacity(.55)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (parentTitle != null)
+                    Row(children: [
+                      Icon(Icons.subdirectory_arrow_right,
+                          size: 11, color: cs.onSurface.withOpacity(.4)),
+                      const SizedBox(width: 3),
+                      Flexible(
+                        child: Text(
+                          'sous-projet de « $parentTitle »',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 10,
+                              fontStyle: FontStyle.italic,
+                              color: cs.onSurface.withOpacity(.45)),
+                        ),
+                      ),
+                    ]),
+                  Text(
+                    project.title,
+                    style: TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w700,
+                        color: cs.onSurface.withOpacity(.55)),
+                  ),
+                ],
               ),
             ),
           ));

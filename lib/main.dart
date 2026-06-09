@@ -50,6 +50,10 @@ import 'package:app_links/app_links.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:productivitwo_v1/widgets/project_sheet.dart';
 import 'package:productivitwo_v1/widgets/inbox_sheet.dart';
+import 'package:productivitwo_v1/widgets/proposals_sheet.dart';
+import 'package:productivitwo_v1/widgets/weekly_review_sheet.dart';
+import 'package:productivitwo_v1/gold_engine.dart';
+import 'package:productivitwo_v1/widgets/gold_sheet.dart';
 import 'package:productivitwo_v1/widgets/orion_screen.dart';
 import 'package:productivitwo_v1/widgets/focus_view.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
@@ -1796,7 +1800,7 @@ class _AppRootState extends State<AppRoot>
           final s = await store.loadOrInit();
           if (mounted) setState(() {
             _state = s;
-            logic = AppLogic(_state!, _saveAndRefresh);
+            logic = AppLogic(_state!, _saveAndRefresh)..sync = _sync;
             _syncStatus = '⚠️';
           });
         }
@@ -1964,7 +1968,7 @@ class _AppRootState extends State<AppRoot>
           final s = await store.loadOrInit();
           if (mounted) setState(() {
             _state = s;
-            logic = AppLogic(_state!, _saveAndRefresh);
+            logic = AppLogic(_state!, _saveAndRefresh)..sync = _sync;
           });
         }
       }
@@ -2056,7 +2060,7 @@ class _AppRootState extends State<AppRoot>
 
     setState(() {
       _state = s;
-      logic = AppLogic(_state!, _saveAndRefresh);
+      logic = AppLogic(_state!, _saveAndRefresh)..sync = _sync;
 
       () async {
         final bumps = await logic.scanAllActivities();
@@ -2162,6 +2166,8 @@ class _AppRootState extends State<AppRoot>
         WidgetService.update(logic);
         _sync.pushProductivitySnapshot(logic.productivitySnapshot());
       }
+      // Économie d'Or : migration one-shot + rattrapage des jours clos (idempotent).
+      logic.materializeGoldUpTo(_sync, DateTime.now());
       final messages = await AssistantEngine.evaluate(
         projects: projects,
         domains: _state!.domains,
@@ -4591,6 +4597,45 @@ class _AppRootState extends State<AppRoot>
                   ),
               ],
             ),
+            // File « À valider » : propositions ORION en attente
+            StreamBuilder<List<OrionProposal>>(
+              stream: _sync.streamProposals(),
+              builder: (context, snap) {
+                final count = snap.data?.length ?? 0;
+                return Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.fact_check_outlined, size: 20),
+                      tooltip: 'À valider',
+                      onPressed: () => showProposalsSheet(context, _sync),
+                    ),
+                    if (count > 0)
+                      Positioned(
+                        right: 4,
+                        top: 4,
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          constraints: const BoxConstraints(
+                              minWidth: 14, minHeight: 14),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF1D9E75),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Text(
+                            '$count',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
             const SizedBox(width: 4),
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert),
@@ -4628,6 +4673,10 @@ class _AppRootState extends State<AppRoot>
                       ),
                     ),
                   );
+                } else if (v == 'weekly_review') {
+                  showWeeklyReviewSheet(context, _sync);
+                } else if (v == 'gold') {
+                  showGoldSheet(context, logic, _sync);
                 } else if (v == 'filters') {
                   _openFiltersSheet(context);
                 } else if (v == 'changelog') {
@@ -4681,6 +4730,22 @@ class _AppRootState extends State<AppRoot>
                   ),
                 ),
                 const PopupMenuDivider(),
+                const PopupMenuItem(
+                  value: 'gold',
+                  child: Row(children: [
+                    Text('🪙', style: TextStyle(fontSize: 16)),
+                    SizedBox(width: 12),
+                    Text('Mon or'),
+                  ]),
+                ),
+                const PopupMenuItem(
+                  value: 'weekly_review',
+                  child: Row(children: [
+                    Icon(Icons.cleaning_services_outlined, size: 18),
+                    SizedBox(width: 12),
+                    Text('Revue de la semaine'),
+                  ]),
+                ),
                 const PopupMenuItem(
                   value: 'stats',
                   child: Row(children: [

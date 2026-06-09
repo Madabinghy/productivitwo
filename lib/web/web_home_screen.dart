@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/gold_economy.dart';
 import 'package:productivitwo_v1/web/gantt_screen.dart';
 import 'package:productivitwo_v1/web/help_sheet.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
@@ -3226,12 +3227,17 @@ class _ArchivedProjectCard extends StatelessWidget {
                     style: TextStyle(
                         fontSize: 12, color: cs.error.withOpacity(0.7))),
                 onPressed: () async {
+                  final cost = GoldEconomy.deleteProjectCost(
+                    project.tasks.length,
+                    project.tasks.fold<int>(0, (s, t) => s + t.actions.length),
+                  );
                   final confirm = await showDialog<bool>(
                     context: context,
                     builder: (ctx) => AlertDialog(
                       title: const Text('Supprimer définitivement ?'),
                       content: Text(
-                        'Le projet "${project.title}" sera supprimé définitivement. Cette action est irréversible.',
+                        'Le projet "${project.title}" sera supprimé définitivement. '
+                        'Cette action est irréversible et coûte $cost 🪙 (selon son contenu).',
                       ),
                       actions: [
                         TextButton(
@@ -3242,7 +3248,7 @@ class _ArchivedProjectCard extends StatelessWidget {
                           style: FilledButton.styleFrom(
                               backgroundColor: cs.error),
                           onPressed: () => Navigator.pop(ctx, true),
-                          child: const Text('Supprimer'),
+                          child: Text('Supprimer (−$cost 🪙)'),
                         ),
                       ],
                     ),
@@ -5462,6 +5468,27 @@ class _SimpleProjectsViewState extends State<_SimpleProjectsView> {
   }
 
   Future<void> _deleteProject(Project p) async {
+    // Coût d'or : proportionnel au contenu (déduction douce). Un joker l'annule.
+    final actions = p.tasks.fold<int>(0, (s, t) => s + t.actions.length);
+    final cost = GoldEconomy.deleteProjectCost(p.tasks.length, actions);
+    if (cost > 0) {
+      final usedJoker = await widget.sync.consumeJoker();
+      if (usedJoker) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('🗑️ Joker utilisé — suppression gratuite.')));
+        }
+      } else {
+        await widget.sync.applyGold(GoldLedgerEntry(
+          delta: -cost,
+          category: 'loss',
+          reasonCode: 'delete_project',
+          label: 'Suppression du projet « ${p.title} »',
+          refType: 'project',
+          refId: p.id,
+        ));
+      }
+    }
     await widget.sync.deleteProject(p.id);
     widget.onRefresh();
   }
@@ -5643,6 +5670,13 @@ class _WebProjectsListViewState extends State<_WebProjectsListView> {
     return kDomainPalette[idx % kDomainPalette.length];
   }
 
+  /// Titre du projet parent (badge « sous-projet de … »), ou null si racine.
+  String? _parentTitle(Project p) {
+    final pid = p.parentProjectId;
+    if (pid == null) return null;
+    return widget.projects.where((x) => x.id == pid).firstOrNull?.title;
+  }
+
   void _openGantt(BuildContext context, Project project, {String? taskId}) {
     Navigator.push(
       context,
@@ -5744,6 +5778,7 @@ class _WebProjectsListViewState extends State<_WebProjectsListView> {
                   project: p,
                   color: _domainColor(p.domainId, cs),
                   cs: cs,
+                  parentTitle: _parentTitle(p),
                   onTap: () => _openGantt(context, p),
                 ),
               ),
@@ -5767,6 +5802,7 @@ class _WebProjectsListViewState extends State<_WebProjectsListView> {
                     project: p,
                     color: _domainColor(p.domainId, cs),
                     cs: cs,
+                    parentTitle: _parentTitle(p),
                     onTap: () => _openGantt(context, p),
                   ),
                 ),
@@ -5789,6 +5825,7 @@ class _WebProjectsListViewState extends State<_WebProjectsListView> {
                     project: p,
                     color: _domainColor(p.domainId, cs),
                     cs: cs,
+                    parentTitle: _parentTitle(p),
                     onTap: () => _openGantt(context, p),
                   ),
                 ),
@@ -6082,12 +6119,14 @@ class _WebProjectSummaryCard extends StatelessWidget {
   final Color color;
   final ColorScheme cs;
   final VoidCallback onTap;
+  final String? parentTitle;
 
   const _WebProjectSummaryCard({
     required this.project,
     required this.color,
     required this.cs,
     required this.onTap,
+    this.parentTitle,
   });
 
   @override
@@ -6110,6 +6149,25 @@ class _WebProjectSummaryCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (parentTitle != null) ...[
+                  Row(children: [
+                    Icon(Icons.subdirectory_arrow_right,
+                        size: 12, color: cs.onSurface.withOpacity(.4)),
+                    const SizedBox(width: 3),
+                    Flexible(
+                      child: Text(
+                        'sous-projet de « $parentTitle »',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 10.5,
+                            fontStyle: FontStyle.italic,
+                            color: cs.onSurface.withOpacity(.45)),
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: 3),
+                ],
                 Text(project.title,
                     style: const TextStyle(
                         fontSize: 15, fontWeight: FontWeight.w600)),

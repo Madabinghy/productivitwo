@@ -55,7 +55,7 @@ class WebApp extends StatelessWidget {
         useMaterial3: true,
       ),
 
-      themeMode: ThemeMode.system,
+      themeMode: ThemeMode.dark,
 
       home: _AuthGate(),
     );

@@ -1414,6 +1414,45 @@ async function executeProcessInboxItem(uid: string, itemId: string, note: string
   return `✅ Idée traitée et retirée de l'inbox : "${text}" → ${note}`;
 }
 
+// ── Propositions ORION (« À valider ») ───────────────────────────────────────
+// ORION autonome ne modifie plus les projets directement : il enregistre une
+// PROPOSITION que l'utilisateur accepte/refuse/redirige côté app. L'acceptation
+// applique la mutation côté client (déterministe, sans LLM). Si la proposition
+// vient d'une idée inbox, la capture passe en "proposed" → disparaît de l'inbox
+// (executeGetInbox ne lit que status=="pending") et n'est pas re-proposée.
+async function executeProposeChange(
+  uid: string,
+  args: {
+    kind: string;
+    title: string;
+    rationale?: string;
+    sourceCaptureId?: string;
+    payload?: Record<string, unknown>;
+  }
+): Promise<string> {
+  const valid = ["new_project", "attach_idea_as_task", "create_subproject", "archive_project"];
+  if (!valid.includes(args.kind)) {
+    return `❌ kind invalide : ${args.kind} (attendu : ${valid.join(", ")})`;
+  }
+  const id = db.collection(`users/${uid}/orion_proposals`).doc().id;
+  await db.collection(`users/${uid}/orion_proposals`).doc(id).set({
+    id,
+    kind: args.kind,
+    title: args.title,
+    rationale: args.rationale ?? "",
+    sourceCaptureId: args.sourceCaptureId ?? null,
+    payload: args.payload ?? {},
+    status: "pending",
+    createdBy: "orion",
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  if (args.sourceCaptureId) {
+    await db.collection(`users/${uid}/captures`).doc(args.sourceCaptureId)
+      .set({ status: "proposed" }, { merge: true });
+  }
+  return `✅ Proposition enregistrée (« ${args.title} ») — en attente de validation par l'utilisateur.`;
+}
+
 // ── Programme horaire journalier ─────────────────────────────────────────────
 
 async function executePlanDay(
@@ -1815,6 +1854,7 @@ export {
   executeDeleteOrionQueueItem,
   executeGetInbox,
   executeProcessInboxItem,
+  executeProposeChange,
   executeGetDaySchedule,
   executeScheduleDay,
   executeUpdateScheduleBlock,

@@ -38,6 +38,7 @@ exports.executeGetOrionQueue = executeGetOrionQueue;
 exports.executeDeleteOrionQueueItem = executeDeleteOrionQueueItem;
 exports.executeGetInbox = executeGetInbox;
 exports.executeProcessInboxItem = executeProcessInboxItem;
+exports.executeProposeChange = executeProposeChange;
 exports.executeGetDaySchedule = executeGetDaySchedule;
 exports.executeScheduleDay = executeScheduleDay;
 exports.executeUpdateScheduleBlock = executeUpdateScheduleBlock;
@@ -1244,6 +1245,36 @@ async function executeProcessInboxItem(uid, itemId, note) {
     const text = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.text) !== null && _b !== void 0 ? _b : "";
     await ref.delete();
     return `✅ Idée traitée et retirée de l'inbox : "${text}" → ${note}`;
+}
+// ── Propositions ORION (« À valider ») ───────────────────────────────────────
+// ORION autonome ne modifie plus les projets directement : il enregistre une
+// PROPOSITION que l'utilisateur accepte/refuse/redirige côté app. L'acceptation
+// applique la mutation côté client (déterministe, sans LLM). Si la proposition
+// vient d'une idée inbox, la capture passe en "proposed" → disparaît de l'inbox
+// (executeGetInbox ne lit que status=="pending") et n'est pas re-proposée.
+async function executeProposeChange(uid, args) {
+    var _a, _b, _c;
+    const valid = ["new_project", "attach_idea_as_task", "create_subproject", "archive_project"];
+    if (!valid.includes(args.kind)) {
+        return `❌ kind invalide : ${args.kind} (attendu : ${valid.join(", ")})`;
+    }
+    const id = db_1.db.collection(`users/${uid}/orion_proposals`).doc().id;
+    await db_1.db.collection(`users/${uid}/orion_proposals`).doc(id).set({
+        id,
+        kind: args.kind,
+        title: args.title,
+        rationale: (_a = args.rationale) !== null && _a !== void 0 ? _a : "",
+        sourceCaptureId: (_b = args.sourceCaptureId) !== null && _b !== void 0 ? _b : null,
+        payload: (_c = args.payload) !== null && _c !== void 0 ? _c : {},
+        status: "pending",
+        createdBy: "orion",
+        createdAt: db_1.FieldValue.serverTimestamp(),
+    });
+    if (args.sourceCaptureId) {
+        await db_1.db.collection(`users/${uid}/captures`).doc(args.sourceCaptureId)
+            .set({ status: "proposed" }, { merge: true });
+    }
+    return `✅ Proposition enregistrée (« ${args.title} ») — en attente de validation par l'utilisateur.`;
 }
 // ── Programme horaire journalier ─────────────────────────────────────────────
 async function executePlanDay(uid, args) {

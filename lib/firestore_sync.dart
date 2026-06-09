@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:collection/collection.dart';
 import 'package:http/http.dart' as http;
 import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -223,6 +224,14 @@ class FirestoreSync {
             ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
         challengeWinsByDay: (meta['challengeWinsByDay'] as Map?)
             ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
+        gold: (meta['gold'] as num?)?.toInt() ?? 0,
+        goldLifetime: (meta['goldLifetime'] as num?)?.toInt() ?? 0,
+        goldLastProcessedDay: meta['goldLastProcessedDay'] as String?,
+        goldInventory: (meta['goldInventory'] as Map?)
+            ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
+        goldGelDays: (meta['goldGelDays'] as List?)?.cast<String>(),
+        cosmeticsOwned: (meta['cosmeticsOwned'] as List?)?.cast<String>(),
+        activeTitle: meta['activeTitle'] as String?,
         weeklyScoreTarget: meta['weeklyScoreTarget'] ?? 80,
         notifHour: meta['notifHour'] ?? 9,
         notifMinute: meta['notifMinute'] ?? 0,
@@ -305,6 +314,12 @@ class FirestoreSync {
       lastChallengeYmd:      (local.lastChallengeYmd ?? '').compareTo(remote.lastChallengeYmd ?? '') >= 0
                                  ? local.lastChallengeYmd : remote.lastChallengeYmd,
       weeklyScoreTarget:     local.weeklyScoreTarget,
+      // Or : on garde le côté le plus avancé (goldLifetime monotone le plus élevé).
+      gold:                  local.goldLifetime >= remote.goldLifetime ? local.gold : remote.gold,
+      goldLifetime:          local.goldLifetime >= remote.goldLifetime ? local.goldLifetime : remote.goldLifetime,
+      goldLastProcessedDay:  local.goldLifetime >= remote.goldLifetime ? local.goldLastProcessedDay : remote.goldLastProcessedDay,
+      goldInventory:         local.goldLifetime >= remote.goldLifetime ? local.goldInventory : remote.goldInventory,
+      goldGelDays:           local.goldLifetime >= remote.goldLifetime ? local.goldGelDays : remote.goldGelDays,
       notifHour:             local.notifHour,
       notifMinute:           local.notifMinute,
       notifEnabled:          local.notifEnabled,
@@ -356,6 +371,9 @@ class FirestoreSync {
         'lastChallengeYmd': st.lastChallengeYmd,
         'ganttActionsByDay': st.ganttActionsByDay,
         'challengeWinsByDay': st.challengeWinsByDay,
+        // NB : l'or (gold/goldLifetime/…) est AUTORITATIF en Firestore et écrit
+        // uniquement par transaction (applyGoldBatch) → jamais via ce miroir, pour
+        // ne pas clobberer un coût appliqué côté web. (meta est écrit en merge.)
         'weeklyScoreTarget': st.weeklyScoreTarget,
         'notifHour': st.notifHour,
         'notifMinute': st.notifMinute,
@@ -482,6 +500,384 @@ class FirestoreSync {
     await _col('activities').doc(activityId).update({
       'todayFlag': value,
     });
+  }
+
+  // ── Opérations structurelles (hiérarchie & déplacements) ────────────────────
+  // Manipulation directe : déplacer/promouvoir des tâches et actions entre
+  // projets. Réutilisent saveProjectTasks/saveProject pour rester dans le pattern
+  // local-first + merge par ID de FirestoreSync.
+
+  Future<Project?> _loadProject(String projectId) async {
+    if (uid == null) return null;
+    final snap = await _col('projects').doc(projectId).get();
+    if (!snap.exists) return null;
+    return Project.from(snap.data() as Map);
+  }
+
+  /// (Dé)rattache un projet à un parent (null = projet racine).
+  Future<void> setProjectParent(String projectId, String? parentId) async {
+    if (uid == null) return;
+    if (parentId == projectId) return; // un projet ne peut être son propre parent
+    await _col('projects').doc(projectId).update({'parentProjectId': parentId});
+  }
+
+  /// Déplace une tâche d'un projet vers un autre (retire de la source, ajoute à
+  /// la cible). La tâche perd son phaseId (les phases sont propres au projet).
+  Future<void> moveTaskToProject(
+      String fromProjectId, String toProjectId, String taskId) async {
+    if (uid == null || fromProjectId == toProjectId) return;
+    final from = await _loadProject(fromProjectId);
+    final to = await _loadProject(toProjectId);
+    if (from == null || to == null) return;
+    final idx = from.tasks.indexWhere((t) => t.id == taskId);
+    if (idx < 0) return;
+    final task = from.tasks.removeAt(idx);
+    task.phaseId = null;
+    to.tasks.add(task);
+    await saveProjectTasks(fromProjectId, from.tasks);
+    await saveProjectTasks(toProjectId, to.tasks);
+  }
+
+  /// Déplace une action d'une tâche vers une autre (même projet ou non).
+  Future<void> moveActionToTask({
+    required String fromProjectId,
+    required String fromTaskId,
+    required String toProjectId,
+    required String toTaskId,
+    required String actionId,
+  }) async {
+    if (uid == null) return;
+    final from = await _loadProject(fromProjectId);
+    final to = fromProjectId == toProjectId ? from : await _loadProject(toProjectId);
+    if (from == null || to == null) return;
+    final fromTask = from.tasks.firstWhereOrNull((t) => t.id == fromTaskId);
+    final toTask = to.tasks.firstWhereOrNull((t) => t.id == toTaskId);
+    if (fromTask == null || toTask == null) return;
+    final idx = fromTask.actions.indexWhere((a) => a.id == actionId);
+    if (idx < 0) return;
+    final action = fromTask.actions.removeAt(idx);
+    toTask.actions.add(action);
+    if (fromProjectId == toProjectId) {
+      await saveProjectTasks(fromProjectId, from.tasks);
+    } else {
+      await saveProjectTasks(fromProjectId, from.tasks);
+      await saveProjectTasks(toProjectId, to.tasks);
+    }
+  }
+
+  /// Promeut une action en sous-projet enfant du projet courant. L'action est
+  /// retirée de sa tâche et devient le titre d'un nouveau projet (source "user").
+  /// Retourne le projet créé.
+  Future<Project?> promoteActionToSubproject({
+    required String parentProjectId,
+    required String taskId,
+    required String actionId,
+  }) async {
+    if (uid == null) return null;
+    final parent = await _loadProject(parentProjectId);
+    if (parent == null) return null;
+    final task = parent.tasks.firstWhereOrNull((t) => t.id == taskId);
+    if (task == null) return null;
+    final idx = task.actions.indexWhere((a) => a.id == actionId);
+    if (idx < 0) return null;
+    final action = task.actions.removeAt(idx);
+    final now = DateTime.now();
+    final child = Project(
+      title: action.title,
+      domainId: parent.domainId,
+      parentProjectId: parentProjectId,
+      startDate: now,
+      createdBy: uid!,
+      source: 'user',
+    );
+    await saveProject(child);
+    await saveProjectTasks(parentProjectId, parent.tasks);
+    return child;
+  }
+
+  // ── Propositions ORION (« À valider ») ──────────────────────────────────────
+  // ORION autonome propose ; l'utilisateur dispose. L'acceptation applique la
+  // mutation côté client via les helpers ci-dessus (déterministe, sans LLM).
+
+  Stream<List<OrionProposal>> streamProposals() {
+    if (uid == null) return const Stream.empty();
+    return _col('orion_proposals')
+        .where('status', isEqualTo: 'pending')
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((d) => OrionProposal.from(d.data() as Map))
+            .toList()
+          ..sort((a, b) => (a.createdAt ?? DateTime(2000))
+              .compareTo(b.createdAt ?? DateTime(2000))));
+  }
+
+  Future<void> _setProposalStatus(String id, String status) async {
+    if (uid == null) return;
+    await _col('orion_proposals').doc(id).update({'status': status});
+  }
+
+  /// Refuse une proposition et trace l'idée source dans l'historique inbox.
+  Future<void> rejectProposal(OrionProposal p) async {
+    if (uid == null) return;
+    await _setProposalStatus(p.id, 'rejected');
+    final cid = p.sourceCaptureId;
+    if (cid != null) {
+      await _col('captures').doc(cid).set({
+        'status': 'processed',
+        'orionNote': 'Proposition refusée : ${p.title}',
+        'processedAt': DateTime.now().toIso8601String(),
+      }, SetOptions(merge: true));
+    }
+  }
+
+  /// Accepte une proposition : applique la mutation puis consomme l'idée source.
+  /// `overrides` permet la redirection (ex: changer projectId/parentProjectId) ;
+  /// `kindOverride` permet de changer la nature (ex: « nouveau projet » → plutôt
+  /// rattacher l'idée comme tâche d'un projet existant).
+  Future<void> acceptProposal(OrionProposal p,
+      {Map<String, dynamic>? overrides, String? kindOverride}) async {
+    if (uid == null) return;
+    final payload = {...p.payload, ...?overrides};
+    final kind = kindOverride ?? p.kind;
+
+    // Texte de l'idée source → provenance « origine » des projets (effet wow).
+    ProjectOriginIdea? origin;
+    final cid = p.sourceCaptureId;
+    if (cid != null) {
+      final snap = await _col('captures').doc(cid).get();
+      if (snap.exists) {
+        final c = CaptureItem.from(snap.data() as Map);
+        origin = ProjectOriginIdea(
+            text: c.text,
+            date: c.createdAt.toIso8601String().substring(0, 10));
+      }
+    }
+
+    switch (kind) {
+      case 'new_project':
+        await saveProject(Project(
+          title: (payload['projectTitle'] ?? p.title).toString(),
+          description: payload['description']?.toString(),
+          domainId: payload['domainId']?.toString(),
+          startDate: DateTime.now(),
+          createdBy: uid!,
+          source: 'orion',
+          originIdeas: origin != null ? [origin] : [],
+        ));
+        break;
+      case 'create_subproject':
+        await saveProject(Project(
+          title: (payload['projectTitle'] ?? p.title).toString(),
+          domainId: payload['domainId']?.toString(),
+          parentProjectId: payload['parentProjectId']?.toString(),
+          startDate: DateTime.now(),
+          createdBy: uid!,
+          source: 'orion',
+          originIdeas: origin != null ? [origin] : [],
+        ));
+        break;
+      case 'attach_idea_as_task':
+        final projectId = payload['projectId']?.toString();
+        if (projectId != null) {
+          final target = await _loadProject(projectId);
+          if (target != null) {
+            target.tasks.add(ProjectTask(
+              title: (payload['taskTitle'] ?? p.title).toString(),
+              description: payload['description']?.toString(),
+              startDate: DateTime.now(),
+            ));
+            await saveProjectTasks(projectId, target.tasks);
+          }
+        }
+        break;
+      case 'archive_project':
+        final projectId = payload['projectId']?.toString();
+        if (projectId != null) {
+          final target = await _loadProject(projectId);
+          if (target != null) {
+            target.status = 'archived';
+            await saveProject(target);
+          }
+        }
+        break;
+    }
+
+    await _setProposalStatus(p.id, 'accepted');
+    // L'idée source est devenue un objet réel → on la retire de l'inbox.
+    if (cid != null) {
+      await _col('captures').doc(cid).delete();
+    }
+  }
+
+  /// Déclenche une tâche déterministe ORION côté backend (ex: 'weekly_review',
+  /// qui propose d'archiver les projets en sommeil dans la file « À valider »).
+  Future<bool> triggerOrionTask(String taskId) async {
+    if (uid == null) return false;
+    final token = (await ensureOnboardingToken()).rawToken;
+    if (token == null || token.isEmpty) return false;
+    try {
+      final resp = await http.post(
+        Uri.parse('https://orionwebhook-dzos75b65q-uc.a.run.app'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'uid': uid, 'token': token, 'taskId': taskId}),
+      );
+      return resp.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // ── Économie d'Or — écriture AUTORITATIVE (transactions, web + mobile) ───────
+
+  /// Lit l'état d'or autoritatif depuis Firestore (`data/meta`).
+  Future<Map<String, dynamic>> fetchGold() async {
+    if (uid == null) return {};
+    final snap = await _meta().get();
+    final d = snap.data() as Map<String, dynamic>? ?? {};
+    return {
+      'gold': (d['gold'] as num?)?.toInt() ?? 0,
+      'goldLifetime': (d['goldLifetime'] as num?)?.toInt() ?? 0,
+      'goldLastProcessedDay': d['goldLastProcessedDay'] as String?,
+      'goldGelDays': (d['goldGelDays'] as List?)?.cast<String>() ?? <String>[],
+      'goldInventory': (d['goldInventory'] as Map?)
+              ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ??
+          <String, int>{},
+    };
+  }
+
+  /// Applique une liste d'événements d'or en UNE transaction : solde clampé à 0,
+  /// lifetime monotone (gains seuls), curseur optionnel, et écrit le ledger.
+  /// Source de vérité unique partagée par le web et le mobile.
+  Future<Map<String, int>> applyGoldBatch(
+    List<GoldLedgerEntry> entries, {
+    String? newCursor,
+    Map<String, dynamic>? extraMeta,
+  }) async {
+    if (uid == null || (entries.isEmpty && newCursor == null && extraMeta == null)) {
+      return {'gold': 0, 'goldLifetime': 0};
+    }
+    final metaRef = _meta();
+    return _db.runTransaction((tx) async {
+      final snap = await tx.get(metaRef);
+      final data = snap.data() as Map<String, dynamic>? ?? {};
+      var gold = (data['gold'] as num?)?.toInt() ?? 0;
+      var lifetime = (data['goldLifetime'] as num?)?.toInt() ?? 0;
+      for (final e in entries) {
+        gold += e.delta;
+        if (gold < 0) gold = 0; // plancher pardonnant
+        if (e.delta > 0) lifetime += e.delta; // lifetime monotone
+      }
+      final update = <String, dynamic>{
+        'gold': gold,
+        'goldLifetime': lifetime,
+        if (newCursor != null) 'goldLastProcessedDay': newCursor,
+        ...?extraMeta,
+      };
+      tx.set(metaRef, update, SetOptions(merge: true));
+      for (final e in entries) {
+        tx.set(_col('gold_ledger').doc(e.id), e.toJson());
+      }
+      return {'gold': gold, 'goldLifetime': lifetime};
+    });
+  }
+
+  /// Applique un seul événement d'or (raccourci).
+  Future<Map<String, int>> applyGold(GoldLedgerEntry entry) =>
+      applyGoldBatch([entry]);
+
+  // ── Boutique (achats / usages, transactionnels) ─────────────────────────────
+
+  /// Achat boutique : débite l'or si solde suffisant, puis ajoute soit un
+  /// consommable (`incInventory`), soit un cosmétique (`addCosmetic` + titre actif).
+  /// Renvoie true si l'achat a réussi (solde suffisant).
+  Future<bool> purchaseGold({
+    required int price,
+    required String label,
+    String? incInventory,
+    String? addCosmetic,
+    String? setActiveTitle,
+  }) async {
+    if (uid == null) return false;
+    final metaRef = _meta();
+    final ledgerId = '${DateTime.now().microsecondsSinceEpoch}';
+    return _db.runTransaction<bool>((tx) async {
+      final snap = await tx.get(metaRef);
+      final data = snap.data() as Map<String, dynamic>? ?? {};
+      final gold = (data['gold'] as num?)?.toInt() ?? 0;
+      if (gold < price) return false; // achat = il faut pouvoir payer
+      final update = <String, dynamic>{'gold': gold - price};
+      if (incInventory != null) {
+        final inv = (data['goldInventory'] as Map?)
+                ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ??
+            <String, int>{};
+        inv[incInventory] = (inv[incInventory] ?? 0) + 1;
+        update['goldInventory'] = inv;
+      }
+      if (addCosmetic != null) {
+        final owned =
+            (data['cosmeticsOwned'] as List?)?.cast<String>().toList() ??
+                <String>[];
+        if (!owned.contains(addCosmetic)) owned.add(addCosmetic);
+        update['cosmeticsOwned'] = owned;
+      }
+      if (setActiveTitle != null) update['activeTitle'] = setActiveTitle;
+      tx.set(metaRef, update, SetOptions(merge: true));
+      tx.set(_col('gold_ledger').doc(ledgerId), GoldLedgerEntry(
+        id: ledgerId, delta: -price, category: 'spend',
+        reasonCode: 'shop', label: label,
+      ).toJson());
+      return true;
+    });
+  }
+
+  /// Pose un gel de série sur une routine pour un jour (consomme 1 gel d'inventaire).
+  Future<bool> useGel(String activityId, String ymd) async {
+    if (uid == null) return false;
+    final metaRef = _meta();
+    return _db.runTransaction<bool>((tx) async {
+      final snap = await tx.get(metaRef);
+      final data = snap.data() as Map<String, dynamic>? ?? {};
+      final inv = (data['goldInventory'] as Map?)
+              ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ??
+          <String, int>{};
+      if ((inv['gel'] ?? 0) < 1) return false;
+      inv['gel'] = inv['gel']! - 1;
+      final gelDays =
+          (data['goldGelDays'] as List?)?.cast<String>().toList() ?? <String>[];
+      final key = '${activityId}_$ymd';
+      if (!gelDays.contains(key)) gelDays.add(key);
+      tx.set(metaRef, {'goldInventory': inv, 'goldGelDays': gelDays},
+          SetOptions(merge: true));
+      return true;
+    });
+  }
+
+  /// Consomme 1 joker d'inventaire (renvoie true si dispo) — annule un coût de suppression.
+  Future<bool> consumeJoker() async {
+    if (uid == null) return false;
+    final metaRef = _meta();
+    return _db.runTransaction<bool>((tx) async {
+      final snap = await tx.get(metaRef);
+      final data = snap.data() as Map<String, dynamic>? ?? {};
+      final inv = (data['goldInventory'] as Map?)
+              ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ??
+          <String, int>{};
+      if ((inv['joker'] ?? 0) < 1) return false;
+      inv['joker'] = inv['joker']! - 1;
+      tx.set(metaRef, {'goldInventory': inv}, SetOptions(merge: true));
+      return true;
+    });
+  }
+
+  /// Historique d'or, plus récent d'abord (pour la sheet). Limité pour rester léger.
+  Stream<List<GoldLedgerEntry>> streamGoldLedger({int limit = 100}) {
+    if (uid == null) return const Stream.empty();
+    return _col('gold_ledger')
+        .orderBy('ts', descending: true)
+        .limit(limit)
+        .snapshots()
+        .map((snap) =>
+            snap.docs.map((d) => GoldLedgerEntry.from(d.data() as Map)).toList());
   }
 
   // ── Strategic objectives ────────────────────────────────────────────────────

@@ -3,6 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.taskOverdueSummary = taskOverdueSummary;
 exports.taskWeeklyDeadlines = taskWeeklyDeadlines;
 exports.taskArchiveInactiveProjects = taskArchiveInactiveProjects;
+exports.taskWeeklyReview = taskWeeklyReview;
+exports.taskGoldReview = taskGoldReview;
 exports.taskCleanExpiredMessages = taskCleanExpiredMessages;
 exports.taskProgressReport = taskProgressReport;
 exports.runDeterministicTask = runDeterministicTask;
@@ -156,6 +158,140 @@ async function taskArchiveInactiveProjects(uid) {
     }
     return { actions, pushed, skipped: false };
 }
+// ── Revue hebdo : PROPOSE d'archiver les projets inactifs (Phase 3) ──────────
+// Contrairement à taskArchiveInactiveProjects (archive direct), cette tâche
+// respecte « ORION propose, l'utilisateur dispose » : elle écrit des propositions
+// archive_project dans orion_proposals (file « À valider »). Idempotente : ne
+// reproposera pas un projet ayant déjà une proposition d'archivage en attente.
+async function taskWeeklyReview(uid) {
+    var _a, _b, _c, _d, _e, _f;
+    const actions = [];
+    let pushed = 0;
+    const today = (0, execute_1.todayInParis)();
+    const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+    const [projectsSnap, pendingPropsSnap, captureSnap] = await Promise.all([
+        db_1.db.collection(`users/${uid}/projects`).where("status", "==", "active").get(),
+        db_1.db.collection(`users/${uid}/orion_proposals`)
+            .where("status", "==", "pending").where("kind", "==", "archive_project").get(),
+        db_1.db.collection(`users/${uid}/captures`).where("status", "==", "pending").get(),
+    ]);
+    // Projets déjà couverts par une proposition d'archivage en attente
+    const alreadyProposed = new Set(pendingPropsSnap.docs
+        .map((d) => { var _a; return (_a = d.data().payload) === null || _a === void 0 ? void 0 : _a.projectId; })
+        .filter((x) => !!x));
+    let proposed = 0;
+    for (const doc of projectsSnap.docs) {
+        const p = doc.data();
+        if (alreadyProposed.has(p.id))
+            continue;
+        const updated = (_f = (_c = (_b = (_a = p.updatedAt) === null || _a === void 0 ? void 0 : _a.toDate) === null || _b === void 0 ? void 0 : _b.call(_a)) !== null && _c !== void 0 ? _c : (_e = (_d = p.createdAt) === null || _d === void 0 ? void 0 : _d.toDate) === null || _e === void 0 ? void 0 : _e.call(_d)) !== null && _f !== void 0 ? _f : new Date(0);
+        const tasks = (p.tasks || []);
+        const hasUrgent = tasks.some((t) => t.status !== "done" && t.status !== "skipped" && t.endDate && t.endDate >= today);
+        if (!hasUrgent && updated < cutoff) {
+            await (0, execute_1.executeProposeChange)(uid, {
+                kind: "archive_project",
+                title: `Archiver « ${p.title} »`,
+                rationale: "Aucune tâche urgente et pas de mise à jour depuis 14 jours.",
+                payload: { projectId: p.id },
+            });
+            proposed++;
+            actions.push(`📋 Proposition d'archivage : ${p.title}`);
+        }
+    }
+    const orphanIdeas = captureSnap.size;
+    const parts = [];
+    if (proposed > 0)
+        parts.push(`${proposed} projet${proposed > 1 ? "s" : ""} inactif${proposed > 1 ? "s" : ""} à trier`);
+    if (orphanIdeas > 0)
+        parts.push(`${orphanIdeas} idée${orphanIdeas > 1 ? "s" : ""} en attente`);
+    const text = parts.length === 0
+        ? "Revue de la semaine : tout est à jour, rien à trier. 👌"
+        : `Revue de la semaine : ${parts.join(" · ")}. À valider dans « À valider ».`;
+    await (0, execute_1.executePushAssistantMessage)(uid, {
+        targetDate: today, text: text.slice(0, 179),
+        condition: { type: "always" }, expiresAfterDays: 2, priority: 2,
+    });
+    pushed++;
+    return { actions, pushed, skipped: false };
+}
+// ── Conseil d'Or (Phase E) : alerte sur l'or qui fond ────────────────────────
+// Lit l'état d'or + routines + tâches en retard, et pousse 1 message chiffré :
+// routines « lancées » non faites aujourd'hui (saignent −1 🪙/j) et tâches Gantt
+// en retard (−1 🪙/j). Déterministe, sans LLM.
+async function taskGoldReview(uid) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+    const actions = [];
+    let pushed = 0;
+    const today = (0, execute_1.todayInParis)();
+    const todayYmd = today.replace(/-/g, "");
+    const [actSnap, hpSnap, projSnap] = await Promise.all([
+        db_1.db.collection(`users/${uid}/activities`).get(),
+        db_1.db.collection(`users/${uid}/habitProgress`).get(),
+        db_1.db.collection(`users/${uid}/projects`).where("status", "==", "active").get(),
+    ]);
+    // Cibles + noms des routines (habits non supprimées)
+    const habitTarget = new Map();
+    const habitName = new Map();
+    for (const a of actSnap.docs) {
+        if (((_a = a.get("type")) !== null && _a !== void 0 ? _a : "time") === "habit" && a.get("deleted") !== true) {
+            habitTarget.set(a.id, (_b = a.get("habitTarget")) !== null && _b !== void 0 ? _b : 1);
+            habitName.set(a.id, (_c = a.get("name")) !== null && _c !== void 0 ? _c : "routine");
+        }
+    }
+    // Progrès par routine : valeur du jour + nb de jours atteints (or rapporté ≈ ×2)
+    const todayVal = new Map();
+    const metDays = new Map();
+    for (const hp of hpSnap.docs) {
+        const aid = hp.get("activityId");
+        if (!aid || !habitTarget.has(aid))
+            continue;
+        const ymd = (_d = hp.get("yyyymmdd")) !== null && _d !== void 0 ? _d : "";
+        const val = (_e = hp.get("value")) !== null && _e !== void 0 ? _e : 0;
+        const tgt = habitTarget.get(aid);
+        if (ymd === todayYmd)
+            todayVal.set(aid, val);
+        if (val >= tgt)
+            metDays.set(aid, ((_f = metDays.get(aid)) !== null && _f !== void 0 ? _f : 0) + 1);
+    }
+    // Routines lancées (déjà atteintes ≥1 fois) mais NON faites aujourd'hui → saignent
+    const bleeding = [];
+    for (const [aid, tgt] of habitTarget) {
+        const launched = ((_g = metDays.get(aid)) !== null && _g !== void 0 ? _g : 0) > 0;
+        const doneToday = ((_h = todayVal.get(aid)) !== null && _h !== void 0 ? _h : 0) >= tgt;
+        if (launched && !doneToday) {
+            bleeding.push({ name: (_j = habitName.get(aid)) !== null && _j !== void 0 ? _j : "routine", earned: ((_k = metDays.get(aid)) !== null && _k !== void 0 ? _k : 0) * 2 });
+        }
+    }
+    bleeding.sort((a, b) => b.earned - a.earned);
+    // Tâches Gantt en retard → −1 🪙/j chacune
+    let lateCount = 0;
+    for (const doc of projSnap.docs) {
+        for (const t of (doc.data().tasks || [])) {
+            if (t.status !== "done" && t.status !== "skipped" && t.endDate && t.endDate < today)
+                lateCount++;
+        }
+    }
+    if (bleeding.length === 0 && lateCount === 0) {
+        return { actions: ["ℹ️ Aucune hémorragie d'or"], pushed: 0, skipped: false };
+    }
+    const parts = [];
+    if (bleeding.length > 0) {
+        const top = bleeding[0];
+        parts.push(bleeding.length === 1
+            ? `⚠️ Ta routine « ${top.name} » (${top.earned} 🪙) va casser — fais-la pour garder +2/j et stopper le −1/j.`
+            : `⚠️ ${bleeding.length} routines vont casser (dont « ${top.name} », ${top.earned} 🪙) — fais-les pour stopper le −1/j.`);
+    }
+    if (lateCount > 0) {
+        parts.push(`Tu perds ${lateCount} 🪙/j sur ${lateCount} tâche${lateCount > 1 ? "s" : ""} en retard.`);
+    }
+    await (0, execute_1.executePushAssistantMessage)(uid, {
+        targetDate: today, text: parts.join(" ").slice(0, 179),
+        condition: { type: "always" }, expiresAfterDays: 1, priority: 1,
+    });
+    pushed++;
+    actions.push(`🪙 Conseil d'or poussé (${bleeding.length} routine(s), ${lateCount} retard(s))`);
+    return { actions, pushed, skipped: false };
+}
 // ── Nettoyer les messages expirés ─────────────────────────────────────────────
 async function taskCleanExpiredMessages(uid) {
     var _a;
@@ -220,6 +356,8 @@ async function runDeterministicTask(uid, taskId) {
         case "overdue_summary": return taskOverdueSummary(uid);
         case "weekly_deadlines": return taskWeeklyDeadlines(uid);
         case "archive_inactive": return taskArchiveInactiveProjects(uid);
+        case "weekly_review": return taskWeeklyReview(uid);
+        case "gold_review": return taskGoldReview(uid);
         case "clean_expired": return taskCleanExpiredMessages(uid);
         case "progress_report": return taskProgressReport(uid);
         default:
