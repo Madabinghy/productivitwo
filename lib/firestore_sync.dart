@@ -926,6 +926,47 @@ class FirestoreSync {
     });
   }
 
+  // ── 🧪 DEV / TEST (temporaire — à supprimer après les tests) ────────────────
+  /// Ajoute [n] à l'or dépensable (sans toucher au lifetime/XP).
+  Future<void> devAddGold(int n) async {
+    if (uid == null) return;
+    final ref = _meta();
+    await _db.runTransaction((tx) async {
+      final d = (await tx.get(ref)).data() as Map<String, dynamic>? ?? {};
+      final g = (d['gold'] as num?)?.toInt() ?? 0;
+      tx.set(ref, {'gold': g + n}, SetOptions(merge: true));
+    });
+  }
+
+  /// Ajoute [n] à l'XP (goldLifetime → niveau), sans toucher au solde.
+  Future<void> devAddXp(int n) async {
+    if (uid == null) return;
+    final ref = _meta();
+    await _db.runTransaction((tx) async {
+      final d = (await tx.get(ref)).data() as Map<String, dynamic>? ?? {};
+      final x = (d['goldLifetime'] as num?)?.toInt() ?? 0;
+      tx.set(ref, {'goldLifetime': x + n}, SetOptions(merge: true));
+    });
+  }
+
+  /// Remet l'économie à zéro (or, XP, niveau, expédition, inventaire). Le curseur
+  /// est figé à aujourd'hui pour éviter un re-calcul des jours passés.
+  Future<void> devReset() async {
+    if (uid == null) return;
+    final now = DateTime.now();
+    final ymd = '${now.year}'
+        '${now.month.toString().padLeft(2, '0')}'
+        '${now.day.toString().padLeft(2, '0')}';
+    await _meta().set({
+      'gold': 0,
+      'goldLifetime': 0,
+      'unlockedLevel': 1,
+      'expeditionCleared': <String>[],
+      'goldInventory': <String, int>{},
+      'goldLastProcessedDay': ymd,
+    }, SetOptions(merge: true));
+  }
+
   /// Pose un gel de série sur une routine pour un jour (consomme 1 gel d'inventaire).
   Future<bool> useGel(String activityId, String ymd) async {
     if (uid == null) return false;

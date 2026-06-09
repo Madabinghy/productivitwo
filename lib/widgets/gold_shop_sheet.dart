@@ -223,6 +223,67 @@ class _GoldShopSheetState extends State<_GoldShopSheet> {
     ));
   }
 
+  // ── 🧪 DEV / TEST (temporaire) ──────────────────────────────────────────────
+  Future<void> _devAddGold() async {
+    await widget.sync.devAddGold(100);
+    logic.state.gold += 100;
+    logic.onChange();
+    if (mounted) {
+      setState(() {});
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('🧪 +100 or')));
+    }
+  }
+
+  Future<void> _devAddXp() async {
+    await widget.sync.devAddXp(100);
+    logic.state.goldLifetime += 100;
+    logic.onChange();
+    if (mounted) {
+      setState(() {});
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('🧪 +100 XP')));
+    }
+  }
+
+  Future<void> _devReset() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reset complet ?'),
+        content: const Text(
+            'Remet à zéro : or, XP/niveau, expédition et inventaire. Action de test.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annuler')),
+          FilledButton(
+              style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(ctx).colorScheme.error),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Tout remettre à zéro')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await widget.sync.devReset();
+    final now = DateTime.now();
+    logic.state.gold = 0;
+    logic.state.goldLifetime = 0;
+    logic.state.unlockedLevel = 1;
+    logic.state.expeditionCleared.clear();
+    logic.state.goldInventory.clear();
+    logic.state.goldLastProcessedDay = '${now.year}'
+        '${now.month.toString().padLeft(2, '0')}'
+        '${now.day.toString().padLeft(2, '0')}';
+    logic.onChange();
+    if (mounted) {
+      setState(() {});
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('🧪 Économie remise à zéro')));
+    }
+  }
+
   Future<void> _useRepair() async {
     final habits =
         logic.state.activeActivities.where((a) => a.isHabit).toList();
@@ -464,6 +525,25 @@ class _GoldShopSheetState extends State<_GoldShopSheet> {
               onTap: () => _buyTitle(title, price),
               cs: cs,
             ),
+
+          // ── 🧪 DEV / TEST (temporaire — à retirer avant prod) ─────────────
+          const SizedBox(height: 20),
+          Text('🧪 TEST (à supprimer)',
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1,
+                  color: cs.error.withOpacity(.8))),
+          const SizedBox(height: 8),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            OutlinedButton(onPressed: _devAddXp, child: const Text('+100 XP')),
+            OutlinedButton(onPressed: _devAddGold, child: const Text('+100 or')),
+            OutlinedButton(
+              onPressed: _devReset,
+              style: OutlinedButton.styleFrom(foregroundColor: cs.error),
+              child: const Text('Reset (XP & or)'),
+            ),
+          ]),
         ],
       ),
     );
