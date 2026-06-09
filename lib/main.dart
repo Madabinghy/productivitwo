@@ -3598,17 +3598,15 @@ class _AppRootState extends State<AppRoot>
   }
 
   void _showRoutinesSheet(BuildContext context) {
-    final runningDomainId = logic.runningDomainId();
-
     final today = DateTime.now();
     final todayD = DateTime(today.year, today.month, today.day);
 
     final domainById = {for (final d in logic.state.activeDomains) d.id: d};
     final domainOrder = logic.state.activeDomains.map((d) => d.id).toList()
       ..add(''); // domaines orphelins en dernier
-    // En-têtes de domaine affichés sauf en pré-filtre (quand une activité tourne,
-    // le titre du sheet nomme déjà le domaine → en-tête redondant).
-    final showDomainHeaders = runningDomainId == null;
+    // Toujours afficher toutes les routines (pas de pré-filtre sur le domaine de
+    // l'activité en cours) → en-têtes de domaine toujours visibles.
+    const showDomainHeaders = true;
 
     showModalBottomSheet(
       context: context,
@@ -3623,12 +3621,7 @@ class _AppRootState extends State<AppRoot>
                 .where((a) => a.isHabit && !a.deleted)
                 .toList()
               ..sort((a, b) => a.order.compareTo(b.order));
-            // Si une activité tourne, pré-filtrer sur son domaine
-            final routines = runningDomainId != null
-                ? allRoutines
-                    .where((a) => a.domainId == runningDomainId)
-                    .toList()
-                : allRoutines;
+            final routines = allRoutines;
             // Tri par domaine (comme le lanceur d'activité) : en-têtes + cartes.
             final Map<String, List<Activity>> byDomain = {};
             for (final r in routines) {
@@ -3659,11 +3652,9 @@ class _AppRootState extends State<AppRoot>
                         const Icon(Icons.repeat_rounded, size: 18),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: Text(
-                            runningDomainId != null
-                                ? 'Routines — ${logic.state.activeDomains.firstWhere((d) => d.id == runningDomainId, orElse: () => Domain(name: 'Ce domaine')).name}'
-                                : 'Lancer une routine',
-                            style: const TextStyle(
+                          child: const Text(
+                            'Lancer une routine',
+                            style: TextStyle(
                                 fontSize: 17, fontWeight: FontWeight.bold),
                           ),
                         ),

@@ -10,6 +10,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.93', '9 juin 2026', [
+    (Icons.ac_unit, 'Le « Gel de série » protège enfin ta série : un jour gelé ne casse plus ta streak (jour de repos neutre, sans pénalité). Tu peux ainsi sauver une longue série — et les gros bonus XP qui vont avec — pour un jour off.'),
+    (Icons.repeat_rounded, 'Lanceur de routines (bouton +) : il affiche désormais toutes tes routines, même quand une activité tourne (plus de filtrage sur le domaine en cours).'),
+  ]),
   _Entry('5.92', '9 juin 2026', [
     (Icons.delete_sweep_outlined, 'Suppression de projet repensée : « Mettre en veille » garde ton historique gratuitement ; « Supprimer » (désormais possible directement, sans archiver d\'abord) efface définitivement et coûte de l\'or — sauf pour un brouillon. Tu paies pour faire le ménage, pas pour ranger'),
     (Icons.monetization_on_outlined, 'L\'or s\'affiche maintenant avec une vraie pièce dorée (au lieu de la pièce grise)'),

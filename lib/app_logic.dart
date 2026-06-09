@@ -2344,6 +2344,10 @@ class AppLogic {
       if (habitValueOn(habitId, d) >= quota) {
         streak++;
         d = d.subtract(const Duration(days: 1));
+      } else if (state.goldGelDays.contains('${habitId}_${yyyymmdd(d)}')) {
+        // Jour gelé (Gel de série acheté) : on enjambe sans casser la chaîne
+        // — ni incrément, ni rupture, comme un vrai jour de repos.
+        d = d.subtract(const Duration(days: 1));
       } else {
         break;
       }
