@@ -39,6 +39,7 @@ class _GoldShopSheetState extends State<_GoldShopSheet> {
   bool _busy = false;
 
   int get _gold => logic.gold;
+  int get _level => logic.effectiveLevel();
   int _inv(String k) => logic.state.goldInventory[k] ?? 0;
 
   Future<void> _buyConsumable(String key, int price, String label) async {
@@ -147,6 +148,156 @@ class _GoldShopSheetState extends State<_GoldShopSheet> {
     ));
   }
 
+  Future<void> _useShield() async {
+    final tasks = <ProjectTask>[];
+    for (final p in logic.currentProjects) {
+      if (p.status != 'active') continue;
+      for (final t in p.tasks) {
+        if (t.status == 'done' || t.status == 'skipped') continue;
+        tasks.add(t);
+      }
+    }
+    if (tasks.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Aucune tâche active à protéger.')));
+      return;
+    }
+    final task = await showModalBottomSheet<ProjectTask>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text('Protéger quelle tâche ?',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+          Flexible(
+            child: ListView(shrinkWrap: true, children: [
+              for (final t in tasks)
+                ListTile(title: Text(t.title), onTap: () => Navigator.pop(ctx, t)),
+            ]),
+          ),
+        ]),
+      ),
+    );
+    if (task == null || !mounted) return;
+    final now = DateTime.now();
+    final ymds = [
+      for (int i = 0; i < GoldEconomy.shieldDaysPerUse; i++)
+        '${task.id}_${yyyymmdd(now.add(Duration(days: i)))}'
+    ];
+    final ok = await widget.sync.useShield(ymds);
+    if (ok) {
+      logic.state.goldInventory['shield'] = _inv('shield') - 1;
+      logic.state.goldTaskShieldDays.addAll(ymds);
+      logic.onChange();
+    }
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(ok
+          ? '🛡️ « ${task.title} » protégée du retard ${GoldEconomy.shieldDaysPerUse} j.'
+          : 'Aucun bouclier disponible.'),
+    ));
+  }
+
+  Future<void> _useBoost() async {
+    final ymd = yyyymmdd(DateTime.now());
+    if (logic.state.goldBoostDays.contains(ymd)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Multiplicateur déjà actif aujourd\'hui.')));
+      return;
+    }
+    final ok = await widget.sync.useBoost(ymd);
+    if (ok) {
+      logic.state.goldInventory['boost'] = _inv('boost') - 1;
+      logic.state.goldBoostDays.add(ymd);
+      logic.onChange();
+    }
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(ok
+          ? '✨ Gains d\'or ×2 activés pour aujourd\'hui !'
+          : 'Aucun multiplicateur disponible.'),
+    ));
+  }
+
+  Future<void> _useRepair() async {
+    final habits =
+        logic.state.activeActivities.where((a) => a.isHabit).toList();
+    if (habits.isEmpty) return;
+    final activity = await showModalBottomSheet<Activity>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text('Réparer quelle routine ?',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+          for (final a in habits)
+            ListTile(title: Text(a.name), onTap: () => Navigator.pop(ctx, a)),
+        ]),
+      ),
+    );
+    if (activity == null || !mounted) return;
+    final tgt = logic.activeHabitTarget(activity);
+    final now = DateTime.now();
+    final missed = <DateTime>[];
+    for (int i = 1; i <= 14; i++) {
+      final d = now.subtract(Duration(days: i));
+      final ymd = yyyymmdd(d);
+      if (logic.habitValueOn(activity.id, d) < tgt &&
+          !logic.state.goldGelDays.contains('${activity.id}_$ymd')) {
+        missed.add(d);
+      }
+    }
+    if (missed.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Aucun jour manqué récent à réparer.')));
+      return;
+    }
+    const mois = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin',
+                  'juil', 'aoû', 'sep', 'oct', 'nov', 'déc'];
+    final day = await showModalBottomSheet<DateTime>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text('Réparer quel jour manqué ?',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+          Flexible(
+            child: ListView(shrinkWrap: true, children: [
+              for (final d in missed)
+                ListTile(
+                  title: Text('${d.day} ${mois[d.month - 1]}'),
+                  onTap: () => Navigator.pop(ctx, d),
+                ),
+            ]),
+          ),
+        ]),
+      ),
+    );
+    if (day == null || !mounted) return;
+    final ymd = yyyymmdd(day);
+    final ok = await widget.sync.useRepair(activity.id, ymd);
+    if (ok) {
+      logic.state.goldInventory['repair'] = _inv('repair') - 1;
+      logic.state.goldGelDays.add('${activity.id}_$ymd');
+      logic.onChange();
+    }
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(ok
+          ? '🧬 Série de « ${activity.name} » réparée (${day.day} ${mois[day.month - 1]}).'
+          : 'Aucune réparation disponible.'),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -169,49 +320,130 @@ class _GoldShopSheetState extends State<_GoldShopSheet> {
                 fontSize: 16, weight: FontWeight.bold, color: _kGold),
           ]),
           const SizedBox(height: 4),
-          Text('Dépense ton or pour te protéger des pertes.',
+          Text(
+              'Dépense ton or pour te protéger des pertes. Les items se débloquent '
+              'au fil des niveaux, et leurs prix montent à chaque niveau (niveau $_level).',
               style:
                   TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.5))),
           const SizedBox(height: 16),
 
-          _ShopItem(
-            emoji: '🧊',
-            title: 'Gel de série',
-            subtitle: 'Protège une routine d\'un jour off (annule le −1 or/j).',
-            price: GoldEconomy.shopGel,
-            owned: _inv('gel'),
-            affordable: _gold >= GoldEconomy.shopGel,
-            busy: _busy,
-            onBuy: () => _buyConsumable('gel', GoldEconomy.shopGel, 'Gel de série'),
-            onUse: _inv('gel') > 0 ? _useGel : null,
-            cs: cs,
-          ),
-          _ShopItem(
-            emoji: '⏳',
-            title: 'Sursis de deadline',
-            subtitle: 'Décale une deadline une fois sans coût (à consommer).',
-            price: GoldEconomy.shopSursis,
-            owned: _inv('sursis'),
-            affordable: _gold >= GoldEconomy.shopSursis,
-            busy: _busy,
-            onBuy: () =>
-                _buyConsumable('sursis', GoldEconomy.shopSursis, 'Sursis de deadline'),
-            onUse: null,
-            cs: cs,
-          ),
-          _ShopItem(
-            emoji: '🗑️',
-            title: 'Joker de suppression',
-            subtitle: 'Annule le coût d\'une suppression (auto à la prochaine).',
-            price: GoldEconomy.shopJoker,
-            owned: _inv('joker'),
-            affordable: _gold >= GoldEconomy.shopJoker,
-            busy: _busy,
-            onBuy: () =>
-                _buyConsumable('joker', GoldEconomy.shopJoker, 'Joker de suppression'),
-            onUse: null,
-            cs: cs,
-          ),
+          for (final it in <({
+            String key,
+            String emoji,
+            String title,
+            String subtitle,
+            int base,
+            Future<void> Function()? use,
+          })>[
+            (
+              key: 'gel',
+              emoji: '🧊',
+              title: 'Gel de série',
+              subtitle: 'Protège une routine d\'un jour off (annule le −1 or/j).',
+              base: GoldEconomy.shopGel,
+              use: _useGel,
+            ),
+            (
+              key: 'sursis',
+              emoji: '⏳',
+              title: 'Sursis de deadline',
+              subtitle:
+                  'Se consomme en repoussant la deadline d\'une tâche (sans coût).',
+              base: GoldEconomy.shopSursis,
+              use: null,
+            ),
+            (
+              key: 'joker',
+              emoji: '🗑️',
+              title: 'Joker de suppression',
+              subtitle: 'Annule le coût d\'une suppression (auto à la prochaine).',
+              base: GoldEconomy.shopJoker,
+              use: null,
+            ),
+            (
+              key: 'shield',
+              emoji: '🛡️',
+              title: 'Bouclier anti-retard',
+              subtitle:
+                  'Gèle le −1 or/j de retard d\'une tâche pendant ${GoldEconomy.shieldDaysPerUse} jours.',
+              base: GoldEconomy.shopShield,
+              use: _useShield,
+            ),
+            (
+              key: 'boost',
+              emoji: '✨',
+              title: 'Multiplicateur ×2',
+              subtitle:
+                  'Double tes gains d\'or pour la journée (routines, temps, actions).',
+              base: GoldEconomy.shopBoost,
+              use: _useBoost,
+            ),
+            (
+              key: 'repair',
+              emoji: '🧬',
+              title: 'Réparation de série',
+              subtitle: 'Regèle un jour manqué passé pour sauver une série cassée.',
+              base: GoldEconomy.shopRepair,
+              use: _useRepair,
+            ),
+          ])
+            Builder(builder: (_) {
+              final price = GoldEconomy.scaledPrice(it.base, _level);
+              final minLvl = GoldEconomy.itemMinLevel[it.key] ?? 1;
+              final locked = _level < minLvl;
+              return _ShopItem(
+                emoji: it.emoji,
+                title: it.title,
+                subtitle: it.subtitle,
+                price: price,
+                owned: _inv(it.key),
+                affordable: _gold >= price,
+                busy: _busy,
+                locked: locked,
+                minLevel: minLvl,
+                onBuy: () => _buyConsumable(it.key, price, it.title),
+                onUse: (!locked && _inv(it.key) > 0) ? it.use : null,
+                cs: cs,
+              );
+            }),
+
+          const SizedBox(height: 20),
+          Text('OUTILS D\'EXPÉDITION',
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1,
+                  color: cs.onSurface.withOpacity(.5))),
+          const SizedBox(height: 4),
+          Text(
+              'Sers-toi de ces outils sur la carte du niveau pour atteindre le drapeau et révéler ton prochain titre.',
+              style:
+                  TextStyle(fontSize: 11.5, color: cs.onSurface.withOpacity(.5))),
+          const SizedBox(height: 8),
+          for (final t in const <({String key, String emoji, String title, String subtitle})>[
+            (key: 'pas', emoji: '🥾', title: 'Pas', subtitle: 'Franchit un nœud ordinaire du chemin.'),
+            (key: 'pioche', emoji: '⛏️', title: 'Pioche', subtitle: 'Casse un rocher qui bloque la route.'),
+            (key: 'cle', emoji: '🔑', title: 'Clé', subtitle: 'Ouvre une grille verrouillée.'),
+            (key: 'pelle', emoji: '🪏', title: 'Pelle', subtitle: 'Comble un trou pour passer.'),
+          ])
+            Builder(builder: (_) {
+              final price =
+                  GoldEconomy.scaledPrice(GoldEconomy.toolBasePrice(t.key), _level);
+              return _ShopItem(
+                emoji: t.emoji,
+                title: t.title,
+                subtitle: t.subtitle,
+                price: price,
+                owned: _inv(t.key),
+                affordable: _gold >= price,
+                busy: _busy,
+                locked: false,
+                minLevel: 1,
+                onBuy: () => _buyConsumable(t.key, price, t.title),
+                onUse: null,
+                cs: cs,
+              );
+            }),
 
           const SizedBox(height: 20),
           Text('TITRES',
@@ -241,7 +473,8 @@ class _GoldShopSheetState extends State<_GoldShopSheet> {
 class _ShopItem extends StatelessWidget {
   final String emoji, title, subtitle;
   final int price, owned;
-  final bool affordable, busy;
+  final bool affordable, busy, locked;
+  final int minLevel;
   final VoidCallback? onBuy;
   final VoidCallback? onUse;
   final ColorScheme cs;
@@ -253,6 +486,8 @@ class _ShopItem extends StatelessWidget {
     required this.owned,
     required this.affordable,
     required this.busy,
+    required this.locked,
+    required this.minLevel,
     required this.onBuy,
     required this.onUse,
     required this.cs,
@@ -260,69 +495,81 @@ class _ShopItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withOpacity(.35),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(children: [
-        Text(emoji, style: const TextStyle(fontSize: 22)),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                Text(title,
-                    style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w600)),
-                if (owned > 0) ...[
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 6, vertical: 1),
-                    decoration: BoxDecoration(
-                        color: _kGold.withOpacity(.15),
-                        borderRadius: BorderRadius.circular(8)),
-                    child: Text('×$owned',
-                        style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: _kGold)),
-                  ),
-                ],
-              ]),
-              Text(subtitle,
-                  style: TextStyle(
-                      fontSize: 11.5, color: cs.onSurface.withOpacity(.55))),
-            ],
-          ),
+    return Opacity(
+      opacity: locked ? .55 : 1,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withOpacity(.35),
+          borderRadius: BorderRadius.circular(12),
         ),
-        const SizedBox(width: 8),
-        Column(children: [
-          if (onUse != null)
-            TextButton(
-                onPressed: busy ? null : onUse,
-                style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact),
-                child: const Text('Utiliser', style: TextStyle(fontSize: 12))),
-          FilledButton(
-            onPressed: (busy || !affordable) ? null : onBuy,
-            style: FilledButton.styleFrom(
-                backgroundColor: _kGold,
-                visualDensity: VisualDensity.compact,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4)),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Text('$price', style: const TextStyle(fontSize: 12)),
-              const SizedBox(width: 3),
-              const GoldIcon(size: 13, color: Colors.white),
-            ]),
+        child: Row(children: [
+          Text(locked ? '🔒' : emoji, style: const TextStyle(fontSize: 22)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Flexible(
+                    child: Text(title,
+                        style: const TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.w600)),
+                  ),
+                  if (owned > 0 && !locked) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 1),
+                      decoration: BoxDecoration(
+                          color: _kGold.withOpacity(.15),
+                          borderRadius: BorderRadius.circular(8)),
+                      child: Text('×$owned',
+                          style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: _kGold)),
+                    ),
+                  ],
+                ]),
+                Text(locked ? 'Débloqué au niveau $minLevel' : subtitle,
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        fontStyle: locked ? FontStyle.italic : FontStyle.normal,
+                        color: cs.onSurface.withOpacity(.55))),
+              ],
+            ),
           ),
+          const SizedBox(width: 8),
+          if (locked)
+            Icon(Icons.lock_outline,
+                size: 18, color: cs.onSurface.withOpacity(.4))
+          else
+            Column(children: [
+              if (onUse != null)
+                TextButton(
+                    onPressed: busy ? null : onUse,
+                    style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact),
+                    child:
+                        const Text('Utiliser', style: TextStyle(fontSize: 12))),
+              FilledButton(
+                onPressed: (busy || !affordable) ? null : onBuy,
+                style: FilledButton.styleFrom(
+                    backgroundColor: _kGold,
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 4)),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text('$price', style: const TextStyle(fontSize: 12)),
+                  const SizedBox(width: 3),
+                  const GoldIcon(size: 13, color: Colors.white),
+                ]),
+              ),
+            ]),
         ]),
-      ]),
+      ),
     );
   }
 }

@@ -51,6 +51,7 @@ import 'package:productivitwo_v1/widgets/inbox_sheet.dart';
 import 'package:productivitwo_v1/widgets/proposals_sheet.dart';
 import 'package:productivitwo_v1/widgets/weekly_review_sheet.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
+import 'package:productivitwo_v1/widgets/expedition_sheet.dart';
 import 'package:productivitwo_v1/widgets/gamification_hub_sheet.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
 import 'package:productivitwo_v1/widgets/orion_screen.dart';
@@ -3914,10 +3915,14 @@ class _AppRootState extends State<AppRoot>
       );
     }
 
-    void _showDailyScoreSheet(BuildContext context, int done, int total) {
+    // Détail complet du score (jour + niveau + semaine + paliers), affiché
+    // directement (inline) dans l'onglet Score du hub. `refresh` rebuild le
+    // sous-arbre quand l'objectif hebdomadaire change.
+    List<Widget> _scoreDetailChildren(
+        BuildContext ctx, StateSetter refresh, int done, int total) {
       final now = DateTime.now();
       final todayStart = DateTime(now.year, now.month, now.day);
-      final todayEnd   = todayStart.add(const Duration(days: 1));
+      final todayEnd = todayStart.add(const Duration(days: 1));
 
       // Sous-actions Gantt cochées aujourd'hui (via doneAt)
       final ganttDoneToday = _dashboardProjects
@@ -3935,25 +3940,13 @@ class _AppRootState extends State<AppRoot>
       // Total tâches Gantt + sous-actions projet validées (même base que les badges)
       final totalHistoricalDone = _ganttActionCount();
       final pct = total == 0 ? 0 : (done / total * 100).round();
+      final theme = Theme.of(ctx);
+      final cs = theme.colorScheme;
+      final ringColor = pct >= 100
+          ? cs.primary
+          : Color.lerp(cs.error, cs.primary, (pct / 100).clamp(0.0, 1.0))!;
 
-      showModalBottomSheet<void>(
-        context: context,
-        showDragHandle: true,
-        isScrollControlled: true,
-        builder: (ctx) => StatefulBuilder(
-          builder: (ctx, setSheetState) {
-          final theme = Theme.of(ctx);
-          final cs = theme.colorScheme;
-          final ringColor = pct >= 100
-              ? cs.primary
-              : Color.lerp(cs.error, cs.primary, (pct / 100).clamp(0.0, 1.0))!;
-
-          return SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
+      return [
                   Row(
                     children: [
                       SizedBox(
@@ -4152,6 +4145,27 @@ class _AppRootState extends State<AppRoot>
                           ],
                         ),
                         ),
+                        if (logic.levelRevealInfo().pending) ...[
+                          const SizedBox(height: 12),
+                          Builder(builder: (_) {
+                            final rv = logic.levelRevealInfo();
+                            return SizedBox(
+                              width: double.infinity,
+                              child: FilledButton.icon(
+                                style: FilledButton.styleFrom(
+                                    backgroundColor: const Color(0xFFD4A017)),
+                                icon: const Text('🎁',
+                                    style: TextStyle(fontSize: 14)),
+                                label: Text(
+                                    'Explorer la carte du niveau ${rv.nextLevel}'),
+                                onPressed: () async {
+                                  await showExpeditionSheet(ctx, logic, _sync);
+                                  refresh(() {});
+                                },
+                              ),
+                            );
+                          }),
+                        ],
                       ],
                     );
                   }),
@@ -4202,7 +4216,7 @@ class _AppRootState extends State<AppRoot>
                       if (picked == null) return;
                       logic.state.weeklyScoreTarget = picked;
                       logic.onChange();
-                      setSheetState(() {});
+                      refresh(() {});
                     }
 
                     return Column(
@@ -4466,112 +4480,25 @@ class _AppRootState extends State<AppRoot>
                       );
                     }).toList(),
                   ),
-                ],
-              ),
-            ),
-          );
-          },
-        ),
-      );
+      ];
     }
 
-    // Onglet « Score » du hub : panneau compact (score du jour + niveau +
-    // semaine) avec accès au détail complet via le sheet existant.
+    // Onglet « Score » du hub : le détail complet du score est affiché
+    // directement (plus de bouton « voir le détail »).
     Widget _scoreHubTab(BuildContext ctx, int done, int total) {
-      final theme = Theme.of(ctx);
-      final cs = theme.colorScheme;
-      final pct = total == 0 ? 0 : (done / total * 100).round();
-      final ringColor = pct >= 100
-          ? cs.primary
-          : Color.lerp(cs.error, cs.primary, (pct / 100).clamp(0.0, 1.0))!;
-      final lv = logic.userLevelData();
-      final lvProgress =
-          (lv.xp - lv.xpCurrent) / (lv.xpNext - lv.xpCurrent).clamp(1, 99999);
-      final w = logic.weeklyScoreData();
-      final weekPct = (w.current * 100).round();
-      final bars =
-          w.days7.map((v) => v < 0 ? 0.0 : v.clamp(0.0, 1.0)).toList();
-
       return ListView(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
         children: [
-          Row(
-            children: [
-              SizedBox(
-                width: 48,
-                height: 48,
-                child: CircularProgressIndicator(
-                  value: total == 0 ? 0 : done / total,
-                  strokeWidth: 5,
-                  backgroundColor: cs.onSurface.withValues(alpha: .12),
-                  color: ringColor,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('$pct%',
-                      style: theme.textTheme.headlineMedium?.copyWith(
-                          fontWeight: FontWeight.w900,
-                          color: pct >= 100 ? cs.primary : null)),
-                  Text("Score d'aujourd'hui",
-                      style: theme.textTheme.bodySmall?.copyWith(
-                          color: cs.onSurface.withValues(alpha: .6))),
-                ],
-              ),
-              if (pct >= 100) ...[
-                const Spacer(),
-                const Text('🎉', style: TextStyle(fontSize: 32)),
-              ],
-            ],
-          ),
-          const Divider(height: 28),
-          Text('Niveau ${lv.level} · ${logic.state.activeTitle ?? lv.title}',
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-          const SizedBox(height: 6),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(3),
-            child: LinearProgressIndicator(
-              value: lvProgress.clamp(0.0, 1.0),
-              minHeight: 6,
-              backgroundColor: cs.onSurface.withValues(alpha: .10),
-              color: cs.primary,
+          // Détail complet affiché directement (le bouton « voir le détail »
+          // est supprimé). StatefulBuilder = refresh local pour l'objectif hebdo.
+          StatefulBuilder(
+            builder: (ctx, refresh) => Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: _scoreDetailChildren(ctx, refresh, done, total),
             ),
           ),
-          const SizedBox(height: 4),
-          Text('${lv.xp} / ${lv.xpNext} XP',
-              style: TextStyle(
-                  fontSize: 11, color: cs.onSurface.withValues(alpha: .5))),
-          const Divider(height: 28),
-          Row(
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Semaine',
-                      style: theme.textTheme.labelMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: cs.onSurface.withValues(alpha: .5))),
-                  Text('$weekPct%',
-                      style: theme.textTheme.titleLarge
-                          ?.copyWith(fontWeight: FontWeight.w900)),
-                ],
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: SizedBox(
-                    height: 32, child: TinyRatioBars(values: bars, height: 32)),
-              ),
-            ],
-          ),
           const SizedBox(height: 24),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.insights_outlined, size: 18),
-            label: const Text('Voir le détail du score'),
-            onPressed: () => _showDailyScoreSheet(ctx, done, total),
-          ),
-          const SizedBox(height: 8),
           OutlinedButton.icon(
             icon: const Icon(Icons.bar_chart_outlined, size: 18),
             label: const Text('Statistiques complètes'),

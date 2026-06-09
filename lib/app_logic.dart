@@ -1814,11 +1814,20 @@ class AppLogic {
 
   // ─── Niveau global ────────────────────────────────────────────────────────
 
-  static const _levelThresholds = [0, 30, 80, 200, 450, 800, 1500, 2500, 4000, 7000];
+  // Niveaux 1-15 (Débutant→Mythique). Les 10 premiers seuils sont historiques
+  // (inchangés pour ne rétrograder personne) ; les 5 suivants étendent la courbe
+  // afin qu'on n'atteigne plus le « bout » trop vite. Au-delà : prestige Mythique
+  // I/II… par crans de `_prestigeStep` (long grind volontaire).
+  static const _levelThresholds = [
+    0, 30, 80, 200, 450, 800, 1500, 2500, 4000, 7000,
+    11000, 16000, 23000, 32000, 45000,
+  ];
   static const _levelTitles = [
     'Débutant', 'Curieux', 'Régulier', 'Déterminé', 'Discipliné',
     'Expert', 'Champion', 'Maître', 'Légende', 'Élite',
+    'Virtuose', 'Maître d\'œuvre', 'Sage', 'Titan', 'Mythique',
   ];
+  static const _prestigeStep = 8000;
 
   int _xpForBadge(BadgeId id) {
     switch (id) {
@@ -1923,26 +1932,28 @@ class AppLogic {
     return badgeXp + actionXp();
   }
 
-  ({int xp, int level, String title, int xpCurrent, int xpNext}) userLevelData() {
-    // Le niveau/rang suit désormais l'or brut gagné à vie (monotone), pas l'XP dérivé.
+  /// Seuil d'XP (or à vie) requis pour atteindre [level]. Gère le prestige.
+  int _thresholdForLevel(int level) {
+    if (level <= 1) return 0;
+    if (level <= _levelThresholds.length) return _levelThresholds[level - 1];
+    return _levelThresholds.last +
+        (level - _levelThresholds.length) * _prestigeStep;
+  }
+
+  /// Titre d'un niveau (prestige Mythique I/II… au-delà du dernier palier nommé).
+  String _titleForLevel(int level) {
+    if (level <= 1) return _levelTitles.first;
+    if (level <= _levelThresholds.length) return _levelTitles[level - 1];
+    return '${_levelTitles.last} ${_roman(level - _levelThresholds.length)}';
+  }
+
+  /// Niveau ATTEINT par l'XP (or à vie), indépendamment de ce qui est révélé.
+  int earnedLevelFromXp() {
     final xp = state.goldLifetime;
-
-    const eliteThreshold = 7000;
-    const prestigeStep = 2000;
-
-    if (xp >= eliteThreshold) {
-      final prestige = (xp - eliteThreshold) ~/ prestigeStep; // 0,1,2…
-      final title = prestige == 0 ? 'Élite' : 'Élite ${_roman(prestige)}';
-      final xpCurrent = eliteThreshold + prestige * prestigeStep;
-      return (
-        xp: xp,
-        level: 10 + prestige,
-        title: title,
-        xpCurrent: xpCurrent,
-        xpNext: xpCurrent + prestigeStep,
-      );
+    if (xp >= _levelThresholds.last) {
+      final prestige = (xp - _levelThresholds.last) ~/ _prestigeStep;
+      return _levelThresholds.length + prestige;
     }
-
     int level = 1;
     for (int i = _levelThresholds.length - 1; i >= 0; i--) {
       if (xp >= _levelThresholds[i]) {
@@ -1950,12 +1961,38 @@ class AppLogic {
         break;
       }
     }
+    return level;
+  }
+
+  /// Niveau EFFECTIF = le plus haut niveau révélé (payé). Gate séquentiel :
+  /// l'XP rend éligible, mais c'est `unlockedLevel` qui fait foi pour le rang,
+  /// les titres et l'accès boutique.
+  int effectiveLevel() => state.unlockedLevel < 1 ? 1 : state.unlockedLevel;
+
+  ({int xp, int level, String title, int xpCurrent, int xpNext}) userLevelData() {
+    final xp = state.goldLifetime;
+    final level = effectiveLevel();
     return (
       xp: xp,
       level: level,
-      title: _levelTitles[level - 1],
-      xpCurrent: _levelThresholds[level - 1],
-      xpNext: _levelThresholds[level],
+      title: _titleForLevel(level),
+      xpCurrent: _thresholdForLevel(level),
+      xpNext: _thresholdForLevel(level + 1),
+    );
+  }
+
+  /// État de la révélation du prochain niveau (titre masqué tant que non payé).
+  /// `pending` = l'XP suffit pour révéler le niveau suivant.
+  ({bool pending, int nextLevel, int cost, bool affordable}) levelRevealInfo() {
+    final eff = effectiveLevel();
+    final next = eff + 1;
+    final pending = earnedLevelFromXp() >= next;
+    final cost = GoldEconomy.revealCost(next);
+    return (
+      pending: pending,
+      nextLevel: next,
+      cost: cost,
+      affordable: state.gold >= cost,
     );
   }
 
@@ -2325,6 +2362,29 @@ class AppLogic {
 
   /// Nombre de jours consécutifs où le quota est atteint (en partant d'aujourd'hui ou d'hier).
   /// Retourne 0 pour les routines hebdo/mensuelles.
+  /// Longueur de série se terminant le jour [anchor] (inclus s'il est fait/gelé).
+  /// Sert au gain d'or croissant avec la série (cohérent avec habitCurrentStreak).
+  int habitStreakEndingOn(String habitId, DateTime anchor) {
+    final act = state.activeActivities.firstWhereOrNull((a) => a.id == habitId);
+    if (act == null || effectiveHabitFreq(act) != HabitFreq.daily) return 0;
+    final quota = dayQuotaFor(act);
+    if (quota <= 0) return 0;
+    DateTime d = DateTime(anchor.year, anchor.month, anchor.day);
+    int streak = 0;
+    while (streak < 3650) {
+      final ymd = yyyymmdd(d);
+      if (habitValueOn(habitId, d) >= quota) {
+        streak++;
+        d = d.subtract(const Duration(days: 1));
+      } else if (state.goldGelDays.contains('${habitId}_$ymd')) {
+        d = d.subtract(const Duration(days: 1));
+      } else {
+        break;
+      }
+    }
+    return streak;
+  }
+
   int habitCurrentStreak(String habitId) {
     final act = state.activeActivities.firstWhereOrNull((a) => a.id == habitId);
     if (act == null || effectiveHabitFreq(act) != HabitFreq.daily) return 0;

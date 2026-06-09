@@ -673,10 +673,14 @@ class AppState {
   int gold;                    // solde de pièces d'or courant (plancher 0)
   int goldLifetime;            // or brut gagné à vie (monotone) → pilote le niveau
   String? goldLastProcessedDay;// YYYYMMDD : curseur du rattrapage idempotent
-  Map<String, int> goldInventory; // consommables achetés : {gel, sursis, joker}
+  Map<String, int> goldInventory; // consommables achetés : {gel, sursis, joker, shield, boost}
   List<String> goldGelDays;    // jours de routine gelés : "activityId_YYYYMMDD"
+  List<String> goldTaskShieldDays; // jours de tâche protégés du retard : "taskId_YYYYMMDD"
+  List<String> goldBoostDays;  // jours à gains ×2 : "YYYYMMDD"
   List<String> cosmeticsOwned; // cosmétiques possédés (ex: titres)
   String? activeTitle;         // titre cosmétique actif (override du titre de niveau)
+  int unlockedLevel;           // niveau effectif RÉVÉLÉ (payé) : l'XP rend éligible, on paie pour débloquer le titre/niveau (gate séquentiel)
+  List<String> expeditionCleared; // nœuds franchis de l'expédition en cours (mini-carte du niveau unlockedLevel+1) ; vidé à la complétion
 
   AppState({
     required this.domains,
@@ -728,8 +732,12 @@ class AppState {
     this.goldLastProcessedDay,
     Map<String, int>? goldInventory,
     List<String>? goldGelDays,
+    List<String>? goldTaskShieldDays,
+    List<String>? goldBoostDays,
     List<String>? cosmeticsOwned,
     this.activeTitle,
+    this.unlockedLevel = 1,
+    List<String>? expeditionCleared,
     // ✅ NOUVEAU
     Map<String, List<String>>? nowSkippedByYmd,
     Map<String, List<String>>? nowDoneByYmd,
@@ -764,6 +772,9 @@ class AppState {
         challengeWinsByDay = challengeWinsByDay ?? <String, int>{},
         goldInventory = goldInventory ?? <String, int>{},
         goldGelDays = goldGelDays ?? <String>[],
+        goldTaskShieldDays = goldTaskShieldDays ?? <String>[],
+        goldBoostDays = goldBoostDays ?? <String>[],
+        expeditionCleared = expeditionCleared ?? <String>[],
         cosmeticsOwned = cosmeticsOwned ?? <String>[];
 
   Map<String, dynamic> toJson() => {
@@ -814,8 +825,12 @@ class AppState {
         'goldLastProcessedDay': goldLastProcessedDay,
         'goldInventory': goldInventory,
         'goldGelDays': goldGelDays,
+        'goldTaskShieldDays': goldTaskShieldDays,
+        'goldBoostDays': goldBoostDays,
         'cosmeticsOwned': cosmeticsOwned,
         'activeTitle': activeTitle,
+        'unlockedLevel': unlockedLevel,
+        'expeditionCleared': expeditionCleared,
         'weeklyScoreTarget': weeklyScoreTarget,
         'notifHour': notifHour,
         'notifMinute': notifMinute,
@@ -924,8 +939,16 @@ class AppState {
               ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ??
           <String, int>{},
       goldGelDays: (j['goldGelDays'] as List?)?.cast<String>() ?? <String>[],
+      goldTaskShieldDays:
+          (j['goldTaskShieldDays'] as List?)?.cast<String>() ?? <String>[],
+      goldBoostDays:
+          (j['goldBoostDays'] as List?)?.cast<String>() ?? <String>[],
       cosmeticsOwned: (j['cosmeticsOwned'] as List?)?.cast<String>() ?? <String>[],
       activeTitle: j['activeTitle'] as String?,
+      // 0 = champ absent (doc antérieur au gate) → backfill one-shot au rang acquis.
+      unlockedLevel: (j['unlockedLevel'] as num?)?.toInt() ?? 0,
+      expeditionCleared:
+          (j['expeditionCleared'] as List?)?.cast<String>() ?? <String>[],
       weeklyScoreTarget: (j['weeklyScoreTarget'] as int?) ?? 80,
       notifHour: (j['notifHour'] as int?) ?? 9,
       notifMinute: (j['notifMinute'] as int?) ?? 0,

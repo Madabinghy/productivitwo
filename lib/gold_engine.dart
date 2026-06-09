@@ -54,7 +54,10 @@ extension GoldEngine on AppLogic {
     state.gold = xp;
     state.goldLifetime = xp;
     state.goldLastProcessedDay = todayYmd;
+    // On accorde d'emblée le rang déjà acquis (le gate ne s'applique qu'au futur).
+    state.unlockedLevel = earnedLevelFromXp();
     onChange();
+    sync.setUnlockedLevel(state.unlockedLevel);
     sync.applyGoldBatch(
       [
         if (xp > 0)
@@ -87,6 +90,13 @@ extension GoldEngine on AppLogic {
       seedGoldIfNeeded(sync);
       return;
     }
+    // Backfill one-shot du gate de niveau : un doc antérieur n'a pas `unlockedLevel`
+    // (lu à 0) → on accorde le rang déjà acquis pour ne rétrograder personne.
+    if (state.unlockedLevel == 0) {
+      state.unlockedLevel = earnedLevelFromXp();
+      onChange();
+      sync.setUnlockedLevel(state.unlockedLevel);
+    }
     final todayMid = DateTime(today.year, today.month, today.day);
     final entries = <GoldLedgerEntry>[];
     var d = _parseYmd(cursor).add(const Duration(days: 1));
@@ -108,28 +118,31 @@ extension GoldEngine on AppLogic {
   List<GoldLedgerEntry> _collectGoldDayEntries(DateTime d) {
     final ymd = yyyymmdd(d);
     final out = <GoldLedgerEntry>[];
+    // Multiplicateur ×2 du jour (item boutique « boost »).
+    final mult = state.goldBoostDays.contains(ymd) ? 2 : 1;
+    final boostSfx = mult == 2 ? ' ×2' : '';
 
     // ── Gains du jour ─────────────────────────────────────────────────────────
     final hours = totalForDay(d).inMinutes ~/ 60;
     if (hours > 0) {
       out.add(GoldLedgerEntry(
-          id: 'time_$ymd', delta: hours * GoldEconomy.timePerHour,
+          id: 'time_$ymd', delta: hours * GoldEconomy.timePerHour * mult,
           category: 'gain', reasonCode: 'time_logged',
-          label: '$hours h de temps loggué'));
+          label: '$hours h de temps loggué$boostSfx'));
     }
     final challenges = state.challengeWinsByDay[ymd] ?? 0;
     if (challenges > 0) {
       out.add(GoldLedgerEntry(
-          id: 'chal_$ymd', delta: challenges * GoldEconomy.challengeDone,
+          id: 'chal_$ymd', delta: challenges * GoldEconomy.challengeDone * mult,
           category: 'gain', reasonCode: 'challenge',
-          label: '$challenges défi(s) relevé(s)'));
+          label: '$challenges défi(s) relevé(s)$boostSfx'));
     }
     final gantt = state.ganttActionsByDay[ymd] ?? 0;
     if (gantt > 0) {
       out.add(GoldLedgerEntry(
-          id: 'gantt_$ymd', delta: gantt * GoldEconomy.ganttAction,
+          id: 'gantt_$ymd', delta: gantt * GoldEconomy.ganttAction * mult,
           category: 'gain', reasonCode: 'gantt_action',
-          label: '$gantt action(s) Gantt'));
+          label: '$gantt action(s) Gantt$boostSfx'));
     }
 
     // ── Routines : gain (faite) ou perte (manquée, si lancée & non gelée) ──────
@@ -138,10 +151,11 @@ extension GoldEngine on AppLogic {
       if (tgt <= 0) continue;
       final met = habitValueOn(a.id, d) >= tgt;
       if (met) {
+        final gain = GoldEconomy.routineGain(habitStreakEndingOn(a.id, d));
         out.add(GoldLedgerEntry(
-            id: 'rmet_${a.id}_$ymd', delta: GoldEconomy.routineMet,
+            id: 'rmet_${a.id}_$ymd', delta: gain * mult,
             category: 'gain', reasonCode: 'routine_met',
-            label: 'Routine « ${a.name} » faite',
+            label: 'Routine « ${a.name} » faite$boostSfx',
             refType: 'activity', refId: a.id));
       } else {
         if (state.goldGelDays.contains('${a.id}_$ymd')) continue; // jour gelé
@@ -161,6 +175,8 @@ extension GoldEngine on AppLogic {
       if (p.status != 'active') continue; // skip draft + archived (hors économie)
       for (final t in p.tasks) {
         if (t.status == 'done' || t.status == 'skipped') continue;
+        // Bouclier anti-retard : ce jour-là, pas de pénalité de retard.
+        if (state.goldTaskShieldDays.contains('${t.id}_$ymd')) continue;
         if (t.endDate != null && t.endDate!.isBefore(dMid)) {
           out.add(GoldLedgerEntry(
               id: 'late_${t.id}_$ymd', delta: -GoldEconomy.lateTaskPerDay,
@@ -201,14 +217,29 @@ extension GoldEngine on AppLogic {
   int provisionalGoldToday() {
     final d = DateTime.now();
     final ymd = yyyymmdd(d);
+    final mult = state.goldBoostDays.contains(ymd) ? 2 : 1; // ×2 du jour
     var g = (totalForDay(d).inMinutes ~/ 60) * GoldEconomy.timePerHour;
     g += (state.challengeWinsByDay[ymd] ?? 0) * GoldEconomy.challengeDone;
     g += (state.ganttActionsByDay[ymd] ?? 0) * GoldEconomy.ganttAction;
     for (final a in state.activeActivities.where((x) => x.isHabit)) {
       final tgt = activeHabitTarget(a);
-      if (tgt > 0 && habitValueOn(a.id, d) >= tgt) g += GoldEconomy.routineMet;
+      if (tgt > 0 && habitValueOn(a.id, d) >= tgt) {
+        g += GoldEconomy.routineGain(habitStreakEndingOn(a.id, d));
+      }
     }
-    return g;
+    return g * mult;
+  }
+
+  /// Or que rapporterait une routine si elle est validée aujourd'hui (gain de
+  /// base + bonus de série projeté). Sert à l'affichage « +N or » de « Mon or ».
+  int routineGainToday(Activity a) {
+    final today = DateTime.now();
+    final tgt = activeHabitTarget(a);
+    final doneToday = tgt > 0 && habitValueOn(a.id, today) >= tgt;
+    final streak = doneToday
+        ? habitStreakEndingOn(a.id, today)
+        : habitStreakEndingOn(a.id, today.subtract(const Duration(days: 1))) + 1;
+    return GoldEconomy.routineGain(streak);
   }
 
   /// Net d'or projeté ce soir si rien ne change : gains provisoires du jour
@@ -224,10 +255,12 @@ extension GoldEngine on AppLogic {
   List<({Activity activity, int earned})> bleedingRoutines() {
     final today = DateTime.now();
     final out = <({Activity activity, int earned})>[];
+    final todayYmd = yyyymmdd(today);
     for (final a in state.activeActivities.where((x) => x.isHabit)) {
       final tgt = activeHabitTarget(a);
       if (tgt <= 0) continue;
       if (habitValueOn(a.id, today) >= tgt) continue; // faite aujourd'hui
+      if (state.goldGelDays.contains('${a.id}_$todayYmd')) continue; // gelée
       if (!_routineLaunchedBy(a, today)) continue; // jamais lancée
       var metDays = 0;
       for (final hp in state.habitProgress) {
@@ -242,11 +275,15 @@ extension GoldEngine on AppLogic {
   List<({Project project, ProjectTask task, int daysLate})> lateTasks() {
     final today = DateTime.now();
     final todayMid = DateTime(today.year, today.month, today.day);
+    final todayYmd = yyyymmdd(today);
     final out = <({Project project, ProjectTask task, int daysLate})>[];
     for (final p in currentProjects) {
       if (p.status != 'active') continue; // skip draft + archived (hors économie)
       for (final t in p.tasks) {
         if (t.status == 'done' || t.status == 'skipped') continue;
+        if (state.goldTaskShieldDays.contains('${t.id}_$todayYmd')) {
+          continue; // bouclier anti-retard actif aujourd'hui
+        }
         if (t.endDate != null && t.endDate!.isBefore(todayMid)) {
           final days = todayMid
               .difference(DateTime(

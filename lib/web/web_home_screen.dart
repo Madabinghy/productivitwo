@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/gold_economy.dart';
+import 'package:productivitwo_v1/gold_purchase.dart';
 import 'package:productivitwo_v1/web/gantt_screen.dart';
 import 'package:productivitwo_v1/web/help_sheet.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
@@ -5546,7 +5547,18 @@ class _SimpleProjectsViewState extends State<_SimpleProjectsView> {
     // Brouillon = gratuit (jamais entré dans l'économie) ; tout projet réel
     // (actif / terminé / archivé) coûte à supprimer — « tu paies le ménage ».
     if (cost > 0 && p.status != 'draft') {
-      final usedJoker = await widget.sync.consumeJoker();
+      var usedJoker = await widget.sync.consumeJoker();
+      if (!usedJoker && mounted) {
+        final bought = await offerBuyConsumable(
+          context,
+          widget.sync,
+          itemKey: 'joker',
+          price: GoldEconomy.shopJoker,
+          label: 'Joker de suppression',
+          rationale: 'Annule le coût de $cost or de cette suppression.',
+        );
+        if (bought) usedJoker = await widget.sync.consumeJoker();
+      }
       if (usedJoker) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(

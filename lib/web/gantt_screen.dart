@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/gold_economy.dart';
+import 'package:productivitwo_v1/gold_purchase.dart';
 import 'package:productivitwo_v1/web/gantt_pdf_exporter.dart';
 import 'package:productivitwo_v1/web/project_doc_view.dart';
 import 'package:uuid/uuid.dart';
@@ -2062,6 +2063,89 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
     if (mounted) setState(() => _saving = false);
   }
 
+  /// Repousser l'échéance : date postérieure → coût `deadlinePush` par semaine
+  /// entamée de décalage, gratuit si un Sursis est en stock (achat-à-l'usage
+  /// proposé sinon). Sort la tâche de `lateTasks()` → stoppe le −1/j.
+  Future<void> _pushDeadline() async {
+    final cur = _task.endDate;
+    if (cur == null) return;
+    final ref = DateTime(cur.year, cur.month, cur.day);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: ref.add(const Duration(days: 7)),
+      firstDate: ref.add(const Duration(days: 1)),
+      lastDate: DateTime(2100),
+      helpText: 'Repousser l\'échéance au…',
+    );
+    if (picked == null || !mounted) return;
+    final pickedMid = DateTime(picked.year, picked.month, picked.day);
+    final deltaDays = pickedMid.difference(ref).inDays;
+    if (deltaDays <= 0) return;
+    final weeks = (deltaDays + 6) ~/ 7;
+    final billed = widget.project.status != 'draft';
+    final cost = billed ? GoldEconomy.deadlinePush * weeks : 0;
+
+    if (cost > 0) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Repousser la deadline ?'),
+          content: Text(
+              'L\'échéance de « ${_task.title} » passera au ${_fmtDate(pickedMid)} '
+              '(+$weeks semaine${weeks > 1 ? 's' : ''}).\n\nCoût : $cost or — '
+              'gratuit si tu as un Sursis en stock.'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Annuler')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text('Repousser (−$cost or)')),
+          ],
+        ),
+      );
+      if (proceed != true) return;
+
+      var usedSursis = await widget.sync.consumeSursis();
+      if (!usedSursis && mounted) {
+        final bought = await offerBuyConsumable(
+          context,
+          widget.sync,
+          itemKey: 'sursis',
+          price: GoldEconomy.shopSursis,
+          label: 'Sursis de deadline',
+          rationale: 'Annule le coût de $cost or de ce report.',
+        );
+        if (bought) usedSursis = await widget.sync.consumeSursis();
+      }
+      if (usedSursis) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('⏳ Sursis utilisé — report gratuit.')));
+        }
+      } else {
+        widget.sync.applyGold(GoldLedgerEntry(
+          delta: -cost,
+          category: 'loss',
+          reasonCode: 'deadline_push',
+          label: 'Report d\'échéance « ${_task.title} »',
+          refType: 'task',
+          refId: _task.id,
+        ));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Échéance repoussée · −$cost or')));
+        }
+      }
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Échéance repoussée.')));
+    }
+
+    setState(() => _task.endDate = pickedMid);
+    await _save();
+  }
+
   Future<void> _addAction() async {
     final ctrl = TextEditingController();
     final result = await showDialog<String>(
@@ -2342,17 +2426,23 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
                     ),
                   ),
                   PopupMenuButton<String>(
-                    tooltip: 'Déplacer',
+                    tooltip: 'Options',
                     icon: Icon(Icons.drive_file_move_outline,
                         color: cs.onSurface.withOpacity(.4)),
                     onSelected: (v) {
                       if (v == 'move_task') _moveTaskToAnotherProject();
+                      if (v == 'push') _pushDeadline();
                     },
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(
+                    itemBuilder: (_) => [
+                      const PopupMenuItem(
                         value: 'move_task',
                         child: Text('Déplacer vers un autre projet'),
                       ),
+                      if (_task.endDate != null)
+                        const PopupMenuItem(
+                          value: 'push',
+                          child: Text('Repousser la deadline'),
+                        ),
                     ],
                   ),
                   IconButton(

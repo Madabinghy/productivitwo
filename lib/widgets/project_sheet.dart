@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/gold_economy.dart';
+import 'package:productivitwo_v1/gold_purchase.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 
 // ── Entrée publique ───────────────────────────────────────────────────────────
@@ -164,8 +165,25 @@ class _ProjectSheetState extends State<_ProjectSheet> {
     );
     if (ok != true) return;
     if (showCost) {
-      final usedJoker = await _sync.consumeJoker();
-      if (!usedJoker) {
+      var usedJoker = await _sync.consumeJoker();
+      // Pas de joker en stock → proposer d'en acheter pour annuler le coût.
+      if (!usedJoker && mounted) {
+        final bought = await offerBuyConsumable(
+          context,
+          _sync,
+          itemKey: 'joker',
+          price: GoldEconomy.shopJoker,
+          label: 'Joker de suppression',
+          rationale: 'Annule le coût de $cost or de cette suppression.',
+        );
+        if (bought) usedJoker = await _sync.consumeJoker();
+      }
+      if (usedJoker) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('🗑️ Joker utilisé — suppression gratuite.')));
+        }
+      } else {
         _sync.applyGold(GoldLedgerEntry(
           delta: -cost,
           category: 'loss',
@@ -174,9 +192,6 @@ class _ProjectSheetState extends State<_ProjectSheet> {
           refType: 'project',
           refId: _project.id,
         ));
-      } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('🗑️ Joker utilisé — suppression gratuite.')));
       }
     }
     await _sync.deleteProject(_project.id);
@@ -1085,6 +1100,91 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
     _save();
   }
 
+  /// Repousser l'échéance d'une tâche : date picker (postérieure à l'échéance
+  /// actuelle) → coût `deadlinePush` par semaine entamée de décalage. Un Sursis
+  /// en stock le rend gratuit (achat-à-l'usage proposé sinon). Repousser sort la
+  /// tâche de `lateTasks()` → stoppe le −1/j.
+  Future<void> _pushDeadline() async {
+    final cur = _task.endDate;
+    if (cur == null) return;
+    final ref = DateTime(cur.year, cur.month, cur.day);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: ref.add(const Duration(days: 7)),
+      firstDate: ref.add(const Duration(days: 1)),
+      lastDate: DateTime(2100),
+      helpText: 'Repousser l\'échéance au…',
+    );
+    if (picked == null || !mounted) return;
+    final pickedMid = DateTime(picked.year, picked.month, picked.day);
+    final deltaDays = pickedMid.difference(ref).inDays;
+    if (deltaDays <= 0) return;
+    final weeks = (deltaDays + 6) ~/ 7; // semaines entamées
+    // Brouillon = hors économie (report gratuit).
+    final billed = widget.project.status != 'draft';
+    final cost = billed ? GoldEconomy.deadlinePush * weeks : 0;
+
+    if (cost > 0) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Repousser la deadline ?'),
+          content: Text(
+              'L\'échéance de « ${_task.title} » passera au ${_fmtD(pickedMid)} '
+              '(+$weeks semaine${weeks > 1 ? 's' : ''}).\n\nCoût : $cost or — '
+              'gratuit si tu as un Sursis en stock.'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Annuler')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text('Repousser (−$cost or)')),
+          ],
+        ),
+      );
+      if (proceed != true) return;
+
+      var usedSursis = await widget.sync.consumeSursis();
+      if (!usedSursis && mounted) {
+        final bought = await offerBuyConsumable(
+          context,
+          widget.sync,
+          itemKey: 'sursis',
+          price: GoldEconomy.shopSursis,
+          label: 'Sursis de deadline',
+          rationale: 'Annule le coût de $cost or de ce report.',
+        );
+        if (bought) usedSursis = await widget.sync.consumeSursis();
+      }
+      if (usedSursis) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('⏳ Sursis utilisé — report gratuit.')));
+        }
+      } else {
+        widget.sync.applyGold(GoldLedgerEntry(
+          delta: -cost,
+          category: 'loss',
+          reasonCode: 'deadline_push',
+          label: 'Report d\'échéance « ${_task.title} »',
+          refType: 'task',
+          refId: _task.id,
+        ));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('Échéance repoussée · −$cost or')));
+        }
+      }
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Échéance repoussée.')));
+    }
+
+    setState(() => _task.endDate = pickedMid);
+    await _save();
+  }
+
   Future<void> _deleteTask() async {
     // Brouillon = CRUD libre, suppression gratuite (hors économie).
     final billed = widget.project.status != 'draft';
@@ -1186,19 +1286,25 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                       size: 20, color: cs.onSurface.withOpacity(.45)),
                   onSelected: (v) {
                     if (v == 'edit') _editTaskDetails();
+                    if (v == 'push') _pushDeadline();
                     if (v == 'move_task') _moveTaskToAnotherProject();
                     if (v == 'delete') _deleteTask();
                   },
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(
                       value: 'edit',
                       child: Text('Modifier (dates, phase…)'),
                     ),
-                    PopupMenuItem(
+                    if (_task.endDate != null)
+                      const PopupMenuItem(
+                        value: 'push',
+                        child: Text('Repousser la deadline'),
+                      ),
+                    const PopupMenuItem(
                       value: 'move_task',
                       child: Text('Déplacer vers un autre projet'),
                     ),
-                    PopupMenuItem(
+                    const PopupMenuItem(
                       value: 'delete',
                       child: Text('Supprimer la tâche'),
                     ),

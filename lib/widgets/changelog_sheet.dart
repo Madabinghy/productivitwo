@@ -10,6 +10,20 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.95', '9 juin 2026', [
+    (Icons.map_outlined, 'Nouveau : l\'Expédition ! Atteindre l\'XP d\'un niveau ne suffit plus — son titre reste secret. Pour le débloquer, tu traverses une petite carte sinueuse : chaque pas se franchit avec un outil (🥾 pas, ⛏️ pioche, 🔑 clé, 🪏 pelle) acheté en boutique. Des forks te font arbitrer (route courte chère vs longue bon marché), des trésors récompensent les détours. Le niveau se gagne, il n\'est plus juste « atteint »'),
+    (Icons.handyman_outlined, 'Outils d\'expédition en boutique : achète tes pas/pioches/clés/pelles pour avancer sur la carte. Tu continues à gagner XP et or normalement pendant l\'exploration — la carte est l\'objectif que tu finances en bossant tes routines et projets'),
+    (Icons.storefront_outlined, 'Boutique par paliers : chaque protection se débloque à un certain niveau (Bouclier niveau 5, Multiplicateur 7…) et son prix augmente à chaque niveau atteint'),
+    (Icons.military_tech_outlined, 'La progression va plus loin : 5 nouveaux titres après Élite — Virtuose, Maître d\'œuvre, Sage, Titan, Mythique — puis un prestige Mythique I/II… On n\'arrive plus au bout trop vite (et personne n\'est rétrogradé : ton rang acquis est conservé)'),
+    (Icons.insights_outlined, 'Onglet Score : le détail complet (score du jour, niveau, courbe XP 7 jours, semaine, objectif, paliers) est affiché directement — fini le bouton « voir le détail »'),
+  ]),
+  _Entry('5.94', '9 juin 2026', [
+    (Icons.checklist_rtl_outlined, '« Mon or » repensé : tes routines du jour sont listées avec des +/− pour les cocher sur place. Chaque routine affiche l\'or qu\'elle rapporte (le bonus grandit avec ta série), une encoche verte une fois validée, et un bouton « Geler » direct si elle risque de te coûter. Tout se met à jour en direct, sans rouvrir l\'écran'),
+    (Icons.flag_outlined, 'Le « Sursis de deadline » sert enfin : depuis une tâche (mobile ou web), « Repousser la deadline » choisit une nouvelle date — ça coûte un peu d\'or par semaine de report, ou rien si tu as un Sursis en stock. La tâche sort alors des retards et arrête de saigner'),
+    (Icons.shopping_bag_outlined, 'Achat-à-l\'usage : plus besoin d\'ouvrir la Boutique à l\'avance. Si tu n\'as pas le Joker / Gel / Sursis au moment où il sert (supprimer, geler une routine, repousser une échéance), on te propose de l\'acheter sur-le-champ'),
+    (Icons.auto_awesome_outlined, 'Boutique enrichie de 3 protections : 🛡️ Bouclier anti-retard (gèle le −1/j d\'une tâche pendant 7 jours), ✨ Multiplicateur ×2 (double tes gains d\'or du jour) et 🧬 Réparation de série (regèle un jour manqué passé pour sauver une streak cassée)'),
+    (Icons.ac_unit, 'Geler une routine retire immédiatement son −1 de ton or net projeté (barre du haut + « Mon or »), sans attendre'),
+  ]),
   _Entry('5.93', '9 juin 2026', [
     (Icons.ac_unit, 'Le « Gel de série » protège enfin ta série : un jour gelé ne casse plus ta streak (jour de repos neutre, sans pénalité). Tu peux ainsi sauver une longue série — et les gros bonus XP qui vont avec — pour un jour off.'),
     (Icons.repeat_rounded, 'Lanceur de routines (bouton +) : il affiche désormais toutes tes routines, même quand une activité tourne (plus de filtrage sur le domaine en cours).'),

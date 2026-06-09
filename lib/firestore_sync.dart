@@ -230,8 +230,14 @@ class FirestoreSync {
         goldInventory: (meta['goldInventory'] as Map?)
             ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
         goldGelDays: (meta['goldGelDays'] as List?)?.cast<String>(),
+        goldTaskShieldDays:
+            (meta['goldTaskShieldDays'] as List?)?.cast<String>(),
+        goldBoostDays: (meta['goldBoostDays'] as List?)?.cast<String>(),
         cosmeticsOwned: (meta['cosmeticsOwned'] as List?)?.cast<String>(),
         activeTitle: meta['activeTitle'] as String?,
+        unlockedLevel: (meta['unlockedLevel'] as num?)?.toInt() ?? 0,
+        expeditionCleared:
+            (meta['expeditionCleared'] as List?)?.cast<String>(),
         weeklyScoreTarget: meta['weeklyScoreTarget'] ?? 80,
         notifHour: meta['notifHour'] ?? 9,
         notifMinute: meta['notifMinute'] ?? 0,
@@ -320,6 +326,10 @@ class FirestoreSync {
       goldLastProcessedDay:  local.goldLifetime >= remote.goldLifetime ? local.goldLastProcessedDay : remote.goldLastProcessedDay,
       goldInventory:         local.goldLifetime >= remote.goldLifetime ? local.goldInventory : remote.goldInventory,
       goldGelDays:           local.goldLifetime >= remote.goldLifetime ? local.goldGelDays : remote.goldGelDays,
+      goldTaskShieldDays:    local.goldLifetime >= remote.goldLifetime ? local.goldTaskShieldDays : remote.goldTaskShieldDays,
+      goldBoostDays:         local.goldLifetime >= remote.goldLifetime ? local.goldBoostDays : remote.goldBoostDays,
+      unlockedLevel:         local.unlockedLevel >= remote.unlockedLevel ? local.unlockedLevel : remote.unlockedLevel,
+      expeditionCleared:     local.goldLifetime >= remote.goldLifetime ? local.expeditionCleared : remote.expeditionCleared,
       notifHour:             local.notifHour,
       notifMinute:           local.notifMinute,
       notifEnabled:          local.notifEnabled,
@@ -741,6 +751,10 @@ class FirestoreSync {
       'goldLifetime': (d['goldLifetime'] as num?)?.toInt() ?? 0,
       'goldLastProcessedDay': d['goldLastProcessedDay'] as String?,
       'goldGelDays': (d['goldGelDays'] as List?)?.cast<String>() ?? <String>[],
+      'goldTaskShieldDays':
+          (d['goldTaskShieldDays'] as List?)?.cast<String>() ?? <String>[],
+      'goldBoostDays':
+          (d['goldBoostDays'] as List?)?.cast<String>() ?? <String>[],
       'goldInventory': (d['goldInventory'] as Map?)
               ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ??
           <String, int>{},
@@ -832,6 +846,86 @@ class FirestoreSync {
     });
   }
 
+  /// Révèle (débloque) un niveau : débite [cost] du solde et fixe `unlockedLevel`
+  /// au niveau révélé. Transaction : refuse si solde insuffisant ou si le niveau
+  /// n'est pas exactement le suivant (gate séquentiel anti-skip).
+  Future<bool> revealLevel({required int level, required int cost}) async {
+    if (uid == null) return false;
+    final metaRef = _meta();
+    final ledgerId = '${DateTime.now().microsecondsSinceEpoch}';
+    return _db.runTransaction<bool>((tx) async {
+      final snap = await tx.get(metaRef);
+      final data = snap.data() as Map<String, dynamic>? ?? {};
+      final gold = (data['gold'] as num?)?.toInt() ?? 0;
+      final current = (data['unlockedLevel'] as num?)?.toInt() ?? 0;
+      final effective = current < 1 ? 1 : current;
+      if (level != effective + 1) return false; // séquentiel uniquement
+      if (gold < cost) return false;
+      tx.set(metaRef, {'gold': gold - cost, 'unlockedLevel': level},
+          SetOptions(merge: true));
+      if (cost > 0) {
+        tx.set(_col('gold_ledger').doc(ledgerId), GoldLedgerEntry(
+          id: ledgerId, delta: -cost, category: 'spend',
+          reasonCode: 'level_reveal', label: 'Révélation niveau $level',
+        ).toJson());
+      }
+      return true;
+    });
+  }
+
+  /// Backfill one-shot : fixe `unlockedLevel` (sans coût) pour les docs antérieurs
+  /// au gate — on accorde le rang déjà acquis pour ne rétrograder personne.
+  Future<void> setUnlockedLevel(int level) async {
+    if (uid == null) return;
+    await _meta().set({'unlockedLevel': level}, SetOptions(merge: true));
+  }
+
+  /// Franchit un nœud d'expédition : consomme l'outil [toolKey] (si requis) et
+  /// ajoute [nodeId] aux nœuds franchis. Idempotent. Renvoie false si l'outil manque.
+  Future<bool> advanceExpedition(
+      {required String nodeId, String? toolKey}) async {
+    if (uid == null) return false;
+    final metaRef = _meta();
+    return _db.runTransaction<bool>((tx) async {
+      final snap = await tx.get(metaRef);
+      final data = snap.data() as Map<String, dynamic>? ?? {};
+      final cleared =
+          (data['expeditionCleared'] as List?)?.cast<String>().toList() ??
+              <String>[];
+      if (cleared.contains(nodeId)) return true; // déjà franchi
+      final update = <String, dynamic>{};
+      if (toolKey != null) {
+        final inv = (data['goldInventory'] as Map?)
+                ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ??
+            <String, int>{};
+        if ((inv[toolKey] ?? 0) < 1) return false;
+        inv[toolKey] = inv[toolKey]! - 1;
+        update['goldInventory'] = inv;
+      }
+      cleared.add(nodeId);
+      update['expeditionCleared'] = cleared;
+      tx.set(metaRef, update, SetOptions(merge: true));
+      return true;
+    });
+  }
+
+  /// Complète l'expédition : débloque [level] (séquentiel) et remet à zéro la
+  /// carte pour le niveau suivant.
+  Future<bool> completeExpedition(int level) async {
+    if (uid == null) return false;
+    final metaRef = _meta();
+    return _db.runTransaction<bool>((tx) async {
+      final snap = await tx.get(metaRef);
+      final data = snap.data() as Map<String, dynamic>? ?? {};
+      final current = (data['unlockedLevel'] as num?)?.toInt() ?? 0;
+      final effective = current < 1 ? 1 : current;
+      if (level != effective + 1) return false;
+      tx.set(metaRef, {'unlockedLevel': level, 'expeditionCleared': <String>[]},
+          SetOptions(merge: true));
+      return true;
+    });
+  }
+
   /// Pose un gel de série sur une routine pour un jour (consomme 1 gel d'inventaire).
   Future<bool> useGel(String activityId, String ymd) async {
     if (uid == null) return false;
@@ -844,6 +938,29 @@ class FirestoreSync {
           <String, int>{};
       if ((inv['gel'] ?? 0) < 1) return false;
       inv['gel'] = inv['gel']! - 1;
+      final gelDays =
+          (data['goldGelDays'] as List?)?.cast<String>().toList() ?? <String>[];
+      final key = '${activityId}_$ymd';
+      if (!gelDays.contains(key)) gelDays.add(key);
+      tx.set(metaRef, {'goldInventory': inv, 'goldGelDays': gelDays},
+          SetOptions(merge: true));
+      return true;
+    });
+  }
+
+  /// Réparation de série : pose un gel sur un jour PASSÉ manqué (consomme 1
+  /// 'repair' d'inventaire). Réutilise `goldGelDays` (skippé par habitCurrentStreak).
+  Future<bool> useRepair(String activityId, String ymd) async {
+    if (uid == null) return false;
+    final metaRef = _meta();
+    return _db.runTransaction<bool>((tx) async {
+      final snap = await tx.get(metaRef);
+      final data = snap.data() as Map<String, dynamic>? ?? {};
+      final inv = (data['goldInventory'] as Map?)
+              ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ??
+          <String, int>{};
+      if ((inv['repair'] ?? 0) < 1) return false;
+      inv['repair'] = inv['repair']! - 1;
       final gelDays =
           (data['goldGelDays'] as List?)?.cast<String>().toList() ?? <String>[];
       final key = '${activityId}_$ymd';
@@ -867,6 +984,70 @@ class FirestoreSync {
       if ((inv['joker'] ?? 0) < 1) return false;
       inv['joker'] = inv['joker']! - 1;
       tx.set(metaRef, {'goldInventory': inv}, SetOptions(merge: true));
+      return true;
+    });
+  }
+
+  /// Consomme 1 sursis (repousser une deadline sans coût). Renvoie false si vide.
+  Future<bool> consumeSursis() async {
+    if (uid == null) return false;
+    final metaRef = _meta();
+    return _db.runTransaction<bool>((tx) async {
+      final snap = await tx.get(metaRef);
+      final data = snap.data() as Map<String, dynamic>? ?? {};
+      final inv = (data['goldInventory'] as Map?)
+              ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ??
+          <String, int>{};
+      if ((inv['sursis'] ?? 0) < 1) return false;
+      inv['sursis'] = inv['sursis']! - 1;
+      tx.set(metaRef, {'goldInventory': inv}, SetOptions(merge: true));
+      return true;
+    });
+  }
+
+  /// Pose un bouclier anti-retard sur une tâche pour plusieurs jours (consomme
+  /// 1 bouclier d'inventaire). [ymds] = "taskId_YYYYMMDD".
+  Future<bool> useShield(List<String> ymds) async {
+    if (uid == null) return false;
+    final metaRef = _meta();
+    return _db.runTransaction<bool>((tx) async {
+      final snap = await tx.get(metaRef);
+      final data = snap.data() as Map<String, dynamic>? ?? {};
+      final inv = (data['goldInventory'] as Map?)
+              ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ??
+          <String, int>{};
+      if ((inv['shield'] ?? 0) < 1) return false;
+      inv['shield'] = inv['shield']! - 1;
+      final days =
+          (data['goldTaskShieldDays'] as List?)?.cast<String>().toList() ??
+              <String>[];
+      for (final k in ymds) {
+        if (!days.contains(k)) days.add(k);
+      }
+      tx.set(metaRef, {'goldInventory': inv, 'goldTaskShieldDays': days},
+          SetOptions(merge: true));
+      return true;
+    });
+  }
+
+  /// Active le multiplicateur ×2 des gains pour un jour (consomme 1 boost).
+  Future<bool> useBoost(String ymd) async {
+    if (uid == null) return false;
+    final metaRef = _meta();
+    return _db.runTransaction<bool>((tx) async {
+      final snap = await tx.get(metaRef);
+      final data = snap.data() as Map<String, dynamic>? ?? {};
+      final inv = (data['goldInventory'] as Map?)
+              ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ??
+          <String, int>{};
+      if ((inv['boost'] ?? 0) < 1) return false;
+      inv['boost'] = inv['boost']! - 1;
+      final days =
+          (data['goldBoostDays'] as List?)?.cast<String>().toList() ??
+              <String>[];
+      if (!days.contains(ymd)) days.add(ymd);
+      tx.set(metaRef, {'goldInventory': inv, 'goldBoostDays': days},
+          SetOptions(merge: true));
       return true;
     });
   }
