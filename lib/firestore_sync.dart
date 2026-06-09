@@ -662,6 +662,7 @@ class FirestoreSync {
           startDate: DateTime.now(),
           createdBy: uid!,
           source: 'orion',
+          status: 'draft',
           originIdeas: origin != null ? [origin] : [],
         ));
         break;
@@ -673,6 +674,7 @@ class FirestoreSync {
           startDate: DateTime.now(),
           createdBy: uid!,
           source: 'orion',
+          status: 'draft',
           originIdeas: origin != null ? [origin] : [],
         ));
         break;

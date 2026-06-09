@@ -333,11 +333,21 @@ class _GoalsViewState extends State<GoalsView> {
                         ),
                       ),
                     ]),
-                  Text(
-                    project.title,
-                    style: TextStyle(
-                        fontSize: 12, fontWeight: FontWeight.w700,
-                        color: cs.onSurface.withOpacity(.55)),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          project.title,
+                          style: TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.w700,
+                              color: cs.onSurface.withOpacity(.55)),
+                        ),
+                      ),
+                      if (project.status == 'draft') ...[
+                        const SizedBox(width: 6),
+                        const _DraftBadge(),
+                      ],
+                    ],
                   ),
                 ],
               ),
@@ -1163,5 +1173,35 @@ class _GanttTaskCard extends StatelessWidget {
       'juil', 'aoû', 'sep', 'oct', 'nov', 'déc'
     ];
     return '${d.day} ${m[d.month - 1]} ${d.year}';
+  }
+}
+
+/// Pastille « Plan » sur les projets en brouillon (hors économie/score).
+class _DraftBadge extends StatelessWidget {
+  const _DraftBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: cs.tertiaryContainer,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.edit_note_outlined, size: 11, color: cs.onTertiaryContainer),
+          const SizedBox(width: 3),
+          Text('Plan',
+              style: TextStyle(
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: .3,
+                  color: cs.onTertiaryContainer)),
+        ],
+      ),
+    );
   }
 }

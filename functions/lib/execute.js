@@ -887,7 +887,7 @@ async function executePushGantt(uid, input, opts) {
     const projectId = project.id || (0, uuid_1.v4)();
     await db_1.db.collection(`users/${uid}/projects`).doc(projectId).set(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({}, pickedProject), { id: projectId, createdBy: uid, sourceType: "claude_mcp" }), ((opts === null || opts === void 0 ? void 0 : opts.source) ? { source: opts.source } : {})), ((opts === null || opts === void 0 ? void 0 : opts.originIdeas) && opts.originIdeas.length
         ? { originIdeas: db_1.FieldValue.arrayUnion(...opts.originIdeas) }
-        : {})), { status: "active" }), (strategicObjectiveId ? { strategicObjectiveId } : {})), { updatedAt: db_1.FieldValue.serverTimestamp(), createdAt: db_1.FieldValue.serverTimestamp() }), { merge: true });
+        : {})), (project.id ? {} : { status: "draft" })), (strategicObjectiveId ? { strategicObjectiveId } : {})), { updatedAt: db_1.FieldValue.serverTimestamp(), createdAt: db_1.FieldValue.serverTimestamp() }), { merge: true });
     if (strategicObjectiveId) {
         await db_1.db.collection(`users/${uid}/strategic_objectives`).doc(strategicObjectiveId)
             .update({ projectIds: db_1.FieldValue.arrayUnion(projectId) });

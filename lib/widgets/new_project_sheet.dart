@@ -149,13 +149,14 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
         createdBy: uid,
         source: 'user',
         sourceType: 'manual',
+        status: 'draft',
       );
       await widget.sync.saveProject(project);
       if (!mounted) return;
       Navigator.pop(context);
       widget.onCreated();
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Projet créé — ajoute tes tâches quand tu veux.'),
+        content: Text('Brouillon créé — ajoute tes tâches puis valide le plan.'),
       ));
     } catch (e) {
       setState(() {

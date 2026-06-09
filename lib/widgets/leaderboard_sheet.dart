@@ -8,7 +8,7 @@ Future<void> showLeaderboardSheet(BuildContext context, FirestoreSync sync) {
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
-    builder: (_) => _LeaderboardSheet(sync: sync),
+    builder: (_) => LeaderboardBody(sync: sync),
   );
 }
 
@@ -18,15 +18,15 @@ const _periods = [
   ('xpTotal', 'Total'),
 ];
 
-class _LeaderboardSheet extends StatefulWidget {
+class LeaderboardBody extends StatefulWidget {
   final FirestoreSync sync;
-  const _LeaderboardSheet({required this.sync});
+  const LeaderboardBody({super.key, required this.sync});
 
   @override
-  State<_LeaderboardSheet> createState() => _LeaderboardSheetState();
+  State<LeaderboardBody> createState() => _LeaderboardBodyState();
 }
 
-class _LeaderboardSheetState extends State<_LeaderboardSheet> {
+class _LeaderboardBodyState extends State<LeaderboardBody> {
   Map<String, dynamic>? _profile;
   Map<String, dynamic>? _myEntry;
   List<Map<String, dynamic>> _entries = [];

@@ -13,21 +13,22 @@ Future<void> showScheduledChallengesSheet(
     context: context,
     showDragHandle: true,
     isScrollControlled: true,
-    builder: (_) => _ScheduledChallengesSheet(logic: logic, sync: sync),
+    builder: (_) => ScheduledChallengesBody(logic: logic, sync: sync),
   );
 }
 
-class _ScheduledChallengesSheet extends StatefulWidget {
+class ScheduledChallengesBody extends StatefulWidget {
   final AppLogic logic;
   final FirestoreSync sync;
-  const _ScheduledChallengesSheet({required this.logic, required this.sync});
+  const ScheduledChallengesBody(
+      {super.key, required this.logic, required this.sync});
 
   @override
-  State<_ScheduledChallengesSheet> createState() =>
-      _ScheduledChallengesSheetState();
+  State<ScheduledChallengesBody> createState() =>
+      _ScheduledChallengesBodyState();
 }
 
-class _ScheduledChallengesSheetState extends State<_ScheduledChallengesSheet> {
+class _ScheduledChallengesBodyState extends State<ScheduledChallengesBody> {
   List<({String date, ScheduleBlock block})>? _items;
 
   @override

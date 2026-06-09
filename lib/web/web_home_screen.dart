@@ -2960,6 +2960,10 @@ class _ProjectCard extends StatelessWidget {
                           fontSize: 17, fontWeight: FontWeight.w700),
                     ),
                   ),
+                  if (project.status == 'draft') ...[
+                    const _WebDraftBadge(),
+                    const SizedBox(width: 6),
+                  ],
                   _SourceBadge(source: project.sourceType),
                   if (onArchive != null) ...[
                     const SizedBox(width: 4),
@@ -3556,6 +3560,35 @@ class _SourceBadge extends StatelessWidget {
                   fontSize: 10,
                   fontWeight: FontWeight.w600,
                   color: cs.onSecondaryContainer)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Pastille « Plan » sur les projets en brouillon (hors économie/score).
+class _WebDraftBadge extends StatelessWidget {
+  const _WebDraftBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: cs.tertiaryContainer,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.edit_note_outlined, size: 11, color: cs.onTertiaryContainer),
+          const SizedBox(width: 4),
+          Text('Plan',
+              style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: cs.onTertiaryContainer)),
         ],
       ),
     );
@@ -5471,7 +5504,7 @@ class _SimpleProjectsViewState extends State<_SimpleProjectsView> {
     // Coût d'or : proportionnel au contenu (déduction douce). Un joker l'annule.
     final actions = p.tasks.fold<int>(0, (s, t) => s + t.actions.length);
     final cost = GoldEconomy.deleteProjectCost(p.tasks.length, actions);
-    if (cost > 0) {
+    if (cost > 0 && p.status == 'active') {
       final usedJoker = await widget.sync.consumeJoker();
       if (usedJoker) {
         if (mounted) {

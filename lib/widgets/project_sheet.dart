@@ -115,6 +115,23 @@ class _ProjectSheetState extends State<_ProjectSheet> {
     await _sync.saveProject(_project);
   }
 
+  /// Valide le plan : le brouillon devient actif → il compte désormais dans
+  /// l'économie d'Or et le score. Recale les tâches sans date sur aujourd'hui.
+  Future<void> _validatePlan() async {
+    final today = DateTime.now();
+    final todayMid = DateTime(today.year, today.month, today.day);
+    setState(() {
+      _project.status = 'active';
+      for (final t in _project.tasks) {
+        if (t.startDate.isBefore(DateTime(2001))) t.startDate = todayMid;
+      }
+    });
+    await _sync.saveProject(_project);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Plan validé — le projet est actif. 🚀')));
+  }
+
   Color _domainColor(ColorScheme cs) {
     if (widget.project.domainId == null) return cs.primary;
     final idx = widget.domains.indexWhere((d) => d.id == widget.project.domainId);
@@ -284,6 +301,10 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                     backgroundColor: cs.onSurface.withOpacity(.08),
                     color: color,
                   ),
+                  if (_project.status == 'draft') ...[
+                    const SizedBox(height: 12),
+                    _DraftPlanBanner(onValidate: _validatePlan),
+                  ],
                   const SizedBox(height: 14),
                   Divider(height: 1, color: cs.outlineVariant.withOpacity(.4)),
                 ],
@@ -1002,6 +1023,8 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
   }
 
   Future<void> _deleteTask() async {
+    // Brouillon = CRUD libre, suppression gratuite (hors économie).
+    final billed = widget.project.status == 'active';
     final cost = GoldEconomy.deleteTaskCost(_task.actions.length);
     final ok = await showDialog<bool>(
       context: context,
@@ -1009,7 +1032,7 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
         title: const Text('Supprimer la tâche ?'),
         content: Text(
             'La tâche « ${_task.title} » et ses ${_task.actions.length} action(s) '
-            'seront supprimées. Coût : $cost 🪙.'),
+            'seront supprimées.${billed ? ' Coût : $cost 🪙.' : ''}'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -1018,7 +1041,7 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
             style: FilledButton.styleFrom(
                 backgroundColor: Theme.of(ctx).colorScheme.error),
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Supprimer (−$cost 🪙)'),
+            child: Text(billed ? 'Supprimer (−$cost 🪙)' : 'Supprimer'),
           ),
         ],
       ),
@@ -1026,19 +1049,21 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
     if (ok != true) return;
     widget.project.tasks.removeWhere((t) => t.id == _task.id);
     await widget.sync.saveProjectTasks(widget.project.id, widget.project.tasks);
-    widget.sync.applyGold(GoldLedgerEntry(
-      delta: -cost,
-      category: 'loss',
-      reasonCode: 'delete_task',
-      label: 'Suppression tâche « ${_task.title} »',
-      refType: 'task',
-      refId: _task.id,
-    ));
+    if (billed) {
+      widget.sync.applyGold(GoldLedgerEntry(
+        delta: -cost,
+        category: 'loss',
+        reasonCode: 'delete_task',
+        label: 'Suppression tâche « ${_task.title} »',
+        refType: 'task',
+        refId: _task.id,
+      ));
+    }
     widget.onChanged();
     if (!mounted) return;
     Navigator.pop(context);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Tâche supprimée · −$cost 🪙')));
+        content: Text(billed ? 'Tâche supprimée · −$cost 🪙' : 'Tâche supprimée')));
   }
 
   String _fmtD(DateTime d) {
@@ -1301,20 +1326,25 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                                     onDismissed: (_) {
                                       setState(() => _task.actions.remove(a));
                                       _save();
-                                      widget.sync.applyGold(GoldLedgerEntry(
-                                        delta: -GoldEconomy.deleteAction,
-                                        category: 'loss',
-                                        reasonCode: 'delete_action',
-                                        label:
-                                            'Suppression action « ${a.title} »',
-                                        refType: 'task',
-                                        refId: _task.id,
-                                      ));
+                                      final billed =
+                                          widget.project.status == 'active';
+                                      if (billed) {
+                                        widget.sync.applyGold(GoldLedgerEntry(
+                                          delta: -GoldEconomy.deleteAction,
+                                          category: 'loss',
+                                          reasonCode: 'delete_action',
+                                          label:
+                                              'Suppression action « ${a.title} »',
+                                          refType: 'task',
+                                          refId: _task.id,
+                                        ));
+                                      }
                                       ScaffoldMessenger.of(context)
                                           .showSnackBar(SnackBar(
                                         duration: const Duration(seconds: 2),
-                                        content: Text(
-                                            'Action supprimée · −${GoldEconomy.deleteAction} 🪙'),
+                                        content: Text(billed
+                                            ? 'Action supprimée · −${GoldEconomy.deleteAction} 🪙'
+                                            : 'Action supprimée'),
                                       ));
                                     },
                                     child: ListTile(
@@ -1717,5 +1747,48 @@ class _TaskTile extends StatelessWidget {
     const m = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin',
                 'juil', 'aoû', 'sep', 'oct', 'nov', 'déc'];
     return '${d.day} ${m[d.month - 1]} ${d.year}';
+  }
+}
+
+/// Bandeau « brouillon » : tant que le projet n'est pas validé, il reste hors
+/// économie d'Or et hors score. Le bouton bascule le projet en actif.
+class _DraftPlanBanner extends StatelessWidget {
+  final Future<void> Function() onValidate;
+  const _DraftPlanBanner({required this.onValidate});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+      decoration: BoxDecoration(
+        color: cs.tertiaryContainer.withOpacity(.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.tertiary.withOpacity(.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.edit_note_outlined, size: 20, color: cs.tertiary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Brouillon — modifie librement, hors or et hors score.',
+              style: TextStyle(
+                  fontSize: 12.5, color: cs.onTertiaryContainer),
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton.tonalIcon(
+            onPressed: onValidate,
+            icon: const Icon(Icons.rocket_launch_outlined, size: 16),
+            label: const Text('Valider'),
+            style: FilledButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

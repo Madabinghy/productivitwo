@@ -1019,7 +1019,8 @@ async function executePushGantt(
       ...(opts?.originIdeas && opts.originIdeas.length
         ? { originIdeas: FieldValue.arrayUnion(...opts.originIdeas) }
         : {}),
-      status: "active",
+      // Création → brouillon (hors économie/score) ; update → ne touche pas au statut.
+      ...(project.id ? {} : { status: "draft" }),
       ...(strategicObjectiveId ? { strategicObjectiveId } : {}),
       updatedAt: FieldValue.serverTimestamp(),
       createdAt: FieldValue.serverTimestamp(),

@@ -11,8 +11,6 @@ import 'firebase_options.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
 import 'package:productivitwo_v1/widgets/alarm_ringtone_sheet.dart';
-import 'package:productivitwo_v1/widgets/scheduled_challenges_sheet.dart';
-import 'package:productivitwo_v1/widgets/leaderboard_sheet.dart';
 import 'package:productivitwo_v1/widgets/appbar_routines_summery.dart';
 import 'package:productivitwo_v1/widgets/filters_sheet.dart';
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
@@ -53,7 +51,7 @@ import 'package:productivitwo_v1/widgets/inbox_sheet.dart';
 import 'package:productivitwo_v1/widgets/proposals_sheet.dart';
 import 'package:productivitwo_v1/widgets/weekly_review_sheet.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
-import 'package:productivitwo_v1/widgets/gold_sheet.dart';
+import 'package:productivitwo_v1/widgets/gamification_hub_sheet.dart';
 import 'package:productivitwo_v1/widgets/orion_screen.dart';
 import 'package:productivitwo_v1/widgets/focus_view.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
@@ -3899,6 +3897,31 @@ class _AppRootState extends State<AppRoot>
 
     final filtersOn = logic.state.filters.isActive;
 
+    void _openFullStats(BuildContext ctx) {
+      showModalBottomSheet(
+        context: ctx,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (_) => DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.92,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          builder: (_, controller) => StatsView(
+            logic: logic,
+            state: _state!,
+            selectedDomainId: null,
+            scrollController: controller,
+            sync: _sync,
+            onDataChanged: () {
+              Navigator.pop(ctx);
+              _init();
+            },
+          ),
+        ),
+      );
+    }
+
     void _showDailyScoreSheet(BuildContext context, int done, int total) {
       final now = DateTime.now();
       final todayStart = DateTime(now.year, now.month, now.day);
@@ -4460,29 +4483,179 @@ class _AppRootState extends State<AppRoot>
       );
     }
 
-    Widget _buildDailyScoreChip(BuildContext context) {
-      final routineSummary = logic.routineProgressSummaryForCurrentPeriod();
-      final done  = routineSummary.reached;
-      final total = routineSummary.total;
+    // Onglet « Score » du hub : panneau compact (score du jour + niveau +
+    // semaine) avec accès au détail complet via le sheet existant.
+    Widget _scoreHubTab(BuildContext ctx, int done, int total) {
+      final theme = Theme.of(ctx);
+      final cs = theme.colorScheme;
+      final pct = total == 0 ? 0 : (done / total * 100).round();
+      final ringColor = pct >= 100
+          ? cs.primary
+          : Color.lerp(cs.error, cs.primary, (pct / 100).clamp(0.0, 1.0))!;
+      final lv = logic.userLevelData();
+      final lvProgress =
+          (lv.xp - lv.xpCurrent) / (lv.xpNext - lv.xpCurrent).clamp(1, 99999);
+      final w = logic.weeklyScoreData();
+      final weekPct = (w.current * 100).round();
+      final bars =
+          w.days7.map((v) => v < 0 ? 0.0 : v.clamp(0.0, 1.0)).toList();
 
-      // Score combiné routines + Gantt
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                width: 48,
+                height: 48,
+                child: CircularProgressIndicator(
+                  value: total == 0 ? 0 : done / total,
+                  strokeWidth: 5,
+                  backgroundColor: cs.onSurface.withValues(alpha: .12),
+                  color: ringColor,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('$pct%',
+                      style: theme.textTheme.headlineMedium?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          color: pct >= 100 ? cs.primary : null)),
+                  Text("Score d'aujourd'hui",
+                      style: theme.textTheme.bodySmall?.copyWith(
+                          color: cs.onSurface.withValues(alpha: .6))),
+                ],
+              ),
+              if (pct >= 100) ...[
+                const Spacer(),
+                const Text('🎉', style: TextStyle(fontSize: 32)),
+              ],
+            ],
+          ),
+          const Divider(height: 28),
+          Text('Niveau ${lv.level} · ${logic.state.activeTitle ?? lv.title}',
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+              value: lvProgress.clamp(0.0, 1.0),
+              minHeight: 6,
+              backgroundColor: cs.onSurface.withValues(alpha: .10),
+              color: cs.primary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text('${lv.xp} / ${lv.xpNext} XP',
+              style: TextStyle(
+                  fontSize: 11, color: cs.onSurface.withValues(alpha: .5))),
+          const Divider(height: 28),
+          Row(
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Semaine',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: cs.onSurface.withValues(alpha: .5))),
+                  Text('$weekPct%',
+                      style: theme.textTheme.titleLarge
+                          ?.copyWith(fontWeight: FontWeight.w900)),
+                ],
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: SizedBox(
+                    height: 32, child: TinyRatioBars(values: bars, height: 32)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.insights_outlined, size: 18),
+            label: const Text('Voir le détail du score'),
+            onPressed: () => _showDailyScoreSheet(ctx, done, total),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.bar_chart_outlined, size: 18),
+            label: const Text('Statistiques complètes'),
+            onPressed: () => _openFullStats(ctx),
+          ),
+        ],
+      );
+    }
+
+    void _openGamificationHub(BuildContext context) {
+      final routineSummary = logic.routineProgressSummaryForCurrentPeriod();
+      final done = routineSummary.reached;
+      final total = routineSummary.total;
+      showGamificationHub(context, logic, _sync,
+          scoreTab: (ctx) => _scoreHubTab(ctx, done, total));
+    }
+
+    // Indicateur composite : ⭐ gains du jour · anneau de score (sans %) · 🪙 net
+    // projeté ce soir. Tap → hub gamification (Mon or / Score / Classement / Défis).
+    Widget _buildGamificationIndicator(BuildContext context) {
+      final cs = Theme.of(context).colorScheme;
       final now = DateTime.now();
       final ymd = yyyymmdd(now);
-      final combinedScore = logic.dailyScore(ymd);
+      final score = logic.dailyScore(ymd).clamp(0.0, 1.0);
+      final gainToday = logic.provisionalGoldToday();
+      final net = logic.projectedGoldNetToday();
+      final netColor = net >= 0 ? const Color(0xFF1D9E75) : cs.error;
+      final ringColor = score >= 1.0
+          ? const Color(0xFF1D9E75)
+          : Color.lerp(cs.error, cs.primary, score)!;
 
-      if (total == 0 && combinedScore == 0.0) return const SizedBox.shrink();
-
-      // Exprimer le score combiné en done/displayTotal pour le chip
-      final ganttAsDone  = total > 0 ? (combinedScore * total).round() : 0;
-      final displayDone  = total > 0
-          ? (done > ganttAsDone ? done : ganttAsDone)
-          : (combinedScore * 100).round();
-      final displayTotal = total > 0 ? total : 100;
-
-      return DailyScoreChip(
-        done: displayDone,
-        total: displayTotal,
-        onTap: () => _showDailyScoreSheet(context, done, total),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => _openGamificationHub(context),
+            borderRadius: BorderRadius.circular(999),
+            child: Ink(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest.withValues(alpha: .55),
+                borderRadius: BorderRadius.circular(999),
+                border:
+                    Border.all(color: cs.outlineVariant.withValues(alpha: .55)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('⭐ +$gainToday',
+                      style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF1D9E75))),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      value: score,
+                      strokeWidth: 2.5,
+                      backgroundColor: cs.onSurface.withValues(alpha: .15),
+                      color: ringColor,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text('🪙 ${net >= 0 ? '+' : '−'}${net.abs()}',
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: netColor)),
+                ],
+              ),
+            ),
+          ),
+        ),
       );
     }
 
@@ -4544,37 +4717,8 @@ class _AppRootState extends State<AppRoot>
               },
             ),
             const Spacer(),
-            // Chip XP discret (total cumulé)
-            Builder(builder: (ctx) {
-              final lv = logic.userLevelData();
-              final cs = Theme.of(ctx).colorScheme;
-              return Padding(
-                padding: const EdgeInsets.only(right: 4),
-                child: GestureDetector(
-                  onTap: () => showLeaderboardSheet(context, _sync),
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: cs.surfaceContainerHighest.withOpacity(.5),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text('⭐ ${lv.xp}',
-                        style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: cs.onSurface.withOpacity(.7))),
-                  ),
-                ),
-              );
-            }),
-            _buildDailyScoreChip(context),
-            IconButton(
-              icon: const Icon(Icons.bolt_rounded, size: 20),
-              tooltip: 'Défis en cours',
-              onPressed: () =>
-                  showScheduledChallengesSheet(context, logic, _sync),
-            ),
+            // Indicateur composite gamifié (gains du jour · score · net projeté).
+            _buildGamificationIndicator(context),
             Stack(
               clipBehavior: Clip.none,
               children: [
@@ -4650,33 +4794,8 @@ class _AppRootState extends State<AppRoot>
                     Navigator.of(context).push(
                         MaterialPageRoute(builder: (_) => const DevConsoleScreen()));
                   }
-                } else if (v == 'stats') {
-                  showModalBottomSheet(
-                    context: context,
-                    isScrollControlled: true,
-                    showDragHandle: true,
-                    builder: (_) => DraggableScrollableSheet(
-                      expand: false,
-                      initialChildSize: 0.92,
-                      minChildSize: 0.5,
-                      maxChildSize: 0.95,
-                      builder: (_, controller) => StatsView(
-                        logic: logic,
-                        state: _state!,
-                        selectedDomainId: null,
-                        scrollController: controller,
-                        sync: _sync,
-                        onDataChanged: () {
-                          Navigator.pop(context);
-                          _init();
-                        },
-                      ),
-                    ),
-                  );
                 } else if (v == 'weekly_review') {
                   showWeeklyReviewSheet(context, _sync);
-                } else if (v == 'gold') {
-                  showGoldSheet(context, logic, _sync);
                 } else if (v == 'filters') {
                   _openFiltersSheet(context);
                 } else if (v == 'changelog') {
@@ -4731,27 +4850,11 @@ class _AppRootState extends State<AppRoot>
                 ),
                 const PopupMenuDivider(),
                 const PopupMenuItem(
-                  value: 'gold',
-                  child: Row(children: [
-                    Text('🪙', style: TextStyle(fontSize: 16)),
-                    SizedBox(width: 12),
-                    Text('Mon or'),
-                  ]),
-                ),
-                const PopupMenuItem(
                   value: 'weekly_review',
                   child: Row(children: [
                     Icon(Icons.cleaning_services_outlined, size: 18),
                     SizedBox(width: 12),
                     Text('Revue de la semaine'),
-                  ]),
-                ),
-                const PopupMenuItem(
-                  value: 'stats',
-                  child: Row(children: [
-                    Icon(Icons.bar_chart_outlined, size: 18),
-                    SizedBox(width: 12),
-                    Text('Statistiques'),
                   ]),
                 ),
                 PopupMenuItem(
@@ -9213,77 +9316,6 @@ class MiniHourBars24h extends StatelessWidget {
             ),
           );
         }),
-      ),
-    );
-  }
-}
-
-class DailyScoreChip extends StatelessWidget {
-  final int done;
-  final int total;
-  final VoidCallback? onTap;
-
-  const DailyScoreChip({
-    super.key,
-    required this.done,
-    required this.total,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (total == 0) return const SizedBox.shrink();
-
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    final score = done / total;
-    final pct = (score * 100).round();
-
-    final ringColor = score >= 1.0
-        ? cs.primary
-        : Color.lerp(cs.error, cs.primary, score.clamp(0.0, 1.0))!;
-
-    final bg = cs.surfaceContainerHighest.withValues(alpha: .55);
-    final border = cs.outlineVariant.withValues(alpha: .55);
-    final textStyle = theme.textTheme.labelMedium?.copyWith(
-      fontWeight: FontWeight.w800,
-      letterSpacing: .1,
-      color: score >= 1.0 ? cs.primary : null,
-    );
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(999),
-          child: Ink(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-            decoration: BoxDecoration(
-              color: bg,
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: border),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(
-                    value: score,
-                    strokeWidth: 2.5,
-                    backgroundColor: cs.onSurface.withValues(alpha: .15),
-                    color: ringColor,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Text('$pct%', style: textStyle),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }

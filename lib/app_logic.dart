@@ -129,7 +129,7 @@ class AppLogic {
     // au lieu de l'ancien dénominateur « backlog total » qui plombait le score
     // dès qu'on avait beaucoup d'actions planifiées.
     for (final project in projects) {
-      if (project.status == 'archived') continue;
+      if (project.status != 'active') continue; // draft + archived hors score/gains
       for (final task in project.tasks) {
         if (task.status == 'skipped') continue;
         for (final action in task.actions) {

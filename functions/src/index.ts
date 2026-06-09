@@ -915,7 +915,7 @@ Retourne UNIQUEMENT ce JSON valide, sans aucun texte autour :
       domainId: domainId ?? null,
       startDate: today,
       endDate,
-      status: "active",
+      status: "draft",
       phases,
       tasks,
       createdBy: uid,

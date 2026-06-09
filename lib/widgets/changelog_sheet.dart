@@ -10,6 +10,11 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.91', '9 juin 2026', [
+    (Icons.edit_note_outlined, 'Nouveau : mode planification ! Un projet créé (par toi ou par ORION) naît en « brouillon » — tu le retravailles librement, sans rien gagner ni perdre en or, et hors score. Quand il te convient, « Valider le plan » l\'active : il compte alors vraiment. Repère-les au badge « Plan »'),
+    (Icons.workspace_premium_outlined, 'Barre du haut simplifiée : un seul indicateur regroupe tes gains du jour ⭐, ton score (l\'anneau) et ton or net projeté pour ce soir 🪙 (vert si tu finis dans le positif, rouge sinon)'),
+    (Icons.dashboard_customize_outlined, 'Nouveau hub gamification : tape l\'indicateur pour ouvrir un seul écran à onglets — Mon or · Score · Classement · Défis (avec accès aux statistiques complètes). Fini les boutons éparpillés'),
+  ]),
   _Entry('5.90', '9 juin 2026', [
     (Icons.account_tree_outlined, 'Gestion de projet 100% autonome sur mobile : crée, renomme, édite (dates, phase, jalon) et supprime tes tâches directement depuis la fiche projet — plus besoin de passer par l\'IA ou l\'app web. (Supprimer une tâche coûte un peu d\'or, comme le reste.)'),
     (Icons.add_box_outlined, 'Nouveau projet : tu peux maintenant créer un projet vide « sans IA » (titre + domaine + date cible), en plus de la structuration automatique par ORION'),

@@ -926,7 +926,7 @@ Retourne UNIQUEMENT ce JSON valide, sans aucun texte autour :
         domainId: domainId !== null && domainId !== void 0 ? domainId : null,
         startDate: today,
         endDate,
-        status: "active",
+        status: "draft",
         phases,
         tasks,
         createdBy: uid,

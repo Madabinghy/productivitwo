@@ -158,7 +158,7 @@ extension GoldEngine on AppLogic {
     // ── Tâches Gantt en retard (au jour d, encore non terminées) ───────────────
     final dMid = DateTime(d.year, d.month, d.day);
     for (final p in currentProjects) {
-      if (p.status == 'archived') continue;
+      if (p.status != 'active') continue; // skip draft + archived (hors économie)
       for (final t in p.tasks) {
         if (t.status == 'done' || t.status == 'skipped') continue;
         if (t.endDate != null && t.endDate!.isBefore(dMid)) {
@@ -211,6 +211,14 @@ extension GoldEngine on AppLogic {
     return g;
   }
 
+  /// Net d'or projeté ce soir si rien ne change : gains provisoires du jour
+  /// moins les pertes à venir (routines lancées non faites + tâches en retard).
+  int projectedGoldNetToday() {
+    final losses = bleedingRoutines().length * GoldEconomy.routineMissed +
+        lateTasks().length * GoldEconomy.lateTaskPerDay;
+    return provisionalGoldToday() - losses;
+  }
+
   /// Routines lancées mais NON faites aujourd'hui (saignent −1/j), avec l'or
   /// approximatif déjà rapporté (nb de jours faits × routineMet).
   List<({Activity activity, int earned})> bleedingRoutines() {
@@ -236,7 +244,7 @@ extension GoldEngine on AppLogic {
     final todayMid = DateTime(today.year, today.month, today.day);
     final out = <({Project project, ProjectTask task, int daysLate})>[];
     for (final p in currentProjects) {
-      if (p.status == 'archived') continue;
+      if (p.status != 'active') continue; // skip draft + archived (hors économie)
       for (final t in p.tasks) {
         if (t.status == 'done' || t.status == 'skipped') continue;
         if (t.endDate != null && t.endDate!.isBefore(todayMid)) {

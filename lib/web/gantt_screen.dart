@@ -501,6 +501,7 @@ class _GanttScreenState extends State<GanttScreen> {
       ),
       body: Column(
         children: [
+          if (_project.status == 'draft') _buildDraftBanner(cs),
           _buildViewToggle(cs),
           if (_docView)
             Expanded(
@@ -539,6 +540,52 @@ class _GanttScreenState extends State<GanttScreen> {
     final dom = widget.domains.where((d) => d.id == _project.domainId).firstOrNull;
     final cv = dom?.colorValue;
     return cv != null ? Color(cv) : null;
+  }
+
+  /// Bandeau brouillon : le projet reste hors économie d'Or et hors score tant
+  /// qu'il n'est pas validé. Le bouton bascule le projet en actif.
+  Widget _buildDraftBanner(ColorScheme cs) {
+    return Container(
+      width: double.infinity,
+      color: cs.tertiaryContainer.withOpacity(.5),
+      padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
+      child: Row(
+        children: [
+          Icon(Icons.edit_note_outlined, size: 18, color: cs.tertiary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Brouillon — modifie librement, hors or et hors score.',
+              style: TextStyle(fontSize: 13, color: cs.onTertiaryContainer),
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton.tonalIcon(
+            onPressed: _validatePlan,
+            icon: const Icon(Icons.rocket_launch_outlined, size: 16),
+            label: const Text('Valider le plan'),
+            style: FilledButton.styleFrom(
+                visualDensity: VisualDensity.compact),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Valide le plan : brouillon → actif (entre dans l'économie d'Or + le score).
+  Future<void> _validatePlan() async {
+    final today = DateTime.now();
+    final todayMid = DateTime(today.year, today.month, today.day);
+    setState(() {
+      _project.status = 'active';
+      for (final t in _project.tasks) {
+        if (t.startDate.isBefore(DateTime(2001))) t.startDate = todayMid;
+      }
+    });
+    await _sync.saveProject(_project);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Plan validé — le projet est actif. 🚀')));
   }
 
   Widget _buildViewToggle(ColorScheme cs) {
@@ -2854,17 +2901,22 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
                 onPressed: () {
                   setState(() => _task.actions.remove(a));
                   _save();
-                  widget.sync.applyGold(GoldLedgerEntry(
-                    delta: -GoldEconomy.deleteAction,
-                    category: 'loss',
-                    reasonCode: 'delete_action',
-                    label: 'Suppression action « ${a.title} »',
-                    refType: 'task',
-                    refId: _task.id,
-                  ));
+                  final billed = widget.project.status == 'active';
+                  if (billed) {
+                    widget.sync.applyGold(GoldLedgerEntry(
+                      delta: -GoldEconomy.deleteAction,
+                      category: 'loss',
+                      reasonCode: 'delete_action',
+                      label: 'Suppression action « ${a.title} »',
+                      refType: 'task',
+                      refId: _task.id,
+                    ));
+                  }
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                     duration: const Duration(seconds: 2),
-                    content: Text('Action supprimée · −${GoldEconomy.deleteAction} 🪙'),
+                    content: Text(billed
+                        ? 'Action supprimée · −${GoldEconomy.deleteAction} 🪙'
+                        : 'Action supprimée'),
                   ));
                 },
               ),

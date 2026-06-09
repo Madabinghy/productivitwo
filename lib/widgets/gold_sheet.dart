@@ -25,6 +25,30 @@ class _GoldSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.75,
+      maxChildSize: 0.95,
+      minChildSize: 0.4,
+      expand: false,
+      builder: (_, scroll) =>
+          GoldSheetBody(logic: logic, sync: sync, scrollController: scroll),
+    );
+  }
+}
+
+/// Contenu embarquable du tableau d'Or (réutilisé par le hub gamification).
+class GoldSheetBody extends StatelessWidget {
+  final AppLogic logic;
+  final FirestoreSync sync;
+  final ScrollController? scrollController;
+  const GoldSheetBody(
+      {super.key,
+      required this.logic,
+      required this.sync,
+      this.scrollController});
+
+  @override
+  Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final lvl = logic.userLevelData();
     final span = (lvl.xpNext - lvl.xpCurrent);
@@ -33,15 +57,10 @@ class _GoldSheet extends StatelessWidget {
     final bleeding = logic.bleedingRoutines();
     final late = logic.lateTasks();
 
-    return DraggableScrollableSheet(
-      initialChildSize: 0.75,
-      maxChildSize: 0.95,
-      minChildSize: 0.4,
-      expand: false,
-      builder: (_, scroll) => ListView(
-        controller: scroll,
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-        children: [
+    return ListView(
+      controller: scrollController,
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+      children: [
           // ── Solde + niveau ────────────────────────────────────────────────
           Row(
             children: [
@@ -184,9 +203,8 @@ class _GoldSheet extends StatelessWidget {
             },
           ),
         ],
-      ),
-    );
-  }
+      );
+    }
 }
 
 class _SectionTitle extends StatelessWidget {
