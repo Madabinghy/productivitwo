@@ -1,4 +1,5 @@
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/expedition.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/gold_economy.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -186,8 +187,36 @@ extension GoldEngine on AppLogic {
         }
       }
     }
+
+    // ── Nuisibles vivants sur la carte d'expédition (drain journalier fixe) ────
+    out.addAll(_pestDrainForDay(ymd));
     return out;
   }
+
+  /// Entrées de drain des nuisibles vivants le jour [ymd] (idempotent, id stable).
+  List<GoldLedgerEntry> _pestDrainForDay(String ymd) {
+    final out = <GoldLedgerEntry>[];
+    for (final e in state.expeditionEntities) {
+      final ent = decodeEntity(e);
+      if (!isPestType(ent.type) || ent.meta.isEmpty) continue;
+      final spawn = ent.meta;
+      final life = GoldEconomy.pestLifespanDays(ent.type);
+      final diff = _parseYmd(ymd).difference(_parseYmd(spawn)).inDays;
+      if (diff >= 0 && diff < life) {
+        out.add(GoldLedgerEntry(
+            id: 'pestdrain_${ent.type}_${ent.tile}_$ymd',
+            delta: -GoldEconomy.pestCost(ent.type),
+            category: 'loss',
+            reasonCode: 'pest_drain',
+            label: '${pestName(ent.type)} sur la carte'));
+      }
+    }
+    return out;
+  }
+
+  /// Drain provisoire des nuisibles vivants AUJOURD'HUI (pour le net projeté).
+  int pestDrainToday() => _pestDrainForDay(yyyymmdd(DateTime.now()))
+      .fold(0, (s, e) => s + e.delta);
 
   /// Une routine est « lancée » si elle a été complétée au moins une fois ≤ d.
   bool _routineLaunchedBy(Activity a, DateTime d) {
@@ -247,7 +276,7 @@ extension GoldEngine on AppLogic {
   int projectedGoldNetToday() {
     final losses = bleedingRoutines().length * GoldEconomy.routineMissed +
         lateTasks().length * GoldEconomy.lateTaskPerDay;
-    return provisionalGoldToday() - losses;
+    return provisionalGoldToday() - losses + pestDrainToday();
   }
 
   /// Routines lancées mais NON faites aujourd'hui (saignent −1/j), avec l'or

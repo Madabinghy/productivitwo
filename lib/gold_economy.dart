@@ -110,4 +110,41 @@ class GoldEconomy {
         return 5;
     }
   }
+
+  // ── Overworld (carte 2D explorable) ────────────────────────────────────────
+  static const int stepCost = 1; // déplacement sur case éclairée
+  static const int torchCost = 5; // éclairer une case en brouillard (révèle radius 1)
+  static const int lootGoldMin = 4; // butin (collectible rare) → petit or
+  static const int lootGoldMax = 12;
+
+  // ── Écosystème de carte (lié au % hebdo) ───────────────────────────────────
+  static const int trendSpawnCapPct = 40; // proba de spawn plafonnée
+  static const int maxLivePests = 4; // nuisibles simultanés max
+  static const int bonusGoldMin = 5; // bonus d'or (tendance positive)
+  static const int bonusGoldMax = 15;
+
+  /// Coût/jour de drain ET durée de vie (en jours) d'un nuisible (= son coût).
+  static int pestCost(String type) {
+    switch (type) {
+      case 'spider':
+        return 2;
+      case 'scorpion':
+        return 3;
+      case 'snake':
+        return 5;
+      default:
+        return 0;
+    }
+  }
+
+  static int pestLifespanDays(String type) => pestCost(type);
+
+  /// Arme requise pour tuer un nuisible : épée pour le serpent, sandale sinon.
+  static String weaponForPest(String type) => type == 'snake' ? 'epee' : 'sandale';
+
+  static const int weaponEpee = 8; // tue un serpent (consommable)
+  static const int weaponSandale = 5; // tue araignée/scorpion (consommable)
+
+  static int weaponBasePrice(String key) =>
+      key == 'epee' ? weaponEpee : weaponSandale;
 }

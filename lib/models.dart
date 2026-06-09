@@ -680,7 +680,14 @@ class AppState {
   List<String> cosmeticsOwned; // cosmétiques possédés (ex: titres)
   String? activeTitle;         // titre cosmétique actif (override du titre de niveau)
   int unlockedLevel;           // niveau effectif RÉVÉLÉ (payé) : l'XP rend éligible, on paie pour débloquer le titre/niveau (gate séquentiel)
-  List<String> expeditionCleared; // nœuds franchis de l'expédition en cours (mini-carte du niveau unlockedLevel+1) ; vidé à la complétion
+  List<String> expeditionCleared; // nœuds franchis (V1 donjon, Phase 2) ; vidé à la complétion
+  // ── Overworld (carte 2D explorable, per-map ; vidés à la complétion) ──
+  List<String> expeditionRevealed; // cases éclairées "x_y"
+  String? expeditionPos;           // case du perso "x_y"
+  List<String> expeditionPicked;   // collectibles ramassés sur la map courante (ids)
+  List<String> expeditionEntities; // nuisibles/bonus vivants "type:x_y:spawnYmd"
+  List<String> collection;         // collectibles trouvés à vie (persistant → écran Collection)
+  String? lastFreeStepYmd;         // jour du dernier pas gratuit (yyyymmdd)
 
   AppState({
     required this.domains,
@@ -738,6 +745,12 @@ class AppState {
     this.activeTitle,
     this.unlockedLevel = 1,
     List<String>? expeditionCleared,
+    List<String>? expeditionRevealed,
+    this.expeditionPos,
+    List<String>? expeditionPicked,
+    List<String>? expeditionEntities,
+    List<String>? collection,
+    this.lastFreeStepYmd,
     // ✅ NOUVEAU
     Map<String, List<String>>? nowSkippedByYmd,
     Map<String, List<String>>? nowDoneByYmd,
@@ -775,6 +788,10 @@ class AppState {
         goldTaskShieldDays = goldTaskShieldDays ?? <String>[],
         goldBoostDays = goldBoostDays ?? <String>[],
         expeditionCleared = expeditionCleared ?? <String>[],
+        expeditionRevealed = expeditionRevealed ?? <String>[],
+        expeditionPicked = expeditionPicked ?? <String>[],
+        expeditionEntities = expeditionEntities ?? <String>[],
+        collection = collection ?? <String>[],
         cosmeticsOwned = cosmeticsOwned ?? <String>[];
 
   Map<String, dynamic> toJson() => {
@@ -831,6 +848,12 @@ class AppState {
         'activeTitle': activeTitle,
         'unlockedLevel': unlockedLevel,
         'expeditionCleared': expeditionCleared,
+        'expeditionRevealed': expeditionRevealed,
+        'expeditionPos': expeditionPos,
+        'expeditionPicked': expeditionPicked,
+        'expeditionEntities': expeditionEntities,
+        'collection': collection,
+        'lastFreeStepYmd': lastFreeStepYmd,
         'weeklyScoreTarget': weeklyScoreTarget,
         'notifHour': notifHour,
         'notifMinute': notifMinute,
@@ -949,6 +972,15 @@ class AppState {
       unlockedLevel: (j['unlockedLevel'] as num?)?.toInt() ?? 0,
       expeditionCleared:
           (j['expeditionCleared'] as List?)?.cast<String>() ?? <String>[],
+      expeditionRevealed:
+          (j['expeditionRevealed'] as List?)?.cast<String>() ?? <String>[],
+      expeditionPos: j['expeditionPos'] as String?,
+      expeditionPicked:
+          (j['expeditionPicked'] as List?)?.cast<String>() ?? <String>[],
+      expeditionEntities:
+          (j['expeditionEntities'] as List?)?.cast<String>() ?? <String>[],
+      collection: (j['collection'] as List?)?.cast<String>() ?? <String>[],
+      lastFreeStepYmd: j['lastFreeStepYmd'] as String?,
       weeklyScoreTarget: (j['weeklyScoreTarget'] as int?) ?? 80,
       notifHour: (j['notifHour'] as int?) ?? 9,
       notifMinute: (j['notifMinute'] as int?) ?? 0,

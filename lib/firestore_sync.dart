@@ -238,6 +238,15 @@ class FirestoreSync {
         unlockedLevel: (meta['unlockedLevel'] as num?)?.toInt() ?? 0,
         expeditionCleared:
             (meta['expeditionCleared'] as List?)?.cast<String>(),
+        expeditionRevealed:
+            (meta['expeditionRevealed'] as List?)?.cast<String>(),
+        expeditionPos: meta['expeditionPos'] as String?,
+        expeditionPicked:
+            (meta['expeditionPicked'] as List?)?.cast<String>(),
+        expeditionEntities:
+            (meta['expeditionEntities'] as List?)?.cast<String>(),
+        collection: (meta['collection'] as List?)?.cast<String>(),
+        lastFreeStepYmd: meta['lastFreeStepYmd'] as String?,
         weeklyScoreTarget: meta['weeklyScoreTarget'] ?? 80,
         notifHour: meta['notifHour'] ?? 9,
         notifMinute: meta['notifMinute'] ?? 0,
@@ -330,6 +339,12 @@ class FirestoreSync {
       goldBoostDays:         local.goldLifetime >= remote.goldLifetime ? local.goldBoostDays : remote.goldBoostDays,
       unlockedLevel:         local.unlockedLevel >= remote.unlockedLevel ? local.unlockedLevel : remote.unlockedLevel,
       expeditionCleared:     local.goldLifetime >= remote.goldLifetime ? local.expeditionCleared : remote.expeditionCleared,
+      expeditionRevealed:    local.goldLifetime >= remote.goldLifetime ? local.expeditionRevealed : remote.expeditionRevealed,
+      expeditionPos:         local.goldLifetime >= remote.goldLifetime ? local.expeditionPos : remote.expeditionPos,
+      expeditionPicked:      local.goldLifetime >= remote.goldLifetime ? local.expeditionPicked : remote.expeditionPicked,
+      expeditionEntities:    local.goldLifetime >= remote.goldLifetime ? local.expeditionEntities : remote.expeditionEntities,
+      collection:            local.collection.length >= remote.collection.length ? local.collection : remote.collection,
+      lastFreeStepYmd:       local.goldLifetime >= remote.goldLifetime ? local.lastFreeStepYmd : remote.lastFreeStepYmd,
       notifHour:             local.notifHour,
       notifMinute:           local.notifMinute,
       notifEnabled:          local.notifEnabled,
@@ -920,9 +935,101 @@ class FirestoreSync {
       final current = (data['unlockedLevel'] as num?)?.toInt() ?? 0;
       final effective = current < 1 ? 1 : current;
       if (level != effective + 1) return false;
-      tx.set(metaRef, {'unlockedLevel': level, 'expeditionCleared': <String>[]},
+      tx.set(
+          metaRef,
+          {
+            'unlockedLevel': level,
+            'expeditionCleared': <String>[],
+            'expeditionRevealed': <String>[],
+            'expeditionPos': null,
+            'expeditionPicked': <String>[],
+            'expeditionEntities': <String>[],
+          },
           SetOptions(merge: true));
       return true;
+    });
+  }
+
+  /// Écriture atomique d'une action overworld (déplacement / révélation+spawn /
+  /// ramassage / kill). [goldDelta] < 0 = dépense (pas/torche/arme), > 0 = gain
+  /// (butin/bonus, crédite aussi le lifetime). [entities] remplace la liste si fourni.
+  Future<void> expeditionWrite({
+    String? newPos,
+    List<String> revealAdd = const [],
+    List<String>? entities,
+    String? pickedAdd,
+    String? collectionAdd,
+    String? consumeInventory,
+    int goldDelta = 0,
+    bool useFreeStep = false,
+    String reasonCode = 'expedition',
+    String label = 'Expédition',
+  }) async {
+    if (uid == null) return;
+    final metaRef = _meta();
+    final ledgerId = '${DateTime.now().microsecondsSinceEpoch}';
+    await _db.runTransaction((tx) async {
+      final data = (await tx.get(metaRef)).data() as Map<String, dynamic>? ?? {};
+      List<String> listOf(String k) =>
+          (data[k] as List?)?.cast<String>().toList() ?? <String>[];
+      final update = <String, dynamic>{};
+
+      if (consumeInventory != null) {
+        final inv = (data['goldInventory'] as Map?)
+                ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ??
+            <String, int>{};
+        if ((inv[consumeInventory] ?? 0) > 0) {
+          inv[consumeInventory] = inv[consumeInventory]! - 1;
+          update['goldInventory'] = inv;
+        }
+      }
+
+      if (goldDelta != 0) {
+        var gold = (data['gold'] as num?)?.toInt() ?? 0;
+        var lifetime = (data['goldLifetime'] as num?)?.toInt() ?? 0;
+        gold += goldDelta;
+        if (gold < 0) gold = 0;
+        if (goldDelta > 0) lifetime += goldDelta;
+        update['gold'] = gold;
+        update['goldLifetime'] = lifetime;
+      }
+      if (newPos != null) update['expeditionPos'] = newPos;
+      if (revealAdd.isNotEmpty) {
+        final r = listOf('expeditionRevealed');
+        for (final t in revealAdd) {
+          if (!r.contains(t)) r.add(t);
+        }
+        update['expeditionRevealed'] = r;
+      }
+      if (entities != null) update['expeditionEntities'] = entities;
+      if (pickedAdd != null) {
+        final p = listOf('expeditionPicked');
+        if (!p.contains(pickedAdd)) p.add(pickedAdd);
+        update['expeditionPicked'] = p;
+      }
+      if (collectionAdd != null) {
+        final c = listOf('collection');
+        if (!c.contains(collectionAdd)) c.add(collectionAdd);
+        update['collection'] = c;
+      }
+      if (useFreeStep) {
+        final now = DateTime.now();
+        update['lastFreeStepYmd'] = '${now.year}'
+            '${now.month.toString().padLeft(2, '0')}'
+            '${now.day.toString().padLeft(2, '0')}';
+      }
+      tx.set(metaRef, update, SetOptions(merge: true));
+      if (goldDelta != 0) {
+        tx.set(
+            _col('gold_ledger').doc(ledgerId),
+            GoldLedgerEntry(
+              id: ledgerId,
+              delta: goldDelta,
+              category: goldDelta > 0 ? 'gain' : 'spend',
+              reasonCode: reasonCode,
+              label: label,
+            ).toJson());
+      }
     });
   }
 
@@ -962,6 +1069,12 @@ class FirestoreSync {
       'goldLifetime': 0,
       'unlockedLevel': 1,
       'expeditionCleared': <String>[],
+      'expeditionRevealed': <String>[],
+      'expeditionPos': null,
+      'expeditionPicked': <String>[],
+      'expeditionEntities': <String>[],
+      'collection': <String>[],
+      'lastFreeStepYmd': null,
       'goldInventory': <String, int>{},
       'goldLastProcessedDay': ymd,
     }, SetOptions(merge: true));

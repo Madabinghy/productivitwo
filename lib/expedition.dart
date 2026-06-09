@@ -169,3 +169,139 @@ Expedition generateExpedition(int level) {
   ];
   return biomes[level % biomes.length];
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// OVERWORLD (carte 2D explorable, Phase 1) — terrain + collectibles. Les entités
+// (nuisibles/bonus) ne sont PAS générées ici : elles spawnent à la révélation.
+// ════════════════════════════════════════════════════════════════════════════
+
+enum OwTileKind { wall, floor, start, castle }
+
+class OwTile {
+  final int x, y;
+  OwTileKind kind;
+  String? collectibleId; // collectible posé sur la case (généré par seed)
+  OwTile(this.x, this.y, this.kind, {this.collectibleId});
+  String get id => '${x}_$y';
+}
+
+class Overworld {
+  final int level, cols, rows;
+  final List<List<OwTile>> grid;
+  final Point<int> start, castle;
+  Overworld(this.level, this.cols, this.rows, this.grid, this.start, this.castle);
+  OwTile at(int x, int y) => grid[y][x];
+  bool inBounds(int x, int y) => x >= 0 && x < cols && y >= 0 && y < rows;
+  bool walkable(int x, int y) =>
+      inBounds(x, y) && grid[y][x].kind != OwTileKind.wall;
+  Iterable<OwTile> get all => grid.expand((r) => r);
+  int get walkableCount => all.where((t) => t.kind != OwTileKind.wall).length;
+}
+
+/// Catalogue des collectibles (animaux communs + butins rares).
+const overworldCollectibles = <({String id, String emoji, String name, bool rare})>[
+  (id: 'fox', emoji: '🦊', name: 'Renard', rare: false),
+  (id: 'deer', emoji: '🦌', name: 'Cerf', rare: false),
+  (id: 'rabbit', emoji: '🐰', name: 'Lapin', rare: false),
+  (id: 'owl', emoji: '🦉', name: 'Hibou', rare: false),
+  (id: 'hedgehog', emoji: '🦔', name: 'Hérisson', rare: false),
+  (id: 'boar', emoji: '🐗', name: 'Sanglier', rare: false),
+  (id: 'gem', emoji: '💎', name: 'Gemme', rare: true),
+  (id: 'amphora', emoji: '🏺', name: 'Amphore', rare: true),
+  (id: 'crown', emoji: '👑', name: 'Couronne', rare: true),
+  (id: 'ring', emoji: '💍', name: 'Anneau', rare: true),
+];
+
+({String id, String emoji, String name, bool rare})? collectibleById(String id) {
+  for (final c in overworldCollectibles) {
+    if (c.id == id) return c;
+  }
+  return null;
+}
+
+/// Marque une case en floor (sauf si déjà start/castle).
+void _floor(List<List<OwTile>> grid, int x, int y, int cols, int rows) {
+  if (x < 0 || x >= cols || y < 0 || y >= rows) return;
+  if (grid[y][x].kind == OwTileKind.wall) grid[y][x].kind = OwTileKind.floor;
+}
+
+/// Carve une route start(top,startX) → castle(bottom,castleX), biaisée vers
+/// [laneBias] (deux valeurs différentes ⇒ deux routes distinctes).
+List<Point<int>> _carve(List<List<OwTile>> grid, Random rng, int cols, int rows,
+    int startX, int castleX, int laneBias) {
+  final path = <Point<int>>[];
+  var x = startX, y = 0;
+  _floor(grid, x, y, cols, rows);
+  path.add(Point(x, y));
+  while (y < rows - 1) {
+    if (rng.nextInt(100) < 55) {
+      y++;
+    } else if (x < laneBias && x < cols - 1) {
+      x++;
+    } else if (x > laneBias && x > 0) {
+      x--;
+    } else {
+      y++;
+    }
+    _floor(grid, x, y, cols, rows);
+    path.add(Point(x, y));
+  }
+  while (x != castleX) {
+    x += x < castleX ? 1 : -1;
+    _floor(grid, x, y, cols, rows);
+    path.add(Point(x, y));
+  }
+  return path;
+}
+
+Overworld generateOverworld(int level) {
+  final rng = Random(level * 100003 + 41);
+  const cols = 7;
+  final rows = (8 + level).clamp(8, 16);
+  final grid = [
+    for (int y = 0; y < rows; y++)
+      [for (int x = 0; x < cols; x++) OwTile(x, y, OwTileKind.wall)]
+  ];
+  const startX = 3, castleX = 3;
+  final pathA = _carve(grid, rng, cols, rows, startX, castleX, 1); // biais gauche
+  _carve(grid, rng, cols, rows, startX, castleX, 5); // biais droite (2e route)
+  grid[0][startX].kind = OwTileKind.start;
+  grid[rows - 1][castleX].kind = OwTileKind.castle;
+
+  // Collectibles : sur des cases floor HORS route A (récompense l'exploration).
+  final pathAset = pathA.map((p) => '${p.x}_${p.y}').toSet();
+  final offPath = grid
+      .expand((r) => r)
+      .where((t) => t.kind == OwTileKind.floor && !pathAset.contains(t.id))
+      .toList()
+    ..shuffle(rng);
+  final commons = overworldCollectibles.where((c) => !c.rare).toList();
+  final rares = overworldCollectibles.where((c) => c.rare).toList();
+  final count = (2 + level ~/ 3).clamp(2, 6);
+  for (var i = 0; i < count && i < offPath.length; i++) {
+    final rare = rng.nextInt(4) == 0;
+    final cat =
+        rare ? rares[rng.nextInt(rares.length)] : commons[rng.nextInt(commons.length)];
+    offPath[i].collectibleId = cat.id;
+  }
+  return Overworld(level, cols, rows, grid, const Point(startX, 0),
+      Point(castleX, rows - 1));
+}
+
+// ── Entités vivantes (nuisibles/bonus) encodées "type:tile:meta" ────────────
+// pest  : "spider|scorpion|snake:x_y:spawnYmd"
+// bonus : "bonus:x_y:amount"
+({String type, String tile, String meta}) decodeEntity(String e) {
+  final p = e.split(':');
+  return (type: p[0], tile: p.length > 1 ? p[1] : '', meta: p.length > 2 ? p[2] : '');
+}
+
+String encodeEntity(String type, String tile, String meta) => '$type:$tile:$meta';
+
+bool isPestType(String t) => t == 'spider' || t == 'scorpion' || t == 'snake';
+
+String entityEmoji(String t) =>
+    const {'spider': '🕷️', 'scorpion': '🦂', 'snake': '🐍', 'bonus': '💰'}[t] ?? '❓';
+
+String pestName(String t) =>
+    const {'spider': 'Araignée', 'scorpion': 'Scorpion', 'snake': 'Serpent'}[t] ?? t;

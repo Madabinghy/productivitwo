@@ -10,8 +10,10 @@ class _Entry {
 }
 
 const _changelog = [
-  _Entry('5.96-test', '9 juin 2026', [
-    (Icons.science_outlined, 'Build de test : dans « Mon or », un encart « 🧪 Test expédition » permet de comparer les deux versions de la mini-carte de déblocage (V1 chemin à nœuds · 2D explorable) sans condition d\'XP. Temporaire, pour choisir la direction'),
+  _Entry('5.96', '9 juin 2026', [
+    (Icons.explore_outlined, 'Nouveau : l\'Expédition est une vraie carte à explorer ! Pour débloquer le prochain niveau, déplace ton perso de case en case (1 or, 1ᵉʳ pas du jour gratuit) à travers le brouillard (torche 5 or pour éclairer une zone) jusqu\'au château 🏰. Au moins 2 chemins → explore pour trouver des collectibles'),
+    (Icons.pets_outlined, 'La carte réagit à ta semaine : si ton score baisse vs la semaine passée, des nuisibles 🕷️🦂🐍 apparaissent (ils te drainent de l\'or chaque jour — élimine-les avec une épée/sandale, ou attends qu\'ils partent). Si ta semaine progresse, ce sont des trésors 💰 qui surgissent'),
+    (Icons.collections_bookmark_outlined, 'Nouveau : ta Collection ! Animaux et butins ramassés sur les cartes s\'y accumulent (accessible depuis « Mon or »). Explorer une carte à 100 % offre un trésor rare'),
   ]),
   _Entry('5.95', '9 juin 2026', [
     (Icons.map_outlined, 'Nouveau : l\'Expédition ! Atteindre l\'XP d\'un niveau ne suffit plus — son titre reste secret. Pour le débloquer, tu traverses une petite carte sinueuse : chaque pas se franchit avec un outil (🥾 pas, ⛏️ pioche, 🔑 clé, 🪏 pelle) acheté en boutique. Des forks te font arbitrer (route courte chère vs longue bon marché), des trésors récompensent les détours. Le niveau se gagne, il n\'est plus juste « atteint »'),

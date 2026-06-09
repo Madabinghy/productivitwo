@@ -1,23 +1,16 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
-import 'package:productivitwo_v1/expedition.dart' show expeditionBiome;
+import 'package:productivitwo_v1/expedition.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/gold_economy.dart';
 import 'package:productivitwo_v1/gold_purchase.dart';
-import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
 
-/// PROTOTYPE (branche feat/expedition-2d-map) — version « vrai mini-jeu 2D » du
-/// déblocage de niveau : une carte à cases qu'on EXPLORE avec un perso qui se
-/// déplace (tap sur une case adjacente), brouillard à dissiper, obstacles à
-/// franchir avec des outils achetés en boutique (⛏️ pioche / 🔑 clé / 🪏 pelle),
-/// trésors à ramasser, drapeau 🏁 à atteindre.
-///
-/// Différence vs la V1 (chemin à nœuds) : ici **marcher est gratuit**, seuls les
-/// obstacles coûtent un outil — plus proche de l'idée d'origine « explorer ».
-/// Réutilise le backend : `expeditionCleared` (obstacles cassés + trésors pris),
-/// `advanceExpedition` / `completeExpedition`, outils boutique.
+/// Overworld (Phase 1) : carte 2D explorable pour débloquer le prochain niveau.
+/// Déplacement = 1 or (1 gratuit/jour) ; brouillard = torche 5 + pas 1 = 6 or
+/// (révèle radius 1) ; ≥2 chemins ; collectibles ; écosystème lié au % hebdo
+/// (nuisibles si tendance ↓, bonus si ↑) ; château = déblocage (provisoire P1).
 
 const _kGold = Color(0xFFD4A017);
 const double _tile = 46;
@@ -31,124 +24,6 @@ Future<void> showExpeditionGame(
   );
 }
 
-enum TileKind { floor, wall, rock, gate, hole, treasure, start, exit }
-
-String? _toolForTile(TileKind k) {
-  switch (k) {
-    case TileKind.rock:
-      return 'pioche';
-    case TileKind.gate:
-      return 'cle';
-    case TileKind.hole:
-      return 'pelle';
-    default:
-      return null;
-  }
-}
-
-class _Tile {
-  final int x, y;
-  TileKind kind;
-  final int gold;
-  _Tile(this.x, this.y, this.kind, {this.gold = 0});
-  String get id => '${x}_$y';
-}
-
-class _GameMap {
-  final int cols, rows, level;
-  final List<List<_Tile>> grid;
-  final Point<int> start, exit;
-  _GameMap(this.cols, this.rows, this.level, this.grid, this.start, this.exit);
-  _Tile at(int x, int y) => grid[y][x];
-  bool inBounds(int x, int y) => x >= 0 && x < cols && y >= 0 && y < rows;
-}
-
-/// Génère une carte déterministe (seed = niveau) : chemin garanti start→exit,
-/// quelques obstacles sur le chemin, branches latérales avec trésors, le reste = murs.
-_GameMap generateMap(int level) {
-  final rng = Random(level * 73856093 + 19);
-  final cols = 7;
-  final rows = (8 + level).clamp(8, 16);
-  final grid = [
-    for (int y = 0; y < rows; y++)
-      [for (int x = 0; x < cols; x++) _Tile(x, y, TileKind.wall)]
-  ];
-
-  // Chemin principal : marche biaisée vers le bas.
-  var cx = cols ~/ 2;
-  var cy = 0;
-  final path = <Point<int>>[Point(cx, cy)];
-  grid[cy][cx].kind = TileKind.floor;
-  while (cy < rows - 1) {
-    final goDown = rng.nextInt(10) < 6 || (cx == 0 && cx == cols - 1);
-    if (goDown) {
-      cy++;
-    } else {
-      final left = rng.nextBool();
-      if (left && cx > 0) {
-        cx--;
-      } else if (!left && cx < cols - 1) {
-        cx++;
-      } else {
-        cy++;
-      }
-    }
-    grid[cy][cx].kind = TileKind.floor;
-    path.add(Point(cx, cy));
-  }
-  final start = path.first;
-  final exit = path.last;
-  grid[start.y][start.x].kind = TileKind.start;
-  grid[exit.y][exit.x].kind = TileKind.exit;
-
-  // Obstacles sur des cases intérieures du chemin.
-  final obstacleCount = (2 + level ~/ 3).clamp(2, 6);
-  final interior = path
-      .where((p) =>
-          (p != start) &&
-          (p != exit) &&
-          !(p.x == start.x && (p.y - start.y).abs() <= 1))
-      .toList();
-  interior.shuffle(rng);
-  final kinds = [TileKind.rock, TileKind.gate, TileKind.hole];
-  for (var i = 0; i < obstacleCount && i < interior.length; i++) {
-    final p = interior[i];
-    grid[p.y][p.x].kind = kinds[rng.nextInt(3)];
-  }
-
-  // Branches latérales (exploration) → trésor au bout.
-  final treasureCount = (1 + level ~/ 4).clamp(1, 4);
-  var placed = 0;
-  final shuffledPath = [...path]..shuffle(rng);
-  for (final p in shuffledPath) {
-    if (placed >= treasureCount) break;
-    // cherche une case murale adjacente libre pour amorcer une branche
-    final dirs = [const Point(1, 0), const Point(-1, 0), const Point(0, 1)]
-      ..shuffle(rng);
-    for (final d in dirs) {
-      final bx = p.x + d.x, by = p.y + d.y;
-      if (bx < 0 || bx >= cols || by < 0 || by >= rows) continue;
-      if (grid[by][bx].kind != TileKind.wall) continue;
-      grid[by][bx].kind = TileKind.floor;
-      // une case plus loin = trésor si possible, sinon le trésor ici
-      final tx = bx + d.x, ty = by + d.y;
-      if (bx + d.x >= 0 &&
-          bx + d.x < cols &&
-          by + d.y >= 0 &&
-          by + d.y < rows &&
-          grid[ty][tx].kind == TileKind.wall) {
-        grid[ty][tx] = _Tile(tx, ty, TileKind.treasure, gold: 6 + rng.nextInt(10));
-      } else {
-        grid[by][bx] = _Tile(bx, by, TileKind.treasure, gold: 6 + rng.nextInt(10));
-      }
-      placed++;
-      break;
-    }
-  }
-
-  return _GameMap(cols, rows, level, grid, start, exit);
-}
-
 class _ExpeditionGame extends StatefulWidget {
   final AppLogic logic;
   final FirestoreSync sync;
@@ -160,137 +35,341 @@ class _ExpeditionGame extends StatefulWidget {
 class _ExpeditionGameState extends State<_ExpeditionGame> {
   AppLogic get logic => widget.logic;
   FirestoreSync get sync => widget.sync;
+  final _rng = Random();
   bool _busy = false;
 
   int get _level => logic.effectiveLevel() + 1;
-  late final _GameMap _map = generateMap(_level);
-  late Point<int> _avatar = _map.start;
-  final Set<String> _visited = {};
+  late final Overworld _map = generateOverworld(_level);
 
-  Set<String> get _cleared =>
-      logic.state.expeditionCleared.toSet(); // obstacles cassés + trésors pris
+  Set<String> get _revealed => logic.state.expeditionRevealed.toSet();
+  Set<String> get _picked => logic.state.expeditionPicked.toSet();
+  Point<int> get _pos {
+    final p = logic.state.expeditionPos;
+    if (p != null && p.contains('_')) {
+      final s = p.split('_');
+      return Point(int.parse(s[0]), int.parse(s[1]));
+    }
+    return _map.start;
+  }
+
+  String _ymd() {
+    final n = DateTime.now();
+    return '${n.year}${n.month.toString().padLeft(2, '0')}${n.day.toString().padLeft(2, '0')}';
+  }
+
+  bool get _freeStepAvailable => logic.state.lastFreeStepYmd != _ymd();
 
   @override
   void initState() {
     super.initState();
-    _reveal(_map.start);
-  }
-
-  void _reveal(Point<int> p) {
-    for (var dy = -1; dy <= 1; dy++) {
-      for (var dx = -1; dx <= 1; dx++) {
-        final nx = p.x + dx, ny = p.y + dy;
-        if (_map.inBounds(nx, ny)) _visited.add('${nx}_$ny');
-      }
+    final changed = <String, dynamic>{};
+    // Position absente ou périmée (hors carte courante) → repart du départ.
+    final p = logic.state.expeditionPos;
+    var validPos = false;
+    if (p != null && p.contains('_')) {
+      final s = p.split('_');
+      final px = int.tryParse(s[0]) ?? -1, py = int.tryParse(s[1]) ?? -1;
+      validPos = _map.inBounds(px, py);
     }
-  }
-
-  bool _visible(int x, int y) {
-    for (var dy = -1; dy <= 1; dy++) {
-      for (var dx = -1; dx <= 1; dx++) {
-        if (_visited.contains('${x + dx}_${y + dy}')) return true;
-      }
+    if (!validPos) {
+      logic.state.expeditionPos = '${_map.start.x}_${_map.start.y}';
+      changed['pos'] = true;
     }
-    return false;
-  }
-
-  bool _walkable(_Tile t) {
-    switch (t.kind) {
-      case TileKind.wall:
-        return false;
-      case TileKind.rock:
-      case TileKind.gate:
-      case TileKind.hole:
-        return _cleared.contains(t.id); // franchissable une fois cassé
-      default:
-        return true;
+    if (logic.state.expeditionRevealed.isEmpty) {
+      final r = _neighbors(_map.start.x, _map.start.y, includeSelf: true)
+          .map((p) => '${p.x}_${p.y}')
+          .toList();
+      logic.state.expeditionRevealed.addAll(r);
+      changed['reveal'] = r;
     }
-  }
-
-  String _toolLabel(String key) =>
-      const {'pioche': '⛏️ pioche', 'cle': '🔑 clé', 'pelle': '🪏 pelle'}[key] ??
-      key;
-
-  Future<void> _onTapTile(_Tile t) async {
-    if (_busy) return;
-    final adj = (t.x - _avatar.x).abs() + (t.y - _avatar.y).abs() == 1;
-    if (!adj) return; // déplacement orthogonal d'une case
-
-    final tool = _toolForTile(t.kind);
-    final isObstacle = tool != null;
-
-    // Obstacle non franchi → tenter de le casser (sur place).
-    if (isObstacle && !_cleared.contains(t.id)) {
-      if ((logic.state.goldInventory[tool] ?? 0) < 1) {
-        final bought = await offerBuyConsumable(
-          context,
-          sync,
-          itemKey: tool,
-          price: GoldEconomy.scaledPrice(
-              GoldEconomy.toolBasePrice(tool), logic.effectiveLevel()),
-          label: _toolLabel(tool),
-          rationale: 'Pour franchir ${_kindLabel(t.kind)}, il te faut un « ${_toolLabel(tool)} ».',
-          logic: logic,
-        );
-        if (!bought) return;
-      }
-      setState(() => _busy = true);
-      final ok = await sync.advanceExpedition(nodeId: t.id, toolKey: tool);
-      if (ok) {
-        logic.state.goldInventory[tool] =
-            (logic.state.goldInventory[tool] ?? 1) - 1;
-        logic.state.expeditionCleared.add(t.id);
-        logic.onChange();
-      }
-      if (mounted) setState(() => _busy = false);
-      return; // on casse d'abord, on marchera au prochain tap
+    final pruned = _prunedEntities();
+    if (pruned.length != logic.state.expeditionEntities.length) {
+      logic.state.expeditionEntities
+        ..clear()
+        ..addAll(pruned);
+      changed['ent'] = true;
     }
-
-    // Case franchissable → s'y déplacer.
-    if (!_walkable(t)) return;
-    setState(() {
-      _avatar = Point(t.x, t.y);
-      _reveal(_avatar);
-    });
-
-    // Trésor → ramasser.
-    if (t.kind == TileKind.treasure && !_cleared.contains(t.id)) {
-      logic.state.expeditionCleared.add(t.id);
-      logic.state.gold += t.gold;
-      logic.state.goldLifetime += t.gold;
+    if (changed.isNotEmpty) {
       logic.onChange();
-      sync.advanceExpedition(nodeId: t.id); // persiste « ramassé »
-      sync.applyGold(GoldLedgerEntry(
-        id: '${DateTime.now().microsecondsSinceEpoch}',
-        delta: t.gold,
-        category: 'gain',
-        reasonCode: 'expedition_bonus',
-        label: 'Trésor d\'expédition',
-      ));
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('💰 Trésor : +${t.gold} or'),
-            duration: const Duration(seconds: 1)));
-      }
-      setState(() {});
+      sync.expeditionWrite(
+          newPos: logic.state.expeditionPos,
+          revealAdd: (changed['reveal'] as List<String>?) ?? const [],
+          entities: logic.state.expeditionEntities);
     }
-
-    // Arrivée → niveau débloqué.
-    if (t.kind == TileKind.exit) await _finish();
   }
 
-  String _kindLabel(TileKind k) => const {
-        TileKind.rock: 'ce rocher',
-        TileKind.gate: 'cette grille',
-        TileKind.hole: 'ce trou',
-      }[k] ??
-      'cet obstacle';
+  List<String> _prunedEntities() {
+    final today = _parseYmd(_ymd());
+    return logic.state.expeditionEntities.where((e) {
+      final ent = decodeEntity(e);
+      if (!isPestType(ent.type) || ent.meta.isEmpty) return true; // bonus persiste
+      final diff = today.difference(_parseYmd(ent.meta)).inDays;
+      return diff < GoldEconomy.pestLifespanDays(ent.type);
+    }).toList();
+  }
 
-  Future<void> _finish() async {
+  DateTime _parseYmd(String y) => DateTime(int.parse(y.substring(0, 4)),
+      int.parse(y.substring(4, 6)), int.parse(y.substring(6, 8)));
+
+  List<Point<int>> _neighbors(int x, int y, {bool includeSelf = false}) {
+    final out = <Point<int>>[];
+    for (var dy = -1; dy <= 1; dy++) {
+      for (var dx = -1; dx <= 1; dx++) {
+        if (!includeSelf && dx == 0 && dy == 0) continue;
+        final nx = x + dx, ny = y + dy;
+        if (_map.inBounds(nx, ny)) out.add(Point(nx, ny));
+      }
+    }
+    return out;
+  }
+
+  ({String raw, String type, String tile, String meta})? _entityAt(String id) {
+    for (final e in logic.state.expeditionEntities) {
+      final d = decodeEntity(e);
+      if (d.tile == id) {
+        return (raw: e, type: d.type, tile: d.tile, meta: d.meta);
+      }
+    }
+    return null;
+  }
+
+  int get _livePests => logic.state.expeditionEntities
+      .where((e) => isPestType(decodeEntity(e).type))
+      .length;
+
+  String? _maybeSpawn(List<String> newlyRevealed, String destId) {
+    final w = logic.weeklyScoreData();
+    if (w.previous <= 0) return null;
+    final trendPct = ((w.current - w.previous) * 100).round();
+    final p = trendPct.abs().clamp(0, GoldEconomy.trendSpawnCapPct);
+    if (p == 0 || _rng.nextInt(100) >= p) return null;
+    final eligible = newlyRevealed.where((id) {
+      if (id == destId) return false;
+      final s = id.split('_');
+      final t = _map.at(int.parse(s[0]), int.parse(s[1]));
+      if (t.kind != OwTileKind.floor) return false;
+      if (_entityAt(id) != null) return false;
+      if (t.collectibleId != null && !_picked.contains(t.collectibleId)) {
+        return false;
+      }
+      return true;
+    }).toList();
+    if (eligible.isEmpty) return null;
+    final tile = eligible[_rng.nextInt(eligible.length)];
+    if (trendPct < 0) {
+      if (_livePests >= GoldEconomy.maxLivePests) return null;
+      final roll = _rng.nextInt(100);
+      final type = roll < 55 ? 'spider' : (roll < 85 ? 'scorpion' : 'snake');
+      return encodeEntity(type, tile, _ymd());
+    } else {
+      final amount = GoldEconomy.bonusGoldMin +
+          _rng.nextInt(GoldEconomy.bonusGoldMax - GoldEconomy.bonusGoldMin + 1);
+      return encodeEntity('bonus', tile, '$amount');
+    }
+  }
+
+  Future<void> _onTap(OwTile t) async {
+    if (_busy) return;
+    final p = _pos;
+    final adjacent = (t.x - p.x).abs() + (t.y - p.y).abs() == 1;
+    if (!adjacent || t.kind == OwTileKind.wall) return;
+
+    final ent = _entityAt(t.id);
+    if (ent != null && isPestType(ent.type)) {
+      await _killPest(ent.raw, ent.type);
+      return;
+    }
+    await _move(t, ent);
+  }
+
+  Future<void> _killPest(String raw, String type) async {
+    final weapon = GoldEconomy.weaponForPest(type);
+    if ((logic.state.goldInventory[weapon] ?? 0) < 1) {
+      final price = GoldEconomy.scaledPrice(
+          GoldEconomy.weaponBasePrice(weapon), logic.effectiveLevel());
+      final label = weapon == 'epee' ? '🗡️ Épée' : '🩴 Sandale';
+      final bought = await offerBuyConsumable(context, sync,
+          itemKey: weapon,
+          price: price,
+          label: label,
+          rationale: 'Pour tuer ${pestName(type)}, il te faut une « $label ».',
+          logic: logic);
+      if (!bought) return;
+    }
+    final newEntities =
+        logic.state.expeditionEntities.where((e) => e != raw).toList();
+    setState(() => _busy = true);
+    await sync.expeditionWrite(
+        consumeInventory: weapon,
+        entities: newEntities,
+        reasonCode: 'pest_kill');
+    logic.state.goldInventory[weapon] =
+        (logic.state.goldInventory[weapon] ?? 1) - 1;
+    logic.state.expeditionEntities
+      ..clear()
+      ..addAll(newEntities);
+    logic.onChange();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('${entityEmoji(type)} ${pestName(type)} éliminé !'),
+        duration: const Duration(seconds: 1)));
+  }
+
+  Future<void> _move(OwTile t,
+      ({String raw, String type, String tile, String meta})? ent) async {
+    final fogged = !_revealed.contains(t.id);
+    final free = _freeStepAvailable;
+    var cost = fogged
+        ? (GoldEconomy.torchCost + GoldEconomy.stepCost)
+        : GoldEconomy.stepCost;
+    if (free) cost -= GoldEconomy.stepCost;
+    if (logic.state.gold < cost) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Pas assez d\'or pour avancer.'),
+          duration: Duration(seconds: 1)));
+      return;
+    }
+
+    final revealAdd = <String>[];
+    if (fogged) {
+      for (final n in _neighbors(t.x, t.y, includeSelf: true)) {
+        final id = '${n.x}_${n.y}';
+        if (!_revealed.contains(id)) revealAdd.add(id);
+      }
+    }
+
+    var entities = List<String>.from(logic.state.expeditionEntities);
+    String? spawnMsg;
+    if (revealAdd.isNotEmpty) {
+      final spawned = _maybeSpawn(revealAdd, t.id);
+      if (spawned != null) {
+        entities.add(spawned);
+        final d = decodeEntity(spawned);
+        spawnMsg = d.type == 'bonus'
+            ? '💰 Un trésor apparaît !'
+            : '${entityEmoji(d.type)} ${pestName(d.type)} rôde…';
+      }
+    }
+
+    var gain = 0;
+    String? msg;
+    if (ent != null && ent.type == 'bonus') {
+      gain += int.tryParse(ent.meta) ?? 0;
+      entities = entities.where((e) => e != ent.raw).toList();
+      msg = '💰 +$gain or';
+    }
+    String? pickedAdd, collectionAdd;
+    final collId = t.collectibleId;
+    if (collId != null && !_picked.contains(collId)) {
+      final cat = collectibleById(collId);
+      pickedAdd = collId;
+      collectionAdd = collId;
+      if (cat != null && cat.rare) {
+        gain += GoldEconomy.lootGoldMin +
+            _rng.nextInt(GoldEconomy.lootGoldMax - GoldEconomy.lootGoldMin + 1);
+      }
+      msg = '${cat?.emoji ?? '✨'} ${cat?.name ?? 'Trouvé'} ajouté à ta collection';
+    }
+
+    final goldDelta = gain - cost;
+    final entitiesChanged =
+        entities.length != logic.state.expeditionEntities.length;
+
+    setState(() => _busy = true);
+    await sync.expeditionWrite(
+      newPos: t.id,
+      revealAdd: revealAdd,
+      entities: entitiesChanged ? entities : null,
+      pickedAdd: pickedAdd,
+      collectionAdd: collectionAdd,
+      goldDelta: goldDelta,
+      useFreeStep: free,
+      reasonCode: fogged ? 'expedition_torch' : 'expedition_step',
+      label: 'Exploration',
+    );
+    logic.state.gold += goldDelta;
+    if (logic.state.gold < 0) logic.state.gold = 0;
+    if (goldDelta > 0) logic.state.goldLifetime += goldDelta;
+    logic.state.expeditionPos = t.id;
+    for (final r in revealAdd) {
+      if (!logic.state.expeditionRevealed.contains(r)) {
+        logic.state.expeditionRevealed.add(r);
+      }
+    }
+    if (entitiesChanged) {
+      logic.state.expeditionEntities
+        ..clear()
+        ..addAll(entities);
+    }
+    if (pickedAdd != null) logic.state.expeditionPicked.add(pickedAdd);
+    if (collectionAdd != null &&
+        !logic.state.collection.contains(collectionAdd)) {
+      logic.state.collection.add(collectionAdd);
+    }
+    if (free) logic.state.lastFreeStepYmd = _ymd();
+    logic.onChange();
+    if (!mounted) return;
+    setState(() => _busy = false);
+
+    final toast = spawnMsg ?? msg;
+    if (toast != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(toast), duration: const Duration(seconds: 1)));
+    }
+
+    _maybeCompletionBonus();
+    if (t.kind == OwTileKind.castle) await _castle();
+  }
+
+  void _maybeCompletionBonus() {
+    final flag = 'complete_$_level';
+    if (logic.state.collection.contains(flag)) return;
+    if (logic.state.expeditionRevealed.length < _map.walkableCount) return;
+    final rares = overworldCollectibles.where((c) => c.rare).toList();
+    final reward = rares[_rng.nextInt(rares.length)];
+    logic.state.collection.add(flag);
+    if (!logic.state.collection.contains(reward.id)) {
+      logic.state.collection.add(reward.id);
+    }
+    logic.onChange();
+    sync.expeditionWrite(collectionAdd: reward.id);
+    sync.expeditionWrite(collectionAdd: flag);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              '🗺️ Carte explorée à 100 % ! ${reward.emoji} ${reward.name} (rare) obtenu')));
+    }
+  }
+
+  Future<void> _castle() async {
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('🏰 Château atteint !'),
+        content: Text(
+            'Entre pour débloquer le niveau $_level, ou continue d\'explorer la '
+            'carte (trésors, collectibles) avant d\'entrer.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Explorer encore')),
+          FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: _kGold),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Entrer')),
+        ],
+      ),
+    );
+    if (go != true) return;
     final ok = await sync.completeExpedition(_level);
     if (ok) {
       logic.state.unlockedLevel = _level;
       logic.state.expeditionCleared.clear();
+      logic.state.expeditionRevealed.clear();
+      logic.state.expeditionPicked.clear();
+      logic.state.expeditionEntities.clear();
+      logic.state.expeditionPos = null;
       logic.onChange();
     }
     if (!mounted) return;
@@ -298,8 +377,8 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Niveau ${lvl.level} débloqué ! 🏁'),
-        content: Text('Tu as traversé la carte. Tu es désormais « ${lvl.title} ».'),
+        title: Text('Niveau ${lvl.level} débloqué ! 🎉'),
+        content: Text('Tu es désormais « ${lvl.title} ».'),
         actions: [
           FilledButton(
               style: FilledButton.styleFrom(backgroundColor: _kGold),
@@ -315,6 +394,9 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final biome = expeditionBiome(_level);
+    final pos = _pos;
+    final pests = _livePests;
+
     return DraggableScrollableSheet(
       initialChildSize: 0.92,
       maxChildSize: 0.95,
@@ -322,7 +404,7 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
       expand: false,
       builder: (_, scroll) => Column(children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
           child: Row(children: [
             Text(biome.emoji, style: const TextStyle(fontSize: 22)),
             const SizedBox(width: 8),
@@ -333,9 +415,10 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
                   Text('Niveau $_level · ???',
                       style: const TextStyle(
                           fontSize: 16, fontWeight: FontWeight.bold)),
-                  Text('Explore ${biome.label} jusqu\'au 🏁',
+                  Text('Explore ${biome.label} jusqu\'au 🏰',
                       style: TextStyle(
-                          fontSize: 11.5, color: cs.onSurface.withOpacity(.55))),
+                          fontSize: 11.5,
+                          color: cs.onSurface.withOpacity(.55))),
                 ],
               ),
             ),
@@ -345,12 +428,31 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Text(
-              'Touche une case voisine pour t\'y déplacer. Un obstacle (🪨/🔒/🕳️) se '
-              'casse avec l\'outil correspondant — achète-le sur place si besoin.',
-              style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(.5))),
+          child: Row(children: [
+            Expanded(
+              child: Text(
+                  'Case voisine : 1 or (1ᵉʳ pas du jour gratuit) · brouillard : 6 or.'
+                  '${pests > 0 ? ' · $pests nuisible(s) actif(s)' : ''}',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color:
+                          pests > 0 ? cs.error : cs.onSurface.withOpacity(.5))),
+            ),
+            if (_freeStepAvailable)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(.15),
+                    borderRadius: BorderRadius.circular(8)),
+                child: Text('pas gratuit ✓',
+                    style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.green.shade700)),
+              ),
+          ]),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         Expanded(
           child: SingleChildScrollView(
             controller: scroll,
@@ -367,14 +469,14 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
                           for (var x = 0; x < _map.cols; x++)
                             _TileView(
                               tile: _map.at(x, y),
-                              visible: _visible(x, y),
-                              cleared: _cleared.contains(_map.at(x, y).id),
-                              isAvatar: _avatar.x == x && _avatar.y == y,
-                              reachable: (_map.at(x, y).x - _avatar.x).abs() +
-                                      (_map.at(x, y).y - _avatar.y).abs() ==
-                                  1,
+                              visible: _revealed.contains('${x}_$y'),
+                              isAvatar: pos.x == x && pos.y == y,
+                              reachable:
+                                  (x - pos.x).abs() + (y - pos.y).abs() == 1,
+                              entity: _entityAt('${x}_$y'),
+                              picked: _picked,
                               cs: cs,
-                              onTap: () => _onTapTile(_map.at(x, y)),
+                              onTap: () => _onTap(_map.at(x, y)),
                             ),
                         ],
                       ),
@@ -390,16 +492,19 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
 }
 
 class _TileView extends StatelessWidget {
-  final _Tile tile;
-  final bool visible, cleared, isAvatar, reachable;
+  final OwTile tile;
+  final bool visible, isAvatar, reachable;
+  final ({String raw, String type, String tile, String meta})? entity;
+  final Set<String> picked;
   final ColorScheme cs;
   final VoidCallback onTap;
   const _TileView({
     required this.tile,
     required this.visible,
-    required this.cleared,
     required this.isAvatar,
     required this.reachable,
+    required this.entity,
+    required this.picked,
     required this.cs,
     required this.onTap,
   });
@@ -412,7 +517,7 @@ class _TileView extends StatelessWidget {
         height: _tile,
         margin: const EdgeInsets.all(1),
         decoration: BoxDecoration(
-          color: cs.onSurface.withOpacity(.08),
+          color: cs.onSurface.withOpacity(.10),
           borderRadius: BorderRadius.circular(6),
         ),
       );
@@ -420,37 +525,28 @@ class _TileView extends StatelessWidget {
 
     String content = '';
     Color bg = cs.surfaceContainerHighest.withOpacity(.4);
-
     switch (tile.kind) {
-      case TileKind.wall:
+      case OwTileKind.wall:
         bg = cs.onSurface.withOpacity(.22);
         break;
-      case TileKind.start:
+      case OwTileKind.start:
         content = '🏳️';
         bg = Colors.green.withOpacity(.15);
         break;
-      case TileKind.exit:
-        content = '🏁';
+      case OwTileKind.castle:
+        content = '🏰';
         bg = _kGold.withOpacity(.18);
         break;
-      case TileKind.treasure:
-        content = cleared ? '' : '💰';
-        bg = cleared
-            ? cs.surfaceContainerHighest.withOpacity(.4)
-            : _kGold.withOpacity(.12);
-        break;
-      case TileKind.rock:
-        content = cleared ? '' : '🪨';
-        break;
-      case TileKind.gate:
-        content = cleared ? '' : '🔒';
-        break;
-      case TileKind.hole:
-        content = cleared ? '' : '🕳️';
-        break;
-      case TileKind.floor:
+      case OwTileKind.floor:
         break;
     }
+    if (entity != null) {
+      content = entityEmoji(entity!.type);
+    } else if (tile.collectibleId != null &&
+        !picked.contains(tile.collectibleId)) {
+      content = collectibleById(tile.collectibleId!)?.emoji ?? '✨';
+    }
+    if (isAvatar) content = '🧍';
 
     return GestureDetector(
       onTap: onTap,
@@ -462,12 +558,11 @@ class _TileView extends StatelessWidget {
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(6),
-          border: reachable && tile.kind != TileKind.wall
+          border: reachable && tile.kind != OwTileKind.wall
               ? Border.all(color: _kGold, width: 2)
               : null,
         ),
-        child: Text(isAvatar ? '🧍' : content,
-            style: const TextStyle(fontSize: 20)),
+        child: Text(content, style: const TextStyle(fontSize: 20)),
       ),
     );
   }

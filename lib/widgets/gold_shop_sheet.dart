@@ -272,6 +272,12 @@ class _GoldShopSheetState extends State<_GoldShopSheet> {
     logic.state.goldLifetime = 0;
     logic.state.unlockedLevel = 1;
     logic.state.expeditionCleared.clear();
+    logic.state.expeditionRevealed.clear();
+    logic.state.expeditionPos = null;
+    logic.state.expeditionPicked.clear();
+    logic.state.expeditionEntities.clear();
+    logic.state.collection.clear();
+    logic.state.lastFreeStepYmd = null;
     logic.state.goldInventory.clear();
     logic.state.goldLastProcessedDay = '${now.year}'
         '${now.month.toString().padLeft(2, '0')}'
@@ -469,7 +475,7 @@ class _GoldShopSheetState extends State<_GoldShopSheet> {
             }),
 
           const SizedBox(height: 20),
-          Text('OUTILS D\'EXPÉDITION',
+          Text('ARMES D\'EXPÉDITION',
               style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
@@ -477,19 +483,17 @@ class _GoldShopSheetState extends State<_GoldShopSheet> {
                   color: cs.onSurface.withOpacity(.5))),
           const SizedBox(height: 4),
           Text(
-              'Sers-toi de ces outils sur la carte du niveau pour atteindre le drapeau et révéler ton prochain titre.',
+              'Pour éliminer les nuisibles qui apparaissent sur la carte quand ta semaine décline. Consommables : 1 arme = 1 élimination.',
               style:
                   TextStyle(fontSize: 11.5, color: cs.onSurface.withOpacity(.5))),
           const SizedBox(height: 8),
           for (final t in const <({String key, String emoji, String title, String subtitle})>[
-            (key: 'pas', emoji: '🥾', title: 'Pas', subtitle: 'Franchit un nœud ordinaire du chemin.'),
-            (key: 'pioche', emoji: '⛏️', title: 'Pioche', subtitle: 'Casse un rocher qui bloque la route.'),
-            (key: 'cle', emoji: '🔑', title: 'Clé', subtitle: 'Ouvre une grille verrouillée.'),
-            (key: 'pelle', emoji: '🪏', title: 'Pelle', subtitle: 'Comble un trou pour passer.'),
+            (key: 'epee', emoji: '🗡️', title: 'Épée', subtitle: 'Tue un serpent 🐍 (−5 or/jour tant qu\'il vit).'),
+            (key: 'sandale', emoji: '🩴', title: 'Sandale', subtitle: 'Écrase une araignée 🕷️ ou un scorpion 🦂.'),
           ])
             Builder(builder: (_) {
               final price =
-                  GoldEconomy.scaledPrice(GoldEconomy.toolBasePrice(t.key), _level);
+                  GoldEconomy.scaledPrice(GoldEconomy.weaponBasePrice(t.key), _level);
               return _ShopItem(
                 emoji: t.emoji,
                 title: t.title,
