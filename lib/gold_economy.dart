@@ -14,6 +14,7 @@ class GoldEconomy {
   static const int lateTaskPerDay = 1; // par tâche, par jour de retard
   static const int deadlinePush = 3;
   static const int deleteAction = 1;
+  static const int deleteTaskBase = 2; // + 1 par action contenue
   static const int deleteRoutine = 5;
   static const int deleteProjectPerTask = 3;
   static const int deleteProjectPerAction = 1;
@@ -29,4 +30,7 @@ class GoldEconomy {
     final c = deleteProjectPerTask * tasksCount + deleteProjectPerAction * actionsCount;
     return c < deleteProjectMin ? deleteProjectMin : c;
   }
+
+  /// Coût de suppression d'une tâche : base + 1 par action contenue.
+  static int deleteTaskCost(int actionsCount) => deleteTaskBase + actionsCount;
 }

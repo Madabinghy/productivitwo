@@ -347,6 +347,16 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                       ),
                   ],
 
+                  // Ajouter une tâche (gestion autonome, sans IA)
+                  const SizedBox(height: 10),
+                  Center(
+                    child: TextButton.icon(
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Ajouter une tâche'),
+                      onPressed: _addTask,
+                    ),
+                  ),
+
                   // ── Documents liés au projet ─────────────────────────
                   if (_docs.isNotEmpty) ...[
                     const SizedBox(height: 20),
@@ -497,6 +507,115 @@ class _ProjectSheetState extends State<_ProjectSheet> {
       ),
     );
     setState(() {});
+  }
+
+  /// Crée une tâche dans le projet, sans IA (titre + phase + dates optionnelles).
+  Future<void> _addTask() async {
+    final ctrl = TextEditingController();
+    String? phaseId =
+        _project.phases.isNotEmpty ? _project.phases.first.id : null;
+    var start = DateTime.now();
+    DateTime? end;
+
+    final created = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSB) => Padding(
+          padding: EdgeInsets.fromLTRB(
+              20, 16, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Nouvelle tâche',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 14),
+              TextField(
+                controller: ctrl,
+                autofocus: true,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                    labelText: 'Titre', border: OutlineInputBorder()),
+              ),
+              if (_project.phases.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String?>(
+                  value: phaseId,
+                  decoration: const InputDecoration(
+                      labelText: 'Phase', border: OutlineInputBorder()),
+                  items: [
+                    const DropdownMenuItem(
+                        value: null, child: Text('Aucune phase')),
+                    for (final p in _project.phases)
+                      DropdownMenuItem(value: p.id, child: Text(p.label)),
+                  ],
+                  onChanged: (v) => setSB(() => phaseId = v),
+                ),
+              ],
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.play_arrow_outlined, size: 20),
+                title: const Text('Début'),
+                trailing: Text(_fmt(start)),
+                onTap: () async {
+                  final d = await showDatePicker(
+                    context: ctx,
+                    initialDate: start,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2100),
+                  );
+                  if (d != null) setSB(() => start = d);
+                },
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.flag_outlined, size: 20),
+                title: const Text('Échéance (optionnelle)'),
+                trailing: Text(end != null ? _fmt(end!) : 'Aucune'),
+                onTap: () async {
+                  final d = await showDatePicker(
+                    context: ctx,
+                    initialDate: end ?? start,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2100),
+                  );
+                  if (d != null) setSB(() => end = d);
+                },
+              ),
+              const SizedBox(height: 8),
+              Row(children: [
+                const Spacer(),
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('Annuler')),
+                FilledButton(
+                  onPressed: () {
+                    if (ctrl.text.trim().isEmpty) return;
+                    Navigator.pop(ctx, true);
+                  },
+                  child: const Text('Créer'),
+                ),
+              ]),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (created == true && ctrl.text.trim().isNotEmpty) {
+      final task = ProjectTask(
+        title: ctrl.text.trim(),
+        phaseId: phaseId,
+        groupLabel:
+            _project.phases.where((p) => p.id == phaseId).firstOrNull?.label,
+        startDate: start,
+        endDate: end,
+      );
+      setState(() => _project.tasks.add(task));
+      await _sync.saveProjectTasks(_project.id, _project.tasks);
+    }
+    ctrl.dispose();
   }
 
   String _fmt(DateTime d) {
@@ -745,6 +864,189 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
     }
   }
 
+  // ── CRUD tâche (autonome, sans IA) ──────────────────────────────────────────
+
+  Future<void> _renameTask() async {
+    final ctrl = TextEditingController(text: _task.title);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Renommer la tâche'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(border: OutlineInputBorder()),
+          onSubmitted: (v) {
+            if (v.trim().isNotEmpty) Navigator.pop(c, v.trim());
+          },
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(c), child: const Text('Annuler')),
+          FilledButton(
+            onPressed: () {
+              final v = ctrl.text.trim();
+              if (v.isNotEmpty) Navigator.pop(c, v);
+            },
+            child: const Text('Enregistrer'),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (result != null) {
+      setState(() => _task.title = result);
+      _save();
+    }
+  }
+
+  Future<void> _editTaskDetails() async {
+    var start = _task.startDate;
+    DateTime? end = _task.endDate;
+    var phaseId = _task.phaseId;
+    var milestone = _task.isMilestone;
+    final phases = widget.project.phases;
+
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSB) => Padding(
+          padding: EdgeInsets.fromLTRB(
+              20, 16, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Modifier la tâche',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.play_arrow_outlined, size: 20),
+                title: const Text('Début'),
+                trailing: Text(_fmtD(start)),
+                onTap: () async {
+                  final d = await showDatePicker(
+                    context: ctx,
+                    initialDate: start,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2100),
+                  );
+                  if (d != null) setSB(() => start = d);
+                },
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.flag_outlined, size: 20),
+                title: const Text('Échéance'),
+                trailing: Text(end != null ? _fmtD(end!) : 'Aucune'),
+                onTap: () async {
+                  final d = await showDatePicker(
+                    context: ctx,
+                    initialDate: end ?? start,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2100),
+                  );
+                  if (d != null) setSB(() => end = d);
+                },
+              ),
+              if (phases.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: DropdownButtonFormField<String?>(
+                    value: phases.any((p) => p.id == phaseId) ? phaseId : null,
+                    decoration: const InputDecoration(
+                        labelText: 'Phase', border: OutlineInputBorder()),
+                    items: [
+                      const DropdownMenuItem(
+                          value: null, child: Text('Aucune phase')),
+                      for (final p in phases)
+                        DropdownMenuItem(value: p.id, child: Text(p.label)),
+                    ],
+                    onChanged: (v) => setSB(() => phaseId = v),
+                  ),
+                ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Jalon (milestone)'),
+                value: milestone,
+                onChanged: (v) => setSB(() => milestone = v),
+              ),
+              const SizedBox(height: 8),
+              Row(children: [
+                const Spacer(),
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('Annuler')),
+                FilledButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('Enregistrer')),
+              ]),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (saved != true) return;
+    setState(() {
+      _task.startDate = start;
+      _task.endDate = end;
+      _task.phaseId = phaseId;
+      _task.groupLabel =
+          phases.where((p) => p.id == phaseId).firstOrNull?.label;
+      _task.isMilestone = milestone;
+    });
+    _save();
+  }
+
+  Future<void> _deleteTask() async {
+    final cost = GoldEconomy.deleteTaskCost(_task.actions.length);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer la tâche ?'),
+        content: Text(
+            'La tâche « ${_task.title} » et ses ${_task.actions.length} action(s) '
+            'seront supprimées. Coût : $cost 🪙.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annuler')),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(ctx).colorScheme.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Supprimer (−$cost 🪙)'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    widget.project.tasks.removeWhere((t) => t.id == _task.id);
+    await widget.sync.saveProjectTasks(widget.project.id, widget.project.tasks);
+    widget.sync.applyGold(GoldLedgerEntry(
+      delta: -cost,
+      category: 'loss',
+      reasonCode: 'delete_task',
+      label: 'Suppression tâche « ${_task.title} »',
+      refType: 'task',
+      refId: _task.id,
+    ));
+    widget.onChanged();
+    if (!mounted) return;
+    Navigator.pop(context);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Tâche supprimée · −$cost 🪙')));
+  }
+
+  String _fmtD(DateTime d) {
+    const m = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin',
+                'juil', 'aoû', 'sep', 'oct', 'nov', 'déc'];
+    return '${d.day} ${m[d.month - 1]} ${d.year}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -768,25 +1070,49 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
             child: Row(
               children: [
                 Expanded(
-                  child: Text(_task.title,
-                      style: const TextStyle(
-                          fontSize: 17, fontWeight: FontWeight.bold)),
+                  child: InkWell(
+                    onTap: _renameTask,
+                    borderRadius: BorderRadius.circular(6),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Row(children: [
+                        Flexible(
+                          child: Text(_task.title,
+                              style: const TextStyle(
+                                  fontSize: 17, fontWeight: FontWeight.bold)),
+                        ),
+                        const SizedBox(width: 5),
+                        Icon(Icons.edit_outlined,
+                            size: 13, color: cs.onSurface.withOpacity(.3)),
+                      ]),
+                    ),
+                  ),
                 ),
                 if (_saving)
                   const SizedBox(
                       width: 16, height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2)),
                 PopupMenuButton<String>(
-                  tooltip: 'Déplacer',
-                  icon: Icon(Icons.drive_file_move_outline,
+                  tooltip: 'Options',
+                  icon: Icon(Icons.more_vert,
                       size: 20, color: cs.onSurface.withOpacity(.45)),
                   onSelected: (v) {
+                    if (v == 'edit') _editTaskDetails();
                     if (v == 'move_task') _moveTaskToAnotherProject();
+                    if (v == 'delete') _deleteTask();
                   },
                   itemBuilder: (_) => const [
                     PopupMenuItem(
+                      value: 'edit',
+                      child: Text('Modifier (dates, phase…)'),
+                    ),
+                    PopupMenuItem(
                       value: 'move_task',
                       child: Text('Déplacer vers un autre projet'),
+                    ),
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: Text('Supprimer la tâche'),
                     ),
                   ],
                 ),

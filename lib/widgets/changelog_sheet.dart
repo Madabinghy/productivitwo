@@ -10,6 +10,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.90', '9 juin 2026', [
+    (Icons.account_tree_outlined, 'Gestion de projet 100% autonome sur mobile : crée, renomme, édite (dates, phase, jalon) et supprime tes tâches directement depuis la fiche projet — plus besoin de passer par l\'IA ou l\'app web. (Supprimer une tâche coûte un peu d\'or, comme le reste.)'),
+    (Icons.add_box_outlined, 'Nouveau projet : tu peux maintenant créer un projet vide « sans IA » (titre + domaine + date cible), en plus de la structuration automatique par ORION'),
+  ]),
   _Entry('5.89', '8 juin 2026', [
     (Icons.monetization_on_outlined, 'Nouveau : l\'économie d\'Or ! Tu gagnes des pièces d\'or par l\'effort (routines +2/j, temps, projets) et tu en perds par la procrastination (routine manquée −1/j) ou les retards. Supprimer coûte de l\'or (selon le contenu), déplacer/réorganiser est gratuit. Ton niveau, lui, ne descend jamais. Tout est dans « 🪙 Mon or » (menu ⋮)'),
     (Icons.shopping_cart_outlined, 'Boutique d\'Or : dépense ton or pour te protéger — gel de série 🧊 (un jour off sans pénalité), sursis de deadline ⏳, joker de suppression 🗑️, et titres à débloquer'),

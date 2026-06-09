@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 
 const _structureProjectUrl =
@@ -15,21 +16,24 @@ Future<void> showNewProjectSheet(
   BuildContext context, {
   required List<Domain> domains,
   required VoidCallback onCreated,
+  required FirestoreSync sync,
 }) async {
   await showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
     builder: (_) =>
-        _NewProjectSheet(domains: domains, onCreated: onCreated),
+        _NewProjectSheet(domains: domains, onCreated: onCreated, sync: sync),
   );
 }
 
 class _NewProjectSheet extends StatefulWidget {
   final List<Domain> domains;
   final VoidCallback onCreated;
+  final FirestoreSync sync;
 
-  const _NewProjectSheet({required this.domains, required this.onCreated});
+  const _NewProjectSheet(
+      {required this.domains, required this.onCreated, required this.sync});
 
   @override
   State<_NewProjectSheet> createState() => _NewProjectSheetState();
@@ -126,6 +130,38 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
       setState(() => _error = _friendlyError(e));
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  /// Création MANUELLE (sans IA) : un projet vide avec titre/domaine/dates.
+  /// L'utilisateur ajoute ensuite ses tâches à la main.
+  Future<void> _createManual() async {
+    final title = _titleCtrl.text.trim();
+    if (title.isEmpty) return;
+    setState(() => _loading = true);
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+      final project = Project(
+        title: title,
+        domainId: _selectedDomainId,
+        startDate: DateTime.now(),
+        endDate: _endDate,
+        createdBy: uid,
+        source: 'user',
+        sourceType: 'manual',
+      );
+      await widget.sync.saveProject(project);
+      if (!mounted) return;
+      Navigator.pop(context);
+      widget.onCreated();
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Projet créé — ajoute tes tâches quand tu veux.'),
+      ));
+    } catch (e) {
+      setState(() {
+        _error = _friendlyError(e);
+        _loading = false;
+      });
     }
   }
 
@@ -331,6 +367,21 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
                     : 'ORION structure ce projet →'),
                 style: FilledButton.styleFrom(
                   backgroundColor: Colors.deepPurple.shade500,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            // Création manuelle (sans IA) — ne nécessite qu'un titre
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: (_loading || _titleCtrl.text.trim().isEmpty)
+                    ? null
+                    : _createManual,
+                icon: const Icon(Icons.edit_outlined, size: 18),
+                label: const Text('Créer un projet vide (sans IA)'),
+                style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
               ),
