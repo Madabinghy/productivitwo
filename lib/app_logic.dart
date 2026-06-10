@@ -1976,15 +1976,20 @@ class AppLogic {
 
   ({int xp, int level, String title, int xpCurrent, int xpNext}) userLevelData() {
     // Live : on inclut les gains provisoires du jour pour que le total et la
-    // barre de progression bougent en direct (matérialisés le lendemain).
-    final xp = state.goldLifetime + provisionalGoldToday();
+    // barre de progression bougent en direct (matérialisés le lendemain). On
+    // PLAFONNE au seuil du prochain niveau : une fois le palier atteint l'XP
+    // affiche « plein → à révéler » et le surplus part visiblement en or (pas
+    // d'overshoot type 262/30, y compris si du XP a été injecté en dev).
     final level = effectiveLevel();
+    final next = _thresholdForLevel(level + 1);
+    final raw = state.goldLifetime + provisionalGoldToday();
+    final xp = raw > next ? next : raw;
     return (
       xp: xp,
       level: level,
       title: _titleForLevel(level),
       xpCurrent: _thresholdForLevel(level),
-      xpNext: _thresholdForLevel(level + 1),
+      xpNext: next,
     );
   }
 
