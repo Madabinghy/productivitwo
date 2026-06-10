@@ -126,8 +126,11 @@ async function computeUserXp(uid: string): Promise<XpResult> {
 
 async function writeLeaderboardEntry(uid: string, pseudo: string): Promise<void> {
   const xp = await computeUserXp(uid);
+  // Or disponible : sert de départage secondaire quand l'XP est à égalité.
+  const meta = await db.doc(`users/${uid}/data/meta`).get();
+  const gold = (meta.data()?.gold as number) ?? 0;
   await db.collection("leaderboard_entries").doc(uid).set(
-    { pseudo, optedIn: true, ...xp, updatedAt: FieldValue.serverTimestamp() },
+    { pseudo, optedIn: true, ...xp, gold, updatedAt: FieldValue.serverTimestamp() },
     { merge: true },
   );
 }

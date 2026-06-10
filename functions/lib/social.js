@@ -112,8 +112,12 @@ async function computeUserXp(uid) {
     return { xpTotal, xpWeek, xpMonth, level: levelOf(xpTotal) };
 }
 async function writeLeaderboardEntry(uid, pseudo) {
+    var _a, _b;
     const xp = await computeUserXp(uid);
-    await db_1.db.collection("leaderboard_entries").doc(uid).set(Object.assign(Object.assign({ pseudo, optedIn: true }, xp), { updatedAt: db_1.FieldValue.serverTimestamp() }), { merge: true });
+    // Or disponible : sert de départage secondaire quand l'XP est à égalité.
+    const meta = await db_1.db.doc(`users/${uid}/data/meta`).get();
+    const gold = (_b = (_a = meta.data()) === null || _a === void 0 ? void 0 : _a.gold) !== null && _b !== void 0 ? _b : 0;
+    await db_1.db.collection("leaderboard_entries").doc(uid).set(Object.assign(Object.assign({ pseudo, optedIn: true }, xp), { gold, updatedAt: db_1.FieldValue.serverTimestamp() }), { merge: true });
 }
 // POST { pseudo, optedIn }  ·  Authorization: Bearer <firebase-id-token>
 exports.claimPseudo = (0, https_1.onRequest)({ cors: true, invoker: "public" }, async (req, res) => {

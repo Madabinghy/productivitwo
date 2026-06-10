@@ -1740,15 +1740,23 @@ class FirestoreSync {
           .orderBy(field, descending: true)
           .limit(50)
           .get();
-      return snap.docs.map((d) {
+      final list = snap.docs.map((d) {
         final m = d.data();
         return {
           'uid': d.id,
           'pseudo': m['pseudo'] ?? '—',
           'xp': (m[field] as num?)?.toInt() ?? 0,
           'level': (m['level'] as num?)?.toInt() ?? 1,
+          'gold': (m['gold'] as num?)?.toInt() ?? 0,
         };
       }).toList();
+      // Départage à XP égale : par or disponible (décroissant).
+      list.sort((a, b) {
+        final byXp = (b['xp'] as int).compareTo(a['xp'] as int);
+        if (byXp != 0) return byXp;
+        return (b['gold'] as int).compareTo(a['gold'] as int);
+      });
+      return list;
     } catch (_) {
       return [];
     }
