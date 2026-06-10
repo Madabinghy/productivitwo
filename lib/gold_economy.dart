@@ -140,6 +140,17 @@ class GoldEconomy {
 
   static int pestLifespanDays(String type) => pestCost(type);
 
+  /// Plafond du drain horaire par visite (un ennemi négligé ne coûte jamais plus
+  /// de [pestDrainCapHours] × sa force). Abaissé de 12 à 6 h : avec le revenu temps
+  /// plafonné à 80/j, 12 h de drain mangeaient presque une journée entière.
+  static const int pestDrainCapHours = 6;
+
+  /// Butin GARANTI à la mise à mort : couvre au moins une session de drain
+  /// complète (force × plafond) → un ennemi tué est toujours net-positif. Doublé
+  /// pour le gardien. L'appelant y ajoute un petit aléa.
+  static int pestLootBase(String type, bool guardian) =>
+      pestCost(type) * pestDrainCapHours * (guardian ? 2 : 1);
+
   /// Arme requise pour tuer un nuisible : épée pour le serpent, sandale sinon.
   static String weaponForPest(String type) => type == 'snake' ? 'epee' : 'sandale';
 

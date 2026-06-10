@@ -226,16 +226,14 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
   /// Combat : on FORGE l'arme par l'action réelle (pas par l'or). Si l'arme est
   /// prête → on frappe ; sinon on ouvre la feuille de combat (progression).
   Future<void> _engageCombat(String raw, String type) async {
-    final weapon = GoldEconomy.weaponForPest(type);
-    final forge = logic.weaponForgeStatus(weapon);
-    if (forge.ready) {
-      await _strike(raw, type);
-    } else {
-      await _showCombatSheet(raw, type, weapon);
-    }
+    // Toujours ouvrir l'écran de combat : même arme prête, la mise à mort passe
+    // par le bouton FRAPPER (sinon l'ennemi mourait « sans combat » au tap).
+    await _showCombatSheet(raw, type, GoldEconomy.weaponForPest(type));
   }
 
   Future<void> _strike(String raw, String type) async {
+    final isGuardian = decodeEntity(raw).meta == 'guardian';
+    final loot = GoldEconomy.pestLootBase(type, isGuardian) + _rng.nextInt(5);
     final newEntities =
         logic.state.expeditionEntities.where((e) => e != raw).toList();
     setState(() => _busy = true);
@@ -243,13 +241,20 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
     logic.state.expeditionEntities
       ..clear()
       ..addAll(newEntities);
+    logic.applyGold(sync, loot,
+        category: 'gain', reasonCode: 'pest_loot', label: 'Butin de combat');
+    if (isGuardian) {
+      logic.state.expeditionGuardianKilledLevel = _level;
+      sync.setExpeditionGuardianKilled(_level);
+    }
     logic.onChange();
     if (!mounted) return;
     setState(() => _busy = false);
-    showConfetti(context, count: 18);
+    showConfetti(context, count: isGuardian ? 30 : 18);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('⚔️ ${entityEmoji(type)} ${pestName(type)} vaincu !'),
-        duration: const Duration(seconds: 1)));
+        content: Text(
+            '⚔️ ${isGuardian ? "Gardien " : ""}${pestName(type)} vaincu ! +$loot or'),
+        duration: const Duration(seconds: 2)));
   }
 
   Future<void> _showCombatSheet(String raw, String type, String weapon) async {

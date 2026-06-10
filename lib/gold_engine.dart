@@ -529,8 +529,8 @@ extension GoldEngine on AppLogic {
       state.expeditionEntities.any((e) => isPestType(decodeEntity(e).type));
 
   /// Drain HORAIRE des nuisibles : à chaque visite de la carte, on retire
-  /// (somme des forces : 2/3/5 or/h) × heures écoulées (plafonné 12 h). Remplace
-  /// l'ancien drain quotidien. À appeler à l'ouverture de l'overworld.
+  /// (somme des forces : 2/3/5 or/h) × heures écoulées (plafonné `pestDrainCapHours`).
+  /// Remplace l'ancien drain quotidien. À appeler à l'ouverture de l'overworld.
   void drainPestsHourly(FirestoreSync sync) {
     final now = DateTime.now();
     final live = state.expeditionEntities
@@ -543,8 +543,10 @@ extension GoldEngine on AppLogic {
     final last = state.lastPestDrainAt != null
         ? DateTime.tryParse(state.lastPestDrainAt!)
         : null;
-    final hours =
-        last == null ? 0 : (now.difference(last).inMinutes ~/ 60).clamp(0, 12);
+    final hours = last == null
+        ? 0
+        : (now.difference(last).inMinutes ~/ 60)
+            .clamp(0, GoldEconomy.pestDrainCapHours);
     state.lastPestDrainAt = now.toIso8601String();
     if (hours <= 0) {
       onChange();

@@ -23,6 +23,8 @@ class FocusView extends StatefulWidget {
   final VoidCallback onStopCountdown;
   final void Function(Project project, ProjectTask task) onClearFocusTask;
   final void Function(Project project, ProjectTask task)? onTaskTap;
+  // Widget optionnel rendu en tête de l'onglet (ex : bannière Quête du jour).
+  final Widget? header;
 
   const FocusView({
     super.key,
@@ -38,6 +40,7 @@ class FocusView extends StatefulWidget {
     this.focusProject,
     this.focusTask,
     this.onTaskTap,
+    this.header,
   });
 
   @override
@@ -122,6 +125,10 @@ class _FocusViewState extends State<FocusView> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (widget.header != null) ...[
+              widget.header!,
+              const SizedBox(height: 20),
+            ],
             Text(
               'Aujourd\'hui',
               style: TextStyle(

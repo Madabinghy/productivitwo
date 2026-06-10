@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter analyze *)",
+      "Bash(flutter analyze)",
+      "Bash(dart analyze *)",
+      "Bash(flutter pub get)",
+      "Bash(flutter pub get *)",
+      "Bash(flutter pub outdated)",
+      "Bash(curl -s *)",
+      "Bash(firebase functions:list)",
+      "Bash(firebase functions:list *)",
+      "Bash(./scripts/check_build.sh)",
+      "Bash(./scripts/check_build.sh *)",
+      "Bash(scripts/check_build.sh)",
+      "Bash(scripts/check_build.sh *)"
+    ]
+  }
+}

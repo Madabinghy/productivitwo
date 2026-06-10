@@ -2619,6 +2619,8 @@ class _AppRootState extends State<AppRoot>
           FocusView(
             logic: logic,
             state: st,
+            header: _buildQuestBanner(
+                context, Theme.of(context).colorScheme),
             focusProject: _focusProject,
             focusTask: _focusTask,
             countdownEndsAt: _countdownEndsAt,
@@ -5855,10 +5857,10 @@ class _AppRootState extends State<AppRoot>
     final claimed = logic.state.lastQuestClaimedYmd == yyyymmdd(DateTime.now());
     final streak = logic.questStreak;
     final pct = target > 0 ? (progress / target).clamp(0.0, 1.0) : 0.0;
-    const dark = Color(0xFF3A2D00);
+    const dark = Color(0xFF231900); // texte quasi-noir chaud (lisible sur jaune)
     const gold = Color(0xFFD4A017);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+      padding: EdgeInsets.zero,
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
         onTap: () async {
@@ -5870,7 +5872,7 @@ class _AppRootState extends State<AppRoot>
           decoration: BoxDecoration(
             gradient: LinearGradient(
                 colors: claimable
-                    ? [const Color(0xFFFFE08A), gold]
+                    ? [const Color(0xFFFFE9A8), const Color(0xFFFFD24D)]
                     : [
                         cs.surfaceContainerHighest.withOpacity(.5),
                         cs.surfaceContainerHighest.withOpacity(.3)
@@ -5954,7 +5956,6 @@ class _AppRootState extends State<AppRoot>
 
         return ListView(
           children: [
-        _buildQuestBanner(context, cs),
         SectionCard(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
           child: Builder(
