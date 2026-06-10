@@ -10,6 +10,20 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.01', '10 juin 2026', [
+    (Icons.sports_martial_arts, 'Combat ! Les nuisibles 🕷️🦂🐍 te maudissent (routines ÷2) et te grignotent l\'or à l\'heure. Pour les vaincre, FORGE ton arme par l\'action : 3 routines = 🩴 sandale, terminer des tâches = 🗡️ épée. Combat plein-écran quand tu les affrontes'),
+    (Icons.castle_outlined, 'Donjon en carte à nœuds : explore, découvre tes défis en avançant. Nouveaux nœuds « action express » ⏱️ : lance 5 min sur une routine pour franchir un passage (même inachevé, tu auras avancé). Les défis ne comptent qu\'à partir du moment où ils apparaissent'),
+    (Icons.face_retouching_natural, 'Avatars : débloque des skins pour ton perso de carte (🧙🥷🦸…) avec ton or, dans la boutique'),
+    (Icons.travel_explore, 'Carte : un indice « ✨ Trésors » te dit s\'il reste du butin à trouver ; et chaque collectible garde sa provenance (où/quand obtenu)'),
+    (Icons.fact_check_outlined, 'Orion te propose enfin tes idées d\'inbox dans « À valider » ; le classement départage les ex-aequo par or disponible'),
+  ]),
+  _Entry('6.00', '10 juin 2026', [
+    (Icons.emoji_events_outlined, 'Nouveau : la Quête du jour ! Accomplis 3 actions aujourd\'hui (routines, tâches, défis) → ouvre un coffre à récompense surprise (or + chance de butin rare). Visible dès l\'accueil 🎯🎁'),
+    (Icons.local_fire_department_outlined, 'Série quotidienne 🔥 : fais ta quête plusieurs jours d\'affilée → le coffre rapporte de plus en plus, avec de gros bonus aux paliers (3, 7, 14, 30 jours)'),
+    (Icons.celebration_outlined, 'Plus festif : des confettis 🎉 quand tu ouvres un coffre, valides une routine ou débloques un niveau'),
+    (Icons.account_balance_wallet_outlined, 'L\'app bar affiche maintenant ton vrai solde d\'or (au lieu du net projeté) — plus clair'),
+    (Icons.ac_unit, '« Mon or » : « -1 or » et « Geler » regroupés en fin de ligne ; lance un chrono/minuteur directement depuis une routine'),
+  ]),
   _Entry('5.99', '10 juin 2026', [
     (Icons.castle_outlined, 'Donjon repensé : une carte à nœuds qu\'on explore, les défis se découvrent en avançant (défi en cours + bouton « Défis »). Difficulté progressive : les premiers niveaux se débloquent en une journée. Entrée auto dans le donjon une fois qu\'on y est déjà allé'),
     (Icons.bolt_outlined, 'Or du jour dépensable EN DIRECT (plus d\'attente au lendemain) ; valeur du temps recalibrée (généreuse au début) ; Multiplicateur ×2 dure maintenant 3 jours'),
