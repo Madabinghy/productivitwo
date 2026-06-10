@@ -2575,6 +2575,10 @@ class _AppRootState extends State<AppRoot>
 
   Widget _buildBody(BuildContext context) {
     final st = _state!;
+    // Hook minuteur : permet aux feuilles modales (mode 5 min du donjon) de
+    // lancer une vraie alarme via l'infra de l'accueil.
+    logic.launchTimerHook ??= (int m, String n, {String? routineId}) =>
+        _startCountdown(m, n, routineId: routineId);
 
 
 
