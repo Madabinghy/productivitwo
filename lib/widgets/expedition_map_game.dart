@@ -391,6 +391,9 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
     if (collectionAdd != null &&
         !logic.state.collection.contains(collectionAdd)) {
       logic.state.collection.add(collectionAdd);
+      logic.state.collectionMeta[collectionAdd] =
+          '${_ymd()}|trouvé sur la carte (niv. $_level)';
+      sync.setCollectionMeta(logic.state.collectionMeta);
     }
     if (free) logic.state.lastFreeStepYmd = _ymd();
     logic.onChange();
@@ -417,6 +420,9 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
     if (!logic.state.collection.contains(reward.id)) {
       logic.state.collection.add(reward.id);
     }
+    logic.state.collectionMeta[reward.id] =
+        '${_ymd()}|exploration 100% (niv. $_level)';
+    sync.setCollectionMeta(logic.state.collectionMeta);
     logic.onChange();
     sync.expeditionWrite(collectionAdd: reward.id);
     sync.expeditionWrite(collectionAdd: flag);

@@ -252,6 +252,7 @@ class FirestoreSync {
         expeditionDonjonLevel:
             (meta['expeditionDonjonLevel'] as num?)?.toInt() ?? 0,
         collection: (meta['collection'] as List?)?.cast<String>(),
+        collectionMeta: (meta['collectionMeta'] as Map?)?.map((k, v) => MapEntry(k.toString(), v.toString())),
         lastFreeStepYmd: meta['lastFreeStepYmd'] as String?,
         goldTodayGain: (meta['goldTodayGain'] as num?)?.toInt() ?? 0,
         goldTodayGainYmd: meta['goldTodayGainYmd'] as String?,
@@ -358,6 +359,7 @@ class FirestoreSync {
       expeditionChallenges:  remote.expeditionChallenges.isNotEmpty ? remote.expeditionChallenges : local.expeditionChallenges,
       expeditionDonjonLevel: local.expeditionDonjonLevel >= remote.expeditionDonjonLevel ? local.expeditionDonjonLevel : remote.expeditionDonjonLevel,
       collection:            local.collection.length >= remote.collection.length ? local.collection : remote.collection,
+      collectionMeta:        local.collection.length >= remote.collection.length ? local.collectionMeta : remote.collectionMeta,
       lastFreeStepYmd:       local.goldLifetime >= remote.goldLifetime ? local.lastFreeStepYmd : remote.lastFreeStepYmd,
       goldTodayGain:         local.goldLifetime >= remote.goldLifetime ? local.goldTodayGain : remote.goldTodayGain,
       goldTodayGainYmd:      local.goldLifetime >= remote.goldLifetime ? local.goldTodayGainYmd : remote.goldTodayGainYmd,
@@ -856,6 +858,12 @@ class FirestoreSync {
         'goldTodayGainYmd': ymd,
       }, SetOptions(merge: true));
     });
+  }
+
+  /// Provenance des collectibles (id → 'ymd|texte'). Stocké dans le meta.
+  Future<void> setCollectionMeta(Map<String, String> meta) async {
+    if (uid == null) return;
+    await _meta().set({'collectionMeta': meta}, SetOptions(merge: true));
   }
 
   /// Écrit les défis du donjon (générés côté app). Stockés dans le meta.

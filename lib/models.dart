@@ -688,6 +688,7 @@ class AppState {
   List<String> expeditionPicked;   // collectibles ramassés sur la map courante (ids)
   List<String> expeditionEntities; // nuisibles/bonus vivants "type:x_y:spawnYmd"
   List<String> collection;         // collectibles trouvés à vie (persistant → écran Collection)
+  Map<String, String> collectionMeta; // id → 'ymd|provenance' (où/quand obtenu)
   String? lastFreeStepYmd;         // jour du dernier pas gratuit (yyyymmdd)
   // Or des gains du jour crédité EN TEMPS RÉEL sur le solde (dépensable de suite).
   // `goldTodayGain` = montant flottant déjà crédité pour `goldTodayGainYmd` ;
@@ -770,6 +771,7 @@ class AppState {
     List<String>? expeditionPicked,
     List<String>? expeditionEntities,
     List<String>? collection,
+    Map<String, String>? collectionMeta,
     this.lastFreeStepYmd,
     this.goldTodayGain = 0,
     this.goldTodayGainYmd,
@@ -820,6 +822,7 @@ class AppState {
         expeditionEntities = expeditionEntities ?? <String>[],
         expeditionChallenges = expeditionChallenges ?? <String>[],
         collection = collection ?? <String>[],
+        collectionMeta = collectionMeta ?? <String, String>{},
         cosmeticsOwned = cosmeticsOwned ?? <String>[];
 
   Map<String, dynamic> toJson() => {
@@ -884,6 +887,7 @@ class AppState {
         'expeditionChallenges': expeditionChallenges,
         'expeditionDonjonLevel': expeditionDonjonLevel,
         'collection': collection,
+        'collectionMeta': collectionMeta,
         'lastFreeStepYmd': lastFreeStepYmd,
         'goldTodayGain': goldTodayGain,
         'goldTodayGainYmd': goldTodayGainYmd,
@@ -1020,6 +1024,7 @@ class AppState {
           (j['expeditionChallenges'] as List?)?.cast<String>() ?? <String>[],
       expeditionDonjonLevel: (j['expeditionDonjonLevel'] as num?)?.toInt() ?? 0,
       collection: (j['collection'] as List?)?.cast<String>() ?? <String>[],
+      collectionMeta: (j['collectionMeta'] as Map?)?.map((k, v) => MapEntry(k.toString(), v.toString())) ?? <String, String>{},
       lastFreeStepYmd: j['lastFreeStepYmd'] as String?,
       goldTodayGain: (j['goldTodayGain'] as num?)?.toInt() ?? 0,
       goldTodayGainYmd: j['goldTodayGainYmd'] as String?,

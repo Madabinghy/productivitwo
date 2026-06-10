@@ -625,6 +625,8 @@ extension GoldEngine on AppLogic {
     addLifetimeCapped(gold);
     if (cid != null && !state.collection.contains(cid)) {
       state.collection.add(cid);
+      state.collectionMeta[cid] = '$ymd|coffre de quête';
+      sync.setCollectionMeta(state.collectionMeta);
     }
     state.lastQuestClaimedYmd = ymd;
     state.questStreak = streak;

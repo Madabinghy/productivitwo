@@ -20,6 +20,7 @@ class _CollectionSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final found = logic.state.collection.toSet();
+    final meta = logic.state.collectionMeta;
     final catalog = overworldCollectibles;
     final foundCount = catalog.where((c) => found.contains(c.id)).length;
 
@@ -63,6 +64,7 @@ class _CollectionSheet extends StatelessWidget {
                   emoji: c.emoji,
                   name: c.name,
                   rare: c.rare,
+                  provenance: found.contains(c.id) ? meta[c.id] : null,
                   cs: cs,
                 ),
             ],
@@ -73,22 +75,58 @@ class _CollectionSheet extends StatelessWidget {
   }
 }
 
+String _fmtProvenance(String raw) {
+  const mois = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin',
+      'juil', 'août', 'sep', 'oct', 'nov', 'déc'];
+  final parts = raw.split('|');
+  final ymd = parts[0];
+  final text = parts.length > 1 ? parts[1] : '';
+  String date = '';
+  if (ymd.length == 8) {
+    final m = int.tryParse(ymd.substring(4, 6)) ?? 1;
+    final d = int.tryParse(ymd.substring(6, 8)) ?? 1;
+    date = 'le $d ${mois[(m - 1).clamp(0, 11)]}';
+  }
+  return 'Obtenu $date · $text';
+}
+
 class _CollectibleCell extends StatelessWidget {
   final bool found, rare;
   final String emoji, name;
+  final String? provenance;
   final ColorScheme cs;
   const _CollectibleCell({
     required this.found,
     required this.rare,
     required this.emoji,
     required this.name,
+    required this.provenance,
     required this.cs,
   });
 
   @override
   Widget build(BuildContext context) {
     final gold = const Color(0xFFD4A017);
-    return Container(
+    return GestureDetector(
+      onTap: (found && provenance != null)
+          ? () => showDialog<void>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: Row(children: [
+                    Text(emoji, style: const TextStyle(fontSize: 28)),
+                    const SizedBox(width: 10),
+                    Expanded(child: Text(name)),
+                  ]),
+                  content: Text(_fmtProvenance(provenance!)),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('OK')),
+                  ],
+                ),
+              )
+          : null,
+      child: Container(
       decoration: BoxDecoration(
         color: found
             ? (rare ? gold.withOpacity(.12) : cs.surfaceContainerHighest.withOpacity(.45))
@@ -116,6 +154,6 @@ class _CollectibleCell extends StatelessWidget {
                     color: gold.withOpacity(found ? 1 : .4))),
         ],
       ),
-    );
+    ));
   }
 }
