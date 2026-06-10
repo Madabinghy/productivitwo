@@ -180,10 +180,14 @@ class GoldEconomy {
   }
 
   // ── Valeur du temps par niveau ──────────────────────────────────────────────
-  // Plus on monte, plus l'or se mérite : niv.1 → 1 min = 1 or ; niv.5 → 5 min ;
-  // niv.10 → 10 min. Généreux au début (anti-famine), avare ensuite (compensé
-  // par les pouvoirs multi-jours). Principal knob de tuning de l'économie.
-  static int minutesPerGold(int level) => level < 1 ? 1 : level;
+  // Plus on monte, plus l'or se mérite. Calibré pour ÉVITER LA FAMINE à
+  // l'onboarding (les users tracent moins que le créateur) : niv.1 → 5 min = 1 or
+  // (≈ 72 or pour une grosse journée de 6 h), puis +2 min/or par niveau, plancher
+  // de générosité à 40 min/or. Principal knob de tuning de l'économie.
+  static int minutesPerGold(int level) {
+    final l = level < 1 ? 1 : level;
+    return (5 + (l - 1) * 2).clamp(5, 40);
+  }
 
   /// Or gagné pour [minutes] de temps loggué au niveau [level] (arrondi bas).
   static int goldForMinutes(int minutes, int level) =>

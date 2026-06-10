@@ -15,6 +15,7 @@ Future<void> showGamificationHub(
   AppLogic logic,
   FirestoreSync sync, {
   required WidgetBuilder scoreTab,
+  RoutineLaunch? onLaunchRoutine,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -22,7 +23,11 @@ Future<void> showGamificationHub(
     showDragHandle: true,
     builder: (_) => FractionallySizedBox(
       heightFactor: 0.92,
-      child: _GamificationHub(logic: logic, sync: sync, scoreTab: scoreTab),
+      child: _GamificationHub(
+          logic: logic,
+          sync: sync,
+          scoreTab: scoreTab,
+          onLaunchRoutine: onLaunchRoutine),
     ),
   );
 }
@@ -31,8 +36,12 @@ class _GamificationHub extends StatelessWidget {
   final AppLogic logic;
   final FirestoreSync sync;
   final WidgetBuilder scoreTab;
+  final RoutineLaunch? onLaunchRoutine;
   const _GamificationHub(
-      {required this.logic, required this.sync, required this.scoreTab});
+      {required this.logic,
+      required this.sync,
+      required this.scoreTab,
+      this.onLaunchRoutine});
 
   @override
   Widget build(BuildContext context) {
@@ -63,7 +72,8 @@ class _GamificationHub extends StatelessWidget {
           Expanded(
             child: TabBarView(
               children: [
-                GoldSheetBody(logic: logic, sync: sync),
+                GoldSheetBody(
+                    logic: logic, sync: sync, onLaunchRoutine: onLaunchRoutine),
                 Builder(builder: scoreTab),
                 LeaderboardBody(sync: sync),
                 ScheduledChallengesBody(logic: logic, sync: sync),

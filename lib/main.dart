@@ -4513,12 +4513,35 @@ class _AppRootState extends State<AppRoot>
       );
     }
 
+    /// Lance une routine depuis « Mon or » : ferme le hub, démarre le chrono ou
+    /// le minuteur (5 min par défaut si la routine n'a pas de durée), bascule sur
+    /// l'onglet Maintenant. Nécessite une activité liée (pour logger le temps).
+    void _launchRoutineFromGold(BuildContext context, Activity r,
+        {required bool timer}) {
+      final linkedId = (r.linkedActivityId ?? '').trim();
+      final linked = linkedId.isEmpty
+          ? null
+          : logic.state.activities.firstWhereOrNull((a) => a.id == linkedId);
+      if (linked == null) return;
+      Navigator.of(context, rootNavigator: true).pop(); // ferme le hub
+      logic.start(linked.id);
+      if (timer) {
+        final mins = (r.timerMin ?? 0) > 0 ? r.timerMin! : 5; // défaut 5 min
+        _startCountdown(mins, linked.name, routineId: r.id);
+      } else {
+        logic.rev.value++;
+      }
+      setState(() => _tab = _Tab.maintenant);
+    }
+
     void _openGamificationHub(BuildContext context) {
       final routineSummary = logic.routineProgressSummaryForCurrentPeriod();
       final done = routineSummary.reached;
       final total = routineSummary.total;
       showGamificationHub(context, logic, _sync,
-          scoreTab: (ctx) => _scoreHubTab(ctx, done, total));
+          scoreTab: (ctx) => _scoreHubTab(ctx, done, total),
+          onLaunchRoutine: (r, {required bool timer}) =>
+              _launchRoutineFromGold(context, r, timer: timer));
     }
 
     // Indicateur composite : ⭐ gains du jour · anneau de score (sans %) · pièce d'or net

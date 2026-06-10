@@ -22,6 +22,10 @@ Future<void> showGoldSheet(
 
 const _kGold = Color(0xFFD4A017);
 
+/// Lance une routine depuis « Mon or » : [timer]=true → minuteur (défaut 5 min
+/// si la routine n'a pas de durée), false → chrono libre. Câblé sur l'accueil.
+typedef RoutineLaunch = void Function(Activity routine, {required bool timer});
+
 class _GoldSheet extends StatelessWidget {
   final AppLogic logic;
   final FirestoreSync sync;
@@ -45,11 +49,13 @@ class GoldSheetBody extends StatefulWidget {
   final AppLogic logic;
   final FirestoreSync sync;
   final ScrollController? scrollController;
+  final RoutineLaunch? onLaunchRoutine;
   const GoldSheetBody(
       {super.key,
       required this.logic,
       required this.sync,
-      this.scrollController});
+      this.scrollController,
+      this.onLaunchRoutine});
 
   @override
   State<GoldSheetBody> createState() => _GoldSheetBodyState();
@@ -71,6 +77,13 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
   // ce refresh local rebuild le sheet sans le rouvrir.
   void _refresh() {
     if (mounted) setState(() {});
+  }
+
+  // Après une action qui change les gains du jour (valider une routine…), on
+  // recrédite le solde EN DIRECT puis on rebuild → plus besoin de rouvrir le sheet.
+  void _onRoutineChanged() {
+    logic.reconcileLiveGold(widget.sync);
+    _refresh();
   }
 
   @override
@@ -247,7 +260,8 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
                 sync: sync,
                 activity: a,
                 bleeding: bleedingIds.contains(a.id),
-                onChanged: _refresh,
+                onChanged: _onRoutineChanged,
+                onLaunch: widget.onLaunchRoutine,
                 cs: cs,
               ),
           const SizedBox(height: 20),
@@ -388,20 +402,50 @@ class _RiskRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-            decoration: BoxDecoration(
-              color: cs.errorContainer.withOpacity(.5),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text('−1/j',
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: cs.error)),
-          ),
+          const _LossPill(),
         ]),
       );
+}
+
+/// Pilule « perte −1 or/j » : dégradé rouge + flèche descendante + halo léger.
+class _LossPill extends StatelessWidget {
+  final bool compact;
+  const _LossPill({this.compact = false});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+          horizontal: compact ? 7 : 8, vertical: compact ? 2 : 3),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFF87171), Color(0xFFDC2626)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x66DC2626),
+            blurRadius: 6,
+            offset: Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.trending_down_rounded,
+              size: compact ? 11 : 12, color: Colors.white),
+          const SizedBox(width: 3),
+          Text('1 or/j',
+              style: TextStyle(
+                  fontSize: compact ? 10 : 11,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white)),
+        ],
+      ),
+    );
+  }
 }
 
 /// Ligne d'une routine quotidienne dans « Mon or » : nom, gain projeté,
@@ -413,6 +457,7 @@ class _RoutineLine extends StatelessWidget {
   final Activity activity;
   final bool bleeding;
   final VoidCallback onChanged;
+  final RoutineLaunch? onLaunch;
   final ColorScheme cs;
   const _RoutineLine({
     required this.logic,
@@ -420,8 +465,23 @@ class _RoutineLine extends StatelessWidget {
     required this.activity,
     required this.bleeding,
     required this.onChanged,
+    required this.onLaunch,
     required this.cs,
   });
+
+  Widget _launchBtn(IconData icon, String tip, VoidCallback onTap) => Tooltip(
+        message: tip,
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            margin: const EdgeInsets.only(left: 6),
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+                color: _kGold.withOpacity(.14), shape: BoxShape.circle),
+            child: Icon(icon, size: 15, color: _kGold),
+          ),
+        ),
+      );
 
   Future<void> _freeze(BuildContext context) async {
     final ymd = yyyymmdd(DateTime.now());
@@ -498,24 +558,23 @@ class _RoutineLine extends StatelessWidget {
                 ],
                 if (bleeding) ...[
                   const SizedBox(width: 8),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: cs.errorContainer.withOpacity(.5),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text('−1/j',
-                        style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: cs.error)),
-                  ),
+                  const _LossPill(compact: true),
                 ],
               ]),
             ],
           ),
         ),
+        if (onLaunch != null &&
+            (activity.linkedActivityId ?? '').trim().isNotEmpty) ...[
+          _launchBtn(Icons.play_arrow_rounded, 'Démarrer le chrono',
+              () => onLaunch!(activity, timer: false)),
+          _launchBtn(
+              Icons.timer_outlined,
+              (activity.timerMin ?? 0) > 0
+                  ? 'Démarrer le minuteur (${activity.timerMin} min)'
+                  : 'Démarrer le minuteur (5 min)',
+              () => onLaunch!(activity, timer: true)),
+        ],
         _StepBtn(
             icon: Icons.remove,
             enabled: done > 0,
