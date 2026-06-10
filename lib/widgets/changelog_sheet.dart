@@ -10,6 +10,11 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.98', '10 juin 2026', [
+    (Icons.castle_outlined, 'L\'Expédition prend tout son sens : une fois le château 🏰 trouvé sur la carte, tu entres dans le DONJON pour débloquer le niveau. Plus de déblocage automatique au château'),
+    (Icons.task_alt_outlined, 'Le donjon se franchit en relevant des défis préparés par Orion — de vrais objectifs (faire une routine X jours, terminer une tâche, logger du temps) qui se valident TOUT SEULS dès que tu les accomplis dans l\'app. Tous relevés → niveau débloqué'),
+    (Icons.map_outlined, 'Exploration de la carte allégée : se déplacer sur une case déjà éclairée est désormais GRATUIT (on ne paie que pour éclairer le brouillard), une torche éclaire plus large, et la 1ʳᵉ torche du jour est offerte'),
+  ]),
   _Entry('5.97', '10 juin 2026', [
     (Icons.bolt_outlined, 'Ton or et ton niveau bougent maintenant EN DIRECT dans la journée : dès qu\'une routine, du temps ou une action est validé, le total et la barre de progression montent (au lieu d\'attendre le lendemain). Le gain du jour reste provisoire et se fige le soir'),
     (Icons.show_chart, 'L\'historique d\'or des 7 derniers jours s\'affiche désormais en courbe lissée (au lieu de barres), avec le jour courant mis en évidence'),
