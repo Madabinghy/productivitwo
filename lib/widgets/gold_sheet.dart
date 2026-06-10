@@ -87,6 +87,43 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
     _refresh();
   }
 
+  Future<void> _claimChest() async {
+    final reward = logic.claimDailyChest(widget.sync);
+    if (!mounted) return;
+    setState(() {});
+    final cs = Theme.of(context).colorScheme;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('🎁 Coffre du jour !', textAlign: TextAlign.center),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('🪙', style: TextStyle(fontSize: 48)),
+            const SizedBox(height: 8),
+            Text('+${reward.gold} or',
+                style: const TextStyle(
+                    fontSize: 22, fontWeight: FontWeight.w900, color: _kGold)),
+            if (reward.emoji != null) ...[
+              const SizedBox(height: 12),
+              Text(reward.emoji!, style: const TextStyle(fontSize: 40)),
+              Text('${reward.name} ajouté à ta collection !',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 13, color: cs.onSurface.withOpacity(.7))),
+            ],
+          ],
+        ),
+        actions: [
+          FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: _kGold),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Génial !')),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -107,6 +144,17 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
       controller: scrollController,
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
       children: [
+          // ── Quête du jour + coffre ────────────────────────────────────────
+          _QuestCard(
+            progress: logic.dailyQuestProgress(),
+            target: logic.dailyQuestTarget,
+            claimable: logic.dailyChestClaimable(),
+            claimedToday:
+                logic.state.lastQuestClaimedYmd == yyyymmdd(DateTime.now()),
+            onClaim: _claimChest,
+            cs: cs,
+          ),
+          const SizedBox(height: 16),
           // ── Solde + niveau ────────────────────────────────────────────────
           Row(
             children: [
@@ -325,6 +373,97 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
         ],
       );
     }
+}
+
+/// Carte « Quête du jour » : objectif d'actions du jour → coffre à récompense
+/// variable. Dégradé doré + bouton quand le coffre est prêt (effet d'appel).
+class _QuestCard extends StatelessWidget {
+  final int progress, target;
+  final bool claimable, claimedToday;
+  final Future<void> Function() onClaim;
+  final ColorScheme cs;
+  const _QuestCard({
+    required this.progress,
+    required this.target,
+    required this.claimable,
+    required this.claimedToday,
+    required this.onClaim,
+    required this.cs,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = target > 0 ? (progress / target).clamp(0.0, 1.0) : 0.0;
+    final remaining = (target - progress).clamp(0, target);
+    final dark = const Color(0xFF3A2D00);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: claimable
+              ? [const Color(0xFFFFE08A), const Color(0xFFD4A017)]
+              : [
+                  cs.surfaceContainerHighest.withOpacity(.5),
+                  cs.surfaceContainerHighest.withOpacity(.3)
+                ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _kGold.withOpacity(claimable ? .7 : .3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            const Text('🎯', style: TextStyle(fontSize: 18)),
+            const SizedBox(width: 8),
+            Text('Quête du jour',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: claimable ? dark : cs.onSurface)),
+            const Spacer(),
+            Text('$progress/$target',
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: claimable ? dark : cs.onSurface.withOpacity(.6))),
+          ]),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: pct,
+              minHeight: 7,
+              backgroundColor: Colors.black.withOpacity(.12),
+              color: claimable ? const Color(0xFF8A6D00) : _kGold,
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (claimable)
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(backgroundColor: dark),
+                icon: const Text('🎁', style: TextStyle(fontSize: 16)),
+                label: const Text('Ouvrir le coffre'),
+                onPressed: () => onClaim(),
+              ),
+            )
+          else if (claimedToday)
+            Text('✅ Coffre récupéré — reviens demain',
+                style:
+                    TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.6)))
+          else
+            Text(
+                'Encore $remaining action${remaining > 1 ? 's' : ''} pour débloquer le coffre 🎁',
+                style: TextStyle(
+                    fontSize: 12.5, color: cs.onSurface.withOpacity(.65))),
+        ],
+      ),
+    );
+  }
 }
 
 class _SectionTitle extends StatelessWidget {

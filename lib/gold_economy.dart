@@ -193,6 +193,12 @@ class GoldEconomy {
   static int goldForMinutes(int minutes, int level) =>
       minutes ~/ minutesPerGold(level);
 
+  // ── Quête du jour + coffre (motiver à en faire plus) ───────────────────────
+  static const int dailyQuestTarget = 3; // actions à accomplir aujourd'hui
+  static const int questChestGoldMin = 10; // récompense variable du coffre
+  static const int questChestGoldMax = 25;
+  static const int questChestCollectibleChancePct = 30; // % de chance d'un butin
+
   // ── Difficulté des défis du donjon (scaling par niveau visé) ───────────────
   // Rapide au début (le user doit SENTIR qu'il progresse), plus exigeant ensuite.
   // Niveaux 2-3 : routine « aujourd'hui » (1 j) → déblocable en une journée.

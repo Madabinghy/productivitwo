@@ -255,6 +255,7 @@ class FirestoreSync {
         goldTodayGain: (meta['goldTodayGain'] as num?)?.toInt() ?? 0,
         goldTodayGainYmd: meta['goldTodayGainYmd'] as String?,
         goldEpochYmd: meta['goldEpochYmd'] as String?,
+        lastQuestClaimedYmd: meta['lastQuestClaimedYmd'] as String?,
         weeklyScoreTarget: meta['weeklyScoreTarget'] ?? 80,
         notifHour: meta['notifHour'] ?? 9,
         notifMinute: meta['notifMinute'] ?? 0,
@@ -359,6 +360,7 @@ class FirestoreSync {
       goldTodayGain:         local.goldLifetime >= remote.goldLifetime ? local.goldTodayGain : remote.goldTodayGain,
       goldTodayGainYmd:      local.goldLifetime >= remote.goldLifetime ? local.goldTodayGainYmd : remote.goldTodayGainYmd,
       goldEpochYmd:          local.goldLifetime >= remote.goldLifetime ? local.goldEpochYmd : remote.goldEpochYmd,
+      lastQuestClaimedYmd:   local.goldLifetime >= remote.goldLifetime ? local.lastQuestClaimedYmd : remote.lastQuestClaimedYmd,
       notifHour:             local.notifHour,
       notifMinute:           local.notifMinute,
       notifEnabled:          local.notifEnabled,
@@ -864,6 +866,36 @@ class FirestoreSync {
   Future<void> setExpeditionDonjonLevel(int level) async {
     if (uid == null) return;
     await _meta().set({'expeditionDonjonLevel': level}, SetOptions(merge: true));
+  }
+
+  /// Coffre de la quête du jour : crédite l'or (lifetime plafonné), ajoute le
+  /// butin éventuel à la collection, et marque le jour comme réclamé (anti-rejeu).
+  Future<void> claimDailyQuest(
+      {required int gold, String? collectibleId, required String ymd}) async {
+    if (uid == null) return;
+    final metaRef = _meta();
+    await _db.runTransaction((tx) async {
+      final data = (await tx.get(metaRef)).data() as Map<String, dynamic>? ?? {};
+      var bal = (data['gold'] as num?)?.toInt() ?? 0;
+      var lifetime = (data['goldLifetime'] as num?)?.toInt() ?? 0;
+      final unlocked = (data['unlockedLevel'] as num?)?.toInt() ?? 1;
+      bal += gold;
+      lifetime += GoldEconomy.cappedLifetimeAdd(gold, lifetime, unlocked);
+      final coll =
+          (data['collection'] as List?)?.cast<String>().toList() ?? <String>[];
+      if (collectibleId != null && !coll.contains(collectibleId)) {
+        coll.add(collectibleId);
+      }
+      tx.set(
+          metaRef,
+          {
+            'gold': bal,
+            'goldLifetime': lifetime,
+            'collection': coll,
+            'lastQuestClaimedYmd': ymd,
+          },
+          SetOptions(merge: true));
+    });
   }
 
   /// Vrai si AU MOINS un des docs ledger [ids] existe. Sert à l'auto-heal :

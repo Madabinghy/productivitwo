@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/expedition.dart';
@@ -511,6 +512,65 @@ extension GoldEngine on AppLogic {
 
   /// Or provisoire gagné aujourd'hui (gains seuls, sans pénalité — jour non clos).
   int provisionalGoldToday() => goldGainForDay(DateTime.now());
+
+  // ── Quête du jour + coffre quotidien ────────────────────────────────────────
+
+  int get dailyQuestTarget => GoldEconomy.dailyQuestTarget;
+
+  /// Nombre d'« actions » accomplies aujourd'hui (routines validées + actions de
+  /// projet cochées + défis relevés) → plus tu en fais, plus la quête avance.
+  int dailyQuestProgress() {
+    final today = DateTime.now();
+    final ymd = yyyymmdd(today);
+    int n = 0;
+    for (final a in state.activeActivities) {
+      if (!a.isHabit) continue;
+      final tgt = activeHabitTarget(a);
+      if (tgt > 0 && habitValueOn(a.id, today) >= tgt) n++;
+    }
+    n += state.ganttActionsByDay[ymd] ?? 0;
+    n += state.challengeWinsByDay[ymd] ?? 0;
+    return n;
+  }
+
+  bool dailyQuestDone() => dailyQuestProgress() >= dailyQuestTarget;
+
+  /// Coffre du jour disponible : quête remplie ET pas encore ouvert aujourd'hui.
+  bool dailyChestClaimable() =>
+      dailyQuestDone() &&
+      state.lastQuestClaimedYmd != yyyymmdd(DateTime.now());
+
+  /// Ouvre le coffre quotidien → récompense VARIABLE (or + chance de butin).
+  /// Optimiste local + persistance. Renvoie la récompense pour l'animer.
+  ({int gold, String? emoji, String? name}) claimDailyChest(FirestoreSync sync) {
+    final ymd = yyyymmdd(DateTime.now());
+    if (state.lastQuestClaimedYmd == ymd) return (gold: 0, emoji: null, name: null);
+    final rng = Random();
+    final gold = GoldEconomy.questChestGoldMin +
+        rng.nextInt(
+            GoldEconomy.questChestGoldMax - GoldEconomy.questChestGoldMin + 1);
+    String? cid, emoji, name;
+    if (rng.nextInt(100) < GoldEconomy.questChestCollectibleChancePct) {
+      final pool = overworldCollectibles
+          .where((c) => !state.collection.contains(c.id))
+          .toList();
+      if (pool.isNotEmpty) {
+        final c = pool[rng.nextInt(pool.length)];
+        cid = c.id;
+        emoji = c.emoji;
+        name = c.name;
+      }
+    }
+    state.gold += gold;
+    addLifetimeCapped(gold);
+    if (cid != null && !state.collection.contains(cid)) {
+      state.collection.add(cid);
+    }
+    state.lastQuestClaimedYmd = ymd;
+    onChange();
+    sync.claimDailyQuest(gold: gold, collectibleId: cid, ymd: ymd);
+    return (gold: gold, emoji: emoji, name: name);
+  }
 
   /// Or que rapporterait une routine si elle est validée aujourd'hui (gain de
   /// base + bonus de série projeté). Sert à l'affichage « +N or » de « Mon or ».
