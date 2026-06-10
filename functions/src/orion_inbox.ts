@@ -1,11 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { v4 as uuidv4 } from "uuid";
 import { db, FieldValue } from "./db";
 import { getModel, logTokenUsage } from "./models";
 import {
-  executePushGantt,
-  executeAddTask,
-  executeProcessInboxItem,
+  executeProposeChange,
   executePushAssistantMessage,
 } from "./execute";
 import type { ProjectTask, ProjectPhase } from "./types";
@@ -246,56 +243,54 @@ export async function processInboxToProjects(
     const phases: ProjectPhase[] = [
       { id: "phase-1", label: "Réalisation", startDate: projectStart, endDate: lastEnd },
     ];
-    await executePushGantt(
-      uid,
-      {
-        uid,
-        project: {
-          title: np.title,
-          description: np.description,
-          domainId: np.domainId ?? undefined,
-          startDate: projectStart,
-          endDate: lastEnd,
-          phases,
-          tasks,
-        },
+    const ids = (np.ideaIds ?? []).filter((id) => ideaById.has(id));
+    // Au lieu de créer le projet en silence → on PROPOSE (file « À valider »).
+    await executeProposeChange(uid, {
+      kind: "new_project",
+      title: `Créer le projet « ${np.title} »`,
+      rationale: np.description ?? origin.map((o) => o.text).join(" · "),
+      sourceCaptureId: ids[0],
+      payload: {
+        projectTitle: np.title,
+        domainId: np.domainId ?? undefined,
+        description: np.description,
+        startDate: projectStart,
+        endDate: lastEnd,
+        phases,
+        tasks, // conservé pour une application riche ultérieure (Option B)
       },
-      { source: "orion", originIdeas: origin }
+    });
+    await Promise.all(
+      ids.map((id) =>
+        db.doc(`users/${uid}/captures/${id}`).set({ status: "proposed" }, { merge: true })
+      )
     );
-    for (const id of np.ideaIds ?? []) {
-      if (ideaById.has(id)) {
-        await executeProcessInboxItem(uid, id, `→ projet ORION « ${np.title} »`);
-      }
-    }
     created++;
   }
 
   for (const ap of decision.appendTo ?? []) {
     const proj = projects.find((p) => p.id === ap.projectId);
     if (!proj) continue;
+    const ids = (ap.ideaIds ?? []).filter((id) => ideaById.has(id));
     for (const t of ap.tasks ?? []) {
-      await executeAddTask(uid, ap.projectId, {
-        id: uuidv4(),
-        title: t.title,
-        startDate: today,
-        actions: (t.actions ?? []).slice(0, 6),
-      } as ProjectTask);
+      await executeProposeChange(uid, {
+        kind: "attach_idea_as_task",
+        title: `Ajouter « ${t.title} » à « ${proj.title} »`,
+        rationale: ids.map((id) => ideaById.get(id)?.text).filter(Boolean).join(" · "),
+        sourceCaptureId: ids[0],
+        payload: {
+          projectId: ap.projectId,
+          taskTitle: t.title,
+          description: (t.actions ?? []).slice(0, 6).join(" · "),
+        },
+      });
       appended++;
     }
-    const origin = (ap.ideaIds ?? [])
-      .map((id) => ideaById.get(id))
-      .filter((i): i is Idea => !!i)
-      .map((i) => ({ text: i.text, date: i.date }));
-    if (origin.length) {
-      await db
-        .doc(`users/${uid}/projects/${ap.projectId}`)
-        .set({ originIdeas: FieldValue.arrayUnion(...origin) }, { merge: true });
-    }
-    for (const id of ap.ideaIds ?? []) {
-      if (ideaById.has(id)) {
-        await executeProcessInboxItem(uid, id, `→ ajoutée au projet « ${proj.title} »`);
-      }
-    }
+    await Promise.all(
+      ids.map((id) =>
+        db.doc(`users/${uid}/captures/${id}`).set({ status: "proposed" }, { merge: true })
+      )
+    );
   }
 
   const skipped = (decision.skip ?? []).filter((id) => ideaById.has(id)).length;
