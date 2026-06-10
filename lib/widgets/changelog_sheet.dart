@@ -10,6 +10,13 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.99', '10 juin 2026', [
+    (Icons.castle_outlined, 'Donjon repensé : une carte à nœuds qu\'on explore, les défis se découvrent en avançant (défi en cours + bouton « Défis »). Difficulté progressive : les premiers niveaux se débloquent en une journée. Entrée auto dans le donjon une fois qu\'on y est déjà allé'),
+    (Icons.bolt_outlined, 'Or du jour dépensable EN DIRECT (plus d\'attente au lendemain) ; valeur du temps recalibrée (généreuse au début) ; Multiplicateur ×2 dure maintenant 3 jours'),
+    (Icons.play_circle_outline, '« Mon or » : lance un chrono ou un minuteur (5 min par défaut) directement depuis une routine ; solde qui se met à jour en direct'),
+    (Icons.flag_outlined, '« Priorités du jour » → « Défis du moment » : les défis du donjon s\'y déposent. Onglet « Score » → « XP »'),
+    (Icons.fact_check_outlined, 'ORION propose enfin : tes idées de la boîte à idées arrivent dans « À valider » (accepter / refuser) au lieu d\'être transformées en projets d\'office'),
+  ]),
   _Entry('5.98', '10 juin 2026', [
     (Icons.castle_outlined, 'L\'Expédition prend tout son sens : une fois le château 🏰 trouvé sur la carte, tu entres dans le DONJON pour débloquer le niveau. Plus de déblocage automatique au château'),
     (Icons.task_alt_outlined, 'Le donjon se franchit en relevant des défis préparés par Orion — de vrais objectifs (faire une routine X jours, terminer une tâche, logger du temps) qui se valident TOUT SEULS dès que tu les accomplis dans l\'app. Tous relevés → niveau débloqué'),
