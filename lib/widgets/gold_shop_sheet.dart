@@ -202,23 +202,31 @@ class _GoldShopSheetState extends State<_GoldShopSheet> {
   }
 
   Future<void> _useBoost() async {
-    final ymd = yyyymmdd(DateTime.now());
-    if (logic.state.goldBoostDays.contains(ymd)) {
+    final today = DateTime.now();
+    final ymds = [
+      for (int i = 0; i < GoldEconomy.boostDaysPerUse; i++)
+        yyyymmdd(today.add(Duration(days: i)))
+    ];
+    if (ymds.every((d) => logic.state.goldBoostDays.contains(d))) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Multiplicateur déjà actif aujourd\'hui.')));
+          content: Text('Multiplicateur déjà actif sur ces jours.')));
       return;
     }
-    final ok = await widget.sync.useBoost(ymd);
+    final ok = await widget.sync.useBoostDays(ymds);
     if (ok) {
       logic.state.goldInventory['boost'] = _inv('boost') - 1;
-      logic.state.goldBoostDays.add(ymd);
+      for (final d in ymds) {
+        if (!logic.state.goldBoostDays.contains(d)) {
+          logic.state.goldBoostDays.add(d);
+        }
+      }
       logic.onChange();
     }
     if (!mounted) return;
     setState(() {});
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(ok
-          ? '✨ Gains d\'or ×2 activés pour aujourd\'hui !'
+          ? '✨ Gains d\'or ×2 activés pour ${GoldEconomy.boostDaysPerUse} jours !'
           : 'Aucun multiplicateur disponible.'),
     ));
   }
@@ -439,9 +447,9 @@ class _GoldShopSheetState extends State<_GoldShopSheet> {
             (
               key: 'boost',
               emoji: '✨',
-              title: 'Multiplicateur ×2',
+              title: 'Multiplicateur ×2 (${GoldEconomy.boostDaysPerUse} j)',
               subtitle:
-                  'Double tes gains d\'or pour la journée (routines, temps, actions).',
+                  'Double tes gains d\'or pendant ${GoldEconomy.boostDaysPerUse} jours (routines, temps, actions).',
               base: GoldEconomy.shopBoost,
               use: _useBoost,
             ),

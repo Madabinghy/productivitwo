@@ -36,9 +36,10 @@ class GoldEconomy {
   static const int shopSursis = 20;
   static const int shopJoker = 25;
   static const int shopShield = 20; // bouclier anti-retard
-  static const int shopBoost = 30; // multiplicateur ×2 du jour
+  static const int shopBoost = 45; // multiplicateur ×2 (pouvoir multi-jours)
   static const int shopRepair = 40; // réparation de série (jour passé)
   static const int shieldDaysPerUse = 7; // durée du bouclier anti-retard
+  static const int boostDaysPerUse = 3; // durée du multiplicateur ×2 (jours)
 
   /// Coût de suppression d'un projet : proportionnel à son contenu (min plancher).
   static int deleteProjectCost(int tasksCount, int actionsCount) {

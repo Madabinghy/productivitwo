@@ -1208,6 +1208,30 @@ class FirestoreSync {
   }
 
   /// Active le multiplicateur ×2 des gains pour un jour (consomme 1 boost).
+  /// Active le multiplicateur ×2 sur plusieurs jours (consomme 1 « boost »).
+  Future<bool> useBoostDays(List<String> ymds) async {
+    if (uid == null) return false;
+    final metaRef = _meta();
+    return _db.runTransaction<bool>((tx) async {
+      final snap = await tx.get(metaRef);
+      final data = snap.data() as Map<String, dynamic>? ?? {};
+      final inv = (data['goldInventory'] as Map?)
+              ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ??
+          <String, int>{};
+      if ((inv['boost'] ?? 0) < 1) return false;
+      inv['boost'] = inv['boost']! - 1;
+      final days =
+          (data['goldBoostDays'] as List?)?.cast<String>().toList() ??
+              <String>[];
+      for (final ymd in ymds) {
+        if (!days.contains(ymd)) days.add(ymd);
+      }
+      tx.set(metaRef, {'goldInventory': inv, 'goldBoostDays': days},
+          SetOptions(merge: true));
+      return true;
+    });
+  }
+
   Future<bool> useBoost(String ymd) async {
     if (uid == null) return false;
     final metaRef = _meta();
