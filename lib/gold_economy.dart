@@ -147,4 +147,44 @@ class GoldEconomy {
 
   static int weaponBasePrice(String key) =>
       key == 'epee' ? weaponEpee : weaponSandale;
+
+  // ── Niveaux & plafond d'XP (source de vérité partagée) ─────────────────────
+  // Seuils d'or-à-vie pour atteindre chaque niveau (1-15), puis prestige par
+  // crans de [prestigeStep]. Déplacés ici depuis app_logic pour être partagés
+  // par le moteur, les transactions Firestore et le web.
+  static const List<int> levelThresholds = [
+    0, 30, 80, 200, 450, 800, 1500, 2500, 4000, 7000,
+    11000, 16000, 23000, 32000, 45000,
+  ];
+  static const int prestigeStep = 8000;
+
+  /// Seuil d'or-à-vie requis pour atteindre [level] (gère le prestige).
+  static int thresholdForLevel(int level) {
+    if (level <= 1) return 0;
+    if (level <= levelThresholds.length) return levelThresholds[level - 1];
+    return levelThresholds.last +
+        (level - levelThresholds.length) * prestigeStep;
+  }
+
+  /// Part d'un gain qui alimente l'XP (or-à-vie), PLAFONNÉE au seuil du prochain
+  /// niveau tant qu'il n'est pas débloqué. Le surplus déborde en or seul (la
+  /// soupape anti-famine) : `goldLifetime += cappedLifetimeAdd(...)`, mais le
+  /// solde `gold` reçoit toujours le gain plein.
+  static int cappedLifetimeAdd(int gain, int currentLifetime, int unlockedLevel) {
+    if (gain <= 0) return 0;
+    final cap = thresholdForLevel((unlockedLevel < 1 ? 1 : unlockedLevel) + 1);
+    final room = cap - currentLifetime;
+    if (room <= 0) return 0;
+    return gain < room ? gain : room;
+  }
+
+  // ── Valeur du temps par niveau ──────────────────────────────────────────────
+  // Plus on monte, plus l'or se mérite : niv.1 → 1 min = 1 or ; niv.5 → 5 min ;
+  // niv.10 → 10 min. Généreux au début (anti-famine), avare ensuite (compensé
+  // par les pouvoirs multi-jours). Principal knob de tuning de l'économie.
+  static int minutesPerGold(int level) => level < 1 ? 1 : level;
+
+  /// Or gagné pour [minutes] de temps loggué au niveau [level] (arrondi bas).
+  static int goldForMinutes(int minutes, int level) =>
+      minutes ~/ minutesPerGold(level);
 }

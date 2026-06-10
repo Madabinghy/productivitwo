@@ -1818,16 +1818,13 @@ class AppLogic {
   // (inchangés pour ne rétrograder personne) ; les 5 suivants étendent la courbe
   // afin qu'on n'atteigne plus le « bout » trop vite. Au-delà : prestige Mythique
   // I/II… par crans de `_prestigeStep` (long grind volontaire).
-  static const _levelThresholds = [
-    0, 30, 80, 200, 450, 800, 1500, 2500, 4000, 7000,
-    11000, 16000, 23000, 32000, 45000,
-  ];
+  // Seuils de niveau & pas de prestige : source de vérité partagée dans
+  // GoldEconomy (levelThresholds / prestigeStep / thresholdForLevel).
   static const _levelTitles = [
     'Débutant', 'Curieux', 'Régulier', 'Déterminé', 'Discipliné',
     'Expert', 'Champion', 'Maître', 'Légende', 'Élite',
     'Virtuose', 'Maître d\'œuvre', 'Sage', 'Titan', 'Mythique',
   ];
-  static const _prestigeStep = 8000;
 
   int _xpForBadge(BadgeId id) {
     switch (id) {
@@ -1933,28 +1930,24 @@ class AppLogic {
   }
 
   /// Seuil d'XP (or à vie) requis pour atteindre [level]. Gère le prestige.
-  int _thresholdForLevel(int level) {
-    if (level <= 1) return 0;
-    if (level <= _levelThresholds.length) return _levelThresholds[level - 1];
-    return _levelThresholds.last +
-        (level - _levelThresholds.length) * _prestigeStep;
-  }
+  int _thresholdForLevel(int level) => GoldEconomy.thresholdForLevel(level);
 
   /// Titre d'un niveau (prestige Mythique I/II… au-delà du dernier palier nommé).
   String _titleForLevel(int level) {
     if (level <= 1) return _levelTitles.first;
-    if (level <= _levelThresholds.length) return _levelTitles[level - 1];
-    return '${_levelTitles.last} ${_roman(level - _levelThresholds.length)}';
+    if (level <= GoldEconomy.levelThresholds.length) return _levelTitles[level - 1];
+    return '${_levelTitles.last} ${_roman(level - GoldEconomy.levelThresholds.length)}';
   }
 
   int _levelFromXp(int xp) {
-    if (xp >= _levelThresholds.last) {
-      final prestige = (xp - _levelThresholds.last) ~/ _prestigeStep;
-      return _levelThresholds.length + prestige;
+    const thresholds = GoldEconomy.levelThresholds;
+    if (xp >= thresholds.last) {
+      final prestige = (xp - thresholds.last) ~/ GoldEconomy.prestigeStep;
+      return thresholds.length + prestige;
     }
     int level = 1;
-    for (int i = _levelThresholds.length - 1; i >= 0; i--) {
-      if (xp >= _levelThresholds[i]) {
+    for (int i = thresholds.length - 1; i >= 0; i--) {
+      if (xp >= thresholds[i]) {
         level = i + 1;
         break;
       }

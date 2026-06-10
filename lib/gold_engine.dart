@@ -22,7 +22,21 @@ extension GoldEngine on AppLogic {
   void _localApply(int delta) {
     final next = state.gold + delta;
     state.gold = next < 0 ? 0 : next; // plancher pardonnant
-    if (delta > 0) state.goldLifetime += delta; // lifetime monotone
+    // L'XP (lifetime) est PLAFONNÉE au seuil du prochain niveau ; le surplus
+    // déborde en or seul (le solde a déjà reçu le gain plein ci-dessus).
+    if (delta > 0) {
+      state.goldLifetime +=
+          GoldEconomy.cappedLifetimeAdd(delta, state.goldLifetime, effectiveLevel());
+    }
+  }
+
+  /// Ajoute des gains au lifetime en respectant le plafond du niveau (overflow
+  /// → or seul). Utilisé par les sites qui créditent l'XP hors `_localApply`
+  /// (ex. butin de carte d'expédition).
+  void addLifetimeCapped(int gain) {
+    if (gain <= 0) return;
+    state.goldLifetime +=
+        GoldEconomy.cappedLifetimeAdd(gain, state.goldLifetime, effectiveLevel());
   }
 
   /// Applique un delta d'or ponctuel (gain/perte/dépense) : optimiste local +
@@ -152,12 +166,17 @@ extension GoldEngine on AppLogic {
     final boostSfx = mult == 2 ? ' ×2' : '';
 
     // ── Gains du jour ─────────────────────────────────────────────────────────
-    final hours = totalForDay(d).inMinutes ~/ 60;
-    if (hours > 0) {
+    // Valeur du temps scalée par niveau (inclut le temps des routines minutées,
+    // loggué via leur activité liée).
+    final minutes = totalForDay(d).inMinutes;
+    final timeGold = GoldEconomy.goldForMinutes(minutes, effectiveLevel());
+    if (timeGold > 0) {
+      final h = minutes ~/ 60, m = minutes % 60;
+      final dur = h > 0 ? '${h}h${m > 0 ? '${m.toString().padLeft(2, '0')}' : ''}' : '${m}min';
       out.add(GoldLedgerEntry(
-          id: 'time_$ymd', delta: hours * GoldEconomy.timePerHour * mult,
+          id: 'time_$ymd', delta: timeGold * mult,
           category: 'gain', reasonCode: 'time_logged',
-          label: '$hours h de temps loggué$boostSfx'));
+          label: '$dur de temps loggué$boostSfx'));
     }
     final challenges = state.challengeWinsByDay[ymd] ?? 0;
     if (challenges > 0) {
@@ -370,7 +389,7 @@ extension GoldEngine on AppLogic {
     final d = DateTime(day.year, day.month, day.day);
     final ymd = yyyymmdd(d);
     final mult = state.goldBoostDays.contains(ymd) ? 2 : 1; // ×2 du jour
-    var g = (totalForDay(d).inMinutes ~/ 60) * GoldEconomy.timePerHour;
+    var g = GoldEconomy.goldForMinutes(totalForDay(d).inMinutes, effectiveLevel());
     g += (state.challengeWinsByDay[ymd] ?? 0) * GoldEconomy.challengeDone;
     g += (state.ganttActionsByDay[ymd] ?? 0) * GoldEconomy.ganttAction;
     for (final a in state.activeActivities.where((x) => x.isHabit)) {

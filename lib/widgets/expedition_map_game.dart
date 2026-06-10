@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/expedition.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
-import 'package:productivitwo_v1/gold_economy.dart';
+import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/gold_purchase.dart';
 import 'package:productivitwo_v1/widgets/expedition_sheet.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
@@ -304,7 +304,7 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
     );
     logic.state.gold += goldDelta;
     if (logic.state.gold < 0) logic.state.gold = 0;
-    if (goldDelta > 0) logic.state.goldLifetime += goldDelta;
+    if (goldDelta > 0) logic.addLifetimeCapped(goldDelta);
     logic.state.expeditionPos = t.id;
     for (final r in revealAdd) {
       if (!logic.state.expeditionRevealed.contains(r)) {

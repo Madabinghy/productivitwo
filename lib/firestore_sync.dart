@@ -8,6 +8,7 @@ import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:productivitwo_v1/gold_economy.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/dev_logger.dart';
 
@@ -797,10 +798,14 @@ class FirestoreSync {
       final data = snap.data() as Map<String, dynamic>? ?? {};
       var gold = (data['gold'] as num?)?.toInt() ?? 0;
       var lifetime = (data['goldLifetime'] as num?)?.toInt() ?? 0;
+      final unlocked = (data['unlockedLevel'] as num?)?.toInt() ?? 1;
       for (final e in entries) {
         gold += e.delta;
         if (gold < 0) gold = 0; // plancher pardonnant
-        if (e.delta > 0) lifetime += e.delta; // lifetime monotone
+        // XP plafonnée au prochain niveau ; le surplus déborde en or seul.
+        if (e.delta > 0) {
+          lifetime += GoldEconomy.cappedLifetimeAdd(e.delta, lifetime, unlocked);
+        }
       }
       final update = <String, dynamic>{
         'gold': gold,
@@ -1001,9 +1006,12 @@ class FirestoreSync {
       if (goldDelta != 0) {
         var gold = (data['gold'] as num?)?.toInt() ?? 0;
         var lifetime = (data['goldLifetime'] as num?)?.toInt() ?? 0;
+        final unlocked = (data['unlockedLevel'] as num?)?.toInt() ?? 1;
         gold += goldDelta;
         if (gold < 0) gold = 0;
-        if (goldDelta > 0) lifetime += goldDelta;
+        if (goldDelta > 0) {
+          lifetime += GoldEconomy.cappedLifetimeAdd(goldDelta, lifetime, unlocked);
+        }
         update['gold'] = gold;
         update['goldLifetime'] = lifetime;
       }
