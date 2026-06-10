@@ -10,6 +10,14 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.02', '10 juin 2026', [
+    (Icons.schedule, 'Valeur du temps simplifiée : 1 or toutes les 15 min loggées, tout niveau confondu (le sommeil loggué compte aussi, sans pénalité). Une grosse journée plafonne naturellement'),
+    (Icons.sports_kabaddi, 'Combat toujours explicite : un ennemi ne meurt plus « tout seul » au tap — tu ouvres l\'écran de combat et tu FRAPPES. Le drain des nuisibles est adouci (plafonné 6h) et tuer rapporte toujours un butin qui couvre au moins ce qu\'il t\'a coûté'),
+    (Icons.timer_outlined, 'Mode 5 min du donjon corrigé : tu franchis le passage UNIQUEMENT si tu vas au bout du minuteur. Tu changes d\'avis et tu l\'arrêtes ? Tu restes où tu es. On ne te propose que les routines pas encore faites du jour'),
+    (Icons.flag_circle_outlined, 'La Quête du jour passe dans l\'onglet « Maintenant », avec un meilleur contraste (lisible)'),
+    (Icons.straighten, 'Barre d\'XP corrigée : elle ne dépasse plus le palier (fini le « 234/30 ») — une fois le palier atteint, elle affiche « à révéler » et le surplus part en or'),
+    (Icons.monetization_on_outlined, 'Partout : vraie pièce d\'or dorée au lieu de l\'emoji 🪙 (qui rendait « argent »)'),
+  ]),
   _Entry('6.01', '10 juin 2026', [
     (Icons.sports_martial_arts, 'Combat ! Les nuisibles 🕷️🦂🐍 te maudissent (routines ÷2) et te grignotent l\'or à l\'heure. Pour les vaincre, FORGE ton arme par l\'action : 3 routines = 🩴 sandale, terminer des tâches = 🗡️ épée. Combat plein-écran quand tu les affrontes'),
     (Icons.shield_moon_outlined, 'Chaque niveau a son GARDIEN 🛡️ (un mini-boss qui reste tant que tu ne l\'as pas vaincu). Tuer un ennemi rapporte du butin d\'or 💰 (gros butin pour le gardien) !'),
