@@ -848,6 +848,13 @@ class FirestoreSync {
     });
   }
 
+  /// Écrit les défis du donjon (générés côté app). Stockés dans le meta.
+  Future<void> setExpeditionChallenges(List<String> challenges) async {
+    if (uid == null) return;
+    await _meta()
+        .set({'expeditionChallenges': challenges}, SetOptions(merge: true));
+  }
+
   /// Vrai si AU MOINS un des docs ledger [ids] existe. Sert à l'auto-heal :
   /// les ids étant déterministes (`time_$ymd`, `rmet_<id>_$ymd`…), leur absence
   /// prouve qu'un jour n'a jamais été matérialisé (curseur empoisonné par reset).

@@ -11,7 +11,6 @@ const sdk_1 = require("@anthropic-ai/sdk");
 const models_1 = require("./models");
 const db_1 = require("./db");
 const execute_1 = require("./execute");
-const orion_tasks_1 = require("./orion_tasks");
 // Descriptions compactes pour ORION — ~10x moins de tokens que les tools MCP complets
 const ORION_TOOLS = [
     { name: "get_orion_context", description: "Contexte utilisateur : domaines, activités, routines, objectifs, projets actifs (tâches urgentes), plan du jour résumé, stats 7j.", input_schema: { type: "object", properties: {}, required: [] } },
@@ -97,14 +96,8 @@ async function writeCycleLog(uid, log) {
 async function runOrionCycle(uid, opts) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
     const today = (0, execute_1.todayInParis)();
-    // Défis du donjon : préparés EN AMONT par Orion (déterministe, sans LLM ni
-    // décompte de quota) → toujours prêts quand l'user atteint le château.
-    try {
-        await (0, orion_tasks_1.taskGenerateExpeditionChallenges)(uid);
-    }
-    catch (e) {
-        console.warn(`expedition challenges uid=${uid}:`, e instanceof Error ? e.message : e);
-    }
+    // (Les défis du donjon sont désormais générés CÔTÉ APP à l'ouverture du donjon
+    // — instantané, sans dépendre d'un cycle Orion. Orion retiré de ce flux.)
     const count = await getOrionRunCount(uid, today);
     // Limite appliquée CÔTÉ SERVEUR selon le statut Pro effectif (Firestore) —
     // infalsifiable, contrairement à la limite affichée par le client.

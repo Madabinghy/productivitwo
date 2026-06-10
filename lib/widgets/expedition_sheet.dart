@@ -34,6 +34,13 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
 
   int get _level => logic.effectiveLevel() + 1;
 
+  @override
+  void initState() {
+    super.initState();
+    // Génère les défis du donjon à l'ouverture (instantané, sans Orion).
+    logic.ensureExpeditionChallenges(sync);
+  }
+
   Future<void> _unlock() async {
     if (_busy) return;
     setState(() => _busy = true);
@@ -140,17 +147,17 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('🔮', style: TextStyle(fontSize: 48)),
+              const Text('🗺️', style: TextStyle(fontSize: 48)),
               const SizedBox(height: 12),
-              Text('Orion prépare tes défis…',
+              Text('Pas encore de défis',
                   style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
                       color: cs.onSurface)),
               const SizedBox(height: 6),
               Text(
-                  'Reviens dans un moment : tes défis du donjon apparaîtront ici, '
-                  'choisis par Orion à partir de tes routines et projets.',
+                  'Crée au moins une routine, une tâche ou une activité de temps : '
+                  'tes défis du donjon seront générés à partir d\'elles.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                       fontSize: 12.5, color: cs.onSurface.withOpacity(.55))),

@@ -353,6 +353,78 @@ extension GoldEngine on AppLogic {
     return out;
   }
 
+  /// Génère les défis du donjon CÔTÉ APP (instantané, sans Orion) si aucun
+  /// n'existe pour le niveau visé. Pioche des objectifs réels et pertinents :
+  /// 1 routine active (3 j), 1 tâche ouverte à deadline proche, 30 min de temps.
+  /// Cibles de départ raisonnables (réglables). À appeler à l'ouverture du donjon.
+  void ensureExpeditionChallenges(FirestoreSync sync) {
+    final target = effectiveLevel() + 1;
+    final already = state.expeditionChallenges.any((raw) {
+      try {
+        return (jsonDecode(raw)['level'] as num?)?.toInt() == target;
+      } catch (_) {
+        return false;
+      }
+    });
+    if (already) return;
+    final built = _buildChallengesForLevel(target);
+    if (built.isEmpty) return; // pas de données → l'UI invite à créer routine/tâche
+    state.expeditionChallenges = built;
+    onChange();
+    sync.setExpeditionChallenges(built);
+  }
+
+  List<String> _buildChallengesForLevel(int target) {
+    final out = <String>[];
+
+    // 1 routine active (habitude mesurable).
+    for (final a in state.activeActivities) {
+      if (a.isHabit && activeHabitTarget(a) > 0) {
+        out.add(jsonEncode({
+          'level': target, 'type': 'routine', 'refId': a.id, 'target': 3,
+          'label': 'Fais la routine « ${a.name} » pendant 3 jours',
+        }));
+        break;
+      }
+    }
+
+    // 1 tâche ouverte à l'échéance la plus proche (la plus pertinente).
+    ProjectTask? bestTask;
+    DateTime? bestEnd;
+    for (final p in currentProjects) {
+      if (p.status != 'active') continue;
+      for (final t in p.tasks) {
+        if (t.status == 'done' || t.status == 'skipped') continue;
+        final d = t.endDate;
+        final better = bestTask == null ||
+            (d != null && (bestEnd == null || d.isBefore(bestEnd)));
+        if (better) {
+          bestTask = t;
+          if (d != null) bestEnd = d;
+        }
+      }
+    }
+    if (bestTask != null) {
+      out.add(jsonEncode({
+        'level': target, 'type': 'task', 'refId': bestTask.id, 'target': 1,
+        'label': 'Termine la tâche « ${bestTask.title} »',
+      }));
+    }
+
+    // 1 activité temps : 30 min.
+    for (final a in state.activeActivities) {
+      if (!a.isHabit) {
+        out.add(jsonEncode({
+          'level': target, 'type': 'time', 'refId': a.id, 'target': 30,
+          'label': 'Logue 30 min sur « ${a.name} »',
+        }));
+        break;
+      }
+    }
+
+    return out;
+  }
+
   /// Tous les défis du niveau visé sont accomplis (→ donjon franchissable).
   bool expeditionChallengesAllDone() {
     final st = expeditionChallengeStatuses();
