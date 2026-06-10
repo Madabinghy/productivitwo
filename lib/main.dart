@@ -5041,14 +5041,14 @@ class _AppRootState extends State<AppRoot>
                   ),
                 ),
               ),
-              // Affichage : Priorités du jour (désactivé par défaut)
+              // Affichage : Défis du moment (désactivé par défaut)
               StatefulBuilder(
                 builder: (ctx, setLocal) => SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   secondary: const Icon(Icons.star_outline),
-                  title: const Text('Priorités du jour'),
+                  title: const Text('Défis du moment'),
                   subtitle: const Text(
-                      'Section en tête de l\'onglet Projets'),
+                      'Section en tête de l\'onglet Projets (défis du donjon + priorités)'),
                   value: logic.state.showTodayPriorities,
                   onChanged: (v) {
                     logic.state.showTodayPriorities = v;
@@ -5439,7 +5439,13 @@ class _AppRootState extends State<AppRoot>
         .where((i) => i.date == todayKey)
         .toList();
 
-    final total = todayTasks.length + todayActivities.length + freeItems.length;
+    // Défis du donjon (du niveau visé) : ils « se déposent » ici.
+    final donjonChallenges = logic.expeditionChallengeStatuses();
+
+    final total = todayTasks.length +
+        todayActivities.length +
+        freeItems.length +
+        donjonChallenges.length;
 
     return Card(
       elevation: 1,
@@ -5456,7 +5462,7 @@ class _AppRootState extends State<AppRoot>
                 Icon(Icons.star_rounded, size: 14, color: Colors.amber.shade600),
                 const SizedBox(width: 6),
                 Text(
-                  'PRIORITÉS DU JOUR',
+                  'DÉFIS DU MOMENT',
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w800,
@@ -5490,6 +5496,9 @@ class _AppRootState extends State<AppRoot>
             ),
           ),
           Divider(height: 1, color: cs.outlineVariant.withOpacity(.3)),
+          // ── Défis du donjon ──────────────────────────────────────────────────
+          for (final c in donjonChallenges)
+            _buildDonjonChallengeTile(context, cs, c),
           // ── Items Gantt ──────────────────────────────────────────────────────
           for (final entry in todayTasks)
             _buildPriorityTaskTile(context, cs, entry.project, entry.task),
@@ -5504,7 +5513,7 @@ class _AppRootState extends State<AppRoot>
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
               child: Text(
-                'Aucune priorité — appuie sur + pour en ajouter une',
+                'Aucun défi pour le moment — appuie sur + pour en ajouter un',
                 style: TextStyle(
                   fontSize: 13,
                   color: cs.onSurface.withOpacity(.35),
@@ -5514,6 +5523,55 @@ class _AppRootState extends State<AppRoot>
             ),
           const SizedBox(height: 4),
         ],
+      ),
+    );
+  }
+
+  /// Tuile d'un défi du donjon dans « Défis du moment » → tap ouvre le donjon.
+  Widget _buildDonjonChallengeTile(
+      BuildContext context,
+      ColorScheme cs,
+      ({String label, String type, int target, int progress, bool done}) c) {
+    final color = c.done ? Colors.green.shade600 : const Color(0xFFD4A017);
+    return InkWell(
+      onTap: () async {
+        if (logic.donjonAlreadyEntered) {
+          await showExpeditionSheet(context, logic, _sync);
+        } else {
+          await showExpeditionGame(context, logic, _sync);
+        }
+        if (mounted) setState(() {});
+      },
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        child: Row(children: [
+          Text(c.done ? '✅' : '🎯', style: const TextStyle(fontSize: 16)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(c.label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: c.done ? Colors.green.shade700 : null,
+                        decoration:
+                            c.done ? TextDecoration.lineThrough : null)),
+                if (c.target > 1)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3),
+                    child: Text('${c.progress}/${c.target}',
+                        style: TextStyle(
+                            fontSize: 11, color: cs.onSurface.withOpacity(.5))),
+                  ),
+              ],
+            ),
+          ),
+          Icon(Icons.castle_outlined, size: 16, color: color),
+        ]),
       ),
     );
   }
