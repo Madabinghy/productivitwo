@@ -429,6 +429,11 @@ extension GoldEngine on AppLogic {
     return out;
   }
 
+  /// Vrai si le donjon du niveau visé a déjà été ouvert → on y entre direct
+  /// (sinon on passe par l'overworld pour trouver le château).
+  bool get donjonAlreadyEntered =>
+      state.expeditionDonjonLevel == effectiveLevel() + 1;
+
   /// Tous les défis du niveau visé sont accomplis (→ donjon franchissable).
   bool expeditionChallengesAllDone() {
     final st = expeditionChallengeStatuses();

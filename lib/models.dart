@@ -700,6 +700,9 @@ class AppState {
   // Écrits par Orion (serveur) ; l'app les lit et auto-valide depuis ses données.
   // {level, type:'routine'|'task'|'time', refId, target, label}
   List<String> expeditionChallenges;
+  // Niveau dont le donjon a DÉJÀ été ouvert → on y entre directement ensuite
+  // (la 1ʳᵉ fois on passe par l'overworld pour trouver le château). 0 = jamais.
+  int expeditionDonjonLevel;
 
   AppState({
     required this.domains,
@@ -766,6 +769,7 @@ class AppState {
     this.goldTodayGain = 0,
     this.goldTodayGainYmd,
     this.goldEpochYmd,
+    this.expeditionDonjonLevel = 0,
     List<String>? expeditionChallenges,
     // ✅ NOUVEAU
     Map<String, List<String>>? nowSkippedByYmd,
@@ -870,6 +874,7 @@ class AppState {
         'expeditionPicked': expeditionPicked,
         'expeditionEntities': expeditionEntities,
         'expeditionChallenges': expeditionChallenges,
+        'expeditionDonjonLevel': expeditionDonjonLevel,
         'collection': collection,
         'lastFreeStepYmd': lastFreeStepYmd,
         'goldTodayGain': goldTodayGain,
@@ -1002,6 +1007,7 @@ class AppState {
           (j['expeditionEntities'] as List?)?.cast<String>() ?? <String>[],
       expeditionChallenges:
           (j['expeditionChallenges'] as List?)?.cast<String>() ?? <String>[],
+      expeditionDonjonLevel: (j['expeditionDonjonLevel'] as num?)?.toInt() ?? 0,
       collection: (j['collection'] as List?)?.cast<String>() ?? <String>[],
       lastFreeStepYmd: j['lastFreeStepYmd'] as String?,
       goldTodayGain: (j['goldTodayGain'] as num?)?.toInt() ?? 0,

@@ -248,6 +248,8 @@ class FirestoreSync {
             (meta['expeditionEntities'] as List?)?.cast<String>(),
         expeditionChallenges:
             (meta['expeditionChallenges'] as List?)?.cast<String>(),
+        expeditionDonjonLevel:
+            (meta['expeditionDonjonLevel'] as num?)?.toInt() ?? 0,
         collection: (meta['collection'] as List?)?.cast<String>(),
         lastFreeStepYmd: meta['lastFreeStepYmd'] as String?,
         goldTodayGain: (meta['goldTodayGain'] as num?)?.toInt() ?? 0,
@@ -351,6 +353,7 @@ class FirestoreSync {
       expeditionEntities:    local.goldLifetime >= remote.goldLifetime ? local.expeditionEntities : remote.expeditionEntities,
       // Défis : écrits par Orion (serveur) → on garde la version distante dès qu'elle existe.
       expeditionChallenges:  remote.expeditionChallenges.isNotEmpty ? remote.expeditionChallenges : local.expeditionChallenges,
+      expeditionDonjonLevel: local.expeditionDonjonLevel >= remote.expeditionDonjonLevel ? local.expeditionDonjonLevel : remote.expeditionDonjonLevel,
       collection:            local.collection.length >= remote.collection.length ? local.collection : remote.collection,
       lastFreeStepYmd:       local.goldLifetime >= remote.goldLifetime ? local.lastFreeStepYmd : remote.lastFreeStepYmd,
       goldTodayGain:         local.goldLifetime >= remote.goldLifetime ? local.goldTodayGain : remote.goldTodayGain,
@@ -855,6 +858,12 @@ class FirestoreSync {
     if (uid == null) return;
     await _meta()
         .set({'expeditionChallenges': challenges}, SetOptions(merge: true));
+  }
+
+  /// Mémorise le niveau dont le donjon a été ouvert (entrée auto ensuite).
+  Future<void> setExpeditionDonjonLevel(int level) async {
+    if (uid == null) return;
+    await _meta().set({'expeditionDonjonLevel': level}, SetOptions(merge: true));
   }
 
   /// Vrai si AU MOINS un des docs ledger [ids] existe. Sert à l'auto-heal :

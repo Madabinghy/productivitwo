@@ -5,6 +5,7 @@ import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/gold_purchase.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/expedition_map_game.dart';
+import 'package:productivitwo_v1/widgets/expedition_sheet.dart';
 import 'package:productivitwo_v1/widgets/collection_sheet.dart';
 import 'package:productivitwo_v1/widgets/gold_shop_sheet.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
@@ -200,7 +201,11 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
                 ),
                 FilledButton(
                   onPressed: () async {
-                    await showExpeditionGame(context, logic, sync);
+                    if (logic.donjonAlreadyEntered) {
+                      await showExpeditionSheet(context, logic, sync);
+                    } else {
+                      await showExpeditionGame(context, logic, sync);
+                    }
                     if (context.mounted) setState(() {});
                   },
                   style: FilledButton.styleFrom(
