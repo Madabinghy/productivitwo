@@ -4559,8 +4559,7 @@ class _AppRootState extends State<AppRoot>
       final ymd = yyyymmdd(now);
       final score = logic.dailyScore(ymd).clamp(0.0, 1.0);
       final gainToday = logic.provisionalGoldToday();
-      final net = logic.projectedGoldNetToday();
-      final netColor = net >= 0 ? const Color(0xFF1D9E75) : cs.error;
+      final solde = logic.gold; // solde réel (= « Mon or »), pas le net projeté
       final ringColor = score >= 1.0
           ? const Color(0xFF1D9E75)
           : Color.lerp(cs.error, cs.primary, score)!;
@@ -4602,11 +4601,11 @@ class _AppRootState extends State<AppRoot>
                   const SizedBox(width: 8),
                   const GoldIcon(size: 13),
                   const SizedBox(width: 3),
-                  Text('${net >= 0 ? '+' : '−'}${net.abs()}',
-                      style: TextStyle(
+                  Text('$solde',
+                      style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w800,
-                          color: netColor)),
+                          color: Color(0xFFD4A017))),
                 ],
               ),
             ),
