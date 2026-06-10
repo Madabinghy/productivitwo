@@ -82,6 +82,32 @@ extension GoldEngine on AppLogic {
         int.parse(ymd.substring(6, 8)),
       );
 
+  /// Auto-heal : un reset (ou seed) a pu poser le curseur sur un jour dont les
+  /// gains n'ont JAMAIS été matérialisés (la boucle ne traite que les jours
+  /// strictement après le curseur → ce jour-là est sauté à jamais).
+  ///
+  /// On détecte le cas via les ids déterministes du ledger : si le jour du
+  /// curseur produit des gains mais qu'AUCUN de ses docs ledger n'existe, le
+  /// curseur est « empoisonné » → on le recule d'un jour pour que
+  /// `materializeGoldUpTo` recompte ce jour. Idempotent et sans double-comptage
+  /// (un jour réellement crédité a ses docs → on ne touche à rien).
+  /// À appeler AVANT `materializeGoldUpTo`.
+  Future<void> healGoldCursorIfNeeded(FirestoreSync sync) async {
+    final cursor = state.goldLastProcessedDay;
+    if (cursor == null) return; // pas encore initialisé (le seed s'en charge)
+    final cursorDay = _parseYmd(cursor);
+    final gains = _collectGoldDayEntries(cursorDay)
+        .where((e) => e.delta > 0)
+        .toList();
+    if (gains.isEmpty) return; // rien à récupérer ce jour-là
+    final materialized = await sync.ledgerHasAny(gains.map((e) => e.id).toList());
+    if (materialized) return; // jour déjà crédité → curseur sain
+    final rewound = yyyymmdd(cursorDay.subtract(const Duration(days: 1)));
+    state.goldLastProcessedDay = rewound;
+    onChange();
+    await sync.applyGoldBatch(const [], newCursor: rewound);
+  }
+
   /// Matérialise gains/pertes pour chaque jour CLOS non encore traité
   /// (strictement entre le curseur et aujourd'hui). Idempotent : ids déterministes
   /// + curseur → un jour n'est jamais compté deux fois.
@@ -242,9 +268,10 @@ extension GoldEngine on AppLogic {
 
   // ── Risques & provisoire (Phase C) ──────────────────────────────────────────
 
-  /// Or provisoire gagné aujourd'hui (gains seuls, sans pénalité — jour non clos).
-  int provisionalGoldToday() {
-    final d = DateTime.now();
+  /// Or « gain » d'un jour donné (gains seuls, sans pénalité), cohérent avec la
+  /// matérialisation. Sert au provisoire du jour ET à la courbe d'historique.
+  int goldGainForDay(DateTime day) {
+    final d = DateTime(day.year, day.month, day.day);
     final ymd = yyyymmdd(d);
     final mult = state.goldBoostDays.contains(ymd) ? 2 : 1; // ×2 du jour
     var g = (totalForDay(d).inMinutes ~/ 60) * GoldEconomy.timePerHour;
@@ -258,6 +285,9 @@ extension GoldEngine on AppLogic {
     }
     return g * mult;
   }
+
+  /// Or provisoire gagné aujourd'hui (gains seuls, sans pénalité — jour non clos).
+  int provisionalGoldToday() => goldGainForDay(DateTime.now());
 
   /// Or que rapporterait une routine si elle est validée aujourd'hui (gain de
   /// base + bonus de série projeté). Sert à l'affichage « +N or » de « Mon or ».

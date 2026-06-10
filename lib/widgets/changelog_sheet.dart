@@ -10,6 +10,11 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('5.97', '10 juin 2026', [
+    (Icons.bolt_outlined, 'Ton or et ton niveau bougent maintenant EN DIRECT dans la journée : dès qu\'une routine, du temps ou une action est validé, le total et la barre de progression montent (au lieu d\'attendre le lendemain). Le gain du jour reste provisoire et se fige le soir'),
+    (Icons.show_chart, 'L\'historique d\'or des 7 derniers jours s\'affiche désormais en courbe lissée (au lieu de barres), avec le jour courant mis en évidence'),
+    (Icons.healing_outlined, 'Correction : dans certains cas, l\'or/XP gagné la veille pouvait ne pas être comptabilisé le lendemain — c\'est réparé, et les jours concernés sont récupérés automatiquement au lancement'),
+  ]),
   _Entry('5.96', '9 juin 2026', [
     (Icons.explore_outlined, 'Nouveau : l\'Expédition est une vraie carte à explorer ! Pour débloquer le prochain niveau, déplace ton perso de case en case (1 or, 1ᵉʳ pas du jour gratuit) à travers le brouillard (torche 5 or pour éclairer une zone) jusqu\'au château 🏰. Au moins 2 chemins → explore pour trouver des collectibles'),
     (Icons.pets_outlined, 'La carte réagit à ta semaine : si ton score baisse vs la semaine passée, des nuisibles 🕷️🦂🐍 apparaissent (ils te drainent de l\'or chaque jour — élimine-les avec une épée/sandale, ou attends qu\'ils partent). Si ta semaine progresse, ce sont des trésors 💰 qui surgissent'),

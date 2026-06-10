@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/models.dart';
 
 Future<void> showDayReviewSheet(
@@ -90,9 +91,9 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
           _ScoreCard(score: score, scorePct: scorePct, cs: cs),
           const SizedBox(height: 20),
 
-          // ── XP du jour ────────────────────────────────────────────────────
+          // ── Or provisoire du jour (crédité au total ce soir) ──────────────
           Builder(builder: (_) {
-            final todayXp = logic.xpForDay(today);
+            final todayXp = logic.provisionalGoldToday();
             if (todayXp <= 0) return const SizedBox.shrink();
             return Padding(
               padding: const EdgeInsets.only(bottom: 20),

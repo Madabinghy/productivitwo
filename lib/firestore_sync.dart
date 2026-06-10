@@ -816,6 +816,16 @@ class FirestoreSync {
   Future<Map<String, int>> applyGold(GoldLedgerEntry entry) =>
       applyGoldBatch([entry]);
 
+  /// Vrai si AU MOINS un des docs ledger [ids] existe. Sert à l'auto-heal :
+  /// les ids étant déterministes (`time_$ymd`, `rmet_<id>_$ymd`…), leur absence
+  /// prouve qu'un jour n'a jamais été matérialisé (curseur empoisonné par reset).
+  Future<bool> ledgerHasAny(List<String> ids) async {
+    if (uid == null || ids.isEmpty) return false;
+    final snaps =
+        await Future.wait(ids.map((id) => _col('gold_ledger').doc(id).get()));
+    return snaps.any((s) => s.exists);
+  }
+
   // ── Boutique (achats / usages, transactionnels) ─────────────────────────────
 
   /// Achat boutique : débite l'or si solde suffisant, puis ajoute soit un
@@ -1057,10 +1067,11 @@ class FirestoreSync {
   }
 
   /// Remet l'économie à zéro (or, XP, niveau, expédition, inventaire). Le curseur
-  /// est figé à aujourd'hui pour éviter un re-calcul des jours passés.
+  /// est posé sur la VEILLE (pas le jour du reset) pour que les gains du jour de
+  /// reset soient bien matérialisés demain — sinon ce jour-là serait perdu.
   Future<void> devReset() async {
     if (uid == null) return;
-    final now = DateTime.now();
+    final now = DateTime.now().subtract(const Duration(days: 1));
     final ymd = '${now.year}'
         '${now.month.toString().padLeft(2, '0')}'
         '${now.day.toString().padLeft(2, '0')}';

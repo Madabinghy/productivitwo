@@ -11,7 +11,7 @@ import 'package:productivitwo_v1/widgets/appbar_routines_summery.dart';
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
-import 'package:productivitwo_v1/gold_economy.dart';
+import 'package:productivitwo_v1/gold_engine.dart';
 
 // ---------- Constantes ----------
 const int kMinDailyGoalMin = 1; // plancher dur pour activités "time"
@@ -1947,9 +1947,7 @@ class AppLogic {
     return '${_levelTitles.last} ${_roman(level - _levelThresholds.length)}';
   }
 
-  /// Niveau ATTEINT par l'XP (or à vie), indépendamment de ce qui est révélé.
-  int earnedLevelFromXp() {
-    final xp = state.goldLifetime;
+  int _levelFromXp(int xp) {
     if (xp >= _levelThresholds.last) {
       final prestige = (xp - _levelThresholds.last) ~/ _prestigeStep;
       return _levelThresholds.length + prestige;
@@ -1964,13 +1962,24 @@ class AppLogic {
     return level;
   }
 
+  /// Niveau ATTEINT par l'or à vie matérialisé (jours clos). Sert au grant du
+  /// rang (`unlockedLevel`) à la migration/backfill — PAS le provisoire du jour.
+  int earnedLevelFromXp() => _levelFromXp(state.goldLifetime);
+
+  /// Idem mais EN INCLUANT les gains provisoires du jour (affichage live :
+  /// éligibilité à révéler un niveau dès que la journée pousse au-dessus du seuil).
+  int earnedLevelFromXpLive() =>
+      _levelFromXp(state.goldLifetime + provisionalGoldToday());
+
   /// Niveau EFFECTIF = le plus haut niveau révélé (payé). Gate séquentiel :
   /// l'XP rend éligible, mais c'est `unlockedLevel` qui fait foi pour le rang,
   /// les titres et l'accès boutique.
   int effectiveLevel() => state.unlockedLevel < 1 ? 1 : state.unlockedLevel;
 
   ({int xp, int level, String title, int xpCurrent, int xpNext}) userLevelData() {
-    final xp = state.goldLifetime;
+    // Live : on inclut les gains provisoires du jour pour que le total et la
+    // barre de progression bougent en direct (matérialisés le lendemain).
+    final xp = state.goldLifetime + provisionalGoldToday();
     final level = effectiveLevel();
     return (
       xp: xp,
@@ -1986,7 +1995,7 @@ class AppLogic {
   ({bool pending, int nextLevel, int cost, bool affordable}) levelRevealInfo() {
     final eff = effectiveLevel();
     final next = eff + 1;
-    final pending = earnedLevelFromXp() >= next;
+    final pending = earnedLevelFromXpLive() >= next;
     final cost = GoldEconomy.revealCost(next);
     return (
       pending: pending,

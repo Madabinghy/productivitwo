@@ -2166,7 +2166,9 @@ class _AppRootState extends State<AppRoot>
         WidgetService.update(logic);
         _sync.pushProductivitySnapshot(logic.productivitySnapshot());
       }
-      // Économie d'Or : migration one-shot + rattrapage des jours clos (idempotent).
+      // Économie d'Or : auto-heal d'un curseur empoisonné (reset), puis
+      // migration one-shot + rattrapage des jours clos (idempotent).
+      await logic.healGoldCursorIfNeeded(_sync);
       logic.materializeGoldUpTo(_sync, DateTime.now());
       final messages = await AssistantEngine.evaluate(
         projects: projects,
@@ -4084,56 +4086,32 @@ class _AppRootState extends State<AppRoot>
                                     ),
                                   ),
                                   const SizedBox(height: 10),
-                                  // XP du jour + courbe 7 jours
+                                  // Or du jour + courbe 7 jours
                                   Builder(builder: (_) {
                                     final now = DateTime.now();
-                                    final today = logic.xpForDay(now);
+                                    final today = logic.provisionalGoldToday();
                                     final vals = List.generate(
                                         7,
-                                        (i) => logic.xpForDay(now
+                                        (i) => logic.goldGainForDay(now
                                             .subtract(Duration(days: 6 - i))));
-                                    final maxV = vals
-                                        .fold(1, (a, b) => b > a ? b : a);
                                     return Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
-                                        Text("Aujourd'hui : +$today XP",
+                                        Text("Aujourd'hui : +$today or",
                                             style: TextStyle(
                                                 fontSize: 11,
                                                 fontWeight: FontWeight.w700,
                                                 color: cs.primary)),
                                         const SizedBox(height: 6),
                                         SizedBox(
-                                          height: 26,
-                                          child: Row(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.end,
-                                            children: [
-                                              for (int i = 0; i < 7; i++) ...[
-                                                Expanded(
-                                                  child: Container(
-                                                    height: (24 *
-                                                            vals[i] /
-                                                            maxV)
-                                                        .clamp(2, 24)
-                                                        .toDouble(),
-                                                    decoration: BoxDecoration(
-                                                      color: i == 6
-                                                          ? cs.primary
-                                                          : cs.primary
-                                                              .withValues(
-                                                                  alpha: .35),
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                              2),
-                                                    ),
-                                                  ),
-                                                ),
-                                                if (i < 6)
-                                                  const SizedBox(width: 3),
-                                              ],
-                                            ],
+                                          height: 34,
+                                          width: double.infinity,
+                                          child: CustomPaint(
+                                            painter: _GoldSparkline(
+                                              values: vals,
+                                              color: cs.primary,
+                                            ),
                                           ),
                                         ),
                                       ],
@@ -9449,4 +9427,71 @@ class _DashedLinePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_DashedLinePainter old) => old.color != color;
+}
+
+/// Courbe d'historique d'or (7 derniers jours) : ligne lissée + dégradé sous la
+/// courbe + point sur le jour courant. Échelle relative au max de la fenêtre.
+class _GoldSparkline extends CustomPainter {
+  final List<int> values;
+  final Color color;
+  const _GoldSparkline({required this.values, required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (values.isEmpty) return;
+    final maxV = values.fold(1, (a, b) => b > a ? b : a).toDouble();
+    const pad = 3.0; // marge verticale pour que le point ne soit pas rogné
+    final n = values.length;
+    final dx = n > 1 ? size.width / (n - 1) : 0.0;
+    double yFor(int v) =>
+        size.height - pad - (size.height - 2 * pad) * (v / maxV);
+
+    final pts = [
+      for (int i = 0; i < n; i++) Offset(i * dx, yFor(values[i])),
+    ];
+
+    // Tracé lissé (courbe de Catmull-Rom → Bézier cubique).
+    final line = Path()..moveTo(pts.first.dx, pts.first.dy);
+    for (int i = 0; i < n - 1; i++) {
+      final p0 = pts[i == 0 ? 0 : i - 1];
+      final p1 = pts[i];
+      final p2 = pts[i + 1];
+      final p3 = pts[i + 2 < n ? i + 2 : n - 1];
+      final c1 = Offset(p1.dx + (p2.dx - p0.dx) / 6, p1.dy + (p2.dy - p0.dy) / 6);
+      final c2 = Offset(p2.dx - (p3.dx - p1.dx) / 6, p2.dy - (p3.dy - p1.dy) / 6);
+      line.cubicTo(c1.dx, c1.dy, c2.dx, c2.dy, p2.dx, p2.dy);
+    }
+
+    // Dégradé sous la courbe.
+    final fill = Path.from(line)
+      ..lineTo(pts.last.dx, size.height)
+      ..lineTo(pts.first.dx, size.height)
+      ..close();
+    canvas.drawPath(
+      fill,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [color.withValues(alpha: .22), color.withValues(alpha: .0)],
+        ).createShader(Offset.zero & size),
+    );
+
+    canvas.drawPath(
+      line,
+      Paint()
+        ..color = color
+        ..strokeWidth = 2
+        ..style = PaintingStyle.stroke
+        ..strokeJoin = StrokeJoin.round
+        ..strokeCap = StrokeCap.round,
+    );
+
+    // Point sur le jour courant.
+    canvas.drawCircle(pts.last, 3, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(_GoldSparkline old) =>
+      old.color != color || !listEquals(old.values, values);
 }
