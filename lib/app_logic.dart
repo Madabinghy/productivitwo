@@ -106,8 +106,10 @@ class AppLogic {
 
   /// Hook posé par l'écran d'accueil pour lancer un minuteur (vraie alarme) depuis
   /// n'importe quelle feuille modale (ex. mode 5 min du donjon). Null si pas prêt.
-  void Function(int minutes, String activityName, {String? routineId})?
-      launchTimerHook;
+  void Function(int minutes, String activityName,
+      {String? routineId,
+      String? expeditionNodeId,
+      int expeditionBonus})? launchTimerHook;
 
   /// Accès Firestore pour les écritures autoritatives d'or (posé après
   /// construction dans main.dart). Null tant que non configuré.

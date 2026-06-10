@@ -101,7 +101,7 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('🪙', style: TextStyle(fontSize: 48)),
+            const GoldIcon(size: 48),
             const SizedBox(height: 8),
             Text('+${reward.gold} or',
                 style: const TextStyle(

@@ -5,6 +5,7 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/confetti.dart';
+import 'package:productivitwo_v1/widgets/gold_icon.dart';
 
 const _kGold = Color(0xFFD4A017);
 const double _rowH = 92;
@@ -128,31 +129,9 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
     if (node.type == ExpNodeType.finish && ok) await _finish();
   }
 
-  Future<void> _advanceNode(ExpeditionNode node, {int bonusGold = 0}) async {
-    setState(() => _busy = true);
-    final ok = await sync.advanceExpedition(nodeId: node.id);
-    if (ok) {
-      logic.state.expeditionCleared.add(node.id);
-      if (bonusGold > 0) {
-        logic.state.gold += bonusGold;
-        logic.addLifetimeCapped(bonusGold);
-        sync.applyGold(GoldLedgerEntry(
-            id: '${DateTime.now().microsecondsSinceEpoch}',
-            delta: bonusGold,
-            category: 'gain',
-            reasonCode: 'donjon_action',
-            label: 'Action express'));
-      }
-      logic.onChange();
-    }
-    if (!mounted) return;
-    setState(() => _busy = false);
-  }
-
   Future<void> _launchMicro(
       ExpeditionNode node, Activity routine, int minutes, int bonus) async {
     Navigator.pop(context); // ferme la feuille action express
-    await _advanceNode(node, bonusGold: bonus);
     final linkedId = (routine.linkedActivityId ?? '').trim();
     Activity? linked;
     for (final a in logic.state.activities) {
@@ -163,23 +142,34 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
     }
     if (linked != null && logic.launchTimerHook != null) {
       logic.start(linked.id);
-      logic.launchTimerHook!(minutes, linked.name, routineId: routine.id);
+      // Le nœud n'est franchi QUE si le minuteur va à son terme (validé dans
+      // _onAlarmRing). Annuler le minuteur = on reste où on est.
+      logic.launchTimerHook!(minutes, linked.name,
+          routineId: routine.id,
+          expeditionNodeId: node.id,
+          expeditionBonus: bonus);
       if (mounted) Navigator.pop(context); // ferme le donjon → on voit le minuteur
       return;
     }
     if (mounted) {
-      setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(
-              'Passage franchi — fais $minutes min sur « ${routine.name} » 💪')));
+              'Lie une activité à « ${routine.name} » pour lancer le minuteur.')));
     }
   }
 
   Future<void> _showMicroAction(ExpeditionNode node) async {
-    final routines = logic.state.activeActivities
+    final today = DateTime.now();
+    final allDaily = logic.state.activeActivities
         .where((a) =>
             a.isHabit && (a.habitFreq ?? HabitFreq.monthly) == HabitFreq.daily)
         .toList();
+    // Ne proposer que les routines PAS ENCORE faites aujourd'hui (pousser à une
+    // action fraîche, pas re-cocher un acquis).
+    final routines = allDaily.where((a) {
+      final tgt = logic.activeHabitTarget(a);
+      return tgt <= 0 || logic.habitValueOn(a.id, today) < tgt;
+    }).toList();
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -197,43 +187,69 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
                     style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 6),
                 Text(
-                    'Lance 5 min sur une routine pour franchir ce passage. Même '
-                    'inachevé, tu auras avancé. Va au bout → bonus d\'or 🪙.',
+                    'Va au bout du minuteur sur une routine pour franchir ce '
+                    'passage. Si tu arrêtes avant, tu restes ici. Version longue '
+                    '= bonus d\'or.',
                     style: TextStyle(
                         fontSize: 12.5, color: cs.onSurface.withOpacity(.6))),
                 const SizedBox(height: 14),
-                if (routines.isEmpty)
+                if (allDaily.isEmpty)
                   Text('Crée une routine quotidienne pour débloquer ce passage.',
                       style: TextStyle(
                           fontSize: 13, color: cs.onSurface.withOpacity(.6)))
+                else if (routines.isEmpty)
+                  Text(
+                      'Toutes tes routines du jour sont déjà faites 🎉 — reviens '
+                      'demain ou crée-en une nouvelle.',
+                      style: TextStyle(
+                          fontSize: 13, color: cs.onSurface.withOpacity(.6)))
                 else
-                  ...routines.map((r) {
-                    final full = (r.timerMin ?? 0) > 0 ? r.timerMin! : 15;
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: Row(children: [
-                        Expanded(
-                          child: Text(r.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  fontSize: 13.5, fontWeight: FontWeight.w600)),
-                        ),
-                        TextButton(
-                          onPressed: () => _launchMicro(node, r, 5, 0),
-                          child: const Text('5 min'),
-                        ),
-                        const SizedBox(width: 4),
-                        FilledButton(
-                          style: FilledButton.styleFrom(
-                              backgroundColor: _kGold,
-                              visualDensity: VisualDensity.compact),
-                          onPressed: () => _launchMicro(node, r, full, 5),
-                          child: Text('$full min +🪙'),
-                        ),
-                      ]),
-                    );
-                  }),
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                        maxHeight: MediaQuery.of(ctx).size.height * 0.45),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: routines.map((r) {
+                          final full =
+                              (r.timerMin ?? 0) > 0 ? r.timerMin! : 15;
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: Row(children: [
+                              Expanded(
+                                child: Text(r.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w600)),
+                              ),
+                              TextButton(
+                                onPressed: () => _launchMicro(node, r, 5, 0),
+                                child: const Text('5 min'),
+                              ),
+                              const SizedBox(width: 4),
+                              FilledButton(
+                                style: FilledButton.styleFrom(
+                                    backgroundColor: _kGold,
+                                    foregroundColor: Colors.white,
+                                    visualDensity: VisualDensity.compact),
+                                onPressed: () => _launchMicro(node, r, full, 5),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text('$full min +'),
+                                    const SizedBox(width: 3),
+                                    const GoldIcon(size: 13, color: Colors.white),
+                                  ],
+                                ),
+                              ),
+                            ]),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),

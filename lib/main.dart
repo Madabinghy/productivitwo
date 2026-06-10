@@ -1748,6 +1748,10 @@ class _AppRootState extends State<AppRoot>
   String? _countdownActivityName;
   int? _countdownTotalSec; // durée totale du minuteur en cours (pour l'anneau)
   String? _countdownRoutineId; // si le minuteur a été lancé pour une routine
+  // Nœud d'expédition à franchir SI ce minuteur va à son terme (mode 5 min du
+  // donjon). Annuler le minuteur = pas d'avancement. Reposé à chaque lancement.
+  String? _countdownExpeditionNode;
+  int _countdownExpeditionBonus = 0;
   bool _saveQueued = false;
   bool _saving = false;
 
@@ -2355,13 +2359,17 @@ class _AppRootState extends State<AppRoot>
   /// Lance un minuteur N minutes → vraie alarme (sonne même téléphone verrouillé /
   /// app en arrière-plan, jusqu'à ce que l'utilisateur l'arrête). Le Timer Dart ne
   /// sert plus qu'à rafraîchir l'affichage du temps restant.
-  void _startCountdown(int minutes, String activityName, {String? routineId}) {
+  void _startCountdown(int minutes, String activityName,
+      {String? routineId, String? expeditionNodeId, int expeditionBonus = 0}) {
     _countdownTimer?.cancel();
     final endsAt = DateTime.now().add(Duration(minutes: minutes));
     _countdownEndsAt = endsAt;
     _countdownActivityName = activityName;
     _countdownTotalSec = minutes * 60;
     _countdownRoutineId = routineId;
+    // Reposé à chaque lancement → un minuteur sans nœud efface l'ancien.
+    _countdownExpeditionNode = expeditionNodeId;
+    _countdownExpeditionBonus = expeditionBonus;
 
     final ringtone = ringtoneByKey(logic.state.alarmSound);
     Alarm.set(
@@ -2429,9 +2437,27 @@ class _AppRootState extends State<AppRoot>
       await Alarm.stop(_timerAlarmId);
       _countdownActivityName = null;
       _countdownRoutineId = null;
+      final expNode = _countdownExpeditionNode;
+      final expBonus = _countdownExpeditionBonus;
+      _countdownExpeditionNode = null;
+      _countdownExpeditionBonus = 0;
       if (logic.runningActivity() != null) logic.stopActive(); // logge le temps
       final now = DateTime.now();
       logic.incHabit(routineId, 1, DateTime(now.year, now.month, now.day));
+      // Mode 5 min du donjon : la routine est allée à son terme → on franchit le
+      // nœud. (Sur annulation on ne passe jamais ici → pas d'avancement.)
+      if (expNode != null && !logic.state.expeditionCleared.contains(expNode)) {
+        final ok = await _sync.advanceExpedition(nodeId: expNode);
+        if (ok) {
+          logic.state.expeditionCleared.add(expNode);
+          if (expBonus > 0) {
+            logic.applyGold(_sync, expBonus,
+                category: 'gain',
+                reasonCode: 'donjon_action',
+                label: 'Action express');
+          }
+        }
+      }
       _saveAndRefresh();
       if (mounted) {
         final rName = logic.state.activities
@@ -2521,6 +2547,9 @@ class _AppRootState extends State<AppRoot>
     NotificationService.cancelTimerEnd();
     _countdownActivityName = null;
     _countdownTotalSec = null;
+    // Annulation = on n'a PAS fait la routine → on ne franchit pas le nœud.
+    _countdownExpeditionNode = null;
+    _countdownExpeditionBonus = 0;
     setState(() => _countdownEndsAt = null);
   }
 
@@ -2577,8 +2606,14 @@ class _AppRootState extends State<AppRoot>
     final st = _state!;
     // Hook minuteur : permet aux feuilles modales (mode 5 min du donjon) de
     // lancer une vraie alarme via l'infra de l'accueil.
-    logic.launchTimerHook ??= (int m, String n, {String? routineId}) =>
-        _startCountdown(m, n, routineId: routineId);
+    logic.launchTimerHook ??= (int m, String n,
+            {String? routineId,
+            String? expeditionNodeId,
+            int expeditionBonus = 0}) =>
+        _startCountdown(m, n,
+            routineId: routineId,
+            expeditionNodeId: expeditionNodeId,
+            expeditionBonus: expeditionBonus);
 
 
 
