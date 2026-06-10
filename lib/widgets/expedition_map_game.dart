@@ -172,7 +172,16 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
     if (_busy) return;
     final p = _pos;
     final adjacent = (t.x - p.x).abs() + (t.y - p.y).abs() == 1;
-    if (!adjacent || t.kind == OwTileKind.wall) return;
+    if (!adjacent) return;
+    if (t.kind == OwTileKind.wall) {
+      // Mur (parfois découvert en torchant une case sous brouillard).
+      if (!_revealed.contains(t.id)) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('🧱 Un mur bloque ce passage.'),
+            duration: Duration(seconds: 1)));
+      }
+      return;
+    }
 
     final ent = _entityAt(t.id);
     if (ent != null && isPestType(ent.type)) {
@@ -512,15 +521,24 @@ class _TileView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!visible) {
-      return Container(
+      // Case sous brouillard. Si elle est adjacente à l'avatar, on la rend
+      // cliquable (torche : 6 or) avec un indice 🔦 — sinon on ne peut jamais
+      // sortir de l'anneau de départ.
+      final fog = Container(
         width: _tile,
         height: _tile,
         margin: const EdgeInsets.all(1),
+        alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: cs.onSurface.withOpacity(.10),
+          color: cs.onSurface.withOpacity(reachable ? .16 : .10),
           borderRadius: BorderRadius.circular(6),
+          border: reachable ? Border.all(color: _kGold, width: 2) : null,
         ),
+        child: reachable
+            ? const Text('🔦', style: TextStyle(fontSize: 16))
+            : null,
       );
+      return reachable ? GestureDetector(onTap: onTap, child: fog) : fog;
     }
 
     String content = '';
