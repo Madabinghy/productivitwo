@@ -7,6 +7,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/expedition_map_game.dart';
 import 'package:productivitwo_v1/widgets/expedition_sheet.dart';
 import 'package:productivitwo_v1/widgets/collection_sheet.dart';
+import 'package:productivitwo_v1/widgets/confetti.dart';
 import 'package:productivitwo_v1/widgets/gold_shop_sheet.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
 
@@ -91,6 +92,7 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
     final reward = logic.claimDailyChest(widget.sync);
     if (!mounted) return;
     setState(() {});
+    showConfetti(context);
     final cs = Theme.of(context).colorScheme;
     await showDialog<void>(
       context: context,
@@ -104,6 +106,19 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
             Text('+${reward.gold} or',
                 style: const TextStyle(
                     fontSize: 22, fontWeight: FontWeight.w900, color: _kGold)),
+            const SizedBox(height: 6),
+            Text('🔥 Série : ${reward.streak} jour${reward.streak > 1 ? 's' : ''}',
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: cs.onSurface.withOpacity(.75))),
+            if (reward.milestone > 0)
+              Text('🏆 Palier de série ! +${reward.milestone} or bonus',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1D9E75))),
             if (reward.emoji != null) ...[
               const SizedBox(height: 12),
               Text(reward.emoji!, style: const TextStyle(fontSize: 40)),
@@ -148,6 +163,7 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
           _QuestCard(
             progress: logic.dailyQuestProgress(),
             target: logic.dailyQuestTarget,
+            streak: logic.questStreak,
             claimable: logic.dailyChestClaimable(),
             claimedToday:
                 logic.state.lastQuestClaimedYmd == yyyymmdd(DateTime.now()),
@@ -378,13 +394,14 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
 /// Carte « Quête du jour » : objectif d'actions du jour → coffre à récompense
 /// variable. Dégradé doré + bouton quand le coffre est prêt (effet d'appel).
 class _QuestCard extends StatelessWidget {
-  final int progress, target;
+  final int progress, target, streak;
   final bool claimable, claimedToday;
   final Future<void> Function() onClaim;
   final ColorScheme cs;
   const _QuestCard({
     required this.progress,
     required this.target,
+    required this.streak,
     required this.claimable,
     required this.claimedToday,
     required this.onClaim,
@@ -423,6 +440,14 @@ class _QuestCard extends StatelessWidget {
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
                     color: claimable ? dark : cs.onSurface)),
+            if (streak > 0) ...[
+              const SizedBox(width: 8),
+              Text('🔥$streak',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: claimable ? dark : cs.onSurface.withOpacity(.8))),
+            ],
             const Spacer(),
             Text('$progress/$target',
                 style: TextStyle(
@@ -734,7 +759,10 @@ class _RoutineLine extends StatelessWidget {
             icon: Icons.add,
             enabled: true,
             onTap: () {
+              final before = tgt > 0 && done >= tgt;
               logic.incHabit(activity.id, 1, today);
+              final after = tgt > 0 && logic.habitValueOn(activity.id, today) >= tgt;
+              if (!before && after) showConfetti(context, count: 16);
               onChanged();
             },
             cs: cs),

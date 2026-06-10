@@ -53,6 +53,7 @@ import 'package:productivitwo_v1/widgets/weekly_review_sheet.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/widgets/expedition_map_game.dart';
 import 'package:productivitwo_v1/widgets/expedition_sheet.dart';
+import 'package:productivitwo_v1/widgets/gold_sheet.dart';
 import 'package:productivitwo_v1/widgets/gamification_hub_sheet.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
 import 'package:productivitwo_v1/widgets/orion_screen.dart';
@@ -5842,6 +5843,90 @@ class _AppRootState extends State<AppRoot>
     );
   }
 
+  /// Bannière compacte « Quête du jour » en tête de l'accueil → tap ouvre Mon or.
+  Widget _buildQuestBanner(BuildContext context, ColorScheme cs) {
+    final progress = logic.dailyQuestProgress();
+    final target = logic.dailyQuestTarget;
+    final claimable = logic.dailyChestClaimable();
+    final claimed = logic.state.lastQuestClaimedYmd == yyyymmdd(DateTime.now());
+    final streak = logic.questStreak;
+    final pct = target > 0 ? (progress / target).clamp(0.0, 1.0) : 0.0;
+    const dark = Color(0xFF3A2D00);
+    const gold = Color(0xFFD4A017);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () async {
+          await showGoldSheet(context, logic, _sync);
+          if (mounted) setState(() {});
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+                colors: claimable
+                    ? [const Color(0xFFFFE08A), gold]
+                    : [
+                        cs.surfaceContainerHighest.withOpacity(.5),
+                        cs.surfaceContainerHighest.withOpacity(.3)
+                      ]),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: gold.withOpacity(claimable ? .7 : .3)),
+          ),
+          child: Row(children: [
+            const Text('🎯', style: TextStyle(fontSize: 16)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Text('Quête du jour',
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: claimable ? dark : cs.onSurface)),
+                      if (streak > 0) ...[
+                        const SizedBox(width: 6),
+                        Text('🔥$streak',
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: claimable
+                                    ? dark
+                                    : cs.onSurface.withOpacity(.8))),
+                      ],
+                      const Spacer(),
+                      Text('$progress/$target',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: claimable
+                                  ? dark
+                                  : cs.onSurface.withOpacity(.6))),
+                    ]),
+                    const SizedBox(height: 6),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(3),
+                      child: LinearProgressIndicator(
+                          value: pct,
+                          minHeight: 5,
+                          backgroundColor: Colors.black.withOpacity(.12),
+                          color: claimable ? const Color(0xFF8A6D00) : gold),
+                    ),
+                  ]),
+            ),
+            const SizedBox(width: 10),
+            Text(claimable ? '🎁' : (claimed ? '✅' : '→'),
+                style: const TextStyle(fontSize: 16)),
+          ]),
+        ),
+      ),
+    );
+  }
+
   Widget _buildDashboardBody(BuildContext context) {
     // 1) Temps “de contexte” (scope/range). OK de recalculer au build.
     final now = DateTime.now();
@@ -5865,6 +5950,7 @@ class _AppRootState extends State<AppRoot>
 
         return ListView(
           children: [
+        _buildQuestBanner(context, cs),
         SectionCard(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
           child: Builder(

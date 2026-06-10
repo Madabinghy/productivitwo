@@ -540,15 +540,38 @@ extension GoldEngine on AppLogic {
       dailyQuestDone() &&
       state.lastQuestClaimedYmd != yyyymmdd(DateTime.now());
 
-  /// Ouvre le coffre quotidien → récompense VARIABLE (or + chance de butin).
-  /// Optimiste local + persistance. Renvoie la récompense pour l'animer.
-  ({int gold, String? emoji, String? name}) claimDailyChest(FirestoreSync sync) {
-    final ymd = yyyymmdd(DateTime.now());
-    if (state.lastQuestClaimedYmd == ymd) return (gold: 0, emoji: null, name: null);
+  /// Or de série affiché sur la carte (🔥 jours consécutifs de quête).
+  int get questStreak => state.questStreak;
+
+  /// Ouvre le coffre quotidien → récompense VARIABLE (or + bonus de série +
+  /// palier + chance de butin). Optimiste local + persistance.
+  ({int gold, String? emoji, String? name, int streak, int milestone})
+      claimDailyChest(FirestoreSync sync) {
+    final today = DateTime.now();
+    final ymd = yyyymmdd(today);
+    if (state.lastQuestClaimedYmd == ymd) {
+      return (gold: 0, emoji: null, name: null, streak: state.questStreak, milestone: 0);
+    }
+    final yesterday = yyyymmdd(today.subtract(const Duration(days: 1)));
+    final streak =
+        (state.lastQuestClaimedYmd == yesterday) ? state.questStreak + 1 : 1;
     final rng = Random();
-    final gold = GoldEconomy.questChestGoldMin +
+    var gold = GoldEconomy.questChestGoldMin +
         rng.nextInt(
             GoldEconomy.questChestGoldMax - GoldEconomy.questChestGoldMin + 1);
+    gold += (streak - 1).clamp(0, 10); // bonus de série croissant (cap +10/j)
+    // Paliers de série : grosse récompense aux jalons.
+    int milestone = 0;
+    if (streak == 3) {
+      milestone = 15;
+    } else if (streak == 7) {
+      milestone = 40;
+    } else if (streak == 14) {
+      milestone = 75;
+    } else if (streak >= 30 && streak % 30 == 0) {
+      milestone = 200;
+    }
+    gold += milestone;
     String? cid, emoji, name;
     if (rng.nextInt(100) < GoldEconomy.questChestCollectibleChancePct) {
       final pool = overworldCollectibles
@@ -567,9 +590,11 @@ extension GoldEngine on AppLogic {
       state.collection.add(cid);
     }
     state.lastQuestClaimedYmd = ymd;
+    state.questStreak = streak;
     onChange();
-    sync.claimDailyQuest(gold: gold, collectibleId: cid, ymd: ymd);
-    return (gold: gold, emoji: emoji, name: name);
+    sync.claimDailyQuest(
+        gold: gold, collectibleId: cid, ymd: ymd, questStreak: streak);
+    return (gold: gold, emoji: emoji, name: name, streak: streak, milestone: milestone);
   }
 
   /// Or que rapporterait une routine si elle est validée aujourd'hui (gain de

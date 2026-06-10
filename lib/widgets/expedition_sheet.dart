@@ -4,6 +4,7 @@ import 'package:productivitwo_v1/expedition.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/widgets/confetti.dart';
 
 const _kGold = Color(0xFFD4A017);
 const double _rowH = 92;
@@ -128,6 +129,7 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
       logic.onChange();
     }
     if (!mounted) return;
+    showConfetti(context);
     final lvl = logic.userLevelData();
     await showDialog<void>(
       context: context,

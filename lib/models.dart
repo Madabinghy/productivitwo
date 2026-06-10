@@ -698,6 +698,7 @@ class AppState {
   String? goldEpochYmd;
   // Quête du jour : dernier jour où le coffre quotidien a été ouvert (anti-rejeu).
   String? lastQuestClaimedYmd;
+  int questStreak; // jours consécutifs où la quête a été accomplie
   // Défis du donjon préparés par Orion (JSON strings), liés au niveau visé.
   // Écrits par Orion (serveur) ; l'app les lit et auto-valide depuis ses données.
   // {level, type:'routine'|'task'|'time', refId, target, label}
@@ -772,6 +773,7 @@ class AppState {
     this.goldTodayGainYmd,
     this.goldEpochYmd,
     this.lastQuestClaimedYmd,
+    this.questStreak = 0,
     this.expeditionDonjonLevel = 0,
     List<String>? expeditionChallenges,
     // ✅ NOUVEAU
@@ -884,6 +886,7 @@ class AppState {
         'goldTodayGainYmd': goldTodayGainYmd,
         'goldEpochYmd': goldEpochYmd,
         'lastQuestClaimedYmd': lastQuestClaimedYmd,
+        'questStreak': questStreak,
         'weeklyScoreTarget': weeklyScoreTarget,
         'notifHour': notifHour,
         'notifMinute': notifMinute,
@@ -1018,6 +1021,7 @@ class AppState {
       goldTodayGainYmd: j['goldTodayGainYmd'] as String?,
       goldEpochYmd: j['goldEpochYmd'] as String?,
       lastQuestClaimedYmd: j['lastQuestClaimedYmd'] as String?,
+      questStreak: (j['questStreak'] as num?)?.toInt() ?? 0,
       weeklyScoreTarget: (j['weeklyScoreTarget'] as int?) ?? 80,
       notifHour: (j['notifHour'] as int?) ?? 9,
       notifMinute: (j['notifMinute'] as int?) ?? 0,

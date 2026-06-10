@@ -256,6 +256,7 @@ class FirestoreSync {
         goldTodayGainYmd: meta['goldTodayGainYmd'] as String?,
         goldEpochYmd: meta['goldEpochYmd'] as String?,
         lastQuestClaimedYmd: meta['lastQuestClaimedYmd'] as String?,
+        questStreak: (meta['questStreak'] as num?)?.toInt() ?? 0,
         weeklyScoreTarget: meta['weeklyScoreTarget'] ?? 80,
         notifHour: meta['notifHour'] ?? 9,
         notifMinute: meta['notifMinute'] ?? 0,
@@ -361,6 +362,7 @@ class FirestoreSync {
       goldTodayGainYmd:      local.goldLifetime >= remote.goldLifetime ? local.goldTodayGainYmd : remote.goldTodayGainYmd,
       goldEpochYmd:          local.goldLifetime >= remote.goldLifetime ? local.goldEpochYmd : remote.goldEpochYmd,
       lastQuestClaimedYmd:   local.goldLifetime >= remote.goldLifetime ? local.lastQuestClaimedYmd : remote.lastQuestClaimedYmd,
+      questStreak:           local.goldLifetime >= remote.goldLifetime ? local.questStreak : remote.questStreak,
       notifHour:             local.notifHour,
       notifMinute:           local.notifMinute,
       notifEnabled:          local.notifEnabled,
@@ -871,7 +873,7 @@ class FirestoreSync {
   /// Coffre de la quête du jour : crédite l'or (lifetime plafonné), ajoute le
   /// butin éventuel à la collection, et marque le jour comme réclamé (anti-rejeu).
   Future<void> claimDailyQuest(
-      {required int gold, String? collectibleId, required String ymd}) async {
+      {required int gold, String? collectibleId, required String ymd, required int questStreak}) async {
     if (uid == null) return;
     final metaRef = _meta();
     await _db.runTransaction((tx) async {
@@ -893,6 +895,7 @@ class FirestoreSync {
             'goldLifetime': lifetime,
             'collection': coll,
             'lastQuestClaimedYmd': ymd,
+            'questStreak': questStreak,
           },
           SetOptions(merge: true));
     });
