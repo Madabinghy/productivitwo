@@ -4000,29 +4000,53 @@ class _AppRootState extends State<AppRoot>
                           onTap: () => showDialog(
                             context: ctx,
                             builder: (_) => AlertDialog(
-                              title: const Text('Comment gagner de l\'XP ?'),
-                              content: const Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('🔥  Streaks de routines',
-                                      style: TextStyle(fontWeight: FontWeight.w700)),
-                                  SizedBox(height: 4),
-                                  Text('3 jours → 10 XP\n7 jours → 25 XP\n21 jours → 75 XP\n66 jours → 200 XP\n100 jours → 500 XP',
-                                      style: TextStyle(fontSize: 13)),
-                                  SizedBox(height: 12),
-                                  Text('✅  Actions complétées',
-                                      style: TextStyle(fontWeight: FontWeight.w700)),
-                                  SizedBox(height: 4),
-                                  Text('10 actions → 15 XP\n50 actions → 50 XP\n100 actions → 100 XP',
-                                      style: TextStyle(fontSize: 13)),
-                                  SizedBox(height: 12),
-                                  Text('🎯  Score journalier',
-                                      style: TextStyle(fontWeight: FontWeight.w700)),
-                                  SizedBox(height: 4),
-                                  Text('Score parfait → 30 XP\n7 jours à 80 %+ → 50 XP\n30 jours à 80 %+ → 150 XP',
-                                      style: TextStyle(fontSize: 13)),
-                                ],
+                              title: const Text('Comment marche l\'or ?'),
+                              content: SingleChildScrollView(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('💰  Gagner de l\'or',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.w700)),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '🔁  Routine validée : +${GoldEconomy.routineMet} or/jour '
+                                      '(+1 tous les ${GoldEconomy.routineStreakBonusStep} jours de série, '
+                                      'jusqu\'à +${GoldEconomy.routineStreakBonusCap} → '
+                                      'max ${GoldEconomy.routineMet + GoldEconomy.routineStreakBonusCap}/jour)\n'
+                                      '⏱️  Temps loggué : +${GoldEconomy.timePerHour} or / heure\n'
+                                      '✅  Action de projet cochée : +${GoldEconomy.ganttAction} or\n'
+                                      '🏆  Défi relevé : +${GoldEconomy.challengeDone} or\n'
+                                      '✨  Multiplicateur ×2 (boutique) : double tes gains du jour',
+                                      style: const TextStyle(fontSize: 13),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    const Text('💸  Perdre de l\'or',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.w700)),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '🔁  Routine lancée puis manquée : −${GoldEconomy.routineMissed} or/jour\n'
+                                      '⏰  Tâche en retard : −${GoldEconomy.lateTaskPerDay} or/jour par tâche\n'
+                                      '⏳  Repousser une échéance : −${GoldEconomy.deadlinePush} or\n'
+                                      '🗑️  Supprimer : action −${GoldEconomy.deleteAction}, '
+                                      'routine −${GoldEconomy.deleteRoutine}, '
+                                      'tâche/projet selon le contenu',
+                                      style: const TextStyle(fontSize: 13),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      '🏅  L\'or sert à révéler tes niveaux et à acheter '
+                                      'des protections en boutique. Ton niveau, lui, ne '
+                                      'descend jamais : l\'or gagné à vie est conservé.',
+                                      style: TextStyle(
+                                          fontSize: 13,
+                                          color:
+                                              cs.onSurface.withValues(alpha: .7)),
+                                    ),
+                                  ],
+                                ),
                               ),
                               actions: [
                                 TextButton(
