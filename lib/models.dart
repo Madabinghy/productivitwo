@@ -709,6 +709,7 @@ class AppState {
   // Niveau dont le donjon a DÉJÀ été ouvert → on y entre directement ensuite
   // (la 1ʳᵉ fois on passe par l'overworld pour trouver le château). 0 = jamais.
   int expeditionDonjonLevel;
+  int expeditionGuardianKilledLevel; // niveau dont le gardien a été vaincu (0=aucun)
 
   AppState({
     required this.domains,
@@ -781,6 +782,7 @@ class AppState {
     this.lastQuestClaimedYmd,
     this.questStreak = 0,
     this.expeditionDonjonLevel = 0,
+    this.expeditionGuardianKilledLevel = 0,
     List<String>? expeditionChallenges,
     // ✅ NOUVEAU
     Map<String, List<String>>? nowSkippedByYmd,
@@ -888,6 +890,7 @@ class AppState {
         'expeditionEntities': expeditionEntities,
         'expeditionChallenges': expeditionChallenges,
         'expeditionDonjonLevel': expeditionDonjonLevel,
+        'expeditionGuardianKilledLevel': expeditionGuardianKilledLevel,
         'collection': collection,
         'collectionMeta': collectionMeta,
         'lastFreeStepYmd': lastFreeStepYmd,
@@ -1026,6 +1029,7 @@ class AppState {
       expeditionChallenges:
           (j['expeditionChallenges'] as List?)?.cast<String>() ?? <String>[],
       expeditionDonjonLevel: (j['expeditionDonjonLevel'] as num?)?.toInt() ?? 0,
+      expeditionGuardianKilledLevel: (j['expeditionGuardianKilledLevel'] as num?)?.toInt() ?? 0,
       collection: (j['collection'] as List?)?.cast<String>() ?? <String>[],
       collectionMeta: (j['collectionMeta'] as Map?)?.map((k, v) => MapEntry(k.toString(), v.toString())) ?? <String, String>{},
       lastFreeStepYmd: j['lastFreeStepYmd'] as String?,

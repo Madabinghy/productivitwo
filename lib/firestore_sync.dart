@@ -251,6 +251,8 @@ class FirestoreSync {
             (meta['expeditionChallenges'] as List?)?.cast<String>(),
         expeditionDonjonLevel:
             (meta['expeditionDonjonLevel'] as num?)?.toInt() ?? 0,
+        expeditionGuardianKilledLevel:
+            (meta['expeditionGuardianKilledLevel'] as num?)?.toInt() ?? 0,
         collection: (meta['collection'] as List?)?.cast<String>(),
         collectionMeta: (meta['collectionMeta'] as Map?)?.map((k, v) => MapEntry(k.toString(), v.toString())),
         lastFreeStepYmd: meta['lastFreeStepYmd'] as String?,
@@ -359,6 +361,7 @@ class FirestoreSync {
       // Défis : écrits par Orion (serveur) → on garde la version distante dès qu'elle existe.
       expeditionChallenges:  remote.expeditionChallenges.isNotEmpty ? remote.expeditionChallenges : local.expeditionChallenges,
       expeditionDonjonLevel: local.expeditionDonjonLevel >= remote.expeditionDonjonLevel ? local.expeditionDonjonLevel : remote.expeditionDonjonLevel,
+      expeditionGuardianKilledLevel: local.expeditionGuardianKilledLevel >= remote.expeditionGuardianKilledLevel ? local.expeditionGuardianKilledLevel : remote.expeditionGuardianKilledLevel,
       collection:            local.collection.length >= remote.collection.length ? local.collection : remote.collection,
       collectionMeta:        local.collection.length >= remote.collection.length ? local.collectionMeta : remote.collectionMeta,
       lastFreeStepYmd:       local.goldLifetime >= remote.goldLifetime ? local.lastFreeStepYmd : remote.lastFreeStepYmd,
@@ -873,6 +876,13 @@ class FirestoreSync {
     if (uid == null) return;
     await _meta()
         .set({'expeditionChallenges': challenges}, SetOptions(merge: true));
+  }
+
+  /// Mémorise le niveau dont le gardien a été vaincu.
+  Future<void> setExpeditionGuardianKilled(int level) async {
+    if (uid == null) return;
+    await _meta()
+        .set({'expeditionGuardianKilledLevel': level}, SetOptions(merge: true));
   }
 
   /// Mémorise le niveau dont le donjon a été ouvert (entrée auto ensuite).

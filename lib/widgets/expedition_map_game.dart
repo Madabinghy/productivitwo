@@ -96,6 +96,17 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
         ..addAll(pruned);
       changed['ent'] = true;
     }
+    // Gardien garanti du niveau (mini-boss permanent jusqu'à sa mort).
+    if (logic.state.expeditionGuardianKilledLevel != _level &&
+        !logic.state.expeditionEntities
+            .any((e) => decodeEntity(e).meta == 'guardian')) {
+      final gt = _guardianTile();
+      if (gt != null) {
+        logic.state.expeditionEntities.add(
+            encodeEntity(GoldEconomy.pestTypeForLevel(_level), gt, 'guardian'));
+        changed['ent'] = true;
+      }
+    }
     if (changed.isNotEmpty) {
       logic.onChange();
       sync.expeditionWrite(
@@ -110,6 +121,7 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
     return logic.state.expeditionEntities.where((e) {
       final ent = decodeEntity(e);
       if (!isPestType(ent.type) || ent.meta.isEmpty) return true; // bonus persiste
+      if (ent.meta == 'guardian') return true; // gardien permanent
       final diff = today.difference(_parseYmd(ent.meta)).inDays;
       return diff < GoldEconomy.pestLifespanDays(ent.type);
     }).toList();
@@ -117,6 +129,18 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
 
   DateTime _parseYmd(String y) => DateTime(int.parse(y.substring(0, 4)),
       int.parse(y.substring(4, 6)), int.parse(y.substring(6, 8)));
+
+  /// Tuile (déterministe par niveau) où poser le gardien : un floor sans
+  /// collectible, vers le milieu du parcours.
+  String? _guardianTile() {
+    final floors = _map.all
+        .where((t) => t.kind == OwTileKind.floor && t.collectibleId == null)
+        .toList()
+      ..sort((a, b) => (a.y * 100 + a.x).compareTo(b.y * 100 + b.x));
+    if (floors.isEmpty) return null;
+    final t = floors[(_level * 7 + floors.length ~/ 2) % floors.length];
+    return '${t.x}_${t.y}';
+  }
 
   List<Point<int>> _neighbors(int x, int y,
       {bool includeSelf = false, int radius = 1}) {
