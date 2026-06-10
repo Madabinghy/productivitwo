@@ -200,42 +200,19 @@ class GoldEconomy {
     return gain < room ? gain : room;
   }
 
-  // ── Valeur du temps par niveau ──────────────────────────────────────────────
-  // Plus on monte, plus l'or se mérite. Taux PLEIN (1ʳᵉ tranche) : niv.1 → 5 min
-  // = 1 or, puis +2 min/or par niveau, plancher de générosité à 40 min/or.
-  // Principal knob de tuning de l'économie.
-  static int minutesPerGold(int level) {
-    final l = level < 1 ? 1 : level;
-    return (5 + (l - 1) * 2).clamp(5, 40);
-  }
+  // ── Valeur du temps ─────────────────────────────────────────────────────────
+  // Taux PLAT : 1 or / 15 min loggué, quel que soit le niveau. Choisi plutôt que
+  // le dégressif car le temps loggué INCLUT le sommeil — pénaliser les grosses
+  // journées punirait injustement qui logue ses nuits. Plafond naturel : 20 h/j
+  // (max physique) → 80 or/jour sur le temps. [level] gardé pour pouvoir réactiver
+  // un scaling plus tard sans toucher les appelants.
+  static const int flatMinutesPerGold = 15;
 
-  // Rendements dégressifs sur le temps d'une journée : la 1ʳᵉ tranche paie plein
-  // (onboarding motivant), puis le taux se tasse pour ne pas sur-récompenser les
-  // très grosses journées. Un casual (<90 min) garde le plein tarif ; seul le
-  // gros logueur est freiné. Niv.1 : 6h → 39 or (vs 72 en linéaire), 10h → 51.
-  static const int timeTier1Min = 90; // tranche pleine
-  static const int timeTier2Min = 150; // tranche suivante à demi-tarif (×2)
-  // au-delà → quart de tarif (×4)
+  static int minutesPerGold(int level) => flatMinutesPerGold;
 
-  /// Or gagné pour [minutes] de temps loggué au niveau [level], en rendements
-  /// dégressifs (arrondi bas par tranche). Les paliers sont des multiples du taux
-  /// plein → pas de perte d'arrondi sur les bornes.
-  static int goldForMinutes(int minutes, int level) {
-    if (minutes <= 0) return 0;
-    final r = minutesPerGold(level); // taux plein (min/or)
-    var rest = minutes;
-    var gold = 0;
-    final t1 = rest < timeTier1Min ? rest : timeTier1Min; // 0-90 min, plein
-    gold += t1 ~/ r;
-    rest -= t1;
-    if (rest > 0) {
-      final t2 = rest < timeTier2Min ? rest : timeTier2Min; // 90-240 min, ×2
-      gold += t2 ~/ (r * 2);
-      rest -= t2;
-    }
-    if (rest > 0) gold += rest ~/ (r * 4); // au-delà de 240 min, ×4
-    return gold;
-  }
+  /// Or gagné pour [minutes] de temps loggué (arrondi bas). Plat : minutes / 15.
+  static int goldForMinutes(int minutes, int level) =>
+      minutes <= 0 ? 0 : minutes ~/ flatMinutesPerGold;
 
   // ── Quête du jour + coffre (motiver à en faire plus) ───────────────────────
   static const int dailyQuestTarget = 3; // actions à accomplir aujourd'hui
