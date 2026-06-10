@@ -64,6 +64,8 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
   @override
   void initState() {
     super.initState();
+    // Solde à jour des gains du jour : on doit pouvoir financer la carte de suite.
+    logic.reconcileLiveGold(sync);
     final changed = <String, dynamic>{};
     // Position absente ou périmée (hors carte courante) → repart du départ.
     final p = logic.state.expeditionPos;

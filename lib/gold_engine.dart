@@ -124,6 +124,30 @@ extension GoldEngine on AppLogic {
     await sync.applyGoldBatch(const [], newCursor: rewound);
   }
 
+  /// Crédite EN TEMPS RÉEL les gains du jour sur le SOLDE dépensable (pas l'XP,
+  /// qui reste en clôture — son affichage est déjà live via le provisoire).
+  /// Idempotent : `goldTodayGain` suit le flottant déjà crédité, on n'ajoute que
+  /// le delta. Au changement de jour, on retire l'ancien flottant — le jour clos
+  /// sera recrédité par `materializeGoldUpTo`. À appeler à l'ouverture des écrans
+  /// d'or / avant une dépense / au démarrage / au resume.
+  void reconcileLiveGold(FirestoreSync sync) {
+    final ymd = yyyymmdd(DateTime.now());
+    var netDelta = 0;
+    if (state.goldTodayGainYmd != ymd) {
+      netDelta -= state.goldTodayGain; // retire le flottant de la veille
+      state.goldTodayGain = 0;
+      state.goldTodayGainYmd = ymd;
+    }
+    final earned = goldGainForDay(DateTime.now());
+    netDelta += earned - state.goldTodayGain;
+    state.goldTodayGain = earned;
+    if (netDelta == 0) return;
+    state.gold += netDelta;
+    if (state.gold < 0) state.gold = 0;
+    onChange();
+    sync.creditLiveGold(netDelta, ymd, earned);
+  }
+
   /// Matérialise gains/pertes pour chaque jour CLOS non encore traité
   /// (strictement entre le curseur et aujourd'hui). Idempotent : ids déterministes
   /// + curseur → un jour n'est jamais compté deux fois.

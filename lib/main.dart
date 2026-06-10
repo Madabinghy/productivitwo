@@ -1983,6 +1983,7 @@ class _AppRootState extends State<AppRoot>
     if (_state == null) return; // pas encore initialisé
     if (state == AppLifecycleState.resumed) {
       FcmService.clearOrionBadge();
+      logic.reconcileLiveGold(_sync); // gains du jour dispo de suite au retour
       _restoreCountdownFromAlarm(); // le minuteur survit au quitter/rouvrir
       // évite de scanner trop souvent (ex: toutes les 6h)
       if (DateTime.now().difference(_lastGlobalScan) >
@@ -2170,6 +2171,8 @@ class _AppRootState extends State<AppRoot>
       // migration one-shot + rattrapage des jours clos (idempotent).
       await logic.healGoldCursorIfNeeded(_sync);
       logic.materializeGoldUpTo(_sync, DateTime.now());
+      // Crédite les gains du jour sur le solde (dépensables de suite).
+      logic.reconcileLiveGold(_sync);
       final messages = await AssistantEngine.evaluate(
         projects: projects,
         domains: _state!.domains,

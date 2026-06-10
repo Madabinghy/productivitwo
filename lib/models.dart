@@ -688,6 +688,11 @@ class AppState {
   List<String> expeditionEntities; // nuisibles/bonus vivants "type:x_y:spawnYmd"
   List<String> collection;         // collectibles trouvés à vie (persistant → écran Collection)
   String? lastFreeStepYmd;         // jour du dernier pas gratuit (yyyymmdd)
+  // Or des gains du jour crédité EN TEMPS RÉEL sur le solde (dépensable de suite).
+  // `goldTodayGain` = montant flottant déjà crédité pour `goldTodayGainYmd` ;
+  // retiré à la clôture (materialize recrédite alors le jour clos).
+  int goldTodayGain;
+  String? goldTodayGainYmd;
   // Défis du donjon préparés par Orion (JSON strings), liés au niveau visé.
   // Écrits par Orion (serveur) ; l'app les lit et auto-valide depuis ses données.
   // {level, type:'routine'|'task'|'time', refId, target, label}
@@ -755,6 +760,8 @@ class AppState {
     List<String>? expeditionEntities,
     List<String>? collection,
     this.lastFreeStepYmd,
+    this.goldTodayGain = 0,
+    this.goldTodayGainYmd,
     List<String>? expeditionChallenges,
     // ✅ NOUVEAU
     Map<String, List<String>>? nowSkippedByYmd,
@@ -861,6 +868,8 @@ class AppState {
         'expeditionChallenges': expeditionChallenges,
         'collection': collection,
         'lastFreeStepYmd': lastFreeStepYmd,
+        'goldTodayGain': goldTodayGain,
+        'goldTodayGainYmd': goldTodayGainYmd,
         'weeklyScoreTarget': weeklyScoreTarget,
         'notifHour': notifHour,
         'notifMinute': notifMinute,
@@ -990,6 +999,8 @@ class AppState {
           (j['expeditionChallenges'] as List?)?.cast<String>() ?? <String>[],
       collection: (j['collection'] as List?)?.cast<String>() ?? <String>[],
       lastFreeStepYmd: j['lastFreeStepYmd'] as String?,
+      goldTodayGain: (j['goldTodayGain'] as num?)?.toInt() ?? 0,
+      goldTodayGainYmd: j['goldTodayGainYmd'] as String?,
       weeklyScoreTarget: (j['weeklyScoreTarget'] as int?) ?? 80,
       notifHour: (j['notifHour'] as int?) ?? 9,
       notifMinute: (j['notifMinute'] as int?) ?? 0,

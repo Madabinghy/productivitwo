@@ -38,6 +38,13 @@ class _GoldShopSheetState extends State<_GoldShopSheet> {
   AppLogic get logic => widget.logic;
   bool _busy = false;
 
+  @override
+  void initState() {
+    super.initState();
+    // Solde à jour des gains du jour (dépensables de suite) à l'ouverture.
+    logic.reconcileLiveGold(widget.sync);
+  }
+
   int get _gold => logic.gold;
   int get _level => logic.effectiveLevel();
   int _inv(String k) => logic.state.goldInventory[k] ?? 0;

@@ -250,6 +250,8 @@ class FirestoreSync {
             (meta['expeditionChallenges'] as List?)?.cast<String>(),
         collection: (meta['collection'] as List?)?.cast<String>(),
         lastFreeStepYmd: meta['lastFreeStepYmd'] as String?,
+        goldTodayGain: (meta['goldTodayGain'] as num?)?.toInt() ?? 0,
+        goldTodayGainYmd: meta['goldTodayGainYmd'] as String?,
         weeklyScoreTarget: meta['weeklyScoreTarget'] ?? 80,
         notifHour: meta['notifHour'] ?? 9,
         notifMinute: meta['notifMinute'] ?? 0,
@@ -350,6 +352,8 @@ class FirestoreSync {
       expeditionChallenges:  remote.expeditionChallenges.isNotEmpty ? remote.expeditionChallenges : local.expeditionChallenges,
       collection:            local.collection.length >= remote.collection.length ? local.collection : remote.collection,
       lastFreeStepYmd:       local.goldLifetime >= remote.goldLifetime ? local.lastFreeStepYmd : remote.lastFreeStepYmd,
+      goldTodayGain:         local.goldLifetime >= remote.goldLifetime ? local.goldTodayGain : remote.goldTodayGain,
+      goldTodayGainYmd:      local.goldLifetime >= remote.goldLifetime ? local.goldTodayGainYmd : remote.goldTodayGainYmd,
       notifHour:             local.notifHour,
       notifMinute:           local.notifMinute,
       notifEnabled:          local.notifEnabled,
@@ -824,6 +828,25 @@ class FirestoreSync {
   /// Applique un seul événement d'or (raccourci).
   Future<Map<String, int>> applyGold(GoldLedgerEntry entry) =>
       applyGoldBatch([entry]);
+
+  /// Crédite/retire en TEMPS RÉEL [delta] d'or sur le solde, et mémorise le
+  /// flottant du jour ([todayGain] pour [ymd]). Ne touche NI au lifetime/XP NI
+  /// au ledger : sert au crédit live des gains du jour (dépensables de suite).
+  Future<void> creditLiveGold(int delta, String ymd, int todayGain) async {
+    if (uid == null) return;
+    final metaRef = _meta();
+    await _db.runTransaction((tx) async {
+      final data = (await tx.get(metaRef)).data() as Map<String, dynamic>? ?? {};
+      var gold = (data['gold'] as num?)?.toInt() ?? 0;
+      gold += delta;
+      if (gold < 0) gold = 0;
+      tx.set(metaRef, {
+        'gold': gold,
+        'goldTodayGain': todayGain,
+        'goldTodayGainYmd': ymd,
+      }, SetOptions(merge: true));
+    });
+  }
 
   /// Vrai si AU MOINS un des docs ledger [ids] existe. Sert à l'auto-heal :
   /// les ids étant déterministes (`time_$ymd`, `rmet_<id>_$ymd`…), leur absence

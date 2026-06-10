@@ -60,6 +60,13 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
   FirestoreSync get sync => widget.sync;
   ScrollController? get scrollController => widget.scrollController;
 
+  @override
+  void initState() {
+    super.initState();
+    // Crédite les gains du jour sur le solde affiché (dépensables de suite).
+    logic.reconcileLiveGold(widget.sync);
+  }
+
   // AppLogic n'est pas un Listenable : `incHabit`/gel mutent l'état en place,
   // ce refresh local rebuild le sheet sans le rouvrir.
   void _refresh() {
