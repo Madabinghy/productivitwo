@@ -95,6 +95,85 @@ class _GoldShopSheetState extends State<_GoldShopSheet> {
     ));
   }
 
+  Future<void> _equipAvatar(String id, String emoji, int price) async {
+    if (_busy) return;
+    final cosmId = 'avatar_$id';
+    final owned = price == 0 || logic.state.cosmeticsOwned.contains(cosmId);
+    if (owned) {
+      logic.state.activeAvatar = emoji;
+      logic.onChange();
+      await widget.sync
+          .purchaseGold(price: 0, label: 'Avatar : $emoji', setActiveAvatar: emoji);
+      setState(() {});
+      return;
+    }
+    setState(() => _busy = true);
+    final ok = await widget.sync.purchaseGold(
+        price: price,
+        label: 'Avatar $emoji',
+        addCosmetic: cosmId,
+        setActiveAvatar: emoji);
+    if (ok) {
+      logic.state.gold -= price;
+      logic.state.cosmeticsOwned.add(cosmId);
+      logic.state.activeAvatar = emoji;
+      logic.onChange();
+    }
+    if (!mounted) return;
+    setState(() => _busy = false);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(ok ? 'Avatar $emoji équipé.' : 'Solde insuffisant.'),
+    ));
+  }
+
+  Widget _avatarChip(
+      ({String id, String emoji, String name, int price}) sk, ColorScheme cs) {
+    final cosmId = 'avatar_${sk.id}';
+    final owned = sk.price == 0 || logic.state.cosmeticsOwned.contains(cosmId);
+    final active = (logic.state.activeAvatar ?? '🧍') == sk.emoji;
+    return GestureDetector(
+      onTap: _busy ? null : () => _equipAvatar(sk.id, sk.emoji, sk.price),
+      child: Container(
+        width: 88,
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: active
+              ? _kGold.withOpacity(.18)
+              : cs.surfaceContainerHighest.withOpacity(.4),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+              color: active ? _kGold : cs.outlineVariant.withOpacity(.4),
+              width: active ? 2 : 1),
+        ),
+        child: Column(children: [
+          Text(sk.emoji, style: const TextStyle(fontSize: 26)),
+          const SizedBox(height: 2),
+          Text(sk.name,
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis),
+          const SizedBox(height: 2),
+          if (active)
+            const Text('✓ équipé',
+                style: TextStyle(
+                    fontSize: 10, color: _kGold, fontWeight: FontWeight.w700))
+          else if (owned)
+            Text('équiper',
+                style:
+                    TextStyle(fontSize: 10, color: cs.onSurface.withOpacity(.6)))
+          else
+            Text('${sk.price} 🪙',
+                style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: _gold >= sk.price
+                        ? cs.onSurface.withOpacity(.7)
+                        : cs.error)),
+        ]),
+      ),
+    );
+  }
+
   Future<void> _useGel() async {
     final habits =
         logic.state.activeActivities.where((a) => a.isHabit).toList();
@@ -305,6 +384,11 @@ class _GoldShopSheetState extends State<_GoldShopSheet> {
     logic.state.goldTodayGainYmd = null;
     logic.state.goldEpochYmd = fmt(now);
     logic.state.expeditionDonjonLevel = 0; // repasse par l'overworld
+    logic.state.cosmeticsOwned.clear();
+    logic.state.activeTitle = null;
+    logic.state.activeAvatar = null;
+    logic.state.lastQuestClaimedYmd = null;
+    logic.state.questStreak = 0;
     logic.onChange();
     if (mounted) {
       setState(() {});
@@ -552,6 +636,22 @@ class _GoldShopSheetState extends State<_GoldShopSheet> {
               onTap: () => _buyTitle(title, price),
               cs: cs,
             ),
+
+          const SizedBox(height: 20),
+          Text('AVATARS',
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1,
+                  color: cs.onSurface.withOpacity(.5))),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final sk in GoldEconomy.avatarSkins) _avatarChip(sk, cs),
+            ],
+          ),
 
           // ── 🧪 DEV / TEST (temporaire — à retirer avant prod) ─────────────
           const SizedBox(height: 20),

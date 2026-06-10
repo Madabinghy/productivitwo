@@ -236,6 +236,7 @@ class FirestoreSync {
         goldBoostDays: (meta['goldBoostDays'] as List?)?.cast<String>(),
         cosmeticsOwned: (meta['cosmeticsOwned'] as List?)?.cast<String>(),
         activeTitle: meta['activeTitle'] as String?,
+        activeAvatar: meta['activeAvatar'] as String?,
         unlockedLevel: (meta['unlockedLevel'] as num?)?.toInt() ?? 0,
         expeditionCleared:
             (meta['expeditionCleared'] as List?)?.cast<String>(),
@@ -922,6 +923,7 @@ class FirestoreSync {
     String? incInventory,
     String? addCosmetic,
     String? setActiveTitle,
+    String? setActiveAvatar,
   }) async {
     if (uid == null) return false;
     final metaRef = _meta();
@@ -947,6 +949,7 @@ class FirestoreSync {
         update['cosmeticsOwned'] = owned;
       }
       if (setActiveTitle != null) update['activeTitle'] = setActiveTitle;
+      if (setActiveAvatar != null) update['activeAvatar'] = setActiveAvatar;
       tx.set(metaRef, update, SetOptions(merge: true));
       tx.set(_col('gold_ledger').doc(ledgerId), GoldLedgerEntry(
         id: ledgerId, delta: -price, category: 'spend',
@@ -1182,6 +1185,11 @@ class FirestoreSync {
       'goldTodayGainYmd': null,
       'goldEpochYmd': fmt(today), // l'historique d'or/XP repart d'aujourd'hui
       'expeditionDonjonLevel': 0, // repasse par l'overworld (pas d'entrée auto)
+      'cosmeticsOwned': <String>[], // titres/skins re-verrouillés
+      'activeTitle': null,
+      'activeAvatar': null,
+      'lastQuestClaimedYmd': null,
+      'questStreak': 0,
     }, SetOptions(merge: true));
     // Purge le ledger (liste « Historique ») pour repartir propre.
     final ledger = await _col('gold_ledger').get();

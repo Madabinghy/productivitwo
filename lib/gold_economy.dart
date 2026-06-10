@@ -149,6 +149,19 @@ class GoldEconomy {
   static int weaponBasePrice(String key) =>
       key == 'epee' ? weaponEpee : weaponSandale;
 
+  // ── Skins d'avatar (cosmétiques, puits d'or) ───────────────────────────────
+  // Possédés via cosmeticsOwned ('avatar_<id>') ; activeAvatar stocke l'emoji.
+  static const List<({String id, String emoji, String name, int price})>
+      avatarSkins = [
+    (id: 'default', emoji: '🧍', name: 'Aventurier', price: 0),
+    (id: 'mage', emoji: '🧙', name: 'Mage', price: 30),
+    (id: 'cowboy', emoji: '🤠', name: 'Cowboy', price: 50),
+    (id: 'ninja', emoji: '🥷', name: 'Ninja', price: 70),
+    (id: 'hero', emoji: '🦸', name: 'Héros', price: 100),
+    (id: 'wizard', emoji: '🧚', name: 'Fée', price: 120),
+    (id: 'robot', emoji: '🤖', name: 'Robot', price: 150),
+  ];
+
   /// Type d'ennemi qui apparaît selon le niveau (force croissante) : araignée
   /// (niv.1-2), scorpion (3-4), serpent (5+). Le serpent exige l'épée (tâche).
   static String pestTypeForLevel(int level) {

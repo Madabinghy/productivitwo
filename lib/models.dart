@@ -679,6 +679,7 @@ class AppState {
   List<String> goldBoostDays;  // jours à gains ×2 : "YYYYMMDD"
   List<String> cosmeticsOwned; // cosmétiques possédés (ex: titres)
   String? activeTitle;         // titre cosmétique actif (override du titre de niveau)
+  String? activeAvatar;        // emoji du skin d'avatar actif sur la carte (null = 🧍)
   int unlockedLevel;           // niveau effectif RÉVÉLÉ (payé) : l'XP rend éligible, on paie pour débloquer le titre/niveau (gate séquentiel)
   List<String> expeditionCleared; // nœuds franchis (V1 donjon, Phase 2) ; vidé à la complétion
   // ── Overworld (carte 2D explorable, per-map ; vidés à la complétion) ──
@@ -761,6 +762,7 @@ class AppState {
     List<String>? goldBoostDays,
     List<String>? cosmeticsOwned,
     this.activeTitle,
+    this.activeAvatar,
     this.unlockedLevel = 1,
     List<String>? expeditionCleared,
     List<String>? expeditionRevealed,
@@ -872,6 +874,7 @@ class AppState {
         'goldBoostDays': goldBoostDays,
         'cosmeticsOwned': cosmeticsOwned,
         'activeTitle': activeTitle,
+        'activeAvatar': activeAvatar,
         'unlockedLevel': unlockedLevel,
         'expeditionCleared': expeditionCleared,
         'expeditionRevealed': expeditionRevealed,
@@ -1001,6 +1004,7 @@ class AppState {
           (j['goldBoostDays'] as List?)?.cast<String>() ?? <String>[],
       cosmeticsOwned: (j['cosmeticsOwned'] as List?)?.cast<String>() ?? <String>[],
       activeTitle: j['activeTitle'] as String?,
+      activeAvatar: j['activeAvatar'] as String?,
       // 0 = champ absent (doc antérieur au gate) → backfill one-shot au rang acquis.
       unlockedLevel: (j['unlockedLevel'] as num?)?.toInt() ?? 0,
       expeditionCleared:

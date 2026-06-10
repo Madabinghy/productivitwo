@@ -537,6 +537,7 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
                               tile: _map.at(x, y),
                               visible: _revealed.contains('${x}_$y'),
                               isAvatar: pos.x == x && pos.y == y,
+                              avatarEmoji: logic.state.activeAvatar ?? '🧍',
                               reachable:
                                   (x - pos.x).abs() + (y - pos.y).abs() == 1,
                               entity: _entityAt('${x}_$y'),
@@ -560,6 +561,7 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
 class _TileView extends StatelessWidget {
   final OwTile tile;
   final bool visible, isAvatar, reachable;
+  final String avatarEmoji;
   final ({String raw, String type, String tile, String meta})? entity;
   final Set<String> picked;
   final ColorScheme cs;
@@ -568,6 +570,7 @@ class _TileView extends StatelessWidget {
     required this.tile,
     required this.visible,
     required this.isAvatar,
+    this.avatarEmoji = '🧍',
     required this.reachable,
     required this.entity,
     required this.picked,
@@ -621,7 +624,7 @@ class _TileView extends StatelessWidget {
         !picked.contains(tile.collectibleId)) {
       content = collectibleById(tile.collectibleId!)?.emoji ?? '✨';
     }
-    if (isAvatar) content = '🧍';
+    if (isAvatar) content = avatarEmoji;
 
     return GestureDetector(
       onTap: onTap,
