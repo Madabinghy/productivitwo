@@ -164,8 +164,8 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
     final tile = eligible[_rng.nextInt(eligible.length)];
     if (trendPct < 0) {
       if (_livePests >= GoldEconomy.maxLivePests) return null;
-      final roll = _rng.nextInt(100);
-      final type = roll < 55 ? 'spider' : (roll < 85 ? 'scorpion' : 'snake');
+      // L'ennemi dépend du NIVEAU (force croissante), pas du hasard.
+      final type = GoldEconomy.pestTypeForLevel(_level);
       return encodeEntity(type, tile, _ymd());
     } else {
       final amount = GoldEconomy.bonusGoldMin +

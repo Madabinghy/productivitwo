@@ -350,6 +350,7 @@ extension GoldEngine on AppLogic {
       final refId = m['refId'] as String? ?? '';
       final tgt = (m['target'] as num?)?.toInt() ?? 1;
       final label = m['label'] as String? ?? '';
+      final since = m['createdYmd'] as String?; // ne compte qu'À PARTIR d'ici
       switch (type) {
         case 'task':
           final done = _taskIsDone(refId);
@@ -359,14 +360,14 @@ extension GoldEngine on AppLogic {
           ));
           break;
         case 'routine':
-          final p = _routineMetDays(refId).clamp(0, tgt);
+          final p = _routineMetDays(refId, since).clamp(0, tgt);
           out.add((
             label: label, type: type,
             target: tgt, progress: p, done: p >= tgt,
           ));
           break;
         case 'time':
-          final p = _activityLoggedMinutes(refId).clamp(0, tgt);
+          final p = _activityLoggedMinutes(refId, since).clamp(0, tgt);
           out.add((
             label: label, type: type,
             target: tgt, progress: p, done: p >= tgt,
@@ -407,12 +408,14 @@ extension GoldEngine on AppLogic {
     final out = <String>[];
     final days = GoldEconomy.challengeRoutineDays(target);
     final mins = GoldEconomy.challengeTimeMinutes(target);
+    final created = yyyymmdd(DateTime.now()); // défi compté À PARTIR d'ici
 
     // 1 routine active (habitude mesurable) — difficulté scalée par niveau.
     for (final a in state.activeActivities) {
       if (a.isHabit && activeHabitTarget(a) > 0) {
         out.add(jsonEncode({
           'level': target, 'type': 'routine', 'refId': a.id, 'target': days,
+          'createdYmd': created,
           'label': days == 1
               ? 'Fais la routine « ${a.name} » aujourd\'hui'
               : 'Fais la routine « ${a.name} » pendant $days jours',
@@ -440,6 +443,7 @@ extension GoldEngine on AppLogic {
     if (bestTask != null) {
       out.add(jsonEncode({
         'level': target, 'type': 'task', 'refId': bestTask.id, 'target': 1,
+        'createdYmd': created,
         'label': 'Termine la tâche « ${bestTask.title} »',
       }));
     }
@@ -449,6 +453,7 @@ extension GoldEngine on AppLogic {
       if (!a.isHabit) {
         out.add(jsonEncode({
           'level': target, 'type': 'time', 'refId': a.id, 'target': mins,
+          'createdYmd': created,
           'label': 'Logue $mins min sur « ${a.name} »',
         }));
         break;
@@ -478,7 +483,7 @@ extension GoldEngine on AppLogic {
     return false;
   }
 
-  int _routineMetDays(String activityId) {
+  int _routineMetDays(String activityId, [String? since]) {
     Activity? a;
     for (final x in state.activities) {
       if (x.id == activityId) {
@@ -491,15 +496,19 @@ extension GoldEngine on AppLogic {
     if (tgt <= 0) return 0;
     var days = 0;
     for (final hp in state.habitProgress) {
-      if (hp.activityId == activityId && hp.value >= tgt) days++;
+      if (hp.activityId != activityId || hp.value < tgt) continue;
+      if (since != null && hp.yyyymmdd.compareTo(since) < 0) continue;
+      days++;
     }
     return days;
   }
 
-  int _activityLoggedMinutes(String activityId) {
+  int _activityLoggedMinutes(String activityId, [String? since]) {
     var min = 0;
     for (final s in state.sessions) {
-      if (s.activityId == activityId) min += s.duration.inMinutes;
+      if (s.activityId != activityId) continue;
+      if (since != null && yyyymmdd(s.startAt).compareTo(since) < 0) continue;
+      min += s.duration.inMinutes;
     }
     return min;
   }

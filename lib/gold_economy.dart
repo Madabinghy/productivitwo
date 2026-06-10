@@ -149,6 +149,14 @@ class GoldEconomy {
   static int weaponBasePrice(String key) =>
       key == 'epee' ? weaponEpee : weaponSandale;
 
+  /// Type d'ennemi qui apparaît selon le niveau (force croissante) : araignée
+  /// (niv.1-2), scorpion (3-4), serpent (5+). Le serpent exige l'épée (tâche).
+  static String pestTypeForLevel(int level) {
+    if (level <= 2) return 'spider';
+    if (level <= 4) return 'scorpion';
+    return 'snake';
+  }
+
   // ── Niveaux & plafond d'XP (source de vérité partagée) ─────────────────────
   // Seuils d'or-à-vie pour atteindre chaque niveau (1-15), puis prestige par
   // crans de [prestigeStep]. Déplacés ici depuis app_logic pour être partagés
