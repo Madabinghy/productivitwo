@@ -260,29 +260,7 @@ extension GoldEngine on AppLogic {
       }
     }
 
-    // ── Nuisibles vivants sur la carte d'expédition (drain journalier fixe) ────
-    out.addAll(_pestDrainForDay(ymd));
-    return out;
-  }
-
-  /// Entrées de drain des nuisibles vivants le jour [ymd] (idempotent, id stable).
-  List<GoldLedgerEntry> _pestDrainForDay(String ymd) {
-    final out = <GoldLedgerEntry>[];
-    for (final e in state.expeditionEntities) {
-      final ent = decodeEntity(e);
-      if (!isPestType(ent.type) || ent.meta.isEmpty) continue;
-      final spawn = ent.meta;
-      final life = GoldEconomy.pestLifespanDays(ent.type);
-      final diff = _parseYmd(ymd).difference(_parseYmd(spawn)).inDays;
-      if (diff >= 0 && diff < life) {
-        out.add(GoldLedgerEntry(
-            id: 'pestdrain_${ent.type}_${ent.tile}_$ymd',
-            delta: -GoldEconomy.pestCost(ent.type),
-            category: 'loss',
-            reasonCode: 'pest_drain',
-            label: '${pestName(ent.type)} sur la carte'));
-      }
-    }
+    // (Le drain des nuisibles est désormais HORAIRE — voir drainPestsHourly.)
     return out;
   }
 
@@ -313,10 +291,6 @@ extension GoldEngine on AppLogic {
       progress: done, target: target, ready: done >= target,
     );
   }
-
-  /// Drain provisoire des nuisibles vivants AUJOURD'HUI (pour le net projeté).
-  int pestDrainToday() => _pestDrainForDay(yyyymmdd(DateTime.now()))
-      .fold(0, (s, e) => s + e.delta);
 
   /// Une routine est « lancée » si elle a été complétée au moins une fois ≤ d.
   bool _routineLaunchedBy(Activity a, DateTime d) {
@@ -535,16 +509,61 @@ extension GoldEngine on AppLogic {
     final epoch = state.goldEpochYmd;
     if (epoch != null && ymd.compareTo(epoch) < 0) return 0;
     final mult = state.goldBoostDays.contains(ymd) ? 2 : 1; // ×2 du jour
+    final cursed = pestsAlive; // un ennemi vivant maudit tes routines (gain ÷2)
     var g = GoldEconomy.goldForMinutes(totalForDay(d).inMinutes, effectiveLevel());
     g += (state.challengeWinsByDay[ymd] ?? 0) * GoldEconomy.challengeDone;
     g += (state.ganttActionsByDay[ymd] ?? 0) * GoldEconomy.ganttAction;
     for (final a in state.activeActivities.where((x) => x.isHabit)) {
       final tgt = activeHabitTarget(a);
       if (tgt > 0 && habitValueOn(a.id, d) >= tgt) {
-        g += GoldEconomy.routineGain(habitStreakEndingOn(a.id, d));
+        var rg = GoldEconomy.routineGain(habitStreakEndingOn(a.id, d));
+        if (cursed) rg = (rg / 2).ceil(); // malus de combat
+        g += rg;
       }
     }
     return g * mult;
+  }
+
+  /// Vrai si au moins un nuisible est vivant sur la carte (applique le malus).
+  bool get pestsAlive =>
+      state.expeditionEntities.any((e) => isPestType(decodeEntity(e).type));
+
+  /// Drain HORAIRE des nuisibles : à chaque visite de la carte, on retire
+  /// (somme des forces : 2/3/5 or/h) × heures écoulées (plafonné 12 h). Remplace
+  /// l'ancien drain quotidien. À appeler à l'ouverture de l'overworld.
+  void drainPestsHourly(FirestoreSync sync) {
+    final now = DateTime.now();
+    final live = state.expeditionEntities
+        .where((e) => isPestType(decodeEntity(e).type))
+        .toList();
+    if (live.isEmpty) {
+      state.lastPestDrainAt = now.toIso8601String();
+      return;
+    }
+    final last = state.lastPestDrainAt != null
+        ? DateTime.tryParse(state.lastPestDrainAt!)
+        : null;
+    final hours =
+        last == null ? 0 : (now.difference(last).inMinutes ~/ 60).clamp(0, 12);
+    state.lastPestDrainAt = now.toIso8601String();
+    if (hours <= 0) {
+      onChange();
+      return;
+    }
+    final rate = live.fold<int>(
+        0, (s, e) => s + GoldEconomy.pestCost(decodeEntity(e).type));
+    final drain = rate * hours;
+    if (drain <= 0) return;
+    state.gold -= drain;
+    if (state.gold < 0) state.gold = 0;
+    onChange();
+    sync.applyGold(GoldLedgerEntry(
+      id: '${DateTime.now().microsecondsSinceEpoch}',
+      delta: -drain,
+      category: 'loss',
+      reasonCode: 'pest_drain_hourly',
+      label: 'Nuisibles (−$rate or/h × ${hours}h)',
+    ));
   }
 
   /// Or provisoire gagné aujourd'hui (gains seuls, sans pénalité — jour non clos).
@@ -653,7 +672,7 @@ extension GoldEngine on AppLogic {
   int projectedGoldNetToday() {
     final losses = bleedingRoutines().length * GoldEconomy.routineMissed +
         lateTasks().length * GoldEconomy.lateTaskPerDay;
-    return provisionalGoldToday() - losses + pestDrainToday();
+    return provisionalGoldToday() - losses;
   }
 
   /// Routines lancées mais NON faites aujourd'hui (saignent −1/j), avec l'or

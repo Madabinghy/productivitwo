@@ -692,6 +692,8 @@ class _RoutineLine extends StatelessWidget {
     final validated = tgt > 0 && done >= tgt;
     final gain = logic.routineGainToday(activity);
     final green = Colors.green.shade700;
+    final frozen = logic.state.goldGelDays
+        .contains('${activity.id}_${yyyymmdd(today)}');
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -711,6 +713,10 @@ class _RoutineLine extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                       color: validated ? green : null)),
               Row(children: [
+                if (frozen) ...[
+                  const Text('🧊', style: TextStyle(fontSize: 12)),
+                  const SizedBox(width: 6),
+                ],
                 Text.rich(
                   TextSpan(children: [
                     TextSpan(text: '+$gain'),

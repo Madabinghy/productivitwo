@@ -690,6 +690,7 @@ class AppState {
   List<String> collection;         // collectibles trouvés à vie (persistant → écran Collection)
   Map<String, String> collectionMeta; // id → 'ymd|provenance' (où/quand obtenu)
   String? lastFreeStepYmd;         // jour du dernier pas gratuit (yyyymmdd)
+  String? lastPestDrainAt;         // ISO : dernier drain horaire des nuisibles
   // Or des gains du jour crédité EN TEMPS RÉEL sur le solde (dépensable de suite).
   // `goldTodayGain` = montant flottant déjà crédité pour `goldTodayGainYmd` ;
   // retiré à la clôture (materialize recrédite alors le jour clos).
@@ -773,6 +774,7 @@ class AppState {
     List<String>? collection,
     Map<String, String>? collectionMeta,
     this.lastFreeStepYmd,
+    this.lastPestDrainAt,
     this.goldTodayGain = 0,
     this.goldTodayGainYmd,
     this.goldEpochYmd,
@@ -889,6 +891,7 @@ class AppState {
         'collection': collection,
         'collectionMeta': collectionMeta,
         'lastFreeStepYmd': lastFreeStepYmd,
+        'lastPestDrainAt': lastPestDrainAt,
         'goldTodayGain': goldTodayGain,
         'goldTodayGainYmd': goldTodayGainYmd,
         'goldEpochYmd': goldEpochYmd,
@@ -1026,6 +1029,7 @@ class AppState {
       collection: (j['collection'] as List?)?.cast<String>() ?? <String>[],
       collectionMeta: (j['collectionMeta'] as Map?)?.map((k, v) => MapEntry(k.toString(), v.toString())) ?? <String, String>{},
       lastFreeStepYmd: j['lastFreeStepYmd'] as String?,
+      lastPestDrainAt: j['lastPestDrainAt'] as String?,
       goldTodayGain: (j['goldTodayGain'] as num?)?.toInt() ?? 0,
       goldTodayGainYmd: j['goldTodayGainYmd'] as String?,
       goldEpochYmd: j['goldEpochYmd'] as String?,
