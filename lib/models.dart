@@ -693,6 +693,9 @@ class AppState {
   // retiré à la clôture (materialize recrédite alors le jour clos).
   int goldTodayGain;
   String? goldTodayGainYmd;
+  // Jour de départ de l'économie (posé au reset) : la courbe d'or/XP ignore les
+  // jours AVANT cet epoch → on repart de zéro et l'XP remonte à partir d'ici.
+  String? goldEpochYmd;
   // Défis du donjon préparés par Orion (JSON strings), liés au niveau visé.
   // Écrits par Orion (serveur) ; l'app les lit et auto-valide depuis ses données.
   // {level, type:'routine'|'task'|'time', refId, target, label}
@@ -762,6 +765,7 @@ class AppState {
     this.lastFreeStepYmd,
     this.goldTodayGain = 0,
     this.goldTodayGainYmd,
+    this.goldEpochYmd,
     List<String>? expeditionChallenges,
     // ✅ NOUVEAU
     Map<String, List<String>>? nowSkippedByYmd,
@@ -870,6 +874,7 @@ class AppState {
         'lastFreeStepYmd': lastFreeStepYmd,
         'goldTodayGain': goldTodayGain,
         'goldTodayGainYmd': goldTodayGainYmd,
+        'goldEpochYmd': goldEpochYmd,
         'weeklyScoreTarget': weeklyScoreTarget,
         'notifHour': notifHour,
         'notifMinute': notifMinute,
@@ -1001,6 +1006,7 @@ class AppState {
       lastFreeStepYmd: j['lastFreeStepYmd'] as String?,
       goldTodayGain: (j['goldTodayGain'] as num?)?.toInt() ?? 0,
       goldTodayGainYmd: j['goldTodayGainYmd'] as String?,
+      goldEpochYmd: j['goldEpochYmd'] as String?,
       weeklyScoreTarget: (j['weeklyScoreTarget'] as int?) ?? 80,
       notifHour: (j['notifHour'] as int?) ?? 9,
       notifMinute: (j['notifMinute'] as int?) ?? 0,

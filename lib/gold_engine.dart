@@ -488,6 +488,9 @@ extension GoldEngine on AppLogic {
   int goldGainForDay(DateTime day) {
     final d = DateTime(day.year, day.month, day.day);
     final ymd = yyyymmdd(d);
+    // Jours AVANT l'epoch (reset) → ignorés : l'historique repart de zéro.
+    final epoch = state.goldEpochYmd;
+    if (epoch != null && ymd.compareTo(epoch) < 0) return 0;
     final mult = state.goldBoostDays.contains(ymd) ? 2 : 1; // ×2 du jour
     var g = GoldEconomy.goldForMinutes(totalForDay(d).inMinutes, effectiveLevel());
     g += (state.challengeWinsByDay[ymd] ?? 0) * GoldEconomy.challengeDone;

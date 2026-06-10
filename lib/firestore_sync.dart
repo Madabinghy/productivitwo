@@ -252,6 +252,7 @@ class FirestoreSync {
         lastFreeStepYmd: meta['lastFreeStepYmd'] as String?,
         goldTodayGain: (meta['goldTodayGain'] as num?)?.toInt() ?? 0,
         goldTodayGainYmd: meta['goldTodayGainYmd'] as String?,
+        goldEpochYmd: meta['goldEpochYmd'] as String?,
         weeklyScoreTarget: meta['weeklyScoreTarget'] ?? 80,
         notifHour: meta['notifHour'] ?? 9,
         notifMinute: meta['notifMinute'] ?? 0,
@@ -354,6 +355,7 @@ class FirestoreSync {
       lastFreeStepYmd:       local.goldLifetime >= remote.goldLifetime ? local.lastFreeStepYmd : remote.lastFreeStepYmd,
       goldTodayGain:         local.goldLifetime >= remote.goldLifetime ? local.goldTodayGain : remote.goldTodayGain,
       goldTodayGainYmd:      local.goldLifetime >= remote.goldLifetime ? local.goldTodayGainYmd : remote.goldTodayGainYmd,
+      goldEpochYmd:          local.goldLifetime >= remote.goldLifetime ? local.goldEpochYmd : remote.goldEpochYmd,
       notifHour:             local.notifHour,
       notifMinute:           local.notifMinute,
       notifEnabled:          local.notifEnabled,
@@ -1113,10 +1115,11 @@ class FirestoreSync {
   /// reset soient bien matérialisés demain — sinon ce jour-là serait perdu.
   Future<void> devReset() async {
     if (uid == null) return;
-    final now = DateTime.now().subtract(const Duration(days: 1));
-    final ymd = '${now.year}'
-        '${now.month.toString().padLeft(2, '0')}'
-        '${now.day.toString().padLeft(2, '0')}';
+    String fmt(DateTime d) => '${d.year}'
+        '${d.month.toString().padLeft(2, '0')}'
+        '${d.day.toString().padLeft(2, '0')}';
+    final today = DateTime.now();
+    final yesterday = fmt(today.subtract(const Duration(days: 1)));
     await _meta().set({
       'gold': 0,
       'goldLifetime': 0,
@@ -1126,11 +1129,24 @@ class FirestoreSync {
       'expeditionPos': null,
       'expeditionPicked': <String>[],
       'expeditionEntities': <String>[],
+      'expeditionChallenges': <String>[],
       'collection': <String>[],
       'lastFreeStepYmd': null,
       'goldInventory': <String, int>{},
-      'goldLastProcessedDay': ymd,
+      'goldLastProcessedDay': yesterday, // gains du jour de reset matérialisés demain
+      'goldTodayGain': 0,
+      'goldTodayGainYmd': null,
+      'goldEpochYmd': fmt(today), // l'historique d'or/XP repart d'aujourd'hui
     }, SetOptions(merge: true));
+    // Purge le ledger (liste « Historique ») pour repartir propre.
+    final ledger = await _col('gold_ledger').get();
+    for (var i = 0; i < ledger.docs.length; i += 400) {
+      final batch = _db.batch();
+      for (final doc in ledger.docs.skip(i).take(400)) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+    }
   }
 
   /// Pose un gel de série sur une routine pour un jour (consomme 1 gel d'inventaire).

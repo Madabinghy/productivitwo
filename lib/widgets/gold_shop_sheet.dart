@@ -282,6 +282,9 @@ class _GoldShopSheetState extends State<_GoldShopSheet> {
     );
     if (ok != true) return;
     await widget.sync.devReset();
+    String fmt(DateTime d) => '${d.year}'
+        '${d.month.toString().padLeft(2, '0')}'
+        '${d.day.toString().padLeft(2, '0')}';
     final now = DateTime.now();
     logic.state.gold = 0;
     logic.state.goldLifetime = 0;
@@ -291,12 +294,16 @@ class _GoldShopSheetState extends State<_GoldShopSheet> {
     logic.state.expeditionPos = null;
     logic.state.expeditionPicked.clear();
     logic.state.expeditionEntities.clear();
+    logic.state.expeditionChallenges.clear();
     logic.state.collection.clear();
     logic.state.lastFreeStepYmd = null;
     logic.state.goldInventory.clear();
-    logic.state.goldLastProcessedDay = '${now.year}'
-        '${now.month.toString().padLeft(2, '0')}'
-        '${now.day.toString().padLeft(2, '0')}';
+    // Aligné sur sync.devReset : curseur hier (le jour de reset se matérialise
+    // demain), epoch aujourd'hui (l'historique repart d'ici), flottant remis à 0.
+    logic.state.goldLastProcessedDay = fmt(now.subtract(const Duration(days: 1)));
+    logic.state.goldTodayGain = 0;
+    logic.state.goldTodayGainYmd = null;
+    logic.state.goldEpochYmd = fmt(now);
     logic.onChange();
     if (mounted) {
       setState(() {});
