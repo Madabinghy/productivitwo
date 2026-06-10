@@ -229,72 +229,116 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
   }
 
   Future<void> _showCombatSheet(String raw, String type, String weapon) async {
-    await showModalBottomSheet<void>(
+    await showGeneralDialog<void>(
       context: context,
-      showDragHandle: true,
-      builder: (ctx) {
-        final cs = Theme.of(ctx).colorScheme;
+      barrierDismissible: true,
+      barrierLabel: 'Combat',
+      barrierColor: Colors.black.withOpacity(.6),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (ctx, a1, a2) {
         final forge = logic.weaponForgeStatus(weapon);
         final pct = forge.target > 0
             ? (forge.progress / forge.target).clamp(0.0, 1.0)
             : 0.0;
         return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  Text(entityEmoji(type), style: const TextStyle(fontSize: 28)),
-                  const SizedBox(width: 10),
-                  Text('${pestName(type)} — Combat',
-                      style: const TextStyle(
-                          fontSize: 17, fontWeight: FontWeight.w800)),
-                ]),
-                const SizedBox(height: 8),
-                Text(
-                    'Cet ennemi te draine de l\'or chaque jour. Forge ton arme par '
-                    'l\'action pour le vaincre — pas avec de l\'or.',
-                    style: TextStyle(
-                        fontSize: 12.5, color: cs.onSurface.withOpacity(.6))),
-                const SizedBox(height: 14),
-                Text(forge.label,
-                    style: const TextStyle(
-                        fontSize: 13.5, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: pct,
-                    minHeight: 7,
-                    backgroundColor: cs.onSurface.withOpacity(.10),
-                    color: _kGold,
+          child: Center(
+            child: SingleChildScrollView(
+              child: Container(
+                margin: const EdgeInsets.all(24),
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF2A0E0E), Color(0xFF5A1A1A)],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
                   ),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: const Color(0xFFE24A4A), width: 2),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x66E24A4A), blurRadius: 24)
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text('${forge.progress} / ${forge.target}',
-                    style: TextStyle(
-                        fontSize: 11, color: cs.onSurface.withOpacity(.5))),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    style:
-                        FilledButton.styleFrom(backgroundColor: cs.error),
-                    icon: const Text('⚔️', style: TextStyle(fontSize: 15)),
-                    label: Text(forge.ready
-                        ? 'Frapper !'
-                        : 'Forge ton arme d\'abord'),
-                    onPressed: forge.ready
-                        ? () {
-                            Navigator.pop(ctx);
-                            _strike(raw, type);
-                          }
-                        : null,
-                  ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('\u2694\uFE0F COMBAT',
+                        style: TextStyle(
+                            fontSize: 13,
+                            letterSpacing: 3,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFFFFC9C9))),
+                    const SizedBox(height: 16),
+                    Text(entityEmoji(type), style: const TextStyle(fontSize: 78)),
+                    const SizedBox(height: 4),
+                    Text(pestName(type),
+                        style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white)),
+                    const SizedBox(height: 6),
+                    Text(
+                        'Il maudit tes routines (gain \u00f72) et te draine de l\'or \u00e0 l\'heure. Forge ton arme par l\'action pour le vaincre.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.white.withOpacity(.7))),
+                    const SizedBox(height: 22),
+                    Text(forge.label,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white)),
+                    const SizedBox(height: 10),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(5),
+                      child: LinearProgressIndicator(
+                        value: pct,
+                        minHeight: 9,
+                        backgroundColor: Colors.white.withOpacity(.15),
+                        color: const Color(0xFFFFC247),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text('${forge.progress} / ${forge.target}',
+                        style: TextStyle(
+                            fontSize: 11, color: Colors.white.withOpacity(.6))),
+                    const SizedBox(height: 22),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: forge.ready
+                              ? const Color(0xFFE24A4A)
+                              : Colors.white.withOpacity(.18),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        icon: Text(forge.ready ? '\u2694\uFE0F' : '\ud83d\udd12',
+                            style: const TextStyle(fontSize: 16)),
+                        label: Text(
+                            forge.ready
+                                ? 'FRAPPER !'
+                                : 'Forge ton arme d\'abord',
+                            style: const TextStyle(
+                                fontSize: 15, fontWeight: FontWeight.w800)),
+                        onPressed: forge.ready
+                            ? () {
+                                Navigator.pop(ctx);
+                                _strike(raw, type);
+                              }
+                            : null,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: Text('Fuir',
+                          style:
+                              TextStyle(color: Colors.white.withOpacity(.6))),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         );
