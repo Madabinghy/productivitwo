@@ -77,8 +77,10 @@ workflows:
         key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
         issuer_id: $APP_STORE_CONNECT_ISSUER_ID
         submit_to_testflight: true
-        beta_groups:
-          - "Testeurs productivitwo"
+        # « Testeurs productivitwo » est un groupe INTERNE : les builds y sont
+        # distribués automatiquement après upload. Assigner un groupe interne via
+        # l'API échoue (« Cannot add internal group to a build ») → on ne liste
+        # PAS beta_groups ici. (Pour un groupe EXTERNE, il faudrait le remettre.)
       email:
         recipients:
           - emeric.edmond@gmail.com
