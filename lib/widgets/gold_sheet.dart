@@ -442,7 +442,7 @@ class _LossPill extends StatelessWidget {
           Icon(Icons.trending_down_rounded,
               size: compact ? 11 : 12, color: Colors.white),
           const SizedBox(width: 3),
-          Text('1 or/j',
+          Text('1 or',
               style: TextStyle(
                   fontSize: compact ? 10 : 11,
                   fontWeight: FontWeight.w800,
@@ -561,10 +561,6 @@ class _RoutineLine extends StatelessWidget {
                       style: TextStyle(
                           fontSize: 11, color: cs.onSurface.withOpacity(.5))),
                 ],
-                if (bleeding) ...[
-                  const SizedBox(width: 8),
-                  const _LossPill(compact: true),
-                ],
               ]),
             ],
           ),
@@ -603,7 +599,9 @@ class _RoutineLine extends StatelessWidget {
               onChanged();
             },
             cs: cs),
-        if (bleeding)
+        if (bleeding) ...[
+          const SizedBox(width: 6),
+          const _LossPill(compact: true),
           TextButton(
             onPressed: () => _freeze(context),
             style: TextButton.styleFrom(
@@ -611,6 +609,7 @@ class _RoutineLine extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 4)),
             child: const Text('Geler', style: TextStyle(fontSize: 12)),
           ),
+        ],
       ]),
     );
   }
