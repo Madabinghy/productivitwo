@@ -286,6 +286,34 @@ extension GoldEngine on AppLogic {
     return out;
   }
 
+  /// Progression de la « forge » d'une arme par l'ACTION RÉELLE (pas par l'or) :
+  /// 🗡️ épée = 3 actions de projet cochées aujourd'hui (priorité au travail) ;
+  /// 🩴 sandale = 3 routines validées aujourd'hui. Prête → on peut frapper.
+  ({String label, int progress, int target, bool ready}) weaponForgeStatus(
+      String weaponKey) {
+    final today = DateTime.now();
+    if (weaponKey == 'epee') {
+      const target = 3;
+      final n = (state.ganttActionsByDay[yyyymmdd(today)] ?? 0).clamp(0, target);
+      return (
+        label: 'Forge l\'épée 🗡️ : coche 3 actions de projet aujourd\'hui',
+        progress: n, target: target, ready: n >= target,
+      );
+    }
+    const target = 3;
+    var done = 0;
+    for (final a in state.activeActivities) {
+      if (!a.isHabit) continue;
+      final tgt = activeHabitTarget(a);
+      if (tgt > 0 && habitValueOn(a.id, today) >= tgt) done++;
+    }
+    done = done.clamp(0, target);
+    return (
+      label: 'Forge la sandale 🩴 : fais 3 routines aujourd\'hui',
+      progress: done, target: target, ready: done >= target,
+    );
+  }
+
   /// Drain provisoire des nuisibles vivants AUJOURD'HUI (pour le net projeté).
   int pestDrainToday() => _pestDrainForDay(yyyymmdd(DateTime.now()))
       .fold(0, (s, e) => s + e.delta);

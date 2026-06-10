@@ -4,7 +4,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/expedition.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
-import 'package:productivitwo_v1/gold_purchase.dart';
+import 'package:productivitwo_v1/widgets/confetti.dart';
 import 'package:productivitwo_v1/widgets/expedition_sheet.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
 
@@ -191,44 +191,113 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
 
     final ent = _entityAt(t.id);
     if (ent != null && isPestType(ent.type)) {
-      await _killPest(ent.raw, ent.type);
+      await _engageCombat(ent.raw, ent.type);
       return;
     }
     await _move(t, ent);
   }
 
-  Future<void> _killPest(String raw, String type) async {
+  /// Combat : on FORGE l'arme par l'action réelle (pas par l'or). Si l'arme est
+  /// prête → on frappe ; sinon on ouvre la feuille de combat (progression).
+  Future<void> _engageCombat(String raw, String type) async {
     final weapon = GoldEconomy.weaponForPest(type);
-    if ((logic.state.goldInventory[weapon] ?? 0) < 1) {
-      final price = GoldEconomy.scaledPrice(
-          GoldEconomy.weaponBasePrice(weapon), logic.effectiveLevel());
-      final label = weapon == 'epee' ? '🗡️ Épée' : '🩴 Sandale';
-      final bought = await offerBuyConsumable(context, sync,
-          itemKey: weapon,
-          price: price,
-          label: label,
-          rationale: 'Pour tuer ${pestName(type)}, il te faut une « $label ».',
-          logic: logic);
-      if (!bought) return;
+    final forge = logic.weaponForgeStatus(weapon);
+    if (forge.ready) {
+      await _strike(raw, type);
+    } else {
+      await _showCombatSheet(raw, type, weapon);
     }
+  }
+
+  Future<void> _strike(String raw, String type) async {
     final newEntities =
         logic.state.expeditionEntities.where((e) => e != raw).toList();
     setState(() => _busy = true);
-    await sync.expeditionWrite(
-        consumeInventory: weapon,
-        entities: newEntities,
-        reasonCode: 'pest_kill');
-    logic.state.goldInventory[weapon] =
-        (logic.state.goldInventory[weapon] ?? 1) - 1;
+    await sync.expeditionWrite(entities: newEntities, reasonCode: 'pest_kill');
     logic.state.expeditionEntities
       ..clear()
       ..addAll(newEntities);
     logic.onChange();
     if (!mounted) return;
     setState(() => _busy = false);
+    showConfetti(context, count: 18);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('${entityEmoji(type)} ${pestName(type)} éliminé !'),
+        content: Text('⚔️ ${entityEmoji(type)} ${pestName(type)} vaincu !'),
         duration: const Duration(seconds: 1)));
+  }
+
+  Future<void> _showCombatSheet(String raw, String type, String weapon) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        final forge = logic.weaponForgeStatus(weapon);
+        final pct = forge.target > 0
+            ? (forge.progress / forge.target).clamp(0.0, 1.0)
+            : 0.0;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Text(entityEmoji(type), style: const TextStyle(fontSize: 28)),
+                  const SizedBox(width: 10),
+                  Text('${pestName(type)} — Combat',
+                      style: const TextStyle(
+                          fontSize: 17, fontWeight: FontWeight.w800)),
+                ]),
+                const SizedBox(height: 8),
+                Text(
+                    'Cet ennemi te draine de l\'or chaque jour. Forge ton arme par '
+                    'l\'action pour le vaincre — pas avec de l\'or.',
+                    style: TextStyle(
+                        fontSize: 12.5, color: cs.onSurface.withOpacity(.6))),
+                const SizedBox(height: 14),
+                Text(forge.label,
+                    style: const TextStyle(
+                        fontSize: 13.5, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: pct,
+                    minHeight: 7,
+                    backgroundColor: cs.onSurface.withOpacity(.10),
+                    color: _kGold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text('${forge.progress} / ${forge.target}',
+                    style: TextStyle(
+                        fontSize: 11, color: cs.onSurface.withOpacity(.5))),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    style:
+                        FilledButton.styleFrom(backgroundColor: cs.error),
+                    icon: const Text('⚔️', style: TextStyle(fontSize: 15)),
+                    label: Text(forge.ready
+                        ? 'Frapper !'
+                        : 'Forge ton arme d\'abord'),
+                    onPressed: forge.ready
+                        ? () {
+                            Navigator.pop(ctx);
+                            _strike(raw, type);
+                          }
+                        : null,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _move(OwTile t,
