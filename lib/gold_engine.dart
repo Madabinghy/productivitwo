@@ -376,13 +376,17 @@ extension GoldEngine on AppLogic {
 
   List<String> _buildChallengesForLevel(int target) {
     final out = <String>[];
+    final days = GoldEconomy.challengeRoutineDays(target);
+    final mins = GoldEconomy.challengeTimeMinutes(target);
 
-    // 1 routine active (habitude mesurable).
+    // 1 routine active (habitude mesurable) — difficulté scalée par niveau.
     for (final a in state.activeActivities) {
       if (a.isHabit && activeHabitTarget(a) > 0) {
         out.add(jsonEncode({
-          'level': target, 'type': 'routine', 'refId': a.id, 'target': 3,
-          'label': 'Fais la routine « ${a.name} » pendant 3 jours',
+          'level': target, 'type': 'routine', 'refId': a.id, 'target': days,
+          'label': days == 1
+              ? 'Fais la routine « ${a.name} » aujourd\'hui'
+              : 'Fais la routine « ${a.name} » pendant $days jours',
         }));
         break;
       }
@@ -411,12 +415,12 @@ extension GoldEngine on AppLogic {
       }));
     }
 
-    // 1 activité temps : 30 min.
+    // 1 activité temps : minutes scalées par niveau.
     for (final a in state.activeActivities) {
       if (!a.isHabit) {
         out.add(jsonEncode({
-          'level': target, 'type': 'time', 'refId': a.id, 'target': 30,
-          'label': 'Logue 30 min sur « ${a.name} »',
+          'level': target, 'type': 'time', 'refId': a.id, 'target': mins,
+          'label': 'Logue $mins min sur « ${a.name} »',
         }));
         break;
       }

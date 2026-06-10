@@ -188,4 +188,15 @@ class GoldEconomy {
   /// Or gagné pour [minutes] de temps loggué au niveau [level] (arrondi bas).
   static int goldForMinutes(int minutes, int level) =>
       minutes ~/ minutesPerGold(level);
+
+  // ── Difficulté des défis du donjon (scaling par niveau visé) ───────────────
+  // Rapide au début (le user doit SENTIR qu'il progresse), plus exigeant ensuite.
+  // Niveaux 2-3 : routine « aujourd'hui » (1 j) → déblocable en une journée.
+  // Puis +1 jour tous les 3 niveaux, plafonné à 5.
+  static int challengeRoutineDays(int level) =>
+      ((level - 1) ~/ 3 + 1).clamp(1, 5);
+
+  /// Minutes de temps à logger pour le défi de temps, scalées comme la routine.
+  static int challengeTimeMinutes(int level) =>
+      30 + (challengeRoutineDays(level) - 1) * 15; // 30,45,60,75,90
 }
