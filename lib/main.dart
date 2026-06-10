@@ -4582,6 +4582,10 @@ class _AppRootState extends State<AppRoot>
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  if (logic.dailyChestClaimable()) ...[
+                    const Text('🎁', style: TextStyle(fontSize: 13)),
+                    const SizedBox(width: 6),
+                  ],
                   Text('⭐ +$gainToday',
                       style: const TextStyle(
                           fontSize: 11,
