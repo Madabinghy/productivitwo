@@ -64,7 +64,7 @@ class _GamificationHub extends StatelessWidget {
                   Text('Mon or'),
                 ]),
               ),
-              const Tab(text: '⭐ Score'),
+              const Tab(text: '⭐ XP'),
               const Tab(text: '🏆 Classement'),
               const Tab(text: '🔥 Défis'),
             ],

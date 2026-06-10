@@ -4126,7 +4126,7 @@ class _AppRootState extends State<AppRoot>
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
-                                        Text("Aujourd'hui : +$today or",
+                                        Text("Aujourd'hui : +$today XP",
                                             style: TextStyle(
                                                 fontSize: 11,
                                                 fontWeight: FontWeight.w700,
