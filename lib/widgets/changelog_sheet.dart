@@ -12,6 +12,7 @@ class _Entry {
 const _changelog = [
   _Entry('6.01', '10 juin 2026', [
     (Icons.sports_martial_arts, 'Combat ! Les nuisibles 🕷️🦂🐍 te maudissent (routines ÷2) et te grignotent l\'or à l\'heure. Pour les vaincre, FORGE ton arme par l\'action : 3 routines = 🩴 sandale, terminer des tâches = 🗡️ épée. Combat plein-écran quand tu les affrontes'),
+    (Icons.shield_moon_outlined, 'Chaque niveau a son GARDIEN 🛡️ (un mini-boss qui reste tant que tu ne l\'as pas vaincu). Tuer un ennemi rapporte du butin d\'or 💰 (gros butin pour le gardien) !'),
     (Icons.castle_outlined, 'Donjon en carte à nœuds : explore, découvre tes défis en avançant. Nouveaux nœuds « action express » ⏱️ : lance 5 min sur une routine pour franchir un passage (même inachevé, tu auras avancé). Les défis ne comptent qu\'à partir du moment où ils apparaissent'),
     (Icons.face_retouching_natural, 'Avatars : débloque des skins pour ton perso de carte (🧙🥷🦸…) avec ton or, dans la boutique'),
     (Icons.travel_explore, 'Carte : un indice « ✨ Trésors » te dit s\'il reste du butin à trouver ; et chaque collectible garde sa provenance (où/quand obtenu)'),
