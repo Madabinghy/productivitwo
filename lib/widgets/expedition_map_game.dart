@@ -504,6 +504,22 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
                       color:
                           pests > 0 ? cs.error : cs.onSurface.withOpacity(.5))),
             ),
+            if (_map.all.any((t) =>
+                t.collectibleId != null &&
+                !_picked.contains(t.collectibleId))) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                    color: const Color(0xFFD4A017).withOpacity(.15),
+                    borderRadius: BorderRadius.circular(8)),
+                child: const Text('✨ Trésors',
+                    style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF8A6D00))),
+              ),
+              const SizedBox(width: 6),
+            ],
             if (_freeStepAvailable)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),

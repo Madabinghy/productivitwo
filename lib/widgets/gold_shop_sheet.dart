@@ -581,41 +581,6 @@ class _GoldShopSheetState extends State<_GoldShopSheet> {
               );
             }),
 
-          const SizedBox(height: 20),
-          Text('ARMES D\'EXPÉDITION',
-              style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1,
-                  color: cs.onSurface.withOpacity(.5))),
-          const SizedBox(height: 4),
-          Text(
-              'Pour éliminer les nuisibles qui apparaissent sur la carte quand ta semaine décline. Consommables : 1 arme = 1 élimination.',
-              style:
-                  TextStyle(fontSize: 11.5, color: cs.onSurface.withOpacity(.5))),
-          const SizedBox(height: 8),
-          for (final t in const <({String key, String emoji, String title, String subtitle})>[
-            (key: 'epee', emoji: '🗡️', title: 'Épée', subtitle: 'Tue un serpent 🐍 (−5 or/jour tant qu\'il vit).'),
-            (key: 'sandale', emoji: '🩴', title: 'Sandale', subtitle: 'Écrase une araignée 🕷️ ou un scorpion 🦂.'),
-          ])
-            Builder(builder: (_) {
-              final price =
-                  GoldEconomy.scaledPrice(GoldEconomy.weaponBasePrice(t.key), _level);
-              return _ShopItem(
-                emoji: t.emoji,
-                title: t.title,
-                subtitle: t.subtitle,
-                price: price,
-                owned: _inv(t.key),
-                affordable: _gold >= price,
-                busy: _busy,
-                locked: false,
-                minLevel: 1,
-                onBuy: () => _buyConsumable(t.key, price, t.title),
-                onUse: null,
-                cs: cs,
-              );
-            }),
 
           const SizedBox(height: 20),
           Text('TITRES',
