@@ -2,18 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/expedition.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
-import 'package:productivitwo_v1/gold_economy.dart';
-import 'package:productivitwo_v1/gold_purchase.dart';
-import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/widgets/gold_icon.dart';
+import 'package:productivitwo_v1/gold_engine.dart';
 
 const _kGold = Color(0xFFD4A017);
-const double _rowH = 92;
-const double _nodeR = 26;
 
-/// Ouvre la mini-carte d'expédition du prochain niveau (gate « gagné, pas
-/// arrivé ») : on dépense des outils achetés en boutique pour franchir les nœuds
-/// jusqu'au drapeau, ce qui révèle le titre et débloque le niveau.
+/// Donjon (Phase 2) : une fois le château trouvé sur la carte, on franchit le
+/// niveau en relevant les DÉFIS préparés par Orion en amont — des objectifs
+/// réels (routines / tâches / temps) qui se valident TOUT SEULS dès que tu les
+/// accomplis dans l'app. Pas d'outils à acheter : on débloque par l'effort réel.
 Future<void> showExpeditionSheet(
     BuildContext context, AppLogic logic, FirestoreSync sync) {
   return showModalBottomSheet(
@@ -37,81 +33,10 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
   bool _busy = false;
 
   int get _level => logic.effectiveLevel() + 1;
-  late Expedition _exp = generateExpedition(_level);
 
-  Set<String> get _cleared =>
-      {_exp.start.id, ...logic.state.expeditionCleared};
-
-  String _toolLabel(String key) => const {
-        'pas': '🥾 pas',
-        'pioche': '⛏️ pioche',
-        'cle': '🔑 clé',
-        'pelle': '🪏 pelle',
-      }[key] ??
-      key;
-
-  Future<void> _tap(ExpeditionNode node) async {
+  Future<void> _unlock() async {
     if (_busy) return;
-    final reachable = _exp.reachable(_cleared);
-    if (!reachable.contains(node.id)) return;
-
-    final toolKey = toolForType(node.type);
-
-    // Nœud gratuit (bonus / arrivée).
-    if (toolKey == null) {
-      setState(() => _busy = true);
-      final ok = await sync.advanceExpedition(nodeId: node.id);
-      if (ok) {
-        logic.state.expeditionCleared.add(node.id);
-        if (node.type == ExpNodeType.bonus && node.bonusGold > 0) {
-          logic.state.gold += node.bonusGold;
-          logic.state.goldLifetime += node.bonusGold;
-          sync.applyGold(GoldLedgerEntry(
-            id: '${DateTime.now().microsecondsSinceEpoch}',
-            delta: node.bonusGold,
-            category: 'gain',
-            reasonCode: 'expedition_bonus',
-            label: 'Trésor d\'expédition',
-          ));
-        }
-        logic.onChange();
-      }
-      if (!mounted) return;
-      setState(() => _busy = false);
-      if (node.type == ExpNodeType.finish && ok) await _finish();
-      return;
-    }
-
-    // Nœud payant : il faut l'outil correspondant.
-    if ((logic.state.goldInventory[toolKey] ?? 0) < 1) {
-      final bought = await offerBuyConsumable(
-        context,
-        sync,
-        itemKey: toolKey,
-        price: GoldEconomy.scaledPrice(
-            GoldEconomy.toolBasePrice(toolKey), logic.effectiveLevel()),
-        label: _toolLabel(toolKey),
-        rationale:
-            'Pour franchir ce nœud, il te faut un « ${_toolLabel(toolKey)} ».',
-        logic: logic,
-      );
-      if (!bought) return;
-    }
-
     setState(() => _busy = true);
-    final ok =
-        await sync.advanceExpedition(nodeId: node.id, toolKey: toolKey);
-    if (ok) {
-      logic.state.goldInventory[toolKey] =
-          (logic.state.goldInventory[toolKey] ?? 1) - 1;
-      logic.state.expeditionCleared.add(node.id);
-      logic.onChange();
-    }
-    if (!mounted) return;
-    setState(() => _busy = false);
-  }
-
-  Future<void> _finish() async {
     final ok = await sync.completeExpedition(_level);
     if (ok) {
       logic.state.unlockedLevel = _level;
@@ -119,15 +44,15 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
       logic.onChange();
     }
     if (!mounted) return;
+    setState(() => _busy = false);
+    if (!ok) return;
     final lvl = logic.userLevelData();
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Niveau ${lvl.level} débloqué ! 🏁'),
         content: Text(
-          'Tu as atteint le bout de la carte. Tu es désormais « ${lvl.title} » — '
-          'de nouveaux items peuvent s\'ouvrir en boutique.',
-        ),
+            'Tu as relevé tous les défis du donjon. Tu es désormais « ${lvl.title} ».'),
         actions: [
           FilledButton(
               style: FilledButton.styleFrom(backgroundColor: _kGold),
@@ -136,25 +61,26 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
         ],
       ),
     );
-    if (mounted) Navigator.pop(context); // referme la carte
+    if (mounted) Navigator.pop(context); // referme le donjon
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final biome = expeditionBiome(_level);
-    final cleared = _cleared;
-    final reachable = _exp.reachable(cleared);
+    final challenges = logic.expeditionChallengeStatuses();
+    final doneCount = challenges.where((c) => c.done).length;
+    final allDone = challenges.isNotEmpty && doneCount == challenges.length;
 
     return DraggableScrollableSheet(
-      initialChildSize: 0.9,
+      initialChildSize: 0.85,
       maxChildSize: 0.95,
       minChildSize: 0.5,
       expand: false,
       builder: (_, scroll) => Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
             child: Row(children: [
               Text(biome.emoji, style: const TextStyle(fontSize: 22)),
               const SizedBox(width: 8),
@@ -162,199 +88,135 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Niveau $_level · ???',
+                    Text('Donjon · Niveau $_level',
                         style: const TextStyle(
                             fontSize: 16, fontWeight: FontWeight.bold)),
-                    Text('Expédition · ${biome.label} — atteins le 🏁',
+                    Text(
+                        challenges.isEmpty
+                            ? 'Relève les défis d\'Orion pour débloquer'
+                            : 'Défis relevés : $doneCount / ${challenges.length}',
                         style: TextStyle(
                             fontSize: 11.5,
                             color: cs.onSurface.withOpacity(.55))),
                   ],
                 ),
               ),
-              goldAmount('${logic.state.gold}',
-                  fontSize: 15, weight: FontWeight.bold, color: _kGold),
             ]),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                      'Touche un nœud accessible pour le franchir (consomme l\'outil). '
-                      'Pas d\'outil ? On te propose de l\'acheter.',
-                      style: TextStyle(
-                          fontSize: 11, color: cs.onSurface.withOpacity(.5))),
+          Expanded(
+            child: challenges.isEmpty
+                ? _waiting(cs)
+                : ListView(
+                    controller: scroll,
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                    children: [
+                      for (var i = 0; i < challenges.length; i++)
+                        _room(cs, i + 1, challenges[i]),
+                    ],
+                  ),
+          ),
+          if (challenges.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(backgroundColor: _kGold),
+                  onPressed: (allDone && !_busy) ? _unlock : null,
+                  child: Text(allDone
+                      ? 'Débloquer le niveau $_level 🏁'
+                      : 'Relève tous les défis pour débloquer'),
                 ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _waiting(ColorScheme cs) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('🔮', style: TextStyle(fontSize: 48)),
+              const SizedBox(height: 12),
+              Text('Orion prépare tes défis…',
+                  style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: cs.onSurface)),
+              const SizedBox(height: 6),
+              Text(
+                  'Reviens dans un moment : tes défis du donjon apparaîtront ici, '
+                  'choisis par Orion à partir de tes routines et projets.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 12.5, color: cs.onSurface.withOpacity(.55))),
+            ],
+          ),
+        ),
+      );
+
+  Widget _room(
+      ColorScheme cs,
+      int n,
+      ({String label, String type, int target, int progress, bool done}) c) {
+    final pct = c.target > 0
+        ? (c.progress / c.target).clamp(0.0, 1.0)
+        : (c.done ? 1.0 : 0.0);
+    final color = c.done ? Colors.green.shade600 : _kGold;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: c.done
+            ? Colors.green.withOpacity(.08)
+            : cs.surfaceContainerHighest.withOpacity(.4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(c.done ? .6 : .4)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(c.done ? '✅' : '🚪', style: const TextStyle(fontSize: 22)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Défi $n',
+                    style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        color: color)),
+                const SizedBox(height: 2),
+                Text(c.label,
+                    style: const TextStyle(
+                        fontSize: 13.5, fontWeight: FontWeight.w600)),
+                if (c.target > 1) ...[
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: LinearProgressIndicator(
+                      value: pct,
+                      minHeight: 5,
+                      backgroundColor: cs.onSurface.withOpacity(.10),
+                      color: color,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text('${c.progress} / ${c.target}',
+                      style: TextStyle(
+                          fontSize: 10.5,
+                          color: cs.onSurface.withOpacity(.5))),
+                ],
               ],
             ),
-          ),
-          const SizedBox(height: 8),
-          Expanded(
-            child: LayoutBuilder(builder: (context, c) {
-              final laneW = c.maxWidth / _exp.lanes;
-              Offset posOf(ExpeditionNode n) => Offset(
-                  n.lane * laneW + laneW / 2, n.row * _rowH + _rowH / 2);
-              final positions = {for (final n in _exp.nodes) n.id: posOf(n)};
-              final frontier = cleared
-                  .map((id) => _exp.byId(id))
-                  .fold<ExpeditionNode?>(null,
-                      (best, n) => best == null || n.row > best.row ? n : best);
-
-              return SingleChildScrollView(
-                controller: scroll,
-                child: SizedBox(
-                  width: c.maxWidth,
-                  height: _exp.rows * _rowH + 24,
-                  child: Stack(children: [
-                    CustomPaint(
-                      size: Size(c.maxWidth, _exp.rows * _rowH + 24),
-                      painter: _PathPainter(
-                        nodes: _exp.nodes,
-                        positions: positions,
-                        cleared: cleared,
-                        edgeColor: cs.onSurface.withOpacity(.18),
-                        clearedColor: Colors.green.shade600,
-                      ),
-                    ),
-                    for (final n in _exp.nodes)
-                      Positioned(
-                        left: positions[n.id]!.dx - _nodeR,
-                        top: positions[n.id]!.dy - _nodeR,
-                        child: _NodeDot(
-                          node: n,
-                          cleared: cleared.contains(n.id),
-                          reachable: reachable.contains(n.id),
-                          isFrontier: frontier?.id == n.id,
-                          busy: _busy,
-                          cs: cs,
-                          onTap: () => _tap(n),
-                        ),
-                      ),
-                  ]),
-                ),
-              );
-            }),
           ),
         ],
       ),
     );
   }
-}
-
-class _NodeDot extends StatelessWidget {
-  final ExpeditionNode node;
-  final bool cleared, reachable, isFrontier, busy;
-  final ColorScheme cs;
-  final VoidCallback onTap;
-  const _NodeDot({
-    required this.node,
-    required this.cleared,
-    required this.reachable,
-    required this.isFrontier,
-    required this.busy,
-    required this.cs,
-    required this.onTap,
-  });
-
-  String get _emoji {
-    switch (node.type) {
-      case ExpNodeType.start:
-        return '🏳️';
-      case ExpNodeType.finish:
-        return '🏁';
-      case ExpNodeType.rock:
-        return '🪨';
-      case ExpNodeType.gate:
-        return '🔒';
-      case ExpNodeType.hole:
-        return '🕳️';
-      case ExpNodeType.bonus:
-        return '💰';
-      case ExpNodeType.step:
-        return '•';
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final Color bg;
-    final Color border;
-    if (cleared) {
-      bg = Colors.green.shade100;
-      border = Colors.green.shade600;
-    } else if (reachable) {
-      bg = _kGold.withOpacity(.18);
-      border = _kGold;
-    } else {
-      bg = cs.surfaceContainerHighest.withOpacity(.5);
-      border = cs.outlineVariant.withOpacity(.5);
-    }
-    final dim = !cleared && !reachable;
-
-    return GestureDetector(
-      onTap: (reachable && !busy) ? onTap : null,
-      child: Opacity(
-        opacity: dim ? .5 : 1,
-        child: Container(
-          width: _nodeR * 2,
-          height: _nodeR * 2,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: bg,
-            shape: BoxShape.circle,
-            border: Border.all(
-                color: border, width: reachable && !cleared ? 2.5 : 1.5),
-          ),
-          child: cleared
-              ? (node.type == ExpNodeType.finish || node.type == ExpNodeType.start
-                  ? Text(_emoji, style: const TextStyle(fontSize: 20))
-                  : Icon(Icons.check, color: Colors.green.shade700, size: 22))
-              : Text(
-                  isFrontier ? '🧍' : _emoji,
-                  style: TextStyle(
-                      fontSize: node.type == ExpNodeType.step && !isFrontier
-                          ? 18
-                          : 20),
-                ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PathPainter extends CustomPainter {
-  final List<ExpeditionNode> nodes;
-  final Map<String, Offset> positions;
-  final Set<String> cleared;
-  final Color edgeColor, clearedColor;
-  _PathPainter({
-    required this.nodes,
-    required this.positions,
-    required this.cleared,
-    required this.edgeColor,
-    required this.clearedColor,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    for (final n in nodes) {
-      final from = positions[n.id]!;
-      for (final nextId in n.next) {
-        final to = positions[nextId]!;
-        // Arête « franchie » si les deux extrémités le sont (chemin emprunté).
-        final done = cleared.contains(n.id) && cleared.contains(nextId);
-        final paint = Paint()
-          ..color = done ? clearedColor : edgeColor
-          ..strokeWidth = done ? 4 : 2.5
-          ..strokeCap = StrokeCap.round;
-        canvas.drawLine(from, to, paint);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_PathPainter old) =>
-      old.cleared != cleared || old.positions != positions;
 }

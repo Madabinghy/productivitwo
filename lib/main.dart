@@ -51,7 +51,7 @@ import 'package:productivitwo_v1/widgets/inbox_sheet.dart';
 import 'package:productivitwo_v1/widgets/proposals_sheet.dart';
 import 'package:productivitwo_v1/widgets/weekly_review_sheet.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
-import 'package:productivitwo_v1/widgets/expedition_sheet.dart';
+import 'package:productivitwo_v1/widgets/expedition_map_game.dart';
 import 'package:productivitwo_v1/widgets/gamification_hub_sheet.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
 import 'package:productivitwo_v1/widgets/orion_screen.dart';
@@ -4161,7 +4161,7 @@ class _AppRootState extends State<AppRoot>
                                 label: Text(
                                     'Explorer la carte du niveau ${rv.nextLevel}'),
                                 onPressed: () async {
-                                  await showExpeditionSheet(ctx, logic, _sync);
+                                  await showExpeditionGame(ctx, logic, _sync);
                                   refresh(() {});
                                 },
                               ),

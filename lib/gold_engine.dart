@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/expedition.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -253,6 +255,100 @@ extension GoldEngine on AppLogic {
       if (hp.yyyymmdd.compareTo(ymdD) <= 0 && hp.value >= tgt) return true;
     }
     return false;
+  }
+
+  // ── Défis du donjon (préparés par Orion, auto-validés) ──────────────────────
+
+  /// Statut auto-validé des défis Orion pour le niveau VISÉ (`effectiveLevel+1`),
+  /// dérivé des vraies données (routines / tâches / temps). Aucun écrit ici.
+  List<({String label, String type, int target, int progress, bool done})>
+      expeditionChallengeStatuses() {
+    final target = effectiveLevel() + 1;
+    final out =
+        <({String label, String type, int target, int progress, bool done})>[];
+    for (final raw in state.expeditionChallenges) {
+      Map<String, dynamic> m;
+      try {
+        m = jsonDecode(raw) as Map<String, dynamic>;
+      } catch (_) {
+        continue;
+      }
+      if ((m['level'] as num?)?.toInt() != target) continue;
+      final type = m['type'] as String? ?? '';
+      final refId = m['refId'] as String? ?? '';
+      final tgt = (m['target'] as num?)?.toInt() ?? 1;
+      final label = m['label'] as String? ?? '';
+      switch (type) {
+        case 'task':
+          final done = _taskIsDone(refId);
+          out.add((
+            label: label, type: type,
+            target: 1, progress: done ? 1 : 0, done: done,
+          ));
+          break;
+        case 'routine':
+          final p = _routineMetDays(refId).clamp(0, tgt);
+          out.add((
+            label: label, type: type,
+            target: tgt, progress: p, done: p >= tgt,
+          ));
+          break;
+        case 'time':
+          final p = _activityLoggedMinutes(refId).clamp(0, tgt);
+          out.add((
+            label: label, type: type,
+            target: tgt, progress: p, done: p >= tgt,
+          ));
+          break;
+        default:
+          out.add((
+            label: label, type: type,
+            target: 1, progress: 0, done: false,
+          ));
+      }
+    }
+    return out;
+  }
+
+  /// Tous les défis du niveau visé sont accomplis (→ donjon franchissable).
+  bool expeditionChallengesAllDone() {
+    final st = expeditionChallengeStatuses();
+    return st.isNotEmpty && st.every((c) => c.done);
+  }
+
+  bool _taskIsDone(String taskId) {
+    for (final p in currentProjects) {
+      for (final t in p.tasks) {
+        if (t.id == taskId) return t.status == 'done';
+      }
+    }
+    return false;
+  }
+
+  int _routineMetDays(String activityId) {
+    Activity? a;
+    for (final x in state.activities) {
+      if (x.id == activityId) {
+        a = x;
+        break;
+      }
+    }
+    if (a == null) return 0;
+    final tgt = activeHabitTarget(a);
+    if (tgt <= 0) return 0;
+    var days = 0;
+    for (final hp in state.habitProgress) {
+      if (hp.activityId == activityId && hp.value >= tgt) days++;
+    }
+    return days;
+  }
+
+  int _activityLoggedMinutes(String activityId) {
+    var min = 0;
+    for (final s in state.sessions) {
+      if (s.activityId == activityId) min += s.duration.inMinutes;
+    }
+    return min;
   }
 
   // ── Prévisualisation des coûts (Phase B) ────────────────────────────────────

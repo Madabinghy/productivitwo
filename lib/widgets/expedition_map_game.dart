@@ -5,15 +5,17 @@ import 'package:productivitwo_v1/expedition.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/gold_economy.dart';
 import 'package:productivitwo_v1/gold_purchase.dart';
+import 'package:productivitwo_v1/widgets/expedition_sheet.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
 
 /// Overworld (Phase 1) : carte 2D explorable pour débloquer le prochain niveau.
-/// Déplacement = 1 or (1 gratuit/jour) ; brouillard = torche 5 + pas 1 = 6 or
-/// (révèle radius 1) ; ≥2 chemins ; collectibles ; écosystème lié au % hebdo
+/// Déplacement GRATUIT sur case éclairée ; brouillard = torche (révèle radius 2,
+/// 1ʳᵉ du jour offerte) ; ≥2 chemins ; collectibles ; écosystème lié au % hebdo
 /// (nuisibles si tendance ↓, bonus si ↑) ; château = déblocage (provisoire P1).
 
 const _kGold = Color(0xFFD4A017);
 const double _tile = 46;
+const int _kTorchReveal = 2; // rayon éclairé par une torche (Chebyshev)
 
 Future<void> showExpeditionGame(
     BuildContext context, AppLogic logic, FirestoreSync sync) {
@@ -76,7 +78,8 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
       changed['pos'] = true;
     }
     if (logic.state.expeditionRevealed.isEmpty) {
-      final r = _neighbors(_map.start.x, _map.start.y, includeSelf: true)
+      final r = _neighbors(_map.start.x, _map.start.y,
+              includeSelf: true, radius: _kTorchReveal)
           .map((p) => '${p.x}_${p.y}')
           .toList();
       logic.state.expeditionRevealed.addAll(r);
@@ -111,10 +114,11 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
   DateTime _parseYmd(String y) => DateTime(int.parse(y.substring(0, 4)),
       int.parse(y.substring(4, 6)), int.parse(y.substring(6, 8)));
 
-  List<Point<int>> _neighbors(int x, int y, {bool includeSelf = false}) {
+  List<Point<int>> _neighbors(int x, int y,
+      {bool includeSelf = false, int radius = 1}) {
     final out = <Point<int>>[];
-    for (var dy = -1; dy <= 1; dy++) {
-      for (var dx = -1; dx <= 1; dx++) {
+    for (var dy = -radius; dy <= radius; dy++) {
+      for (var dx = -radius; dx <= radius; dx++) {
         if (!includeSelf && dx == 0 && dy == 0) continue;
         final nx = x + dx, ny = y + dy;
         if (_map.inBounds(nx, ny)) out.add(Point(nx, ny));
@@ -228,21 +232,22 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
   Future<void> _move(OwTile t,
       ({String raw, String type, String tile, String meta})? ent) async {
     final fogged = !_revealed.contains(t.id);
-    final free = _freeStepAvailable;
-    var cost = fogged
-        ? (GoldEconomy.torchCost + GoldEconomy.stepCost)
-        : GoldEconomy.stepCost;
-    if (free) cost -= GoldEconomy.stepCost;
+    // Déplacement gratuit sur case éclairée ; on ne paie que l'éclairage du
+    // brouillard (torche). La 1ʳᵉ torche du jour est offerte.
+    final free = fogged && _freeStepAvailable;
+    var cost = fogged ? GoldEconomy.torchCost : 0;
+    if (free) cost = 0;
     if (logic.state.gold < cost) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Pas assez d\'or pour avancer.'),
+          content: Text('Pas assez d\'or pour éclairer cette case.'),
           duration: Duration(seconds: 1)));
       return;
     }
 
     final revealAdd = <String>[];
     if (fogged) {
-      for (final n in _neighbors(t.x, t.y, includeSelf: true)) {
+      for (final n in _neighbors(t.x, t.y,
+          includeSelf: true, radius: _kTorchReveal)) {
         final id = '${n.x}_${n.y}';
         if (!_revealed.contains(id)) revealAdd.add(id);
       }
@@ -352,12 +357,14 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
   }
 
   Future<void> _castle() async {
+    final target = _level; // niveau visé (figé avant le déblocage)
     final go = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('🏰 Château atteint !'),
         content: Text(
-            'Entre pour débloquer le niveau $_level, ou continue d\'explorer la '
+            'Tu as trouvé le château ! Entre dans le donjon pour relever les '
+            'défis et débloquer le niveau $target — ou continue d\'explorer la '
             'carte (trésors, collectibles) avant d\'entrer.'),
         actions: [
           TextButton(
@@ -366,37 +373,16 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
           FilledButton(
               style: FilledButton.styleFrom(backgroundColor: _kGold),
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Entrer')),
+              child: const Text('Entrer dans le donjon')),
         ],
       ),
     );
-    if (go != true) return;
-    final ok = await sync.completeExpedition(_level);
-    if (ok) {
-      logic.state.unlockedLevel = _level;
-      logic.state.expeditionCleared.clear();
-      logic.state.expeditionRevealed.clear();
-      logic.state.expeditionPicked.clear();
-      logic.state.expeditionEntities.clear();
-      logic.state.expeditionPos = null;
-      logic.onChange();
-    }
+    if (go != true || !mounted) return;
+    // Le donjon (V1) gère la traversée et le déblocage du niveau (au 🏁).
+    await showExpeditionSheet(context, logic, sync);
     if (!mounted) return;
-    final lvl = logic.userLevelData();
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Niveau ${lvl.level} débloqué ! 🎉'),
-        content: Text('Tu es désormais « ${lvl.title} ».'),
-        actions: [
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: _kGold),
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Super')),
-        ],
-      ),
-    );
-    if (mounted) Navigator.pop(context);
+    // Donjon terminé → niveau débloqué → on referme aussi la carte overworld.
+    if (logic.effectiveLevel() >= target) Navigator.pop(context);
   }
 
   @override
@@ -440,7 +426,7 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
           child: Row(children: [
             Expanded(
               child: Text(
-                  'Case voisine : 1 or (1ᵉʳ pas du jour gratuit) · brouillard : 6 or.'
+                  'Déplacement gratuit · éclairer une case (🔦 ${GoldEconomy.torchCost} or, 1ʳᵉ du jour offerte).'
                   '${pests > 0 ? ' · $pests nuisible(s) actif(s)' : ''}',
                   style: TextStyle(
                       fontSize: 11,
@@ -453,7 +439,7 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
                 decoration: BoxDecoration(
                     color: Colors.green.withOpacity(.15),
                     borderRadius: BorderRadius.circular(8)),
-                child: Text('pas gratuit ✓',
+                child: Text('1ʳᵉ torche offerte ✓',
                     style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w700,

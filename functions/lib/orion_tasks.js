@@ -7,6 +7,7 @@ exports.taskWeeklyReview = taskWeeklyReview;
 exports.taskGoldReview = taskGoldReview;
 exports.taskCleanExpiredMessages = taskCleanExpiredMessages;
 exports.taskProgressReport = taskProgressReport;
+exports.taskGenerateExpeditionChallenges = taskGenerateExpeditionChallenges;
 exports.runDeterministicTask = runDeterministicTask;
 const db_1 = require("./db");
 const execute_1 = require("./execute");
@@ -350,6 +351,72 @@ async function taskProgressReport(uid) {
     }
     return { actions, pushed, skipped: false };
 }
+// ── Défis du donjon (préparés EN AMONT par Orion, auto-validés côté app) ───────
+// Objectifs réels (routine / tâche / temps) pioché dans les données de l'user
+// pour le niveau VISÉ (unlockedLevel+1). Écrit dans meta.expeditionChallenges.
+// Idempotent : ne régénère que si absent ou si le niveau visé a changé.
+async function taskGenerateExpeditionChallenges(uid) {
+    var _a, _b, _c, _d;
+    const metaRef = db_1.db.doc(`users/${uid}/data/meta`);
+    const metaSnap = await metaRef.get();
+    const meta = metaSnap.data() || {};
+    const unlocked = (_a = meta.unlockedLevel) !== null && _a !== void 0 ? _a : 1;
+    const target = Math.max(unlocked, 1) + 1;
+    const existing = meta.expeditionChallenges || [];
+    if (existing.length > 0) {
+        try {
+            if (((_b = JSON.parse(existing[0]).level) !== null && _b !== void 0 ? _b : 0) === target) {
+                return { actions: [`ℹ️ Défis déjà prêts (niveau ${target})`], pushed: 0, skipped: true };
+            }
+        }
+        catch ( /* malformé → on régénère */_e) { /* malformé → on régénère */ }
+    }
+    const [actSnap, projSnap] = await Promise.all([
+        db_1.db.collection(`users/${uid}/activities`).get(),
+        db_1.db.collection(`users/${uid}/projects`).where("status", "==", "active").get(),
+    ]);
+    const challenges = [];
+    // 1 routine (habit active)
+    const habit = actSnap.docs.find((a) => { var _a; return ((_a = a.get("type")) !== null && _a !== void 0 ? _a : "time") === "habit" && a.get("deleted") !== true; });
+    if (habit) {
+        challenges.push(JSON.stringify({
+            level: target, type: "routine", refId: habit.id, target: 3,
+            label: `Fais la routine « ${(_c = habit.get("name")) !== null && _c !== void 0 ? _c : "routine"} » pendant 3 jours`,
+        }));
+    }
+    // 1 tâche ouverte (1er projet actif qui en a une)
+    let taskAdded = false;
+    for (const doc of projSnap.docs) {
+        if (taskAdded)
+            break;
+        for (const t of (doc.data().tasks || [])) {
+            if (t.status !== "done" && t.status !== "skipped") {
+                challenges.push(JSON.stringify({
+                    level: target, type: "task", refId: t.id, target: 1,
+                    label: `Termine la tâche « ${t.title} »`,
+                }));
+                taskAdded = true;
+                break;
+            }
+        }
+    }
+    // 1 activité temps
+    const timeAct = actSnap.docs.find((a) => { var _a; return ((_a = a.get("type")) !== null && _a !== void 0 ? _a : "time") === "time" && a.get("deleted") !== true; });
+    if (timeAct) {
+        challenges.push(JSON.stringify({
+            level: target, type: "time", refId: timeAct.id, target: 60,
+            label: `Logue 1h sur « ${(_d = timeAct.get("name")) !== null && _d !== void 0 ? _d : "activité"} »`,
+        }));
+    }
+    if (challenges.length === 0) {
+        return { actions: ["ℹ️ Aucune donnée pour générer des défis de donjon"], pushed: 0, skipped: true };
+    }
+    await metaRef.set({ expeditionChallenges: challenges }, { merge: true });
+    return {
+        actions: [`🏰 ${challenges.length} défi(s) de donjon préparés (niveau ${target})`],
+        pushed: 0, skipped: false,
+    };
+}
 // ── Router ────────────────────────────────────────────────────────────────────
 async function runDeterministicTask(uid, taskId) {
     switch (taskId) {
@@ -360,6 +427,7 @@ async function runDeterministicTask(uid, taskId) {
         case "gold_review": return taskGoldReview(uid);
         case "clean_expired": return taskCleanExpiredMessages(uid);
         case "progress_report": return taskProgressReport(uid);
+        case "expedition_challenges": return taskGenerateExpeditionChallenges(uid);
         default:
             return { actions: [`Tâche inconnue : ${taskId}`], pushed: 0, skipped: true, reason: `taskId inconnu : ${taskId}` };
     }

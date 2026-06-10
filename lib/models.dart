@@ -688,6 +688,10 @@ class AppState {
   List<String> expeditionEntities; // nuisibles/bonus vivants "type:x_y:spawnYmd"
   List<String> collection;         // collectibles trouvés à vie (persistant → écran Collection)
   String? lastFreeStepYmd;         // jour du dernier pas gratuit (yyyymmdd)
+  // Défis du donjon préparés par Orion (JSON strings), liés au niveau visé.
+  // Écrits par Orion (serveur) ; l'app les lit et auto-valide depuis ses données.
+  // {level, type:'routine'|'task'|'time', refId, target, label}
+  List<String> expeditionChallenges;
 
   AppState({
     required this.domains,
@@ -751,6 +755,7 @@ class AppState {
     List<String>? expeditionEntities,
     List<String>? collection,
     this.lastFreeStepYmd,
+    List<String>? expeditionChallenges,
     // ✅ NOUVEAU
     Map<String, List<String>>? nowSkippedByYmd,
     Map<String, List<String>>? nowDoneByYmd,
@@ -791,6 +796,7 @@ class AppState {
         expeditionRevealed = expeditionRevealed ?? <String>[],
         expeditionPicked = expeditionPicked ?? <String>[],
         expeditionEntities = expeditionEntities ?? <String>[],
+        expeditionChallenges = expeditionChallenges ?? <String>[],
         collection = collection ?? <String>[],
         cosmeticsOwned = cosmeticsOwned ?? <String>[];
 
@@ -852,6 +858,7 @@ class AppState {
         'expeditionPos': expeditionPos,
         'expeditionPicked': expeditionPicked,
         'expeditionEntities': expeditionEntities,
+        'expeditionChallenges': expeditionChallenges,
         'collection': collection,
         'lastFreeStepYmd': lastFreeStepYmd,
         'weeklyScoreTarget': weeklyScoreTarget,
@@ -979,6 +986,8 @@ class AppState {
           (j['expeditionPicked'] as List?)?.cast<String>() ?? <String>[],
       expeditionEntities:
           (j['expeditionEntities'] as List?)?.cast<String>() ?? <String>[],
+      expeditionChallenges:
+          (j['expeditionChallenges'] as List?)?.cast<String>() ?? <String>[],
       collection: (j['collection'] as List?)?.cast<String>() ?? <String>[],
       lastFreeStepYmd: j['lastFreeStepYmd'] as String?,
       weeklyScoreTarget: (j['weeklyScoreTarget'] as int?) ?? 80,

@@ -245,6 +245,8 @@ class FirestoreSync {
             (meta['expeditionPicked'] as List?)?.cast<String>(),
         expeditionEntities:
             (meta['expeditionEntities'] as List?)?.cast<String>(),
+        expeditionChallenges:
+            (meta['expeditionChallenges'] as List?)?.cast<String>(),
         collection: (meta['collection'] as List?)?.cast<String>(),
         lastFreeStepYmd: meta['lastFreeStepYmd'] as String?,
         weeklyScoreTarget: meta['weeklyScoreTarget'] ?? 80,
@@ -343,6 +345,8 @@ class FirestoreSync {
       expeditionPos:         local.goldLifetime >= remote.goldLifetime ? local.expeditionPos : remote.expeditionPos,
       expeditionPicked:      local.goldLifetime >= remote.goldLifetime ? local.expeditionPicked : remote.expeditionPicked,
       expeditionEntities:    local.goldLifetime >= remote.goldLifetime ? local.expeditionEntities : remote.expeditionEntities,
+      // Défis : écrits par Orion (serveur) → on garde la version distante dès qu'elle existe.
+      expeditionChallenges:  remote.expeditionChallenges.isNotEmpty ? remote.expeditionChallenges : local.expeditionChallenges,
       collection:            local.collection.length >= remote.collection.length ? local.collection : remote.collection,
       lastFreeStepYmd:       local.goldLifetime >= remote.goldLifetime ? local.lastFreeStepYmd : remote.lastFreeStepYmd,
       notifHour:             local.notifHour,

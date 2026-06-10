@@ -19,6 +19,7 @@ import {
   executeGetOrionQueue, executeDeleteOrionQueueItem,
   todayInParis,
 } from "./execute";
+import { taskGenerateExpeditionChallenges } from "./orion_tasks";
 // Descriptions compactes pour ORION — ~10x moins de tokens que les tools MCP complets
 const ORION_TOOLS: PromptCachingBetaTool[] = [
   { name: "get_orion_context",        description: "Contexte utilisateur : domaines, activités, routines, objectifs, projets actifs (tâches urgentes), plan du jour résumé, stats 7j.",   input_schema: { type: "object", properties: {}, required: [] } },
@@ -133,6 +134,15 @@ export async function runOrionCycle(uid: string, opts?: { skipCount?: boolean })
   pushed?: number;
 }> {
   const today = todayInParis();
+
+  // Défis du donjon : préparés EN AMONT par Orion (déterministe, sans LLM ni
+  // décompte de quota) → toujours prêts quand l'user atteint le château.
+  try {
+    await taskGenerateExpeditionChallenges(uid);
+  } catch (e) {
+    console.warn(`expedition challenges uid=${uid}:`, e instanceof Error ? e.message : e);
+  }
+
   const count = await getOrionRunCount(uid, today);
   // Limite appliquée CÔTÉ SERVEUR selon le statut Pro effectif (Firestore) —
   // infalsifiable, contrairement à la limite affichée par le client.

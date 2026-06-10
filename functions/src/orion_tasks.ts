@@ -377,6 +377,80 @@ export async function taskProgressReport(uid: string): Promise<TaskResult> {
   return { actions, pushed, skipped: false };
 }
 
+// ── Défis du donjon (préparés EN AMONT par Orion, auto-validés côté app) ───────
+// Objectifs réels (routine / tâche / temps) pioché dans les données de l'user
+// pour le niveau VISÉ (unlockedLevel+1). Écrit dans meta.expeditionChallenges.
+// Idempotent : ne régénère que si absent ou si le niveau visé a changé.
+export async function taskGenerateExpeditionChallenges(uid: string): Promise<TaskResult> {
+  const metaRef = db.doc(`users/${uid}/data/meta`);
+  const metaSnap = await metaRef.get();
+  const meta = metaSnap.data() || {};
+  const unlocked = (meta.unlockedLevel as number) ?? 1;
+  const target = Math.max(unlocked, 1) + 1;
+
+  const existing = (meta.expeditionChallenges as string[]) || [];
+  if (existing.length > 0) {
+    try {
+      if (((JSON.parse(existing[0]).level as number) ?? 0) === target) {
+        return { actions: [`ℹ️ Défis déjà prêts (niveau ${target})`], pushed: 0, skipped: true };
+      }
+    } catch { /* malformé → on régénère */ }
+  }
+
+  const [actSnap, projSnap] = await Promise.all([
+    db.collection(`users/${uid}/activities`).get(),
+    db.collection(`users/${uid}/projects`).where("status", "==", "active").get(),
+  ]);
+
+  const challenges: string[] = [];
+
+  // 1 routine (habit active)
+  const habit = actSnap.docs.find(
+    (a) => (a.get("type") ?? "time") === "habit" && a.get("deleted") !== true);
+  if (habit) {
+    challenges.push(JSON.stringify({
+      level: target, type: "routine", refId: habit.id, target: 3,
+      label: `Fais la routine « ${habit.get("name") ?? "routine"} » pendant 3 jours`,
+    }));
+  }
+
+  // 1 tâche ouverte (1er projet actif qui en a une)
+  let taskAdded = false;
+  for (const doc of projSnap.docs) {
+    if (taskAdded) break;
+    for (const t of (doc.data().tasks || []) as Array<{ id: string; title: string; status: string }>) {
+      if (t.status !== "done" && t.status !== "skipped") {
+        challenges.push(JSON.stringify({
+          level: target, type: "task", refId: t.id, target: 1,
+          label: `Termine la tâche « ${t.title} »`,
+        }));
+        taskAdded = true;
+        break;
+      }
+    }
+  }
+
+  // 1 activité temps
+  const timeAct = actSnap.docs.find(
+    (a) => (a.get("type") ?? "time") === "time" && a.get("deleted") !== true);
+  if (timeAct) {
+    challenges.push(JSON.stringify({
+      level: target, type: "time", refId: timeAct.id, target: 60,
+      label: `Logue 1h sur « ${timeAct.get("name") ?? "activité"} »`,
+    }));
+  }
+
+  if (challenges.length === 0) {
+    return { actions: ["ℹ️ Aucune donnée pour générer des défis de donjon"], pushed: 0, skipped: true };
+  }
+
+  await metaRef.set({ expeditionChallenges: challenges }, { merge: true });
+  return {
+    actions: [`🏰 ${challenges.length} défi(s) de donjon préparés (niveau ${target})`],
+    pushed: 0, skipped: false,
+  };
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 export async function runDeterministicTask(uid: string, taskId: string): Promise<TaskResult> {
   switch (taskId) {
@@ -387,6 +461,7 @@ export async function runDeterministicTask(uid: string, taskId: string): Promise
     case "gold_review":            return taskGoldReview(uid);
     case "clean_expired":          return taskCleanExpiredMessages(uid);
     case "progress_report":        return taskProgressReport(uid);
+    case "expedition_challenges":  return taskGenerateExpeditionChallenges(uid);
     default:
       return { actions: [`Tâche inconnue : ${taskId}`], pushed: 0, skipped: true, reason: `taskId inconnu : ${taskId}` };
   }
