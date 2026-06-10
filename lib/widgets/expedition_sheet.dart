@@ -214,37 +214,59 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
                           final full =
                               (r.timerMin ?? 0) > 0 ? r.timerMin! : 15;
                           return Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: Row(children: [
-                              Expanded(
-                                child: Text(r.name,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                        fontSize: 13.5,
-                                        fontWeight: FontWeight.w600)),
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Container(
+                              padding:
+                                  const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                              decoration: BoxDecoration(
+                                color: cs.surfaceContainerHighest
+                                    .withOpacity(.4),
+                                borderRadius: BorderRadius.circular(14),
                               ),
-                              TextButton(
-                                onPressed: () => _launchMicro(node, r, 5, 0),
-                                child: const Text('5 min'),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(r.name,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w700)),
+                                  const SizedBox(height: 10),
+                                  Row(children: [
+                                    Expanded(
+                                      child: OutlinedButton(
+                                        onPressed: () =>
+                                            _launchMicro(node, r, 5, 0),
+                                        child: const Text('5 min'),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: FilledButton(
+                                        style: FilledButton.styleFrom(
+                                            backgroundColor: _kGold,
+                                            foregroundColor: Colors.white),
+                                        onPressed: () =>
+                                            _launchMicro(node, r, full, 5),
+                                        child: Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text('$full min +'),
+                                            const SizedBox(width: 3),
+                                            const GoldIcon(
+                                                size: 14,
+                                                color: Colors.white),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ]),
+                                ],
                               ),
-                              const SizedBox(width: 4),
-                              FilledButton(
-                                style: FilledButton.styleFrom(
-                                    backgroundColor: _kGold,
-                                    foregroundColor: Colors.white,
-                                    visualDensity: VisualDensity.compact),
-                                onPressed: () => _launchMicro(node, r, full, 5),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text('$full min +'),
-                                    const SizedBox(width: 3),
-                                    const GoldIcon(size: 13, color: Colors.white),
-                                  ],
-                                ),
-                              ),
-                            ]),
+                            ),
                           );
                         }).toList(),
                       ),
