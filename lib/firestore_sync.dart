@@ -1146,6 +1146,7 @@ class FirestoreSync {
       'goldTodayGain': 0,
       'goldTodayGainYmd': null,
       'goldEpochYmd': fmt(today), // l'historique d'or/XP repart d'aujourd'hui
+      'expeditionDonjonLevel': 0, // repasse par l'overworld (pas d'entrée auto)
     }, SetOptions(merge: true));
     // Purge le ledger (liste « Historique ») pour repartir propre.
     final ledger = await _col('gold_ledger').get();

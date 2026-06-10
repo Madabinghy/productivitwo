@@ -304,6 +304,7 @@ class _GoldShopSheetState extends State<_GoldShopSheet> {
     logic.state.goldTodayGain = 0;
     logic.state.goldTodayGainYmd = null;
     logic.state.goldEpochYmd = fmt(now);
+    logic.state.expeditionDonjonLevel = 0; // repasse par l'overworld
     logic.onChange();
     if (mounted) {
       setState(() {});
