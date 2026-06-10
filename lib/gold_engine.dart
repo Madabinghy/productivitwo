@@ -267,29 +267,34 @@ extension GoldEngine on AppLogic {
   /// Progression de la « forge » d'une arme par l'ACTION RÉELLE (pas par l'or) :
   /// 🗡️ épée = 3 actions de projet cochées aujourd'hui (priorité au travail) ;
   /// 🩴 sandale = 3 routines validées aujourd'hui. Prête → on peut frapper.
-  ({String label, int progress, int target, bool ready}) weaponForgeStatus(
-      String weaponKey) {
+  /// Compte BRUT (non plafonné) de l'effort de forge du jour pour une arme :
+  /// actions de projet cochées (épée) ou routines quotidiennes accomplies
+  /// (sandale). Sert de baseline « à la rencontre » du nuisible.
+  int weaponRawCount(String weaponKey) {
     final today = DateTime.now();
     if (weaponKey == 'epee') {
-      const target = 3;
-      final n = (state.ganttActionsByDay[yyyymmdd(today)] ?? 0).clamp(0, target);
-      return (
-        label: 'Forge l\'épée 🗡️ : coche 3 actions de projet aujourd\'hui',
-        progress: n, target: target, ready: n >= target,
-      );
+      return state.ganttActionsByDay[yyyymmdd(today)] ?? 0;
     }
-    const target = 3;
     var done = 0;
     for (final a in state.activeActivities) {
       if (!a.isHabit) continue;
       final tgt = activeHabitTarget(a);
       if (tgt > 0 && habitValueOn(a.id, today) >= tgt) done++;
     }
-    done = done.clamp(0, target);
-    return (
-      label: 'Forge la sandale 🩴 : fais 3 routines aujourd\'hui',
-      progress: done, target: target, ready: done >= target,
-    );
+    return done;
+  }
+
+  /// Statut de forge d'une arme. [baseline] = effort déjà accompli AU MOMENT de
+  /// la rencontre du nuisible → il faut en faire 3 de PLUS pour forger. (0 par
+  /// défaut = forge absolue.)
+  ({String label, int progress, int target, bool ready}) weaponForgeStatus(
+      String weaponKey, {int baseline = 0}) {
+    const target = 3;
+    final prog = (weaponRawCount(weaponKey) - baseline).clamp(0, target);
+    final label = weaponKey == 'epee'
+        ? 'Forge l\'épée 🗡️ : coche 3 actions de projet (depuis la rencontre)'
+        : 'Forge la sandale 🩴 : fais 3 routines (depuis la rencontre)';
+    return (label: label, progress: prog, target: target, ready: prog >= target);
   }
 
   /// Une routine est « lancée » si elle a été complétée au moins une fois ≤ d.

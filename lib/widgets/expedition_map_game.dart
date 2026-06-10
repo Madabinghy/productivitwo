@@ -99,11 +99,13 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
     // Gardien garanti du niveau (mini-boss permanent jusqu'à sa mort).
     if (logic.state.expeditionGuardianKilledLevel != _level &&
         !logic.state.expeditionEntities
-            .any((e) => decodeEntity(e).meta == 'guardian')) {
+            .any((e) => isGuardianMeta(decodeEntity(e).meta))) {
       final gt = _guardianTile();
       if (gt != null) {
-        logic.state.expeditionEntities.add(
-            encodeEntity(GoldEconomy.pestTypeForLevel(_level), gt, 'guardian'));
+        final gType = GoldEconomy.pestTypeForLevel(_level);
+        final base = logic.weaponRawCount(GoldEconomy.weaponForPest(gType));
+        logic.state.expeditionEntities
+            .add(encodeEntity(gType, gt, 'guardian~${_ymd()}~$base'));
         changed['ent'] = true;
       }
     }
@@ -121,7 +123,7 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
     return logic.state.expeditionEntities.where((e) {
       final ent = decodeEntity(e);
       if (!isPestType(ent.type) || ent.meta.isEmpty) return true; // bonus persiste
-      if (ent.meta == 'guardian') return true; // gardien permanent
+      if (isGuardianMeta(ent.meta)) return true; // gardien permanent
       final diff = today.difference(_parseYmd(ent.meta)).inDays;
       return diff < GoldEconomy.pestLifespanDays(ent.type);
     }).toList();
@@ -190,9 +192,11 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
     final tile = eligible[_rng.nextInt(eligible.length)];
     if (trendPct < 0) {
       if (_livePests >= GoldEconomy.maxLivePests) return null;
-      // L'ennemi dépend du NIVEAU (force croissante), pas du hasard.
+      // L'ennemi dépend du NIVEAU (force croissante), pas du hasard. On capture
+      // le baseline de forge à la rencontre → 3 routines/actions DE PLUS requis.
       final type = GoldEconomy.pestTypeForLevel(_level);
-      return encodeEntity(type, tile, _ymd());
+      final base = logic.weaponRawCount(GoldEconomy.weaponForPest(type));
+      return encodeEntity(type, tile, '${_ymd()}~$base');
     } else {
       final amount = GoldEconomy.bonusGoldMin +
           _rng.nextInt(GoldEconomy.bonusGoldMax - GoldEconomy.bonusGoldMin + 1);
@@ -232,7 +236,7 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
   }
 
   Future<void> _strike(String raw, String type) async {
-    final isGuardian = decodeEntity(raw).meta == 'guardian';
+    final isGuardian = isGuardianMeta(decodeEntity(raw).meta);
     final loot = GoldEconomy.pestLootBase(type, isGuardian) + _rng.nextInt(5);
     final newEntities =
         logic.state.expeditionEntities.where((e) => e != raw).toList();
@@ -265,7 +269,10 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
       barrierColor: Colors.black.withOpacity(.6),
       transitionDuration: const Duration(milliseconds: 220),
       pageBuilder: (ctx, a1, a2) {
-        final forge = logic.weaponForgeStatus(weapon);
+        // Baseline « à la rencontre » → il faut 3 routines/actions de PLUS.
+        final baseline =
+            forgeBaselineFromMeta(decodeEntity(raw).meta, _ymd());
+        final forge = logic.weaponForgeStatus(weapon, baseline: baseline);
         final pct = forge.target > 0
             ? (forge.progress / forge.target).clamp(0.0, 1.0)
             : 0.0;

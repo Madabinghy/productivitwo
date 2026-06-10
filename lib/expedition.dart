@@ -298,6 +298,25 @@ Overworld generateOverworld(int level) {
 
 String encodeEntity(String type, String tile, String meta) => '$type:$tile:$meta';
 
+// Le meta d'un nuisible encode le jour de spawn ET un baseline de forge
+// (combien de routines/actions étaient déjà faites à la rencontre), séparés par
+// '~'. Formats : pest "spawnYmd~baseline" · gardien "guardian~spawnYmd~baseline".
+// Rétro-compatible : un ancien meta "spawnYmd" ou "guardian" donne baseline 0.
+bool isGuardianMeta(String meta) => meta.startsWith('guardian');
+
+/// Baseline de forge effectif d'une entité pour [todayYmd] : le nombre de
+/// routines/actions à NE PAS compter (déjà faites au spawn). Vaut 0 si l'entité
+/// a spawné un autre jour (chaque jour repart de zéro).
+int forgeBaselineFromMeta(String meta, String todayYmd) {
+  final parts = meta.split('~');
+  // pest : [ymd, base] · gardien : [guardian, ymd, base]
+  final offset = isGuardianMeta(meta) ? 1 : 0;
+  final spawnYmd = parts.length > offset ? parts[offset] : '';
+  if (spawnYmd != todayYmd) return 0;
+  final raw = parts.length > offset + 1 ? parts[offset + 1] : '';
+  return int.tryParse(raw) ?? 0;
+}
+
 bool isPestType(String t) => t == 'spider' || t == 'scorpion' || t == 'snake';
 
 String entityEmoji(String t) =>
