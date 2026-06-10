@@ -14,6 +14,8 @@ const _changelog = [
     (Icons.bolt_outlined, 'Ton or et ton niveau bougent maintenant EN DIRECT dans la journée : dès qu\'une routine, du temps ou une action est validé, le total et la barre de progression montent (au lieu d\'attendre le lendemain). Le gain du jour reste provisoire et se fige le soir'),
     (Icons.show_chart, 'L\'historique d\'or des 7 derniers jours s\'affiche désormais en courbe lissée (au lieu de barres), avec le jour courant mis en évidence'),
     (Icons.healing_outlined, 'Correction : dans certains cas, l\'or/XP gagné la veille pouvait ne pas être comptabilisé le lendemain — c\'est réparé, et les jours concernés sont récupérés automatiquement au lancement'),
+    (Icons.explore_outlined, 'Expédition : on peut de nouveau éclairer les cases voisines sous brouillard (un bug empêchait de les toucher après le 1ᵉʳ pas). La case à éclairer affiche 🔦, et un mur découvert te le signale'),
+    (Icons.help_outline, 'Le récap « Comment marche l\'or ? » affiche enfin les vraies règles (gains et pertes en or) au lieu des anciennes valeurs XP'),
   ]),
   _Entry('5.96', '9 juin 2026', [
     (Icons.explore_outlined, 'Nouveau : l\'Expédition est une vraie carte à explorer ! Pour débloquer le prochain niveau, déplace ton perso de case en case (1 or, 1ᵉʳ pas du jour gratuit) à travers le brouillard (torche 5 or pour éclairer une zone) jusqu\'au château 🏰. Au moins 2 chemins → explore pour trouver des collectibles'),
