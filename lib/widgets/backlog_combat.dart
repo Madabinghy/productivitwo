@@ -304,8 +304,10 @@ Future<void> showBacklogCombat(
 
         return SafeArea(
           child: Center(
-            child: SingleChildScrollView(
-              child: Container(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: SingleChildScrollView(
+                child: Container(
                 margin: const EdgeInsets.all(24),
                 padding: const EdgeInsets.fromLTRB(24, 22, 24, 18),
                 decoration: BoxDecoration(
@@ -418,7 +420,8 @@ Future<void> showBacklogCombat(
               ),
             ),
           ),
-        );
+        ),
+      );
       });
     },
   );

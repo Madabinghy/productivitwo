@@ -420,15 +420,6 @@ class _CombatsColumn extends StatelessWidget {
                   ),
               ],
             ),
-          const SizedBox(height: 20),
-          // Boutique compact (réutilise GoldSheetBody mais dans un conteneur limité)
-          Text('Mon or',
-              style: TextStyle(
-                  fontSize: 12, fontWeight: FontWeight.w700,
-                  color: cs.onSurface.withOpacity(.5),
-                  letterSpacing: .5)),
-          const SizedBox(height: 8),
-          GoldSheetBody(logic: logic, sync: sync),
         ],
       ),
     );
@@ -623,6 +614,10 @@ class _ExplorationColumn extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // ── Magasin ───────────────────────────────────────────────────────
+          GoldSheetBody(logic: logic, sync: sync),
+          const Divider(height: 32),
+          // ── Exploration ───────────────────────────────────────────────────
           Text('Exploration',
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
