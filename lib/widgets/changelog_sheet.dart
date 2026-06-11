@@ -10,6 +10,13 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.04', '11 juin 2026', [
+    (Icons.bug_report_outlined, 'GROS : les nuisibles sont désormais TON VRAI BACKLOG ! 🕷️ = une routine à faire · 🦂 = une activité en retard · 🐍 = une tâche active. Leurs PV = le travail restant. Tu les frappes en FAISANT le vrai travail (routine +1, 5 min sur l\'activité, cocher une action). PV à 0 = item rattrapé !'),
+    (Icons.map_outlined, '« Affronter mon backlog » (dans Mes cartes) : une carte peuplée d\'un max de tes vrais items à abattre — chemin toujours praticable, les plus faciles près de l\'entrée. Chaque case se remplit de la couleur de son domaine selon les PV restants'),
+    (Icons.pets_outlined, 'Recettes de chasse : capture X nuisibles d\'un type → débloque une créature de collection (🐭 Souris → 🐲 Dragon). Chaque type d\'ennemi a son arme : 🩴 sandale (routine) · 🏹 arc (temps) · 🗡️ épée (tâche)'),
+    (Icons.push_pin_outlined, 'Étoile ⭐ sur une tâche → tu choisis l\'heure + la durée, elle file dans ton programme « Maintenant ». Bouton ▶ pour la lancer (chrono + ses actions affichées)'),
+    (Icons.check_circle_outline, 'Tu peux maintenant TERMINER un projet (toutes tâches faites) → il se range dans « Terminé ». Et les routines de « Mon or » sont en cartes plus lisibles'),
+  ]),
   _Entry('6.03', '10 juin 2026', [
     (Icons.map_outlined, 'Nouveau : « Mes cartes » (ex-Collection) avec la CHASSE 🏹 ! Re-explore une carte débloquée en instance fraîche pour traquer ses nuisibles et farmer leur butin (or + créatures). Les ennemis y apparaissent à coup sûr ; chaque torche se paie'),
     (Icons.sports_kabaddi, 'Combat : la forge de ton arme démarre quand tu CROISES le nuisible — il faut 3 routines/tâches de plus que ce que tu avais déjà fait. Plus de mise à mort « gratuite » avec le travail du matin'),
