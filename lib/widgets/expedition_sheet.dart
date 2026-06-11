@@ -159,15 +159,19 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
     }
   }
 
+  // Routines programmées pour plus tard depuis le donjon → retirées de la liste.
+  final Set<String> _programmedRoutines = {};
+
   Future<void> _showMicroAction(ExpeditionNode node) async {
     final today = DateTime.now();
     final allDaily = logic.state.activeActivities
         .where((a) =>
             a.isHabit && (a.habitFreq ?? HabitFreq.monthly) == HabitFreq.daily)
         .toList();
-    // Ne proposer que les routines PAS ENCORE faites aujourd'hui (pousser à une
-    // action fraîche, pas re-cocher un acquis).
+    // Ne proposer que les routines PAS ENCORE faites aujourd'hui (et pas déjà
+    // programmées pour plus tard).
     final routines = allDaily.where((a) {
+      if (_programmedRoutines.contains(a.id)) return false;
       final tgt = logic.activeHabitTarget(a);
       return tgt <= 0 || logic.habitValueOn(a.id, today) < tgt;
     }).toList();
@@ -266,6 +270,28 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
                                       ),
                                     ),
                                   ]),
+                                  // « Je ne peux pas maintenant » → programmer la
+                                  // routine pour plus tard (+ rappel) et la retirer.
+                                  if (logic.programBacklogHook != null)
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: TextButton.icon(
+                                        style: TextButton.styleFrom(
+                                            visualDensity:
+                                                VisualDensity.compact),
+                                        icon: const Text('📅',
+                                            style: TextStyle(fontSize: 13)),
+                                        label: const Text(
+                                            'Programmer pour plus tard',
+                                            style: TextStyle(fontSize: 12.5)),
+                                        onPressed: () async {
+                                          _programmedRoutines.add(r.id);
+                                          Navigator.pop(ctx);
+                                          await logic.programBacklogHook!(
+                                              'spider', r.id);
+                                        },
+                                      ),
+                                    ),
                                 ],
                               ),
                             ),

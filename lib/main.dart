@@ -2736,8 +2736,11 @@ class _AppRootState extends State<AppRoot>
           FocusView(
             logic: logic,
             state: st,
-            header: _buildQuestBanner(
-                context, Theme.of(context).colorScheme),
+            // Quête retirée de « Maintenant » une fois le coffre récupéré.
+            header: logic.state.lastQuestClaimedYmd ==
+                    yyyymmdd(DateTime.now())
+                ? null
+                : _buildQuestBanner(context, Theme.of(context).colorScheme),
             focusProject: _focusProject,
             focusTask: _focusTask,
             countdownEndsAt: _countdownEndsAt,
@@ -2983,6 +2986,16 @@ class _AppRootState extends State<AppRoot>
                         color: cs.onSurface.withOpacity(.8))),
                 const SizedBox(height: 8),
                 Wrap(spacing: 8, runSpacing: 8, children: [
+                  ChoiceChip(
+                    label: const Text('Aujourd\'hui'),
+                    selected: day == today,
+                    onSelected: (_) => setSheet(() {
+                      day = today;
+                      // Heure par défaut = dans 1 h, arrondie, pour rester future.
+                      final t = now.add(const Duration(hours: 1));
+                      time = TimeOfDay(hour: t.hour, minute: 0);
+                    }),
+                  ),
                   ChoiceChip(
                     label: const Text('Demain matin'),
                     selected: isTomorrow,

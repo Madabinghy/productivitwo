@@ -569,11 +569,20 @@ class _QuestCard extends StatelessWidget {
             Text('✅ Coffre récupéré — reviens demain',
                 style:
                     TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.6)))
-          else
+          else ...[
             Text(
                 'Encore $remaining action${remaining > 1 ? 's' : ''} pour débloquer le coffre 🎁',
                 style: TextStyle(
-                    fontSize: 12.5, color: cs.onSurface.withOpacity(.65))),
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: claimable ? dark : cs.onSurface.withOpacity(.75))),
+            const SizedBox(height: 3),
+            Text(
+                'Compte : routine validée · action de projet cochée · défi relevé.',
+                style: TextStyle(
+                    fontSize: 11,
+                    color: (claimable ? dark : cs.onSurface).withOpacity(.6))),
+          ],
         ],
       ),
     );
