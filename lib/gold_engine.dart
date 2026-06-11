@@ -448,6 +448,48 @@ extension GoldEngine on AppLogic {
     return out;
   }
 
+  /// PV « plein » d'un item (cible totale) — pour la jauge de vie de la case.
+  int enemyMaxHp(String type, String itemId) {
+    if (type == 'snake') {
+      for (final p in currentProjects) {
+        for (final t in p.tasks) {
+          if (t.id == itemId) return t.actions.isEmpty ? 1 : t.actions.length;
+        }
+      }
+      return 1;
+    }
+    Activity? a;
+    for (final x in state.activities) {
+      if (x.id == itemId) {
+        a = x;
+        break;
+      }
+    }
+    if (a == null) return 1;
+    if (type == 'spider') {
+      final tgt = activeHabitTarget(a);
+      return tgt < 1 ? 1 : tgt;
+    }
+    final m = (a.goalMin / 5).ceil();
+    return m < 1 ? 1 : m;
+  }
+
+  /// Domaine de l'item d'un ennemi (pour colorer sa case).
+  String? enemyDomainId(String type, String itemId) {
+    if (type == 'snake') {
+      for (final p in currentProjects) {
+        for (final t in p.tasks) {
+          if (t.id == itemId) return p.domainId;
+        }
+      }
+      return null;
+    }
+    for (final x in state.activities) {
+      if (x.id == itemId) return x.domainId;
+    }
+    return null;
+  }
+
   /// Une routine est « lancée » si elle a été complétée au moins une fois ≤ d.
   bool _routineLaunchedBy(Activity a, DateTime d) {
     final ymdD = yyyymmdd(d);

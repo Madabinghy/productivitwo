@@ -5,6 +5,7 @@ import 'package:productivitwo_v1/expedition.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/widgets/confetti.dart';
+import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/widgets/expedition_sheet.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
 
@@ -95,18 +96,13 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
     logic.reconcileLiveGold(sync);
 
     if (_hunt) {
-      // Instance de chasse FRAÎCHE : brouillard plein, on éclaire le départ,
-      // un gardien à abattre. Rien n'est synchronisé.
+      // Chasse au backlog : carte fraîche peuplée d'un MAX de tes vrais items
+      // (faciles près de l'entrée), en gardant un chemin praticable. Local/éphémère.
       _huntPos = _map.start;
       _huntRevealed.addAll(_neighbors(_map.start.x, _map.start.y,
               includeSelf: true, radius: _kTorchReveal)
           .map((p) => '${p.x}_${p.y}'));
-      final gt = _guardianTile();
-      if (gt != null) {
-        final gType = GoldEconomy.pestTypeForLevel(_level);
-        final base = logic.weaponRawCount(GoldEconomy.weaponForPest(gType));
-        _huntEntities.add(encodeEntity(gType, gt, 'guardian~${_ymd()}~$base'));
-      }
+      _huntEntities.addAll(_placeBacklogOnMap());
       return;
     }
 
@@ -258,6 +254,118 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
     return out;
   }
 
+  /// Construit une case : ajoute la jauge de vie (couleur domaine × % PV) si
+  /// c'est un ennemi de backlog.
+  Widget _buildTile(int x, int y, Point<int> pos, ColorScheme cs) {
+    final ent = _entityAt('${x}_$y');
+    Color? hpColor;
+    double hpFrac = 0;
+    if (ent != null && isBacklogMeta(ent.meta)) {
+      final id = backlogItemId(ent.meta);
+      final max = logic.enemyMaxHp(ent.type, id);
+      final cur = logic.enemyHp(ent.type, id);
+      hpFrac = max > 0 ? cur / max : 0.0;
+      hpColor = domainColor(logic.enemyDomainId(ent.type, id),
+              logic.state.activeDomains) ??
+          cs.primary;
+    }
+    return _TileView(
+      tile: _map.at(x, y),
+      visible: _revealed.contains('${x}_$y'),
+      isAvatar: pos.x == x && pos.y == y,
+      avatarEmoji: logic.state.activeAvatar ?? '🧍',
+      reachable: (x - pos.x).abs() + (y - pos.y).abs() == 1,
+      entity: ent,
+      hpColor: hpColor,
+      hpFrac: hpFrac,
+      picked: _picked,
+      cs: cs,
+      onTap: () => _onTap(_map.at(x, y)),
+    );
+  }
+
+  bool _walkable(int x, int y) =>
+      _map.inBounds(x, y) && _map.at(x, y).kind != OwTileKind.wall;
+
+  List<({int x, int y})> _ortho(int x, int y) => [
+        (x: x + 1, y: y),
+        (x: x - 1, y: y),
+        (x: x, y: y + 1),
+        (x: x, y: y - 1),
+      ].where((p) => _walkable(p.x, p.y)).toList();
+
+  /// Tuiles sol (sans collectible) triées par distance au départ (proches d'abord).
+  List<String> _floorTilesByDistanceFromStart() {
+    final dist = <String, int>{'${_map.start.x}_${_map.start.y}': 0};
+    final q = <Point<int>>[_map.start];
+    var i = 0;
+    while (i < q.length) {
+      final c = q[i++];
+      final cd = dist['${c.x}_${c.y}']!;
+      for (final n in _ortho(c.x, c.y)) {
+        final id = '${n.x}_${n.y}';
+        if (dist.containsKey(id)) continue;
+        dist[id] = cd + 1;
+        q.add(Point(n.x, n.y));
+      }
+    }
+    return _map.all
+        .where((t) => t.kind == OwTileKind.floor && t.collectibleId == null)
+        .map((t) => '${t.x}_${t.y}')
+        .where(dist.containsKey)
+        .toList()
+      ..sort((a, b) => dist[a]!.compareTo(dist[b]!));
+  }
+
+  /// Vrai si, en bloquant [candidate] (+ les [blocked] déjà posés), toutes les
+  /// cases praticables restantes restent connectées au départ (chemin garanti).
+  bool _freeStaysConnected(Set<String> blocked, String candidate) {
+    final block = {...blocked, candidate};
+    final startId = '${_map.start.x}_${_map.start.y}';
+    if (block.contains(startId)) return false;
+    var total = 0;
+    for (final t in _map.all) {
+      if (t.kind == OwTileKind.wall) continue;
+      if (block.contains('${t.x}_${t.y}')) continue;
+      total++;
+    }
+    final seen = <String>{startId};
+    final q = <Point<int>>[_map.start];
+    var i = 0;
+    while (i < q.length) {
+      final c = q[i++];
+      for (final n in _ortho(c.x, c.y)) {
+        final id = '${n.x}_${n.y}';
+        if (block.contains(id) || seen.contains(id)) continue;
+        seen.add(id);
+        q.add(Point(n.x, n.y));
+      }
+    }
+    return seen.length == total;
+  }
+
+  /// Pose un MAX d'ennemis de backlog sur la carte de chasse : les plus faciles
+  /// (PV bas) près de l'entrée, en préservant un chemin praticable.
+  List<String> _placeBacklogOnMap() {
+    final easyFirst = logic.backlogEnemies()
+      ..sort((a, b) => a.hp.compareTo(b.hp));
+    final ordered = _floorTilesByDistanceFromStart();
+    final startId = '${_map.start.x}_${_map.start.y}';
+    final blocked = <String>{};
+    final placed = <String>[];
+    for (final e in easyFirst) {
+      for (final tile in ordered) {
+        if (tile == startId || blocked.contains(tile)) continue;
+        if (_freeStaysConnected(blocked, tile)) {
+          blocked.add(tile);
+          placed.add(encodeEntity(e.type, tile, 'ref~${e.id}'));
+          break;
+        }
+      }
+    }
+    return placed;
+  }
+
   ({String raw, String type, String tile, String meta})? _entityAt(String id) {
     for (final e in _ents) {
       final d = decodeEntity(e);
@@ -285,21 +393,12 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
     }).toList();
   }
 
-  /// Nuisible du palier sur [tile], baseline de forge capturé à la rencontre.
-  String _spawnPestOn(String tile) {
-    final type = GoldEconomy.pestTypeForLevel(_level);
-    final base = logic.weaponRawCount(GoldEconomy.weaponForPest(type));
-    return encodeEntity(type, tile, '${_ymd()}~$base');
-  }
 
   String? _maybeSpawn(List<String> newlyRevealed, String destId) {
     if (_hunt) {
-      // Chasse : spawn FIABLE d'ennemis du palier (60 % par révélation, sous le cap).
-      if (_livePests >= GoldEconomy.maxLivePests) return null;
-      if (_rng.nextInt(100) >= 60) return null;
-      final tiles = _eligibleSpawnTiles(newlyRevealed, destId);
-      if (tiles.isEmpty) return null;
-      return _spawnPestOn(tiles[_rng.nextInt(tiles.length)]);
+      // Chasse au backlog : tous les ennemis sont posés à l'ouverture (tes vrais
+      // items). Pas de spawn pendant l'exploration.
+      return null;
     }
     final w = logic.weeklyScoreData();
     if (w.previous <= 0) return null;
@@ -1052,18 +1151,7 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           for (var x = 0; x < _map.cols; x++)
-                            _TileView(
-                              tile: _map.at(x, y),
-                              visible: _revealed.contains('${x}_$y'),
-                              isAvatar: pos.x == x && pos.y == y,
-                              avatarEmoji: logic.state.activeAvatar ?? '🧍',
-                              reachable:
-                                  (x - pos.x).abs() + (y - pos.y).abs() == 1,
-                              entity: _entityAt('${x}_$y'),
-                              picked: _picked,
-                              cs: cs,
-                              onTap: () => _onTap(_map.at(x, y)),
-                            ),
+                            _buildTile(x, y, pos, cs),
                         ],
                       ),
                   ],
@@ -1085,6 +1173,9 @@ class _TileView extends StatelessWidget {
   final Set<String> picked;
   final ColorScheme cs;
   final VoidCallback onTap;
+  // Jauge de vie d'un ennemi backlog : couleur du domaine, hauteur = % PV restant.
+  final Color? hpColor;
+  final double hpFrac;
   const _TileView({
     required this.tile,
     required this.visible,
@@ -1095,6 +1186,8 @@ class _TileView extends StatelessWidget {
     required this.picked,
     required this.cs,
     required this.onTap,
+    this.hpColor,
+    this.hpFrac = 0,
   });
 
   @override
@@ -1151,7 +1244,7 @@ class _TileView extends StatelessWidget {
         width: _tile,
         height: _tile,
         margin: const EdgeInsets.all(1),
-        alignment: Alignment.center,
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(6),
@@ -1159,7 +1252,21 @@ class _TileView extends StatelessWidget {
               ? Border.all(color: _kGold, width: 2)
               : null,
         ),
-        child: Text(content, style: const TextStyle(fontSize: 20)),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // Jauge de vie : remplit la case (couleur du domaine) au % de PV.
+            if (hpColor != null)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: _tile * hpFrac.clamp(0.0, 1.0),
+                child: Container(color: hpColor!.withOpacity(.5)),
+              ),
+            Text(content, style: const TextStyle(fontSize: 20)),
+          ],
+        ),
       ),
     );
   }

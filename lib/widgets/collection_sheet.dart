@@ -115,13 +115,13 @@ class _CollectionSheet extends StatelessWidget {
             _RecipeRow(logic: logic, recipe: r, cs: cs),
           const SizedBox(height: 16),
           // Carte en cours : on peut aller l'explorer / la chasser.
-          Text('Chasser une carte',
+          Text('Affronter mon backlog',
               style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                   color: cs.onSurface.withOpacity(.7))),
           const SizedBox(height: 4),
-          Text('Re-explore une carte débloquée pour traquer ses nuisibles et farmer leur butin (chaque torche se paie).',
+          Text('Pars en chasse : tes vrais items négligés (routines, activités en retard, tâches) peuplent la carte — abats-les en FAISANT le travail. Les plus faciles près de l\'entrée.',
               style:
                   TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.5))),
           const SizedBox(height: 12),
