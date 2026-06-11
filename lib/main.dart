@@ -2540,6 +2540,86 @@ class _AppRootState extends State<AppRoot>
     } catch (_) {}
   }
 
+  /// Lance un bloc du programme (▶) : démarre le chrono de l'activité liée et
+  /// met la tâche en focus (ses actions s'affichent dans l'onglet Maintenant).
+  Future<void> _launchScheduledBlock(ScheduleBlock block) async {
+    // Bloc routine/activité : on démarre directement son activité.
+    if (block.projectId == null) {
+      if (block.activityId != null) {
+        logic.start(block.activityId!);
+        setState(() {
+          _focusProject = null;
+          _focusTask = null;
+          _tab = _Tab.maintenant;
+        });
+      }
+      return;
+    }
+    final project =
+        _dashboardProjects.firstWhereOrNull((p) => p.id == block.projectId);
+    if (project == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Projet introuvable.')));
+      }
+      return;
+    }
+    final task = block.taskId == null
+        ? null
+        : project.tasks.firstWhereOrNull((t) => t.id == block.taskId);
+    // Activité-temps du domaine du projet (auto si une seule, sinon on choisit).
+    final domainActs = (_state?.activities ?? [])
+        .where((a) =>
+            a.domainId == project.domainId && !a.isHabit && !a.deleted)
+        .toList();
+    Activity? activity;
+    if (domainActs.length == 1) {
+      activity = domainActs.first;
+    } else if (domainActs.isNotEmpty) {
+      activity = await showModalBottomSheet<Activity>(
+        context: context,
+        showDragHandle: true,
+        builder: (ctx) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Sur quelle activité chronométrer ?',
+                      style: TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w800)),
+                ),
+              ),
+              for (final a in domainActs)
+                ListTile(
+                  leading: const Icon(Icons.timer_outlined),
+                  title: Text(a.name),
+                  onTap: () => Navigator.pop(ctx, a),
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      );
+    }
+    if (activity == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text(
+                'Aucune activité de temps dans ce domaine pour lancer le chrono.')));
+      }
+      return;
+    }
+    logic.start(activity.id);
+    setState(() {
+      _focusProject = project;
+      _focusTask = task;
+      _tab = _Tab.maintenant;
+    });
+  }
+
   void _cancelCountdown() {
     _countdownTimer?.cancel();
     _countdownTimer = null;
@@ -2660,6 +2740,7 @@ class _AppRootState extends State<AppRoot>
             focusTask: _focusTask,
             countdownEndsAt: _countdownEndsAt,
             countdownTotalSec: _countdownTotalSec,
+            onLaunchScheduledBlock: _launchScheduledBlock,
             onGoToProjects: () => setState(() => _tab = _Tab.projets),
             onStartTimer: (activity, project, task) {
               logic.start(activity.id);

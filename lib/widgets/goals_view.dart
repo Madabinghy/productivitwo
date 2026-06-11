@@ -6,6 +6,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/widgets/new_project_sheet.dart';
 import 'package:productivitwo_v1/widgets/project_sheet.dart';
+import 'package:productivitwo_v1/widgets/task_schedule.dart';
 
 class GoalsView extends StatefulWidget {
   final List<Domain> domains;
@@ -455,8 +456,9 @@ class _GoalsViewState extends State<GoalsView> {
                     setState(() {});
                   },
                   onToggleTodayFlag: () async {
-                    await _sync.toggleTaskTodayFlag(
-                        project.id, task.id, !task.todayFlag);
+                    await toggleTaskTodayAndSchedule(
+                        ctx, _sync, project, task);
+                    setState(() {});
                   },
                 );
               },

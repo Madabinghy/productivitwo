@@ -8,8 +8,11 @@ import 'package:productivitwo_v1/notifications.dart';
 class DailyScheduleView extends StatefulWidget {
   final String date; // YYYY-MM-DD
   final AppLogic logic;
+  // Lancer un bloc (▶) : démarre le chrono de la tâche/activité liée + focus.
+  final void Function(ScheduleBlock block)? onLaunch;
 
-  const DailyScheduleView({super.key, required this.date, required this.logic});
+  const DailyScheduleView(
+      {super.key, required this.date, required this.logic, this.onLaunch});
 
   @override
   State<DailyScheduleView> createState() => _DailyScheduleViewState();
@@ -245,6 +248,21 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                   ],
                 ),
               ),
+              // Bouton ▶ lancer (chrono + focus tâche), si lançable.
+              if (widget.onLaunch != null &&
+                  !isDone &&
+                  (block.projectId != null || block.activityId != null))
+                GestureDetector(
+                  onTap: () => widget.onLaunch!(block),
+                  behavior: HitTestBehavior.opaque,
+                  child: Container(
+                    margin: const EdgeInsets.only(left: 4),
+                    padding: const EdgeInsets.all(5),
+                    decoration: BoxDecoration(
+                        color: color.withOpacity(.14), shape: BoxShape.circle),
+                    child: Icon(Icons.play_arrow_rounded, size: 18, color: color),
+                  ),
+                ),
               // Bouton checkbox
               GestureDetector(
                 onTap: () => _toggleDone(block),

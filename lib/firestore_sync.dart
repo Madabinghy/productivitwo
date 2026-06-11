@@ -1659,6 +1659,24 @@ class FirestoreSync {
     await ref.update({'blocks': blocks});
   }
 
+  /// Retire du programme d'un jour les blocs liés à une tâche de projet
+  /// (utilisé quand on retire l'étoile « priorité du jour » d'une tâche).
+  Future<void> removeTaskScheduleBlocks(
+      String date, String projectId, String taskId) async {
+    if (uid == null) return;
+    final ref = _db.doc('users/$uid/daily_schedules/$date');
+    final snap = await ref.get();
+    if (!snap.exists) return;
+    final data = snap.data() as Map;
+    final blocks = (data['blocks'] as List?)
+            ?.map((b) => Map<String, dynamic>.from(b as Map))
+            .where((b) =>
+                !(b['projectId'] == projectId && b['taskId'] == taskId))
+            .toList() ??
+        [];
+    await ref.update({'blocks': blocks});
+  }
+
   /// Renvoie les `activityId` ayant un défi (challenge) encore en attente,
   /// programmé aujourd'hui ou dans le futur — pour que « Challenge me » ne
   /// re-propose pas une activité déjà planifiée. Doc id = date (YYYY-MM-DD),

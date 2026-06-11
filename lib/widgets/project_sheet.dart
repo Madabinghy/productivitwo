@@ -4,6 +4,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/gold_economy.dart';
 import 'package:productivitwo_v1/gold_purchase.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
+import 'package:productivitwo_v1/widgets/task_schedule.dart';
 
 // ── Entrée publique ───────────────────────────────────────────────────────────
 
@@ -408,9 +409,9 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                         onToggle: () => _toggleStatus(task),
                         onOpenDetail: _openTaskDetail,
                         onToggleTodayFlag: () async {
-                          setState(() => task.todayFlag = !task.todayFlag);
-                          await _sync.saveProjectTasks(
-                              _project.id, _project.tasks);
+                          await toggleTaskTodayAndSchedule(
+                              context, _sync, _project, task);
+                          if (mounted) setState(() {});
                         },
                       ),
                   ],
@@ -439,9 +440,9 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                         onToggle: () => _toggleStatus(task),
                         onOpenDetail: _openTaskDetail,
                         onToggleTodayFlag: () async {
-                          setState(() => task.todayFlag = !task.todayFlag);
-                          await _sync.saveProjectTasks(
-                              _project.id, _project.tasks);
+                          await toggleTaskTodayAndSchedule(
+                              context, _sync, _project, task);
+                          if (mounted) setState(() {});
                         },
                       ),
                   ],
