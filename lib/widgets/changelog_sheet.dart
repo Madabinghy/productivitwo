@@ -14,7 +14,7 @@ const _changelog = [
     (Icons.favorite_outline, 'Combat à cœurs ❤️ : les PV d\'un nuisible s\'affichent en cœurs (✅ = déjà éliminés). Une routine MINUTÉE (ex. 25 min) devient 5 cœurs → tu choisis comment frapper : Finir, 25/15/5 min ou Chrono libre. Pareil pour les activités en retard'),
     (Icons.push_pin_outlined, '« Engager » un nuisible (coût en armes 🩴🏹🗡️) l\'épingle dans « Combats en cours » (dans Mon or) → tu le retrouves sans re-fouiller la carte. Pour le vaincre : ouvre sa carte et FAIS le vrai travail'),
     (Icons.event_outlined, '« Programmer pour plus tard » depuis la carte de combat : pas le temps maintenant ? Choisis le jour + l\'heure + rappel, ça réapparaît au bon moment (comme un défi Orion)'),
-    (Icons.swords_outlined, 'Accès direct « Affronter mon backlog · niveau N » dans Mon or (farm par défaut) ; « Mes cartes » pour les anciennes cartes'),
+    (Icons.sports_kabaddi, 'Accès direct « Affronter mon backlog · niveau N » dans Mon or (farm par défaut) ; « Mes cartes » pour les anciennes cartes'),
     (Icons.bug_report_outlined, 'Correction : le lanceur de routines (FAB) affichait un compteur hebdo périmé (0/4 même si faite cette semaine) — corrigé'),
   ]),
   _Entry('6.04', '11 juin 2026', [
