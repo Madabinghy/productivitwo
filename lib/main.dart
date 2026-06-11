@@ -3840,8 +3840,13 @@ class _AppRootState extends State<AppRoot>
                             );
                           }
                           final r = row as Activity;
-                          final value = logic.habitValueOn(r.id, todayD);
-                          final target = logic.effectiveHabitTarget(r);
+                          // Compteur DE PÉRIODE (jour/semaine/mois) — pas juste
+                          // aujourd'hui (sinon une routine hebdo affiche 0/4 même
+                          // si on l'a faite 2× cette semaine). Le − reste lié au jour.
+                          final todayValue = logic.habitValueOn(r.id, todayD);
+                          final period = logic.habitPeriod(r);
+                          final value = period.done;
+                          final target = period.target;
                           final isDone = value >= target;
                           final dColor = domainColor(r.domainId,
                               logic.state.activeDomains);
@@ -3946,7 +3951,7 @@ class _AppRootState extends State<AppRoot>
                                           ),
                                         ),
                                         const SizedBox(width: 8),
-                                        if (value > 0)
+                                        if (todayValue > 0)
                                           GestureDetector(
                                             onTap: () {
                                               logic.incHabitWithAssocEvent(
