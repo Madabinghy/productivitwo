@@ -304,6 +304,12 @@ String encodeEntity(String type, String tile, String meta) => '$type:$tile:$meta
 // Rétro-compatible : un ancien meta "spawnYmd" ou "guardian" donne baseline 0.
 bool isGuardianMeta(String meta) => meta.startsWith('guardian');
 
+// Ennemi « vrai backlog » : meta = "ref~<itemId>" (l'itemId est une routine, une
+// activité-temps ou une tâche, selon le type d'ennemi). PV calculés en direct.
+bool isBacklogMeta(String meta) => meta.startsWith('ref~');
+String backlogItemId(String meta) =>
+    meta.startsWith('ref~') ? meta.substring(4) : '';
+
 /// Baseline de forge effectif d'une entité pour [todayYmd] : le nombre de
 /// routines/actions à NE PAS compter (déjà faites au spawn). Vaut 0 si l'entité
 /// a spawné un autre jour (chaque jour repart de zéro).

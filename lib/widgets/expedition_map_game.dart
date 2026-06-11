@@ -153,6 +153,45 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
         changed['ent'] = true;
       }
     }
+    // ── Backlog : ennemis = tes vrais items négligés (PV = travail restant) ──
+    // Retire les ennemis rattrapés (PV 0), garde les vivants, complète avec les
+    // plus nécessiteux jusqu'au plafond.
+    final liveRefIds = <String>{};
+    final kept = <String>[];
+    var refChanged = false;
+    for (final e in logic.state.expeditionEntities) {
+      final d = decodeEntity(e);
+      if (isBacklogMeta(d.meta)) {
+        final id = backlogItemId(d.meta);
+        if (logic.enemyHp(d.type, id) <= 0) {
+          refChanged = true; // rattrapé hors combat → l'ennemi disparaît
+          continue;
+        }
+        liveRefIds.add(id);
+      }
+      kept.add(e);
+    }
+    if (refChanged) {
+      logic.state.expeditionEntities
+        ..clear()
+        ..addAll(kept);
+      changed['ent'] = true;
+    }
+    final occupied =
+        logic.state.expeditionEntities.map((e) => decodeEntity(e).tile).toSet();
+    final freeTiles = _freeFloorTiles(occupied);
+    var slot = liveRefIds.length;
+    for (final b in logic.backlogEnemies()) {
+      if (slot >= GoldEconomy.maxLivePests || freeTiles.isEmpty) break;
+      if (liveRefIds.contains(b.id)) continue;
+      final tile = freeTiles.removeAt(_rng.nextInt(freeTiles.length));
+      logic.state.expeditionEntities
+          .add(encodeEntity(b.type, tile, 'ref~${b.id}'));
+      liveRefIds.add(b.id);
+      slot++;
+      changed['ent'] = true;
+    }
+
     if (changed.isNotEmpty) {
       logic.onChange();
       sync.expeditionWrite(
@@ -162,12 +201,30 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
     }
   }
 
+  /// Tuiles sol libres (sans entité ni collectible non ramassé) pour poser un
+  /// ennemi de backlog.
+  List<String> _freeFloorTiles(Set<String> occupied) {
+    return _map.all
+        .where((t) {
+          if (t.kind != OwTileKind.floor) return false;
+          final id = '${t.x}_${t.y}';
+          if (occupied.contains(id)) return false;
+          if (t.collectibleId != null && !_picked.contains(t.collectibleId)) {
+            return false;
+          }
+          return true;
+        })
+        .map((t) => '${t.x}_${t.y}')
+        .toList();
+  }
+
   List<String> _prunedEntities() {
     final today = _parseYmd(_ymd());
     return _ents.where((e) {
       final ent = decodeEntity(e);
       if (!isPestType(ent.type) || ent.meta.isEmpty) return true; // bonus persiste
       if (isGuardianMeta(ent.meta)) return true; // gardien permanent
+      if (isBacklogMeta(ent.meta)) return true; // ennemi backlog (vie = PV)
       final diff = today.difference(_parseYmd(ent.meta)).inDays;
       return diff < GoldEconomy.pestLifespanDays(ent.type);
     }).toList();
@@ -253,8 +310,9 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
     if (eligible.isEmpty) return null;
     final tile = eligible[_rng.nextInt(eligible.length)];
     if (trendPct < 0) {
-      if (_livePests >= GoldEconomy.maxLivePests) return null;
-      return _spawnPestOn(tile);
+      // Sur la map LIVE, les nuisibles sont tes vrais items (backlog), posés à
+      // l'ouverture — pas de nuisible générique ici. Seuls les trésors spawnent.
+      return null;
     } else {
       final amount = GoldEconomy.bonusGoldMin +
           _rng.nextInt(GoldEconomy.bonusGoldMax - GoldEconomy.bonusGoldMin + 1);
@@ -288,12 +346,17 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
   /// Combat : on FORGE l'arme par l'action réelle (pas par l'or). Si l'arme est
   /// prête → on frappe ; sinon on ouvre la feuille de combat (progression).
   Future<void> _engageCombat(String raw, String type) async {
-    // Toujours ouvrir l'écran de combat : même arme prête, la mise à mort passe
-    // par le bouton FRAPPER (sinon l'ennemi mourait « sans combat » au tap).
+    final meta = decodeEntity(raw).meta;
+    if (isBacklogMeta(meta)) {
+      // Ennemi = vrai item : on le combat en FAISANT le travail (modèle PV).
+      await _showBacklogCombat(raw, type, backlogItemId(meta));
+      return;
+    }
+    // Ennemi générique (gardien / chasse) : modèle arme/munition.
     await _showCombatSheet(raw, type, GoldEconomy.weaponForPest(type));
   }
 
-  Future<void> _strike(String raw, String type) async {
+  Future<void> _strike(String raw, String type, {bool backlog = false}) async {
     final isGuardian = isGuardianMeta(decodeEntity(raw).meta);
     final loot = GoldEconomy.pestLootBase(type, isGuardian) + _rng.nextInt(5);
     setState(() => _busy = true);
@@ -311,8 +374,9 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
         sync.setExpeditionGuardianKilled(_level);
       }
     }
-    // Dépense l'arme + incrémente la capture + débloque d'éventuelles recettes.
-    final unlocked = logic.recordKill(type, sync);
+    // Capture (+ recettes). En backlog, le travail réel EST l'attaque → on ne
+    // dépense pas d'arme.
+    final unlocked = logic.recordKill(type, sync, spendWeapon: !backlog);
     logic.applyGold(sync, loot,
         category: 'gain',
         reasonCode: 'pest_loot',
@@ -515,6 +579,174 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
             ),
           ),
         );
+      },
+    );
+  }
+
+  /// Complète la 1ʳᵉ action non faite d'une tâche (frappe d'un serpent backlog).
+  Future<bool> _completeOneTaskAction(String taskId) async {
+    for (final p in logic.currentProjects) {
+      for (final t in p.tasks) {
+        if (t.id != taskId) continue;
+        final idx = t.actions.indexWhere((a) => !a.done);
+        if (idx < 0) return false;
+        t.actions[idx].done = true;
+        t.actions[idx].doneAt = DateTime.now();
+        await sync.saveProjectTasks(p.id, p.tasks);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Combat « vrai item » (PV) : on FRAPPE en faisant le vrai travail. Routine →
+  /// +1 ; activité → minuteur 5 min sur ELLE ; tâche → coche une action. PV 0 = mort.
+  Future<void> _showBacklogCombat(
+      String raw, String type, String itemId) async {
+    final accent = const Color(0xFFE24A4A);
+    final (role, workLabel, workIcon) = switch (type) {
+      'snake' => ('Tâche à terminer', 'Cocher une action', '✅'),
+      'scorpion' => ('Activité en retard', 'Logger 5 min dessus', '⏱️'),
+      _ => ('Routine à faire', 'Faire la routine (+1)', '🔥'),
+    };
+
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Combat',
+      barrierColor: Colors.black.withOpacity(.6),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (ctx, a1, a2) {
+        return StatefulBuilder(builder: (ctx, setLocal) {
+          final hp = logic.enemyHp(type, itemId);
+          final itemName = logic.enemyItemName(type, itemId);
+
+          Future<void> doWork() async {
+            if (type == 'scorpion') {
+              // Minuteur 5 min sur CETTE activité ; les PV baissent au terme.
+              if (logic.launchTimerHook != null) {
+                logic.start(itemId);
+                logic.launchTimerHook!(5, itemName);
+                if (mounted) {
+                  Navigator.pop(ctx);
+                  Navigator.pop(context); // ferme la carte → on voit le minuteur
+                }
+              }
+              return;
+            }
+            if (type == 'spider') {
+              logic.incHabit(itemId, 1, DateTime.now());
+              logic.onChange();
+            } else {
+              await _completeOneTaskAction(itemId);
+            }
+            final nhp = logic.enemyHp(type, itemId);
+            if (nhp <= 0) {
+              Navigator.pop(ctx);
+              await _strike(raw, type, backlog: true);
+            } else {
+              setLocal(() {});
+              setState(() {});
+            }
+          }
+
+          return SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                child: Container(
+                  margin: const EdgeInsets.all(24),
+                  padding: const EdgeInsets.fromLTRB(24, 18, 24, 18),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF2A0E0E), Color(0xFF5A1A1A)],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: accent, width: 2),
+                    boxShadow: [
+                      BoxShadow(color: accent.withOpacity(.4), blurRadius: 26)
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(role.toUpperCase(),
+                          style: const TextStyle(
+                              fontSize: 12,
+                              letterSpacing: 2,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFFFFC9C9))),
+                      const SizedBox(height: 12),
+                      Container(
+                        width: 110,
+                        height: 110,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(colors: [
+                            accent.withOpacity(.30),
+                            accent.withOpacity(0),
+                          ]),
+                        ),
+                        child: Text(entityEmoji(type),
+                            style: const TextStyle(fontSize: 72)),
+                      ),
+                      Text(itemName,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white)),
+                      const SizedBox(height: 10),
+                      // Jauge de PV.
+                      Text('PV : $hp',
+                          style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFFFFC9C9))),
+                      const SizedBox(height: 6),
+                      Text(
+                          type == 'scorpion'
+                              ? 'Chaque 5 min loggé sur cette activité = −1 PV.'
+                              : type == 'snake'
+                                  ? 'Chaque action cochée = −1 PV.'
+                                  : 'Chaque répétition de la routine = −1 PV.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.white.withOpacity(.7))),
+                      const SizedBox(height: 20),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: accent,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 15),
+                          ),
+                          icon: Text(workIcon,
+                              style: const TextStyle(fontSize: 16)),
+                          label: Text(workLabel,
+                              style: const TextStyle(
+                                  fontSize: 15, fontWeight: FontWeight.w900)),
+                          onPressed: doWork,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: Text('Fuir',
+                            style:
+                                TextStyle(color: Colors.white.withOpacity(.55))),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        });
       },
     );
   }

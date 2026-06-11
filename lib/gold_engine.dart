@@ -339,9 +339,13 @@ extension GoldEngine on AppLogic {
   /// débloque les recettes satisfaites, puis persiste. Renvoie les créatures
   /// nouvellement débloquées (pour les célébrer).
   List<({String id, String emoji, String name})> recordKill(
-      String type, FirestoreSync sync) {
-    final w = GoldEconomy.weaponForPest(type);
-    state.weaponsSpent[w] = (state.weaponsSpent[w] ?? 0) + 1;
+      String type, FirestoreSync sync, {bool spendWeapon = true}) {
+    // Kill « vrai item » (modèle PV) : le travail réel EST l'attaque → pas d'arme
+    // dépensée. Kill générique de chasse : on consomme une munition.
+    if (spendWeapon) {
+      final w = GoldEconomy.weaponForPest(type);
+      state.weaponsSpent[w] = (state.weaponsSpent[w] ?? 0) + 1;
+    }
     state.pestKills[type] = (state.pestKills[type] ?? 0) + 1;
 
     final unlocked = <({String id, String emoji, String name})>[];
@@ -367,6 +371,81 @@ extension GoldEngine on AppLogic {
       }
     }
     return unlocked;
+  }
+
+  // ── Combat « vrai backlog » : ennemi = item réel, PV = travail restant ──────
+  // type ↔ item : spider=routine (coups), scorpion=activité-temps (5 min/PV),
+  // snake=tâche (actions). PV calculés EN DIRECT → faire le vrai travail blesse.
+
+  /// PV d'un ennemi lié à l'item [itemId]. 0 = item rattrapé (l'ennemi meurt).
+  int enemyHp(String type, String itemId) {
+    final today = DateTime.now();
+    if (type == 'snake') {
+      for (final p in currentProjects) {
+        for (final t in p.tasks) {
+          if (t.id == itemId) {
+            return t.actions.where((a) => !a.done).length;
+          }
+        }
+      }
+      return 0;
+    }
+    Activity? a;
+    for (final x in state.activities) {
+      if (x.id == itemId) {
+        a = x;
+        break;
+      }
+    }
+    if (a == null) return 0;
+    if (type == 'spider') {
+      final hp = activeHabitTarget(a) - habitValueOn(a.id, today);
+      return hp < 0 ? 0 : hp;
+    }
+    // scorpion : retard de temps du jour / 5 min (arrondi haut).
+    final retard = a.goalMin - _activityLoggedMinutes(a.id, yyyymmdd(today));
+    return retard <= 0 ? 0 : (retard / 5).ceil();
+  }
+
+  /// Nom lisible de l'item d'un ennemi (écran de combat).
+  String enemyItemName(String type, String itemId) {
+    if (type == 'snake') {
+      for (final p in currentProjects) {
+        for (final t in p.tasks) {
+          if (t.id == itemId) return t.title;
+        }
+      }
+      return 'Tâche';
+    }
+    for (final x in state.activities) {
+      if (x.id == itemId) return x.name;
+    }
+    return type == 'spider' ? 'Routine' : 'Activité';
+  }
+
+  /// Vrais items négligés à transformer en nuisibles, triés par PV décroissant
+  /// (les plus nécessiteux d'abord). [(type, id, hp)].
+  List<({String type, String id, int hp})> backlogEnemies() {
+    final out = <({String type, String id, int hp})>[];
+    for (final a in state.activeActivities) {
+      if (a.isHabit) {
+        final hp = enemyHp('spider', a.id);
+        if (hp > 0) out.add((type: 'spider', id: a.id, hp: hp));
+      } else if (a.goalMin > 0) {
+        final hp = enemyHp('scorpion', a.id);
+        if (hp > 0) out.add((type: 'scorpion', id: a.id, hp: hp));
+      }
+    }
+    for (final p in currentProjects) {
+      if (p.status == 'archived' || p.status == 'done') continue;
+      for (final t in p.tasks) {
+        if (t.status == 'done' || t.status == 'skipped') continue;
+        final hp = enemyHp('snake', t.id);
+        if (hp > 0) out.add((type: 'snake', id: t.id, hp: hp));
+      }
+    }
+    out.sort((a, b) => b.hp.compareTo(a.hp));
+    return out;
   }
 
   /// Une routine est « lancée » si elle a été complétée au moins une fois ≤ d.
