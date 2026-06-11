@@ -399,6 +399,17 @@ extension GoldEngine on AppLogic {
     }
     if (a == null) return 0;
     if (type == 'spider') {
+      // Routine MINUTÉE (timer + activité liée) → PV en chunks de 5 min (on
+      // chipote au minuteur). Sinon → coups restants (cible − fait).
+      final tm = a.timerMin ?? 0;
+      final lid = (a.linkedActivityId ?? '').trim();
+      if (tm > 0 && lid.isNotEmpty) {
+        if (habitValueOn(a.id, today) >= activeHabitTarget(a)) return 0;
+        final full = (tm / 5).ceil();
+        final done = _activityLoggedMinutes(lid, yyyymmdd(today)) ~/ 5;
+        final hp = full - done;
+        return hp < 0 ? 0 : hp;
+      }
       final hp = activeHabitTarget(a) - habitValueOn(a.id, today);
       return hp < 0 ? 0 : hp;
     }
@@ -467,6 +478,12 @@ extension GoldEngine on AppLogic {
     }
     if (a == null) return 1;
     if (type == 'spider') {
+      final tm = a.timerMin ?? 0;
+      final lid = (a.linkedActivityId ?? '').trim();
+      if (tm > 0 && lid.isNotEmpty) {
+        final m = (tm / 5).ceil();
+        return m < 1 ? 1 : m;
+      }
       final tgt = activeHabitTarget(a);
       return tgt < 1 ? 1 : tgt;
     }

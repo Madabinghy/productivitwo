@@ -698,15 +698,28 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
     return false;
   }
 
-  /// Combat « vrai item » (PV) : on FRAPPE en faisant le vrai travail. Routine →
-  /// +1 ; activité → minuteur 5 min sur ELLE ; tâche → coche une action. PV 0 = mort.
+  /// Combat « vrai item » (PV) : on FRAPPE en faisant le vrai travail. Cœurs =
+  /// PV (✅ = déjà éliminés). Routine minutée → chrono / 5 min / minuteur complet ;
+  /// routine simple → +1 ; activité → 5 min / chrono ; tâche → cocher une action.
   Future<void> _showBacklogCombat(
       String raw, String type, String itemId) async {
-    final accent = const Color(0xFFE24A4A);
-    final (role, workLabel, workIcon) = switch (type) {
-      'snake' => ('Tâche à terminer', 'Cocher une action', '✅'),
-      'scorpion' => ('Activité en retard', 'Logger 5 min dessus', '⏱️'),
-      _ => ('Routine à faire', 'Faire la routine (+1)', '🔥'),
+    const accent = Color(0xFFE24A4A);
+    int timerMin = 0;
+    String linkedId = '';
+    if (type == 'spider') {
+      for (final x in logic.state.activities) {
+        if (x.id == itemId) {
+          timerMin = x.timerMin ?? 0;
+          linkedId = (x.linkedActivityId ?? '').trim();
+          break;
+        }
+      }
+    }
+    final spiderTimer = type == 'spider' && timerMin > 0 && linkedId.isNotEmpty;
+    final role = switch (type) {
+      'snake' => 'Tâche à terminer',
+      'scorpion' => 'Activité en retard',
+      _ => 'Routine à faire',
     };
 
     await showGeneralDialog<void>(
@@ -718,35 +731,114 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
       pageBuilder: (ctx, a1, a2) {
         return StatefulBuilder(builder: (ctx, setLocal) {
           final hp = logic.enemyHp(type, itemId);
+          final maxHp = logic.enemyMaxHp(type, itemId);
           final itemName = logic.enemyItemName(type, itemId);
 
-          Future<void> doWork() async {
-            if (type == 'scorpion') {
-              // Minuteur 5 min sur CETTE activité ; les PV baissent au terme.
-              if (logic.launchTimerHook != null) {
-                logic.start(itemId);
-                logic.launchTimerHook!(5, itemName);
-                if (mounted) {
-                  Navigator.pop(ctx);
-                  Navigator.pop(context); // ferme la carte → on voit le minuteur
-                }
-              }
-              return;
+          void closeAll() {
+            if (mounted) {
+              Navigator.pop(ctx);
+              Navigator.pop(context);
             }
+          }
+
+          void launchTimer(int min, String actId, {String? routineId}) {
+            if (logic.launchTimerHook == null) return;
+            logic.start(actId);
+            logic.launchTimerHook!(min, itemName, routineId: routineId);
+            closeAll();
+          }
+
+          void launchChrono(String actId) {
+            logic.start(actId);
+            logic.onChange();
+            closeAll();
+          }
+
+          Future<void> inlineWork() async {
             if (type == 'spider') {
               logic.incHabit(itemId, 1, DateTime.now());
               logic.onChange();
             } else {
               await _completeOneTaskAction(itemId);
             }
-            final nhp = logic.enemyHp(type, itemId);
-            if (nhp <= 0) {
+            if (logic.enemyHp(type, itemId) <= 0) {
               Navigator.pop(ctx);
               await _strike(raw, type, backlog: true);
             } else {
               setLocal(() {});
               setState(() {});
             }
+          }
+
+          Widget atk(String icon, String label, VoidCallback onTap) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: accent,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                    ),
+                    icon: Text(icon, style: const TextStyle(fontSize: 15)),
+                    label: Text(label,
+                        style: const TextStyle(
+                            fontSize: 14.5, fontWeight: FontWeight.w800)),
+                    onPressed: onTap,
+                  ),
+                ),
+              );
+
+          // Échelle de minuteurs (temps) : pour scorpion ET routine minutée.
+          // On ne propose que les paliers ≤ PV restants (pas d'« over-kill »).
+          List<Widget> timerLadder(String actId,
+              {int? finishMin, String? finishRoutineId}) {
+            final out = <Widget>[];
+            if (finishMin != null) {
+              out.add(atk('🏁', 'Finir ($finishMin min)',
+                  () => launchTimer(finishMin, actId, routineId: finishRoutineId)));
+            }
+            for (final m in [25, 15, 5]) {
+              if (m == finishMin) continue;
+              if (hp >= m ~/ 5) {
+                out.add(atk('⏱️', '$m min (−${m ~/ 5} ❤️)',
+                    () => launchTimer(m, actId)));
+              }
+            }
+            out.add(atk('▶', 'Chrono libre', () => launchChrono(actId)));
+            return out;
+          }
+
+          final List<Widget> attacks;
+          if (spiderTimer) {
+            attacks = timerLadder(linkedId,
+                finishMin: timerMin, finishRoutineId: itemId);
+          } else if (type == 'spider') {
+            attacks = [atk('🔥', 'Faire la routine (+1)', inlineWork)];
+          } else if (type == 'scorpion') {
+            attacks = timerLadder(itemId);
+          } else {
+            attacks = [atk('✅', 'Cocher une action (−1 ❤️)', inlineWork)];
+          }
+
+          final Widget hearts;
+          if (maxHp > 12) {
+            hearts = Text('❤️ $hp / $maxHp PV',
+                style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white));
+          } else {
+            hearts = Wrap(
+              spacing: 2,
+              runSpacing: 2,
+              alignment: WrapAlignment.center,
+              children: [
+                for (int i = 0; i < maxHp; i++)
+                  Text(i < maxHp - hp ? '✅' : '❤️',
+                      style: const TextStyle(fontSize: 18)),
+              ],
+            );
           }
 
           return SafeArea(
@@ -778,8 +870,8 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
                               color: Color(0xFFFFC9C9))),
                       const SizedBox(height: 12),
                       Container(
-                        width: 110,
-                        height: 110,
+                        width: 104,
+                        height: 104,
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
@@ -789,7 +881,7 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
                           ]),
                         ),
                         child: Text(entityEmoji(type),
-                            style: const TextStyle(fontSize: 72)),
+                            style: const TextStyle(fontSize: 68)),
                       ),
                       Text(itemName,
                           textAlign: TextAlign.center,
@@ -798,46 +890,14 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
                               fontWeight: FontWeight.w800,
                               color: Colors.white)),
                       const SizedBox(height: 10),
-                      // Jauge de PV.
-                      Text('PV : $hp',
-                          style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFFFFC9C9))),
-                      const SizedBox(height: 6),
-                      Text(
-                          type == 'scorpion'
-                              ? 'Chaque 5 min loggé sur cette activité = −1 PV.'
-                              : type == 'snake'
-                                  ? 'Chaque action cochée = −1 PV.'
-                                  : 'Chaque répétition de la routine = −1 PV.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.white.withOpacity(.7))),
-                      const SizedBox(height: 20),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.icon(
-                          style: FilledButton.styleFrom(
-                            backgroundColor: accent,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 15),
-                          ),
-                          icon: Text(workIcon,
-                              style: const TextStyle(fontSize: 16)),
-                          label: Text(workLabel,
-                              style: const TextStyle(
-                                  fontSize: 15, fontWeight: FontWeight.w900)),
-                          onPressed: doWork,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
+                      hearts,
+                      const SizedBox(height: 14),
+                      ...attacks,
                       TextButton(
                         onPressed: () => Navigator.pop(ctx),
                         child: Text('Fuir',
-                            style:
-                                TextStyle(color: Colors.white.withOpacity(.55))),
+                            style: TextStyle(
+                                color: Colors.white.withOpacity(.55))),
                       ),
                     ],
                   ),
