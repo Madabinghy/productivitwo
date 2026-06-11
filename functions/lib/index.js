@@ -2921,7 +2921,7 @@ async function _seedDemoData(uid) {
         createdAt: db_1.FieldValue.serverTimestamp(), lastTuneAt: null,
         order: 3, iconCode: null, deleted: false, todayFlag: false, timerMin: null,
     });
-    // Sessions Deep Work — 7 derniers jours
+    // Sessions Deep Work — 7 derniers jours (ISO string, pas Timestamp)
     for (let i = 6; i >= 0; i--) {
         const d = new Date(now);
         d.setDate(d.getDate() - i);
@@ -2931,8 +2931,8 @@ async function _seedDemoData(uid) {
         const sessId = (0, uuid_1.v4)();
         batch.set(db_1.db.doc(`${base}/sessions/${sessId}`), {
             id: sessId, activityId: actDeepWork,
-            startAt: admin.firestore.Timestamp.fromDate(startAt),
-            endAt: admin.firestore.Timestamp.fromDate(endAt),
+            startAt: startAt.toISOString(),
+            endAt: endAt.toISOString(),
         });
     }
     // Sessions Lecture — jours pairs sur 7 jours
@@ -2944,8 +2944,8 @@ async function _seedDemoData(uid) {
         const sessId = (0, uuid_1.v4)();
         batch.set(db_1.db.doc(`${base}/sessions/${sessId}`), {
             id: sessId, activityId: actLecture,
-            startAt: admin.firestore.Timestamp.fromDate(startAt),
-            endAt: admin.firestore.Timestamp.fromDate(endAt),
+            startAt: startAt.toISOString(),
+            endAt: endAt.toISOString(),
         });
     }
     // HabitHits Running — 6/7 (skip i=3)
@@ -2958,7 +2958,7 @@ async function _seedDemoData(uid) {
         const hitId = (0, uuid_1.v4)();
         batch.set(db_1.db.doc(`${base}/habitHits/${hitId}`), {
             id: hitId, habitId: actRunning,
-            ts: admin.firestore.Timestamp.fromDate(ts),
+            ts: ts.toISOString(),
             contextActivityId: null,
         });
     }
@@ -2972,7 +2972,7 @@ async function _seedDemoData(uid) {
         const hitId = (0, uuid_1.v4)();
         batch.set(db_1.db.doc(`${base}/habitHits/${hitId}`), {
             id: hitId, habitId: actMeditation,
-            ts: admin.firestore.Timestamp.fromDate(ts),
+            ts: ts.toISOString(),
             contextActivityId: null,
         });
     }

@@ -2992,7 +2992,7 @@ async function _seedDemoData(uid: string): Promise<void> {
     order: 3, iconCode: null, deleted: false, todayFlag: false, timerMin: null,
   });
 
-  // Sessions Deep Work — 7 derniers jours
+  // Sessions Deep Work — 7 derniers jours (ISO string, pas Timestamp)
   for (let i = 6; i >= 0; i--) {
     const d = new Date(now);
     d.setDate(d.getDate() - i);
@@ -3002,8 +3002,8 @@ async function _seedDemoData(uid: string): Promise<void> {
     const sessId = uuidv4();
     batch.set(db.doc(`${base}/sessions/${sessId}`), {
       id: sessId, activityId: actDeepWork,
-      startAt: admin.firestore.Timestamp.fromDate(startAt),
-      endAt: admin.firestore.Timestamp.fromDate(endAt),
+      startAt: startAt.toISOString(),
+      endAt: endAt.toISOString(),
     });
   }
 
@@ -3016,8 +3016,8 @@ async function _seedDemoData(uid: string): Promise<void> {
     const sessId = uuidv4();
     batch.set(db.doc(`${base}/sessions/${sessId}`), {
       id: sessId, activityId: actLecture,
-      startAt: admin.firestore.Timestamp.fromDate(startAt),
-      endAt: admin.firestore.Timestamp.fromDate(endAt),
+      startAt: startAt.toISOString(),
+      endAt: endAt.toISOString(),
     });
   }
 
@@ -3030,7 +3030,7 @@ async function _seedDemoData(uid: string): Promise<void> {
     const hitId = uuidv4();
     batch.set(db.doc(`${base}/habitHits/${hitId}`), {
       id: hitId, habitId: actRunning,
-      ts: admin.firestore.Timestamp.fromDate(ts),
+      ts: ts.toISOString(),
       contextActivityId: null,
     });
   }
@@ -3044,7 +3044,7 @@ async function _seedDemoData(uid: string): Promise<void> {
     const hitId = uuidv4();
     batch.set(db.doc(`${base}/habitHits/${hitId}`), {
       id: hitId, habitId: actMeditation,
-      ts: admin.firestore.Timestamp.fromDate(ts),
+      ts: ts.toISOString(),
       contextActivityId: null,
     });
   }

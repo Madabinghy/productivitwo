@@ -177,11 +177,12 @@ class _WebHomeScreenState extends State<WebHomeScreen>
               tooltip: 'Messages ORION',
               onPressed: () => AssistantHistorySheet.show(context),
             ),
-            TextButton.icon(
-              icon: const Icon(Icons.auto_awesome_outlined, size: 16),
-              label: const Text('Connecter Claude'),
-              onPressed: () => _showTokensPanel(context),
-            ),
+            if (!widget.isDemo)
+              TextButton.icon(
+                icon: const Icon(Icons.auto_awesome_outlined, size: 16),
+                label: const Text('Connecter Claude'),
+                onPressed: () => _showTokensPanel(context),
+              ),
             IconButton(
               icon: const Icon(Icons.logout_outlined, size: 18),
               tooltip: 'Déconnexion',
@@ -253,6 +254,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                       domains: _domains,
                       sync: _sync,
                       onRefresh: _load,
+                      isDemo: widget.isDemo,
                       onTaskColorChange: (project, task, color) async {
                         task.color = color;
                         await _sync.saveProjectTasks(project.id, project.tasks);
@@ -327,12 +329,14 @@ class _FocusView extends StatelessWidget {
   final FirestoreSync sync;
   final VoidCallback? onRefresh;
   final Future<void> Function(Project, ProjectTask, String?) onTaskColorChange;
+  final bool isDemo;
   const _FocusView({
     required this.projects,
     required this.domains,
     required this.sync,
     required this.onTaskColorChange,
     this.onRefresh,
+    this.isDemo = false,
   });
 
   // ── Helpers ──────────────────────────────────────────────────────────────
@@ -1652,7 +1656,7 @@ class _FocusView extends StatelessWidget {
           const _OrionBriefSection(),
           const SizedBox(height: 12),
           // ── VISION ──────────────────────────────────────────────────────
-          const _VisionSidebarSection(),
+          if (!isDemo) const _VisionSidebarSection(),
         ],
       ),
     );
