@@ -3109,16 +3109,18 @@ async function _seedDemoData(uid) {
     batch.set(db_1.db.doc(`${base}/meta/demo`), {
         seededAt: db_1.FieldValue.serverTimestamp(),
         today,
+        schemaVersion: 2,
     });
     await batch.commit();
 }
 exports.getDemoToken = (0, https_1.onRequest)({ cors: true, invoker: "public" }, async (req, res) => {
-    var _a, _b;
+    var _a, _b, _c, _d;
     try {
         const today = new Date().toISOString().slice(0, 10);
         const metaRef = db_1.db.doc(`users/${DEMO_UID}/meta/demo`);
         const meta = await metaRef.get();
-        if (!meta.exists || ((_b = (_a = meta.data()) === null || _a === void 0 ? void 0 : _a.today) !== null && _b !== void 0 ? _b : "") !== today) {
+        const SCHEMA_VERSION = 2;
+        if (!meta.exists || ((_b = (_a = meta.data()) === null || _a === void 0 ? void 0 : _a.today) !== null && _b !== void 0 ? _b : "") !== today || ((_d = (_c = meta.data()) === null || _c === void 0 ? void 0 : _c.schemaVersion) !== null && _d !== void 0 ? _d : 0) < SCHEMA_VERSION) {
             await _seedDemoData(DEMO_UID);
         }
         const token = await admin.auth().createCustomToken(DEMO_UID, { demo: true });

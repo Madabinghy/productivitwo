@@ -3186,6 +3186,7 @@ async function _seedDemoData(uid: string): Promise<void> {
   batch.set(db.doc(`${base}/meta/demo`), {
     seededAt: FieldValue.serverTimestamp(),
     today,
+    schemaVersion: 2,
   });
 
   await batch.commit();
@@ -3199,7 +3200,8 @@ export const getDemoToken = onRequest(
       const metaRef = db.doc(`users/${DEMO_UID}/meta/demo`);
       const meta = await metaRef.get();
 
-      if (!meta.exists || (meta.data()?.today ?? "") !== today) {
+      const SCHEMA_VERSION = 2;
+      if (!meta.exists || (meta.data()?.today ?? "") !== today || (meta.data()?.schemaVersion ?? 0) < SCHEMA_VERSION) {
         await _seedDemoData(DEMO_UID);
       }
 
