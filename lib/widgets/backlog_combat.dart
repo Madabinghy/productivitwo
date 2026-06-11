@@ -122,7 +122,6 @@ Future<void> showBacklogCombat(
   VoidCallback? onLaunchedTimer,
 }) async {
   final rootCtx = context;
-  const accent = Color(0xFFE24A4A);
   int timerMin = 0;
   String linkedId = '';
   if (type == 'spider') {
@@ -145,9 +144,10 @@ Future<void> showBacklogCombat(
     context: context,
     barrierDismissible: true,
     barrierLabel: 'Combat',
-    barrierColor: Colors.black.withOpacity(.6),
+    barrierColor: Colors.black.withOpacity(.65),
     transitionDuration: const Duration(milliseconds: 220),
     pageBuilder: (ctx, a1, a2) {
+      final cs = Theme.of(ctx).colorScheme;
       return StatefulBuilder(builder: (ctx, setLocal) {
         final hp = logic.enemyHp(type, itemId);
         final maxHp = logic.enemyMaxHp(type, itemId);
@@ -155,10 +155,14 @@ Future<void> showBacklogCombat(
         final engaged = logic.isEngaged(type, itemId);
         final alreadyScheduled = type == 'snake'
             ? logic.currentProjects
-                .expand((p) => p.tasks)
-                .any((t) => t.id == itemId && t.todayFlag)
+                    .expand((p) => p.tasks)
+                    .any((t) => t.id == itemId && t.todayFlag) ||
+                logic.todayBlocks.any((b) =>
+                    b.taskId == itemId && b.status != 'deleted')
             : logic.state.activeActivities
-                .any((a) => a.id == itemId && a.todayFlag);
+                    .any((a) => a.id == itemId && a.todayFlag) ||
+                logic.todayBlocks.any((b) =>
+                    b.activityId == itemId && b.status != 'deleted');
 
         Future<void> kill() async {
           final loot =
@@ -229,17 +233,17 @@ Future<void> showBacklogCombat(
           }
         }
 
-        Widget atk(String icon, String label, VoidCallback onTap) => Padding(
+        Widget atk(IconData icon, String label, VoidCallback onTap) => Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
                   style: FilledButton.styleFrom(
-                    backgroundColor: accent,
-                    foregroundColor: Colors.white,
+                    backgroundColor: cs.primary,
+                    foregroundColor: cs.onPrimary,
                     padding: const EdgeInsets.symmetric(vertical: 13),
                   ),
-                  icon: Text(icon, style: const TextStyle(fontSize: 15)),
+                  icon: Icon(icon, size: 18),
                   label: Text(label,
                       style: const TextStyle(
                           fontSize: 14.5, fontWeight: FontWeight.w800)),
@@ -252,17 +256,17 @@ Future<void> showBacklogCombat(
             {int? finishMin, String? finishRoutineId}) {
           final out = <Widget>[];
           if (finishMin != null) {
-            out.add(atk('🏁', 'Finir ($finishMin min)',
+            out.add(atk(Icons.flag_rounded, 'Finir ($finishMin min)',
                 () => launchTimer(finishMin, actId, routineId: finishRoutineId)));
           }
           for (final m in [25, 15, 5]) {
             if (m == finishMin) continue;
             if (hp >= m ~/ 5) {
-              out.add(atk('⏱️', '$m min (−${m ~/ 5} ❤️)',
+              out.add(atk(Icons.timer_outlined, '$m min (−${m ~/ 5} ❤️)',
                   () => launchTimer(m, actId)));
             }
           }
-          out.add(atk('▶', 'Chrono libre', () => launchChrono(actId)));
+          out.add(atk(Icons.play_circle_outline, 'Chrono libre', () => launchChrono(actId)));
           return out;
         }
 
@@ -271,32 +275,23 @@ Future<void> showBacklogCombat(
           attacks =
               timerLadder(linkedId, finishMin: timerMin, finishRoutineId: itemId);
         } else if (type == 'spider') {
-          attacks = [atk('🔥', 'Faire la routine (+1)', inlineWork)];
+          attacks = [atk(Icons.local_fire_department_rounded, 'Faire la routine (+1)', inlineWork)];
         } else if (type == 'scorpion') {
           attacks = timerLadder(itemId);
         } else {
-          attacks = [atk('✅', 'Cocher des actions', fightSnake)];
+          attacks = [atk(Icons.check_circle_outline_rounded, 'Cocher des actions', fightSnake)];
         }
 
-        final Widget hearts;
-        if (maxHp > 12) {
-          hearts = Text('❤️ $hp / $maxHp PV',
-              style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white));
-        } else {
-          hearts = Wrap(
-            spacing: 2,
-            runSpacing: 2,
-            alignment: WrapAlignment.center,
-            children: [
-              for (int i = 0; i < maxHp; i++)
-                Text(i < maxHp - hp ? '✅' : '❤️',
-                    style: const TextStyle(fontSize: 18)),
-            ],
-          );
-        }
+        final Widget hearts = Wrap(
+          spacing: 2,
+          runSpacing: 2,
+          alignment: WrapAlignment.center,
+          children: [
+            for (int i = 0; i < maxHp; i++)
+              Text(i < maxHp - hp ? '✅' : '❤️',
+                  style: const TextStyle(fontSize: 18)),
+          ],
+        );
 
         final wEmoji = logic.weaponEmoji(GoldEconomy.weaponForPest(type));
         final cost = logic.engageCost(type);
@@ -306,49 +301,40 @@ Future<void> showBacklogCombat(
             child: SingleChildScrollView(
               child: Container(
                 margin: const EdgeInsets.all(24),
-                padding: const EdgeInsets.fromLTRB(24, 18, 24, 18),
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 18),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF2A0E0E), Color(0xFF5A1A1A)],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
+                  color: cs.surface,
                   borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: accent, width: 2),
                   boxShadow: [
-                    BoxShadow(color: accent.withOpacity(.4), blurRadius: 26)
+                    BoxShadow(
+                        color: Colors.black.withOpacity(.18),
+                        blurRadius: 24,
+                        offset: const Offset(0, 8)),
                   ],
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Icône combat + label rôle
+                    Icon(Icons.sports_martial_arts_rounded,
+                        size: 32, color: cs.primary),
+                    const SizedBox(height: 4),
                     Text(role.toUpperCase(),
-                        style: const TextStyle(
-                            fontSize: 12,
+                        style: TextStyle(
+                            fontSize: 11,
                             letterSpacing: 2,
                             fontWeight: FontWeight.w900,
-                            color: Color(0xFFFFC9C9))),
-                    const SizedBox(height: 12),
-                    Container(
-                      width: 104,
-                      height: 104,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: RadialGradient(colors: [
-                          accent.withOpacity(.30),
-                          accent.withOpacity(0),
-                        ]),
-                      ),
-                      child: Text(entityEmoji(type),
-                          style: const TextStyle(fontSize: 68)),
-                    ),
+                            color: cs.onSurface.withOpacity(.45))),
+                    const SizedBox(height: 14),
+                    Text(entityEmoji(type),
+                        style: const TextStyle(fontSize: 68)),
+                    const SizedBox(height: 6),
                     Text(itemName,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w800,
-                            color: Colors.white)),
+                            color: cs.onSurface)),
                     const SizedBox(height: 10),
                     hearts,
                     const SizedBox(height: 14),
@@ -358,11 +344,11 @@ Future<void> showBacklogCombat(
                     if (!engaged)
                       OutlinedButton.icon(
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          side: BorderSide(color: Colors.white.withOpacity(.3)),
+                          foregroundColor: cs.onSurface,
+                          side: BorderSide(color: cs.outline.withOpacity(.5)),
                           minimumSize: const Size.fromHeight(42),
                         ),
-                        icon: const Text('📌', style: TextStyle(fontSize: 14)),
+                        icon: const Icon(Icons.push_pin_outlined, size: 16),
                         label: Text(logic.canEngage(type)
                             ? 'Engager (épingler) · $cost$wEmoji'
                             : 'Engager : $cost$wEmoji requis'),
@@ -379,7 +365,7 @@ Future<void> showBacklogCombat(
                       Text('📌 Engagé — dans « Combats en cours »',
                           style: TextStyle(
                               fontSize: 12,
-                              color: Colors.white.withOpacity(.6))),
+                              color: cs.onSurface.withOpacity(.55))),
 
                     // ── Pouvoirs rapides ────────────────────────────────────────
                     _PowersSection(
@@ -397,17 +383,17 @@ Future<void> showBacklogCombat(
                           onLaunchedTimer?.call();
                           await logic.programBacklogHook!(type, itemId);
                         },
-                        icon: const Text('📅', style: TextStyle(fontSize: 14)),
+                        icon: const Icon(Icons.event_available_outlined, size: 16),
                         label: Text('Programmer pour plus tard',
                             style: TextStyle(
-                                color: Colors.white.withOpacity(.9),
+                                color: cs.onSurface.withOpacity(.8),
                                 fontWeight: FontWeight.w700)),
                       ),
                     TextButton(
                       onPressed: () => Navigator.pop(ctx),
                       child: Text('Fuir',
                           style:
-                              TextStyle(color: Colors.white.withOpacity(.55))),
+                              TextStyle(color: cs.onSurface.withOpacity(.45))),
                     ),
                   ],
                 ),
@@ -520,7 +506,7 @@ class _PowersSectionState extends State<_PowersSection> {
           if (showGel) ...[
             if (frozen > 0)
               Row(children: [
-                const Text('🧊', style: TextStyle(fontSize: 14)),
+                const Icon(Icons.ac_unit_rounded, size: 16, color: Color(0xFF38BDF8)),
                 const SizedBox(width: 6),
                 Text('Gelée $frozen j restants',
                     style: const TextStyle(
@@ -545,6 +531,7 @@ class _PowersSectionState extends State<_PowersSection> {
                     if (days > 1) const SizedBox(width: 6),
                     Expanded(
                       child: _PowerBtn(
+                        icon: Icons.ac_unit_rounded,
                         label: '${days}j',
                         sublabel: '${gelPrice1 * days}or',
                         color: const Color(0xFF0EA5E9),
@@ -564,7 +551,8 @@ class _PowersSectionState extends State<_PowersSection> {
             Row(children: [
               Expanded(
                 child: _PowerBtn(
-                  label: '🛡️ Bouclier ${GoldEconomy.shieldDaysPerUse}j',
+                  icon: Icons.shield_outlined,
+                  label: 'Bouclier ${GoldEconomy.shieldDaysPerUse}j',
                   sublabel:
                       '${logic.shieldPriceDynamic()}or · anti-retard',
                   color: const Color(0xFF8B5CF6),
@@ -586,7 +574,8 @@ class _PowersSectionState extends State<_PowersSection> {
             Row(children: [
               Expanded(
                 child: _PowerBtn(
-                  label: '✨ Boost ×2 (${GoldEconomy.boostDaysPerUse}j)',
+                  icon: Icons.auto_awesome_rounded,
+                  label: 'Boost ×2 (${GoldEconomy.boostDaysPerUse}j)',
                   sublabel: '${boostPrice}or · double tes gains',
                   color: _kGold,
                   textColor: const Color(0xFF231900),
@@ -599,11 +588,15 @@ class _PowersSectionState extends State<_PowersSection> {
               ),
             ])
           else
-            Text('✨ Boost ×2 actif',
-                style: TextStyle(
-                    fontSize: 12,
-                    color: _kGold.withOpacity(.8),
-                    fontWeight: FontWeight.w700)),
+            Row(children: [
+              const Icon(Icons.auto_awesome_rounded, size: 13, color: Color(0xFFD4A017)),
+              const SizedBox(width: 4),
+              Text('Boost ×2 actif',
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: _kGold.withOpacity(.8),
+                      fontWeight: FontWeight.w700)),
+            ]),
         ],
       ),
     );
@@ -611,12 +604,14 @@ class _PowersSectionState extends State<_PowersSection> {
 }
 
 class _PowerBtn extends StatelessWidget {
+  final IconData icon;
   final String label, sublabel;
   final Color color;
   final Color textColor;
   final bool enabled;
   final VoidCallback onTap;
   const _PowerBtn({
+    required this.icon,
     required this.label,
     required this.sublabel,
     required this.color,
@@ -626,6 +621,8 @@ class _PowerBtn extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final labelColor = textColor == Colors.white ? color : textColor;
     return Opacity(
       opacity: enabled ? 1.0 : 0.4,
       child: GestureDetector(
@@ -633,25 +630,25 @@ class _PowerBtn extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
-            color: color.withOpacity(.18),
+            color: color.withOpacity(.12),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: color.withOpacity(.5)),
+            border: Border.all(color: color.withOpacity(.4)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              Icon(icon, size: 16, color: labelColor),
+              const SizedBox(height: 3),
               Text(label,
                   textAlign: TextAlign.center,
                   style: TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w800,
-                      color: textColor == Colors.white
-                          ? color.withOpacity(.9)
-                          : textColor)),
+                      color: labelColor)),
               Text(sublabel,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                      fontSize: 10.5, color: Colors.white.withOpacity(.5))),
+                      fontSize: 10.5, color: cs.onSurface.withOpacity(.45))),
             ],
           ),
         ),

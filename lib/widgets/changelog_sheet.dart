@@ -10,6 +10,11 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.10', '11 juin 2026', [
+    (Icons.sports_martial_arts_rounded, 'Carte de combat redesignée : style épuré, icônes Flutter pour les pouvoirs (gel, bouclier, boost), liste de cœurs toujours visible'),
+    (Icons.event_available_outlined, '« Programmer pour plus tard » masqué si un défi ou un bloc est déjà posé dans ton programme du jour pour cet item'),
+    (Icons.star_outline_rounded, 'Étoile FAB sur une routine : durées longues (45, 60, 90 min) disponibles — plus bloqué à 30 min max'),
+  ]),
   _Entry('6.09', '11 juin 2026', [
     (Icons.ac_unit, 'Pouvoirs depuis la carte de combat : gèle une routine (1/2/3 jours), bouclier anti-deadline, boost ×2 — tout achetable en un tap. Plus tu as de pouvoirs actifs, plus c\'est cher'),
     (Icons.radio_button_checked, 'Combats en cours redesignés : couleur du domaine, barre de PV, avatar ⚔️ si le combat tourne en direct'),

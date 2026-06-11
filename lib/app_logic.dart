@@ -116,6 +116,10 @@ class AppLogic {
   /// [type] = spider|scorpion|snake, [itemId] = l'id de la routine/activité/tâche.
   Future<void> Function(String type, String itemId)? programBacklogHook;
 
+  /// Blocs du programme du jour, mis à jour par DailyScheduleView via son stream.
+  /// Utilisé pour masquer « Programmer pour plus tard » quand un défi existe déjà.
+  List<ScheduleBlock> todayBlocks = [];
+
   /// Accès Firestore pour les écritures autoritatives d'or (posé après
   /// construction dans main.dart). Null tant que non configuré.
   FirestoreSync? sync;

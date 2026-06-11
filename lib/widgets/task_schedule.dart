@@ -48,8 +48,11 @@ Future<bool> toggleRoutineTodayAndSchedule(BuildContext context,
   final turningOn = !routine.todayFlag;
   final ymd = _todayYmd();
   if (turningOn) {
+    final defaultDur = routine.timerMin ?? routine.goalMin;
+    final baseOptions = [5, 10, 15, 20, 30, 45, 60, 90];
+    final durations = ({...baseOptions, defaultDur}.toList()..sort());
     final res = await _pickTimeAndDuration(context,
-        durations: const [5, 10, 15, 20, 30], defaultDuration: 15);
+        durations: durations, defaultDuration: defaultDur);
     if (res == null) return false; // annulé → étoile inchangée, rien de programmé
     logic.setActivityTodayFlag(routine.id, true);
     await sync.toggleActivityTodayFlag(routine.id, true);

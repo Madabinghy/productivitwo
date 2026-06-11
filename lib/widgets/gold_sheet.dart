@@ -1028,8 +1028,8 @@ class _CombatCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                   color: fighting
-                      ? domColor.withOpacity(.7)
-                      : const Color(0xFFE24A4A).withOpacity(.3),
+                      ? cs.primary.withOpacity(.6)
+                      : cs.outline.withOpacity(.2),
                   width: fighting ? 1.5 : 1),
             ),
             child: Column(
@@ -1037,18 +1037,8 @@ class _CombatCard extends StatelessWidget {
               children: [
                 // ── Contenu principal ────────────────────────────────────────
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(0, 10, 12, 8),
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
                   child: Row(children: [
-                    // Barre colorée verticale (domaine)
-                    Container(
-                      width: 3,
-                      height: 36,
-                      margin: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: domColor,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
                     Text(entityEmoji(type),
                         style: const TextStyle(fontSize: 24)),
                     const SizedBox(width: 8),
@@ -1062,12 +1052,20 @@ class _CombatCard extends StatelessWidget {
                               style: const TextStyle(
                                   fontSize: 14, fontWeight: FontWeight.w700)),
                           const SizedBox(height: 2),
-                          Text(
-                            '❤️ $hp/$maxHp  ·  $wEmoji'
-                            '${frozen ? '  🧊' : ''}',
-                            style: TextStyle(
-                                fontSize: 12,
-                                color: cs.onSurface.withOpacity(.6)),
+                          Row(
+                            children: [
+                              Text(
+                                '❤️ $hp/$maxHp  ·  $wEmoji',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: cs.onSurface.withOpacity(.6)),
+                              ),
+                              if (frozen) ...[
+                                const SizedBox(width: 4),
+                                const Icon(Icons.ac_unit_rounded,
+                                    size: 13, color: Color(0xFF38BDF8)),
+                              ],
+                            ],
                           ),
                         ],
                       ),

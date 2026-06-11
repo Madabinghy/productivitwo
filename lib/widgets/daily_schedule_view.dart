@@ -42,7 +42,10 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   void initState() {
     super.initState();
     _sub = _sync.streamDailySchedule(widget.date).listen((s) {
-      if (mounted) setState(() => _schedule = s);
+      if (mounted) {
+        setState(() => _schedule = s);
+        widget.logic.todayBlocks = s?.blocks ?? [];
+      }
     });
   }
 
