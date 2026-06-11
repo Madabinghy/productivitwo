@@ -4,23 +4,107 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/expedition.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
+import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/confetti.dart';
 
-/// Complète la 1ʳᵉ action non faite d'une tâche (frappe d'un serpent backlog).
-Future<bool> _completeOneTaskAction(
-    AppLogic logic, FirestoreSync sync, String taskId) async {
+/// Sheet (par-dessus le combat) listant les actions de la tâche-serpent à
+/// cocher. Chaque coche = −1 ❤️ (persistée) ; tout coché → ferme le sheet, et la
+/// carte de combat déclenche la mise à mort. [onChanged] rafraîchit le combat.
+Future<void> _showTaskActionsSheet(
+  BuildContext context,
+  AppLogic logic,
+  FirestoreSync sync,
+  String taskId, {
+  VoidCallback? onChanged,
+}) async {
+  Project? project;
+  ProjectTask? task;
   for (final p in logic.currentProjects) {
     for (final t in p.tasks) {
-      if (t.id != taskId) continue;
-      final idx = t.actions.indexWhere((a) => !a.done);
-      if (idx < 0) return false;
-      t.actions[idx].done = true;
-      t.actions[idx].doneAt = DateTime.now();
-      await sync.saveProjectTasks(p.id, p.tasks);
-      return true;
+      if (t.id == taskId) {
+        project = p;
+        task = t;
+        break;
+      }
     }
+    if (task != null) break;
   }
-  return false;
+  if (project == null || task == null) return;
+  final proj = project;
+  final tsk = task;
+
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+    builder: (sheetCtx) => StatefulBuilder(builder: (sheetCtx, setSheet) {
+      final cs = Theme.of(sheetCtx).colorScheme;
+      final actions = tsk.actions;
+      final done = actions.where((a) => a.done).length;
+      return Padding(
+        padding: EdgeInsets.fromLTRB(
+            20, 16, 20, MediaQuery.of(sheetCtx).viewInsets.bottom + 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(children: [
+              Expanded(
+                  child: Text(tsk.title,
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w800))),
+              IconButton(
+                  icon: const Icon(Icons.close, size: 20),
+                  onPressed: () => Navigator.pop(sheetCtx)),
+            ]),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text('$done / ${actions.length} actions faites — ❤️ à zéro = serpent vaincu',
+                  style: TextStyle(
+                      fontSize: 12.5, color: cs.onSurface.withOpacity(.55))),
+            ),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final a in actions)
+                    CheckboxListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      value: a.done,
+                      activeColor: Colors.green,
+                      title: Text(a.title,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: a.done
+                                ? cs.onSurface.withOpacity(.4)
+                                : cs.onSurface,
+                            decoration:
+                                a.done ? TextDecoration.lineThrough : null,
+                          )),
+                      onChanged: (v) async {
+                        a.done = v ?? false;
+                        a.doneAt = a.done ? DateTime.now() : null;
+                        await sync.saveProjectTasks(proj.id, proj.tasks);
+                        onChanged?.call();
+                        if (actions.isNotEmpty &&
+                            actions.every((x) => x.done)) {
+                          if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+                        } else {
+                          setSheet(() {});
+                        }
+                      },
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }),
+  );
 }
 
 /// Carte de COMBAT « vrai item » (PV) — ouvrable depuis la map OU « Mon or ».
@@ -112,18 +196,30 @@ Future<void> showBacklogCombat(
           onLaunchedTimer?.call();
         }
 
+        // Frappe « routine » (araignée) : +1 sur la routine. Le serpent (tâche)
+        // passe par la checklist d'actions (_showTaskActionsSheet).
         Future<void> inlineWork() async {
-          if (type == 'spider') {
-            logic.incHabit(itemId, 1, DateTime.now());
-            logic.onChange();
-          } else {
-            await _completeOneTaskAction(logic, sync, itemId);
-          }
+          logic.incHabit(itemId, 1, DateTime.now());
+          logic.onChange();
           if (logic.enemyHp(type, itemId) <= 0) {
             await kill();
           } else {
             setLocal(() {});
             onChanged?.call();
+          }
+        }
+
+        // Serpent : ouvre la checklist des actions ; tout coché → mise à mort.
+        Future<void> fightSnake() async {
+          await _showTaskActionsSheet(rootCtx, logic, sync, itemId,
+              onChanged: () {
+            setLocal(() {});
+            onChanged?.call();
+          });
+          if (logic.enemyHp(type, itemId) <= 0) {
+            await kill();
+          } else {
+            setLocal(() {});
           }
         }
 
@@ -173,7 +269,7 @@ Future<void> showBacklogCombat(
         } else if (type == 'scorpion') {
           attacks = timerLadder(itemId);
         } else {
-          attacks = [atk('✅', 'Cocher une action (−1 ❤️)', inlineWork)];
+          attacks = [atk('✅', 'Cocher des actions', fightSnake)];
         }
 
         final Widget hearts;

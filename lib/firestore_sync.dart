@@ -267,6 +267,9 @@ class FirestoreSync {
         goldEpochYmd: meta['goldEpochYmd'] as String?,
         lastQuestClaimedYmd: meta['lastQuestClaimedYmd'] as String?,
         questStreak: (meta['questStreak'] as num?)?.toInt() ?? 0,
+        donjonKeysUsed:
+            (meta['donjonKeysUsed'] as List?)?.map((e) => e.toString()).toList(),
+        donjonKeysYmd: meta['donjonKeysYmd'] as String?,
         weeklyScoreTarget: meta['weeklyScoreTarget'] ?? 80,
         notifHour: meta['notifHour'] ?? 9,
         notifMinute: meta['notifMinute'] ?? 0,
@@ -380,6 +383,8 @@ class FirestoreSync {
       goldEpochYmd:          local.goldLifetime >= remote.goldLifetime ? local.goldEpochYmd : remote.goldEpochYmd,
       lastQuestClaimedYmd:   local.goldLifetime >= remote.goldLifetime ? local.lastQuestClaimedYmd : remote.lastQuestClaimedYmd,
       questStreak:           local.goldLifetime >= remote.goldLifetime ? local.questStreak : remote.questStreak,
+      donjonKeysUsed:        local.goldLifetime >= remote.goldLifetime ? local.donjonKeysUsed : remote.donjonKeysUsed,
+      donjonKeysYmd:         local.goldLifetime >= remote.goldLifetime ? local.donjonKeysYmd : remote.donjonKeysYmd,
       notifHour:             local.notifHour,
       notifMinute:           local.notifMinute,
       notifEnabled:          local.notifEnabled,
@@ -431,6 +436,9 @@ class FirestoreSync {
         'lastChallengeYmd': st.lastChallengeYmd,
         'ganttActionsByDay': st.ganttActionsByDay,
         'challengeWinsByDay': st.challengeWinsByDay,
+        // Clés du donjon : état quotidien éphémère, pas or-autoritatif → miroir OK.
+        'donjonKeysUsed': st.donjonKeysUsed,
+        'donjonKeysYmd': st.donjonKeysYmd,
         // NB : l'or (gold/goldLifetime/…) est AUTORITATIF en Firestore et écrit
         // uniquement par transaction (applyGoldBatch) → jamais via ce miroir, pour
         // ne pas clobberer un coût appliqué côté web. (meta est écrit en merge.)
@@ -1260,6 +1268,8 @@ class FirestoreSync {
       'activeAvatar': null,
       'lastQuestClaimedYmd': null,
       'questStreak': 0,
+      'donjonKeysUsed': <String>[],
+      'donjonKeysYmd': null,
     }, SetOptions(merge: true));
     // Purge le ledger (liste « Historique ») pour repartir propre.
     final ledger = await _col('gold_ledger').get();
@@ -1703,6 +1713,25 @@ class FirestoreSync {
             ?.map((b) => Map<String, dynamic>.from(b as Map))
             .where((b) =>
                 !(b['projectId'] == projectId && b['taskId'] == taskId))
+            .toList() ??
+        [];
+    await ref.update({'blocks': blocks});
+  }
+
+  /// Retire du programme d'un jour les blocs (NON-défi) liés à une activité —
+  /// utilisé quand on retire l'étoile « planifier aujourd'hui » d'une routine.
+  /// Les défis 🔥 programmés pour la même activité sont préservés.
+  Future<void> removeActivityScheduleBlocks(
+      String date, String activityId) async {
+    if (uid == null) return;
+    final ref = _db.doc('users/$uid/daily_schedules/$date');
+    final snap = await ref.get();
+    if (!snap.exists) return;
+    final data = snap.data() as Map;
+    final blocks = (data['blocks'] as List?)
+            ?.map((b) => Map<String, dynamic>.from(b as Map))
+            .where((b) =>
+                !(b['activityId'] == activityId && b['challenge'] != true))
             .toList() ??
         [];
     await ref.update({'blocks': blocks});

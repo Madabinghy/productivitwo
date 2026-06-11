@@ -1965,7 +1965,11 @@ class _TaskTile extends StatelessWidget {
         ),
       ),
       child: InkWell(
-        onTap: task.isMilestone ? null : () => onOpenDetail?.call(task) ?? onToggle(),
+        // Jalon : pas de fiche détail → un tap bascule son statut (atteint /
+        // pas atteint), pour pouvoir le VALIDER depuis l'app.
+        onTap: task.isMilestone
+            ? onToggle
+            : () => onOpenDetail?.call(task) ?? onToggle(),
         borderRadius: BorderRadius.circular(10),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),

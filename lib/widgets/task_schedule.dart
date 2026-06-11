@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 
@@ -35,6 +36,36 @@ Future<bool> toggleTaskTodayAndSchedule(BuildContext context,
   task.todayFlag = false;
   await sync.toggleTaskTodayFlag(project.id, task.id, false);
   await sync.removeTaskScheduleBlocks(ymd, project.id, task.id);
+  return true;
+}
+
+/// Bascule l'étoile d'une ROUTINE et la programme dans Aujourd'hui : étoile ON →
+/// demande heure + durée et crée un bloc `routine` lié (lançable ▶, coché quand
+/// la routine est validée) ; étoile OFF → retire le bloc du jour (les défis 🔥
+/// de la même routine sont préservés). Renvoie false si l'utilisateur annule.
+Future<bool> toggleRoutineTodayAndSchedule(BuildContext context,
+    FirestoreSync sync, AppLogic logic, Activity routine) async {
+  final turningOn = !routine.todayFlag;
+  final ymd = _todayYmd();
+  if (turningOn) {
+    final res = await _pickTimeAndDuration(context);
+    if (res == null) return false; // annulé → étoile inchangée, rien de programmé
+    logic.setActivityTodayFlag(routine.id, true);
+    await sync.toggleActivityTodayFlag(routine.id, true);
+    await sync.addScheduleBlock(
+        ymd,
+        ScheduleBlock(
+          startTime: res.$1,
+          durationMin: res.$2,
+          title: routine.name,
+          category: 'routine',
+          activityId: routine.id,
+        ));
+    return true;
+  }
+  logic.setActivityTodayFlag(routine.id, false);
+  await sync.toggleActivityTodayFlag(routine.id, false);
+  await sync.removeActivityScheduleBlocks(ymd, routine.id);
   return true;
 }
 

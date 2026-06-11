@@ -145,6 +145,39 @@ class AppLogic {
     plannedActivityIds = await s.fetchPlannedActivityIds(days: 30);
   }
 
+  // ── Clés du donjon ──────────────────────────────────────────────────────────
+  // Une routine ayant atteint sa cible AUJOURD'HUI = 1 clé, utilisable UNE fois
+  // pour franchir un nœud du donjon (puis « déjà utilisée »). Remis à zéro chaque
+  // jour. Permet de créditer dans le donjon une routine faite via le programme.
+
+  void _resetDonjonKeysIfNewDay() {
+    final ymd = yyyymmdd(DateTime.now());
+    if (state.donjonKeysYmd != ymd) {
+      state.donjonKeysUsed.clear();
+      state.donjonKeysYmd = ymd;
+    }
+  }
+
+  /// Vrai si la routine [routineId] a atteint sa cible aujourd'hui ET n'a pas
+  /// encore été utilisée comme clé dans le donjon aujourd'hui.
+  bool donjonKeyAvailable(String routineId) {
+    _resetDonjonKeysIfNewDay();
+    if (state.donjonKeysUsed.contains(routineId)) return false;
+    final a = _firstWhereOrNull(state.activities, (x) => x.id == routineId);
+    if (a == null || !a.isHabit) return false;
+    final tgt = activeHabitTarget(a);
+    return tgt > 0 && habitValueOn(routineId, DateTime.now()) >= tgt;
+  }
+
+  /// Consomme la clé d'une routine (franchissement d'un nœud du donjon).
+  void useDonjonKey(String routineId) {
+    _resetDonjonKeysIfNewDay();
+    if (!state.donjonKeysUsed.contains(routineId)) {
+      state.donjonKeysUsed.add(routineId);
+      onChange();
+    }
+  }
+
   void updateGanttCounts(List<Project> projects) {
     currentProjects = projects;
     _ganttDonePerDay.clear();

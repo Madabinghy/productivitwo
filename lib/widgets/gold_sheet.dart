@@ -303,9 +303,12 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
             label: Text('Affronter mon backlog · niveau ${logic.effectiveLevel()}',
                 style: const TextStyle(fontWeight: FontWeight.w800)),
             onPressed: () async {
-              Navigator.pop(context);
+              // Ne PAS fermer « Mon or » : la carte de chasse s'ouvre par-dessus
+              // → en la quittant, l'user revient dans la gamification (boutique,
+              // combats…) sans avoir à rouvrir le sheet.
               await showExpeditionGame(context, logic, sync,
                   huntLevel: logic.effectiveLevel());
+              if (context.mounted) setState(() {});
             },
           ),
           const SizedBox(height: 8),

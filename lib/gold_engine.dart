@@ -339,10 +339,13 @@ extension GoldEngine on AppLogic {
     return n;
   }
 
-  /// Armes DISPONIBLES = gagnées − dépensées (plancher 0).
+  /// Armes DISPONIBLES = gagnées − dépensées, bornées à [0, weaponStockCap].
+  /// Le plafond évite le stock infini : au-delà, l'or (crédité par action) prend
+  /// le relais.
   int weaponsAvailable(String key) {
     final a = weaponsEarned(key) - (state.weaponsSpent[key] ?? 0);
-    return a < 0 ? 0 : a;
+    if (a < 0) return 0;
+    return a > GoldEconomy.weaponStockCap ? GoldEconomy.weaponStockCap : a;
   }
 
   int pestKillCount(String type) => state.pestKills[type] ?? 0;
