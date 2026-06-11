@@ -247,7 +247,8 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
                                       child: FilledButton(
                                         style: FilledButton.styleFrom(
                                             backgroundColor: _kGold,
-                                            foregroundColor: Colors.white),
+                                            foregroundColor:
+                                                const Color(0xFF231900)),
                                         onPressed: () =>
                                             _launchMicro(node, r, full, 5),
                                         child: Row(
@@ -259,7 +260,7 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
                                             const SizedBox(width: 3),
                                             const GoldIcon(
                                                 size: 14,
-                                                color: Colors.white),
+                                                color: Color(0xFF231900)),
                                           ],
                                         ),
                                       ),

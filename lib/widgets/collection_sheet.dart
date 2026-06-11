@@ -83,9 +83,10 @@ class _CollectionSheet extends StatelessWidget {
               FilledButton.icon(
                 style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFFD4A017),
-                    foregroundColor: Colors.white),
+                    foregroundColor: const Color(0xFF231900)),
                 icon: const Text('🗺️', style: TextStyle(fontSize: 15)),
-                label: const Text('Explorer'),
+                label: const Text('Explorer',
+                    style: TextStyle(fontWeight: FontWeight.w700)),
                 onPressed: () {
                   Navigator.pop(context);
                   showExpeditionGame(context, logic, sync);

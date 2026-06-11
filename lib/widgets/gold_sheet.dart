@@ -131,7 +131,9 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
         ),
         actions: [
           FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: _kGold),
+              style: FilledButton.styleFrom(
+                  backgroundColor: _kGold,
+                  foregroundColor: const Color(0xFF231900)),
               onPressed: () => Navigator.pop(ctx),
               child: const Text('Génial !')),
         ],
@@ -201,6 +203,7 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
                   label: const Text('Boutique'),
                   style: FilledButton.styleFrom(
                       backgroundColor: _kGold,
+                      foregroundColor: const Color(0xFF231900),
                       visualDensity: VisualDensity.compact),
                   onPressed: () {
                     Navigator.pop(context);
@@ -274,8 +277,10 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
                   },
                   style: FilledButton.styleFrom(
                       backgroundColor: _kGold,
+                      foregroundColor: const Color(0xFF231900),
                       visualDensity: VisualDensity.compact),
-                  child: const Text('Explorer'),
+                  child: const Text('Explorer',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
                 ),
               ]),
             ),
@@ -461,8 +466,10 @@ class _QuestCard extends StatelessWidget {
             child: LinearProgressIndicator(
               value: pct,
               minHeight: 7,
-              backgroundColor: Colors.black.withOpacity(.12),
-              color: claimable ? const Color(0xFF8A6D00) : _kGold,
+              backgroundColor: claimable
+                  ? Colors.black.withOpacity(.22)
+                  : Colors.black.withOpacity(.12),
+              color: claimable ? dark : _kGold,
             ),
           ),
           const SizedBox(height: 10),
@@ -470,9 +477,12 @@ class _QuestCard extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                style: FilledButton.styleFrom(backgroundColor: dark),
+                style: FilledButton.styleFrom(
+                    backgroundColor: dark,
+                    foregroundColor: const Color(0xFFFFE9A8)),
                 icon: const Text('🎁', style: TextStyle(fontSize: 16)),
-                label: const Text('Ouvrir le coffre'),
+                label: const Text('Ouvrir le coffre',
+                    style: TextStyle(fontWeight: FontWeight.w800)),
                 onPressed: () => onClaim(),
               ),
             )
