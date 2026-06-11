@@ -38,6 +38,7 @@ class _GoalsViewState extends State<GoalsView> {
   bool _showRealized = false;
   bool _showOutOfScope = false;
   bool _showArchived = false;
+  bool _showCompleted = false;
 
   List<Domain> get domains => widget.domains;
 
@@ -73,7 +74,12 @@ class _GoalsViewState extends State<GoalsView> {
     final now = DateTime.now();
     final todayD = DateTime(now.year, now.month, now.day);
 
-    final activeProjects = _projects.where((p) => p.status != 'archived').toList();
+    // Projets TERMINÉS (clôturés explicitement par l'utilisateur).
+    final completedProjects = _projects.where((p) => p.status == 'done').toList()
+      ..sort((a, b) => a.title.compareTo(b.title));
+    final activeProjects = _projects
+        .where((p) => p.status != 'archived' && p.status != 'done')
+        .toList();
     final archivedProjects = _projects.where((p) => p.status == 'archived').toList()
       ..sort((a, b) => a.title.compareTo(b.title));
 
@@ -140,6 +146,18 @@ class _GoalsViewState extends State<GoalsView> {
                     onToggle: () => setState(() => _showOutOfScope = !_showOutOfScope),
                     projects: outOfScope,
                     showArchiveButton: true,
+                  ),
+                // Terminé (clôturé par l'utilisateur)
+                if (completedProjects.isNotEmpty)
+                  ..._buildCollapsibleSection(
+                    context, cs,
+                    label: 'TERMINÉ (${completedProjects.length})',
+                    expanded: _showCompleted,
+                    onToggle: () =>
+                        setState(() => _showCompleted = !_showCompleted),
+                    projects: completedProjects,
+                    checkmark: true,
+                    showRestoreButton: true,
                   ),
                 // En veille
                 if (archivedProjects.isNotEmpty)

@@ -4055,7 +4055,7 @@ class _AppRootState extends State<AppRoot>
 
       // Sous-actions Gantt cochées aujourd'hui (via doneAt)
       final ganttDoneToday = _dashboardProjects
-          .where((p) => p.status != 'archived')
+          .where((p) => p.status != 'archived' && p.status != 'done')
           .expand((p) => p.tasks)
           .expand((t) => t.actions)
           .where((a) =>
@@ -5549,7 +5549,7 @@ class _AppRootState extends State<AppRoot>
 
     final List<({Project project, ProjectTask task})> todayTasks = [];
     for (final project in _dashboardProjects) {
-      if (project.status == 'archived') continue;
+      if (project.status == 'archived' || project.status == 'done') continue;
       for (final task in project.tasks) {
         if (task.todayFlag && task.status != 'skipped') {
           todayTasks.add((project: project, task: task));
@@ -6083,7 +6083,7 @@ class _AppRootState extends State<AppRoot>
                     final today2 = DateTime.now();
                     final todayD2 = DateTime(today2.year, today2.month, today2.day);
                     final activeProjects = _dashboardProjects
-                        .where((p) => p.status != 'archived')
+                        .where((p) => p.status != 'archived' && p.status != 'done')
                         .toList();
                     final ganttTasks = activeProjects
                         .expand((p) => p.tasks)

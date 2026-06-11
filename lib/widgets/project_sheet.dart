@@ -134,6 +134,33 @@ class _ProjectSheetState extends State<_ProjectSheet> {
         content: Text('Plan validé — le projet est actif. 🚀')));
   }
 
+  /// Vrai si toutes les tâches (hors « skipped ») sont faites → terminable.
+  bool get _allTasksDone {
+    final inScope =
+        _project.tasks.where((t) => t.status != 'skipped').toList();
+    return inScope.isNotEmpty && inScope.every((t) => t.status == 'done');
+  }
+
+  /// Termine le projet (toutes tâches faites → status 'done', va dans TERMINÉ)
+  /// ou le rouvre (status 'active').
+  Future<void> _toggleComplete(BuildContext context) async {
+    final completing = _project.status != 'done';
+    if (completing && !_allTasksDone) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content:
+              Text('Termine toutes les tâches avant de clôturer le projet.')));
+      return;
+    }
+    setState(() => _project.status = completing ? 'done' : 'active');
+    await _sync.saveProject(_project);
+    if (!context.mounted) return;
+    if (completing) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('✅ « ${_project.title} » terminé — rangé dans Terminé.')));
+      Navigator.pop(context);
+    }
+  }
+
   /// Supprime le projet. Gratuit en brouillon ; sinon coût d'or (un joker
   /// l'annule). Archiver reste l'option gratuite pour garder l'historique.
   Future<void> _deleteProject() async {
@@ -322,6 +349,24 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                             ],
                           ],
                         ),
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          _project.status == 'done'
+                              ? Icons.check_circle
+                              : Icons.check_circle_outline,
+                          size: 20,
+                          color: _project.status == 'done'
+                              ? Colors.green
+                              : (_allTasksDone
+                                  ? Colors.green.withOpacity(.7)
+                                  : cs.onSurface.withOpacity(.25)),
+                        ),
+                        tooltip: _project.status == 'done'
+                            ? 'Rouvrir le projet'
+                            : 'Terminer le projet',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => _toggleComplete(context),
                       ),
                       IconButton(
                         icon: Icon(
