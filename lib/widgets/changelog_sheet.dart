@@ -10,6 +10,12 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.03', '10 juin 2026', [
+    (Icons.map_outlined, 'Nouveau : « Mes cartes » (ex-Collection) avec la CHASSE 🏹 ! Re-explore une carte débloquée en instance fraîche pour traquer ses nuisibles et farmer leur butin (or + créatures). Les ennemis y apparaissent à coup sûr ; chaque torche se paie'),
+    (Icons.sports_kabaddi, 'Combat : la forge de ton arme démarre quand tu CROISES le nuisible — il faut 3 routines/tâches de plus que ce que tu avais déjà fait. Plus de mise à mort « gratuite » avec le travail du matin'),
+    (Icons.looks_one_outlined, 'Ta première carte est enfin nommée « Niveau 1 » (et non 2). L\'affichage et la provenance des butins suivent ton niveau réel'),
+    (Icons.visibility_outlined, 'Lisibilité : « Ouvrir le coffre » et les boutons or ont désormais un texte foncé bien contrasté (fini le teal sur jaune illisible)'),
+  ]),
   _Entry('6.02', '10 juin 2026', [
     (Icons.schedule, 'Valeur du temps simplifiée : 1 or toutes les 15 min loggées, tout niveau confondu (le sommeil loggué compte aussi, sans pénalité). Une grosse journée plafonne naturellement'),
     (Icons.sports_kabaddi, 'Combat toujours explicite : un ennemi ne meurt plus « tout seul » au tap — tu ouvres l\'écran de combat et tu FRAPPES. Le drain des nuisibles est adouci (plafonné 6h) et tuer rapporte toujours un butin qui couvre au moins ce qu\'il t\'a coûté'),
