@@ -283,8 +283,8 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
           const SizedBox(height: 12),
           OutlinedButton.icon(
             icon: const Text('🗺️', style: TextStyle(fontSize: 14)),
-            label: const Text('Ma collection'),
-            onPressed: () => showCollectionSheet(context, logic),
+            label: const Text('Mes cartes'),
+            onPressed: () => showCollectionSheet(context, logic, sync),
           ),
           const SizedBox(height: 20),
 
