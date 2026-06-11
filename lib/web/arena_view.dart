@@ -209,22 +209,23 @@ class _ArenaViewState extends State<ArenaView> {
             return Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Col gauche : Combats (cartes héro)
-                SizedBox(
-                  width: 360,
+                // Col gauche : Combats (cartes héro) — flex 3
+                Flexible(
+                  flex: 3,
                   child: _CombatsColumn(logic: logic, sync: sync, cs: cs,
                       onChanged: () => setState(() {})),
                 ),
                 const VerticalDivider(width: 1),
-                // Col centre : Aujourd'hui
-                Expanded(
+                // Col centre : Aujourd'hui — flex 4
+                Flexible(
+                  flex: 4,
                   child: _AujourdhuiColumn(logic: logic, ymd: ymd, cs: cs,
                       onLaunch: _startTimer),
                 ),
                 const VerticalDivider(width: 1),
-                // Col droite : Exploration + boutique
-                SizedBox(
-                  width: 300,
+                // Col droite : Exploration — flex 3
+                Flexible(
+                  flex: 3,
                   child: _ExplorationColumn(logic: logic, sync: sync, cs: cs),
                 ),
               ],
@@ -399,22 +400,23 @@ class _CombatsColumn extends StatelessWidget {
               ),
             )
           else
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
+            GridView.count(
+              crossAxisCount: 2,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              childAspectRatio: .72,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
               children: [
                 for (final c in combats)
-                  SizedBox(
-                    width: 160,
-                    child: _HeroCombatCard(
-                      logic: logic,
-                      sync: sync,
-                      type: c.type,
-                      itemId: c.id,
-                      hp: c.hp,
-                      maxHp: c.maxHp,
-                      onChanged: onChanged,
-                    ),
+                  _HeroCombatCard(
+                    logic: logic,
+                    sync: sync,
+                    type: c.type,
+                    itemId: c.id,
+                    hp: c.hp,
+                    maxHp: c.maxHp,
+                    onChanged: onChanged,
                   ),
               ],
             ),
@@ -463,20 +465,24 @@ class _HeroCombatCard extends StatelessWidget {
       _ => 'Routine',
     };
 
-    return GestureDetector(
-      onTap: () => showBacklogCombat(context, logic, sync, type, itemId,
-          onChanged: onChanged),
-      child: Container(
-        decoration: BoxDecoration(
-          color: _kCardBg,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(color: _kRed.withOpacity(.25), blurRadius: 12, spreadRadius: 1),
-            BoxShadow(color: Colors.black.withOpacity(.6), blurRadius: 6, offset: const Offset(0, 3)),
-          ],
-          border: Border.all(color: domColor.withOpacity(.4), width: 1),
-        ),
-        child: Column(
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => showBacklogCombat(context, logic, sync, type, itemId,
+            onChanged: onChanged),
+        child: Ink(
+          decoration: BoxDecoration(
+            color: _kCardBg,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(color: _kRed.withOpacity(.25), blurRadius: 12, spreadRadius: 1),
+              BoxShadow(color: Colors.black.withOpacity(.6), blurRadius: 6, offset: const Offset(0, 3)),
+            ],
+            border: Border.all(color: domColor.withOpacity(.4), width: 1),
+          ),
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // Barre domaine couleur en haut
@@ -560,7 +566,8 @@ class _HeroCombatCard extends StatelessWidget {
           ],
         ),
       ),
-    );
+    ),
+  );
   }
 }
 
