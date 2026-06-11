@@ -30,7 +30,8 @@ Color? _parseTaskColor(String? hex) {
 }
 
 class WebHomeScreen extends StatefulWidget {
-  const WebHomeScreen({super.key});
+  final bool isDemo;
+  const WebHomeScreen({super.key, this.isDemo = false});
 
   @override
   State<WebHomeScreen> createState() => _WebHomeScreenState();
@@ -210,11 +211,34 @@ class _WebHomeScreenState extends State<WebHomeScreen>
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : Stack(
+          : Column(
               children: [
-                TabBarView(
-                  controller: _mainTabs,
-                  children: [
+                if (widget.isDemo)
+                  Container(
+                    width: double.infinity,
+                    color: const Color(0xFFE8A94A),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.info_outline, size: 15, color: Color(0xFF1A1000)),
+                        SizedBox(width: 8),
+                        Text(
+                          'Mode démo — données fictives, remises à zéro chaque nuit',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF1A1000),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                Expanded(
+                  child: Stack(
+                    children: [
+                      TabBarView(
+                        controller: _mainTabs,
+                        children: [
                     _SimpleProjectsView(
                       projects: _projects,
                       domains: _domains,
@@ -251,6 +275,9 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                   ),
               ],
             ),
+          ),
+        ],
+      ),
     );
   }
 

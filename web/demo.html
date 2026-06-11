@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Productivitwo — Démo</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #07100D;
+      --surface:   #0D1C14;
+      --surface2:  #112016;
+      --border:    rgba(255,255,255,.08);
+      --primary:   #27C48F;
+      --blue:      #5B9CF0;
+      --gold:      #E8A94A;
+      --red:       #E05C5C;
+      --text:      #E8F5EE;
+      --muted:     rgba(232,245,238,.45);
+      --radius:    12px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ── Nav ──────────────────────────────────────────────────────────── */
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 32px;
+      border-bottom: 1px solid var(--border);
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text);
+    }
+    .logo-icon {
+      width: 32px; height: 32px;
+      background: var(--primary);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 17px; font-weight: 900; color: #07100D;
+      letter-spacing: -1px;
+    }
+    .logo-name { font-size: 16px; font-weight: 700; letter-spacing: -.3px; }
+    .logo-sub  { font-size: 11px; color: var(--muted); letter-spacing: .5px; text-transform: uppercase; }
+    .nav-cta {
+      background: var(--primary);
+      color: #07100D;
+      border: none;
+      padding: 9px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      transition: opacity .15s;
+    }
+    .nav-cta:hover { opacity: .85; }
+
+    /* ── Hero ─────────────────────────────────────────────────────────── */
+    .hero {
+      text-align: center;
+      padding: 56px 24px 40px;
+    }
+    .hero-badge {
+      display: inline-block;
+      background: rgba(39,196,143,.12);
+      border: 1px solid rgba(39,196,143,.25);
+      color: var(--primary);
+      border-radius: 20px;
+      padding: 5px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: .4px;
+      text-transform: uppercase;
+      margin-bottom: 18px;
+    }
+    .hero h1 {
+      font-size: clamp(28px, 5vw, 46px);
+      font-weight: 800;
+      letter-spacing: -.8px;
+      line-height: 1.1;
+      margin-bottom: 16px;
+    }
+    .hero h1 span { color: var(--primary); }
+    .hero p {
+      font-size: 16px;
+      color: var(--muted);
+      max-width: 520px;
+      margin: 0 auto 28px;
+      line-height: 1.6;
+    }
+
+    /* ── Demo wrapper ─────────────────────────────────────────────────── */
+    .demo-section {
+      display: grid;
+      grid-template-columns: 1fr 300px;
+      gap: 24px;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 24px 64px;
+      align-items: start;
+    }
+
+    /* ── Gantt panel ──────────────────────────────────────────────────── */
+    .gantt-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .gantt-title {
+      padding: 16px 20px 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .gantt-title-text {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: .4px;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .gantt-legend {
+      display: flex;
+      gap: 14px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .legend-dot {
+      width: 8px; height: 8px;
+      border-radius: 2px;
+    }
+
+    /* Timeline header */
+    .gantt-timeline {
+      display: grid;
+      grid-template-columns: 160px 1fr;
+      border-bottom: 1px solid var(--border);
+    }
+    .gantt-timeline-label {
+      padding: 8px 12px;
+      font-size: 10px;
+      color: var(--muted);
+      border-right: 1px solid var(--border);
+    }
+    .gantt-weeks {
+      position: relative;
+      height: 32px;
+      overflow: hidden;
+    }
+    .week-mark {
+      position: absolute;
+      top: 0;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    .week-mark span {
+      font-size: 10px;
+      color: var(--muted);
+      padding: 4px 0 0 4px;
+      white-space: nowrap;
+    }
+    .week-mark::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 1px;
+      background: var(--border);
+    }
+
+    /* Project block */
+    .gantt-project {
+      border-bottom: 1px solid var(--border);
+    }
+    .gantt-project:last-child { border-bottom: none; }
+    .gantt-project-header {
+      display: grid;
+      grid-template-columns: 160px 1fr;
+      background: rgba(255,255,255,.02);
+    }
+    .gantt-project-name {
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      border-right: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .project-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .gantt-project-bar-area {
+      position: relative;
+      height: 32px;
+    }
+    .project-progress {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      height: 3px;
+      border-radius: 2px;
+      opacity: .2;
+    }
+
+    /* Task rows */
+    .gantt-row {
+      display: grid;
+      grid-template-columns: 160px 1fr;
+      border-top: 1px solid var(--border);
+    }
+    .gantt-row-label {
+      padding: 7px 12px 7px 24px;
+      font-size: 11.5px;
+      color: var(--muted);
+      border-right: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+    }
+    .gantt-bar-track {
+      position: relative;
+      height: 36px;
+    }
+    .task-bar {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      height: 18px;
+      border-radius: 5px;
+      display: flex;
+      align-items: center;
+      padding: 0 7px;
+      font-size: 10px;
+      font-weight: 600;
+      color: #07100D;
+      white-space: nowrap;
+      overflow: hidden;
+      transition: opacity .15s;
+      cursor: default;
+    }
+    .task-bar:hover { filter: brightness(1.1); }
+    .task-bar.done { opacity: .45; }
+    .task-bar.upcoming {
+      opacity: .35;
+      border: 1.5px dashed currentColor;
+      background: transparent !important;
+      color: var(--text);
+    }
+
+    /* Today marker */
+    .gantt-bar-track .today-line,
+    .gantt-project-bar-area .today-line {
+      position: absolute;
+      top: 0; bottom: 0;
+      width: 2px;
+      background: var(--red);
+      opacity: .7;
+      left: 16.07%;
+      pointer-events: none;
+    }
+    .today-label {
+      position: absolute;
+      top: 2px;
+      left: calc(16.07% + 4px);
+      font-size: 9px;
+      color: var(--red);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    /* Week grid lines */
+    .week-line {
+      position: absolute;
+      top: 0; bottom: 0;
+      width: 1px;
+      background: var(--border);
+      pointer-events: none;
+    }
+
+    /* ── Phone panel ──────────────────────────────────────────────────── */
+    .phone-panel {
+      position: sticky;
+      top: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .phone-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .5px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+    .phone-frame {
+      width: 240px;
+      height: 500px;
+      background: #111;
+      border-radius: 38px;
+      border: 2px solid rgba(255,255,255,.12);
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 32px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.04);
+    }
+    /* Notch */
+    .phone-notch {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 80px;
+      height: 22px;
+      background: #111;
+      border-radius: 0 0 16px 16px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .notch-cam {
+      width: 8px; height: 8px;
+      background: #222;
+      border-radius: 50%;
+      border: 1px solid rgba(255,255,255,.1);
+    }
+    /* Status bar */
+    .phone-statusbar {
+      height: 38px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      padding: 0 20px 4px;
+      font-size: 10px;
+      font-weight: 600;
+      color: rgba(255,255,255,.7);
+      flex-shrink: 0;
+    }
+    .status-right { display: flex; gap: 6px; align-items: center; font-size: 9px; }
+    /* Screen */
+    .phone-screen {
+      height: calc(100% - 38px - 56px);
+      overflow: hidden;
+      position: relative;
+    }
+    .tab-panel {
+      display: none;
+      height: 100%;
+      overflow-y: auto;
+      padding: 12px 14px;
+      scrollbar-width: none;
+    }
+    .tab-panel::-webkit-scrollbar { display: none; }
+    .tab-panel.active { display: block; }
+    /* Tab bar */
+    .phone-tabbar {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 56px;
+      background: rgba(17,17,17,.95);
+      backdrop-filter: blur(12px);
+      border-top: 1px solid rgba(255,255,255,.08);
+      display: flex;
+    }
+    .tab-btn {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 6px 0;
+      transition: opacity .15s;
+    }
+    .tab-btn .tab-icon { font-size: 18px; }
+    .tab-btn .tab-name { font-size: 9px; color: rgba(255,255,255,.4); font-weight: 600; }
+    .tab-btn.active .tab-name { color: var(--primary); }
+    .tab-btn.active .tab-icon { filter: none; }
+
+    /* ── Phone tab content ─────────────────────────────────────────────── */
+
+    /* Section label */
+    .ph-section {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .8px;
+      text-transform: uppercase;
+      color: rgba(255,255,255,.3);
+      margin: 10px 0 7px;
+    }
+    .ph-section:first-child { margin-top: 0; }
+
+    /* Project card (Projets tab) */
+    .ph-project-card {
+      background: rgba(255,255,255,.05);
+      border: 1px solid rgba(255,255,255,.07);
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+    }
+    .ph-proj-header {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin-bottom: 7px;
+    }
+    .ph-proj-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .ph-proj-name {
+      font-size: 12px;
+      font-weight: 700;
+      flex: 1;
+    }
+    .ph-proj-pct {
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .ph-proj-bar-bg {
+      height: 3px;
+      background: rgba(255,255,255,.08);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-bottom: 6px;
+    }
+    .ph-proj-bar { height: 100%; border-radius: 2px; }
+    .ph-proj-meta {
+      font-size: 10px;
+      color: rgba(255,255,255,.35);
+    }
+
+    /* Schedule blocks (Programme tab) */
+    .ph-block {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 7px;
+      align-items: flex-start;
+    }
+    .ph-block-time {
+      font-size: 10px;
+      color: rgba(255,255,255,.35);
+      font-weight: 600;
+      width: 34px;
+      flex-shrink: 0;
+      padding-top: 3px;
+    }
+    .ph-block-card {
+      flex: 1;
+      border-radius: 7px;
+      padding: 7px 9px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .ph-block-card .ph-block-dur {
+      font-size: 9.5px;
+      opacity: .6;
+      font-weight: 500;
+      margin-top: 2px;
+    }
+    .ph-block-done {
+      opacity: .4;
+      text-decoration: line-through;
+    }
+
+    /* Activity tracking (Suivi tab) */
+    .ph-today-total {
+      text-align: center;
+      padding: 12px 0 8px;
+    }
+    .ph-today-hrs {
+      font-size: 26px;
+      font-weight: 800;
+      color: var(--primary);
+      letter-spacing: -1px;
+    }
+    .ph-today-lbl { font-size: 10px; color: rgba(255,255,255,.3); margin-top: 2px; }
+    .ph-activity {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .ph-act-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .ph-act-info { flex: 1; }
+    .ph-act-name { font-size: 11.5px; font-weight: 600; margin-bottom: 3px; }
+    .ph-act-bar-bg { height: 3px; background: rgba(255,255,255,.08); border-radius: 2px; overflow: hidden; }
+    .ph-act-bar { height: 100%; border-radius: 2px; }
+    .ph-act-time { font-size: 10px; color: rgba(255,255,255,.4); font-weight: 600; width: 28px; text-align: right; }
+
+    /* ── Footer CTA ───────────────────────────────────────────────────── */
+    .cta-section {
+      border-top: 1px solid var(--border);
+      text-align: center;
+      padding: 48px 24px;
+    }
+    .cta-section h2 { font-size: 24px; font-weight: 800; margin-bottom: 8px; }
+    .cta-section p { font-size: 14px; color: var(--muted); margin-bottom: 24px; }
+    .cta-btn {
+      display: inline-block;
+      background: var(--primary);
+      color: #07100D;
+      font-size: 15px;
+      font-weight: 800;
+      padding: 14px 36px;
+      border-radius: 10px;
+      text-decoration: none;
+      transition: opacity .15s;
+    }
+    .cta-btn:hover { opacity: .85; }
+
+    /* ── Responsive ───────────────────────────────────────────────────── */
+    @media (max-width: 820px) {
+      .demo-section {
+        grid-template-columns: 1fr;
+      }
+      .phone-panel {
+        position: static;
+        order: -1;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Nav ─────────────────────────────────────────────────────────────────── -->
+<nav>
+  <a class="logo" href="#">
+    <div class="logo-icon">P2</div>
+    <div>
+      <div class="logo-name">Productivitwo</div>
+      <div class="logo-sub">Planification pilotée par l'IA</div>
+    </div>
+  </a>
+  <a class="nav-cta" href="/?demo=true">Essayer la démo →</a>
+</nav>
+
+<!-- ── Hero ────────────────────────────────────────────────────────────────── -->
+<div class="hero">
+  <div class="hero-badge">Démo interactive</div>
+  <h1>Vos projets, <span>organisés et suivis</span><br>en temps réel</h1>
+  <p>Diagramme de Gantt collaboratif, suivi de temps par activité et programme du jour généré par l'IA — tout en un.</p>
+  <a href="/?demo=true" style="display:inline-block;margin-top:24px;padding:14px 32px;background:var(--primary);color:#07100D;border-radius:10px;font-weight:700;font-size:15px;text-decoration:none;letter-spacing:.3px;">Lancer la démo interactive →</a>
+</div>
+
+<!-- ── Demo ────────────────────────────────────────────────────────────────── -->
+<div class="demo-section">
+
+  <!-- Gantt -->
+  <div class="gantt-panel">
+    <div class="gantt-title">
+      <span class="gantt-title-text">Vue Gantt — Projets actifs</span>
+      <div class="gantt-legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#7FD1A8"></div>Terminé</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#27C48F"></div>En cours</div>
+        <div class="legend-item"><div class="legend-dot" style="border:1.5px dashed rgba(232,245,238,.4);background:transparent"></div>À venir</div>
+      </div>
+    </div>
+
+    <!-- Timeline header -->
+    <div class="gantt-timeline">
+      <div class="gantt-timeline-label">Tâche</div>
+      <div class="gantt-weeks" id="gantt-weeks">
+        <!-- Week marks injected by JS -->
+      </div>
+    </div>
+
+    <!-- Project 1: Application mobile -->
+    <div class="gantt-project">
+      <div class="gantt-project-header">
+        <div class="gantt-project-name">
+          <div class="project-dot" style="background:#27C48F"></div>
+          Application mobile
+        </div>
+        <div class="gantt-project-bar-area">
+          <div class="project-progress" style="background:#27C48F;left:0%;width:75%"></div>
+        </div>
+      </div>
+      <div class="gantt-row">
+        <div class="gantt-row-label">Conception UX</div>
+        <div class="gantt-bar-track">
+          <div class="week-line" style="left:12.5%"></div>
+          <div class="today-line"></div>
+          <div class="task-bar done" style="background:#27C48F;left:0%;width:19.6%">Terminé</div>
+        </div>
+      </div>
+      <div class="gantt-row">
+        <div class="gantt-row-label">Développement</div>
+        <div class="gantt-bar-track">
+          <div class="today-line"></div>
+          <div class="task-bar" style="background:#27C48F;left:12.5%;width:44.6%">Développement</div>
+        </div>
+      </div>
+      <div class="gantt-row">
+        <div class="gantt-row-label">Tests &amp; QA</div>
+        <div class="gantt-bar-track">
+          <div class="today-line"></div>
+          <div class="task-bar upcoming" style="color:#27C48F;border-color:#27C48F;left:50%;width:25%">Tests &amp; QA</div>
+        </div>
+      </div>
+      <div class="gantt-row">
+        <div class="gantt-row-label">Déploiement</div>
+        <div class="gantt-bar-track">
+          <div class="today-line"></div>
+          <div class="task-bar upcoming" style="color:#27C48F;border-color:#27C48F;left:75%;width:19.6%">Déploiement</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Project 2: Site marketing -->
+    <div class="gantt-project">
+      <div class="gantt-project-header">
+        <div class="gantt-project-name">
+          <div class="project-dot" style="background:#5B9CF0"></div>
+          Site marketing
+        </div>
+        <div class="gantt-project-bar-area">
+          <div class="project-progress" style="background:#5B9CF0;left:0%;width:60%"></div>
+        </div>
+      </div>
+      <div class="gantt-row">
+        <div class="gantt-row-label">Contenus &amp; textes</div>
+        <div class="gantt-bar-track">
+          <div class="today-line"></div>
+          <div class="task-bar done" style="background:#5B9CF0;left:0%;width:32.1%">Terminé</div>
+        </div>
+      </div>
+      <div class="gantt-row">
+        <div class="gantt-row-label">Design maquettes</div>
+        <div class="gantt-bar-track">
+          <div class="today-line"></div>
+          <div class="task-bar" style="background:#5B9CF0;left:25%;width:32.1%">Design</div>
+        </div>
+      </div>
+      <div class="gantt-row">
+        <div class="gantt-row-label">Intégration</div>
+        <div class="gantt-bar-track">
+          <div class="today-line"></div>
+          <div class="task-bar upcoming" style="color:#5B9CF0;border-color:#5B9CF0;left:50%;width:32.1%">Intégration</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Project 3: Partenariats -->
+    <div class="gantt-project">
+      <div class="gantt-project-header">
+        <div class="gantt-project-name">
+          <div class="project-dot" style="background:#E8A94A"></div>
+          Partenariats
+        </div>
+        <div class="gantt-project-bar-area">
+          <div class="project-progress" style="background:#E8A94A;left:0%;width:40%"></div>
+        </div>
+      </div>
+      <div class="gantt-row">
+        <div class="gantt-row-label">Identifier cibles</div>
+        <div class="gantt-bar-track">
+          <div class="today-line"></div>
+          <div class="task-bar done" style="background:#E8A94A;left:0%;width:25%">Terminé</div>
+        </div>
+      </div>
+      <div class="gantt-row">
+        <div class="gantt-row-label">Négociations</div>
+        <div class="gantt-bar-track">
+          <div class="today-line"></div>
+          <div class="task-bar" style="background:#E8A94A;left:25%;width:44.6%">Négociations</div>
+        </div>
+      </div>
+      <div class="gantt-row">
+        <div class="gantt-row-label">Signature contrats</div>
+        <div class="gantt-bar-track">
+          <div class="today-line"></div>
+          <div class="task-bar upcoming" style="color:#E8A94A;border-color:#E8A94A;left:62.5%;width:32.1%">Signature</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Today label (once, on last row) -->
+  </div>
+
+  <!-- Phone mockup -->
+  <div class="phone-panel">
+    <div class="phone-label">App mobile</div>
+    <div class="phone-frame">
+      <div class="phone-notch">
+        <div class="notch-cam"></div>
+      </div>
+      <div class="phone-statusbar">
+        <span>9:41</span>
+        <div class="status-right">
+          <span>●●●●</span>
+          <span>WiFi</span>
+          <span>🔋</span>
+        </div>
+      </div>
+
+      <div class="phone-screen">
+
+        <!-- Projets tab -->
+        <div class="tab-panel active" id="tab-projets">
+          <div class="ph-section">Projets actifs</div>
+
+          <div class="ph-project-card">
+            <div class="ph-proj-header">
+              <div class="ph-proj-dot" style="background:#27C48F"></div>
+              <div class="ph-proj-name">Application mobile</div>
+              <div class="ph-proj-pct" style="color:#27C48F">68%</div>
+            </div>
+            <div class="ph-proj-bar-bg"><div class="ph-proj-bar" style="background:#27C48F;width:68%"></div></div>
+            <div class="ph-proj-meta">8 tâches · Phase Développement</div>
+          </div>
+
+          <div class="ph-project-card">
+            <div class="ph-proj-header">
+              <div class="ph-proj-dot" style="background:#5B9CF0"></div>
+              <div class="ph-proj-name">Site marketing</div>
+              <div class="ph-proj-pct" style="color:#5B9CF0">45%</div>
+            </div>
+            <div class="ph-proj-bar-bg"><div class="ph-proj-bar" style="background:#5B9CF0;width:45%"></div></div>
+            <div class="ph-proj-meta">5 tâches · Phase Design</div>
+          </div>
+
+          <div class="ph-project-card">
+            <div class="ph-proj-header">
+              <div class="ph-proj-dot" style="background:#E8A94A"></div>
+              <div class="ph-proj-name">Partenariats</div>
+              <div class="ph-proj-pct" style="color:#E8A94A">32%</div>
+            </div>
+            <div class="ph-proj-bar-bg"><div class="ph-proj-bar" style="background:#E8A94A;width:32%"></div></div>
+            <div class="ph-proj-meta">4 tâches · Phase Négociations</div>
+          </div>
+
+          <div class="ph-section" style="margin-top:14px">Objectifs stratégiques</div>
+          <div class="ph-project-card" style="border-color:rgba(39,196,143,.2);background:rgba(39,196,143,.05)">
+            <div class="ph-proj-header">
+              <div style="font-size:14px">🎯</div>
+              <div class="ph-proj-name" style="font-size:11px">Lancer la v2 avant fin juillet</div>
+            </div>
+            <div class="ph-proj-meta" style="color:rgba(39,196,143,.5)">3 projets liés · J-47</div>
+          </div>
+        </div>
+
+        <!-- Programme tab -->
+        <div class="tab-panel" id="tab-programme">
+          <div class="ph-section">Aujourd'hui — Jeudi 11 juin</div>
+
+          <div class="ph-block">
+            <div class="ph-block-time">9:00</div>
+            <div class="ph-block-card ph-block-done" style="background:rgba(39,196,143,.08)">
+              <div>Deep Work — Backend</div>
+              <div class="ph-block-dur">90 min · ✓ Fait</div>
+            </div>
+          </div>
+          <div class="ph-block">
+            <div class="ph-block-time">10:30</div>
+            <div class="ph-block-card ph-block-done" style="background:rgba(91,156,240,.08)">
+              <div>Réunion équipe</div>
+              <div class="ph-block-dur">30 min · ✓ Fait</div>
+            </div>
+          </div>
+          <div class="ph-block">
+            <div class="ph-block-time">11:00</div>
+            <div class="ph-block-card" style="background:rgba(39,196,143,.12);border:1px solid rgba(39,196,143,.2)">
+              <div>Code review</div>
+              <div class="ph-block-dur">60 min · En cours ▶</div>
+            </div>
+          </div>
+          <div class="ph-block">
+            <div class="ph-block-time">13:30</div>
+            <div class="ph-block-card" style="background:rgba(255,255,255,.04)">
+              <div>Rédaction spec technique</div>
+              <div class="ph-block-dur">45 min</div>
+            </div>
+          </div>
+          <div class="ph-block">
+            <div class="ph-block-time">15:00</div>
+            <div class="ph-block-card" style="background:rgba(232,169,74,.08)">
+              <div>Appels partenaires</div>
+              <div class="ph-block-dur">60 min</div>
+            </div>
+          </div>
+          <div class="ph-block">
+            <div class="ph-block-time">16:30</div>
+            <div class="ph-block-card" style="background:rgba(255,255,255,.04)">
+              <div>Review hebdo + planning</div>
+              <div class="ph-block-dur">30 min</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Suivi tab -->
+        <div class="tab-panel" id="tab-suivi">
+          <div class="ph-today-total">
+            <div class="ph-today-hrs">4h12</div>
+            <div class="ph-today-lbl">loggués aujourd'hui</div>
+          </div>
+
+          <div class="ph-section">Par activité</div>
+
+          <div class="ph-activity">
+            <div class="ph-act-dot" style="background:#27C48F"></div>
+            <div class="ph-act-info">
+              <div class="ph-act-name">Développement</div>
+              <div class="ph-act-bar-bg"><div class="ph-act-bar" style="background:#27C48F;width:83%"></div></div>
+            </div>
+            <div class="ph-act-time" style="color:#27C48F">2h30</div>
+          </div>
+
+          <div class="ph-activity">
+            <div class="ph-act-dot" style="background:#5B9CF0"></div>
+            <div class="ph-act-info">
+              <div class="ph-act-name">Design</div>
+              <div class="ph-act-bar-bg"><div class="ph-act-bar" style="background:#5B9CF0;width:62%"></div></div>
+            </div>
+            <div class="ph-act-time" style="color:#5B9CF0">1h15</div>
+          </div>
+
+          <div class="ph-activity">
+            <div class="ph-act-dot" style="background:#E8A94A"></div>
+            <div class="ph-act-info">
+              <div class="ph-act-name">Management</div>
+              <div class="ph-act-bar-bg"><div class="ph-act-bar" style="background:#E8A94A;width:30%"></div></div>
+            </div>
+            <div class="ph-act-time" style="color:#E8A94A">0h27</div>
+          </div>
+
+          <div class="ph-section" style="margin-top:14px">Cette semaine</div>
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:4px">
+            <div style="text-align:center">
+              <div style="font-size:9px;color:rgba(255,255,255,.3);margin-bottom:4px">L</div>
+              <div style="height:40px;background:rgba(39,196,143,.6);border-radius:4px"></div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:9px;color:rgba(255,255,255,.3);margin-bottom:4px">M</div>
+              <div style="height:30px;background:rgba(39,196,143,.5);border-radius:4px;margin-top:10px"></div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:9px;color:rgba(255,255,255,.3);margin-bottom:4px">M</div>
+              <div style="height:50px;background:rgba(39,196,143,.7);border-radius:4px"></div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:9px;color:rgba(255,255,255,.3);margin-bottom:4px">J</div>
+              <div style="height:24px;background:rgba(39,196,143,.4);border-radius:4px;margin-top:16px;border:1px solid var(--primary)"></div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:9px;color:rgba(255,255,255,.3);margin-bottom:4px">V</div>
+              <div style="height:6px;background:rgba(255,255,255,.1);border-radius:4px;margin-top:34px"></div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:9px;color:rgba(255,255,255,.3);margin-bottom:4px">S</div>
+              <div style="height:6px;background:rgba(255,255,255,.1);border-radius:4px;margin-top:34px"></div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:9px;color:rgba(255,255,255,.3);margin-bottom:4px">D</div>
+              <div style="height:6px;background:rgba(255,255,255,.1);border-radius:4px;margin-top:34px"></div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- .phone-screen -->
+
+      <!-- Tab bar -->
+      <div class="phone-tabbar">
+        <button class="tab-btn active" onclick="switchTab('projets', this)">
+          <span class="tab-icon">📁</span>
+          <span class="tab-name">Projets</span>
+        </button>
+        <button class="tab-btn" onclick="switchTab('programme', this)">
+          <span class="tab-icon">📅</span>
+          <span class="tab-name">Programme</span>
+        </button>
+        <button class="tab-btn" onclick="switchTab('suivi', this)">
+          <span class="tab-icon">📊</span>
+          <span class="tab-name">Suivi</span>
+        </button>
+      </div>
+
+    </div><!-- .phone-frame -->
+  </div><!-- .phone-panel -->
+
+</div><!-- .demo-section -->
+
+<!-- ── CTA ─────────────────────────────────────────────────────────────────── -->
+<div class="cta-section">
+  <h2>Prêt à reprendre le contrôle ?</h2>
+  <p>Accès gratuit — pas de carte bancaire requise.</p>
+  <a class="cta-btn" href="/">Essayer gratuitement →</a>
+</div>
+
+<script>
+  // Week marks (8 semaines, Jun 2 → Jul 28 = 56 jours)
+  const weeks = [
+    { label: '2 Jun', pct: 0 },
+    { label: '9 Jun', pct: 12.5 },
+    { label: '16 Jun', pct: 25 },
+    { label: '23 Jun', pct: 37.5 },
+    { label: '30 Jun', pct: 50 },
+    { label: '7 Jul', pct: 62.5 },
+    { label: '14 Jul', pct: 75 },
+    { label: '21 Jul', pct: 87.5 },
+  ];
+  const weeksEl = document.getElementById('gantt-weeks');
+  weeks.forEach(w => {
+    const el = document.createElement('div');
+    el.className = 'week-mark';
+    el.style.left = w.pct + '%';
+    el.innerHTML = `<span>${w.label}</span>`;
+    weeksEl.appendChild(el);
+  });
+
+  // Also add a "Aujourd'hui" label on the first bar track
+  document.querySelectorAll('.gantt-bar-track:first-of-type .today-line').forEach((el, i) => {
+    if (i === 0) {
+      const lbl = document.createElement('div');
+      lbl.className = 'today-label';
+      lbl.textContent = "Auj.";
+      el.parentNode.insertBefore(lbl, el.nextSibling);
+    }
+  });
+
+  // Tab switching
+  function switchTab(name, btn) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    btn.classList.add('active');
+  }
+</script>
+</body>
+</html>

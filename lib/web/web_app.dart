@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:productivitwo_v1/web/web_auth_screen.dart';
 import 'package:productivitwo_v1/web/web_home_screen.dart';
 import 'package:productivitwo_v1/web/web_email_signin_screen.dart';
@@ -72,11 +74,27 @@ class _AuthGate extends StatefulWidget {
 
 class _AuthGateState extends State<_AuthGate> {
   Stream<User?>? _stream;
+  bool _demoSigningIn = false;
 
   @override
   void initState() {
     super.initState();
     _stream = _buildStream();
+  }
+
+  Future<void> _signInDemo() async {
+    try {
+      final resp = await http.get(Uri.parse(
+        'https://us-central1-productivitwo-app.cloudfunctions.net/getDemoToken',
+      ));
+      if (resp.statusCode != 200) throw Exception('HTTP ${resp.statusCode}');
+      final token = (jsonDecode(resp.body) as Map)['token'] as String;
+      await FirebaseAuth.instance.signInWithCustomToken(token);
+    } catch (e) {
+      debugPrint('Demo sign-in error: $e');
+    } finally {
+      if (mounted) setState(() => _demoSigningIn = false);
+    }
   }
 
   Stream<User?>? _buildStream() {
@@ -90,14 +108,32 @@ class _AuthGateState extends State<_AuthGate> {
 
   @override
   Widget build(BuildContext context) {
-    // Détecte un magic link dans l'URL courante (web uniquement).
-    // On lit directement les query params pour éviter un race condition
-    // avec l'initialisation Firebase (isSignInWithEmailLink peut throw).
     if (kIsWeb) {
       final uri = Uri.base;
       final params = uri.queryParameters;
-      // Une fois connecté, on ignore les params magic-link résiduels dans l'URL
-      // (sinon _AuthGate reboucle sur l'écran de complétion avec un code déjà consommé).
+
+      // Mode démo : connexion sur compte partagé demo-productivitwo
+      if (params['demo'] == 'true') {
+        bool alreadyDemo = false;
+        try {
+          alreadyDemo = FirebaseAuth.instance.currentUser?.uid == 'demo-productivitwo';
+        } catch (_) {}
+
+        if (!alreadyDemo && !_demoSigningIn) {
+          _demoSigningIn = true;
+          _signInDemo();
+        }
+
+        if (_demoSigningIn) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+      }
+
+      // Détecte un magic link dans l'URL courante (web uniquement).
+      // On lit directement les query params pour éviter un race condition
+      // avec l'initialisation Firebase (isSignInWithEmailLink peut throw).
       bool signedIn = false;
       try { signedIn = FirebaseAuth.instance.currentUser != null; } catch (_) {}
       if (!signedIn &&
@@ -118,6 +154,7 @@ class _AuthGateState extends State<_AuthGate> {
       }
     }
 
+    final isDemo = kIsWeb && Uri.base.queryParameters['demo'] == 'true';
     final stream = _stream;
     if (stream == null) return const WebAuthScreen();
 
@@ -132,7 +169,7 @@ class _AuthGateState extends State<_AuthGate> {
         if (snapshot.hasError || snapshot.data == null) {
           return const WebAuthScreen();
         }
-        return const WebHomeScreen();
+        return WebHomeScreen(isDemo: isDemo);
       },
     );
   }

@@ -60,6 +60,8 @@
     ],
     "rewrites": [
       { "source": "/mcp/**", "run": { "serviceId": "mcphandler", "region": "us-central1" } },
+      { "source": "/demo", "destination": "/demo.html" },
+      { "source": "/demo/", "destination": "/demo.html" },
       { "source": "/vision", "destination": "/formation.html" },
       { "source": "/vision/", "destination": "/formation.html" },
       { "source": "/formation", "destination": "/formation.html" },

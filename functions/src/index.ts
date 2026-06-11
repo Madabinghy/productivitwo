@@ -2908,3 +2908,310 @@ export const applyFormationProfile = onRequest(
 
 // ── Couche sociale (Phase 1) ────────────────────────────────────────────────
 export { claimPseudo, recomputeLeaderboards, submitChallenge, subscribeChallenge, superOrionCron } from "./social";
+
+// ── Mode démo ────────────────────────────────────────────────────────────────
+
+const DEMO_UID = "demo-productivitwo";
+
+async function _seedDemoData(uid: string): Promise<void> {
+  const base = `users/${uid}`;
+  const cols = ["domains", "activities", "sessions", "habitHits", "projects", "daily_schedules"];
+
+  for (const col of cols) {
+    const snap = await db.collection(`${base}/${col}`).get();
+    if (snap.docs.length === 0) continue;
+    const b = db.batch();
+    snap.docs.forEach((d) => b.delete(d.ref));
+    await b.commit();
+  }
+
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+
+  const domTravail = uuidv4();
+  const domSante = uuidv4();
+  const domApprentissage = uuidv4();
+  const actDeepWork = uuidv4();
+  const actRunning = uuidv4();
+  const actLecture = uuidv4();
+  const actMeditation = uuidv4();
+  const proj1 = uuidv4();
+  const proj2 = uuidv4();
+  const phase1a = uuidv4(), phase1b = uuidv4();
+  const phase2a = uuidv4(), phase2b = uuidv4();
+  const t1 = uuidv4(), t2 = uuidv4(), t3 = uuidv4(), t4 = uuidv4();
+  const t5 = uuidv4(), t6 = uuidv4(), t7 = uuidv4();
+
+  const batch = db.batch();
+
+  // Domaines
+  batch.set(db.doc(`${base}/domains/${domTravail}`), {
+    id: domTravail, name: "Travail", goalMinDay: 120, autoGoal: false,
+    colorValue: 0xFF2196F3, deleted: false,
+  });
+  batch.set(db.doc(`${base}/domains/${domSante}`), {
+    id: domSante, name: "Santé", goalMinDay: 60, autoGoal: false,
+    colorValue: 0xFF4CAF50, deleted: false,
+  });
+  batch.set(db.doc(`${base}/domains/${domApprentissage}`), {
+    id: domApprentissage, name: "Apprentissage", goalMinDay: 30, autoGoal: false,
+    colorValue: 0xFFFF9800, deleted: false,
+  });
+
+  // Activités
+  batch.set(db.doc(`${base}/activities/${actDeepWork}`), {
+    id: actDeepWork, name: "Deep Work", domainId: domTravail,
+    type: "time", role: "generic", goalMin: 120, unit: null,
+    habitFreq: null, habitTarget: null, manualTarget: false, autoTune: true,
+    targetSource: "default", linkedActivityId: null,
+    createdAt: FieldValue.serverTimestamp(), lastTuneAt: null,
+    order: 0, iconCode: null, deleted: false, todayFlag: true, timerMin: null,
+  });
+  batch.set(db.doc(`${base}/activities/${actRunning}`), {
+    id: actRunning, name: "Running", domainId: domSante,
+    type: "habit", role: "generic", goalMin: 30, unit: null,
+    habitFreq: 0, habitTarget: 1, manualTarget: false, autoTune: true,
+    targetSource: "default", linkedActivityId: null,
+    createdAt: FieldValue.serverTimestamp(), lastTuneAt: null,
+    order: 1, iconCode: null, deleted: false, todayFlag: false, timerMin: null,
+  });
+  batch.set(db.doc(`${base}/activities/${actLecture}`), {
+    id: actLecture, name: "Lecture", domainId: domApprentissage,
+    type: "time", role: "generic", goalMin: 30, unit: null,
+    habitFreq: null, habitTarget: null, manualTarget: false, autoTune: true,
+    targetSource: "default", linkedActivityId: null,
+    createdAt: FieldValue.serverTimestamp(), lastTuneAt: null,
+    order: 2, iconCode: null, deleted: false, todayFlag: false, timerMin: null,
+  });
+  batch.set(db.doc(`${base}/activities/${actMeditation}`), {
+    id: actMeditation, name: "Méditation", domainId: domSante,
+    type: "habit", role: "generic", goalMin: 15, unit: null,
+    habitFreq: 0, habitTarget: 1, manualTarget: false, autoTune: true,
+    targetSource: "default", linkedActivityId: null,
+    createdAt: FieldValue.serverTimestamp(), lastTuneAt: null,
+    order: 3, iconCode: null, deleted: false, todayFlag: false, timerMin: null,
+  });
+
+  // Sessions Deep Work — 7 derniers jours
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const durMin = i === 0 ? 90 : (i % 2 === 0 ? 120 : 105);
+    const startAt = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 9, 0, 0);
+    const endAt = new Date(startAt.getTime() + durMin * 60000);
+    const sessId = uuidv4();
+    batch.set(db.doc(`${base}/sessions/${sessId}`), {
+      id: sessId, activityId: actDeepWork,
+      startAt: admin.firestore.Timestamp.fromDate(startAt),
+      endAt: admin.firestore.Timestamp.fromDate(endAt),
+    });
+  }
+
+  // Sessions Lecture — jours pairs sur 7 jours
+  for (let i = 6; i >= 1; i -= 2) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const startAt = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 21, 0, 0);
+    const endAt = new Date(startAt.getTime() + 35 * 60000);
+    const sessId = uuidv4();
+    batch.set(db.doc(`${base}/sessions/${sessId}`), {
+      id: sessId, activityId: actLecture,
+      startAt: admin.firestore.Timestamp.fromDate(startAt),
+      endAt: admin.firestore.Timestamp.fromDate(endAt),
+    });
+  }
+
+  // HabitHits Running — 6/7 (skip i=3)
+  for (let i = 6; i >= 0; i--) {
+    if (i === 3) continue;
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const ts = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 7, 30, 0);
+    const hitId = uuidv4();
+    batch.set(db.doc(`${base}/habitHits/${hitId}`), {
+      id: hitId, habitId: actRunning,
+      ts: admin.firestore.Timestamp.fromDate(ts),
+      contextActivityId: null,
+    });
+  }
+
+  // HabitHits Méditation — 5/7 (skip i=2 et i=5)
+  for (let i = 6; i >= 0; i--) {
+    if (i === 2 || i === 5) continue;
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const ts = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 8, 0, 0);
+    const hitId = uuidv4();
+    batch.set(db.doc(`${base}/habitHits/${hitId}`), {
+      id: hitId, habitId: actMeditation,
+      ts: admin.firestore.Timestamp.fromDate(ts),
+      contextActivityId: null,
+    });
+  }
+
+  const proj1Start = new Date(now.getTime() - 21 * 86400000);
+  const proj1End   = new Date(now.getTime() + 35 * 86400000);
+  const proj2Start = new Date(now.getTime() - 7 * 86400000);
+  const proj2End   = new Date(now.getTime() + 28 * 86400000);
+
+  batch.set(db.doc(`${base}/projects/${proj1}`), {
+    id: proj1, title: "Application mobile v2",
+    description: "Refonte complète de l'interface mobile avec nouvelles features gamification",
+    domainId: domTravail, parentProjectId: null,
+    startDate: proj1Start.toISOString(), endDate: proj1End.toISOString(),
+    status: "active",
+    phases: [
+      { id: phase1a, name: "Design", order: 0 },
+      { id: phase1b, name: "Développement", order: 1 },
+    ],
+    tasks: [
+      {
+        id: t1, title: "Wireframes & maquettes", phaseId: phase1a,
+        startDate: proj1Start.toISOString(),
+        endDate: new Date(now.getTime() - 14 * 86400000).toISOString(),
+        status: "done", isMilestone: false, todayFlag: false, actions: [],
+        description: null, groupLabel: null, color: null, barLabel: null,
+      },
+      {
+        id: t2, title: "Design system", phaseId: phase1a,
+        startDate: new Date(now.getTime() - 14 * 86400000).toISOString(),
+        endDate: new Date(now.getTime() - 2 * 86400000).toISOString(),
+        status: "done", isMilestone: false, todayFlag: false, actions: [],
+        description: null, groupLabel: null, color: null, barLabel: null,
+      },
+      {
+        id: t3, title: "Développement écrans", phaseId: phase1b,
+        startDate: new Date(now.getTime() - 3 * 86400000).toISOString(),
+        endDate: new Date(now.getTime() + 21 * 86400000).toISOString(),
+        status: "pending", isMilestone: false, todayFlag: true,
+        description: null, groupLabel: null, color: null, barLabel: null,
+        actions: [
+          { id: uuidv4(), title: "Écran d'accueil", done: true },
+          { id: uuidv4(), title: "Vue projets", done: true },
+          { id: uuidv4(), title: "Vue programme", done: false },
+          { id: uuidv4(), title: "Vue statistiques", done: false },
+        ],
+      },
+      {
+        id: t4, title: "Tests & publication", phaseId: phase1b,
+        startDate: new Date(now.getTime() + 21 * 86400000).toISOString(),
+        endDate: proj1End.toISOString(),
+        status: "pending", isMilestone: false, todayFlag: false, actions: [],
+        description: null, groupLabel: null, color: null, barLabel: null,
+      },
+    ],
+    createdBy: uid, sourceType: "manual", source: "user", originIdeas: [],
+    createdAt: proj1Start.toISOString(), updatedAt: null,
+  });
+
+  batch.set(db.doc(`${base}/projects/${proj2}`), {
+    id: proj2, title: "Lancement marketing",
+    description: "Stratégie de contenu et acquisition pour le lancement beta",
+    domainId: domTravail, parentProjectId: null,
+    startDate: proj2Start.toISOString(), endDate: proj2End.toISOString(),
+    status: "active",
+    phases: [
+      { id: phase2a, name: "Contenu", order: 0 },
+      { id: phase2b, name: "Distribution", order: 1 },
+    ],
+    tasks: [
+      {
+        id: t5, title: "Landing page", phaseId: phase2a,
+        startDate: proj2Start.toISOString(),
+        endDate: new Date(now.getTime() + 7 * 86400000).toISOString(),
+        status: "pending", isMilestone: false, todayFlag: false,
+        description: null, groupLabel: null, color: null, barLabel: null,
+        actions: [
+          { id: uuidv4(), title: "Rédaction copywriting", done: true },
+          { id: uuidv4(), title: "Design maquette", done: false },
+        ],
+      },
+      {
+        id: t6, title: "Série d'emails beta", phaseId: phase2a,
+        startDate: new Date(now.getTime() + 7 * 86400000).toISOString(),
+        endDate: new Date(now.getTime() + 14 * 86400000).toISOString(),
+        status: "pending", isMilestone: false, todayFlag: false, actions: [],
+        description: null, groupLabel: null, color: null, barLabel: null,
+      },
+      {
+        id: t7, title: "Campagne LinkedIn", phaseId: phase2b,
+        startDate: new Date(now.getTime() + 14 * 86400000).toISOString(),
+        endDate: proj2End.toISOString(),
+        status: "pending", isMilestone: false, todayFlag: false, actions: [],
+        description: null, groupLabel: null, color: null, barLabel: null,
+      },
+    ],
+    createdBy: uid, sourceType: "manual", source: "user", originIdeas: [],
+    createdAt: proj2Start.toISOString(), updatedAt: null,
+  });
+
+  // Programme du jour
+  batch.set(db.doc(`${base}/daily_schedules/${today}`), {
+    date: today,
+    generatedBy: "claude",
+    generatedAt: FieldValue.serverTimestamp(),
+    blocks: [
+      {
+        id: uuidv4(), startTime: "09:00", durationMin: 90,
+        title: "Deep Work — Application mobile",
+        category: "project", projectId: proj1, taskId: t3,
+        activityId: actDeepWork, status: "done",
+        doneAt: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10, 30, 0).toISOString(),
+        challenge: false, reminders: [],
+      },
+      {
+        id: uuidv4(), startTime: "10:45", durationMin: 30,
+        title: "Running matinal",
+        category: "routine", projectId: null, taskId: null,
+        activityId: actRunning, status: "pending",
+        doneAt: null, challenge: false, reminders: [],
+      },
+      {
+        id: uuidv4(), startTime: "14:00", durationMin: 120,
+        title: "Développement — Écrans mobiles",
+        category: "project", projectId: proj1, taskId: t3,
+        activityId: null, status: "pending",
+        doneAt: null, challenge: false, reminders: [],
+      },
+      {
+        id: uuidv4(), startTime: "20:30", durationMin: 30,
+        title: "Lecture",
+        category: "routine", projectId: null, taskId: null,
+        activityId: actLecture, status: "pending",
+        doneAt: null, challenge: false, reminders: [],
+      },
+    ],
+  });
+
+  batch.set(db.doc(`${base}/meta/demo`), {
+    seededAt: FieldValue.serverTimestamp(),
+    today,
+  });
+
+  await batch.commit();
+}
+
+export const getDemoToken = onRequest(
+  { cors: true, invoker: "public" },
+  async (req, res) => {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const metaRef = db.doc(`users/${DEMO_UID}/meta/demo`);
+      const meta = await metaRef.get();
+
+      if (!meta.exists || (meta.data()?.today ?? "") !== today) {
+        await _seedDemoData(DEMO_UID);
+      }
+
+      const token = await admin.auth().createCustomToken(DEMO_UID, { demo: true });
+      res.json({ token });
+    } catch (e) {
+      console.error("getDemoToken error:", e);
+      res.status(500).json({ error: String(e) });
+    }
+  }
+);
+
+export const resetDemoData = onSchedule("0 4 * * *", async () => {
+  await _seedDemoData(DEMO_UID);
+});
