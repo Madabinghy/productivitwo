@@ -167,6 +167,25 @@ class GoldEconomy {
 
   static const int minutesPerArrow = 60; // 1 h de temps loggé = 1 flèche
 
+  // ── Bestiaire : créatures débloquées par RECETTES de captures ───────────────
+  // Le BUT du farm : capturer X nuisibles d'un (ou plusieurs) type(s) débloque
+  // une créature dans la Collection. Progression naturelle araignée→scorpion→
+  // serpent→dragon (les recettes mixtes exigent des cartes de niveau supérieur).
+  static const List<
+          ({String id, String emoji, String name, Map<String, int> recipe})>
+      bestiaryRecipes = [
+    (id: 'b_mouse', emoji: '🐭', name: 'Souris', recipe: {'spider': 3}),
+    (id: 'b_frog', emoji: '🐸', name: 'Grenouille', recipe: {'spider': 8}),
+    (id: 'b_cat', emoji: '🐈', name: 'Chat', recipe: {'scorpion': 4}),
+    (id: 'b_lizard', emoji: '🦎', name: 'Lézard',
+        recipe: {'spider': 5, 'scorpion': 2}),
+    (id: 'b_eagle', emoji: '🦅', name: 'Aigle', recipe: {'snake': 3}),
+    (id: 'b_wolf', emoji: '🐺', name: 'Loup',
+        recipe: {'scorpion': 6, 'snake': 2}),
+    (id: 'b_dragon', emoji: '🐲', name: 'Dragon',
+        recipe: {'spider': 10, 'scorpion': 5, 'snake': 3}),
+  ];
+
   static const int weaponEpee = 8; // tue un serpent (consommable)
   static const int weaponSandale = 5; // tue araignée/scorpion (consommable)
 

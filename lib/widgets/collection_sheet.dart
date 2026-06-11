@@ -99,6 +99,20 @@ class _CollectionSheet extends StatelessWidget {
           Text('🩴 routine · 🏹 1 h de temps loggé · 🗡️ tâche terminée. Une arme se dépense par capture.',
               style:
                   TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(.5))),
+          const SizedBox(height: 18),
+          // Recettes de chasse : le BUT du farm (capturer X → débloque une créature).
+          Text('Recettes de chasse',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: cs.onSurface.withOpacity(.7))),
+          const SizedBox(height: 4),
+          Text('Capture des nuisibles pour débloquer ces créatures.',
+              style:
+                  TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.5))),
+          const SizedBox(height: 10),
+          for (final r in GoldEconomy.bestiaryRecipes)
+            _RecipeRow(logic: logic, recipe: r, cs: cs),
           const SizedBox(height: 16),
           // Carte en cours : on peut aller l'explorer / la chasser.
           Text('Chasser une carte',
@@ -263,5 +277,73 @@ class _CollectibleCell extends StatelessWidget {
         ],
       ),
     ));
+  }
+}
+
+/// Ligne d'une recette de chasse : créature (silhouette si non débloquée) +
+/// progression des captures requises par type.
+class _RecipeRow extends StatelessWidget {
+  final AppLogic logic;
+  final ({String id, String emoji, String name, Map<String, int> recipe})
+      recipe;
+  final ColorScheme cs;
+  const _RecipeRow(
+      {required this.logic, required this.recipe, required this.cs});
+
+  @override
+  Widget build(BuildContext context) {
+    final owned = logic.state.collection.contains(recipe.id);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        decoration: BoxDecoration(
+          color: owned
+              ? const Color(0xFFD4A017).withOpacity(.12)
+              : cs.surfaceContainerHighest.withOpacity(.3),
+          borderRadius: BorderRadius.circular(12),
+          border: owned
+              ? Border.all(color: const Color(0xFFD4A017).withOpacity(.5))
+              : null,
+        ),
+        child: Row(children: [
+          Text(owned ? recipe.emoji : '❓',
+              style: TextStyle(
+                  fontSize: 26,
+                  color: owned ? null : cs.onSurface.withOpacity(.3))),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(owned ? recipe.name : '???',
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: cs.onSurface.withOpacity(owned ? 1 : .5))),
+                const SizedBox(height: 4),
+                Wrap(spacing: 12, runSpacing: 2, children: [
+                  for (final e in recipe.recipe.entries) _reqChip(e.key, e.value),
+                ]),
+              ],
+            ),
+          ),
+          if (owned)
+            const Icon(Icons.check_circle,
+                color: Color(0xFF1D9E75), size: 20),
+        ]),
+      ),
+    );
+  }
+
+  Widget _reqChip(String type, int n) {
+    final k = logic.pestKillCount(type);
+    final met = k >= n;
+    return Text('${entityEmoji(type)} ${k < n ? k : n}/$n',
+        style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w700,
+            color:
+                met ? const Color(0xFF1D9E75) : cs.onSurface.withOpacity(.6)));
   }
 }

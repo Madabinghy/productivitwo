@@ -324,13 +324,49 @@ extension GoldEngine on AppLogic {
 
   int pestKillCount(String type) => state.pestKills[type] ?? 0;
 
+  /// Progression d'une recette : (accompli, total) sur l'ensemble des types.
+  ({int done, int total}) recipeProgress(Map<String, int> recipe) {
+    var done = 0, total = 0;
+    recipe.forEach((t, n) {
+      total += n;
+      final k = state.pestKills[t] ?? 0;
+      done += k < n ? k : n;
+    });
+    return (done: done, total: total);
+  }
+
   /// Enregistre une capture : dépense l'arme requise + incrémente le compteur,
-  /// puis persiste.
-  void recordKill(String type, FirestoreSync sync) {
+  /// débloque les recettes satisfaites, puis persiste. Renvoie les créatures
+  /// nouvellement débloquées (pour les célébrer).
+  List<({String id, String emoji, String name})> recordKill(
+      String type, FirestoreSync sync) {
     final w = GoldEconomy.weaponForPest(type);
     state.weaponsSpent[w] = (state.weaponsSpent[w] ?? 0) + 1;
     state.pestKills[type] = (state.pestKills[type] ?? 0) + 1;
+
+    final unlocked = <({String id, String emoji, String name})>[];
+    for (final r in GoldEconomy.bestiaryRecipes) {
+      if (state.collection.contains(r.id)) continue;
+      var ok = true;
+      r.recipe.forEach((t, n) {
+        if ((state.pestKills[t] ?? 0) < n) ok = false;
+      });
+      if (ok) {
+        state.collection.add(r.id);
+        state.collectionMeta[r.id] =
+            '${yyyymmdd(DateTime.now())}|recette de chasse';
+        unlocked.add((id: r.id, emoji: r.emoji, name: r.name));
+      }
+    }
+
     sync.setCombatStats(state.weaponsSpent, state.pestKills);
+    if (unlocked.isNotEmpty) {
+      sync.setCollectionMeta(state.collectionMeta);
+      for (final u in unlocked) {
+        sync.expeditionWrite(collectionAdd: u.id);
+      }
+    }
+    return unlocked;
   }
 
   /// Une routine est « lancée » si elle a été complétée au moins une fois ≤ d.

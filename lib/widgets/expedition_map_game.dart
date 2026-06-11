@@ -311,7 +311,8 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
         sync.setExpeditionGuardianKilled(_level);
       }
     }
-    logic.recordKill(type, sync); // dépense l'arme + incrémente la capture
+    // Dépense l'arme + incrémente la capture + débloque d'éventuelles recettes.
+    final unlocked = logic.recordKill(type, sync);
     logic.applyGold(sync, loot,
         category: 'gain',
         reasonCode: 'pest_loot',
@@ -324,6 +325,14 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
         content: Text(
             '⚔️ ${isGuardian ? "Gardien " : ""}${pestName(type)} vaincu ! +$loot or'),
         duration: const Duration(seconds: 2)));
+    if (unlocked.isNotEmpty) {
+      showConfetti(context, count: 28);
+      final u = unlocked.first;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content:
+              Text('${u.emoji} ${u.name} débloqué par recette de chasse !'),
+          duration: const Duration(seconds: 3)));
+    }
   }
 
   Future<void> _showCombatSheet(String raw, String type, String weapon) async {
