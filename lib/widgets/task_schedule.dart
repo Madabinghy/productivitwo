@@ -48,7 +48,8 @@ Future<bool> toggleRoutineTodayAndSchedule(BuildContext context,
   final turningOn = !routine.todayFlag;
   final ymd = _todayYmd();
   if (turningOn) {
-    final res = await _pickTimeAndDuration(context);
+    final res = await _pickTimeAndDuration(context,
+        durations: const [5, 10, 15, 20, 30], defaultDuration: 15);
     if (res == null) return false; // annulé → étoile inchangée, rien de programmé
     logic.setActivityTodayFlag(routine.id, true);
     await sync.toggleActivityTodayFlag(routine.id, true);
@@ -69,10 +70,10 @@ Future<bool> toggleRoutineTodayAndSchedule(BuildContext context,
   return true;
 }
 
-Future<(String, int)?> _pickTimeAndDuration(BuildContext context) {
+Future<(String, int)?> _pickTimeAndDuration(BuildContext context,
+    {List<int> durations = const [30, 60, 90, 120], int defaultDuration = 60}) {
   TimeOfDay time = TimeOfDay.now();
-  int duration = 60;
-  const durations = [30, 60, 90, 120];
+  int duration = defaultDuration;
   return showModalBottomSheet<(String, int)>(
     context: context,
     showDragHandle: true,

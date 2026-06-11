@@ -1282,6 +1282,35 @@ class FirestoreSync {
     }
   }
 
+  /// Achète ET applique un gel directement depuis la carte de combat (sans passer
+  /// par l'inventaire) : débite [price] d'or + pose les entrées [ymds] dans
+  /// goldGelDays. Atomic : si solde insuffisant, rien n'est modifié.
+  Future<bool> buyAndApplyGelDirect(
+      String activityId, List<String> ymds, int price) async {
+    if (uid == null) return false;
+    final metaRef = _meta();
+    return _db.runTransaction<bool>((tx) async {
+      final snap = await tx.get(metaRef);
+      final data = snap.data() as Map<String, dynamic>? ?? {};
+      final balance = (data['gold'] as num?)?.toInt() ?? 0;
+      if (balance < price) return false;
+      final gelDays =
+          (data['goldGelDays'] as List?)?.cast<String>().toList() ?? <String>[];
+      for (final ymd in ymds) {
+        final key = '${activityId}_$ymd';
+        if (!gelDays.contains(key)) gelDays.add(key);
+      }
+      tx.set(
+          metaRef,
+          {
+            'gold': balance - price,
+            'goldGelDays': gelDays,
+          },
+          SetOptions(merge: true));
+      return true;
+    });
+  }
+
   /// Pose un gel de série sur une routine pour un jour (consomme 1 gel d'inventaire).
   Future<bool> useGel(String activityId, String ymd) async {
     if (uid == null) return false;

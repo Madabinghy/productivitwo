@@ -153,6 +153,12 @@ Future<void> showBacklogCombat(
         final maxHp = logic.enemyMaxHp(type, itemId);
         final itemName = logic.enemyItemName(type, itemId);
         final engaged = logic.isEngaged(type, itemId);
+        final alreadyScheduled = type == 'snake'
+            ? logic.currentProjects
+                .expand((p) => p.tasks)
+                .any((t) => t.id == itemId && t.todayFlag)
+            : logic.state.activeActivities
+                .any((a) => a.id == itemId && a.todayFlag);
 
         Future<void> kill() async {
           final loot =
@@ -374,7 +380,17 @@ Future<void> showBacklogCombat(
                           style: TextStyle(
                               fontSize: 12,
                               color: Colors.white.withOpacity(.6))),
-                    if (logic.programBacklogHook != null)
+
+                    // ── Pouvoirs rapides ────────────────────────────────────────
+                    _PowersSection(
+                      logic: logic,
+                      sync: sync,
+                      type: type,
+                      itemId: itemId,
+                      onChanged: () => setLocal(() {}),
+                    ),
+
+                    if (logic.programBacklogHook != null && !alreadyScheduled)
                       TextButton.icon(
                         onPressed: () async {
                           Navigator.pop(ctx);
@@ -402,4 +418,244 @@ Future<void> showBacklogCombat(
       });
     },
   );
+}
+
+/// Section « Pouvoirs rapides » sous la carte de combat.
+/// - Spider (routine) : gel 1j/2j/3j direct (achat + application en un tap).
+/// - Snake (tâche) : bouclier anti-retard.
+/// - Tous : boost ×2.
+/// Prix dynamique : augmente avec le nombre de pouvoirs actifs.
+class _PowersSection extends StatefulWidget {
+  final AppLogic logic;
+  final FirestoreSync sync;
+  final String type;
+  final String itemId;
+  final VoidCallback onChanged;
+  const _PowersSection({
+    required this.logic,
+    required this.sync,
+    required this.type,
+    required this.itemId,
+    required this.onChanged,
+  });
+  @override
+  State<_PowersSection> createState() => _PowersSectionState();
+}
+
+class _PowersSectionState extends State<_PowersSection> {
+  AppLogic get logic => widget.logic;
+  bool _busy = false;
+
+  static const _kGold = Color(0xFFD4A017);
+
+  /// Gèle la routine pour [days] jours à partir d'aujourd'hui (achat + application).
+  Future<void> _freezeRoutine(int days) async {
+    if (_busy) return;
+    final price = logic.gelPriceDynamic() * days;
+    if (logic.gold < price) {
+      _snack('Solde insuffisant (${logic.gold} / $price or).');
+      return;
+    }
+    final today = DateTime.now();
+    final ymds = [
+      for (int i = 0; i < days; i++)
+        yyyymmdd(today.add(Duration(days: i)))
+    ];
+    setState(() => _busy = true);
+    final ok = await widget.sync
+        .buyAndApplyGelDirect(widget.itemId, ymds, price);
+    if (ok) {
+      logic.state.gold -= price;
+      for (final y in ymds) {
+        final key = '${widget.itemId}_$y';
+        if (!logic.state.goldGelDays.contains(key)) {
+          logic.state.goldGelDays.add(key);
+        }
+      }
+      logic.onChange();
+      _snack('🧊 Gelée $days j — pas de pénalité ces jours-là.');
+    } else {
+      _snack('Solde insuffisant.');
+    }
+    if (mounted) {
+      setState(() => _busy = false);
+      widget.onChanged();
+    }
+  }
+
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 2)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final gelPrice1 = logic.gelPriceDynamic();
+    final frozen = logic.routineFrozenDaysLeft(widget.itemId);
+    final activeGel = logic.activeGelCount();
+    final boostPrice = logic.boostPriceDynamic();
+    final boostActive = logic.state.goldBoostDays.contains(yyyymmdd(DateTime.now()));
+
+    final showGel = widget.type == 'spider';
+    final showShield = widget.type == 'snake';
+
+    if (!showGel && !showShield && boostActive) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Divider(color: Colors.white.withOpacity(.12), height: 20),
+          Text('POUVOIRS',
+              style: TextStyle(
+                  fontSize: 10,
+                  letterSpacing: 1.5,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white.withOpacity(.45))),
+          const SizedBox(height: 8),
+
+          // ── Gel de routine ─────────────────────────────────────────────────
+          if (showGel) ...[
+            if (frozen > 0)
+              Row(children: [
+                const Text('🧊', style: TextStyle(fontSize: 14)),
+                const SizedBox(width: 6),
+                Text('Gelée $frozen j restants',
+                    style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF7DD3FC))),
+              ])
+            else if (activeGel >= 3)
+              Text('Max 3 gels actifs atteint',
+                  style: TextStyle(
+                      fontSize: 12, color: Colors.white.withOpacity(.5)))
+            else ...[
+              Text('Geler cette routine',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white.withOpacity(.7))),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  for (final days in [1, 2, 3]) ...[
+                    if (days > 1) const SizedBox(width: 6),
+                    Expanded(
+                      child: _PowerBtn(
+                        label: '${days}j',
+                        sublabel: '${gelPrice1 * days}or',
+                        color: const Color(0xFF0EA5E9),
+                        enabled: !_busy && logic.gold >= gelPrice1 * days && activeGel + days <= 3,
+                        onTap: () => _freezeRoutine(days),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+            const SizedBox(height: 8),
+          ],
+
+          // ── Bouclier tâche ─────────────────────────────────────────────────
+          if (showShield) ...[
+            Row(children: [
+              Expanded(
+                child: _PowerBtn(
+                  label: '🛡️ Bouclier ${GoldEconomy.shieldDaysPerUse}j',
+                  sublabel:
+                      '${logic.shieldPriceDynamic()}or · anti-retard',
+                  color: const Color(0xFF8B5CF6),
+                  enabled: !_busy &&
+                      logic.gold >= logic.shieldPriceDynamic() &&
+                      (logic.state.goldInventory['shield'] ?? 0) > 0,
+                  onTap: () {
+                    // Renvoie vers la boutique pour choisir la tâche.
+                    Navigator.pop(context);
+                  },
+                ),
+              ),
+            ]),
+            const SizedBox(height: 8),
+          ],
+
+          // ── Boost ×2 ───────────────────────────────────────────────────────
+          if (!boostActive)
+            Row(children: [
+              Expanded(
+                child: _PowerBtn(
+                  label: '✨ Boost ×2 (${GoldEconomy.boostDaysPerUse}j)',
+                  sublabel: '${boostPrice}or · double tes gains',
+                  color: _kGold,
+                  textColor: const Color(0xFF231900),
+                  enabled: !_busy && logic.gold >= boostPrice &&
+                      (logic.state.goldInventory['boost'] ?? 0) > 0,
+                  onTap: () {
+                    Navigator.pop(context);
+                  },
+                ),
+              ),
+            ])
+          else
+            Text('✨ Boost ×2 actif',
+                style: TextStyle(
+                    fontSize: 12,
+                    color: _kGold.withOpacity(.8),
+                    fontWeight: FontWeight.w700)),
+        ],
+      ),
+    );
+  }
+}
+
+class _PowerBtn extends StatelessWidget {
+  final String label, sublabel;
+  final Color color;
+  final Color textColor;
+  final bool enabled;
+  final VoidCallback onTap;
+  const _PowerBtn({
+    required this.label,
+    required this.sublabel,
+    required this.color,
+    this.textColor = Colors.white,
+    required this.enabled,
+    required this.onTap,
+  });
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: enabled ? 1.0 : 0.4,
+      child: GestureDetector(
+        onTap: enabled ? onTap : null,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: color.withOpacity(.18),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: color.withOpacity(.5)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(label,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                      color: textColor == Colors.white
+                          ? color.withOpacity(.9)
+                          : textColor)),
+              Text(sublabel,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 10.5, color: Colors.white.withOpacity(.5))),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

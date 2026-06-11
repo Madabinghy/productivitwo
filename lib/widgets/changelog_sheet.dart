@@ -10,6 +10,15 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.09', '11 juin 2026', [
+    (Icons.ac_unit, 'Pouvoirs depuis la carte de combat : gèle une routine (1/2/3 jours), bouclier anti-deadline, boost ×2 — tout achetable en un tap. Plus tu as de pouvoirs actifs, plus c\'est cher'),
+    (Icons.radio_button_checked, 'Combats en cours redesignés : couleur du domaine, barre de PV, avatar ⚔️ si le combat tourne en direct'),
+    (Icons.highlight_off, 'Contour rouge sur les nuisibles déjà engagés dans la carte de chasse'),
+    (Icons.flag_outlined, 'Retour vers l\'overworld depuis le nœud de départ du donjon'),
+    (Icons.block, 'Tâche en retard = bloquante à la sortie du donjon — résous-la d\'abord'),
+    (Icons.star_outline_rounded, 'Durée de planification des routines corrigée (5/10/15 min) ; supprimer un bloc remet l\'étoile à zéro'),
+    (Icons.description_outlined, 'Lecture des documents d\'une tâche depuis le mobile (bouton 📄 dans la fiche tâche → WebView)'),
+  ]),
   _Entry('6.08', '11 juin 2026', [
     (Icons.sync_alt, 'Programme du jour synchronisé avec tes routines/tâches : cocher un bloc valide la routine (ou ouvre la tâche pour cocher ses actions), et faire la routine/tâche ailleurs coche le bloc tout seul. Taper une ligne ouvre désormais SA fiche (tâche/routine/activité)'),
     (Icons.star_outline_rounded, 'Étoile sur une routine (lanceur) → « planifier aujourd\'hui » (heure + durée) ; elle file dans ton programme. Et tu peux lier une activité à un bloc ajouté à la main (bouton ▶ + auto-coché au temps loggué)'),

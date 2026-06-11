@@ -12,6 +12,7 @@ import 'package:productivitwo_v1/widgets/collection_sheet.dart';
 import 'package:productivitwo_v1/widgets/confetti.dart';
 import 'package:productivitwo_v1/widgets/gold_shop_sheet.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
+import 'package:productivitwo_v1/utils/domain_colors.dart';
 
 /// Tableau de bord d'Or (Phase C) : solde + niveau, ce qui rapporte, ce qui
 /// coûte/risque (routines qui saignent, tâches en retard), et l'historique.
@@ -987,48 +988,126 @@ class _CombatCard extends StatelessWidget {
       required this.onChanged,
       required this.cs});
 
+  /// Vrai si une session de temps est en cours sur la routine ou son activité liée.
+  bool _isActivelyCombating() {
+    final runId = logic.runningActivityId();
+    if (runId == null) return false;
+    if (type != 'spider') return false;
+    if (runId == itemId) return true;
+    for (final a in logic.state.activities) {
+      if (a.id == itemId) {
+        return (a.linkedActivityId ?? '').trim() == runId;
+      }
+    }
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final name = logic.enemyItemName(type, itemId);
     final wEmoji = logic.weaponEmoji(GoldEconomy.weaponForPest(type));
-    final pv = maxHp > 12 ? '❤️ $hp/$maxHp' : '❤️' * hp;
+    final hpFrac = maxHp > 0 ? hp / maxHp : 0.0;
+    final domainId = logic.enemyDomainId(type, itemId);
+    final domColor = domainColor(domainId, logic.state.activeDomains) ??
+        const Color(0xFFE24A4A);
+    final frozen = type == 'spider' && logic.isRoutineFrozenToday(itemId);
+    final fighting = _isActivelyCombating();
+    final avatar = logic.state.activeAvatar ?? '🧍';
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () => showBacklogCombat(context, logic, sync, type, itemId,
             onChanged: onChanged),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-          decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest.withOpacity(.4),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFE24A4A).withOpacity(.3)),
-          ),
-          child: Row(children: [
-            Text(entityEmoji(type), style: const TextStyle(fontSize: 24)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 2),
-                  Text('$pv  ·  arme $wEmoji',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 12, color: cs.onSurface.withOpacity(.6))),
-                ],
-              ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withOpacity(.4),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                  color: fighting
+                      ? domColor.withOpacity(.7)
+                      : const Color(0xFFE24A4A).withOpacity(.3),
+                  width: fighting ? 1.5 : 1),
             ),
-            Icon(Icons.chevron_right,
-                size: 18, color: cs.onSurface.withOpacity(.3)),
-          ]),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Contenu principal ────────────────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(0, 10, 12, 8),
+                  child: Row(children: [
+                    // Barre colorée verticale (domaine)
+                    Container(
+                      width: 3,
+                      height: 36,
+                      margin: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: domColor,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    Text(entityEmoji(type),
+                        style: const TextStyle(fontSize: 24)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 14, fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 2),
+                          Text(
+                            '❤️ $hp/$maxHp  ·  $wEmoji'
+                            '${frozen ? '  🧊' : ''}',
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: cs.onSurface.withOpacity(.6)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Avatar + indicateur combat en cours
+                    if (fighting) ...[
+                      const SizedBox(width: 6),
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(avatar,
+                              style: const TextStyle(fontSize: 20)),
+                          Text('⚔️',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: domColor)),
+                        ],
+                      ),
+                      const SizedBox(width: 4),
+                    ] else ...[
+                      Icon(Icons.chevron_right,
+                          size: 18, color: cs.onSurface.withOpacity(.3)),
+                    ],
+                  ]),
+                ),
+                // ── Barre de PV ──────────────────────────────────────────────
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(
+                      bottom: Radius.circular(12)),
+                  child: LinearProgressIndicator(
+                    value: hpFrac.clamp(0.0, 1.0),
+                    minHeight: 3,
+                    backgroundColor: cs.onSurface.withOpacity(.08),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                        domColor.withOpacity(fighting ? .9 : .55)),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
