@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -5,6 +6,7 @@ import 'package:productivitwo_v1/gold_economy.dart';
 import 'package:productivitwo_v1/gold_purchase.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/widgets/task_schedule.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 // ── Entrée publique ───────────────────────────────────────────────────────────
 
@@ -958,6 +960,28 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
     if (mounted) setState(() => _saving = false);
   }
 
+  Future<void> _openDocs(BuildContext context) async {
+    final taskDocs = await widget.sync.fetchDocuments(taskId: _task.id);
+    final projectDocs = await widget.sync.fetchDocuments(projectId: widget.project.id);
+    final seen = <String>{};
+    final docs = [
+      for (final d in [...taskDocs, ...projectDocs])
+        if (seen.add(d['id'] as String? ?? '')) d,
+    ];
+    if (!mounted) return;
+    if (docs.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Aucun document lié à cette tâche.')));
+      return;
+    }
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => _DocListSheet(docs: docs),
+    );
+  }
+
   Future<void> _addAction() async {
     final ctrl = TextEditingController();
     final result = await showDialog<String>(
@@ -1465,6 +1489,12 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                   const SizedBox(
                       width: 16, height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2)),
+                IconButton(
+                  tooltip: 'Documents',
+                  icon: Icon(Icons.description_outlined,
+                      size: 20, color: cs.onSurface.withOpacity(.45)),
+                  onPressed: () => _openDocs(context),
+                ),
                 PopupMenuButton<String>(
                   tooltip: 'Options',
                   icon: Icon(Icons.more_vert,
@@ -1848,6 +1878,128 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
       ),
     );
   }
+}
+
+// ── Documents tâche ───────────────────────────────────────────────────────────
+
+class _DocListSheet extends StatelessWidget {
+  final List<Map<String, dynamic>> docs;
+  const _DocListSheet({required this.docs});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return DraggableScrollableSheet(
+      initialChildSize: 0.5,
+      maxChildSize: 0.9,
+      minChildSize: 0.3,
+      expand: false,
+      builder: (_, scroll) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+            child: Text(
+              'DOCUMENTS (${docs.length})',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1,
+                color: cs.onSurface.withOpacity(.4),
+              ),
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              controller: scroll,
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
+              itemCount: docs.length,
+              itemBuilder: (ctx, i) {
+                final doc = docs[i];
+                final title = doc['title'] as String? ?? 'Document';
+                final html = doc['content'] as String? ?? '';
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: ListTile(
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                    tileColor: cs.surfaceContainerHighest.withOpacity(.4),
+                    leading: Icon(Icons.description_outlined,
+                        color: cs.onSurface.withOpacity(.5)),
+                    title: Text(title,
+                        style: const TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.w500)),
+                    trailing: Icon(Icons.chevron_right,
+                        color: cs.onSurface.withOpacity(.3)),
+                    onTap: () => Navigator.push(
+                      ctx,
+                      MaterialPageRoute(
+                        builder: (_) => _DocViewer(title: title, html: html),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DocViewer extends StatefulWidget {
+  final String title;
+  final String html;
+  const _DocViewer({required this.title, required this.html});
+
+  @override
+  State<_DocViewer> createState() => _DocViewerState();
+}
+
+class _DocViewerState extends State<_DocViewer> {
+  WebViewController? _ctrl;
+  bool _ready = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!kIsWeb) {
+      _ctrl = WebViewController()
+        ..setJavaScriptMode(JavaScriptMode.unrestricted)
+        ..setBackgroundColor(const Color(0xFF0A0A0A))
+        ..setNavigationDelegate(NavigationDelegate(
+          onPageFinished: (_) {
+            if (mounted) setState(() => _ready = true);
+          },
+        ))
+        ..loadHtmlString(widget.html);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: const Color(0xFF0A0A0A),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF111111),
+          foregroundColor: Colors.white,
+          title: Text(
+            widget.title,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            overflow: TextOverflow.ellipsis,
+          ),
+          elevation: 0,
+        ),
+        body: kIsWeb
+            ? const Center(
+                child: Text('Ouvre le document depuis l\'app web.',
+                    style: TextStyle(color: Colors.white54)))
+            : Stack(children: [
+                if (_ctrl != null) WebViewWidget(controller: _ctrl!),
+                if (!_ready)
+                  const Center(child: CircularProgressIndicator()),
+              ]),
+      );
 }
 
 // ── Header de phase ───────────────────────────────────────────────────────────

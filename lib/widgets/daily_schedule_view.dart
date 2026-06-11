@@ -175,6 +175,13 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     if (block.challenge) {
       NotificationService.cancelChallengeAll(block.id);
     }
+    // Retire aussi le todayFlag de la source liée (étoile routine / tâche).
+    if (block.activityId != null) {
+      widget.logic.setActivityTodayFlag(block.activityId!, false);
+      await _sync.toggleActivityTodayFlag(block.activityId!, false);
+    } else if (block.taskId != null && block.projectId != null) {
+      await _sync.toggleTaskTodayFlag(block.projectId!, block.taskId!, false);
+    }
   }
 
   /// Défi programmé gagné automatiquement si du temps a été loggué sur

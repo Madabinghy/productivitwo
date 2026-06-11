@@ -15,13 +15,15 @@ const double _nodeR = 26;
 /// défis (préparés côté app à partir des vraies données) sont posés sur des nœuds
 /// et se DÉCOUVRENT en avançant. Un nœud-défi se franchit quand son défi est
 /// accompli (auto-validé). Atteindre le 🏁 (tous les défis relevés) débloque.
-Future<void> showExpeditionSheet(
-    BuildContext context, AppLogic logic, FirestoreSync sync) {
-  return showModalBottomSheet(
+/// Retourne true si l'utilisateur veut revenir sur l'overworld (drapeau de départ).
+Future<bool> showExpeditionSheet(
+    BuildContext context, AppLogic logic, FirestoreSync sync) async {
+  final result = await showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
     builder: (_) => _ExpeditionSheet(logic: logic, sync: sync),
   );
+  return result == true;
 }
 
 class _ExpeditionSheet extends StatefulWidget {
@@ -79,6 +81,34 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
 
   Future<void> _tap(ExpeditionNode node) async {
     if (_busy) return;
+    // Nœud de départ → retour à l'overworld.
+    if (node.type == ExpNodeType.start) {
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Retourner à la carte ?'),
+          content: const Text(
+              'Tu quitteras le donjon et reviendras sur l\'overworld. '
+              'Tes défis et ta progression sont sauvegardés.'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Rester')),
+            FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: _kGold),
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Retourner à la carte',
+                    style: TextStyle(color: Color(0xFF231900)))),
+          ],
+        ),
+      );
+      if (go != true || !mounted) return;
+      logic.state.expeditionDonjonLevel = 0;
+      logic.onChange();
+      await sync.setExpeditionDonjonLevel(0);
+      if (mounted) Navigator.pop(context, true); // → showExpeditionSheet retourne true
+      return;
+    }
     if (!_exp.reachable(_cleared).contains(node.id)) return;
     final challenges = _challenges;
     final ci = _nodeChallengeMap()[node.id];
@@ -99,6 +129,15 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
           content: Text('Relève tous les défis avant d\'atteindre la sortie 🏁'),
           duration: Duration(seconds: 2)));
       return;
+    }
+
+    // Sortie bloquée si des tâches de projet sont en retard.
+    if (node.type == ExpNodeType.finish) {
+      final overdue = _overdueTasks();
+      if (overdue.isNotEmpty) {
+        final proceed = await _showOverdueBlock(overdue);
+        if (!proceed) return;
+      }
     }
 
     // Nœud-étape (sans défi) = ACTION EXPRESS : 5 min sur une routine pour
@@ -162,15 +201,145 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
   // Routines programmées pour plus tard depuis le donjon → retirées de la liste.
   final Set<String> _programmedRoutines = {};
 
+  /// Tâches de projet en retard : pending, non-milestone, endDate < aujourd'hui.
+  /// Triées par date la plus ancienne.
+  List<({Project project, ProjectTask task})> _overdueTasks() {
+    final today = DateTime.now();
+    final todayOnly = DateTime(today.year, today.month, today.day);
+    final result = <({Project project, ProjectTask task})>[];
+    for (final p in logic.currentProjects) {
+      if (p.status == 'archived' || p.status == 'done') continue;
+      for (final t in p.tasks) {
+        if (t.status != 'pending') continue;
+        if (t.isMilestone) continue;
+        final end = t.endDate;
+        if (end == null) continue;
+        final endOnly = DateTime(end.year, end.month, end.day);
+        if (endOnly.isBefore(todayOnly)) result.add((project: p, task: t));
+      }
+    }
+    result.sort((a, b) => a.task.endDate!.compareTo(b.task.endDate!));
+    return result;
+  }
+
+  /// Bottom sheet listant les tâches en retard avant la sortie du donjon.
+  /// Retourne true si l'utilisateur choisit de quand même sortir, false sinon.
+  Future<bool> _showOverdueBlock(
+      List<({Project project, ProjectTask task})> overdue) async {
+    return await showModalBottomSheet<bool>(
+          context: context,
+          showDragHandle: true,
+          isScrollControlled: true,
+          builder: (ctx) {
+            final cs = Theme.of(ctx).colorScheme;
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      const Text('🚨',
+                          style: TextStyle(fontSize: 20)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${overdue.length} tâche${overdue.length > 1 ? 's' : ''} en retard',
+                          style: const TextStyle(
+                              fontSize: 17, fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ]),
+                    const SizedBox(height: 6),
+                    Text(
+                        'Ces tâches bloquent ta sortie du donjon. Avance sur au '
+                        'moins une avant de passer au niveau suivant.',
+                        style: TextStyle(
+                            fontSize: 12.5,
+                            color: cs.onSurface.withOpacity(.6))),
+                    const SizedBox(height: 14),
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                          maxHeight:
+                              MediaQuery.of(ctx).size.height * 0.4),
+                      child: SingleChildScrollView(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: overdue
+                              .map((e) => _overdueTaskCard(ctx, e))
+                              .toList(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text('Sortir quand même'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }) ??
+        false;
+  }
+
+  Widget _overdueTaskCard(
+      BuildContext ctx, ({Project project, ProjectTask task}) e) {
+    final cs = Theme.of(ctx).colorScheme;
+    final daysLate = DateTime.now()
+        .difference(DateTime(e.task.endDate!.year, e.task.endDate!.month,
+            e.task.endDate!.day))
+        .inDays;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(
+          color: Colors.red.withOpacity(.07),
+          borderRadius: BorderRadius.circular(14),
+          border:
+              Border.all(color: Colors.red.withOpacity(.25)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Expanded(
+                child: Text(e.task.title,
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w700)),
+              ),
+              Text(
+                  'J+$daysLate',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.red.shade400)),
+            ]),
+            const SizedBox(height: 2),
+            Text(e.project.title,
+                style: TextStyle(
+                    fontSize: 12,
+                    color: cs.onSurface.withOpacity(.5))),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _showMicroAction(ExpeditionNode node) async {
     final allDaily = logic.state.activeActivities
         .where((a) =>
             a.isHabit && (a.habitFreq ?? HabitFreq.monthly) == HabitFreq.daily)
         .toList();
-    // Toutes les routines quotidiennes (sauf celles programmées pour plus tard
-    // pendant cette session). Faites OU à faire : une routine déjà faite devient
-    // une CLÉ « Utiliser ». Tri : à faire → déjà faite (clé) → déjà utilisée.
-    int rank(Activity a) {
+    // Tâches en retard en tête ; puis routines quotidiennes.
+    // Routines : à faire → déjà faite (clé) → déjà utilisée.
+    int rankRoutine(Activity a) {
       final tgt = logic.activeHabitTarget(a);
       final done = tgt > 0 && logic.habitValueOn(a.id, DateTime.now()) >= tgt;
       if (!done) return 0;
@@ -180,7 +349,10 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
     final routines = allDaily
         .where((a) => !_programmedRoutines.contains(a.id))
         .toList()
-      ..sort((a, b) => rank(a).compareTo(rank(b)));
+      ..sort((a, b) => rankRoutine(a).compareTo(rankRoutine(b)));
+
+    final overdue = _overdueTasks();
+
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -194,29 +366,53 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('⏱️ Action express',
+                const Text('⚡ Action express',
                     style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 6),
                 Text(
-                    'Fais une routine (minuteur) OU utilise une routine déjà faite '
-                    'aujourd\'hui pour franchir ce passage. Version longue = bonus d\'or.',
+                    'Avance sur une tâche en retard, ou fais une routine pour '
+                    'franchir ce passage.',
                     style: TextStyle(
                         fontSize: 12.5, color: cs.onSurface.withOpacity(.6))),
                 const SizedBox(height: 14),
-                if (routines.isEmpty)
-                  Text('Crée une routine quotidienne pour débloquer ce passage.',
+                if (overdue.isEmpty && routines.isEmpty)
+                  Text(
+                      'Crée des tâches de projet ou des routines pour débloquer '
+                      'ce passage.',
                       style: TextStyle(
                           fontSize: 13, color: cs.onSurface.withOpacity(.6)))
                 else
                   ConstrainedBox(
                     constraints: BoxConstraints(
-                        maxHeight: MediaQuery.of(ctx).size.height * 0.45),
+                        maxHeight: MediaQuery.of(ctx).size.height * 0.55),
                     child: SingleChildScrollView(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
-                        children: routines
-                            .map((r) => _microRoutineCard(ctx, node, r))
-                            .toList(),
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (overdue.isNotEmpty) ...[
+                            Text('🚨 Tâches en retard',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.red.shade400)),
+                            const SizedBox(height: 8),
+                            ...overdue.map(
+                                (e) => _microTaskCard(ctx, node, e)),
+                            if (routines.isNotEmpty) ...[
+                              const SizedBox(height: 14),
+                              Text('Routines',
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color:
+                                          cs.onSurface.withOpacity(.5))),
+                              const SizedBox(height: 8),
+                            ],
+                          ],
+                          ...routines
+                              .map((r) => _microRoutineCard(ctx, node, r)),
+                        ],
                       ),
                     ),
                   ),
@@ -225,6 +421,104 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
           ),
         );
       },
+    );
+  }
+
+  /// Carte d'une tâche en retard dans l'action express.
+  /// Affiche les actions non faites ; cocher la première franchit le nœud.
+  Widget _microTaskCard(BuildContext ctx,
+      ExpeditionNode node, ({Project project, ProjectTask task}) e) {
+    final cs = Theme.of(ctx).colorScheme;
+    final undone = e.task.actions.where((a) => !a.done).toList();
+    final daysLate = DateTime.now()
+        .difference(DateTime(e.task.endDate!.year, e.task.endDate!.month,
+            e.task.endDate!.day))
+        .inDays;
+
+    Future<void> crossNode() async {
+      Navigator.pop(ctx);
+      final ok = await sync.advanceExpedition(nodeId: node.id);
+      if (ok) {
+        logic.state.expeditionCleared.add(node.id);
+        logic.onChange();
+        if (mounted) setState(() {});
+      }
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(
+          color: Colors.red.withOpacity(.06),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.red.withOpacity(.2)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Expanded(
+                child: Text(e.task.title,
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w700)),
+              ),
+              Text('J+$daysLate',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.red.shade400)),
+            ]),
+            Text(e.project.title,
+                style: TextStyle(
+                    fontSize: 12, color: cs.onSurface.withOpacity(.5))),
+            const SizedBox(height: 10),
+            if (undone.isEmpty)
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                      backgroundColor: Colors.red.shade600,
+                      foregroundColor: Colors.white),
+                  icon: const Icon(Icons.check_rounded, size: 16),
+                  label: const Text('Ça avance — franchir'),
+                  onPressed: crossNode,
+                ),
+              )
+            else
+              ...undone.take(3).map((action) => Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () async {
+                        action.done = true;
+                        await sync.saveProjectTasks(
+                            e.project.id, e.project.tasks);
+                        await crossNode();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: cs.surfaceContainerHighest.withOpacity(.5),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(children: [
+                          Icon(Icons.radio_button_unchecked,
+                              size: 16,
+                              color: cs.onSurface.withOpacity(.4)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(action.title,
+                                style: const TextStyle(fontSize: 13)),
+                          ),
+                        ]),
+                      ),
+                    ),
+                  )),
+          ],
+        ),
+      ),
     );
   }
 

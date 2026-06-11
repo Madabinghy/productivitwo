@@ -1643,6 +1643,7 @@ class _Last24hSessionsSheetState extends State<_Last24hSessionsSheet> {
       s.id,
       startAt: res.startAt,
       endAt: res.endAt,
+      activityId: res.activityId,
     );
     if (mounted) setState(() {}); // refresh immédiat (pas besoin de quitter)
   }
@@ -4565,7 +4566,10 @@ class _AppRootState extends State<AppRoot>
                                   // Déjà entré dans le donjon → on y retourne
                                   // direct ; sinon overworld (trouver le château).
                                   if (logic.donjonAlreadyEntered) {
-                                    await showExpeditionSheet(ctx, logic, _sync);
+                                    final goOverworld = await showExpeditionSheet(ctx, logic, _sync);
+                                    if (goOverworld && ctx.mounted) {
+                                      await showExpeditionGame(ctx, logic, _sync);
+                                    }
                                   } else {
                                     await showExpeditionGame(ctx, logic, _sync);
                                   }
@@ -5936,7 +5940,8 @@ class _AppRootState extends State<AppRoot>
     return InkWell(
       onTap: () async {
         if (logic.donjonAlreadyEntered) {
-          await showExpeditionSheet(context, logic, _sync);
+          final goOverworld = await showExpeditionSheet(context, logic, _sync);
+          if (goOverworld && mounted) await showExpeditionGame(context, logic, _sync);
         } else {
           await showExpeditionGame(context, logic, _sync);
         }

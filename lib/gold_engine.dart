@@ -520,6 +520,53 @@ extension GoldEngine on AppLogic {
     return m < 1 ? 1 : m;
   }
 
+  // ── Gel / bouclier / boost : compteurs actifs et prix dynamiques ─────────
+
+  /// Nombre d'entrées gel dont la date est >= aujourd'hui (= gels encore actifs).
+  int activeGelCount() {
+    final today = yyyymmdd(DateTime.now());
+    return state.goldGelDays.where((e) => e.compareTo(e.split('_').last) >= 0 && e.split('_').last.compareTo(today) >= 0).length;
+  }
+
+  /// Jours de gel restants pour une routine donnée (date >= aujourd'hui).
+  int routineFrozenDaysLeft(String activityId) {
+    final today = yyyymmdd(DateTime.now());
+    return state.goldGelDays.where((e) {
+      final parts = e.split('_');
+      if (parts.length < 2) return false;
+      final id = parts.sublist(0, parts.length - 1).join('_');
+      final ymd = parts.last;
+      return id == activityId && ymd.compareTo(today) >= 0;
+    }).length;
+  }
+
+  bool isRoutineFrozenToday(String activityId) {
+    final today = yyyymmdd(DateTime.now());
+    return state.goldGelDays.contains('${activityId}_$today');
+  }
+
+  /// Prix dynamique du gel : augmente de shopGel par gel actif déjà en place.
+  int gelPriceDynamic() {
+    final active = activeGelCount();
+    return GoldEconomy.shopGel * (1 + active);
+  }
+
+  /// Prix dynamique du bouclier.
+  int shieldPriceDynamic() {
+    final today = yyyymmdd(DateTime.now());
+    final active = state.goldTaskShieldDays
+        .where((e) => e.split('_').last.compareTo(today) >= 0)
+        .length;
+    return GoldEconomy.shopShield * (1 + active ~/ GoldEconomy.shieldDaysPerUse);
+  }
+
+  /// Prix dynamique du boost.
+  int boostPriceDynamic() {
+    final today = yyyymmdd(DateTime.now());
+    final active = state.goldBoostDays.where((d) => d.compareTo(today) >= 0).length;
+    return GoldEconomy.shopBoost * (1 + active ~/ GoldEconomy.boostDaysPerUse);
+  }
+
   // ── Engagement de combat : armes globales → épingler dans Combats en cours ──
   String _engageKey(String type, String itemId) => '$type~$itemId';
 

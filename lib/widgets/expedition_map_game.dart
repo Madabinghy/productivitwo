@@ -297,17 +297,23 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
   /// Construit une case : ajoute la jauge de vie (couleur domaine × % PV) si
   /// c'est un ennemi de backlog.
   Widget _buildTile(int x, int y, Point<int> pos, ColorScheme cs) {
-    final ent = _entityAt('${x}_$y');
+    var ent = _entityAt('${x}_$y');
     Color? hpColor;
     double hpFrac = 0;
+    bool engaged = false;
     if (ent != null && isBacklogMeta(ent.meta)) {
       final id = backlogItemId(ent.meta);
       final max = logic.enemyMaxHp(ent.type, id);
       final cur = logic.enemyHp(ent.type, id);
-      hpFrac = max > 0 ? cur / max : 0.0;
-      hpColor = domainColor(logic.enemyDomainId(ent.type, id),
-              logic.state.activeDomains) ??
-          cs.primary;
+      if (cur <= 0) {
+        ent = null; // objectif atteint → la case est vide jusqu'au prochain init
+      } else {
+        hpFrac = max > 0 ? cur / max : 0.0;
+        hpColor = domainColor(logic.enemyDomainId(ent.type, id),
+                logic.state.activeDomains) ??
+            cs.primary;
+        engaged = logic.isEngaged(ent.type, id);
+      }
     }
     return _TileView(
       tile: _map.at(x, y),
@@ -318,6 +324,7 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
       entity: ent,
       hpColor: hpColor,
       hpFrac: hpFrac,
+      engaged: engaged,
       picked: _picked,
       cs: cs,
       onTap: () => _onTap(_map.at(x, y)),
@@ -1078,6 +1085,8 @@ class _TileView extends StatelessWidget {
   // Jauge de vie d'un ennemi backlog : couleur du domaine, hauteur = % PV restant.
   final Color? hpColor;
   final double hpFrac;
+  // Vrai si un combat a déjà été engagé contre cet ennemi.
+  final bool engaged;
   const _TileView({
     required this.tile,
     required this.visible,
@@ -1090,6 +1099,7 @@ class _TileView extends StatelessWidget {
     required this.onTap,
     this.hpColor,
     this.hpFrac = 0,
+    this.engaged = false,
   });
 
   @override
@@ -1150,9 +1160,11 @@ class _TileView extends StatelessWidget {
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(6),
-          border: reachable && tile.kind != OwTileKind.wall
-              ? Border.all(color: _kGold, width: 2)
-              : null,
+          border: engaged
+              ? Border.all(color: Colors.red.shade500, width: 2)
+              : (reachable && tile.kind != OwTileKind.wall
+                  ? Border.all(color: _kGold, width: 2)
+                  : null),
         ),
         child: Stack(
           alignment: Alignment.center,

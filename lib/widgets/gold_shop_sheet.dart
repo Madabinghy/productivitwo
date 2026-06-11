@@ -501,6 +501,23 @@ class _GoldShopSheetState extends State<_GoldShopSheet> {
                   TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.5))),
           const SizedBox(height: 16),
 
+          // Affiche le nombre de pouvoirs actifs si > 0.
+          Builder(builder: (context) {
+            final activeGel = logic.activeGelCount();
+            final boostActive = logic.state.goldBoostDays
+                .contains(yyyymmdd(DateTime.now()));
+            if (activeGel == 0 && !boostActive) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Wrap(spacing: 8, runSpacing: 6, children: [
+                if (activeGel > 0)
+                  _ActiveBadge('🧊 $activeGel gel${activeGel > 1 ? 's' : ''} actif${activeGel > 1 ? 's' : ''}', cs),
+                if (boostActive)
+                  _ActiveBadge('✨ Boost ×2 actif', cs),
+              ]),
+            );
+          }),
+
           for (final it in <({
             String key,
             String emoji,
@@ -562,7 +579,15 @@ class _GoldShopSheetState extends State<_GoldShopSheet> {
             ),
           ])
             Builder(builder: (_) {
-              final price = GoldEconomy.scaledPrice(it.base, _level);
+              // Prix de base scalé par niveau, puis majoré par les actifs en cours.
+              final baseScaled = GoldEconomy.scaledPrice(it.base, _level);
+              final dynamic_ = switch (it.key) {
+                'gel' => logic.gelPriceDynamic(),
+                'shield' => logic.shieldPriceDynamic(),
+                'boost' => logic.boostPriceDynamic(),
+                _ => baseScaled,
+              };
+              final price = dynamic_ > baseScaled ? dynamic_ : baseScaled;
               final minLvl = GoldEconomy.itemMinLevel[it.key] ?? 1;
               final locked = _level < minLvl;
               return _ShopItem(
@@ -803,6 +828,27 @@ class _TitleItem extends StatelessWidget {
             ]),
           ),
       ]),
+    );
+  }
+}
+
+class _ActiveBadge extends StatelessWidget {
+  final String label;
+  final ColorScheme cs;
+  const _ActiveBadge(this.label, this.cs);
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: cs.primaryContainer.withOpacity(.5),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(label,
+          style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: cs.onPrimaryContainer)),
     );
   }
 }
