@@ -893,6 +893,20 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
                       hearts,
                       const SizedBox(height: 14),
                       ...attacks,
+                      if (logic.programBacklogHook != null)
+                        TextButton.icon(
+                          onPressed: () async {
+                            Navigator.pop(ctx);
+                            if (mounted) Navigator.pop(context); // ferme la carte
+                            await logic.programBacklogHook!(type, itemId);
+                          },
+                          icon: const Text('📅',
+                              style: TextStyle(fontSize: 14)),
+                          label: Text('Programmer pour plus tard',
+                              style: TextStyle(
+                                  color: Colors.white.withOpacity(.9),
+                                  fontWeight: FontWeight.w700)),
+                        ),
                       TextButton(
                         onPressed: () => Navigator.pop(ctx),
                         child: Text('Fuir',

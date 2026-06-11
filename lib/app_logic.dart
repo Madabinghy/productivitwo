@@ -111,6 +111,11 @@ class AppLogic {
       String? expeditionNodeId,
       int expeditionBonus})? launchTimerHook;
 
+  /// Hook posé par l'accueil pour PROGRAMMER un item de backlog (depuis la carte
+  /// de combat : « je le fais plus tard ») comme un défi daté + rappel.
+  /// [type] = spider|scorpion|snake, [itemId] = l'id de la routine/activité/tâche.
+  Future<void> Function(String type, String itemId)? programBacklogHook;
+
   /// Accès Firestore pour les écritures autoritatives d'or (posé après
   /// construction dans main.dart). Null tant que non configuré.
   FirestoreSync? sync;

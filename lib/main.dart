@@ -58,6 +58,7 @@ import 'package:productivitwo_v1/widgets/gamification_hub_sheet.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
 import 'package:productivitwo_v1/widgets/orion_screen.dart';
 import 'package:productivitwo_v1/widgets/focus_view.dart';
+import 'package:productivitwo_v1/widgets/task_schedule.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
 import 'package:productivitwo_v1/web/assistant_widget.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -2694,6 +2695,7 @@ class _AppRootState extends State<AppRoot>
             routineId: routineId,
             expeditionNodeId: expeditionNodeId,
             expeditionBonus: expeditionBonus);
+    logic.programBacklogHook ??= _programBacklogItem;
 
 
 
@@ -2892,6 +2894,33 @@ class _AppRootState extends State<AppRoot>
   /// cible + une notif-alarme à l'heure + un rappel en amont. Le défi est
   /// « gagné » plus tard quand l'user le coche ou logge le temps (voir
   /// DailyScheduleView). Ne compte PAS de défi à la programmation.
+  /// Programme un item de backlog (depuis la carte de combat). Routine/activité
+  /// → défi daté + rappel (_programChallenge). Tâche → bloc projet dans le
+  /// programme (heure + durée).
+  Future<void> _programBacklogItem(String type, String itemId) async {
+    if (type == 'snake') {
+      for (final p in _dashboardProjects) {
+        final t = p.tasks.firstWhereOrNull((x) => x.id == itemId);
+        if (t == null) continue;
+        if (t.todayFlag) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                content: Text('Déjà dans ton programme (étoile).')));
+          }
+        } else {
+          await toggleTaskTodayAndSchedule(context, _sync, p, t);
+          if (mounted) setState(() {});
+        }
+        return;
+      }
+      return;
+    }
+    final a = _state?.activities.firstWhereOrNull((x) => x.id == itemId);
+    if (a == null) return;
+    final minutes = (a.timerMin ?? 0) > 0 ? a.timerMin! : 25;
+    await _programChallenge(a, minutes);
+  }
+
   Future<void> _programChallenge(Activity a, int minutes) async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
