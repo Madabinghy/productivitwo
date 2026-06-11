@@ -17,19 +17,26 @@ const _kGold = Color(0xFFD4A017);
 const double _tile = 46;
 const int _kTorchReveal = 2; // rayon éclairé par une torche (Chebyshev)
 
+/// [huntLevel] non-null = MODE CHASSE : on (re)joue une carte débloquée comme
+/// instance fraîche (brouillard plein, ennemis fiables, payante) pour farmer la
+/// collection. L'état carte reste LOCAL/éphémère (pas de sync, pas d'impact sur
+/// la progression ni sur le drain global) ; seuls l'or et la collection persistent.
 Future<void> showExpeditionGame(
-    BuildContext context, AppLogic logic, FirestoreSync sync) {
+    BuildContext context, AppLogic logic, FirestoreSync sync,
+    {int? huntLevel}) {
   return showModalBottomSheet(
     context: context,
     isScrollControlled: true,
-    builder: (_) => _ExpeditionGame(logic: logic, sync: sync),
+    builder: (_) => _ExpeditionGame(logic: logic, sync: sync, huntLevel: huntLevel),
   );
 }
 
 class _ExpeditionGame extends StatefulWidget {
   final AppLogic logic;
   final FirestoreSync sync;
-  const _ExpeditionGame({required this.logic, required this.sync});
+  final int? huntLevel;
+  const _ExpeditionGame(
+      {required this.logic, required this.sync, this.huntLevel});
   @override
   State<_ExpeditionGame> createState() => _ExpeditionGameState();
 }
@@ -40,13 +47,30 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
   final _rng = Random();
   bool _busy = false;
 
-  int get _level => logic.effectiveLevel() + 1; // niveau VISÉ (déblocage)
-  int get _mapLevel => logic.effectiveLevel(); // identité de la carte (affichage)
+  bool get _hunt => widget.huntLevel != null;
+
+  // En chasse : niveau = la carte choisie. En progression : niveau visé = +1.
+  int get _level =>
+      _hunt ? widget.huntLevel! : logic.effectiveLevel() + 1;
+  int get _mapLevel => _hunt ? widget.huntLevel! : logic.effectiveLevel();
   late final Overworld _map = generateOverworld(_level);
 
-  Set<String> get _revealed => logic.state.expeditionRevealed.toSet();
-  Set<String> get _picked => logic.state.expeditionPicked.toSet();
+  // État LOCAL du mode chasse (éphémère, non synchronisé).
+  final Set<String> _huntRevealed = {};
+  final Set<String> _huntPicked = {};
+  final List<String> _huntEntities = [];
+  late Point<int> _huntPos = _map.start;
+
+  /// Entités actives (nuisibles/bonus) de l'instance courante.
+  List<String> get _ents =>
+      _hunt ? _huntEntities : logic.state.expeditionEntities;
+
+  Set<String> get _revealed =>
+      _hunt ? _huntRevealed : logic.state.expeditionRevealed.toSet();
+  Set<String> get _picked =>
+      _hunt ? _huntPicked : logic.state.expeditionPicked.toSet();
   Point<int> get _pos {
+    if (_hunt) return _huntPos;
     final p = logic.state.expeditionPos;
     if (p != null && p.contains('_')) {
       final s = p.split('_');
@@ -60,13 +84,32 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
     return '${n.year}${n.month.toString().padLeft(2, '0')}${n.day.toString().padLeft(2, '0')}';
   }
 
-  bool get _freeStepAvailable => logic.state.lastFreeStepYmd != _ymd();
+  // En chasse, pas de pas gratuit : chaque torche se paie (sink d'or assumé).
+  bool get _freeStepAvailable =>
+      !_hunt && logic.state.lastFreeStepYmd != _ymd();
 
   @override
   void initState() {
     super.initState();
     // Solde à jour des gains du jour : on doit pouvoir financer la carte de suite.
     logic.reconcileLiveGold(sync);
+
+    if (_hunt) {
+      // Instance de chasse FRAÎCHE : brouillard plein, on éclaire le départ,
+      // un gardien à abattre. Rien n'est synchronisé.
+      _huntPos = _map.start;
+      _huntRevealed.addAll(_neighbors(_map.start.x, _map.start.y,
+              includeSelf: true, radius: _kTorchReveal)
+          .map((p) => '${p.x}_${p.y}'));
+      final gt = _guardianTile();
+      if (gt != null) {
+        final gType = GoldEconomy.pestTypeForLevel(_level);
+        final base = logic.weaponRawCount(GoldEconomy.weaponForPest(gType));
+        _huntEntities.add(encodeEntity(gType, gt, 'guardian~${_ymd()}~$base'));
+      }
+      return;
+    }
+
     logic.drainPestsHourly(sync); // les nuisibles grignotent l'or à l'heure
 
     final changed = <String, dynamic>{};
@@ -121,7 +164,7 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
 
   List<String> _prunedEntities() {
     final today = _parseYmd(_ymd());
-    return logic.state.expeditionEntities.where((e) {
+    return _ents.where((e) {
       final ent = decodeEntity(e);
       if (!isPestType(ent.type) || ent.meta.isEmpty) return true; // bonus persiste
       if (isGuardianMeta(ent.meta)) return true; // gardien permanent
@@ -159,7 +202,7 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
   }
 
   ({String raw, String type, String tile, String meta})? _entityAt(String id) {
-    for (final e in logic.state.expeditionEntities) {
+    for (final e in _ents) {
       final d = decodeEntity(e);
       if (d.tile == id) {
         return (raw: e, type: d.type, tile: d.tile, meta: d.meta);
@@ -168,17 +211,11 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
     return null;
   }
 
-  int get _livePests => logic.state.expeditionEntities
-      .where((e) => isPestType(decodeEntity(e).type))
-      .length;
+  int get _livePests =>
+      _ents.where((e) => isPestType(decodeEntity(e).type)).length;
 
-  String? _maybeSpawn(List<String> newlyRevealed, String destId) {
-    final w = logic.weeklyScoreData();
-    if (w.previous <= 0) return null;
-    final trendPct = ((w.current - w.previous) * 100).round();
-    final p = trendPct.abs().clamp(0, GoldEconomy.trendSpawnCapPct);
-    if (p == 0 || _rng.nextInt(100) >= p) return null;
-    final eligible = newlyRevealed.where((id) {
+  List<String> _eligibleSpawnTiles(List<String> newlyRevealed, String destId) {
+    return newlyRevealed.where((id) {
       if (id == destId) return false;
       final s = id.split('_');
       final t = _map.at(int.parse(s[0]), int.parse(s[1]));
@@ -189,15 +226,35 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
       }
       return true;
     }).toList();
+  }
+
+  /// Nuisible du palier sur [tile], baseline de forge capturé à la rencontre.
+  String _spawnPestOn(String tile) {
+    final type = GoldEconomy.pestTypeForLevel(_level);
+    final base = logic.weaponRawCount(GoldEconomy.weaponForPest(type));
+    return encodeEntity(type, tile, '${_ymd()}~$base');
+  }
+
+  String? _maybeSpawn(List<String> newlyRevealed, String destId) {
+    if (_hunt) {
+      // Chasse : spawn FIABLE d'ennemis du palier (60 % par révélation, sous le cap).
+      if (_livePests >= GoldEconomy.maxLivePests) return null;
+      if (_rng.nextInt(100) >= 60) return null;
+      final tiles = _eligibleSpawnTiles(newlyRevealed, destId);
+      if (tiles.isEmpty) return null;
+      return _spawnPestOn(tiles[_rng.nextInt(tiles.length)]);
+    }
+    final w = logic.weeklyScoreData();
+    if (w.previous <= 0) return null;
+    final trendPct = ((w.current - w.previous) * 100).round();
+    final p = trendPct.abs().clamp(0, GoldEconomy.trendSpawnCapPct);
+    if (p == 0 || _rng.nextInt(100) >= p) return null;
+    final eligible = _eligibleSpawnTiles(newlyRevealed, destId);
     if (eligible.isEmpty) return null;
     final tile = eligible[_rng.nextInt(eligible.length)];
     if (trendPct < 0) {
       if (_livePests >= GoldEconomy.maxLivePests) return null;
-      // L'ennemi dépend du NIVEAU (force croissante), pas du hasard. On capture
-      // le baseline de forge à la rencontre → 3 routines/actions DE PLUS requis.
-      final type = GoldEconomy.pestTypeForLevel(_level);
-      final base = logic.weaponRawCount(GoldEconomy.weaponForPest(type));
-      return encodeEntity(type, tile, '${_ymd()}~$base');
+      return _spawnPestOn(tile);
     } else {
       final amount = GoldEconomy.bonusGoldMin +
           _rng.nextInt(GoldEconomy.bonusGoldMax - GoldEconomy.bonusGoldMin + 1);
@@ -239,19 +296,25 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
   Future<void> _strike(String raw, String type) async {
     final isGuardian = isGuardianMeta(decodeEntity(raw).meta);
     final loot = GoldEconomy.pestLootBase(type, isGuardian) + _rng.nextInt(5);
-    final newEntities =
-        logic.state.expeditionEntities.where((e) => e != raw).toList();
     setState(() => _busy = true);
-    await sync.expeditionWrite(entities: newEntities, reasonCode: 'pest_kill');
-    logic.state.expeditionEntities
-      ..clear()
-      ..addAll(newEntities);
-    logic.applyGold(sync, loot,
-        category: 'gain', reasonCode: 'pest_loot', label: 'Butin de combat');
-    if (isGuardian) {
-      logic.state.expeditionGuardianKilledLevel = _level;
-      sync.setExpeditionGuardianKilled(_level);
+    if (_hunt) {
+      _huntEntities.removeWhere((e) => e == raw); // instance éphémère
+    } else {
+      final newEntities =
+          logic.state.expeditionEntities.where((e) => e != raw).toList();
+      await sync.expeditionWrite(entities: newEntities, reasonCode: 'pest_kill');
+      logic.state.expeditionEntities
+        ..clear()
+        ..addAll(newEntities);
+      if (isGuardian) {
+        logic.state.expeditionGuardianKilledLevel = _level;
+        sync.setExpeditionGuardianKilled(_level);
+      }
     }
+    logic.applyGold(sync, loot,
+        category: 'gain',
+        reasonCode: 'pest_loot',
+        label: _hunt ? 'Butin de chasse' : 'Butin de combat');
     logic.onChange();
     if (!mounted) return;
     setState(() => _busy = false);
@@ -407,7 +470,7 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
       }
     }
 
-    var entities = List<String>.from(logic.state.expeditionEntities);
+    var entities = List<String>.from(_ents);
     String? spawnMsg;
     if (revealAdd.isNotEmpty) {
       final spawned = _maybeSpawn(revealAdd, t.id);
@@ -441,45 +504,72 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
     }
 
     final goldDelta = gain - cost;
-    final entitiesChanged =
-        entities.length != logic.state.expeditionEntities.length;
+    final entitiesChanged = entities.length != _ents.length;
 
     setState(() => _busy = true);
-    await sync.expeditionWrite(
-      newPos: t.id,
-      revealAdd: revealAdd,
-      entities: entitiesChanged ? entities : null,
-      pickedAdd: pickedAdd,
-      collectionAdd: collectionAdd,
-      goldDelta: goldDelta,
-      useFreeStep: free,
-      reasonCode: fogged ? 'expedition_torch' : 'expedition_step',
-      label: 'Exploration',
-    );
-    logic.state.gold += goldDelta;
-    if (logic.state.gold < 0) logic.state.gold = 0;
-    if (goldDelta > 0) logic.addLifetimeCapped(goldDelta);
-    logic.state.expeditionPos = t.id;
-    for (final r in revealAdd) {
-      if (!logic.state.expeditionRevealed.contains(r)) {
-        logic.state.expeditionRevealed.add(r);
+
+    if (_hunt) {
+      // Chasse : état carte LOCAL (éphémère) ; seuls or + collection persistent.
+      _huntPos = Point(t.x, t.y);
+      _huntRevealed.addAll(revealAdd);
+      if (entitiesChanged) {
+        _huntEntities
+          ..clear()
+          ..addAll(entities);
       }
+      if (pickedAdd != null) _huntPicked.add(pickedAdd);
+      if (goldDelta != 0) {
+        logic.applyGold(sync, goldDelta,
+            category: goldDelta >= 0 ? 'gain' : 'loss',
+            reasonCode: fogged ? 'hunt_torch' : 'hunt_step',
+            label: 'Chasse');
+      }
+      if (collectionAdd != null &&
+          !logic.state.collection.contains(collectionAdd)) {
+        logic.state.collection.add(collectionAdd);
+        logic.state.collectionMeta[collectionAdd] =
+            '${_ymd()}|chassé sur la carte niv. $_mapLevel';
+        sync.setCollectionMeta(logic.state.collectionMeta);
+        sync.expeditionWrite(collectionAdd: collectionAdd);
+      }
+      logic.onChange();
+    } else {
+      await sync.expeditionWrite(
+        newPos: t.id,
+        revealAdd: revealAdd,
+        entities: entitiesChanged ? entities : null,
+        pickedAdd: pickedAdd,
+        collectionAdd: collectionAdd,
+        goldDelta: goldDelta,
+        useFreeStep: free,
+        reasonCode: fogged ? 'expedition_torch' : 'expedition_step',
+        label: 'Exploration',
+      );
+      logic.state.gold += goldDelta;
+      if (logic.state.gold < 0) logic.state.gold = 0;
+      if (goldDelta > 0) logic.addLifetimeCapped(goldDelta);
+      logic.state.expeditionPos = t.id;
+      for (final r in revealAdd) {
+        if (!logic.state.expeditionRevealed.contains(r)) {
+          logic.state.expeditionRevealed.add(r);
+        }
+      }
+      if (entitiesChanged) {
+        logic.state.expeditionEntities
+          ..clear()
+          ..addAll(entities);
+      }
+      if (pickedAdd != null) logic.state.expeditionPicked.add(pickedAdd);
+      if (collectionAdd != null &&
+          !logic.state.collection.contains(collectionAdd)) {
+        logic.state.collection.add(collectionAdd);
+        logic.state.collectionMeta[collectionAdd] =
+            '${_ymd()}|trouvé sur la carte (niv. $_mapLevel)';
+        sync.setCollectionMeta(logic.state.collectionMeta);
+      }
+      if (free) logic.state.lastFreeStepYmd = _ymd();
+      logic.onChange();
     }
-    if (entitiesChanged) {
-      logic.state.expeditionEntities
-        ..clear()
-        ..addAll(entities);
-    }
-    if (pickedAdd != null) logic.state.expeditionPicked.add(pickedAdd);
-    if (collectionAdd != null &&
-        !logic.state.collection.contains(collectionAdd)) {
-      logic.state.collection.add(collectionAdd);
-      logic.state.collectionMeta[collectionAdd] =
-          '${_ymd()}|trouvé sur la carte (niv. $_mapLevel)';
-      sync.setCollectionMeta(logic.state.collectionMeta);
-    }
-    if (free) logic.state.lastFreeStepYmd = _ymd();
-    logic.onChange();
     if (!mounted) return;
     setState(() => _busy = false);
 
@@ -489,7 +579,7 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
           SnackBar(content: Text(toast), duration: const Duration(seconds: 1)));
     }
 
-    _maybeCompletionBonus();
+    if (!_hunt) _maybeCompletionBonus();
     if (t.kind == OwTileKind.castle) await _castle();
   }
 
@@ -517,6 +607,13 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
   }
 
   Future<void> _castle() async {
+    if (_hunt) {
+      // En chasse, pas de déblocage : le château n'est qu'un point de la carte.
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('🏰 Tu as atteint le château — continue à chasser !'),
+          duration: Duration(seconds: 2)));
+      return;
+    }
     final target = _level; // niveau visé (figé avant le déblocage)
     final go = await showDialog<bool>(
       context: context,
@@ -567,10 +664,13 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Niveau $_mapLevel · ???',
+                  Text(_hunt ? '🏹 Chasse · Niveau $_mapLevel' : 'Niveau $_mapLevel · ???',
                       style: const TextStyle(
                           fontSize: 16, fontWeight: FontWeight.bold)),
-                  Text('Explore ${biome.label} jusqu\'au 🏰',
+                  Text(
+                      _hunt
+                          ? 'Traque les nuisibles ${biome.label} pour leur butin'
+                          : 'Explore ${biome.label} jusqu\'au 🏰',
                       style: TextStyle(
                           fontSize: 11.5,
                           color: cs.onSurface.withOpacity(.55))),

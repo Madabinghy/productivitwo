@@ -53,47 +53,52 @@ class _CollectionSheet extends StatelessWidget {
           ]),
           const SizedBox(height: 12),
           // Carte en cours : on peut aller l'explorer / la chasser.
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [
-                const Color(0xFFD4A017).withOpacity(.18),
-                cs.surfaceContainerHighest.withOpacity(.35),
-              ]),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFD4A017).withOpacity(.4)),
-            ),
-            child: Row(children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Carte en cours · Niveau $mapLevel',
+          Text('Chasser une carte',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: cs.onSurface.withOpacity(.7))),
+          const SizedBox(height: 4),
+          Text('Re-explore une carte débloquée pour traquer ses nuisibles et farmer leur butin (chaque torche se paie).',
+              style:
+                  TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.5))),
+          const SizedBox(height: 12),
+          for (int lv = mapLevel; lv >= 1; lv--)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(colors: [
+                    const Color(0xFFD4A017).withOpacity(.15),
+                    cs.surfaceContainerHighest.withOpacity(.3),
+                  ]),
+                  borderRadius: BorderRadius.circular(14),
+                  border:
+                      Border.all(color: const Color(0xFFD4A017).withOpacity(.35)),
+                ),
+                child: Row(children: [
+                  Expanded(
+                    child: Text('Carte niveau $lv',
                         style: const TextStyle(
                             fontSize: 15, fontWeight: FontWeight.w800)),
-                    const SizedBox(height: 3),
-                    Text('Explore, affronte ses nuisibles, ramasse son butin.',
-                        style: TextStyle(
-                            fontSize: 12,
-                            color: cs.onSurface.withOpacity(.6))),
-                  ],
-                ),
+                  ),
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFFD4A017),
+                        foregroundColor: const Color(0xFF231900),
+                        visualDensity: VisualDensity.compact),
+                    icon: const Text('🏹', style: TextStyle(fontSize: 14)),
+                    label: const Text('Chasser',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      showExpeditionGame(context, logic, sync, huntLevel: lv);
+                    },
+                  ),
+                ]),
               ),
-              const SizedBox(width: 10),
-              FilledButton.icon(
-                style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFFD4A017),
-                    foregroundColor: const Color(0xFF231900)),
-                icon: const Text('🗺️', style: TextStyle(fontSize: 15)),
-                label: const Text('Explorer',
-                    style: TextStyle(fontWeight: FontWeight.w700)),
-                onPressed: () {
-                  Navigator.pop(context);
-                  showExpeditionGame(context, logic, sync);
-                },
-              ),
-            ]),
-          ),
+            ),
           const SizedBox(height: 18),
           Text('Collection de la carte',
               style: TextStyle(
