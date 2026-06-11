@@ -6,6 +6,7 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/confetti.dart';
+import 'package:productivitwo_v1/widgets/gold_icon.dart';
 
 /// Sheet (par-dessus le combat) listant les actions de la tâche-serpent à
 /// cocher. Chaque coche = −1 ❤️ (persistée) ; tout coché → ferme le sheet, et la
@@ -147,7 +148,6 @@ Future<void> showBacklogCombat(
     barrierColor: Colors.black.withOpacity(.65),
     transitionDuration: const Duration(milliseconds: 220),
     pageBuilder: (ctx, a1, a2) {
-      final cs = Theme.of(ctx).colorScheme;
       return StatefulBuilder(builder: (ctx, setLocal) {
         final hp = logic.enemyHp(type, itemId);
         final maxHp = logic.enemyMaxHp(type, itemId);
@@ -239,14 +239,16 @@ Future<void> showBacklogCombat(
                 width: double.infinity,
                 child: FilledButton.icon(
                   style: FilledButton.styleFrom(
-                    backgroundColor: cs.primary,
-                    foregroundColor: cs.onPrimary,
+                    backgroundColor: const Color(0xFFFF2B2B),
+                    foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 13),
+                    textStyle: const TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w800,
+                        decoration: TextDecoration.none),
                   ),
                   icon: Icon(icon, size: 18),
-                  label: Text(label,
-                      style: const TextStyle(
-                          fontSize: 14.5, fontWeight: FontWeight.w800)),
+                  label: Text(label),
                   onPressed: onTap,
                 ),
               ),
@@ -289,63 +291,71 @@ Future<void> showBacklogCombat(
           children: [
             for (int i = 0; i < maxHp; i++)
               Text(i < maxHp - hp ? '✅' : '❤️',
-                  style: const TextStyle(fontSize: 18)),
+                  style: const TextStyle(
+                      fontSize: 18, decoration: TextDecoration.none)),
           ],
         );
 
         final wEmoji = logic.weaponEmoji(GoldEconomy.weaponForPest(type));
         final cost = logic.engageCost(type);
 
+        const _kRed = Color(0xFFFF2B2B);
+        const _kCardBg = Color(0xFF120A0A);
+
         return SafeArea(
           child: Center(
             child: SingleChildScrollView(
               child: Container(
                 margin: const EdgeInsets.all(24),
-                padding: const EdgeInsets.fromLTRB(24, 20, 24, 18),
+                padding: const EdgeInsets.fromLTRB(24, 22, 24, 18),
                 decoration: BoxDecoration(
-                  color: cs.surface,
+                  color: _kCardBg,
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                        color: Colors.black.withOpacity(.18),
-                        blurRadius: 24,
+                        color: _kRed.withOpacity(.30),
+                        blurRadius: 40,
+                        spreadRadius: 2),
+                    BoxShadow(
+                        color: Colors.black.withOpacity(.55),
+                        blurRadius: 20,
                         offset: const Offset(0, 8)),
                   ],
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Icône combat + label rôle
-                    Icon(Icons.sports_martial_arts_rounded,
-                        size: 32, color: cs.primary),
+                    // En-tête hero
+                    Text('⚔️', style: const TextStyle(fontSize: 28)),
                     const SizedBox(height: 4),
                     Text(role.toUpperCase(),
-                        style: TextStyle(
+                        style: const TextStyle(
                             fontSize: 11,
-                            letterSpacing: 2,
+                            letterSpacing: 2.5,
                             fontWeight: FontWeight.w900,
-                            color: cs.onSurface.withOpacity(.45))),
-                    const SizedBox(height: 14),
+                            color: _kRed,
+                            decoration: TextDecoration.none)),
+                    const SizedBox(height: 16),
                     Text(entityEmoji(type),
-                        style: const TextStyle(fontSize: 68)),
+                        style: const TextStyle(fontSize: 72)),
                     const SizedBox(height: 6),
                     Text(itemName,
                         textAlign: TextAlign.center,
-                        style: TextStyle(
+                        style: const TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w800,
-                            color: cs.onSurface)),
+                            color: Colors.white,
+                            decoration: TextDecoration.none)),
                     const SizedBox(height: 10),
                     hearts,
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 16),
                     ...attacks,
-                    // CTA Engager : épingle l'ennemi (coût en armes globales) pour
-                    // le retrouver dans « Combats en cours » sans re-fouiller la map.
+                    // CTA Engager
                     if (!engaged)
                       OutlinedButton.icon(
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: cs.onSurface,
-                          side: BorderSide(color: cs.outline.withOpacity(.5)),
+                          foregroundColor: Colors.white,
+                          side: BorderSide(color: Colors.white.withOpacity(.25)),
                           minimumSize: const Size.fromHeight(42),
                         ),
                         icon: const Icon(Icons.push_pin_outlined, size: 16),
@@ -365,7 +375,8 @@ Future<void> showBacklogCombat(
                       Text('📌 Engagé — dans « Combats en cours »',
                           style: TextStyle(
                               fontSize: 12,
-                              color: cs.onSurface.withOpacity(.55))),
+                              color: Colors.white.withOpacity(.5),
+                              decoration: TextDecoration.none)),
 
                     // ── Pouvoirs rapides ────────────────────────────────────────
                     _PowersSection(
@@ -378,22 +389,29 @@ Future<void> showBacklogCombat(
 
                     if (logic.programBacklogHook != null && !alreadyScheduled)
                       TextButton.icon(
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.white70,
+                          overlayColor: Colors.white12,
+                        ),
                         onPressed: () async {
                           Navigator.pop(ctx);
                           onLaunchedTimer?.call();
                           await logic.programBacklogHook!(type, itemId);
                         },
                         icon: const Icon(Icons.event_available_outlined, size: 16),
-                        label: Text('Programmer pour plus tard',
+                        label: const Text('Programmer pour plus tard',
                             style: TextStyle(
-                                color: cs.onSurface.withOpacity(.8),
-                                fontWeight: FontWeight.w700)),
+                                fontWeight: FontWeight.w700,
+                                decoration: TextDecoration.none)),
                       ),
                     TextButton(
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.white38,
+                        overlayColor: Colors.white12,
+                      ),
                       onPressed: () => Navigator.pop(ctx),
-                      child: Text('Fuir',
-                          style:
-                              TextStyle(color: cs.onSurface.withOpacity(.45))),
+                      child: const Text('Fuir',
+                          style: TextStyle(decoration: TextDecoration.none)),
                     ),
                   ],
                 ),
@@ -533,7 +551,7 @@ class _PowersSectionState extends State<_PowersSection> {
                       child: _PowerBtn(
                         icon: Icons.ac_unit_rounded,
                         label: '${days}j',
-                        sublabel: '${gelPrice1 * days}or',
+                        sublabelWidget: _goldSub(gelPrice1 * days),
                         color: const Color(0xFF0EA5E9),
                         enabled: !_busy && logic.gold >= gelPrice1 * days && activeGel + days <= 3,
                         onTap: () => _freezeRoutine(days),
@@ -553,8 +571,7 @@ class _PowersSectionState extends State<_PowersSection> {
                 child: _PowerBtn(
                   icon: Icons.shield_outlined,
                   label: 'Bouclier ${GoldEconomy.shieldDaysPerUse}j',
-                  sublabel:
-                      '${logic.shieldPriceDynamic()}or · anti-retard',
+                  sublabelWidget: _goldSub(logic.shieldPriceDynamic(), suffix: ' · anti-retard'),
                   color: const Color(0xFF8B5CF6),
                   enabled: !_busy &&
                       logic.gold >= logic.shieldPriceDynamic() &&
@@ -576,9 +593,8 @@ class _PowersSectionState extends State<_PowersSection> {
                 child: _PowerBtn(
                   icon: Icons.auto_awesome_rounded,
                   label: 'Boost ×2 (${GoldEconomy.boostDaysPerUse}j)',
-                  sublabel: '${boostPrice}or · double tes gains',
+                  sublabelWidget: _goldSub(boostPrice, suffix: ' · double tes gains'),
                   color: _kGold,
-                  textColor: const Color(0xFF231900),
                   enabled: !_busy && logic.gold >= boostPrice &&
                       (logic.state.goldInventory['boost'] ?? 0) > 0,
                   onTap: () {
@@ -603,26 +619,44 @@ class _PowersSectionState extends State<_PowersSection> {
   }
 }
 
+Widget _goldSub(int amount, {String? suffix}) => Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text('$amount',
+            style: TextStyle(
+                fontSize: 10.5,
+                color: Colors.white.withOpacity(.55),
+                decoration: TextDecoration.none)),
+        const SizedBox(width: 2),
+        const GoldIcon(size: 11),
+        if (suffix != null)
+          Text(suffix,
+              style: TextStyle(
+                  fontSize: 10.5,
+                  color: Colors.white.withOpacity(.45),
+                  decoration: TextDecoration.none)),
+      ],
+    );
+
 class _PowerBtn extends StatelessWidget {
   final IconData icon;
-  final String label, sublabel;
+  final String label;
+  final Widget sublabelWidget;
   final Color color;
-  final Color textColor;
   final bool enabled;
   final VoidCallback onTap;
   const _PowerBtn({
     required this.icon,
     required this.label,
-    required this.sublabel,
+    required this.sublabelWidget,
     required this.color,
-    this.textColor = Colors.white,
     required this.enabled,
     required this.onTap,
   });
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final labelColor = textColor == Colors.white ? color : textColor;
+    final labelColor = color;
     return Opacity(
       opacity: enabled ? 1.0 : 0.4,
       child: GestureDetector(
@@ -638,21 +672,244 @@ class _PowerBtn extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(icon, size: 16, color: labelColor),
-              const SizedBox(height: 3),
-              Text(label,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w800,
-                      color: labelColor)),
-              Text(sublabel,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      fontSize: 10.5, color: cs.onSurface.withOpacity(.45))),
+              const SizedBox(height: 4),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(label,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                          color: labelColor,
+                          decoration: TextDecoration.none)),
+                  Text(' · ',
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.white.withOpacity(.3),
+                          decoration: TextDecoration.none)),
+                  sublabelWidget,
+                ],
+              ),
             ],
           ),
         ),
       ),
     );
   }
+}
+
+// ── Prévisualisation statique (web design review) ─────────────────────────────
+
+/// Ouvre la carte de combat avec des données fictives — pour valider le design
+/// sans AppLogic. À retirer après validation.
+Future<void> showCombatCardPreview(BuildContext context) async {
+  const _kRed = Color(0xFFFF2B2B);
+  const _kCardBg = Color(0xFF120A0A);
+  const _kGold = Color(0xFFD4A017);
+
+  Widget _mockAtk(IconData icon, String label) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: _kRed,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 13),
+              textStyle: const TextStyle(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w800,
+                  decoration: TextDecoration.none),
+            ),
+            icon: Icon(icon, size: 18),
+            label: Text(label),
+            onPressed: () {},
+          ),
+        ),
+      );
+
+  Widget _mockPower(IconData icon, String label, Widget sub, Color color) =>
+      Expanded(
+        child: Opacity(
+          opacity: 1.0,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: color.withOpacity(.12),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: color.withOpacity(.4)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 16, color: color),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(label,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w800,
+                            color: color,
+                            decoration: TextDecoration.none)),
+                    Text(' · ',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white.withOpacity(.3),
+                            decoration: TextDecoration.none)),
+                    sub,
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+  await showGeneralDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: 'Preview',
+    barrierColor: Colors.black.withOpacity(.65),
+    transitionDuration: const Duration(milliseconds: 220),
+    pageBuilder: (ctx, _, __) => SafeArea(
+      child: Center(
+        child: SingleChildScrollView(
+          child: Container(
+            margin: const EdgeInsets.all(24),
+            padding: const EdgeInsets.fromLTRB(24, 22, 24, 18),
+            decoration: BoxDecoration(
+              color: _kCardBg,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                    color: _kRed.withOpacity(.30),
+                    blurRadius: 40,
+                    spreadRadius: 2),
+                BoxShadow(
+                    color: Colors.black.withOpacity(.55),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8)),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('⚔️', style: TextStyle(fontSize: 28)),
+                const SizedBox(height: 4),
+                const Text('ROUTINE À FAIRE',
+                    style: TextStyle(
+                        fontSize: 11,
+                        letterSpacing: 2.5,
+                        fontWeight: FontWeight.w900,
+                        color: _kRed,
+                        decoration: TextDecoration.none)),
+                const SizedBox(height: 16),
+                const Text('🕷️', style: TextStyle(fontSize: 72)),
+                const SizedBox(height: 6),
+                const Text('Sport du matin',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        decoration: TextDecoration.none)),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 2,
+                  runSpacing: 2,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    for (int i = 0; i < 5; i++)
+                      Text(i < 2 ? '✅' : '❤️',
+                          style: const TextStyle(
+                              fontSize: 18, decoration: TextDecoration.none)),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _mockAtk(Icons.local_fire_department_rounded, 'Faire la routine (+1)'),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: BorderSide(color: Colors.white.withOpacity(.25)),
+                    minimumSize: const Size.fromHeight(42),
+                  ),
+                  icon: const Icon(Icons.push_pin_outlined, size: 16),
+                  label: const Text('Engager (épingler) · 1🩴'),
+                  onPressed: () {},
+                ),
+                // Pouvoirs
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Divider(color: Colors.white.withOpacity(.12), height: 20),
+                      Text('POUVOIRS',
+                          style: TextStyle(
+                              fontSize: 10,
+                              letterSpacing: 1.5,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white.withOpacity(.45),
+                              decoration: TextDecoration.none)),
+                      const SizedBox(height: 8),
+                      Text('Geler cette routine',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white.withOpacity(.7),
+                              decoration: TextDecoration.none)),
+                      const SizedBox(height: 6),
+                      Row(children: [
+                        _mockPower(Icons.ac_unit_rounded, '1j', _goldSub(8),
+                            const Color(0xFF0EA5E9)),
+                        const SizedBox(width: 6),
+                        _mockPower(Icons.ac_unit_rounded, '2j', _goldSub(16),
+                            const Color(0xFF0EA5E9)),
+                        const SizedBox(width: 6),
+                        _mockPower(Icons.ac_unit_rounded, '3j', _goldSub(24),
+                            const Color(0xFF0EA5E9)),
+                      ]),
+                      const SizedBox(height: 8),
+                      Row(children: [
+                        _mockPower(Icons.auto_awesome_rounded, 'Boost ×2 (3j)',
+                            _goldSub(40, suffix: ' · double tes gains'), _kGold),
+                      ]),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 4),
+                TextButton.icon(
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white70,
+                    overlayColor: Colors.white12,
+                  ),
+                  onPressed: () {},
+                  icon: const Icon(Icons.event_available_outlined, size: 16),
+                  label: const Text('Programmer pour plus tard',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          decoration: TextDecoration.none)),
+                ),
+                TextButton(
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white38,
+                    overlayColor: Colors.white12,
+                  ),
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Fuir',
+                      style: TextStyle(decoration: TextDecoration.none)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
 }

@@ -17,6 +17,7 @@ import 'package:productivitwo_v1/web/help_sheet.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
 import 'package:productivitwo_v1/web/assistant_widget.dart';
+import 'package:productivitwo_v1/web/arena_view.dart';
 import 'package:productivitwo_v1/web/assistant_history_sheet.dart';
 
 Color? _parseTaskColor(String? hex) {
@@ -51,7 +52,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   @override
   void initState() {
     super.initState();
-    _mainTabs = TabController(length: 4, vsync: this, initialIndex: 1);
+    _mainTabs = TabController(length: 5, vsync: this, initialIndex: 1);
     _load();
     // Sync temps réel des projets : les tâches/actions validées (ici, sur un
     // autre appareil, ou par Claude/MCP) se reflètent sans recharger la page.
@@ -202,6 +203,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                   Tab(text: 'Projets'),
                   Tab(text: 'Focus'),
                   Tab(text: 'Organisation'),
+                  Tab(text: 'Arène'),
                   Tab(text: 'ORION'),
                 ],
               ),
@@ -262,6 +264,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                       },
                     ),
                     _ArchivesView(sync: _sync),
+                    ArenaView(sync: _sync),
                     _OrionView(sync: _sync),
                   ],
                 ),

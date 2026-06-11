@@ -315,7 +315,7 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
           const SizedBox(height: 8),
           OutlinedButton.icon(
             icon: const Text('🗺️', style: TextStyle(fontSize: 14)),
-            label: const Text('Mes cartes (anciennes)'),
+            label: const Text('Mes cartes'),
             onPressed: () => showCollectionSheet(context, logic, sync),
           ),
           const SizedBox(height: 20),
@@ -1027,18 +1027,26 @@ class _CombatCard extends StatelessWidget {
               color: cs.surfaceContainerHighest.withOpacity(.4),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                  color: fighting
-                      ? cs.primary.withOpacity(.6)
-                      : cs.outline.withOpacity(.2),
-                  width: fighting ? 1.5 : 1),
+                  color: cs.outline.withOpacity(fighting ? .5 : .18),
+                  width: 1),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // ── Contenu principal ────────────────────────────────────────
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                  padding: const EdgeInsets.fromLTRB(0, 10, 12, 8),
                   child: Row(children: [
+                    // Barre couleur domaine à gauche (style cartes Gantt)
+                    Container(
+                      width: 4,
+                      height: 40,
+                      margin: const EdgeInsets.only(left: 8, right: 10),
+                      decoration: BoxDecoration(
+                        color: domColor,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
                     Text(entityEmoji(type),
                         style: const TextStyle(fontSize: 24)),
                     const SizedBox(width: 8),

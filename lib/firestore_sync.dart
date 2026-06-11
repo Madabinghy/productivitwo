@@ -498,6 +498,11 @@ class FirestoreSync {
     return snap.docs.map((d) => Project.from(d.data() as Map)).toList();
   }
 
+  Stream<Map<String, dynamic>> streamMetaDoc() {
+    if (uid == null) return const Stream.empty();
+    return _meta().snapshots().map((s) => s.exists ? s.data() as Map<String, dynamic> : {});
+  }
+
   Stream<List<Project>> streamProjects() {
     if (uid == null) return const Stream.empty();
     return _col('projects').snapshots().map(

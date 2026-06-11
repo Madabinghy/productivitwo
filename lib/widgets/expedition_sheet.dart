@@ -980,7 +980,7 @@ class _NodeDot extends StatelessWidget {
     }
 
     return GestureDetector(
-      onTap: (reachable && !busy) ? onTap : null,
+      onTap: ((reachable || node.type == ExpNodeType.start) && !busy) ? onTap : null,
       child: Container(
         width: _nodeR * 2,
         height: _nodeR * 2,

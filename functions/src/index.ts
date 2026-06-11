@@ -3186,7 +3186,62 @@ async function _seedDemoData(uid: string): Promise<void> {
   batch.set(db.doc(`${base}/meta/demo`), {
     seededAt: FieldValue.serverTimestamp(),
     today,
-    schemaVersion: 2,
+    schemaVersion: 3,
+  });
+
+  // ── Méta gamification (économie d'or + expédition) ────────────────────────
+  // users/{uid}/data/meta = document lu par FirestoreSync.pull()
+  batch.set(db.doc(`${base}/data/meta`), {
+    // Or et niveau
+    gold: 247,
+    goldLifetime: 1640,
+    goldLastProcessedDay: today,
+    goldEpochYmd: new Date(now.getTime() - 30 * 86400000).toISOString().slice(0, 10),
+    goldTodayGain: 42,
+    goldTodayGainYmd: today,
+    unlockedLevel: 3,
+    // Inventaire de consommables
+    goldInventory: { gel: 1, sursis: 0, joker: 0, shield: 1, boost: 0 },
+    goldGelDays: [],
+    goldTaskShieldDays: [],
+    goldBoostDays: [],
+    // Armes dépensées (les armes GAGNÉES sont dérivées des données)
+    weaponsSpent: { sandale: 2, arc: 1, epee: 1 },
+    // Kills de nuisibles
+    pestKills: { spider: 3, scorpion: 1, snake: 0 },
+    // Combats engagés : araignée sur Running, scorpion sur Méditation
+    engagedEnemies: [`spider~${actRunning}`, `scorpion~${actMeditation}`],
+    // Exploration overworld
+    expeditionDonjonLevel: 0,
+    expeditionGuardianKilledLevel: 0,
+    expeditionCleared: [],
+    expeditionRevealed: ["2_2", "2_3", "3_2", "3_3", "2_1"],
+    expeditionPos: "2_2",
+    expeditionPicked: [],
+    expeditionEntities: [],
+    expeditionChallenges: [],
+    lastFreeStepYmd: today,
+    lastPestDrainAt: null,
+    // Défis
+    challengesDone: 5,
+    challengeStreak: 3,
+    lastChallengeYmd: today,
+    questStreak: 2,
+    lastQuestClaimedYmd: today,
+    // Collections
+    collection: [],
+    collectionMeta: {},
+    cosmeticsOwned: [],
+    activeTitle: null,
+    activeAvatar: null,
+    // Divers
+    onboardingDone: true,
+    ganttActionsByDay: { [today.replace(/-/g, "")]: 2 },
+    challengeWinsByDay: {},
+    weeklyScoreTarget: 80,
+    notifEnabled: false,
+    donjonKeysUsed: [],
+    donjonKeysYmd: today,
   });
 
   await batch.commit();
@@ -3200,7 +3255,7 @@ export const getDemoToken = onRequest(
       const metaRef = db.doc(`users/${DEMO_UID}/meta/demo`);
       const meta = await metaRef.get();
 
-      const SCHEMA_VERSION = 2;
+      const SCHEMA_VERSION = 3;
       if (!meta.exists || (meta.data()?.today ?? "") !== today || (meta.data()?.schemaVersion ?? 0) < SCHEMA_VERSION) {
         await _seedDemoData(DEMO_UID);
       }

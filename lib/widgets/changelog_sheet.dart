@@ -10,6 +10,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.11', '11 juin 2026', [
+    (Icons.shield_rounded, 'Onglet Arène dans l\'app web : combats, programme du jour et exploration (overworld, donjon, chasse) en 3 colonnes'),
+    (Icons.bar_chart_rounded, 'Barre de stats en haut : or, niveau, barre de progression XP et arsenal disponible'),
+  ]),
   _Entry('6.10', '11 juin 2026', [
     (Icons.sports_martial_arts_rounded, 'Carte de combat redesignée : style épuré, icônes Flutter pour les pouvoirs (gel, bouclier, boost), liste de cœurs toujours visible'),
     (Icons.event_available_outlined, '« Programmer pour plus tard » masqué si un défi ou un bloc est déjà posé dans ton programme du jour pour cet item'),
