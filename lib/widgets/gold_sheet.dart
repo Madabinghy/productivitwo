@@ -286,9 +286,25 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
             ),
           ],
           const SizedBox(height: 12),
+          // Farm direct de la carte du niveau atteint (ton backlog).
+          FilledButton.icon(
+            style: FilledButton.styleFrom(
+                backgroundColor: _kGold,
+                foregroundColor: const Color(0xFF231900),
+                minimumSize: const Size.fromHeight(44)),
+            icon: const Text('⚔️', style: TextStyle(fontSize: 15)),
+            label: Text('Affronter mon backlog · niveau ${logic.effectiveLevel()}',
+                style: const TextStyle(fontWeight: FontWeight.w800)),
+            onPressed: () async {
+              Navigator.pop(context);
+              await showExpeditionGame(context, logic, sync,
+                  huntLevel: logic.effectiveLevel());
+            },
+          ),
+          const SizedBox(height: 8),
           OutlinedButton.icon(
             icon: const Text('🗺️', style: TextStyle(fontSize: 14)),
-            label: const Text('Mes cartes'),
+            label: const Text('Mes cartes (anciennes)'),
             onPressed: () => showCollectionSheet(context, logic, sync),
           ),
           const SizedBox(height: 20),
