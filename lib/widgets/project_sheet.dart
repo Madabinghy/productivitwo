@@ -134,6 +134,111 @@ class _ProjectSheetState extends State<_ProjectSheet> {
         content: Text('Plan validé — le projet est actif. 🚀')));
   }
 
+  /// Renomme le projet (édition manuelle).
+  Future<void> _renameProject() async {
+    final ctrl = TextEditingController(text: _project.title);
+    final newTitle = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Renommer le projet'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(hintText: 'Titre du projet'),
+          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: const Text('Renommer')),
+        ],
+      ),
+    );
+    if (newTitle == null || newTitle.isEmpty || newTitle == _project.title) {
+      return;
+    }
+    setState(() => _project.title = newTitle);
+    await _sync.saveProject(_project);
+  }
+
+  Future<String?> _promptText(String title, String hint, String initial) {
+    final ctrl = TextEditingController(text: initial);
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: InputDecoration(hintText: hint),
+          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: const Text('OK')),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _addPhase() async {
+    final label = await _promptText('Nouvelle phase', 'Nom de la phase', '');
+    if (label == null || label.isEmpty) return;
+    _project.phases.add(ProjectPhase(
+      label: label,
+      startDate: _project.startDate,
+      endDate: _project.endDate ??
+          _project.startDate.add(const Duration(days: 30)),
+    ));
+    setState(() {});
+    await _sync.saveProject(_project);
+  }
+
+  Future<void> _renamePhase(ProjectPhase phase) async {
+    final label =
+        await _promptText('Renommer la phase', 'Nom de la phase', phase.label);
+    if (label == null || label.isEmpty || label == phase.label) return;
+    setState(() => phase.label = label);
+    await _sync.saveProject(_project);
+  }
+
+  Future<void> _deletePhase(ProjectPhase phase) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer la phase ?'),
+        content: Text(
+            'Les tâches de « ${phase.label} » deviennent « sans phase ». La phase est supprimée.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annuler')),
+          FilledButton(
+              style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(ctx).colorScheme.error),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Supprimer')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    for (final t in _project.tasks) {
+      if (t.phaseId == phase.id) t.phaseId = null;
+    }
+    _project.phases.removeWhere((p) => p.id == phase.id);
+    setState(() {});
+    await _sync.saveProject(_project);
+  }
+
   /// Vrai si toutes les tâches (hors « skipped ») sont faites → terminable.
   bool get _allTasksDone {
     final inScope =
@@ -331,10 +436,28 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                               ),
                             ),
                             const SizedBox(height: 3),
-                            Text(
-                              _project.title,
-                              style: const TextStyle(
-                                  fontSize: 20, fontWeight: FontWeight.w800),
+                            GestureDetector(
+                              onTap: _renameProject,
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      _project.title,
+                                      style: const TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w800),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Icon(Icons.edit_outlined,
+                                        size: 14,
+                                        color: cs.onSurface.withOpacity(.35)),
+                                  ),
+                                ],
+                              ),
                             ),
                             if (_project.description != null &&
                                 _project.description!.isNotEmpty) ...[
@@ -443,7 +566,11 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                 children: [
                   // Phases dans l'ordre, puis tâches sans phase
                   for (final phase in _project.phases) ...[
-                    _PhaseHeader(phase: phase),
+                    _PhaseHeader(
+                      phase: phase,
+                      onRename: () => _renamePhase(phase),
+                      onDelete: () => _deletePhase(phase),
+                    ),
                     for (final task in grouped[phase.id] ?? [])
                       _TaskTile(
                         key: _taskKeys[task.id],
@@ -492,13 +619,25 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                       ),
                   ],
 
-                  // Ajouter une tâche (gestion autonome, sans IA)
+                  // Ajouter une tâche / une phase (gestion autonome, sans IA)
                   const SizedBox(height: 10),
                   Center(
-                    child: TextButton.icon(
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('Ajouter une tâche'),
-                      onPressed: _addTask,
+                    child: Wrap(
+                      spacing: 4,
+                      alignment: WrapAlignment.center,
+                      children: [
+                        TextButton.icon(
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('Ajouter une tâche'),
+                          onPressed: _addTask,
+                        ),
+                        TextButton.icon(
+                          icon: const Icon(Icons.create_new_folder_outlined,
+                              size: 18),
+                          label: const Text('Ajouter une phase'),
+                          onPressed: _addPhase,
+                        ),
+                      ],
                     ),
                   ),
 
@@ -1715,7 +1854,9 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
 
 class _PhaseHeader extends StatelessWidget {
   final ProjectPhase phase;
-  const _PhaseHeader({required this.phase});
+  final VoidCallback? onRename;
+  final VoidCallback? onDelete;
+  const _PhaseHeader({required this.phase, this.onRename, this.onDelete});
 
   @override
   Widget build(BuildContext context) {
@@ -1738,17 +1879,39 @@ class _PhaseHeader extends StatelessWidget {
             decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           const SizedBox(width: 8),
-          Text(
-            phase.label.toUpperCase(),
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1,
-              color: color,
+          Flexible(
+            child: Text(
+              phase.label.toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1,
+                color: color,
+              ),
             ),
           ),
           const SizedBox(width: 8),
           Expanded(child: Divider(color: cs.outlineVariant.withOpacity(.4))),
+          if (onRename != null || onDelete != null)
+            SizedBox(
+              width: 30,
+              height: 30,
+              child: PopupMenuButton<String>(
+                padding: EdgeInsets.zero,
+                iconSize: 16,
+                icon: Icon(Icons.more_horiz, color: cs.onSurface.withOpacity(.4)),
+                onSelected: (v) {
+                  if (v == 'rename') onRename?.call();
+                  if (v == 'delete') onDelete?.call();
+                },
+                itemBuilder: (_) => [
+                  const PopupMenuItem(value: 'rename', child: Text('Renommer')),
+                  const PopupMenuItem(value: 'delete', child: Text('Supprimer')),
+                ],
+              ),
+            ),
         ],
       ),
     );
