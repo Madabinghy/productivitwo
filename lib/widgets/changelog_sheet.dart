@@ -10,6 +10,16 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.08', '11 juin 2026', [
+    (Icons.sync_alt, 'Programme du jour synchronisé avec tes routines/tâches : cocher un bloc valide la routine (ou ouvre la tâche pour cocher ses actions), et faire la routine/tâche ailleurs coche le bloc tout seul. Taper une ligne ouvre désormais SA fiche (tâche/routine/activité)'),
+    (Icons.star_outline_rounded, 'Étoile sur une routine (lanceur) → « planifier aujourd\'hui » (heure + durée) ; elle file dans ton programme. Et tu peux lier une activité à un bloc ajouté à la main (bouton ▶ + auto-coché au temps loggué)'),
+    (Icons.vpn_key_rounded, 'Donjon : une routine déjà faite aujourd\'hui devient une CLÉ — bouton « Utiliser » pour franchir un passage sans rien refaire (1 routine = 1 clé, consommée). Fini d\'être bloqué quand on a été productif'),
+    (Icons.checklist_rtl_outlined, 'Combat contre une tâche 🐍 : la liste de ses actions s\'ouvre pour les cocher directement (chaque action = −1 ❤️) — tu vois enfin quoi tu valides'),
+    (Icons.diamond_outlined, 'Tu peux maintenant VALIDER un jalon de projet depuis le mobile (un tap sur le losange) — plus de blocage pour terminer une phase'),
+    (Icons.hourglass_bottom, 'Minuteur de routine terminé → la routine est validée MAIS le chrono continue : tu logues le temps en plus jusqu\'à ce que tu arrêtes'),
+    (Icons.history, 'Activités des dernières 24h : swipe pour supprimer, couleur du domaine, et mise à jour en temps réel (plus besoin de quitter pour voir tes modifs)'),
+    (Icons.shield_outlined, 'Armes 🗡️🏹🩴 : arsenal plafonné (fini le compteur qui gonflait à l\'infini) — au-delà, c\'est l\'or qui prend le relais. Et lancer « Affronter mon backlog » ne ferme plus « Mon or »'),
+  ]),
   _Entry('6.07', '11 juin 2026', [
     (Icons.timer_outlined, 'Routine minutée dans ton programme du jour : au lancement ▶, tu choisis « Chrono » (temps libre) ou « Minuteur » (décompte) — au bout du minuteur, la routine se valide toute seule'),
     (Icons.add_circle_outline, 'Tu peux ajouter À LA MAIN un bloc dans ton programme du jour (bouton + en haut, ou tape la zone vide) : titre, heure, durée, catégorie — sans passer par Claude'),

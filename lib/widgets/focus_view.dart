@@ -27,6 +27,8 @@ class FocusView extends StatefulWidget {
   final Widget? header;
   // Lancer un bloc du programme (▶) → chrono + focus de la tâche/activité liée.
   final void Function(ScheduleBlock block)? onLaunchScheduledBlock;
+  // Tap sur un bloc issu d'une source → ouvre sa fiche (tâche/routine/activité).
+  final void Function(ScheduleBlock block)? onOpenScheduledBlockSource;
 
   const FocusView({
     super.key,
@@ -44,6 +46,7 @@ class FocusView extends StatefulWidget {
     this.onTaskTap,
     this.header,
     this.onLaunchScheduledBlock,
+    this.onOpenScheduledBlockSource,
   });
 
   @override
@@ -145,7 +148,8 @@ class _FocusViewState extends State<FocusView> {
             DailyScheduleView(
                 date: todayStr,
                 logic: logic,
-                onLaunch: widget.onLaunchScheduledBlock),
+                onLaunch: widget.onLaunchScheduledBlock,
+                onOpenSource: widget.onOpenScheduledBlockSource),
 
             const SizedBox(height: 24),
 
@@ -340,7 +344,8 @@ class _FocusViewState extends State<FocusView> {
               DailyScheduleView(
                 date: todayStr,
                 logic: logic,
-                onLaunch: widget.onLaunchScheduledBlock),
+                onLaunch: widget.onLaunchScheduledBlock,
+                onOpenSource: widget.onOpenScheduledBlockSource),
             ],
           ],
         ),

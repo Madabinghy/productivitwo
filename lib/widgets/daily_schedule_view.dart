@@ -10,9 +10,16 @@ class DailyScheduleView extends StatefulWidget {
   final AppLogic logic;
   // Lancer un bloc (▶) : démarre le chrono de la tâche/activité liée + focus.
   final void Function(ScheduleBlock block)? onLaunch;
+  // Tap sur un bloc issu d'une source (tâche/routine/activité) → ouvre SA fiche
+  // (au lieu du sheet de renommage du bloc).
+  final void Function(ScheduleBlock block)? onOpenSource;
 
   const DailyScheduleView(
-      {super.key, required this.date, required this.logic, this.onLaunch});
+      {super.key,
+      required this.date,
+      required this.logic,
+      this.onLaunch,
+      this.onOpenSource});
 
   @override
   State<DailyScheduleView> createState() => _DailyScheduleViewState();
@@ -24,6 +31,12 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   StreamSubscription<DailySchedule?>? _sub;
   // Défis déjà comptés (tap OU auto) — évite tout double comptage par bloc.
   final Set<String> _won = {};
+  // Blocs ayant déjà validé leur routine liée — évite de re-incrémenter au
+  // re-cochage (binding bidirectionnel défi ↔ routine).
+  final Set<String> _routineHit = {};
+  // Blocs « projet » déjà auto-cochés (tâche terminée ailleurs) — évite les
+  // écritures répétées avant le retour du stream.
+  final Set<String> _projectSynced = {};
 
   @override
   void initState() {
@@ -41,12 +54,119 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
 
   // ── Actions ─────────────────────────────────────────────────────────────────
 
+  /// Retrouve (projet, tâche) d'un bloc « projet » dans le snapshot logique.
+  (Project, ProjectTask)? _taskOf(ScheduleBlock b) {
+    if (b.projectId == null || b.taskId == null) return null;
+    for (final p in widget.logic.currentProjects) {
+      if (p.id != b.projectId) continue;
+      for (final t in p.tasks) {
+        if (t.id == b.taskId) return (p, t);
+      }
+    }
+    return null;
+  }
+
   Future<void> _toggleDone(ScheduleBlock block) async {
+    // Cocher un bloc « projet » → on demande où en est la tâche (sheet), au lieu
+    // de cocher sec (binding bidirectionnel bloc ↔ tâche).
+    if (block.status != 'done') {
+      final pt = _taskOf(block);
+      if (pt != null) {
+        await _openTaskProgressSheet(block, pt.$1, pt.$2);
+        return;
+      }
+    }
     final newStatus = block.status == 'done' ? 'pending' : 'done';
     await _sync.updateBlockStatus(widget.date, block.id, newStatus);
     if (block.challenge && newStatus == 'done' && !_won.contains(block.id)) {
       _won.add(block.id);
       widget.logic.recordChallengeAccepted(widget.date.replaceAll('-', ''));
+    }
+    // Binding défi/bloc → routine : cocher un bloc lié à une routine valide la
+    // routine du jour (le chemin minuteur le fait déjà via _onAlarmRing).
+    if (newStatus == 'done') _completeLinkedRoutine(block);
+  }
+
+  /// Bloc « projet » coché → sheet où l'user coche les actions faites de la
+  /// tâche, puis VALIDE la tâche (→ tâche done + bloc coché) ou SORT (on laisse
+  /// comme ça : les coches d'actions sont déjà sauvées, le bloc reste tel quel).
+  Future<void> _openTaskProgressSheet(
+      ScheduleBlock block, Project project, ProjectTask task) async {
+    final validated = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => _TaskProgressSheet(
+        task: task,
+        onToggleAction: (a, v) async {
+          a.done = v;
+          a.doneAt = v ? DateTime.now() : null;
+          await _sync.saveProjectTasks(project.id, project.tasks);
+        },
+      ),
+    );
+    if (validated == true) {
+      task.status = 'done';
+      await _sync.saveProjectTasks(project.id, project.tasks);
+      await _sync.updateBlockStatus(widget.date, block.id, 'done');
+    }
+  }
+
+  /// Sens inverse du binding bloc ↔ tâche : une tâche terminée ailleurs coche
+  /// automatiquement son bloc « projet » dans le programme. Appelé en post-frame.
+  void _maybeSyncProjectBlocks() {
+    if (!mounted) return;
+    for (final b in _schedule?.blocks ?? const <ScheduleBlock>[]) {
+      if (b.status != 'pending' ||
+          b.projectId == null ||
+          b.taskId == null ||
+          _projectSynced.contains(b.id)) {
+        continue;
+      }
+      final pt = _taskOf(b);
+      if (pt != null && pt.$2.status == 'done') {
+        _projectSynced.add(b.id); // garde : 1 seule écriture avant le retour stream
+        _sync.updateBlockStatus(widget.date, b.id, 'done');
+      }
+    }
+  }
+
+  /// Parse "YYYY-MM-DD" (date du programme) en DateTime local minuit.
+  DateTime _blockDay() {
+    final p = widget.date.split('-');
+    return DateTime(
+        int.parse(p[0]), int.parse(p.elementAtOrNull(1) ?? '1'),
+        int.parse(p.elementAtOrNull(2) ?? '1'));
+  }
+
+  Activity? _activityById(String id) {
+    for (final a in widget.logic.state.activities) {
+      if (a.id == id) return a;
+    }
+    return null;
+  }
+
+  /// Valide la routine liée à un bloc (si activité de type habit), 1 incrément,
+  /// sans dépasser la cible ni recompter pour un même bloc.
+  void _completeLinkedRoutine(ScheduleBlock block) {
+    final id = block.activityId;
+    if (id == null || _routineHit.contains(block.id)) return;
+    final act = _activityById(id);
+    if (act == null || !act.isHabit) return;
+    final day = _blockDay();
+    final tgt = widget.logic.activeHabitTarget(act);
+    if (tgt > 0 && widget.logic.habitValueOn(id, day) >= tgt) {
+      _routineHit.add(block.id); // déjà atteinte → on marque, sans incrémenter
+      return;
+    }
+    _routineHit.add(block.id);
+    widget.logic.incHabit(id, 1, day);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('✅ Routine validée : ${act.name}'),
+        duration: const Duration(seconds: 2),
+      ));
     }
   }
 
@@ -68,30 +188,45 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     if (widget.date != todayStr) return;
     final dayStart = DateTime(now.year, now.month, now.day);
     for (final b in _schedule?.blocks ?? <ScheduleBlock>[]) {
-      if (!b.challenge ||
-          b.status != 'pending' ||
+      if (b.status != 'pending' ||
           b.activityId == null ||
           _won.contains(b.id)) {
         continue;
       }
-      final loggedMin = widget.logic
-          .totalForRangeByActivity(b.activityId!, dayStart, now)
-          .inMinutes;
-      final threshold = (b.durationMin * 0.6).round();
-      if (loggedMin >= (threshold < 10 ? 10 : threshold)) {
+      // Sens inverse du binding : une source validée ailleurs (routine faite,
+      // temps loggué) coche son bloc — qu'il soit défi ou bloc routine/activité.
+      final act = _activityById(b.activityId!);
+      final bool reached;
+      if (act != null && act.isHabit) {
+        // Routine validée (FAB, donjon, minuteur…) → atteinte de la cible.
+        final tgt = widget.logic.activeHabitTarget(act);
+        reached =
+            tgt > 0 && widget.logic.habitValueOn(b.activityId!, dayStart) >= tgt;
+      } else {
+        final loggedMin = widget.logic
+            .totalForRangeByActivity(b.activityId!, dayStart, now)
+            .inMinutes;
+        final threshold = (b.durationMin * 0.6).round();
+        reached = loggedMin >= (threshold < 10 ? 10 : threshold);
+      }
+      if (reached) {
         _won.add(b.id);
+        _routineHit.add(b.id); // source déjà validée → pas de ré-incrément
         _sync.updateBlockStatus(widget.date, b.id, 'done');
-        widget.logic.recordChallengeAccepted(widget.date.replaceAll('-', ''));
-        // Feedback visible : sinon le user ne sait pas que le défi a compté.
-        if (mounted) {
-          final name = b.title.replaceFirst('🔥 Défi : ', '');
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(
-                '🔥 Défi relevé : $name ! Série : ${widget.logic.state.challengeStreak} 🔥'),
-            duration: const Duration(seconds: 4),
-          ));
-          setState(() {});
+        // Comptage défi + feedback UNIQUEMENT pour les blocs « défi » 🔥 ;
+        // un bloc routine/activité simple se coche sans fanfare.
+        if (b.challenge) {
+          widget.logic.recordChallengeAccepted(widget.date.replaceAll('-', ''));
+          if (mounted) {
+            final name = b.title.replaceFirst('🔥 Défi : ', '');
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(
+                  '🔥 Défi relevé : $name ! Série : ${widget.logic.state.challengeStreak} 🔥'),
+              duration: const Duration(seconds: 4),
+            ));
+          }
         }
+        if (mounted) setState(() {});
       }
     }
   }
@@ -118,7 +253,10 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     // leur heure dans le programme, pas en bas de liste.
     final visible = (_schedule?.blocks.where((b) => b.status != 'deleted').toList() ?? [])
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
-    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeAutoWin());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeAutoWin();
+      _maybeSyncProjectBlocks();
+    });
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -189,7 +327,17 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
       child: Padding(
         padding: const EdgeInsets.only(bottom: 8),
         child: GestureDetector(
-          onTap: () => _showEditSheet(context, cs, block),
+          onTap: () {
+            // Bloc issu d'une tâche/routine/activité → ouvre sa fiche ;
+            // bloc libre (perso/pause) → sheet de renommage du bloc.
+            final hasSource =
+                block.projectId != null || block.activityId != null;
+            if (hasSource && widget.onOpenSource != null) {
+              widget.onOpenSource!(block);
+            } else {
+              _showEditSheet(context, cs, block);
+            }
+          },
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -365,6 +513,11 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
       builder: (_) => _BlockEditSheet(
         block: draft,
         isNew: true,
+        activities: widget.logic.state.activeActivities
+            .where((a) => !a.isHabit && a.role != ActivityRole.shopping)
+            .toList()
+          ..sort((a, b) =>
+              a.name.toLowerCase().compareTo(b.name.toLowerCase())),
         onSave: (b) => _sync.addScheduleBlock(widget.date, b),
       ),
     );
@@ -395,9 +548,14 @@ class _BlockEditSheet extends StatefulWidget {
   final ScheduleBlock block;
   final Future<void> Function(ScheduleBlock) onSave;
   final bool isNew;
+  // Activités « temps » proposables pour lier le bloc (création seulement).
+  final List<Activity> activities;
 
   const _BlockEditSheet(
-      {required this.block, required this.onSave, this.isNew = false});
+      {required this.block,
+      required this.onSave,
+      this.isNew = false,
+      this.activities = const []});
 
   @override
   State<_BlockEditSheet> createState() => _BlockEditSheetState();
@@ -408,6 +566,7 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
   late String _startTime;
   late int _durationMin;
   late String _category;
+  late String? _activityId;
   bool _saving = false;
 
   @override
@@ -417,6 +576,7 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
     _startTime = widget.block.startTime;
     _durationMin = widget.block.durationMin;
     _category = widget.block.category;
+    _activityId = widget.block.activityId;
   }
 
   @override
@@ -437,7 +597,7 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
       category: _category,
       projectId: widget.block.projectId,
       taskId: widget.block.taskId,
-      activityId: widget.block.activityId,
+      activityId: _activityId,
       status: widget.block.status,
       doneAt: widget.block.doneAt,
     ));
@@ -499,6 +659,52 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
             value: _category,
             onChanged: (v) => setState(() => _category = v),
           ),
+          if (widget.isNew && widget.activities.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            InputDecorator(
+              decoration: const InputDecoration(
+                  labelText: 'Activité (optionnel)',
+                  border: OutlineInputBorder(),
+                  isDense: true),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String?>(
+                  isExpanded: true,
+                  value: _activityId,
+                  items: [
+                    const DropdownMenuItem<String?>(
+                        value: null, child: Text('Aucune')),
+                    for (final a in widget.activities)
+                      DropdownMenuItem<String?>(
+                          value: a.id,
+                          child:
+                              Text(a.name, overflow: TextOverflow.ellipsis)),
+                  ],
+                  onChanged: (v) => setState(() {
+                    _activityId = v;
+                    if (v != null && _titleCtrl.text.trim().isEmpty) {
+                      for (final a in widget.activities) {
+                        if (a.id == v) {
+                          _titleCtrl.text = a.name;
+                          break;
+                        }
+                      }
+                    }
+                  }),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                  'Lié à une activité → bouton ▶ pour chronométrer ; se coche au temps loggué.',
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(.5))),
+            ),
+          ],
           const SizedBox(height: 20),
           FilledButton(
             onPressed: _saving ? null : _save,
@@ -628,6 +834,110 @@ class _CategorySelector extends StatelessWidget {
               color: selected ? cs.onPrimaryContainer : cs.onSurface),
         );
       }).toList(),
+    );
+  }
+}
+
+// ── Sheet de progression d'une tâche (bloc « projet » coché) ──────────────────
+
+/// Liste les actions de la tâche à cocher ; l'user peut « Valider la tâche »
+/// (→ true) ou simplement fermer (→ on laisse comme ça). Chaque coche d'action
+/// est persistée immédiatement via [onToggleAction].
+class _TaskProgressSheet extends StatefulWidget {
+  final ProjectTask task;
+  final Future<void> Function(TaskAction action, bool value) onToggleAction;
+
+  const _TaskProgressSheet({required this.task, required this.onToggleAction});
+
+  @override
+  State<_TaskProgressSheet> createState() => _TaskProgressSheetState();
+}
+
+class _TaskProgressSheetState extends State<_TaskProgressSheet> {
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final actions = widget.task.actions;
+    final done = actions.where((a) => a.done).length;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+          20, 16, 20, MediaQuery.of(context).viewInsets.bottom + 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(widget.task.title,
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w800)),
+              ),
+              IconButton(
+                  icon: const Icon(Icons.close, size: 20),
+                  onPressed: () => Navigator.pop(context)),
+            ],
+          ),
+          if (actions.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2, bottom: 6),
+              child: Text('$done / ${actions.length} actions faites',
+                  style: TextStyle(
+                      fontSize: 12.5, color: cs.onSurface.withOpacity(.55))),
+            ),
+          if (actions.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text('Cette tâche n\'a pas de sous-actions.',
+                  style: TextStyle(
+                      fontSize: 13, color: cs.onSurface.withOpacity(.6))),
+            )
+          else
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final a in actions)
+                    CheckboxListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      value: a.done,
+                      activeColor: Colors.green,
+                      title: Text(a.title,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: a.done
+                                ? cs.onSurface.withOpacity(.4)
+                                : cs.onSurface,
+                            decoration:
+                                a.done ? TextDecoration.lineThrough : null,
+                          )),
+                      onChanged: (v) async {
+                        setState(() {}); // reflète l'état avant l'await
+                        await widget.onToggleAction(a, v ?? false);
+                        if (mounted) setState(() {});
+                      },
+                    ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 14),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(context, true),
+            icon: const Icon(Icons.check_rounded, size: 18),
+            style: FilledButton.styleFrom(
+                backgroundColor: Colors.green.shade600),
+            label: const Text('Valider la tâche'),
+          ),
+          const SizedBox(height: 6),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Laisser comme ça'),
+          ),
+        ],
+      ),
     );
   }
 }

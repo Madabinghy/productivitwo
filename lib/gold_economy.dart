@@ -194,6 +194,11 @@ class GoldEconomy {
   static const int weaponEpee = 8; // tue un serpent (consommable)
   static const int weaponSandale = 5; // tue araignée/scorpion (consommable)
 
+  /// Plafond de l'« arsenal » d'une arme (épée/sandale/arc). Au-delà, faire une
+  /// action ne sur-empile plus d'armes : c'est l'OR (toujours crédité par action)
+  /// qui prend le relais → le compteur reste lisible (pas de « 1473 ⚔️ »).
+  static const int weaponStockCap = 9;
+
   static int weaponBasePrice(String key) =>
       key == 'epee' ? weaponEpee : weaponSandale;
 

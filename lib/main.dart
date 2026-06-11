@@ -1558,10 +1558,51 @@ class _ChallengeMeButton extends StatelessWidget {
   }
 }
 
-class _Last24hSessionsSheet extends StatelessWidget {
+class _Last24hSessionsSheet extends StatefulWidget {
   final dynamic logic;
   final FirestoreSync? sync;
   const _Last24hSessionsSheet({required this.logic, this.sync});
+
+  @override
+  State<_Last24hSessionsSheet> createState() => _Last24hSessionsSheetState();
+}
+
+class _Last24hSessionsSheetState extends State<_Last24hSessionsSheet> {
+  dynamic get logic => widget.logic;
+  FirestoreSync? get sync => widget.sync;
+
+  @override
+  void initState() {
+    super.initState();
+    // Refresh temps réel : toute modification (édition/suppression, chrono en
+    // cours) rafraîchit la liste sans avoir à quitter le widget.
+    logic.rev?.addListener(_onRev);
+  }
+
+  @override
+  void dispose() {
+    logic.rev?.removeListener(_onRev);
+    super.dispose();
+  }
+
+  void _onRev() {
+    if (mounted) setState(() {});
+  }
+
+  void _deleteSession(Session s) {
+    logic.deleteSession(s.id);
+    sync?.deleteSession(s.id); // hard-delete Firestore — évite le retour au prochain pull
+    if (mounted) setState(() {});
+  }
+
+  /// Couleur du domaine de l'activité d'une session (null si introuvable).
+  Color? _domainColorFor(Session s) {
+    final acts = (logic.state.activities as List).cast<Activity>();
+    final a = acts.firstWhereOrNull((x) => x.id == s.activityId);
+    if (a == null) return null;
+    return domainColor(
+        a.domainId, (logic.state.activeDomains as List).cast<Domain>());
+  }
 
   Future<void> _openEditSessionSheet(
     BuildContext context,
@@ -1583,6 +1624,7 @@ class _Last24hSessionsSheet extends StatelessWidget {
     if (res.delete) {
       logic.deleteSession(s.id);
       sync?.deleteSession(s.id); // hard-delete Firestore — évite le retour au prochain pull
+      if (mounted) setState(() {});
       return;
     }
 
@@ -1590,6 +1632,7 @@ class _Last24hSessionsSheet extends StatelessWidget {
     final newEnd = res.endAt;
 
     if (newEnd != null && !newEnd.isAfter(newStart)) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("La fin doit être après le début.")),
       );
@@ -1601,6 +1644,7 @@ class _Last24hSessionsSheet extends StatelessWidget {
       startAt: res.startAt,
       endAt: res.endAt,
     );
+    if (mounted) setState(() {}); // refresh immédiat (pas besoin de quitter)
   }
 
   @override
@@ -1666,21 +1710,43 @@ class _Last24hSessionsSheet extends StatelessWidget {
 
                     final end = s.endAt;
                     final dur = s.duration;
+                    final dColor = _domainColorFor(s) ?? cs.primary;
 
-                    return ListTile(
-                      title: Text(
-                        actName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                    return Dismissible(
+                      key: ValueKey(s.id),
+                      direction: DismissDirection.endToStart,
+                      background: Container(
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 20),
+                        color: cs.errorContainer,
+                        child: Icon(Icons.delete_outline,
+                            color: cs.onErrorContainer),
                       ),
-                      subtitle: Text(
-                        "${_hm(s.startAt)} → ${end == null ? "en cours" : _hm(end)}  •  ${_fmtDur(dur)}",
-                      ),
-                      onTap: () => _openEditSessionSheet(context, logic, s),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.edit),
-                        onPressed: () =>
-                            _openEditSessionSheet(context, logic, s),
+                      onDismissed: (_) => _deleteSession(s),
+                      child: ListTile(
+                        minLeadingWidth: 6,
+                        leading: Container(
+                          width: 4,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: dColor,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        title: Text(
+                          actName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Text(
+                          "${_hm(s.startAt)} → ${end == null ? "en cours" : _hm(end)}  •  ${_fmtDur(dur)}",
+                        ),
+                        onTap: () => _openEditSessionSheet(context, logic, s),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.edit, size: 20),
+                          onPressed: () =>
+                              _openEditSessionSheet(context, logic, s),
+                        ),
                       ),
                     );
                   },
@@ -1767,6 +1833,9 @@ class _AppRootState extends State<AppRoot>
   List<Project> _dashboardProjects = [];
   Project? _focusProject;
   ProjectTask? _focusTask;
+  // Activité chronométrée pour la tâche focus → sert à purger le focus quand on
+  // arrête OU quand on lance une AUTRE activité (voir _buildBody).
+  String? _focusActivityId;
   bool _wasOffline = false;
   List<AssistantMessageData> _assistantMessages = [];
 
@@ -2431,8 +2500,9 @@ class _AppRootState extends State<AppRoot>
       return;
     }
 
-    // Minuteur de ROUTINE : pas de dialog Continuer/Terminer. On arrête (logge
-    // le temps sur l'activité liée qui tourne), on coche la routine, point.
+    // Minuteur de ROUTINE : pas de dialog. On coche la routine et on BASCULE en
+    // chrono (l'activité liée continue de tourner et de logguer le temps) tant
+    // que l'user n'arrête pas — il finit souvent au-delà du minuteur réglé.
     String? routineId = _countdownRoutineId;
     if (routineId == null) {
       final p = settings.payload ?? '';
@@ -2451,7 +2521,8 @@ class _AppRootState extends State<AppRoot>
       final expBonus = _countdownExpeditionBonus;
       _countdownExpeditionNode = null;
       _countdownExpeditionBonus = 0;
-      if (logic.runningActivity() != null) logic.stopActive(); // logge le temps
+      // On NE coupe PAS l'activité : le décompte retiré (_countdownEndsAt=null)
+      // fait basculer l'UI en chrono count-up → le temps continue de se logguer.
       final now = DateTime.now();
       logic.incHabit(routineId, 1, DateTime(now.year, now.month, now.day));
       // Mode 5 min du donjon : la routine est allée à son terme → on franchit le
@@ -2475,7 +2546,7 @@ class _AppRootState extends State<AppRoot>
                 ?.name ??
             'Routine';
         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('✓ $rName — fait 🔥')));
+            SnackBar(content: Text('✓ $rName — fait 🔥 · chrono en cours, arrête quand tu veux')));
         setState(() {});
       }
       return;
@@ -2548,6 +2619,39 @@ class _AppRootState extends State<AppRoot>
         });
       }
     } catch (_) {}
+  }
+
+  /// Tap sur un bloc issu d'une source → ouvre SA fiche : tâche (projet),
+  /// routine ou activité. Bloc libre (perso/pause) → géré côté DailyScheduleView
+  /// (sheet de renommage), pas d'appel ici.
+  void _openBlockSource(ScheduleBlock block) {
+    if (block.projectId != null) {
+      final project =
+          _dashboardProjects.firstWhereOrNull((p) => p.id == block.projectId);
+      if (project != null) {
+        showProjectSheet(context,
+            project: project,
+            domains: _state?.domains ?? [],
+            targetTaskId: block.taskId);
+        return;
+      }
+    }
+    if (block.activityId != null) {
+      final act =
+          _state?.activities.firstWhereOrNull((a) => a.id == block.activityId);
+      if (act == null) return;
+      if (act.isHabit) {
+        showRoutineSheet(context,
+            logic: logic,
+            habitId: act.id,
+            day: DateTime.now(),
+            onSaved: () {
+              if (mounted) setState(() {});
+            });
+      } else {
+        _openActivitySheet(act);
+      }
+    }
   }
 
   /// Lance un bloc du programme (▶) : démarre le chrono de l'activité liée et
@@ -2653,9 +2757,11 @@ class _AppRootState extends State<AppRoot>
       return;
     }
     logic.start(activity.id);
+    final focusActId = activity.id;
     setState(() {
       _focusProject = project;
       _focusTask = task;
+      _focusActivityId = focusActId;
       _tab = _Tab.maintenant;
     });
   }
@@ -2724,6 +2830,32 @@ class _AppRootState extends State<AppRoot>
 
   Widget _buildBody(BuildContext context) {
     final st = _state!;
+    // Le focus de tâche (« Maintenant ») ne survit que tant que SON activité
+    // tourne (ou qu'un décompte est actif). Sinon — session arrêtée par
+    // n'importe quel bouton, étoile décochée, app relancée, OU lancement d'une
+    // AUTRE activité — on le purge.
+    if ((_focusTask != null || _focusProject != null) &&
+        _countdownEndsAt == null) {
+      final running = logic.runningActivity();
+      final stale = running == null ||
+          (_focusActivityId != null && running.id != _focusActivityId);
+      if (stale) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          final r = logic.runningActivity();
+          if ((_focusTask != null || _focusProject != null) &&
+              _countdownEndsAt == null &&
+              (r == null ||
+                  (_focusActivityId != null && r.id != _focusActivityId))) {
+            setState(() {
+              _focusProject = null;
+              _focusTask = null;
+              _focusActivityId = null;
+            });
+          }
+        });
+      }
+    }
     // Hook minuteur : permet aux feuilles modales (mode 5 min du donjon) de
     // lancer une vraie alarme via l'infra de l'accueil.
     logic.launchTimerHook ??= (int m, String n,
@@ -2785,12 +2917,14 @@ class _AppRootState extends State<AppRoot>
             countdownEndsAt: _countdownEndsAt,
             countdownTotalSec: _countdownTotalSec,
             onLaunchScheduledBlock: _launchScheduledBlock,
+            onOpenScheduledBlockSource: _openBlockSource,
             onGoToProjects: () => setState(() => _tab = _Tab.projets),
             onStartTimer: (activity, project, task) {
               logic.start(activity.id);
               setState(() {
                 _focusProject = project;
                 _focusTask = task;
+                _focusActivityId = activity.id;
               });
             },
             // Couper le minuteur AVANT la fin → bascule en chrono (session continue).
@@ -2805,12 +2939,14 @@ class _AppRootState extends State<AppRoot>
               setState(() {
                 _focusProject = null;
                 _focusTask = null;
+                _focusActivityId = null;
               });
             },
             onClearFocusTask: (project, task) {
               setState(() {
                 _focusProject = null;
                 _focusTask = null;
+                _focusActivityId = null;
               });
             },
             onTaskTap: (project, task) => showProjectSheet(
@@ -4043,12 +4179,14 @@ class _AppRootState extends State<AppRoot>
                                     _routineLaunchControl(
                                         ctx, r, cs, dColor),
                                     const SizedBox(width: 6),
-                                    // Étoile priorité du jour
+                                    // Étoile : planifier la routine dans Aujourd'hui
+                                    // (ON → heure+durée → bloc routine ; OFF → retire).
                                     GestureDetector(
                                       onTap: () async {
-                                        final newVal = !r.todayFlag;
-                                        logic.setActivityTodayFlag(r.id, newVal);
-                                        await _sync.toggleActivityTodayFlag(r.id, newVal);
+                                        final changed =
+                                            await toggleRoutineTodayAndSchedule(
+                                                ctx, _sync, logic, r);
+                                        if (!changed) return;
                                         setS(() {});
                                         setState(() {});
                                       },

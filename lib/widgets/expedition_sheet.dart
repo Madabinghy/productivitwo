@@ -48,10 +48,6 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
     super.initState();
     // Génère les défis du donjon à l'ouverture (instantané, sans Orion).
     logic.ensureExpeditionChallenges(sync);
-    // Routines déjà planifiées (30 j) → exclues de l'action express.
-    logic.refreshPlannedActivityIds().then((_) {
-      if (mounted) setState(() {});
-    });
     // Mémorise l'entrée → entrée auto dans le donjon ensuite (jusqu'au déblocage).
     if (logic.state.expeditionDonjonLevel != _level) {
       logic.state.expeditionDonjonLevel = _level;
@@ -167,19 +163,24 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
   final Set<String> _programmedRoutines = {};
 
   Future<void> _showMicroAction(ExpeditionNode node) async {
-    final today = DateTime.now();
     final allDaily = logic.state.activeActivities
         .where((a) =>
             a.isHabit && (a.habitFreq ?? HabitFreq.monthly) == HabitFreq.daily)
         .toList();
-    // Ne proposer que les routines PAS ENCORE faites aujourd'hui (et pas déjà
-    // programmées pour plus tard).
-    final routines = allDaily.where((a) {
-      if (_programmedRoutines.contains(a.id)) return false;
-      if (logic.plannedActivityIds.contains(a.id)) return false;
+    // Toutes les routines quotidiennes (sauf celles programmées pour plus tard
+    // pendant cette session). Faites OU à faire : une routine déjà faite devient
+    // une CLÉ « Utiliser ». Tri : à faire → déjà faite (clé) → déjà utilisée.
+    int rank(Activity a) {
       final tgt = logic.activeHabitTarget(a);
-      return tgt <= 0 || logic.habitValueOn(a.id, today) < tgt;
-    }).toList();
+      final done = tgt > 0 && logic.habitValueOn(a.id, DateTime.now()) >= tgt;
+      if (!done) return 0;
+      return logic.donjonKeyAvailable(a.id) ? 1 : 2;
+    }
+
+    final routines = allDaily
+        .where((a) => !_programmedRoutines.contains(a.id))
+        .toList()
+      ..sort((a, b) => rank(a).compareTo(rank(b)));
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -197,20 +198,13 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
                     style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 6),
                 Text(
-                    'Va au bout du minuteur sur une routine pour franchir ce '
-                    'passage. Si tu arrêtes avant, tu restes ici. Version longue '
-                    '= bonus d\'or.',
+                    'Fais une routine (minuteur) OU utilise une routine déjà faite '
+                    'aujourd\'hui pour franchir ce passage. Version longue = bonus d\'or.',
                     style: TextStyle(
                         fontSize: 12.5, color: cs.onSurface.withOpacity(.6))),
                 const SizedBox(height: 14),
-                if (allDaily.isEmpty)
+                if (routines.isEmpty)
                   Text('Crée une routine quotidienne pour débloquer ce passage.',
-                      style: TextStyle(
-                          fontSize: 13, color: cs.onSurface.withOpacity(.6)))
-                else if (routines.isEmpty)
-                  Text(
-                      'Toutes tes routines du jour sont déjà faites 🎉 — reviens '
-                      'demain ou crée-en une nouvelle.',
                       style: TextStyle(
                           fontSize: 13, color: cs.onSurface.withOpacity(.6)))
                 else
@@ -220,88 +214,9 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
                     child: SingleChildScrollView(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
-                        children: routines.map((r) {
-                          final full =
-                              (r.timerMin ?? 0) > 0 ? r.timerMin! : 15;
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: Container(
-                              padding:
-                                  const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                              decoration: BoxDecoration(
-                                color: cs.surfaceContainerHighest
-                                    .withOpacity(.4),
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(r.name,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w700)),
-                                  const SizedBox(height: 10),
-                                  Row(children: [
-                                    Expanded(
-                                      child: OutlinedButton(
-                                        onPressed: () =>
-                                            _launchMicro(node, r, 5, 0),
-                                        child: const Text('5 min'),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: FilledButton(
-                                        style: FilledButton.styleFrom(
-                                            backgroundColor: _kGold,
-                                            foregroundColor:
-                                                const Color(0xFF231900)),
-                                        onPressed: () =>
-                                            _launchMicro(node, r, full, 5),
-                                        child: Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Text('$full min +'),
-                                            const SizedBox(width: 3),
-                                            const GoldIcon(
-                                                size: 14,
-                                                color: Color(0xFF231900)),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ]),
-                                  // « Je ne peux pas maintenant » → programmer la
-                                  // routine pour plus tard (+ rappel) et la retirer.
-                                  if (logic.programBacklogHook != null)
-                                    Align(
-                                      alignment: Alignment.centerLeft,
-                                      child: TextButton.icon(
-                                        style: TextButton.styleFrom(
-                                            visualDensity:
-                                                VisualDensity.compact),
-                                        icon: const Text('📅',
-                                            style: TextStyle(fontSize: 13)),
-                                        label: const Text(
-                                            'Programmer pour plus tard',
-                                            style: TextStyle(fontSize: 12.5)),
-                                        onPressed: () async {
-                                          _programmedRoutines.add(r.id);
-                                          Navigator.pop(ctx);
-                                          await logic.programBacklogHook!(
-                                              'spider', r.id);
-                                        },
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }).toList(),
+                        children: routines
+                            .map((r) => _microRoutineCard(ctx, node, r))
+                            .toList(),
                       ),
                     ),
                   ),
@@ -311,6 +226,131 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
         );
       },
     );
+  }
+
+  /// Carte d'une routine dans l'action express, adaptative :
+  /// à faire → boutons 5 min / full ; déjà faite + clé → « Utiliser » ;
+  /// déjà utilisée aujourd'hui → grisée.
+  Widget _microRoutineCard(BuildContext ctx, ExpeditionNode node, Activity r) {
+    final cs = Theme.of(ctx).colorScheme;
+    final tgt = logic.activeHabitTarget(r);
+    final done = tgt > 0 && logic.habitValueOn(r.id, DateTime.now()) >= tgt;
+    final keyAvailable = done && logic.donjonKeyAvailable(r.id);
+    final usedAlready = done && !keyAvailable; // faite mais clé consommée
+    final full = (r.timerMin ?? 0) > 0 ? r.timerMin! : 15;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withOpacity(usedAlready ? .2 : .4),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(r.name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: usedAlready
+                        ? cs.onSurface.withOpacity(.4)
+                        : cs.onSurface)),
+            const SizedBox(height: 10),
+            if (keyAvailable) ...[
+              Row(children: [
+                Icon(Icons.check_circle, size: 15, color: Colors.green.shade500),
+                const SizedBox(width: 6),
+                Text('déjà fait aujourd\'hui',
+                    style: TextStyle(
+                        fontSize: 12.5, color: cs.onSurface.withOpacity(.6))),
+              ]),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                      backgroundColor: _kGold,
+                      foregroundColor: const Color(0xFF231900)),
+                  icon: const Icon(Icons.vpn_key_rounded, size: 16),
+                  label: const Text('Utiliser'),
+                  onPressed: () => _crossNodeWithKey(node, r),
+                ),
+              ),
+            ] else if (usedAlready) ...[
+              Row(children: [
+                Icon(Icons.lock_clock,
+                    size: 15, color: cs.onSurface.withOpacity(.35)),
+                const SizedBox(width: 6),
+                Text('déjà utilisée pour avancer',
+                    style: TextStyle(
+                        fontSize: 12.5, color: cs.onSurface.withOpacity(.4))),
+              ]),
+            ] else ...[
+              Row(children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => _launchMicro(node, r, 5, 0),
+                    child: const Text('5 min'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: _kGold,
+                        foregroundColor: const Color(0xFF231900)),
+                    onPressed: () => _launchMicro(node, r, full, 5),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('$full min +'),
+                        const SizedBox(width: 3),
+                        const GoldIcon(size: 14, color: Color(0xFF231900)),
+                      ],
+                    ),
+                  ),
+                ),
+              ]),
+              // « Je ne peux pas maintenant » → programmer pour plus tard.
+              if (logic.programBacklogHook != null)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact),
+                    icon: const Text('📅', style: TextStyle(fontSize: 13)),
+                    label: const Text('Programmer pour plus tard',
+                        style: TextStyle(fontSize: 12.5)),
+                    onPressed: () async {
+                      _programmedRoutines.add(r.id);
+                      Navigator.pop(ctx);
+                      await logic.programBacklogHook!('spider', r.id);
+                    },
+                  ),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Franchit le nœud en consommant la clé d'une routine déjà faite aujourd'hui
+  /// (pas de travail à refaire ni de bonus d'or — la routine a déjà rapporté).
+  Future<void> _crossNodeWithKey(ExpeditionNode node, Activity r) async {
+    Navigator.pop(context); // ferme la feuille action express
+    final ok = await sync.advanceExpedition(nodeId: node.id);
+    if (ok) {
+      logic.useDonjonKey(r.id);
+      logic.state.expeditionCleared.add(node.id);
+      logic.onChange();
+      if (mounted) setState(() {});
+    }
   }
 
   Future<void> _finish() async {
