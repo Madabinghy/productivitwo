@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
@@ -196,6 +197,44 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
           revealAdd: (changed['reveal'] as List<String>?) ?? const [],
           entities: logic.state.expeditionEntities);
     }
+
+    // Routines déjà planifiées (30 j) → on les retire des ennemis. Lecture
+    // Firestore async : on rafraîchit puis on élague les araignées concernées.
+    unawaited(_refreshPlannedAndPrune());
+  }
+
+  /// Recharge les routines planifiées puis retire les araignées (spiders)
+  /// devenues planifiées de la carte courante.
+  Future<void> _refreshPlannedAndPrune() async {
+    await logic.refreshPlannedActivityIds();
+    if (!mounted) return;
+    final planned = logic.plannedActivityIds;
+    if (planned.isEmpty) return;
+    final ents = _ents;
+    final kept = ents.where((e) {
+      final d = decodeEntity(e);
+      if (!isBacklogMeta(d.meta) || d.type != 'spider') return true;
+      return !planned.contains(backlogItemId(d.meta));
+    }).toList();
+    if (kept.length == ents.length) {
+      setState(() {}); // rien à retirer, mais reflète la maj du set
+      return;
+    }
+    if (_hunt) {
+      _huntEntities
+        ..clear()
+        ..addAll(kept);
+    } else {
+      logic.state.expeditionEntities
+        ..clear()
+        ..addAll(kept);
+      logic.onChange();
+      sync.expeditionWrite(
+          newPos: logic.state.expeditionPos,
+          revealAdd: const [],
+          entities: logic.state.expeditionEntities);
+    }
+    setState(() {});
   }
 
   /// Tuiles sol libres (sans entité ni collectible non ramassé) pour poser un

@@ -48,6 +48,10 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
     super.initState();
     // Génère les défis du donjon à l'ouverture (instantané, sans Orion).
     logic.ensureExpeditionChallenges(sync);
+    // Routines déjà planifiées (30 j) → exclues de l'action express.
+    logic.refreshPlannedActivityIds().then((_) {
+      if (mounted) setState(() {});
+    });
     // Mémorise l'entrée → entrée auto dans le donjon ensuite (jusqu'au déblocage).
     if (logic.state.expeditionDonjonLevel != _level) {
       logic.state.expeditionDonjonLevel = _level;
@@ -172,6 +176,7 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
     // programmées pour plus tard).
     final routines = allDaily.where((a) {
       if (_programmedRoutines.contains(a.id)) return false;
+      if (logic.plannedActivityIds.contains(a.id)) return false;
       final tgt = logic.activeHabitTarget(a);
       return tgt <= 0 || logic.habitValueOn(a.id, today) < tgt;
     }).toList();

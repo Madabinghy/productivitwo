@@ -132,26 +132,57 @@ class AppLogic {
   // Snapshot des projets actifs — mis à jour par updateGanttCounts()
   List<Project> currentProjects = [];
 
+  /// `activityId` des routines/activités déjà planifiées dans les 30 prochains
+  /// jours (programme du jour). Rafraîchi via [refreshPlannedActivityIds] ;
+  /// lu par le donjon (`backlogEnemies`, action express) pour ne pas re-proposer
+  /// une routine déjà programmée.
+  Set<String> plannedActivityIds = {};
+
+  /// Recharge [plannedActivityIds] depuis Firestore (no-op si sync absent).
+  Future<void> refreshPlannedActivityIds() async {
+    final s = sync;
+    if (s == null) return;
+    plannedActivityIds = await s.fetchPlannedActivityIds(days: 30);
+  }
+
   void updateGanttCounts(List<Project> projects) {
     currentProjects = projects;
     _ganttDonePerDay.clear();
 
-    // Nombre d'actions cochées par jour (clé = doneAt). Le score de productivité
-    // normalise ensuite ce count sur le standard propre de l'utilisateur (p90),
-    // au lieu de l'ancien dénominateur « backlog total » qui plombait le score
-    // dès qu'on avait beaucoup d'actions planifiées.
+    // Une seule passe sur les projets construit deux dérivés :
+    // • `_ganttDonePerDay` (projets ACTIFS seulement) → score de productivité,
+    //   normalisé ensuite sur le standard propre de l'user (p90).
+    // • `doneByDay` (tout projet NON-draft, statuts done/archivé inclus) →
+    //   source unique de l'OR des actions Gantt, alignée sur l'épée (1 action
+    //   cochée = 1 or/épée), quelle que soit la surface (web/mobile/focus).
+    final doneByDay = <String, int>{};
     for (final project in projects) {
-      if (project.status != 'active') continue; // draft + archived hors score/gains
+      if (project.status == 'draft') continue; // planification = hors économie
+      final activeForScore = project.status == 'active';
       for (final task in project.tasks) {
         if (task.status == 'skipped') continue;
         for (final action in task.actions) {
           if (action.done && action.doneAt != null) {
             final ymd = yyyymmdd(action.doneAt!);
-            _ganttDonePerDay[ymd] = (_ganttDonePerDay[ymd] ?? 0) + 1;
+            doneByDay[ymd] = (doneByDay[ymd] ?? 0) + 1;
+            if (activeForScore) {
+              _ganttDonePerDay[ymd] = (_ganttDonePerDay[ymd] ?? 0) + 1;
+            }
           }
         }
       }
     }
+
+    // Réconcilie le compteur persistant `ganttActionsByDay` (lu par l'or, la
+    // quête, la baseline épée et la matérialisation) sur les jours NON encore
+    // bankés (curseur or exclu) → reflète toutes les surfaces. Les jours clos
+    // (≤ curseur, déjà crédités au grand-livre) restent figés.
+    final cursor = state.goldLastProcessedDay;
+    bool unbanked(String ymd) => cursor == null || ymd.compareTo(cursor) > 0;
+    state.ganttActionsByDay.removeWhere((ymd, _) => unbanked(ymd));
+    doneByDay.forEach((ymd, n) {
+      if (unbanked(ymd)) state.ganttActionsByDay[ymd] = n;
+    });
   }
 
   /// Positionner à true avant une suppression pour éviter que le badge

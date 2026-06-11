@@ -10,6 +10,13 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.07', '11 juin 2026', [
+    (Icons.timer_outlined, 'Routine minutée dans ton programme du jour : au lancement ▶, tu choisis « Chrono » (temps libre) ou « Minuteur » (décompte) — au bout du minuteur, la routine se valide toute seule'),
+    (Icons.add_circle_outline, 'Tu peux ajouter À LA MAIN un bloc dans ton programme du jour (bouton + en haut, ou tape la zone vide) : titre, heure, durée, catégorie — sans passer par Claude'),
+    (Icons.event_busy, 'Donjon : une routine déjà programmée dans les 30 prochains jours n\'apparaît plus comme nuisible 🕷️ — fini le doublon entre ton planning et le donjon'),
+    (Icons.sports_kabaddi, 'Épée 🗡️ plus facile à stocker : 1 action de tâche cochée = 1 épée (avant il fallait des tâches entières). Et cocher une action compte PARTOUT pareil — web, fiche mobile ou écran « Maintenant »'),
+    (Icons.devices, 'Or cohérent entre tes appareils : solde, gains du jour, épées et score se recalculent depuis tes vraies données → mêmes valeurs sur mobile ET tablette, sans double-comptage'),
+  ]),
   _Entry('6.06', '11 juin 2026', [
     (Icons.edit_outlined, 'Gestion de projets : tu peux maintenant RENOMMER un projet (tap sur son titre) et gérer ses PHASES sur mobile — ajouter, renommer, supprimer (menu ⋯). Supprimer une phase rend ses tâches « sans phase »'),
     (Icons.today, 'Planification : un bouton « Aujourd\'hui » dans le sélecteur de date (défis / programmer) — plus besoin d\'ouvrir le calendrier pour planifier dans la journée'),

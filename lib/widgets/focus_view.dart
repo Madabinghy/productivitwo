@@ -352,20 +352,12 @@ class _FocusViewState extends State<FocusView> {
     final task = widget.focusTask;
     final project = widget.focusProject;
     if (task == null || project == null) return;
-    final wasDone = action.done;
     setState(() {
       action.done = value;
       action.doneAt = value ? DateTime.now() : null;
     });
-    // XP : action Gantt cochée (par jour, jamais décrémenté).
-    if (value && !wasDone) {
-      final now = DateTime.now();
-      final ymd =
-          '${now.year.toString().padLeft(4, '0')}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
-      final m = widget.logic.state.ganttActionsByDay;
-      m[ymd] = (m[ymd] ?? 0) + 1;
-      widget.logic.onChange();
-    }
+    // L'or/épée/quête de l'action sont dérivés des données (réconciliés dans
+    // updateGanttCounts au retour du stream projets) → pas de compteur UI ici.
     final sync = FirestoreSync();
     await sync.saveProjectTasks(project.id, project.tasks);
   }

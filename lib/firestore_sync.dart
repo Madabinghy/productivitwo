@@ -824,12 +824,24 @@ class FirestoreSync {
     }
     final metaRef = _meta();
     return _db.runTransaction((tx) async {
+      // LECTURES D'ABORD (règle des transactions Firestore) : meta + chaque
+      // entrée de ledger. Une entrée DÉJÀ présente (id déterministe, ex.
+      // `gantt_2026-06-11`) ne re-crédite pas → idempotence multi-appareil :
+      // deux appareils qui matérialisent le même jour ne doublent pas le solde.
       final snap = await tx.get(metaRef);
+      final ledgerRefs =
+          entries.map((e) => _col('gold_ledger').doc(e.id)).toList();
+      final alreadyApplied = <bool>[];
+      for (final ref in ledgerRefs) {
+        alreadyApplied.add((await tx.get(ref)).exists);
+      }
       final data = snap.data() as Map<String, dynamic>? ?? {};
       var gold = (data['gold'] as num?)?.toInt() ?? 0;
       var lifetime = (data['goldLifetime'] as num?)?.toInt() ?? 0;
       final unlocked = (data['unlockedLevel'] as num?)?.toInt() ?? 1;
-      for (final e in entries) {
+      for (var i = 0; i < entries.length; i++) {
+        if (alreadyApplied[i]) continue; // déjà au ledger → ne pas re-créditer
+        final e = entries[i];
         gold += e.delta;
         if (gold < 0) gold = 0; // plancher pardonnant
         // XP plafonnée au prochain niveau ; le surplus déborde en or seul.
@@ -844,8 +856,9 @@ class FirestoreSync {
         ...?extraMeta,
       };
       tx.set(metaRef, update, SetOptions(merge: true));
-      for (final e in entries) {
-        tx.set(_col('gold_ledger').doc(e.id), e.toJson());
+      for (var i = 0; i < entries.length; i++) {
+        if (alreadyApplied[i]) continue;
+        tx.set(ledgerRefs[i], entries[i].toJson());
       }
       return {'gold': gold, 'goldLifetime': lifetime};
     });
@@ -855,22 +868,32 @@ class FirestoreSync {
   Future<Map<String, int>> applyGold(GoldLedgerEntry entry) =>
       applyGoldBatch([entry]);
 
-  /// Crédite/retire en TEMPS RÉEL [delta] d'or sur le solde, et mémorise le
-  /// flottant du jour ([todayGain] pour [ymd]). Ne touche NI au lifetime/XP NI
-  /// au ledger : sert au crédit live des gains du jour (dépensables de suite).
-  Future<void> creditLiveGold(int delta, String ymd, int todayGain) async {
-    if (uid == null) return;
+  /// Réconcilie EN TEMPS RÉEL le solde pour que le flottant du jour [ymd] vaille
+  /// [earned] (gains du jour, dépensables de suite). Le delta est calculé DANS la
+  /// transaction depuis le flottant SERVEUR (`goldTodayGain`), pas un flottant
+  /// local → juste en multi-appareil : un 2e appareil qui réconcilie le même jour
+  /// calcule un delta nul. Gère le changement de jour (retire l'ancien flottant,
+  /// banké à part par `materializeGoldUpTo`). Ne touche NI lifetime/XP NI ledger.
+  /// Renvoie le solde autoritatif (null si pas d'uid).
+  Future<int?> reconcileLiveGoldTx(int earned, String ymd) async {
+    if (uid == null) return null;
     final metaRef = _meta();
-    await _db.runTransaction((tx) async {
+    return _db.runTransaction((tx) async {
       final data = (await tx.get(metaRef)).data() as Map<String, dynamic>? ?? {};
       var gold = (data['gold'] as num?)?.toInt() ?? 0;
-      gold += delta;
+      final serverYmd = data['goldTodayGainYmd'] as String?;
+      final serverGain = (data['goldTodayGain'] as num?)?.toInt() ?? 0;
+      // Changement de jour : retire le flottant de la veille (sera banké à part).
+      if (serverYmd != null && serverYmd != ymd) gold -= serverGain;
+      final base = serverYmd == ymd ? serverGain : 0;
+      gold += earned - base;
       if (gold < 0) gold = 0;
       tx.set(metaRef, {
         'gold': gold,
-        'goldTodayGain': todayGain,
+        'goldTodayGain': earned,
         'goldTodayGainYmd': ymd,
       }, SetOptions(merge: true));
+      return gold;
     });
   }
 
@@ -1711,6 +1734,37 @@ class FirestoreSync {
       }
     } catch (_) {
       // pas de programme / index manquant → aucune exclusion
+    }
+    return ids;
+  }
+
+  /// `activityId` de tout bloc encore en attente planifié d'aujourd'hui à
+  /// aujourd'hui+`days`-1 inclus (tout type de bloc, pas seulement les défis).
+  /// Sert à ne pas re-proposer dans le donjon une routine déjà programmée.
+  Future<Set<String>> fetchPlannedActivityIds({int days = 30}) async {
+    if (uid == null) return {};
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    String ymd(DateTime d) =>
+        '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    final start = ymd(today);
+    final end = ymd(today.add(Duration(days: days - 1)));
+    final ids = <String>{};
+    try {
+      final snap = await _col('daily_schedules')
+          .where(FieldPath.documentId, isGreaterThanOrEqualTo: start)
+          .where(FieldPath.documentId, isLessThanOrEqualTo: end)
+          .get();
+      for (final doc in snap.docs) {
+        final sched = DailySchedule.from(doc.data() as Map);
+        for (final b in sched.blocks) {
+          if (b.status == 'pending' && (b.activityId ?? '').isNotEmpty) {
+            ids.add(b.activityId!);
+          }
+        }
+      }
+    } catch (_) {
+      // index manquant / aucun programme → aucune exclusion
     }
     return ids;
   }

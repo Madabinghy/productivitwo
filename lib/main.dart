@@ -2156,6 +2156,9 @@ class _AppRootState extends State<AppRoot>
       _projectsSub = _sync.streamProjects().listen((projects) {
         if (!mounted) return;
         logic.updateGanttCounts(projects); // met à jour les compteurs + currentProjects
+        // Persiste le compteur `ganttActionsByDay` réconcilié (actions cochées
+        // sur n'importe quelle surface) → le banking du soir lit la même source.
+        unawaited(_doSave());
         setState(() => _dashboardProjects = projects);
         _checkGanttBadges();
         WidgetService.update(logic); // widget Large : tâches Gantt fraîches
@@ -2166,20 +2169,26 @@ class _AppRootState extends State<AppRoot>
     // Évaluation assistant ORION (non bloquant)
     unawaited(() async {
       List<Project> projects = [];
-      try { projects = await _sync.fetchProjects(); } catch (_) {}
-      // Alimente les widgets avec les données Gantt réelles dès que disponibles
-      // (le stream Firestore peut tarder ; fetchProjects() retourne le cache local en premier)
+      var fetched = false;
+      try { projects = await _sync.fetchProjects(); fetched = true; } catch (_) {}
+      // Économie d'Or — ordre strict pour que le banking lise des comptes à jour :
+      //  1) soigner un curseur empoisonné (peut REMBOBINER → rouvre un jour) ;
+      //  2) réconcilier `ganttActionsByDay` depuis les projets chargés (toutes
+      //     surfaces : web/mobile/focus), y compris le jour rouvert par le heal ;
+      //  3) matérialiser les jours clos ; 4) créditer le solde du jour.
+      // Si le fetch a ÉCHOUÉ, on NE réconcilie PAS (sinon on zéroterait l'or du
+      // jour) → fallback sur les comptes persistés ; le stream réconciliera ensuite.
+      await logic.healGoldCursorIfNeeded(_sync);
+      if (fetched) logic.updateGanttCounts(projects);
+      logic.materializeGoldUpTo(_sync, DateTime.now());
+      logic.reconcileLiveGold(_sync);
+      // Alimente les widgets avec les données Gantt réelles dès que disponibles.
       if (projects.isNotEmpty && mounted) {
-        logic.updateGanttCounts(projects);
         WidgetService.update(logic);
         _sync.pushProductivitySnapshot(logic.productivitySnapshot());
       }
-      // Économie d'Or : auto-heal d'un curseur empoisonné (reset), puis
-      // migration one-shot + rattrapage des jours clos (idempotent).
-      await logic.healGoldCursorIfNeeded(_sync);
-      logic.materializeGoldUpTo(_sync, DateTime.now());
-      // Crédite les gains du jour sur le solde (dépensables de suite).
-      logic.reconcileLiveGold(_sync);
+      // Routines déjà planifiées (30 j) → exclues des ennemis du donjon.
+      unawaited(logic.refreshPlannedActivityIds());
       final messages = await AssistantEngine.evaluate(
         projects: projects,
         domains: _state!.domains,
@@ -2547,6 +2556,36 @@ class _AppRootState extends State<AppRoot>
     // Bloc routine/activité : on démarre directement son activité.
     if (block.projectId == null) {
       if (block.activityId != null) {
+        final act = _state?.activities
+            .firstWhereOrNull((a) => a.id == block.activityId);
+        // Routine avec minuteur → petit menu : chrono libre OU décompte (anneau).
+        if (act != null &&
+            act.isHabit &&
+            (act.timerMin ?? 0) > 0 &&
+            (act.linkedActivityId ?? '').trim().isNotEmpty) {
+          final linked = _state?.activities
+              .firstWhereOrNull((a) => a.id == act.linkedActivityId!.trim());
+          if (linked != null) {
+            await _chooseRoutineLaunch(act, linked);
+            return;
+          }
+        }
+        // Routine sans minuteur → chrono sur l'activité liée si elle existe.
+        if (act != null && act.isHabit) {
+          final linkedId = (act.linkedActivityId ?? '').trim();
+          final linked = linkedId.isEmpty
+              ? null
+              : _state?.activities.firstWhereOrNull((a) => a.id == linkedId);
+          if (linked != null) {
+            logic.start(linked.id);
+            setState(() {
+              _focusProject = null;
+              _focusTask = null;
+              _tab = _Tab.maintenant;
+            });
+            return;
+          }
+        }
         logic.start(block.activityId!);
         setState(() {
           _focusProject = null;
@@ -3103,7 +3142,7 @@ class _AppRootState extends State<AppRoot>
       startTime: hhmm,
       durationMin: minutes,
       title: '🔥 Défi : ${a.name}',
-      category: 'personal',
+      category: a.isHabit ? 'routine' : 'personal',
       activityId: a.id,
       challenge: true,
       reminders: remAt != null ? [remAt.toIso8601String()] : [],
@@ -3624,6 +3663,56 @@ class _AppRootState extends State<AppRoot>
     logic.start(linked.id);
     _startCountdown(minutes, linked.name, routineId: r.id);
     setState(() => _tab = _Tab.maintenant);
+  }
+
+  /// Menu au lancement (▶) d'un bloc routine minuté dans le programme du jour :
+  /// laisse choisir entre chrono libre et minuteur (décompte) sur l'activité liée.
+  Future<void> _chooseRoutineLaunch(Activity r, Activity linked) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(r.name,
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w800)),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.play_arrow_rounded),
+              title: const Text('Démarrer le chrono'),
+              subtitle: Text('Sur « ${linked.name} »'),
+              onTap: () {
+                Navigator.pop(ctx);
+                logic.start(linked.id);
+                logic.rev.value++;
+                setState(() {
+                  _focusProject = null;
+                  _focusTask = null;
+                  _tab = _Tab.maintenant;
+                });
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.timer_outlined),
+              title: Text('Démarrer le minuteur (${r.timerMin} min)'),
+              subtitle: Text('Sur « ${linked.name} »'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _startRoutineTimer(r);
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
   }
 
   /// Mini-menu d'actions au tap d'une routine dans le lanceur (FAB).

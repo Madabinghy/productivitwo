@@ -133,20 +133,30 @@ extension GoldEngine on AppLogic {
   /// d'or / avant une dépense / au démarrage / au resume.
   void reconcileLiveGold(FirestoreSync sync) {
     final ymd = yyyymmdd(DateTime.now());
+    final earned = goldGainForDay(DateTime.now());
+    // Reflet local optimiste (UI réactive) à partir du flottant LOCAL.
     var netDelta = 0;
     if (state.goldTodayGainYmd != ymd) {
       netDelta -= state.goldTodayGain; // retire le flottant de la veille
       state.goldTodayGain = 0;
       state.goldTodayGainYmd = ymd;
     }
-    final earned = goldGainForDay(DateTime.now());
     netDelta += earned - state.goldTodayGain;
     state.goldTodayGain = earned;
-    if (netDelta == 0) return;
-    state.gold += netDelta;
-    if (state.gold < 0) state.gold = 0;
-    onChange();
-    sync.creditLiveGold(netDelta, ymd, earned);
+    if (netDelta != 0) {
+      state.gold += netDelta;
+      if (state.gold < 0) state.gold = 0;
+      onChange();
+    }
+    // Réconciliation AUTORITATIVE : la transaction recalcule le delta depuis le
+    // flottant SERVEUR (juste en multi-appareil) et renvoie le solde vrai, qui
+    // corrige le solde local si l'autre appareil avait déjà crédité le jour.
+    sync.reconcileLiveGoldTx(earned, ymd).then((auth) {
+      if (auth != null && auth != state.gold) {
+        state.gold = auth;
+        onChange();
+      }
+    });
   }
 
   /// Matérialise gains/pertes pour chaque jour CLOS non encore traité
@@ -297,7 +307,20 @@ extension GoldEngine on AppLogic {
   /// une routine quotidienne a atteint sa cible.
   int weaponsEarned(String key) {
     if (key == 'epee') {
-      return state.ganttActionsByDay.values.fold(0, (a, b) => a + b);
+      // 1 épée = 1 action de tâche Gantt réalisée. Dérivé des vraies données
+      // (peu importe l'écran qui coche) et conservé même tâche/projet terminés
+      // — seul le mode planification (draft) est hors économie.
+      var n = 0;
+      for (final p in currentProjects) {
+        if (p.status == 'draft') continue;
+        for (final t in p.tasks) {
+          if (t.status == 'skipped') continue;
+          for (final act in t.actions) {
+            if (act.done) n++;
+          }
+        }
+      }
+      return n;
     }
     if (key == 'arc') {
       final mins =
@@ -440,6 +463,9 @@ extension GoldEngine on AppLogic {
     final out = <({String type, String id, int hp})>[];
     for (final a in state.activeActivities) {
       if (a.isHabit) {
+        // Routine déjà planifiée dans les 30 j à venir → pas d'ennemi (elle a
+        // déjà sa place dans le programme du jour).
+        if (plannedActivityIds.contains(a.id)) continue;
         final hp = enemyHp('spider', a.id);
         if (hp > 0) out.add((type: 'spider', id: a.id, hp: hp));
       } else if (a.goalMin > 0) {
