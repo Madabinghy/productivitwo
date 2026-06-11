@@ -710,6 +710,11 @@ class AppState {
   // (la 1ʳᵉ fois on passe par l'overworld pour trouver le château). 0 = jamais.
   int expeditionDonjonLevel;
   int expeditionGuardianKilledLevel; // niveau dont le gardien a été vaincu (0=aucun)
+  // Combat — modèle stock/munitions : l'arme se GAGNE par la productivité
+  // (routine→sandale, tâche→épée, dérivé des données) et se DÉPENSE au kill.
+  // On ne persiste que le dépensé (par clé 'sandale'/'epee') et les captures.
+  Map<String, int> weaponsSpent; // armes consommées (clé → nombre)
+  Map<String, int> pestKills; // captures par type ('spider'/'scorpion'/'snake')
 
   AppState({
     required this.domains,
@@ -783,6 +788,8 @@ class AppState {
     this.questStreak = 0,
     this.expeditionDonjonLevel = 0,
     this.expeditionGuardianKilledLevel = 0,
+    Map<String, int>? weaponsSpent,
+    Map<String, int>? pestKills,
     List<String>? expeditionChallenges,
     // ✅ NOUVEAU
     Map<String, List<String>>? nowSkippedByYmd,
@@ -825,6 +832,8 @@ class AppState {
         expeditionPicked = expeditionPicked ?? <String>[],
         expeditionEntities = expeditionEntities ?? <String>[],
         expeditionChallenges = expeditionChallenges ?? <String>[],
+        weaponsSpent = weaponsSpent ?? <String, int>{},
+        pestKills = pestKills ?? <String, int>{},
         collection = collection ?? <String>[],
         collectionMeta = collectionMeta ?? <String, String>{},
         cosmeticsOwned = cosmeticsOwned ?? <String>[];
@@ -891,6 +900,8 @@ class AppState {
         'expeditionChallenges': expeditionChallenges,
         'expeditionDonjonLevel': expeditionDonjonLevel,
         'expeditionGuardianKilledLevel': expeditionGuardianKilledLevel,
+        'weaponsSpent': weaponsSpent,
+        'pestKills': pestKills,
         'collection': collection,
         'collectionMeta': collectionMeta,
         'lastFreeStepYmd': lastFreeStepYmd,
@@ -1030,6 +1041,8 @@ class AppState {
           (j['expeditionChallenges'] as List?)?.cast<String>() ?? <String>[],
       expeditionDonjonLevel: (j['expeditionDonjonLevel'] as num?)?.toInt() ?? 0,
       expeditionGuardianKilledLevel: (j['expeditionGuardianKilledLevel'] as num?)?.toInt() ?? 0,
+      weaponsSpent: (j['weaponsSpent'] as Map?)?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ?? <String, int>{},
+      pestKills: (j['pestKills'] as Map?)?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ?? <String, int>{},
       collection: (j['collection'] as List?)?.cast<String>() ?? <String>[],
       collectionMeta: (j['collectionMeta'] as Map?)?.map((k, v) => MapEntry(k.toString(), v.toString())) ?? <String, String>{},
       lastFreeStepYmd: j['lastFreeStepYmd'] as String?,

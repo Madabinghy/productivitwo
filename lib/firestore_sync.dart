@@ -253,6 +253,10 @@ class FirestoreSync {
             (meta['expeditionDonjonLevel'] as num?)?.toInt() ?? 0,
         expeditionGuardianKilledLevel:
             (meta['expeditionGuardianKilledLevel'] as num?)?.toInt() ?? 0,
+        weaponsSpent: (meta['weaponsSpent'] as Map?)
+            ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
+        pestKills: (meta['pestKills'] as Map?)
+            ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
         collection: (meta['collection'] as List?)?.cast<String>(),
         collectionMeta: (meta['collectionMeta'] as Map?)?.map((k, v) => MapEntry(k.toString(), v.toString())),
         lastFreeStepYmd: meta['lastFreeStepYmd'] as String?,
@@ -362,6 +366,9 @@ class FirestoreSync {
       expeditionChallenges:  remote.expeditionChallenges.isNotEmpty ? remote.expeditionChallenges : local.expeditionChallenges,
       expeditionDonjonLevel: local.expeditionDonjonLevel >= remote.expeditionDonjonLevel ? local.expeditionDonjonLevel : remote.expeditionDonjonLevel,
       expeditionGuardianKilledLevel: local.expeditionGuardianKilledLevel >= remote.expeditionGuardianKilledLevel ? local.expeditionGuardianKilledLevel : remote.expeditionGuardianKilledLevel,
+      // Compteurs monotones (dépenses d'armes / captures) → on garde le plus avancé.
+      weaponsSpent:          _mapSum(local.weaponsSpent) >= _mapSum(remote.weaponsSpent) ? local.weaponsSpent : remote.weaponsSpent,
+      pestKills:             _mapSum(local.pestKills) >= _mapSum(remote.pestKills) ? local.pestKills : remote.pestKills,
       collection:            local.collection.length >= remote.collection.length ? local.collection : remote.collection,
       collectionMeta:        local.collection.length >= remote.collection.length ? local.collectionMeta : remote.collectionMeta,
       lastFreeStepYmd:       local.goldLifetime >= remote.goldLifetime ? local.lastFreeStepYmd : remote.lastFreeStepYmd,
@@ -869,6 +876,18 @@ class FirestoreSync {
   Future<void> setCollectionMeta(Map<String, String> meta) async {
     if (uid == null) return;
     await _meta().set({'collectionMeta': meta}, SetOptions(merge: true));
+  }
+
+  static int _mapSum(Map<String, int> m) =>
+      m.values.fold(0, (a, b) => a + b);
+
+  /// Persiste les stats de combat (armes dépensées + captures par type).
+  Future<void> setCombatStats(
+      Map<String, int> weaponsSpent, Map<String, int> pestKills) async {
+    if (uid == null) return;
+    await _meta().set(
+        {'weaponsSpent': weaponsSpent, 'pestKills': pestKills},
+        SetOptions(merge: true));
   }
 
   /// Écrit les défis du donjon (générés côté app). Stockés dans le meta.

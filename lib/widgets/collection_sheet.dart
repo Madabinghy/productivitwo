@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/expedition.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
+import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/widgets/expedition_map_game.dart';
 
 /// Mes cartes : hub des cartes d'expédition. En tête, la carte en cours (qu'on
@@ -52,6 +53,53 @@ class _CollectionSheet extends StatelessWidget {
                     color: cs.onSurface.withOpacity(.6))),
           ]),
           const SizedBox(height: 12),
+          // Arsenal (armes en réserve) + captures — utile avant de partir chasser.
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withOpacity(.35),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Arsenal',
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: cs.onSurface.withOpacity(.6))),
+                    const SizedBox(height: 2),
+                    Text(
+                        '🩴 ×${logic.weaponsAvailable('sandale')}   🏹 ×${logic.weaponsAvailable('arc')}   🗡️ ×${logic.weaponsAvailable('epee')}',
+                        style: const TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w800)),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text('Captures',
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: cs.onSurface.withOpacity(.6))),
+                  const SizedBox(height: 2),
+                  Text(
+                      '🕷️ ${logic.pestKillCount('spider')}  🦂 ${logic.pestKillCount('scorpion')}  🐍 ${logic.pestKillCount('snake')}',
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w700)),
+                ],
+              ),
+            ]),
+          ),
+          const SizedBox(height: 8),
+          Text('🩴 routine · 🏹 1 h de temps loggé · 🗡️ tâche terminée. Une arme se dépense par capture.',
+              style:
+                  TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(.5))),
+          const SizedBox(height: 16),
           // Carte en cours : on peut aller l'explorer / la chasser.
           Text('Chasser une carte',
               style: TextStyle(

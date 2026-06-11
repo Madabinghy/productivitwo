@@ -152,7 +152,20 @@ class GoldEconomy {
       pestCost(type) * pestDrainCapHours * (guardian ? 2 : 1);
 
   /// Arme requise pour tuer un nuisible : épée pour le serpent, sandale sinon.
-  static String weaponForPest(String type) => type == 'snake' ? 'epee' : 'sandale';
+  // Chaque ennemi a son arme, adossée à un pilier de productivité :
+  // araignée→🩴 sandale (routine) · scorpion→🏹 arc (temps loggé) · serpent→🗡️ épée (tâche).
+  static String weaponForPest(String type) {
+    switch (type) {
+      case 'snake':
+        return 'epee';
+      case 'scorpion':
+        return 'arc';
+      default:
+        return 'sandale';
+    }
+  }
+
+  static const int minutesPerArrow = 60; // 1 h de temps loggé = 1 flèche
 
   static const int weaponEpee = 8; // tue un serpent (consommable)
   static const int weaponSandale = 5; // tue araignée/scorpion (consommable)

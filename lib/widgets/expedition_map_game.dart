@@ -311,6 +311,7 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
         sync.setExpeditionGuardianKilled(_level);
       }
     }
+    logic.recordKill(type, sync); // dépense l'arme + incrémente la capture
     logic.applyGold(sync, loot,
         category: 'gain',
         reasonCode: 'pest_loot',
@@ -333,13 +334,15 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
       barrierColor: Colors.black.withOpacity(.6),
       transitionDuration: const Duration(milliseconds: 220),
       pageBuilder: (ctx, a1, a2) {
-        // Baseline « à la rencontre » → il faut 3 routines/actions de PLUS.
-        final baseline =
-            forgeBaselineFromMeta(decodeEntity(raw).meta, _ymd());
-        final forge = logic.weaponForgeStatus(weapon, baseline: baseline);
-        final pct = forge.target > 0
-            ? (forge.progress / forge.target).clamp(0.0, 1.0)
-            : 0.0;
+        // Modèle stock : il faut au moins 1 arme en réserve pour frapper.
+        final avail = logic.weaponsAvailable(weapon);
+        final ready = avail >= 1;
+        final wEmoji = logic.weaponEmoji(weapon);
+        final wHint = weapon == 'epee'
+            ? 'Finis une tâche de projet → forge une épée 🗡️'
+            : weapon == 'arc'
+                ? 'Logge ~1 h de temps → gagne une flèche 🏹'
+                : 'Accomplis une routine du jour → forge une sandale 🩴';
         return SafeArea(
           child: Center(
             child: SingleChildScrollView(
@@ -377,51 +380,45 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
                             color: Colors.white)),
                     const SizedBox(height: 6),
                     Text(
-                        'Il maudit tes routines (gain \u00f72) et te draine de l\'or \u00e0 l\'heure. Forge ton arme par l\'action pour le vaincre.',
+                        'Il maudit tes routines (gain \u00f72) et te draine de l\'or \u00e0 l\'heure. D\u00e9pense une arme pour le vaincre.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                             fontSize: 12,
                             color: Colors.white.withOpacity(.7))),
                     const SizedBox(height: 22),
-                    Text(forge.label,
+                    Text(
+                        ready
+                            ? 'Arsenal : $wEmoji \u00d7$avail en r\u00e9serve'
+                            : 'R\u00e9serve $wEmoji vide',
                         textAlign: TextAlign.center,
                         style: const TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
                             color: Colors.white)),
-                    const SizedBox(height: 10),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(5),
-                      child: LinearProgressIndicator(
-                        value: pct,
-                        minHeight: 9,
-                        backgroundColor: Colors.white.withOpacity(.15),
-                        color: const Color(0xFFFFC247),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text('${forge.progress} / ${forge.target}',
-                        style: TextStyle(
-                            fontSize: 11, color: Colors.white.withOpacity(.6))),
+                    if (!ready) ...[
+                      const SizedBox(height: 6),
+                      Text(wHint,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              fontSize: 12, color: Colors.white.withOpacity(.7))),
+                    ],
                     const SizedBox(height: 22),
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(
                         style: FilledButton.styleFrom(
-                          backgroundColor: forge.ready
+                          backgroundColor: ready
                               ? const Color(0xFFE24A4A)
                               : Colors.white.withOpacity(.18),
                           padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
-                        icon: Text(forge.ready ? '\u2694\uFE0F' : '\ud83d\udd12',
+                        icon: Text(ready ? '\u2694\uFE0F' : '\ud83d\udd12',
                             style: const TextStyle(fontSize: 16)),
                         label: Text(
-                            forge.ready
-                                ? 'FRAPPER !'
-                                : 'Forge ton arme d\'abord',
+                            ready ? 'FRAPPER ! (-1 $wEmoji)' : 'Pas d\'arme',
                             style: const TextStyle(
                                 fontSize: 15, fontWeight: FontWeight.w800)),
-                        onPressed: forge.ready
+                        onPressed: ready
                             ? () {
                                 Navigator.pop(ctx);
                                 _strike(raw, type);
@@ -677,8 +674,17 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
                 ],
               ),
             ),
-            goldAmount('${logic.state.gold}',
-                fontSize: 15, weight: FontWeight.bold, color: _kGold),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                goldAmount('${logic.state.gold}',
+                    fontSize: 15, weight: FontWeight.bold, color: _kGold),
+                const SizedBox(height: 2),
+                Text(
+                    '🩴${logic.weaponsAvailable('sandale')}  🏹${logic.weaponsAvailable('arc')}  🗡️${logic.weaponsAvailable('epee')}',
+                    style: const TextStyle(fontSize: 11)),
+              ],
+            ),
           ]),
         ),
         Padding(

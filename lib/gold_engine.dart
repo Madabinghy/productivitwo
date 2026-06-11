@@ -284,17 +284,53 @@ extension GoldEngine on AppLogic {
     return done;
   }
 
-  /// Statut de forge d'une arme. [baseline] = effort déjà accompli AU MOMENT de
-  /// la rencontre du nuisible → il faut en faire 3 de PLUS pour forger. (0 par
-  /// défaut = forge absolue.)
-  ({String label, int progress, int target, bool ready}) weaponForgeStatus(
-      String weaponKey, {int baseline = 0}) {
-    const target = 3;
-    final prog = (weaponRawCount(weaponKey) - baseline).clamp(0, target);
-    final label = weaponKey == 'epee'
-        ? 'Forge l\'épée 🗡️ : coche 3 actions de projet (depuis la rencontre)'
-        : 'Forge la sandale 🩴 : fais 3 routines (depuis la rencontre)';
-    return (label: label, progress: prog, target: target, ready: prog >= target);
+  // ── Armes : modèle STOCK / MUNITIONS ────────────────────────────────────────
+  // L'arme se GAGNE par la productivité (dérivé des données) et se DÉPENSE au
+  // kill. Permet de préparer un arsenal et d'enchaîner les captures en chasse.
+  String weaponEmoji(String key) =>
+      key == 'epee' ? '🗡️' : (key == 'arc' ? '🏹' : '🩴');
+  String weaponName(String key) =>
+      key == 'epee' ? 'épée' : (key == 'arc' ? 'arc' : 'sandale');
+
+  /// Armes GAGNÉES (cumul) : épée = total des actions de projet cochées ;
+  /// arc = heures de temps loggué (1 h = 1 flèche) ; sandale = chaque jour où
+  /// une routine quotidienne a atteint sa cible.
+  int weaponsEarned(String key) {
+    if (key == 'epee') {
+      return state.ganttActionsByDay.values.fold(0, (a, b) => a + b);
+    }
+    if (key == 'arc') {
+      final mins =
+          state.sessions.fold<int>(0, (s, x) => s + x.duration.inMinutes);
+      return mins ~/ GoldEconomy.minutesPerArrow;
+    }
+    final targets = <String, int>{};
+    for (final a in state.activities) {
+      if (a.isHabit) targets[a.id] = activeHabitTarget(a);
+    }
+    var n = 0;
+    for (final hp in state.habitProgress) {
+      final tgt = targets[hp.activityId];
+      if (tgt != null && tgt > 0 && hp.value >= tgt) n++;
+    }
+    return n;
+  }
+
+  /// Armes DISPONIBLES = gagnées − dépensées (plancher 0).
+  int weaponsAvailable(String key) {
+    final a = weaponsEarned(key) - (state.weaponsSpent[key] ?? 0);
+    return a < 0 ? 0 : a;
+  }
+
+  int pestKillCount(String type) => state.pestKills[type] ?? 0;
+
+  /// Enregistre une capture : dépense l'arme requise + incrémente le compteur,
+  /// puis persiste.
+  void recordKill(String type, FirestoreSync sync) {
+    final w = GoldEconomy.weaponForPest(type);
+    state.weaponsSpent[w] = (state.weaponsSpent[w] ?? 0) + 1;
+    state.pestKills[type] = (state.pestKills[type] ?? 0) + 1;
+    sync.setCombatStats(state.weaponsSpent, state.pestKills);
   }
 
   /// Une routine est « lancée » si elle a été complétée au moins une fois ≤ d.
