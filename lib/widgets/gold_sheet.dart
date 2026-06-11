@@ -704,96 +704,114 @@ class _RoutineLine extends StatelessWidget {
     final green = Colors.green.shade700;
     final frozen = logic.state.goldGelDays
         .contains('${activity.id}_${yyyymmdd(today)}');
+    final hasLaunch = onLaunch != null &&
+        (activity.linkedActivityId ?? '').trim().isNotEmpty;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: Row(children: [
-        Icon(validated ? Icons.check_circle : Icons.radio_button_unchecked,
-            size: 20, color: validated ? green : cs.onSurface.withOpacity(.3)),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(activity.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w600,
-                      color: validated ? green : null)),
-              Row(children: [
-                if (frozen) ...[
-                  const Text('🧊', style: TextStyle(fontSize: 12)),
-                  const SizedBox(width: 6),
-                ],
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+        decoration: BoxDecoration(
+          color: validated
+              ? Colors.green.withOpacity(.06)
+              : cs.surfaceContainerHighest.withOpacity(.35),
+          borderRadius: BorderRadius.circular(14),
+          border: frozen
+              ? Border.all(color: Colors.lightBlue.withOpacity(.45))
+              : null,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(
+                  validated
+                      ? Icons.check_circle
+                      : Icons.radio_button_unchecked,
+                  size: 20,
+                  color: validated ? green : cs.onSurface.withOpacity(.3)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(activity.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w700,
+                        color: validated ? green : null)),
+              ),
+              _StepBtn(
+                  icon: Icons.remove,
+                  enabled: done > 0,
+                  onTap: () {
+                    logic.incHabit(activity.id, -1, today);
+                    onChanged();
+                  },
+                  cs: cs),
+              SizedBox(
+                width: 24,
+                child: Text('$done',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w800)),
+              ),
+              _StepBtn(
+                  icon: Icons.add,
+                  enabled: true,
+                  onTap: () {
+                    final before = tgt > 0 && done >= tgt;
+                    logic.incHabit(activity.id, 1, today);
+                    final after = tgt > 0 &&
+                        logic.habitValueOn(activity.id, today) >= tgt;
+                    if (!before && after) showConfetti(context, count: 16);
+                    onChanged();
+                  },
+                  cs: cs),
+            ]),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                if (frozen) const Text('🧊', style: TextStyle(fontSize: 13)),
                 Text.rich(
                   TextSpan(children: [
                     TextSpan(text: '+$gain'),
                     goldIconSpan(size: 11),
                   ]),
                   style: TextStyle(
-                      fontSize: 11, fontWeight: FontWeight.w600, color: green),
+                      fontSize: 12, fontWeight: FontWeight.w700, color: green),
                 ),
-                if (tgt > 1) ...[
-                  const SizedBox(width: 8),
+                if (tgt > 1)
                   Text('$done/$tgt',
                       style: TextStyle(
-                          fontSize: 11, color: cs.onSurface.withOpacity(.5))),
+                          fontSize: 12, color: cs.onSurface.withOpacity(.5))),
+                if (hasLaunch) ...[
+                  _launchBtn(Icons.play_arrow_rounded, 'Démarrer le chrono',
+                      () => onLaunch!(activity, timer: false)),
+                  _launchBtn(
+                      Icons.timer_outlined,
+                      (activity.timerMin ?? 0) > 0
+                          ? 'Démarrer le minuteur (${activity.timerMin} min)'
+                          : 'Démarrer le minuteur (5 min)',
+                      () => onLaunch!(activity, timer: true)),
                 ],
-              ]),
-            ],
-          ),
+                if (bleeding) ...[
+                  const _LossPill(compact: true),
+                  TextButton(
+                    onPressed: () => _freeze(context),
+                    style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 6)),
+                    child: const Text('Geler', style: TextStyle(fontSize: 12)),
+                  ),
+                ],
+              ],
+            ),
+          ],
         ),
-        if (onLaunch != null &&
-            (activity.linkedActivityId ?? '').trim().isNotEmpty) ...[
-          _launchBtn(Icons.play_arrow_rounded, 'Démarrer le chrono',
-              () => onLaunch!(activity, timer: false)),
-          _launchBtn(
-              Icons.timer_outlined,
-              (activity.timerMin ?? 0) > 0
-                  ? 'Démarrer le minuteur (${activity.timerMin} min)'
-                  : 'Démarrer le minuteur (5 min)',
-              () => onLaunch!(activity, timer: true)),
-        ],
-        _StepBtn(
-            icon: Icons.remove,
-            enabled: done > 0,
-            onTap: () {
-              logic.incHabit(activity.id, -1, today);
-              onChanged();
-            },
-            cs: cs),
-        SizedBox(
-          width: 22,
-          child: Text('$done',
-              textAlign: TextAlign.center,
-              style:
-                  const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-        ),
-        _StepBtn(
-            icon: Icons.add,
-            enabled: true,
-            onTap: () {
-              final before = tgt > 0 && done >= tgt;
-              logic.incHabit(activity.id, 1, today);
-              final after = tgt > 0 && logic.habitValueOn(activity.id, today) >= tgt;
-              if (!before && after) showConfetti(context, count: 16);
-              onChanged();
-            },
-            cs: cs),
-        if (bleeding) ...[
-          const SizedBox(width: 6),
-          const _LossPill(compact: true),
-          TextButton(
-            onPressed: () => _freeze(context),
-            style: TextButton.styleFrom(
-                visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.symmetric(horizontal: 4)),
-            child: const Text('Geler', style: TextStyle(fontSize: 12)),
-          ),
-        ],
-      ]),
+      ),
     );
   }
 }
