@@ -335,89 +335,156 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
       transitionDuration: const Duration(milliseconds: 220),
       pageBuilder: (ctx, a1, a2) {
         // Modèle stock : il faut au moins 1 arme en réserve pour frapper.
+        final isGuardian = isGuardianMeta(decodeEntity(raw).meta);
         final avail = logic.weaponsAvailable(weapon);
         final ready = avail >= 1;
         final wEmoji = logic.weaponEmoji(weapon);
+        final wName = logic.weaponName(weapon);
+        final force = GoldEconomy.pestCost(type);
+        final lootEst = GoldEconomy.pestLootBase(type, isGuardian);
+        final kills = logic.pestKillCount(type);
         final wHint = weapon == 'epee'
-            ? 'Finis une tâche de projet → forge une épée 🗡️'
+            ? 'Finis une tâche → 🗡️ épée'
             : weapon == 'arc'
-                ? 'Logge ~1 h de temps → gagne une flèche 🏹'
-                : 'Accomplis une routine du jour → forge une sandale 🩴';
+                ? 'Logge ~1 h de temps → 🏹 flèche'
+                : 'Fais une routine → 🩴 sandale';
+        final accent =
+            isGuardian ? const Color(0xFFFFC247) : const Color(0xFFE24A4A);
+
+        Widget chip(String emoji, String label) => Container(
+              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(.09),
+                borderRadius: BorderRadius.circular(11),
+                border: Border.all(color: Colors.white.withOpacity(.10)),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text(emoji, style: const TextStyle(fontSize: 13)),
+                const SizedBox(width: 6),
+                Text(label,
+                    style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white)),
+              ]),
+            );
+
         return SafeArea(
           child: Center(
             child: SingleChildScrollView(
               child: Container(
                 margin: const EdgeInsets.all(24),
-                padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+                padding: const EdgeInsets.fromLTRB(24, 18, 24, 18),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF2A0E0E), Color(0xFF5A1A1A)],
+                  gradient: LinearGradient(
+                    colors: isGuardian
+                        ? const [Color(0xFF2A1A0E), Color(0xFF4A2A0E)]
+                        : const [Color(0xFF2A0E0E), Color(0xFF5A1A1A)],
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                   ),
                   borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: const Color(0xFFE24A4A), width: 2),
-                  boxShadow: const [
-                    BoxShadow(color: Color(0x66E24A4A), blurRadius: 24)
+                  border: Border.all(color: accent, width: 2),
+                  boxShadow: [
+                    BoxShadow(color: accent.withOpacity(.4), blurRadius: 26)
                   ],
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text('\u2694\uFE0F COMBAT',
+                    Text(isGuardian ? '👑 GARDIEN' : '⚔️ COMBAT',
                         style: TextStyle(
                             fontSize: 13,
                             letterSpacing: 3,
                             fontWeight: FontWeight.w900,
-                            color: Color(0xFFFFC9C9))),
-                    const SizedBox(height: 16),
-                    Text(entityEmoji(type), style: const TextStyle(fontSize: 78)),
-                    const SizedBox(height: 4),
-                    Text(pestName(type),
+                            color: isGuardian
+                                ? const Color(0xFFFFE3A0)
+                                : const Color(0xFFFFC9C9))),
+                    const SizedBox(height: 12),
+                    Container(
+                      width: 116,
+                      height: 116,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: RadialGradient(colors: [
+                          accent.withOpacity(.30),
+                          accent.withOpacity(0),
+                        ]),
+                      ),
+                      child: Text(entityEmoji(type),
+                          style: const TextStyle(fontSize: 74)),
+                    ),
+                    Text('${isGuardian ? "Gardien " : ""}${pestName(type)}',
                         style: const TextStyle(
-                            fontSize: 20,
+                            fontSize: 21,
                             fontWeight: FontWeight.w800,
                             color: Colors.white)),
-                    const SizedBox(height: 6),
-                    Text(
-                        'Il maudit tes routines (gain \u00f72) et te draine de l\'or \u00e0 l\'heure. D\u00e9pense une arme pour le vaincre.',
-                        textAlign: TextAlign.center,
+                    const SizedBox(height: 3),
+                    Text('Niveau $_mapLevel · capturé ${kills}\u00d7',
                         style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.white.withOpacity(.7))),
-                    const SizedBox(height: 22),
-                    Text(
-                        ready
-                            ? 'Arsenal : $wEmoji \u00d7$avail en r\u00e9serve'
-                            : 'R\u00e9serve $wEmoji vide',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white)),
-                    if (!ready) ...[
-                      const SizedBox(height: 6),
-                      Text(wHint,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              fontSize: 12, color: Colors.white.withOpacity(.7))),
-                    ],
-                    const SizedBox(height: 22),
+                            fontSize: 11.5,
+                            color: Colors.white.withOpacity(.55))),
+                    const SizedBox(height: 14),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      alignment: WrapAlignment.center,
+                      children: [
+                        chip('⚡', 'Force $force/h'),
+                        chip('💰', 'Butin ~$lootEst or'),
+                        chip(wEmoji, 'Arme : $wName'),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 11),
+                      decoration: BoxDecoration(
+                        color: (ready
+                                ? const Color(0xFF1E7A4D)
+                                : const Color(0xFF7A1E1E))
+                            .withOpacity(.35),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(ready ? 'Réserve : ' : 'Réserve vide — ',
+                              style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.white.withOpacity(.85))),
+                          Flexible(
+                            child: Text(ready ? '$wEmoji \u00d7$avail' : wHint,
+                                style: TextStyle(
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: ready
+                                        ? const Color(0xFF7CF0AD)
+                                        : const Color(0xFFFFB0B0))),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(
                         style: FilledButton.styleFrom(
-                          backgroundColor: ready
-                              ? const Color(0xFFE24A4A)
-                              : Colors.white.withOpacity(.18),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          backgroundColor:
+                              ready ? accent : Colors.white.withOpacity(.16),
+                          foregroundColor: ready
+                              ? Colors.white
+                              : Colors.white.withOpacity(.5),
+                          padding: const EdgeInsets.symmetric(vertical: 15),
                         ),
-                        icon: Text(ready ? '\u2694\uFE0F' : '\ud83d\udd12',
+                        icon: Text(ready ? '⚔️' : '🔒',
                             style: const TextStyle(fontSize: 16)),
                         label: Text(
-                            ready ? 'FRAPPER ! (-1 $wEmoji)' : 'Pas d\'arme',
+                            ready ? 'FRAPPER !  (-1 $wEmoji)' : 'Pas d\'arme',
                             style: const TextStyle(
-                                fontSize: 15, fontWeight: FontWeight.w800)),
+                                fontSize: 15.5, fontWeight: FontWeight.w900)),
                         onPressed: ready
                             ? () {
                                 Navigator.pop(ctx);
@@ -426,12 +493,12 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
                             : null,
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     TextButton(
                       onPressed: () => Navigator.pop(ctx),
                       child: Text('Fuir',
-                          style:
-                              TextStyle(color: Colors.white.withOpacity(.6))),
+                          style: TextStyle(
+                              color: Colors.white.withOpacity(.55))),
                     ),
                   ],
                 ),
