@@ -715,6 +715,9 @@ class AppState {
   // On ne persiste que le dépensé (par clé 'sandale'/'epee') et les captures.
   Map<String, int> weaponsSpent; // armes consommées (clé → nombre)
   Map<String, int> pestKills; // captures par type ('spider'/'scorpion'/'snake')
+  // Combats ENGAGÉS (épinglés via armes globales) : "type~itemId". Apparaissent
+  // dans « Combats en cours » jusqu'à ce que l'item soit rattrapé (PV 0).
+  List<String> engagedEnemies;
 
   AppState({
     required this.domains,
@@ -790,6 +793,7 @@ class AppState {
     this.expeditionGuardianKilledLevel = 0,
     Map<String, int>? weaponsSpent,
     Map<String, int>? pestKills,
+    List<String>? engagedEnemies,
     List<String>? expeditionChallenges,
     // ✅ NOUVEAU
     Map<String, List<String>>? nowSkippedByYmd,
@@ -834,6 +838,7 @@ class AppState {
         expeditionChallenges = expeditionChallenges ?? <String>[],
         weaponsSpent = weaponsSpent ?? <String, int>{},
         pestKills = pestKills ?? <String, int>{},
+        engagedEnemies = engagedEnemies ?? <String>[],
         collection = collection ?? <String>[],
         collectionMeta = collectionMeta ?? <String, String>{},
         cosmeticsOwned = cosmeticsOwned ?? <String>[];
@@ -902,6 +907,7 @@ class AppState {
         'expeditionGuardianKilledLevel': expeditionGuardianKilledLevel,
         'weaponsSpent': weaponsSpent,
         'pestKills': pestKills,
+        'engagedEnemies': engagedEnemies,
         'collection': collection,
         'collectionMeta': collectionMeta,
         'lastFreeStepYmd': lastFreeStepYmd,
@@ -1043,6 +1049,7 @@ class AppState {
       expeditionGuardianKilledLevel: (j['expeditionGuardianKilledLevel'] as num?)?.toInt() ?? 0,
       weaponsSpent: (j['weaponsSpent'] as Map?)?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ?? <String, int>{},
       pestKills: (j['pestKills'] as Map?)?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ?? <String, int>{},
+      engagedEnemies: (j['engagedEnemies'] as List?)?.cast<String>() ?? <String>[],
       collection: (j['collection'] as List?)?.cast<String>() ?? <String>[],
       collectionMeta: (j['collectionMeta'] as Map?)?.map((k, v) => MapEntry(k.toString(), v.toString())) ?? <String, String>{},
       lastFreeStepYmd: j['lastFreeStepYmd'] as String?,

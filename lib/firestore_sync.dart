@@ -257,6 +257,7 @@ class FirestoreSync {
             ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
         pestKills: (meta['pestKills'] as Map?)
             ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
+        engagedEnemies: (meta['engagedEnemies'] as List?)?.cast<String>(),
         collection: (meta['collection'] as List?)?.cast<String>(),
         collectionMeta: (meta['collectionMeta'] as Map?)?.map((k, v) => MapEntry(k.toString(), v.toString())),
         lastFreeStepYmd: meta['lastFreeStepYmd'] as String?,
@@ -369,6 +370,7 @@ class FirestoreSync {
       // Compteurs monotones (dépenses d'armes / captures) → on garde le plus avancé.
       weaponsSpent:          _mapSum(local.weaponsSpent) >= _mapSum(remote.weaponsSpent) ? local.weaponsSpent : remote.weaponsSpent,
       pestKills:             _mapSum(local.pestKills) >= _mapSum(remote.pestKills) ? local.pestKills : remote.pestKills,
+      engagedEnemies:        local.goldLifetime >= remote.goldLifetime ? local.engagedEnemies : remote.engagedEnemies,
       collection:            local.collection.length >= remote.collection.length ? local.collection : remote.collection,
       collectionMeta:        local.collection.length >= remote.collection.length ? local.collectionMeta : remote.collectionMeta,
       lastFreeStepYmd:       local.goldLifetime >= remote.goldLifetime ? local.lastFreeStepYmd : remote.lastFreeStepYmd,
@@ -888,6 +890,12 @@ class FirestoreSync {
     await _meta().set(
         {'weaponsSpent': weaponsSpent, 'pestKills': pestKills},
         SetOptions(merge: true));
+  }
+
+  /// Persiste la liste des combats engagés (épinglés).
+  Future<void> setEngagedEnemies(List<String> engaged) async {
+    if (uid == null) return;
+    await _meta().set({'engagedEnemies': engaged}, SetOptions(merge: true));
   }
 
   /// Écrit les défis du donjon (générés côté app). Stockés dans le meta.

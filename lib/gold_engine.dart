@@ -491,6 +491,73 @@ extension GoldEngine on AppLogic {
     return m < 1 ? 1 : m;
   }
 
+  // ── Engagement de combat : armes globales → épingler dans Combats en cours ──
+  String _engageKey(String type, String itemId) => '$type~$itemId';
+
+  bool isEngaged(String type, String itemId) =>
+      state.engagedEnemies.contains(_engageKey(type, itemId));
+
+  int engageCost(String type) => GoldEconomy.engageCost;
+
+  bool canEngage(String type) =>
+      weaponsAvailable(GoldEconomy.weaponForPest(type)) >= engageCost(type);
+
+  /// Engage (épingle) un ennemi : dépense des armes globales adaptées, l'ajoute
+  /// aux combats en cours. false si pas assez d'armes ou déjà engagé.
+  bool engageEnemy(String type, String itemId, FirestoreSync sync) {
+    if (isEngaged(type, itemId)) return false;
+    final w = GoldEconomy.weaponForPest(type);
+    if (weaponsAvailable(w) < engageCost(type)) return false;
+    state.weaponsSpent[w] = (state.weaponsSpent[w] ?? 0) + engageCost(type);
+    state.engagedEnemies.add(_engageKey(type, itemId));
+    sync.setCombatStats(state.weaponsSpent, state.pestKills);
+    sync.setEngagedEnemies(state.engagedEnemies);
+    onChange();
+    return true;
+  }
+
+  void unengageEnemy(String type, String itemId, FirestoreSync sync) {
+    if (state.engagedEnemies.remove(_engageKey(type, itemId))) {
+      sync.setEngagedEnemies(state.engagedEnemies);
+      onChange();
+    }
+  }
+
+  /// Combats en cours = ennemis engagés encore vivants (PV>0). PUR (pour le build).
+  List<({String type, String id, int hp, int maxHp})> combatsInProgress() {
+    final out = <({String type, String id, int hp, int maxHp})>[];
+    for (final key in state.engagedEnemies) {
+      final i = key.indexOf('~');
+      if (i < 0) continue;
+      final type = key.substring(0, i);
+      final id = key.substring(i + 1);
+      final hp = enemyHp(type, id);
+      if (hp <= 0) continue;
+      out.add((type: type, id: id, hp: hp, maxHp: enemyMaxHp(type, id)));
+    }
+    out.sort((a, b) => a.hp.compareTo(b.hp));
+    return out;
+  }
+
+  /// Purge les combats engagés rattrapés (PV 0) — à appeler hors build.
+  void pruneEngaged(FirestoreSync sync) {
+    final dead = <String>[];
+    for (final key in state.engagedEnemies) {
+      final i = key.indexOf('~');
+      if (i < 0) {
+        dead.add(key);
+        continue;
+      }
+      if (enemyHp(key.substring(0, i), key.substring(i + 1)) <= 0) {
+        dead.add(key);
+      }
+    }
+    if (dead.isNotEmpty) {
+      state.engagedEnemies.removeWhere(dead.contains);
+      sync.setEngagedEnemies(state.engagedEnemies);
+    }
+  }
+
   /// Domaine de l'item d'un ennemi (pour colorer sa case).
   String? enemyDomainId(String type, String itemId) {
     if (type == 'snake') {

@@ -4,6 +4,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/expedition.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
+import 'package:productivitwo_v1/widgets/backlog_combat.dart';
 import 'package:productivitwo_v1/widgets/confetti.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/widgets/expedition_sheet.dart';
@@ -682,246 +683,34 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
     );
   }
 
-  /// Complète la 1ʳᵉ action non faite d'une tâche (frappe d'un serpent backlog).
-  Future<bool> _completeOneTaskAction(String taskId) async {
-    for (final p in logic.currentProjects) {
-      for (final t in p.tasks) {
-        if (t.id != taskId) continue;
-        final idx = t.actions.indexWhere((a) => !a.done);
-        if (idx < 0) return false;
-        t.actions[idx].done = true;
-        t.actions[idx].doneAt = DateTime.now();
-        await sync.saveProjectTasks(p.id, p.tasks);
-        return true;
+  /// Retire de la carte les ennemis backlog rattrapés (PV 0) après un combat.
+  void _pruneDeadBacklog() {
+    final survivors = _ents.where((e) {
+      final d = decodeEntity(e);
+      if (!isBacklogMeta(d.meta)) return true;
+      return logic.enemyHp(d.type, backlogItemId(d.meta)) > 0;
+    }).toList();
+    if (survivors.length != _ents.length) {
+      if (_hunt) {
+        _huntEntities
+          ..clear()
+          ..addAll(survivors);
+      } else {
+        logic.state.expeditionEntities
+          ..clear()
+          ..addAll(survivors);
+        sync.expeditionWrite(entities: survivors, reasonCode: 'pest_kill');
       }
     }
-    return false;
+    if (mounted) setState(() {});
   }
 
-  /// Combat « vrai item » (PV) : on FRAPPE en faisant le vrai travail. Cœurs =
-  /// PV (✅ = déjà éliminés). Routine minutée → chrono / 5 min / minuteur complet ;
-  /// routine simple → +1 ; activité → 5 min / chrono ; tâche → cocher une action.
   Future<void> _showBacklogCombat(
       String raw, String type, String itemId) async {
-    const accent = Color(0xFFE24A4A);
-    int timerMin = 0;
-    String linkedId = '';
-    if (type == 'spider') {
-      for (final x in logic.state.activities) {
-        if (x.id == itemId) {
-          timerMin = x.timerMin ?? 0;
-          linkedId = (x.linkedActivityId ?? '').trim();
-          break;
-        }
-      }
-    }
-    final spiderTimer = type == 'spider' && timerMin > 0 && linkedId.isNotEmpty;
-    final role = switch (type) {
-      'snake' => 'Tâche à terminer',
-      'scorpion' => 'Activité en retard',
-      _ => 'Routine à faire',
-    };
-
-    await showGeneralDialog<void>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: 'Combat',
-      barrierColor: Colors.black.withOpacity(.6),
-      transitionDuration: const Duration(milliseconds: 220),
-      pageBuilder: (ctx, a1, a2) {
-        return StatefulBuilder(builder: (ctx, setLocal) {
-          final hp = logic.enemyHp(type, itemId);
-          final maxHp = logic.enemyMaxHp(type, itemId);
-          final itemName = logic.enemyItemName(type, itemId);
-
-          void closeAll() {
-            if (mounted) {
-              Navigator.pop(ctx);
-              Navigator.pop(context);
-            }
-          }
-
-          void launchTimer(int min, String actId, {String? routineId}) {
-            if (logic.launchTimerHook == null) return;
-            logic.start(actId);
-            logic.launchTimerHook!(min, itemName, routineId: routineId);
-            closeAll();
-          }
-
-          void launchChrono(String actId) {
-            logic.start(actId);
-            logic.onChange();
-            closeAll();
-          }
-
-          Future<void> inlineWork() async {
-            if (type == 'spider') {
-              logic.incHabit(itemId, 1, DateTime.now());
-              logic.onChange();
-            } else {
-              await _completeOneTaskAction(itemId);
-            }
-            if (logic.enemyHp(type, itemId) <= 0) {
-              Navigator.pop(ctx);
-              await _strike(raw, type, backlog: true);
-            } else {
-              setLocal(() {});
-              setState(() {});
-            }
-          }
-
-          Widget atk(String icon, String label, VoidCallback onTap) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: accent,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 13),
-                    ),
-                    icon: Text(icon, style: const TextStyle(fontSize: 15)),
-                    label: Text(label,
-                        style: const TextStyle(
-                            fontSize: 14.5, fontWeight: FontWeight.w800)),
-                    onPressed: onTap,
-                  ),
-                ),
-              );
-
-          // Échelle de minuteurs (temps) : pour scorpion ET routine minutée.
-          // On ne propose que les paliers ≤ PV restants (pas d'« over-kill »).
-          List<Widget> timerLadder(String actId,
-              {int? finishMin, String? finishRoutineId}) {
-            final out = <Widget>[];
-            if (finishMin != null) {
-              out.add(atk('🏁', 'Finir ($finishMin min)',
-                  () => launchTimer(finishMin, actId, routineId: finishRoutineId)));
-            }
-            for (final m in [25, 15, 5]) {
-              if (m == finishMin) continue;
-              if (hp >= m ~/ 5) {
-                out.add(atk('⏱️', '$m min (−${m ~/ 5} ❤️)',
-                    () => launchTimer(m, actId)));
-              }
-            }
-            out.add(atk('▶', 'Chrono libre', () => launchChrono(actId)));
-            return out;
-          }
-
-          final List<Widget> attacks;
-          if (spiderTimer) {
-            attacks = timerLadder(linkedId,
-                finishMin: timerMin, finishRoutineId: itemId);
-          } else if (type == 'spider') {
-            attacks = [atk('🔥', 'Faire la routine (+1)', inlineWork)];
-          } else if (type == 'scorpion') {
-            attacks = timerLadder(itemId);
-          } else {
-            attacks = [atk('✅', 'Cocher une action (−1 ❤️)', inlineWork)];
-          }
-
-          final Widget hearts;
-          if (maxHp > 12) {
-            hearts = Text('❤️ $hp / $maxHp PV',
-                style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white));
-          } else {
-            hearts = Wrap(
-              spacing: 2,
-              runSpacing: 2,
-              alignment: WrapAlignment.center,
-              children: [
-                for (int i = 0; i < maxHp; i++)
-                  Text(i < maxHp - hp ? '✅' : '❤️',
-                      style: const TextStyle(fontSize: 18)),
-              ],
-            );
-          }
-
-          return SafeArea(
-            child: Center(
-              child: SingleChildScrollView(
-                child: Container(
-                  margin: const EdgeInsets.all(24),
-                  padding: const EdgeInsets.fromLTRB(24, 18, 24, 18),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF2A0E0E), Color(0xFF5A1A1A)],
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                    ),
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: accent, width: 2),
-                    boxShadow: [
-                      BoxShadow(color: accent.withOpacity(.4), blurRadius: 26)
-                    ],
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(role.toUpperCase(),
-                          style: const TextStyle(
-                              fontSize: 12,
-                              letterSpacing: 2,
-                              fontWeight: FontWeight.w900,
-                              color: Color(0xFFFFC9C9))),
-                      const SizedBox(height: 12),
-                      Container(
-                        width: 104,
-                        height: 104,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: RadialGradient(colors: [
-                            accent.withOpacity(.30),
-                            accent.withOpacity(0),
-                          ]),
-                        ),
-                        child: Text(entityEmoji(type),
-                            style: const TextStyle(fontSize: 68)),
-                      ),
-                      Text(itemName,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white)),
-                      const SizedBox(height: 10),
-                      hearts,
-                      const SizedBox(height: 14),
-                      ...attacks,
-                      if (logic.programBacklogHook != null)
-                        TextButton.icon(
-                          onPressed: () async {
-                            Navigator.pop(ctx);
-                            if (mounted) Navigator.pop(context); // ferme la carte
-                            await logic.programBacklogHook!(type, itemId);
-                          },
-                          icon: const Text('📅',
-                              style: TextStyle(fontSize: 14)),
-                          label: Text('Programmer pour plus tard',
-                              style: TextStyle(
-                                  color: Colors.white.withOpacity(.9),
-                                  fontWeight: FontWeight.w700)),
-                        ),
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        child: Text('Fuir',
-                            style: TextStyle(
-                                color: Colors.white.withOpacity(.55))),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          );
-        });
-      },
-    );
+    await showBacklogCombat(context, logic, sync, type, itemId,
+        onChanged: _pruneDeadBacklog, onLaunchedTimer: () {
+      if (mounted) Navigator.pop(context);
+    });
   }
 
   Future<void> _move(OwTile t,

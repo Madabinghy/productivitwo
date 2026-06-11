@@ -167,6 +167,11 @@ class GoldEconomy {
 
   static const int minutesPerArrow = 60; // 1 h de temps loggé = 1 flèche
 
+  /// Coût en armes globales (du type adapté) pour ENGAGER un nuisible (l'épingler
+  /// dans « Combats en cours »). Donne un rôle aux armes globales ; ne blesse pas
+  /// (la blessure se fait au travail spécifique). Tunable.
+  static const int engageCost = 2;
+
   // ── Bestiaire : créatures débloquées par RECETTES de captures ───────────────
   // Le BUT du farm : capturer X nuisibles d'un (ou plusieurs) type(s) débloque
   // une créature dans la Collection. Progression naturelle araignée→scorpion→

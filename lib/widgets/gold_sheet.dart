@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
+import 'package:productivitwo_v1/expedition.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/gold_purchase.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/widgets/backlog_combat.dart';
 import 'package:productivitwo_v1/widgets/expedition_map_game.dart';
 import 'package:productivitwo_v1/widgets/expedition_sheet.dart';
 import 'package:productivitwo_v1/widgets/collection_sheet.dart';
@@ -68,11 +70,16 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
   FirestoreSync get sync => widget.sync;
   ScrollController? get scrollController => widget.scrollController;
 
+  // « Routines du jour » mises de côté dans Mon or (remplacées par « Combats en
+  // cours »). Le code reste — repasser à true pour le réafficher.
+  final bool _showRoutinesInGold = false;
+
   @override
   void initState() {
     super.initState();
     // Crédite les gains du jour sur le solde affiché (dépensables de suite).
     logic.reconcileLiveGold(widget.sync);
+    logic.pruneEngaged(widget.sync); // nettoie les combats rattrapés
   }
 
   // AppLogic n'est pas un Listenable : `incHabit`/gel mutent l'état en place,
@@ -309,52 +316,108 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
           ),
           const SizedBox(height: 20),
 
-          // ── Routines du jour ──────────────────────────────────────────────
-          Row(
-            children: [
-              Text('🔁 Routines du jour',
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: .5,
-                      color: cs.onSurface.withOpacity(.6))),
-              const SizedBox(width: 6),
-              _InfoDot(
-                onTap: () => showDialog(
-                  context: context,
-                  builder: (_) => AlertDialog(
-                    title: const Text('Routines du jour'),
-                    content: const Text(
-                      'Coche tes routines quotidiennes ici. Chaque routine validée '
-                      'rapporte de l\'or (le bonus grandit avec la série). Une routine '
-                      'déjà lancée mais non faite te coûte −1 or par jour : valide-la '
-                      'ou gèle-la pour stopper la perte.',
-                    ),
-                    actions: [
-                      TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text('Compris')),
-                    ],
+          // ── Combats en cours (remplace « Routines du jour ») ──────────────
+          Row(children: [
+            Text('⚔️ Combats en cours',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: .5,
+                    color: cs.onSurface.withOpacity(.6))),
+            const SizedBox(width: 6),
+            _InfoDot(
+              onTap: () => showDialog(
+                context: context,
+                builder: (_) => AlertDialog(
+                  title: const Text('Combats en cours'),
+                  content: const Text(
+                    'Sur ta carte, « Engager » un nuisible (coût en armes 🩴🏹🗡️) '
+                    'l\'épingle ici pour le retrouver sans re-fouiller la map. Pour '
+                    'le vaincre, ouvre sa carte de combat et FAIS le vrai travail '
+                    '(la routine, le temps sur l\'activité, ou cocher les actions).',
                   ),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Compris')),
+                  ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ]),
           const SizedBox(height: 8),
-          if (dailyRoutines.isEmpty)
-            _Hint('Aucune routine quotidienne pour l\'instant.', cs)
-          else
-            for (final a in dailyRoutines)
-              _RoutineLine(
-                logic: logic,
-                sync: sync,
-                activity: a,
-                bleeding: bleedingIds.contains(a.id),
-                onChanged: _onRoutineChanged,
-                onLaunch: widget.onLaunchRoutine,
-                cs: cs,
-              ),
+          Builder(builder: (context) {
+            final combats = logic.combatsInProgress();
+            if (combats.isEmpty) {
+              return _Hint(
+                  'Aucun combat engagé. Sur ta carte, « Engager » un nuisible pour le suivre ici.',
+                  cs);
+            }
+            return Column(
+              children: [
+                for (final c in combats)
+                  _CombatCard(
+                      logic: logic,
+                      sync: sync,
+                      type: c.type,
+                      itemId: c.id,
+                      hp: c.hp,
+                      maxHp: c.maxHp,
+                      onChanged: _refresh,
+                      cs: cs),
+              ],
+            );
+          }),
           const SizedBox(height: 20),
+
+          // ── Routines du jour (mis de côté — _showRoutinesInGold) ──────────
+          if (_showRoutinesInGold) ...[
+            Row(
+              children: [
+                Text('🔁 Routines du jour',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: .5,
+                        color: cs.onSurface.withOpacity(.6))),
+                const SizedBox(width: 6),
+                _InfoDot(
+                  onTap: () => showDialog(
+                    context: context,
+                    builder: (_) => AlertDialog(
+                      title: const Text('Routines du jour'),
+                      content: const Text(
+                        'Coche tes routines quotidiennes ici. Chaque routine validée '
+                        'rapporte de l\'or (le bonus grandit avec la série). Une routine '
+                        'déjà lancée mais non faite te coûte −1 or par jour : valide-la '
+                        'ou gèle-la pour stopper la perte.',
+                      ),
+                      actions: [
+                        TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('Compris')),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (dailyRoutines.isEmpty)
+              _Hint('Aucune routine quotidienne pour l\'instant.', cs)
+            else
+              for (final a in dailyRoutines)
+                _RoutineLine(
+                  logic: logic,
+                  sync: sync,
+                  activity: a,
+                  bleeding: bleedingIds.contains(a.id),
+                  onChanged: _onRoutineChanged,
+                  onLaunch: widget.onLaunchRoutine,
+                  cs: cs,
+                ),
+            const SizedBox(height: 20),
+          ],
 
           // ── Tâches en retard ──────────────────────────────────────────────
           if (late.isNotEmpty) ...[
@@ -889,6 +952,73 @@ class _LedgerRow extends StatelessWidget {
         goldAmount('${pos ? '+' : ''}${entry.delta}',
             fontSize: 13, weight: FontWeight.w700, color: c),
       ]),
+    );
+  }
+}
+
+/// Carte « Combat en cours » dans Mon or : tap → ouvre la carte de combat pour
+/// frapper l'ennemi (sans re-fouiller la map).
+class _CombatCard extends StatelessWidget {
+  final AppLogic logic;
+  final FirestoreSync sync;
+  final String type, itemId;
+  final int hp, maxHp;
+  final VoidCallback onChanged;
+  final ColorScheme cs;
+  const _CombatCard(
+      {required this.logic,
+      required this.sync,
+      required this.type,
+      required this.itemId,
+      required this.hp,
+      required this.maxHp,
+      required this.onChanged,
+      required this.cs});
+
+  @override
+  Widget build(BuildContext context) {
+    final name = logic.enemyItemName(type, itemId);
+    final wEmoji = logic.weaponEmoji(GoldEconomy.weaponForPest(type));
+    final pv = maxHp > 12 ? '❤️ $hp/$maxHp' : '❤️' * hp;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => showBacklogCombat(context, logic, sync, type, itemId,
+            onChanged: onChanged),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest.withOpacity(.4),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFE24A4A).withOpacity(.3)),
+          ),
+          child: Row(children: [
+            Text(entityEmoji(type), style: const TextStyle(fontSize: 24)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 2),
+                  Text('$pv  ·  arme $wEmoji',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 12, color: cs.onSurface.withOpacity(.6))),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right,
+                size: 18, color: cs.onSurface.withOpacity(.3)),
+          ]),
+        ),
+      ),
     );
   }
 }
