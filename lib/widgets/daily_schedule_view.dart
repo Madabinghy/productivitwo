@@ -139,6 +139,15 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                 style: TextStyle(
                     fontSize: 11, color: cs.onSurface.withOpacity(.4)),
               ),
+            IconButton(
+              tooltip: 'Ajouter un bloc',
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.only(left: 8),
+              constraints: const BoxConstraints(),
+              icon: Icon(Icons.add_circle_outline,
+                  size: 20, color: cs.primary),
+              onPressed: () => _addManualBlock(context),
+            ),
           ],
         ),
         const SizedBox(height: 12),
@@ -296,28 +305,32 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   }
 
   Widget _buildEmptyState(ColorScheme cs) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withOpacity(.4),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cs.outline.withOpacity(.12)),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.today_outlined,
-              size: 20, color: cs.onSurface.withOpacity(.3)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              'Pas de programme pour aujourd\'hui.\nDis à Claude ce que tu veux faire.',
-              style: TextStyle(
-                  fontSize: 13,
-                  color: cs.onSurface.withOpacity(.4),
-                  height: 1.45),
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => _addManualBlock(context),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withOpacity(.4),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: cs.outline.withOpacity(.12)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.today_outlined,
+                size: 20, color: cs.onSurface.withOpacity(.3)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Pas de programme pour aujourd\'hui.\nTouche pour ajouter un bloc, ou dis à Claude ce que tu veux faire.',
+                style: TextStyle(
+                    fontSize: 13,
+                    color: cs.onSurface.withOpacity(.4),
+                    height: 1.45),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -330,6 +343,30 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
           borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (_) =>
           _BlockEditSheet(block: block, onSave: _saveBlock),
+    );
+  }
+
+  /// Ajout manuel d'un bloc perso : ouvre la sheet d'édition vierge, puis
+  /// pose le bloc dans le programme du jour (crée le doc au besoin).
+  void _addManualBlock(BuildContext context) {
+    final now = TimeOfDay.now();
+    final draft = ScheduleBlock(
+      startTime:
+          '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
+      durationMin: 30,
+      title: '',
+      category: 'personal',
+    );
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => _BlockEditSheet(
+        block: draft,
+        isNew: true,
+        onSave: (b) => _sync.addScheduleBlock(widget.date, b),
+      ),
     );
   }
 
@@ -357,8 +394,10 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
 class _BlockEditSheet extends StatefulWidget {
   final ScheduleBlock block;
   final Future<void> Function(ScheduleBlock) onSave;
+  final bool isNew;
 
-  const _BlockEditSheet({required this.block, required this.onSave});
+  const _BlockEditSheet(
+      {required this.block, required this.onSave, this.isNew = false});
 
   @override
   State<_BlockEditSheet> createState() => _BlockEditSheetState();
@@ -416,10 +455,10 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
         children: [
           Row(
             children: [
-              const Expanded(
-                child: Text('Modifier le bloc',
-                    style:
-                        TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              Expanded(
+                child: Text(widget.isNew ? 'Nouveau bloc' : 'Modifier le bloc',
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w700)),
               ),
               IconButton(
                   icon: const Icon(Icons.close, size: 20),
@@ -463,7 +502,9 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
           const SizedBox(height: 20),
           FilledButton(
             onPressed: _saving ? null : _save,
-            child: Text(_saving ? 'Enregistrement…' : 'Enregistrer'),
+            child: Text(_saving
+                ? 'Enregistrement…'
+                : (widget.isNew ? 'Ajouter' : 'Enregistrer')),
           ),
         ],
       ),
