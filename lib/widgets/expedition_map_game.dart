@@ -40,7 +40,8 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
   final _rng = Random();
   bool _busy = false;
 
-  int get _level => logic.effectiveLevel() + 1;
+  int get _level => logic.effectiveLevel() + 1; // niveau VISÉ (déblocage)
+  int get _mapLevel => logic.effectiveLevel(); // identité de la carte (affichage)
   late final Overworld _map = generateOverworld(_level);
 
   Set<String> get _revealed => logic.state.expeditionRevealed.toSet();
@@ -474,7 +475,7 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
         !logic.state.collection.contains(collectionAdd)) {
       logic.state.collection.add(collectionAdd);
       logic.state.collectionMeta[collectionAdd] =
-          '${_ymd()}|trouvé sur la carte (niv. $_level)';
+          '${_ymd()}|trouvé sur la carte (niv. $_mapLevel)';
       sync.setCollectionMeta(logic.state.collectionMeta);
     }
     if (free) logic.state.lastFreeStepYmd = _ymd();
@@ -503,7 +504,7 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
       logic.state.collection.add(reward.id);
     }
     logic.state.collectionMeta[reward.id] =
-        '${_ymd()}|exploration 100% (niv. $_level)';
+        '${_ymd()}|exploration 100% (niv. $_mapLevel)';
     sync.setCollectionMeta(logic.state.collectionMeta);
     logic.onChange();
     sync.expeditionWrite(collectionAdd: reward.id);
@@ -566,7 +567,7 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Niveau $_level · ???',
+                  Text('Niveau $_mapLevel · ???',
                       style: const TextStyle(
                           fontSize: 16, fontWeight: FontWeight.bold)),
                   Text('Explore ${biome.label} jusqu\'au 🏰',

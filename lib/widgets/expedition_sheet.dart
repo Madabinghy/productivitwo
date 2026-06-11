@@ -37,7 +37,8 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
   FirestoreSync get sync => widget.sync;
   bool _busy = false;
 
-  int get _level => logic.effectiveLevel() + 1;
+  int get _level => logic.effectiveLevel() + 1; // niveau VISÉ (déblocage)
+  int get _mapLevel => logic.effectiveLevel(); // identité de la carte (affichage)
   late final Expedition _exp = generateExpedition(_level);
 
   Set<String> get _cleared => {_exp.start.id, ...logic.state.expeditionCleared};
@@ -387,7 +388,7 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Donjon · Niveau $_level',
+                    Text('Donjon · Niveau $_mapLevel',
                         style: const TextStyle(
                             fontSize: 16, fontWeight: FontWeight.bold)),
                     Text('Défis relevés : $doneCount / ${challenges.length}',
