@@ -10,6 +10,12 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.06', '11 juin 2026', [
+    (Icons.edit_outlined, 'Gestion de projets : tu peux maintenant RENOMMER un projet (tap sur son titre) et gérer ses PHASES sur mobile — ajouter, renommer, supprimer (menu ⋯). Supprimer une phase rend ses tâches « sans phase »'),
+    (Icons.today, 'Planification : un bouton « Aujourd\'hui » dans le sélecteur de date (défis / programmer) — plus besoin d\'ouvrir le calendrier pour planifier dans la journée'),
+    (Icons.event_available_outlined, 'Donjon : « Programmer pour plus tard » sur une routine — pas le temps maintenant ? Tu la planifies (avec rappel) et elle quitte la liste'),
+    (Icons.checklist_rtl_outlined, 'Quête du jour plus claire : elle indique ce qui compte (routine validée · action de projet cochée · défi relevé), et disparaît de « Maintenant » une fois le coffre récupéré'),
+  ]),
   _Entry('6.05', '11 juin 2026', [
     (Icons.favorite_outline, 'Combat à cœurs ❤️ : les PV d\'un nuisible s\'affichent en cœurs (✅ = déjà éliminés). Une routine MINUTÉE (ex. 25 min) devient 5 cœurs → tu choisis comment frapper : Finir, 25/15/5 min ou Chrono libre. Pareil pour les activités en retard'),
     (Icons.push_pin_outlined, '« Engager » un nuisible (coût en armes 🩴🏹🗡️) l\'épingle dans « Combats en cours » (dans Mon or) → tu le retrouves sans re-fouiller la carte. Pour le vaincre : ouvre sa carte et FAIS le vrai travail'),
