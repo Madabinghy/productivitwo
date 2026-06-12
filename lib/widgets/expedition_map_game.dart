@@ -10,6 +10,7 @@ import 'package:productivitwo_v1/widgets/confetti.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/widgets/expedition_sheet.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
+import 'package:productivitwo_v1/widgets/pulse.dart';
 
 /// Overworld (Phase 1) : carte 2D explorable pour débloquer le prochain niveau.
 /// Déplacement GRATUIT sur case éclairée ; brouillard = torche (révèle radius 2,
@@ -1227,7 +1228,10 @@ class _TileView extends StatelessWidget {
           border: reachable ? Border.all(color: _kGold, width: 2) : null,
         ),
         child: reachable
-            ? const Text('🔦', style: TextStyle(fontSize: 16))
+            ? const PulseScale(
+                maxScale: 1.18,
+                period: Duration(milliseconds: 900),
+                child: Text('🔦', style: TextStyle(fontSize: 16)))
             : null,
       );
       return reachable ? GestureDetector(onTap: onTap, child: fog) : fog;
@@ -1286,7 +1290,25 @@ class _TileView extends StatelessWidget {
                 height: _tile * hpFrac.clamp(0.0, 1.0),
                 child: Container(color: hpColor!.withOpacity(.5)),
               ),
-            Text(content, style: const TextStyle(fontSize: 20)),
+            // Emoji animé : ennemis/avatar/butin « respirent » ; un cœur exposé
+            // (engagé, sbires tombés) pulse fort → game-feel « vivant ».
+            Builder(builder: (_) {
+              final isColl = entity == null &&
+                  tile.collectibleId != null &&
+                  !picked.contains(tile.collectibleId);
+              final animate =
+                  content.isNotEmpty && (entity != null || isColl || isAvatar);
+              if (!animate) {
+                return Text(content, style: const TextStyle(fontSize: 20));
+              }
+              final exposed = entity != null && engaged && sbiresCount <= 0;
+              return PulseScale(
+                maxScale: exposed ? 1.16 : (isAvatar ? 1.05 : 1.09),
+                period: Duration(
+                    milliseconds: exposed ? 620 : (isAvatar ? 1700 : 1250)),
+                child: Text(content, style: const TextStyle(fontSize: 20)),
+              );
+            }),
             if (entity != null && sbiresCount > 0)
               Positioned(
                 left: 0, right: 0, bottom: 2,

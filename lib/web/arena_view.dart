@@ -5,9 +5,10 @@ import 'package:productivitwo_v1/expedition.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/widgets/pulse.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/widgets/backlog_combat.dart' show showBacklogCombat;
-import 'package:productivitwo_v1/widgets/daily_schedule_view.dart';
+import 'package:productivitwo_v1/widgets/collection_sheet.dart';
 import 'package:productivitwo_v1/widgets/expedition_map_game.dart';
 import 'package:productivitwo_v1/widgets/expedition_sheet.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
@@ -31,11 +32,10 @@ class _ArenaViewState extends State<ArenaView> {
   String? _error;
 
   // ── Chronomètre ─────────────────────────────────────────────────────────────
-  DateTime? _timerStart;
-  String? _timerActivityId;
-  String? _timerActivityName;
+  // Basé sur la SESSION OUVERTE de `logic` (logic.start ouvre une session ;
+  // le combat la déclenche). On l'affiche, et au stop on la ferme + sauvegarde.
   Timer? _ticker;
-  Duration _elapsed = Duration.zero;
+  int? _targetMin; // objectif affiché (null = chrono libre)
 
   StreamSubscription? _metaSub;
   StreamSubscription? _projectsSub;
@@ -57,6 +57,15 @@ class _ArenaViewState extends State<ArenaView> {
       }
       final logic = AppLogic(state, () { if (mounted) setState(() {}); });
       logic.sync = sync;
+      // Branche le minuteur du combat sur le chrono de l'Arène : le combat a
+      // déjà ouvert la session (logic.start) ; le hook ne fait qu'enregistrer
+      // l'objectif d'affichage + rafraîchir (sinon les boutons « 25 min » sont
+      // no-op sur le web).
+      logic.launchTimerHook = (min, name,
+          {String? routineId, String? expeditionNodeId, int expeditionBonus = 0}) {
+        _targetMin = min;
+        if (mounted) setState(() {});
+      };
 
       final projects = await sync.fetchProjects();
       logic.updateGanttCounts(projects);
@@ -73,8 +82,16 @@ class _ArenaViewState extends State<ArenaView> {
         final fresh = await sync.pull();
         if (fresh == null || !mounted) return;
         final saved = _logic?.currentProjects ?? [];
+        // Préserve les sessions ouvertes non encore sauvegardées (chrono en
+        // cours) — sinon le re-pull les effacerait et perdrait le minuteur.
+        final openSessions =
+            _logic?.state.sessions.where((s) => s.endAt == null).toList() ??
+                const [];
         _logic?.state = fresh;
         _logic?.currentProjects = saved;
+        for (final s in openSessions) {
+          if (!fresh.sessions.any((x) => x.id == s.id)) fresh.sessions.add(s);
+        }
         if (mounted) setState(() {});
       });
     } catch (e) {
@@ -82,54 +99,61 @@ class _ArenaViewState extends State<ArenaView> {
     }
   }
 
-  void _startTimer(ScheduleBlock block) {
-    final actId = block.activityId;
-    if (actId == null || actId.isEmpty) return;
-    final name = block.title;
-    _ticker?.cancel();
-    setState(() {
-      _timerStart = DateTime.now();
-      _timerActivityId = actId;
-      _timerActivityName = name;
-      _elapsed = Duration.zero;
-    });
-    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() => _elapsed = DateTime.now().difference(_timerStart!));
-    });
+  /// Session de temps en cours (ouverte par le combat via logic.start).
+  Session? get _openSession {
+    final l = _logic;
+    if (l == null) return null;
+    Session? last;
+    for (final s in l.state.sessions) {
+      if (s.endAt != null) continue;
+      if (last == null || s.startAt.isAfter(last.startAt)) last = s;
+    }
+    return last;
   }
 
-  Future<void> _stopTimer() async {
-    _ticker?.cancel();
-    _ticker = null;
-    final start = _timerStart;
-    final actId = _timerActivityId;
-    if (start == null || actId == null) return;
-    final end = DateTime.now();
-    final session = Session(activityId: actId, startAt: start, endAt: end);
-    // Persiste en Firestore
-    await sync.saveSession(session);
-    // Met à jour l'état local pour que l'or se recalcule
-    _logic?.state.sessions.add(session);
-    _logic?.onChange();
-    if (mounted) {
-      setState(() {
-        _timerStart = null;
-        _timerActivityId = null;
-        _timerActivityName = null;
-        _elapsed = Duration.zero;
+  String _runningActivityName() {
+    final s = _openSession;
+    if (s == null) return 'Activité';
+    for (final a in _logic!.state.activities) {
+      if (a.id == s.activityId) return a.name;
+    }
+    return 'Activité';
+  }
+
+  // Démarre/arrête le ticker selon qu'une session est ouverte (appelé en build).
+  void _syncTicker() {
+    final running = _openSession != null;
+    if (running && _ticker == null) {
+      _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) setState(() {});
       });
+    } else if (!running && _ticker != null) {
+      _ticker!.cancel();
+      _ticker = null;
     }
   }
 
-  void _cancelTimer() {
+  Future<void> _stopTimer() async {
+    final s = _openSession;
+    if (s == null) return;
+    s.endAt = DateTime.now(); // ferme la session
+    await sync.saveSession(s); // persiste → le temps réduit les ennemis
+    _targetMin = null;
     _ticker?.cancel();
     _ticker = null;
-    if (mounted) setState(() {
-      _timerStart = null;
-      _timerActivityId = null;
-      _timerActivityName = null;
-      _elapsed = Duration.zero;
-    });
+    _logic?.reconcileLiveGold(sync); // l'or du jour intègre le temps loggué
+    _logic?.onChange();
+    if (mounted) setState(() {});
+  }
+
+  void _cancelTimer() {
+    // Annule : retire la session ouverte sans la sauvegarder.
+    _logic?.state.sessions.removeWhere((s) => s.endAt == null);
+    _targetMin = null;
+    _ticker?.cancel();
+    _ticker = null;
+    _logic?.onChange();
+    if (mounted) setState(() {});
   }
 
   @override
@@ -138,11 +162,6 @@ class _ArenaViewState extends State<ArenaView> {
     _metaSub?.cancel();
     _projectsSub?.cancel();
     super.dispose();
-  }
-
-  String _ymd() {
-    final n = DateTime.now();
-    return '${n.year}-${n.month.toString().padLeft(2, '0')}-${n.day.toString().padLeft(2, '0')}';
   }
 
   String _fmtElapsed(Duration d) {
@@ -172,18 +191,22 @@ class _ArenaViewState extends State<ArenaView> {
 
     final logic = _logic!;
     final cs = Theme.of(context).colorScheme;
-    final ymd = _ymd();
-    final timerActive = _timerStart != null;
+    _syncTicker();
+    final open = _openSession;
+    final elapsed = open == null
+        ? Duration.zero
+        : DateTime.now().difference(open.startAt);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _StatsBar(logic: logic, cs: cs),
-        // ── Bandeau chrono ────────────────────────────────────────────────────
-        if (timerActive)
+        // ── Bandeau chrono (session de temps en cours) ────────────────────────
+        if (open != null)
           _TimerBanner(
-            label: _timerActivityName ?? 'Activité',
-            elapsed: _fmtElapsed(_elapsed),
+            label: _runningActivityName() +
+                (_targetMin != null ? '  · objectif ${_targetMin!} min' : ''),
+            elapsed: _fmtElapsed(elapsed),
             onStop: _stopTimer,
             onCancel: _cancelTimer,
           ),
@@ -198,10 +221,12 @@ class _ArenaViewState extends State<ArenaView> {
                     _CombatsColumn(logic: logic, sync: sync, cs: cs,
                         onChanged: () => setState(() {})),
                     const SizedBox(height: 16),
-                    _AujourdhuiColumn(logic: logic, ymd: ymd, cs: cs,
-                        onLaunch: _startTimer),
-                    const SizedBox(height: 16),
                     _ExplorationColumn(logic: logic, sync: sync, cs: cs),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: 520,
+                      child: _BoutiqueColumn(logic: logic, sync: sync),
+                    ),
                   ],
                 ),
               );
@@ -209,24 +234,23 @@ class _ArenaViewState extends State<ArenaView> {
             return Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Col gauche : Combats (cartes héro) — flex 3
+                // Col gauche : Combats (cœur de l'action) — flex 5
                 Flexible(
-                  flex: 3,
+                  flex: 5,
                   child: _CombatsColumn(logic: logic, sync: sync, cs: cs,
                       onChanged: () => setState(() {})),
                 ),
                 const VerticalDivider(width: 1),
-                // Col centre : Aujourd'hui — flex 4
+                // Col centre : Exploration (promue) — flex 4
                 Flexible(
                   flex: 4,
-                  child: _AujourdhuiColumn(logic: logic, ymd: ymd, cs: cs,
-                      onLaunch: _startTimer),
+                  child: _ExplorationColumn(logic: logic, sync: sync, cs: cs),
                 ),
                 const VerticalDivider(width: 1),
-                // Col droite : Exploration — flex 3
+                // Col droite : Or & Boutique — flex 4
                 Flexible(
-                  flex: 3,
-                  child: _ExplorationColumn(logic: logic, sync: sync, cs: cs),
+                  flex: 4,
+                  child: _BoutiqueColumn(logic: logic, sync: sync),
                 ),
               ],
             );
@@ -340,13 +364,44 @@ class _StatsBar extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 20),
-        Text(
-          '🔪×${logic.weaponsAvailable('couteau')}  '
-          '🏹×${logic.weaponsAvailable('arc')}  '
-          '🗡️×${logic.weaponsAvailable('epee')}',
-          style: const TextStyle(fontSize: 13),
-        ),
+        for (final w in const ['couteau', 'arc', 'epee']) ...[
+          _WeaponChip(
+              emoji: logic.weaponEmoji(w), n: logic.weaponsAvailable(w), cs: cs),
+          if (w != 'epee') const SizedBox(width: 6),
+        ],
       ]),
+    );
+  }
+}
+
+// Petite puce d'arme (compteur réel) — cohérente avec les chips du dialogue.
+class _WeaponChip extends StatelessWidget {
+  final String emoji;
+  final int n;
+  final ColorScheme cs;
+  const _WeaponChip(
+      {required this.emoji, required this.n, required this.cs});
+
+  @override
+  Widget build(BuildContext context) {
+    final empty = n <= 0;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: empty
+            ? cs.onSurface.withOpacity(.04)
+            : _kGold.withOpacity(.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+            color: empty
+                ? cs.outline.withOpacity(.15)
+                : _kGold.withOpacity(.35)),
+      ),
+      child: Text('$emoji $n',
+          style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w800,
+              color: empty ? cs.onSurface.withOpacity(.4) : _kGold)),
     );
   }
 }
@@ -392,11 +447,38 @@ class _CombatsColumn extends StatelessWidget {
           ]),
           const SizedBox(height: 12),
           if (combats.isEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                'Aucun combat engagé.\nVa sur la carte → engage un nuisible.',
-                style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.45)),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest.withOpacity(.3),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: cs.outline.withOpacity(.15)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('Aucun combat engagé',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: cs.onSurface.withOpacity(.7))),
+                  const SizedBox(height: 4),
+                  Text(
+                      'Tes routines en retard, activités et tâches deviennent des nuisibles sur la carte. Engage-en un pour le suivre ici.',
+                      style: TextStyle(
+                          fontSize: 11.5,
+                          color: cs.onSurface.withOpacity(.45))),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: () => showExpeditionGame(context, logic, sync),
+                    icon: const Text('🗺️', style: TextStyle(fontSize: 14)),
+                    label: const Text('Aller à la carte'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _kRed,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ],
               ),
             )
           else
@@ -404,7 +486,9 @@ class _CombatsColumn extends StatelessWidget {
               crossAxisCount: 2,
               crossAxisSpacing: 10,
               mainAxisSpacing: 10,
-              childAspectRatio: .72,
+              // Cartes plus riches (récompense + sbires + CTA de phase) →
+              // ratio abaissé pour leur donner de la hauteur (anti-overflow).
+              childAspectRatio: .58,
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               children: [
@@ -450,6 +534,12 @@ class _HeroCombatCard extends StatelessWidget {
     final domColor = domainColor(domainId, logic.state.activeDomains) ??
         _kRed;
     final hpFrac = maxHp > 0 ? (hp / maxHp).clamp(0.0, 1.0) : 0.0;
+    final sbires = logic.sbiresLeft(type, itemId);
+    final exposed = sbires <= 0;
+    final minionW = GoldEconomy.minionWeaponForPest(type);
+    final wEmoji = logic.weaponEmoji(minionW);
+    final myWeapons = logic.weaponsAvailable(minionW);
+    final loot = GoldEconomy.pestLootBase(type, false);
     final role = switch (type) {
       'snake' => 'Tâche',
       'scorpion' => 'En retard',
@@ -468,10 +558,17 @@ class _HeroCombatCard extends StatelessWidget {
             color: _kCardBg,
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
-              BoxShadow(color: _kRed.withOpacity(.25), blurRadius: 12, spreadRadius: 1),
+              BoxShadow(
+                  color: _kRed.withOpacity(exposed ? .5 : .25),
+                  blurRadius: exposed ? 22 : 12,
+                  spreadRadius: exposed ? 2 : 1),
               BoxShadow(color: Colors.black.withOpacity(.6), blurRadius: 6, offset: const Offset(0, 3)),
             ],
-            border: Border.all(color: domColor.withOpacity(.4), width: 1),
+            border: Border.all(
+                color: exposed
+                    ? _kRed.withOpacity(.6)
+                    : domColor.withOpacity(.4),
+                width: exposed ? 1.5 : 1),
           ),
           child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -511,6 +608,17 @@ class _HeroCombatCard extends StatelessWidget {
                           fontWeight: FontWeight.w800,
                           color: Colors.white,
                           decoration: TextDecoration.none)),
+                  const SizedBox(height: 4),
+                  Text.rich(
+                      TextSpan(children: [
+                        TextSpan(text: '🏆 +$loot'),
+                        goldIconSpan(size: 11),
+                      ]),
+                      style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFFE8C24A),
+                          decoration: TextDecoration.none)),
                   const SizedBox(height: 8),
                   // Barre PV
                   ClipRRect(
@@ -523,33 +631,82 @@ class _HeroCombatCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  // Cœurs
-                  Wrap(
-                    spacing: 1,
-                    children: [
-                      for (int i = 0; i < maxHp; i++)
-                        Text(i < maxHp - hp ? '✅' : '❤️',
-                            style: const TextStyle(
-                                fontSize: 10, decoration: TextDecoration.none)),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  // Bouton ouvrir
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 5),
-                    decoration: BoxDecoration(
-                      color: _kRed.withOpacity(.15),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: _kRed.withOpacity(.4)),
-                    ),
-                    child: const Text('⚔️ Combattre',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
+                  // Cœurs (plafonnés à 8 cellules — au-delà, compteur seul pour
+                  // ne pas faire déborder la carte ; la barre PV donne le détail)
+                  if (maxHp <= 8)
+                    Wrap(
+                      spacing: 1,
+                      children: [
+                        for (int i = 0; i < maxHp; i++)
+                          Text(i < maxHp - hp ? '✅' : '❤️',
+                              style: const TextStyle(
+                                  fontSize: 10,
+                                  decoration: TextDecoration.none)),
+                      ],
+                    )
+                  else
+                    Text('❤️ $hp/$maxHp',
+                        style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
-                            color: _kRed,
+                            color: Colors.white,
                             decoration: TextDecoration.none)),
+                  const SizedBox(height: 4),
+                  // Sbires (gardes du cœur) — mini-emojis + arme à dépenser
+                  if (sbires > 0)
+                    Wrap(
+                      spacing: 1,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        for (int i = 0; i < sbires.clamp(0, 5); i++)
+                          Text(entityEmoji(type),
+                              style: const TextStyle(
+                                  fontSize: 9,
+                                  decoration: TextDecoration.none)),
+                        Text('  $sbires · −1 $wEmoji ',
+                            style: TextStyle(
+                                fontSize: 8.5,
+                                color: Colors.white.withOpacity(.4),
+                                decoration: TextDecoration.none)),
+                        Text('($myWeapons)',
+                            style: TextStyle(
+                                fontSize: 8.5,
+                                fontWeight: FontWeight.w800,
+                                color: myWeapons >= 1
+                                    ? const Color(0xFFE8C24A)
+                                    : _kRed.withOpacity(.85),
+                                decoration: TextDecoration.none)),
+                      ],
+                    )
+                  else
+                    Text('💓 cœur exposé',
+                        style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            color: _kRed.withOpacity(.85),
+                            decoration: TextDecoration.none)),
+                  const SizedBox(height: 8),
+                  // Bouton ouvrir — CTA de phase, pulse quand on peut achever
+                  PulseScale(
+                    active: exposed,
+                    maxScale: 1.05,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 5),
+                      decoration: BoxDecoration(
+                        color: exposed ? _kRed : _kRed.withOpacity(.15),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                            color: _kRed.withOpacity(exposed ? 1 : .4)),
+                      ),
+                      child: Text(exposed ? '💓 Achever le cœur' : '⚔️ Combattre',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: exposed ? Colors.white : _kRed,
+                              decoration: TextDecoration.none)),
+                    ),
                   ),
                 ],
               ),
@@ -562,42 +719,7 @@ class _HeroCombatCard extends StatelessWidget {
   }
 }
 
-// ── Colonne Aujourd'hui ───────────────────────────────────────────────────────
-
-class _AujourdhuiColumn extends StatelessWidget {
-  final AppLogic logic;
-  final String ymd;
-  final ColorScheme cs;
-  final void Function(ScheduleBlock block) onLaunch;
-  const _AujourdhuiColumn({
-    required this.logic,
-    required this.ymd,
-    required this.cs,
-    required this.onLaunch,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Text("Aujourd'hui",
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
-        ),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: DailyScheduleView(date: ymd, logic: logic, onLaunch: onLaunch),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ── Colonne Exploration ───────────────────────────────────────────────────────
+// ── Colonne Exploration (promue : « où jouer ») ───────────────────────────────
 
 class _ExplorationColumn extends StatelessWidget {
   final AppLogic logic;
@@ -612,58 +734,96 @@ class _ExplorationColumn extends StatelessWidget {
     final biome = expeditionBiome(level + 1);
     final inDungeon = logic.state.expeditionDonjonLevel > 0;
 
-    // GoldSheetBody retourne un ListView qui requiert une hauteur bornée.
-    // On le met dans Expanded, et la section Exploration sous la divider.
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // ── Magasin ─────────────────────────────────────────────────────────
-        Expanded(
-          child: GoldSheetBody(logic: logic, sync: sync),
-        ),
-        const Divider(height: 1),
-        // ── Exploration ─────────────────────────────────────────────────────
-        SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('Exploration',
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 4),
-              Text('Niveau : $level',
-                  style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.55))),
-              const SizedBox(height: 16),
-              _ExploreBtn(
-                emoji: biome.emoji,
-                title: 'Carte overworld',
-                subtitle: '${biome.label} · niveau ${level + 1}',
-                color: _kGold,
-                onTap: () => showExpeditionGame(context, logic, sync),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('Exploration',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 10),
+          // Bandeau biome courant
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [_kGold.withOpacity(.18), _kGold.withOpacity(.04)],
               ),
-              const SizedBox(height: 10),
-              _ExploreBtn(
-                emoji: inDungeon ? '🏰' : '🔒',
-                title: inDungeon ? 'Reprendre le donjon' : 'Donjon',
-                subtitle: inDungeon
-                    ? 'Reprends où tu t\'es arrêté'
-                    : 'Atteins le château sur la carte d\'abord',
-                color: const Color(0xFF8B5CF6),
-                onTap: inDungeon ? () => showExpeditionSheet(context, logic, sync) : null,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: _kGold.withOpacity(.3)),
+            ),
+            child: Row(children: [
+              Text(biome.emoji, style: const TextStyle(fontSize: 34)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(biome.label,
+                        style: const TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.w800)),
+                    Text('Niveau ${level + 1} à explorer',
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            color: cs.onSurface.withOpacity(.6))),
+                  ],
+                ),
               ),
-              const SizedBox(height: 10),
-              _ExploreBtn(
-                emoji: '🏹',
-                title: 'Chasse',
-                subtitle: 'Farm les nuisibles pour leur butin',
-                color: const Color(0xFF0EA5E9),
-                onTap: () => showExpeditionGame(context, logic, sync, huntLevel: level),
-              ),
-            ],
+            ]),
           ),
-        ),
-      ],
+          const SizedBox(height: 14),
+          _ExploreBtn(
+            emoji: biome.emoji,
+            title: 'Carte overworld',
+            subtitle: 'Explore, ramasse des armes, engage les nuisibles',
+            color: _kGold,
+            onTap: () => showExpeditionGame(context, logic, sync),
+          ),
+          const SizedBox(height: 10),
+          _ExploreBtn(
+            emoji: inDungeon ? '🏰' : '🔒',
+            title: inDungeon ? 'Reprendre le donjon' : 'Donjon',
+            subtitle: inDungeon
+                ? 'Reprends où tu t\'es arrêté'
+                : 'Atteins le château sur la carte d\'abord',
+            color: const Color(0xFF8B5CF6),
+            onTap:
+                inDungeon ? () => showExpeditionSheet(context, logic, sync) : null,
+          ),
+          const SizedBox(height: 10),
+          _ExploreBtn(
+            emoji: '🏹',
+            title: 'Chasse',
+            subtitle: 'Farm les nuisibles pour leur butin et tes recettes',
+            color: const Color(0xFF0EA5E9),
+            onTap: () => showExpeditionGame(context, logic, sync, huntLevel: level),
+          ),
+          const SizedBox(height: 10),
+          _ExploreBtn(
+            emoji: '🗺️',
+            title: 'Mes cartes',
+            subtitle: 'Ta collection de créatures et recettes de chasse',
+            color: const Color(0xFF22C55E),
+            onTap: () => showCollectionSheet(context, logic, sync),
+          ),
+        ],
+      ),
     );
+  }
+}
+
+// ── Colonne Or & Boutique ─────────────────────────────────────────────────────
+
+class _BoutiqueColumn extends StatelessWidget {
+  final AppLogic logic;
+  final FirestoreSync sync;
+  const _BoutiqueColumn({required this.logic, required this.sync});
+
+  @override
+  Widget build(BuildContext context) {
+    // GoldSheetBody = solde, butin du jour, boutique, collection, historique.
+    // Combats masqués (déjà dans la colonne gauche).
+    return GoldSheetBody(logic: logic, sync: sync, showCombatSection: false);
   }
 }
 

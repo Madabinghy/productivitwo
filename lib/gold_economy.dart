@@ -164,12 +164,18 @@ class GoldEconomy {
     }
   }
 
-  /// Arme requise pour tuer les SBIRES (phase 1 avant le cœur).
+  /// Arme requise pour tuer les SBIRES (phase 1 avant le cœur). Mapping
+  /// THÉMATIQUE : chaque arme se gagne par un type d'effort et sert contre
+  /// l'ennemi du même domaine → les 3 armes ont une source ET un débouché.
+  /// 🕷️ araignée (routine) → 🔪 couteau (gagné par routines)
+  /// 🦂 scorpion (activité temps) → 🏹 arc (gagné par heures loggées)
+  /// 🐍 serpent (tâche) → 🗡️ épée (gagné par actions de projet)
   /// snake sbires nécessitent aussi ninja skin (voir minionNeedsNinja).
   static String minionWeaponForPest(String type) {
     switch (type) {
-      case 'snake': return 'couteau';
-      default: return 'arc'; // spider et scorpion → arc
+      case 'snake': return 'epee';
+      case 'scorpion': return 'arc';
+      default: return 'couteau'; // spider (routine) → couteau
     }
   }
 
@@ -206,11 +212,6 @@ class GoldEconomy {
 
   static const int weaponEpee = 8; // tue un serpent (consommable)
   static const int weaponCouteau = 5; // tue araignée/scorpion — cœur (consommable)
-
-  /// Plafond de l'« arsenal » d'une arme (épée/sandale/arc). Au-delà, faire une
-  /// action ne sur-empile plus d'armes : c'est l'OR (toujours crédité par action)
-  /// qui prend le relais → le compteur reste lisible (pas de « 1473 ⚔️ »).
-  static const int weaponStockCap = 9;
 
   static int weaponBasePrice(String key) =>
       key == 'epee' ? weaponEpee : weaponCouteau;

@@ -7,6 +7,7 @@ import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/confetti.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
+import 'package:productivitwo_v1/widgets/pulse.dart';
 
 /// Sheet (par-dessus le combat) listant les actions de la tâche-serpent à
 /// cocher. Chaque coche = −1 ❤️ (persistée) ; tout coché → ferme le sheet, et la
@@ -148,12 +149,19 @@ Future<void> showBacklogCombat(
     barrierColor: Colors.black.withOpacity(.65),
     transitionDuration: const Duration(milliseconds: 220),
     pageBuilder: (ctx, a1, a2) {
+      // Persiste entre les rebuilds setLocal → déclenche le « punch » du sprite
+      // à chaque sbire éliminé (feedback de coup).
+      int hitTick = 0;
       return StatefulBuilder(builder: (ctx, setLocal) {
         final hp = logic.enemyHp(type, itemId);
         final maxHp = logic.enemyMaxHp(type, itemId);
         final itemName = logic.enemyItemName(type, itemId);
         final engaged = logic.isEngaged(type, itemId);
-        final ninjaEquipped = logic.hasSkin;
+        // Capacité permanente, pas une tenue à porter : POSSÉDER l'avatar Ninja
+        // (boutique → Avatars) débloque l'attaque des cœurs, quel que soit
+        // l'avatar actuellement équipé. Source de vérité unique.
+        final ninjaEquipped =
+            logic.state.cosmeticsOwned.contains('avatar_ninja');
         final sbires = engaged ? logic.sbiresLeft(type, itemId) : 0;
         final minionW = GoldEconomy.minionWeaponForPest(type);
         final minionWEmoji = logic.weaponEmoji(minionW);
@@ -246,6 +254,7 @@ Future<void> showBacklogCombat(
               (logic.state.weaponsSpent[minionW] ?? 0) + 1;
           logic.killSbire(type, itemId, sync);
           logic.onChange();
+          hitTick++; // déclenche le punch du sprite
           setLocal(() {});
           onChanged?.call();
         }
@@ -289,22 +298,64 @@ Future<void> showBacklogCombat(
           return out;
         }
 
-        // ── Compteur d'armes disponibles ─────────────────────────────────────────
+        // ── Arsenal : compteurs réels, arme du combat en surbrillance ────────────
+        String earnSource(String w) => w == 'epee'
+            ? 'coche une action de projet'
+            : (w == 'arc' ? 'logge du temps' : 'fais une routine');
+        Widget weaponChip(String w) {
+          final n = logic.weaponsAvailable(w);
+          final active = w == minionW;
+          final empty = n <= 0;
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: active
+                  ? const Color(0xFFD4A017).withOpacity(empty ? .10 : .20)
+                  : Colors.white.withOpacity(.05),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                  color: active
+                      ? const Color(0xFFD4A017).withOpacity(empty ? .4 : .7)
+                      : Colors.white.withOpacity(.08),
+                  width: active ? 1.5 : 1),
+            ),
+            child: Text('${logic.weaponEmoji(w)} $n',
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: active
+                        ? (empty
+                            ? const Color(0xFFC9952F)
+                            : const Color(0xFFE8C24A))
+                        : Colors.white.withOpacity(.55),
+                    decoration: TextDecoration.none)),
+          );
+        }
         final weaponRow = Padding(
           padding: const EdgeInsets.only(bottom: 12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  weaponChip('couteau'),
+                  const SizedBox(width: 8),
+                  weaponChip('arc'),
+                  const SizedBox(width: 8),
+                  weaponChip('epee'),
+                ],
+              ),
+              const SizedBox(height: 6),
               Text(
-                '🔪 ${logic.weaponsAvailable('couteau')}   '
-                '🏹 ${logic.weaponsAvailable('arc')}   '
-                '🗡️ ${logic.weaponsAvailable('epee')}',
+                logic.weaponsAvailable(minionW) >= 1
+                    ? 'Sbires : −1 ${logic.weaponEmoji(minionW)} par sbire'
+                    : 'Plus de ${logic.weaponEmoji(minionW)} — ${earnSource(minionW)}, ou ramasses-en sur la carte',
+                textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.white.withOpacity(.75),
-                  decoration: TextDecoration.none,
-                  fontWeight: FontWeight.w700,
-                ),
+                    fontSize: 10.5,
+                    color: Colors.white.withOpacity(.5),
+                    decoration: TextDecoration.none),
               ),
             ],
           ),
@@ -337,17 +388,17 @@ Future<void> showBacklogCombat(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    '$sbires sbire(s) garde(nt) le cœur',
+                    'Élimine les sbires avant d\'atteindre le cœur',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.white.withOpacity(.65),
+                        fontSize: 11.5,
+                        color: Colors.white.withOpacity(.5),
                         decoration: TextDecoration.none),
                   ),
                   const SizedBox(height: 10),
                   if (minionNeedsNinja && !ninjaEquipped)
                     Text(
-                      '🔒 Skin ninja requis pour les sbires du serpent',
+                      '🔒 Avatar Ninja requis pour les sbires du serpent\n(Boutique d\'or → Avatars)',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                           fontSize: 11.5,
@@ -372,7 +423,7 @@ Future<void> showBacklogCombat(
             Padding(
               padding: const EdgeInsets.all(8),
               child: Text(
-                '🥷 Skin ninja requis pour attaquer le cœur\n(Boutique d\'or → Équipement)',
+                '🥷 Avatar Ninja requis pour attaquer le cœur\n(Boutique d\'or → Avatars)',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                     fontSize: 12.5,
@@ -396,15 +447,56 @@ Future<void> showBacklogCombat(
           }
         }
 
-        final Widget hearts = Wrap(
-          spacing: 2,
-          runSpacing: 2,
-          alignment: WrapAlignment.center,
+        // Sbires affichés : restants si engagé, sinon aperçu de ce qui gardera
+        // le cœur (même règle que la tuile de carte).
+        final sbiresShown =
+            engaged ? sbires : GoldEconomy.sbiresForHp(hp);
+
+        Widget statusLabel(String t) => Text(t,
+            style: TextStyle(
+                fontSize: 9.5,
+                letterSpacing: 1.5,
+                fontWeight: FontWeight.w800,
+                color: Colors.white.withOpacity(.4),
+                decoration: TextDecoration.none));
+
+        // Statut de combat : sbires (gardes) AU-DESSUS, cœur EN DESSOUS —
+        // même langage visuel que la carte (❤️ en haut, sbires en bas).
+        final statusBlock = Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            for (int i = 0; i < maxHp; i++)
-              Text(i < maxHp - hp ? '✅' : '❤️',
-                  style: const TextStyle(
-                      fontSize: 18, decoration: TextDecoration.none)),
+            if (sbiresShown > 0) ...[
+              statusLabel(engaged
+                  ? 'SBIRES — $sbiresShown restant${sbiresShown > 1 ? 's' : ''}'
+                  : 'GARDES DU CŒUR — $sbiresShown'),
+              const SizedBox(height: 5),
+              Wrap(
+                spacing: 3,
+                alignment: WrapAlignment.center,
+                children: [
+                  for (int i = 0; i < sbiresShown; i++)
+                    Text(entityEmoji(type),
+                        style: const TextStyle(
+                            fontSize: 18, decoration: TextDecoration.none)),
+                ],
+              ),
+              const SizedBox(height: 12),
+            ],
+            statusLabel(sbiresShown > 0
+                ? 'CŒUR — $hp/$maxHp ❤️ (protégé)'
+                : '💓 CŒUR EXPOSÉ — $hp/$maxHp ❤️'),
+            const SizedBox(height: 5),
+            Wrap(
+              spacing: 2,
+              runSpacing: 2,
+              alignment: WrapAlignment.center,
+              children: [
+                for (int i = 0; i < maxHp; i++)
+                  Text(i < maxHp - hp ? '✅' : '❤️',
+                      style: const TextStyle(
+                          fontSize: 18, decoration: TextDecoration.none)),
+              ],
+            ),
           ],
         );
 
@@ -413,6 +505,10 @@ Future<void> showBacklogCombat(
 
         const _kRed = Color(0xFFFF2B2B);
         const _kCardBg = Color(0xFF120A0A);
+
+        // Cœur atteignable = phase « achève-le » → tout pulse en rouge.
+        final exposed = engaged && sbiresShown <= 0;
+        final loot = GoldEconomy.pestLootBase(type, false);
 
         return SafeArea(
           child: Center(
@@ -425,11 +521,14 @@ Future<void> showBacklogCombat(
                 decoration: BoxDecoration(
                   color: _kCardBg,
                   borderRadius: BorderRadius.circular(24),
+                  border: exposed
+                      ? Border.all(color: _kRed.withOpacity(.55), width: 1.5)
+                      : null,
                   boxShadow: [
                     BoxShadow(
-                        color: _kRed.withOpacity(.30),
-                        blurRadius: 40,
-                        spreadRadius: 2),
+                        color: _kRed.withOpacity(exposed ? .55 : .30),
+                        blurRadius: exposed ? 60 : 40,
+                        spreadRadius: exposed ? 4 : 2),
                     BoxShadow(
                         color: Colors.black.withOpacity(.55),
                         blurRadius: 20,
@@ -439,19 +538,51 @@ Future<void> showBacklogCombat(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // En-tête hero
-                    Text('⚔️', style: const TextStyle(fontSize: 28)),
+                    // En-tête hero — bandeau de phase
+                    Text(exposed ? '🎯' : '⚔️',
+                        style: const TextStyle(fontSize: 28)),
                     const SizedBox(height: 4),
-                    Text(role.toUpperCase(),
-                        style: const TextStyle(
+                    Text(exposed ? 'ACHÈVE-LE !' : role.toUpperCase(),
+                        style: TextStyle(
                             fontSize: 11,
                             letterSpacing: 2.5,
                             fontWeight: FontWeight.w900,
-                            color: _kRed,
+                            color: exposed ? _kRed : _kRed.withOpacity(.85),
                             decoration: TextDecoration.none)),
                     const SizedBox(height: 16),
-                    Text(entityEmoji(type),
-                        style: const TextStyle(fontSize: 72)),
+                    // Sprite ennemi : pulse en idle, pulse fort + aura rouge
+                    // quand le cœur est exposé (« finish him ») ; « punch »
+                    // élastique à chaque sbire éliminé (hitTick).
+                    TweenAnimationBuilder<double>(
+                      key: ValueKey(hitTick),
+                      tween: Tween<double>(
+                          begin: hitTick == 0 ? 1.0 : 1.4, end: 1.0),
+                      duration: const Duration(milliseconds: 320),
+                      curve: Curves.elasticOut,
+                      builder: (_, s, child) =>
+                          Transform.scale(scale: s, child: child),
+                      child: PulseScale(
+                        active: true,
+                        maxScale: exposed ? 1.12 : 1.05,
+                        period: Duration(milliseconds: exposed ? 650 : 1300),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: exposed
+                              ? BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                        color: _kRed.withOpacity(.55),
+                                        blurRadius: 34,
+                                        spreadRadius: 4),
+                                  ],
+                                )
+                              : null,
+                          child: Text(entityEmoji(type),
+                              style: const TextStyle(fontSize: 72)),
+                        ),
+                      ),
+                    ),
                     const SizedBox(height: 6),
                     Text(itemName,
                         textAlign: TextAlign.center,
@@ -460,8 +591,30 @@ Future<void> showBacklogCombat(
                             fontWeight: FontWeight.w800,
                             color: Colors.white,
                             decoration: TextDecoration.none)),
-                    const SizedBox(height: 10),
-                    hearts,
+                    const SizedBox(height: 12),
+                    statusBlock,
+                    const SizedBox(height: 12),
+                    // Récompense de victoire — moteur d'action
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD4A017).withOpacity(.16),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                            color: const Color(0xFFD4A017).withOpacity(.45)),
+                      ),
+                      child: Text.rich(
+                          TextSpan(children: [
+                            TextSpan(text: '🏆 Victoire : +$loot'),
+                            goldIconSpan(size: 13),
+                          ]),
+                          style: const TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFFE8C24A),
+                              decoration: TextDecoration.none)),
+                    ),
                     const SizedBox(height: 16),
                     weaponRow,
                     ...attacks,

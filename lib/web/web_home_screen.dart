@@ -202,8 +202,8 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                 tabs: const [
                   Tab(text: 'Projets'),
                   Tab(text: 'Focus'),
-                  Tab(text: 'Organisation'),
                   Tab(text: 'Arène'),
+                  Tab(text: 'Organisation'),
                   Tab(text: 'ORION'),
                 ],
               ),
@@ -263,8 +263,8 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                         _load();
                       },
                     ),
-                    _ArchivesView(sync: _sync),
                     ArenaView(sync: _sync),
+                    _ArchivesView(sync: _sync),
                     _OrionView(sync: _sync),
                   ],
                 ),

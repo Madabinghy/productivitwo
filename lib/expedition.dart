@@ -212,6 +212,7 @@ const overworldCollectibles = <({String id, String emoji, String name, bool rare
   (id: 'ring', emoji: '💍', name: 'Anneau', rare: true),
   (id: 'wpn_arc', emoji: '🏹', name: 'Arc (pickup)', rare: false),
   (id: 'wpn_couteau', emoji: '🔪', name: 'Couteau (pickup)', rare: false),
+  (id: 'wpn_epee', emoji: '🗡️', name: 'Épée (pickup)', rare: false),
 ];
 
 ({String id, String emoji, String name, bool rare})? collectibleById(String id) {
@@ -279,11 +280,17 @@ Overworld generateOverworld(int level) {
     ..shuffle(rng);
   final commons = overworldCollectibles.where((c) => !c.rare).toList();
   final rares = overworldCollectibles.where((c) => c.rare).toList();
+  final weapons =
+      overworldCollectibles.where((c) => c.id.startsWith('wpn_')).toList();
   final count = (2 + level ~/ 3).clamp(2, 6);
   for (var i = 0; i < count && i < offPath.length; i++) {
-    final rare = rng.nextInt(4) == 0;
-    final cat =
-        rare ? rares[rng.nextInt(rares.length)] : commons[rng.nextInt(commons.length)];
+    // i==0 : arme garantie (les flèches/couteaux/épées doivent réapparaître) ;
+    // sinon rare 1/4, commun sinon (les communs incluent aussi des armes).
+    final cat = i == 0
+        ? weapons[rng.nextInt(weapons.length)]
+        : (rng.nextInt(4) == 0
+            ? rares[rng.nextInt(rares.length)]
+            : commons[rng.nextInt(commons.length)]);
     offPath[i].collectibleId = cat.id;
   }
   return Overworld(level, cols, rows, grid, const Point(startX, 0),

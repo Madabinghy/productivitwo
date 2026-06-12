@@ -47,7 +47,7 @@ class _GamificationHub extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return DefaultTabController(
-      length: 4,
+      length: 3,
       child: Column(
         children: [
           TabBar(
@@ -57,6 +57,7 @@ class _GamificationHub extends StatelessWidget {
             unselectedLabelColor: cs.onSurface.withValues(alpha: .55),
             indicatorColor: cs.primary,
             tabs: [
+              const Tab(text: '⚔️ Combat'),
               Tab(
                 child: Row(mainAxisSize: MainAxisSize.min, children: const [
                   GoldIcon(size: 15),
@@ -64,19 +65,68 @@ class _GamificationHub extends StatelessWidget {
                   Text('Mon or'),
                 ]),
               ),
-              const Tab(text: '⭐ XP'),
-              const Tab(text: '🏆 Classement'),
-              const Tab(text: '🔥 Défis'),
+              const Tab(text: '📊 Progrès'),
             ],
           ),
           Expanded(
             child: TabBarView(
               children: [
+                // ⚔️ Combat : l'action (backlog + cartes + combats en cours)
                 GoldSheetBody(
                     logic: logic,
                     sync: sync,
                     onLaunchRoutine: onLaunchRoutine,
-                    embeddedInSheet: true),
+                    embeddedInSheet: true,
+                    showEconomySection: false),
+                // 🪙 Mon or : économie pure (solde, arsenal, boutique, histo…)
+                GoldSheetBody(
+                    logic: logic,
+                    sync: sync,
+                    onLaunchRoutine: onLaunchRoutine,
+                    embeddedInSheet: true,
+                    showCombatSection: false),
+                // 📊 Progrès : XP · Classement · Défis regroupés (peu visités)
+                _ProgressTab(logic: logic, sync: sync, scoreTab: scoreTab),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Onglet « Progrès » : regroupe XP · Classement · Défis en sous-onglets
+/// (on y va peu → un seul onglet de haut niveau).
+class _ProgressTab extends StatelessWidget {
+  final AppLogic logic;
+  final FirestoreSync sync;
+  final WidgetBuilder scoreTab;
+  const _ProgressTab(
+      {required this.logic, required this.sync, required this.scoreTab});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return DefaultTabController(
+      length: 3,
+      child: Column(
+        children: [
+          TabBar(
+            labelColor: cs.primary,
+            unselectedLabelColor: cs.onSurface.withValues(alpha: .55),
+            indicatorColor: cs.primary,
+            labelStyle:
+                const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            tabs: const [
+              Tab(text: '⭐ XP'),
+              Tab(text: '🏆 Classement'),
+              Tab(text: '🔥 Défis'),
+            ],
+          ),
+          Expanded(
+            child: TabBarView(
+              children: [
                 Builder(builder: scoreTab),
                 LeaderboardBody(sync: sync),
                 ScheduledChallengesBody(logic: logic, sync: sync),

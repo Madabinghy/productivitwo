@@ -345,14 +345,12 @@ extension GoldEngine on AppLogic {
     return n;
   }
 
-  /// Armes DISPONIBLES = gagnées + pickups − dépensées, bornées à [0, weaponStockCap].
-  /// Le plafond évite le stock infini : au-delà, l'or (crédité par action) prend
-  /// le relais.
+  /// Armes DISPONIBLES = gagnées + pickups − dépensées (plancher 0, plus de
+  /// plafond : on accumule un vrai arsenal qui reflète toute la productivité).
   int weaponsAvailable(String key) {
     final pickups = state.weaponPickups[key] ?? 0;
     final a = weaponsEarned(key) + pickups - (state.weaponsSpent[key] ?? 0);
-    if (a < 0) return 0;
-    return a > GoldEconomy.weaponStockCap ? GoldEconomy.weaponStockCap : a;
+    return a < 0 ? 0 : a;
   }
 
   int pestKillCount(String type) => state.pestKills[type] ?? 0;
@@ -576,8 +574,6 @@ extension GoldEngine on AppLogic {
 
   // ── Engagement de combat : armes globales → épingler dans Combats en cours ──
 
-  bool get hasSkin => state.hasSkin;
-
   /// Nombre de sbires restants pour un ennemi engagé.
   /// Format clé engagée : "type~id~sbiresLeft"
   int sbiresLeft(String type, String itemId) {
@@ -605,17 +601,6 @@ extension GoldEngine on AppLogic {
     state.engagedEnemies[idx] = '$prefix${cur - 1}';
     sync.setEngagedEnemies(state.engagedEnemies);
     onChange();
-  }
-
-  bool purchaseNinjaSkin(FirestoreSync sync) {
-    const cost = 50;
-    if (state.hasSkin || state.gold < cost) return false;
-    applyGold(sync, -cost,
-        category: 'loss', reasonCode: 'ninja_skin', label: 'Skin ninja 🥷');
-    state.hasSkin = true;
-    sync.setHasSkin(true);
-    onChange();
-    return true;
   }
 
   void addWeaponPickup(String key, int count, FirestoreSync sync) {

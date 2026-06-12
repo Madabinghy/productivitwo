@@ -722,7 +722,8 @@ class AppState {
   // Combats ENGAGÉS (épinglés via armes globales) : "type~itemId~sbiresLeft".
   // Apparaissent dans « Combats en cours » jusqu'à ce que l'item soit rattrapé (PV 0).
   List<String> engagedEnemies;
-  bool hasSkin; // skin ninja : requis pour attaquer les cœurs
+  // Attaquer les cœurs : capacité dérivée de cosmeticsOwned.contains('avatar_ninja')
+  // (posséder l'avatar Ninja). Plus de flag dédié — l'avatar EST la capacité.
   Map<String, int> weaponPickups; // armes ramassées sur la carte (clé → count)
 
   AppState({
@@ -802,7 +803,6 @@ class AppState {
     Map<String, int>? weaponsSpent,
     Map<String, int>? pestKills,
     List<String>? engagedEnemies,
-    this.hasSkin = false,
     Map<String, int>? weaponPickups,
     List<String>? expeditionChallenges,
     // ✅ NOUVEAU
@@ -920,7 +920,6 @@ class AppState {
         'weaponsSpent': weaponsSpent,
         'pestKills': pestKills,
         'engagedEnemies': engagedEnemies,
-        'hasSkin': hasSkin,
         'weaponPickups': weaponPickups,
         'collection': collection,
         'collectionMeta': collectionMeta,
@@ -1066,7 +1065,6 @@ class AppState {
       weaponsSpent: (j['weaponsSpent'] as Map?)?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ?? <String, int>{},
       pestKills: (j['pestKills'] as Map?)?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ?? <String, int>{},
       engagedEnemies: (j['engagedEnemies'] as List?)?.cast<String>() ?? <String>[],
-      hasSkin: j['hasSkin'] as bool? ?? false,
       weaponPickups: (j['weaponPickups'] as Map?)?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ?? <String, int>{},
       collection: (j['collection'] as List?)?.cast<String>() ?? <String>[],
       collectionMeta: (j['collectionMeta'] as Map?)?.map((k, v) => MapEntry(k.toString(), v.toString())) ?? <String, String>{},

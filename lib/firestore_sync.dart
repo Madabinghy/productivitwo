@@ -258,7 +258,6 @@ class FirestoreSync {
         pestKills: (meta['pestKills'] as Map?)
             ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
         engagedEnemies: (meta['engagedEnemies'] as List?)?.cast<String>(),
-        hasSkin: meta['hasSkin'] as bool? ?? false,
         weaponPickups: (meta['weaponPickups'] as Map?)?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
         collection: (meta['collection'] as List?)?.cast<String>(),
         collectionMeta: (meta['collectionMeta'] as Map?)?.map((k, v) => MapEntry(k.toString(), v.toString())),
@@ -376,7 +375,6 @@ class FirestoreSync {
       weaponsSpent:          _mapSum(local.weaponsSpent) >= _mapSum(remote.weaponsSpent) ? local.weaponsSpent : remote.weaponsSpent,
       pestKills:             _mapSum(local.pestKills) >= _mapSum(remote.pestKills) ? local.pestKills : remote.pestKills,
       engagedEnemies:        local.goldLifetime >= remote.goldLifetime ? local.engagedEnemies : remote.engagedEnemies,
-      hasSkin:               local.hasSkin || remote.hasSkin,
       weaponPickups:         _mapSum(local.weaponPickups) >= _mapSum(remote.weaponPickups) ? local.weaponPickups : remote.weaponPickups,
       collection:            local.collection.length >= remote.collection.length ? local.collection : remote.collection,
       collectionMeta:        local.collection.length >= remote.collection.length ? local.collectionMeta : remote.collectionMeta,
@@ -945,11 +943,6 @@ class FirestoreSync {
   Future<void> setEngagedEnemies(List<String> engaged) async {
     if (uid == null) return;
     await _meta().set({'engagedEnemies': engaged}, SetOptions(merge: true));
-  }
-
-  Future<void> setHasSkin(bool value) async {
-    if (uid == null) return;
-    await _meta().set({'hasSkin': value}, SetOptions(merge: true));
   }
 
   Future<void> setWeaponPickups(Map<String, int> pickups) async {

@@ -12,6 +12,7 @@ import 'package:productivitwo_v1/widgets/collection_sheet.dart';
 import 'package:productivitwo_v1/widgets/confetti.dart';
 import 'package:productivitwo_v1/widgets/gold_shop_sheet.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
+import 'package:productivitwo_v1/widgets/pulse.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 
 /// Tableau de bord d'Or (Phase C) : solde + niveau, ce qui rapporte, ce qui
@@ -61,13 +62,20 @@ class GoldSheetBody extends StatefulWidget {
   // true = intégré dans un modal bottom sheet (pop avant d'ouvrir la boutique)
   // false = intégré directement dans un layout (pas de pop navigation)
   final bool embeddedInSheet;
+  // Sections affichables séparément (onglets du hub mobile / colonnes web) :
+  // - showCombatSection : boutons « Affronter backlog »/« Mes cartes » + combats.
+  // - showEconomySection : quête, solde, arsenal, niveau, boutique, retards, histo.
+  final bool showCombatSection;
+  final bool showEconomySection;
   const GoldSheetBody(
       {super.key,
       required this.logic,
       required this.sync,
       this.scrollController,
       this.onLaunchRoutine,
-      this.embeddedInSheet = false});
+      this.embeddedInSheet = false,
+      this.showCombatSection = true,
+      this.showEconomySection = true});
 
   @override
   State<GoldSheetBody> createState() => _GoldSheetBodyState();
@@ -176,6 +184,7 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
       controller: scrollController,
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
       children: [
+          if (widget.showEconomySection) ...[
           // ── Quête du jour + coffre ────────────────────────────────────────
           _QuestCard(
             progress: logic.dailyQuestProgress(),
@@ -226,6 +235,46 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
                   },
                 ),
               ]),
+            ],
+          ),
+          const SizedBox(height: 14),
+          // ── Arsenal (armes dispo) — visibles hors combat (parité web) ──────
+          Row(
+            children: [
+              Text('Arsenal',
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: .5,
+                      color: cs.onSurface.withOpacity(.5))),
+              const Spacer(),
+              for (final w in const ['couteau', 'arc', 'epee']) ...[
+                Builder(builder: (_) {
+                  final n = logic.weaponsAvailable(w);
+                  final has = n > 0;
+                  return Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: has
+                          ? _kGold.withOpacity(.12)
+                          : cs.onSurface.withOpacity(.04),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                          color: has
+                              ? _kGold.withOpacity(.35)
+                              : cs.outline.withOpacity(.15)),
+                    ),
+                    child: Text('${logic.weaponEmoji(w)} $n',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color:
+                                has ? _kGold : cs.onSurface.withOpacity(.4))),
+                  );
+                }),
+                if (w != 'epee') const SizedBox(width: 6),
+              ],
             ],
           ),
           const SizedBox(height: 16),
@@ -300,6 +349,8 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
               ]),
             ),
           ],
+          ], // fin section ÉCONOMIE (haut)
+          if (widget.showCombatSection) ...[
           const SizedBox(height: 12),
           // Farm direct de la carte du niveau atteint (ton backlog).
           FilledButton.icon(
@@ -327,59 +378,61 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
           ),
           const SizedBox(height: 20),
 
-          // ── Combats en cours (remplace « Routines du jour ») ──────────────
-          Row(children: [
-            Text('⚔️ Combats en cours',
-                style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: .5,
-                    color: cs.onSurface.withOpacity(.6))),
-            const SizedBox(width: 6),
-            _InfoDot(
-              onTap: () => showDialog(
-                context: context,
-                builder: (_) => AlertDialog(
-                  title: const Text('Combats en cours'),
-                  content: const Text(
-                    'Sur ta carte, « Engager » un nuisible (coût en armes 🩴🏹🗡️) '
-                    'l\'épingle ici pour le retrouver sans re-fouiller la map. Pour '
-                    'le vaincre, ouvre sa carte de combat et FAIS le vrai travail '
-                    '(la routine, le temps sur l\'activité, ou cocher les actions).',
+          // ── Combats en cours ──────────────────────────────────────────────
+            Row(children: [
+              Text('⚔️ Combats en cours',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: .5,
+                      color: cs.onSurface.withOpacity(.6))),
+              const SizedBox(width: 6),
+              _InfoDot(
+                onTap: () => showDialog(
+                  context: context,
+                  builder: (_) => AlertDialog(
+                    title: const Text('Combats en cours'),
+                    content: const Text(
+                      'Sur ta carte, « Engager » un nuisible (coût en armes 🔪🏹🗡️) '
+                      'l\'épingle ici pour le retrouver sans re-fouiller la map. Pour '
+                      'le vaincre, ouvre sa carte de combat et FAIS le vrai travail '
+                      '(la routine, le temps sur l\'activité, ou cocher les actions).',
+                    ),
+                    actions: [
+                      TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Compris')),
+                    ],
                   ),
-                  actions: [
-                    TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Compris')),
-                  ],
                 ),
               ),
-            ),
-          ]),
-          const SizedBox(height: 8),
-          Builder(builder: (context) {
-            final combats = logic.combatsInProgress();
-            if (combats.isEmpty) {
-              return _Hint(
-                  'Aucun combat engagé. Sur ta carte, « Engager » un nuisible pour le suivre ici.',
-                  cs);
-            }
-            return Column(
-              children: [
-                for (final c in combats)
-                  _CombatCard(
-                      logic: logic,
-                      sync: sync,
-                      type: c.type,
-                      itemId: c.id,
-                      hp: c.hp,
-                      maxHp: c.maxHp,
-                      onChanged: _refresh,
-                      cs: cs),
-              ],
-            );
-          }),
-          const SizedBox(height: 20),
+            ]),
+            const SizedBox(height: 8),
+            Builder(builder: (context) {
+              final combats = logic.combatsInProgress();
+              if (combats.isEmpty) {
+                return _Hint(
+                    'Aucun combat engagé. Sur ta carte, « Engager » un nuisible pour le suivre ici.',
+                    cs);
+              }
+              return Column(
+                children: [
+                  for (final c in combats)
+                    _CombatCard(
+                        logic: logic,
+                        sync: sync,
+                        type: c.type,
+                        itemId: c.id,
+                        hp: c.hp,
+                        maxHp: c.maxHp,
+                        onChanged: _refresh,
+                        cs: cs),
+                ],
+              );
+            }),
+            const SizedBox(height: 20),
+          ], // fin section COMBAT
+          if (widget.showEconomySection) ...[
 
           // ── Routines du jour (mis de côté — _showRoutinesInGold) ──────────
           if (_showRoutinesInGold) ...[
@@ -481,6 +534,7 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
               );
             },
           ),
+          ], // fin section ÉCONOMIE (bas)
         ],
       );
     }
@@ -1012,7 +1066,9 @@ class _CombatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final name = logic.enemyItemName(type, itemId);
-    final wEmoji = logic.weaponEmoji(GoldEconomy.weaponForPest(type));
+    final minionW = GoldEconomy.minionWeaponForPest(type);
+    final wEmoji = logic.weaponEmoji(minionW);
+    final myWeapons = logic.weaponsAvailable(minionW);
     final hpFrac = maxHp > 0 ? hp / maxHp : 0.0;
     final domainId = logic.enemyDomainId(type, itemId);
     final domColor = domainColor(domainId, logic.state.activeDomains) ??
@@ -1020,6 +1076,10 @@ class _CombatCard extends StatelessWidget {
     final frozen = type == 'spider' && logic.isRoutineFrozenToday(itemId);
     final fighting = _isActivelyCombating();
     final avatar = logic.state.activeAvatar ?? '🧍';
+    final sbires = logic.sbiresLeft(type, itemId);
+    final exposed = sbires <= 0;
+    final loot = GoldEconomy.pestLootBase(type, false);
+    const _kRed = Color(0xFFFF2B2B);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -1031,11 +1091,15 @@ class _CombatCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           child: Container(
             decoration: BoxDecoration(
-              color: cs.surfaceContainerHighest.withOpacity(.4),
+              color: exposed
+                  ? _kRed.withOpacity(.07)
+                  : cs.surfaceContainerHighest.withOpacity(.4),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                  color: cs.outline.withOpacity(fighting ? .5 : .18),
-                  width: 1),
+                  color: exposed
+                      ? _kRed.withOpacity(.5)
+                      : cs.outline.withOpacity(fighting ? .5 : .18),
+                  width: exposed ? 1.4 : 1),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1070,11 +1134,21 @@ class _CombatCard extends StatelessWidget {
                           Row(
                             children: [
                               Text(
-                                '❤️ $hp/$maxHp  ·  $wEmoji',
+                                '❤️ $hp/$maxHp',
                                 style: TextStyle(
                                     fontSize: 12,
                                     color: cs.onSurface.withOpacity(.6)),
                               ),
+                              const SizedBox(width: 8),
+                              Text.rich(
+                                  TextSpan(children: [
+                                    TextSpan(text: '🏆 +$loot'),
+                                    goldIconSpan(size: 12),
+                                  ]),
+                                  style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFFD4A017))),
                               if (frozen) ...[
                                 const SizedBox(width: 4),
                                 const Icon(Icons.ac_unit_rounded,
@@ -1082,28 +1156,81 @@ class _CombatCard extends StatelessWidget {
                               ],
                             ],
                           ),
+                          // ── Sbires qui gardent le cœur (mêmes mini-emojis
+                          // que sur la carte) + arme à dépenser ───────────────
+                          if (sbires > 0) ...[
+                            const SizedBox(height: 3),
+                            Row(
+                              children: [
+                                for (int i = 0;
+                                    i < sbires.clamp(0, 5);
+                                    i++)
+                                  Text(entityEmoji(type),
+                                      style: const TextStyle(fontSize: 11)),
+                                const SizedBox(width: 5),
+                                Text(
+                                    '$sbires sbire${sbires > 1 ? 's' : ''}  ·  −1 $wEmoji',
+                                    style: TextStyle(
+                                        fontSize: 10,
+                                        color:
+                                            cs.onSurface.withOpacity(.5))),
+                                const SizedBox(width: 4),
+                                Text('($myWeapons $wEmoji)',
+                                    style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                        color: myWeapons >= 1
+                                            ? const Color(0xFFD4A017)
+                                            : _kRed.withOpacity(.8))),
+                              ],
+                            ),
+                          ] else ...[
+                            const SizedBox(height: 3),
+                            Text('💓 cœur exposé — frappe pour achever',
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    color: _kRed.withOpacity(.9))),
+                          ],
                         ],
                       ),
                     ),
-                    // Avatar + indicateur combat en cours
-                    if (fighting) ...[
-                      const SizedBox(width: 6),
-                      Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(avatar,
-                              style: const TextStyle(fontSize: 20)),
-                          Text('⚔️',
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  color: domColor)),
-                        ],
-                      ),
-                      const SizedBox(width: 4),
-                    ] else ...[
-                      Icon(Icons.chevron_right,
-                          size: 18, color: cs.onSurface.withOpacity(.3)),
-                    ],
+                    // Pastille CTA de phase (+ avatar si combat en cours)
+                    const SizedBox(width: 6),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (fighting)
+                          Text(avatar, style: const TextStyle(fontSize: 18)),
+                        if (fighting) const SizedBox(height: 2),
+                        PulseScale(
+                          active: exposed,
+                          maxScale: 1.06,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: exposed
+                                  ? _kRed
+                                  : _kRed.withOpacity(.13),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                  color: _kRed
+                                      .withOpacity(exposed ? 1 : .35)),
+                            ),
+                            child: Text(
+                                exposed ? '💓 Achever' : '⚔️ Combattre',
+                                style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: exposed
+                                        ? Colors.white
+                                        : _kRed)),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(width: 4),
                   ]),
                 ),
                 // ── Barre de PV ──────────────────────────────────────────────
