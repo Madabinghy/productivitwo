@@ -298,9 +298,9 @@ extension GoldEngine on AppLogic {
   // L'arme se GAGNE par la productivité (dérivé des données) et se DÉPENSE au
   // kill. Permet de préparer un arsenal et d'enchaîner les captures en chasse.
   String weaponEmoji(String key) =>
-      key == 'epee' ? '🗡️' : (key == 'arc' ? '🏹' : '🩴');
+      key == 'epee' ? '🗡️' : (key == 'arc' ? '🏹' : '🔪');
   String weaponName(String key) =>
-      key == 'epee' ? 'épée' : (key == 'arc' ? 'arc' : 'sandale');
+      key == 'epee' ? 'épée' : (key == 'arc' ? 'arc' : 'couteau');
 
   /// Armes GAGNÉES (cumul) : épée = total des actions de projet cochées ;
   /// arc = heures de temps loggué (1 h = 1 flèche) ; sandale = chaque jour où
@@ -339,11 +339,12 @@ extension GoldEngine on AppLogic {
     return n;
   }
 
-  /// Armes DISPONIBLES = gagnées − dépensées, bornées à [0, weaponStockCap].
+  /// Armes DISPONIBLES = gagnées + pickups − dépensées, bornées à [0, weaponStockCap].
   /// Le plafond évite le stock infini : au-delà, l'or (crédité par action) prend
   /// le relais.
   int weaponsAvailable(String key) {
-    final a = weaponsEarned(key) - (state.weaponsSpent[key] ?? 0);
+    final pickups = state.weaponPickups[key] ?? 0;
+    final a = weaponsEarned(key) + pickups - (state.weaponsSpent[key] ?? 0);
     if (a < 0) return 0;
     return a > GoldEconomy.weaponStockCap ? GoldEconomy.weaponStockCap : a;
   }
@@ -568,24 +569,76 @@ extension GoldEngine on AppLogic {
   }
 
   // ── Engagement de combat : armes globales → épingler dans Combats en cours ──
-  String _engageKey(String type, String itemId) => '$type~$itemId';
 
-  bool isEngaged(String type, String itemId) =>
-      state.engagedEnemies.contains(_engageKey(type, itemId));
+  bool get hasSkin => state.hasSkin;
+
+  /// Nombre de sbires restants pour un ennemi engagé.
+  /// Format clé engagée : "type~id~sbiresLeft"
+  int sbiresLeft(String type, String itemId) {
+    final prefix = '$type~$itemId~';
+    for (final k in state.engagedEnemies) {
+      if (k.startsWith(prefix)) {
+        return int.tryParse(k.substring(prefix.length)) ?? 0;
+      }
+    }
+    return 0;
+  }
+
+  bool isHeartExposed(String type, String itemId) =>
+      isEngaged(type, itemId) && sbiresLeft(type, itemId) <= 0;
+
+  void killSbire(String type, String itemId, FirestoreSync sync) {
+    final prefix = '$type~$itemId~';
+    final idx =
+        state.engagedEnemies.indexWhere((k) => k.startsWith(prefix));
+    if (idx < 0) return;
+    final cur = int.tryParse(
+            state.engagedEnemies[idx].substring(prefix.length)) ??
+        0;
+    if (cur <= 0) return;
+    state.engagedEnemies[idx] = '$prefix${cur - 1}';
+    sync.setEngagedEnemies(state.engagedEnemies);
+    onChange();
+  }
+
+  bool purchaseNinjaSkin(FirestoreSync sync) {
+    const cost = 50;
+    if (state.hasSkin || state.gold < cost) return false;
+    applyGold(sync, -cost,
+        category: 'loss', reasonCode: 'ninja_skin', label: 'Skin ninja 🥷');
+    state.hasSkin = true;
+    sync.setHasSkin(true);
+    onChange();
+    return true;
+  }
+
+  void addWeaponPickup(String key, int count, FirestoreSync sync) {
+    state.weaponPickups[key] = (state.weaponPickups[key] ?? 0) + count;
+    sync.setWeaponPickups(state.weaponPickups);
+    onChange();
+  }
+
+  bool isEngaged(String type, String itemId) {
+    final prefix = '$type~$itemId~';
+    final exact = '$type~$itemId';
+    return state.engagedEnemies.any((k) => k == exact || k.startsWith(prefix));
+  }
 
   int engageCost(String type) => GoldEconomy.engageCost;
 
   bool canEngage(String type) =>
-      weaponsAvailable(GoldEconomy.weaponForPest(type)) >= engageCost(type);
+      weaponsAvailable(GoldEconomy.minionWeaponForPest(type)) >= engageCost(type);
 
-  /// Engage (épingle) un ennemi : dépense des armes globales adaptées, l'ajoute
-  /// aux combats en cours. false si pas assez d'armes ou déjà engagé.
+  /// Engage (épingle) un ennemi : dépense des armes globales adaptées (arme sbires),
+  /// l'ajoute aux combats en cours avec le compte de sbires encodé. false si pas
+  /// assez d'armes ou déjà engagé.
   bool engageEnemy(String type, String itemId, FirestoreSync sync) {
     if (isEngaged(type, itemId)) return false;
-    final w = GoldEconomy.weaponForPest(type);
-    if (weaponsAvailable(w) < engageCost(type)) return false;
-    state.weaponsSpent[w] = (state.weaponsSpent[w] ?? 0) + engageCost(type);
-    state.engagedEnemies.add(_engageKey(type, itemId));
+    final w = GoldEconomy.minionWeaponForPest(type);
+    if (weaponsAvailable(w) < GoldEconomy.engageCost) return false;
+    state.weaponsSpent[w] = (state.weaponsSpent[w] ?? 0) + GoldEconomy.engageCost;
+    final sbires = GoldEconomy.sbiresForHp(enemyHp(type, itemId));
+    state.engagedEnemies.add('$type~$itemId~$sbires');
     sync.setCombatStats(state.weaponsSpent, state.pestKills);
     sync.setEngagedEnemies(state.engagedEnemies);
     onChange();
@@ -593,7 +646,11 @@ extension GoldEngine on AppLogic {
   }
 
   void unengageEnemy(String type, String itemId, FirestoreSync sync) {
-    if (state.engagedEnemies.remove(_engageKey(type, itemId))) {
+    final prefix = '$type~$itemId~';
+    final exact = '$type~$itemId';
+    final before = state.engagedEnemies.length;
+    state.engagedEnemies.removeWhere((k) => k == exact || k.startsWith(prefix));
+    if (state.engagedEnemies.length != before) {
       sync.setEngagedEnemies(state.engagedEnemies);
       onChange();
     }
@@ -606,7 +663,10 @@ extension GoldEngine on AppLogic {
       final i = key.indexOf('~');
       if (i < 0) continue;
       final type = key.substring(0, i);
-      final id = key.substring(i + 1);
+      final rest = key.substring(i + 1);
+      // nouveau format: id~sbiresLeft — on prend tout avant le dernier ~
+      final lastTilde = rest.lastIndexOf('~');
+      final id = lastTilde >= 0 ? rest.substring(0, lastTilde) : rest;
       final hp = enemyHp(type, id);
       if (hp <= 0) continue;
       out.add((type: type, id: id, hp: hp, maxHp: enemyMaxHp(type, id)));
@@ -620,13 +680,12 @@ extension GoldEngine on AppLogic {
     final dead = <String>[];
     for (final key in state.engagedEnemies) {
       final i = key.indexOf('~');
-      if (i < 0) {
-        dead.add(key);
-        continue;
-      }
-      if (enemyHp(key.substring(0, i), key.substring(i + 1)) <= 0) {
-        dead.add(key);
-      }
+      if (i < 0) { dead.add(key); continue; }
+      final rest = key.substring(i + 1);
+      final lastTilde = rest.lastIndexOf('~');
+      final id = lastTilde >= 0 ? rest.substring(0, lastTilde) : rest;
+      final type = key.substring(0, i);
+      if (enemyHp(type, id) <= 0) dead.add(key);
     }
     if (dead.isNotEmpty) {
       state.engagedEnemies.removeWhere(dead.contains);

@@ -72,7 +72,7 @@ class _CollectionSheet extends StatelessWidget {
                             color: cs.onSurface.withOpacity(.6))),
                     const SizedBox(height: 2),
                     Text(
-                        '🩴 ×${logic.weaponsAvailable('sandale')}   🏹 ×${logic.weaponsAvailable('arc')}   🗡️ ×${logic.weaponsAvailable('epee')}',
+                        '🔪 ×${logic.weaponsAvailable('couteau')}   🏹 ×${logic.weaponsAvailable('arc')}   🗡️ ×${logic.weaponsAvailable('epee')}',
                         style: const TextStyle(
                             fontSize: 15, fontWeight: FontWeight.w800)),
                   ],

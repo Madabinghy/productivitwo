@@ -715,13 +715,15 @@ class AppState {
   int expeditionDonjonLevel;
   int expeditionGuardianKilledLevel; // niveau dont le gardien a été vaincu (0=aucun)
   // Combat — modèle stock/munitions : l'arme se GAGNE par la productivité
-  // (routine→sandale, tâche→épée, dérivé des données) et se DÉPENSE au kill.
-  // On ne persiste que le dépensé (par clé 'sandale'/'epee') et les captures.
+  // (routine→couteau, tâche→épée, dérivé des données) et se DÉPENSE au kill.
+  // On ne persiste que le dépensé (par clé 'couteau'/'epee') et les captures.
   Map<String, int> weaponsSpent; // armes consommées (clé → nombre)
   Map<String, int> pestKills; // captures par type ('spider'/'scorpion'/'snake')
-  // Combats ENGAGÉS (épinglés via armes globales) : "type~itemId". Apparaissent
-  // dans « Combats en cours » jusqu'à ce que l'item soit rattrapé (PV 0).
+  // Combats ENGAGÉS (épinglés via armes globales) : "type~itemId~sbiresLeft".
+  // Apparaissent dans « Combats en cours » jusqu'à ce que l'item soit rattrapé (PV 0).
   List<String> engagedEnemies;
+  bool hasSkin; // skin ninja : requis pour attaquer les cœurs
+  Map<String, int> weaponPickups; // armes ramassées sur la carte (clé → count)
 
   AppState({
     required this.domains,
@@ -800,6 +802,8 @@ class AppState {
     Map<String, int>? weaponsSpent,
     Map<String, int>? pestKills,
     List<String>? engagedEnemies,
+    this.hasSkin = false,
+    Map<String, int>? weaponPickups,
     List<String>? expeditionChallenges,
     // ✅ NOUVEAU
     Map<String, List<String>>? nowSkippedByYmd,
@@ -845,6 +849,7 @@ class AppState {
         weaponsSpent = weaponsSpent ?? <String, int>{},
         pestKills = pestKills ?? <String, int>{},
         engagedEnemies = engagedEnemies ?? <String>[],
+        weaponPickups = weaponPickups ?? <String, int>{},
         collection = collection ?? <String>[],
         collectionMeta = collectionMeta ?? <String, String>{},
         donjonKeysUsed = donjonKeysUsed ?? <String>[],
@@ -915,6 +920,8 @@ class AppState {
         'weaponsSpent': weaponsSpent,
         'pestKills': pestKills,
         'engagedEnemies': engagedEnemies,
+        'hasSkin': hasSkin,
+        'weaponPickups': weaponPickups,
         'collection': collection,
         'collectionMeta': collectionMeta,
         'lastFreeStepYmd': lastFreeStepYmd,
@@ -1059,6 +1066,8 @@ class AppState {
       weaponsSpent: (j['weaponsSpent'] as Map?)?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ?? <String, int>{},
       pestKills: (j['pestKills'] as Map?)?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ?? <String, int>{},
       engagedEnemies: (j['engagedEnemies'] as List?)?.cast<String>() ?? <String>[],
+      hasSkin: j['hasSkin'] as bool? ?? false,
+      weaponPickups: (j['weaponPickups'] as Map?)?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ?? <String, int>{},
       collection: (j['collection'] as List?)?.cast<String>() ?? <String>[],
       collectionMeta: (j['collectionMeta'] as Map?)?.map((k, v) => MapEntry(k.toString(), v.toString())) ?? <String, String>{},
       lastFreeStepYmd: j['lastFreeStepYmd'] as String?,

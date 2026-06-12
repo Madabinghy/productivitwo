@@ -472,6 +472,56 @@ class _GoldShopSheetState extends State<_GoldShopSheet> {
     ));
   }
 
+  Widget _buildNinjaCard(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final owned = logic.hasSkin;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withOpacity(.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+            color: owned ? Colors.green.withOpacity(.5) : cs.outline.withOpacity(.3)),
+      ),
+      child: Row(children: [
+        const Text('🥷', style: TextStyle(fontSize: 32)),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Skin Ninja',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+            Text(
+                owned
+                    ? 'Déjà acquis — accès aux cœurs débloqué'
+                    : 'Nécessaire pour attaquer les cœurs des nuisibles',
+                style: TextStyle(fontSize: 11.5, color: cs.onSurface.withOpacity(.6))),
+          ]),
+        ),
+        const SizedBox(width: 12),
+        if (owned)
+          const Text('✅', style: TextStyle(fontSize: 22))
+        else
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFD4A017),
+                foregroundColor: const Color(0xFF231900)),
+            onPressed: _busy
+                ? null
+                : () async {
+                    setState(() => _busy = true);
+                    final ok = logic.purchaseNinjaSkin(widget.sync);
+                    setState(() => _busy = false);
+                    if (!ok && mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                          content: Text('Pas assez d\'or (50 🪙 requis)')));
+                    }
+                  },
+            child: const Text('50 🪙'),
+          ),
+      ]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -606,6 +656,12 @@ class _GoldShopSheetState extends State<_GoldShopSheet> {
               );
             }),
 
+
+          // ── Skin ninja ────────────────────────────────────────────────────────────
+          const SizedBox(height: 16),
+          Text('Équipement', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 10),
+          _buildNinjaCard(context),
 
           const SizedBox(height: 20),
           Text('TITRES',

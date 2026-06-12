@@ -301,6 +301,8 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
     Color? hpColor;
     double hpFrac = 0;
     bool engaged = false;
+    int sbiresCount = 0;
+    int heartsCount = 0;
     if (ent != null && isBacklogMeta(ent.meta)) {
       final id = backlogItemId(ent.meta);
       final max = logic.enemyMaxHp(ent.type, id);
@@ -313,9 +315,11 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
                 logic.state.activeDomains) ??
             cs.primary;
         engaged = logic.isEngaged(ent.type, id);
+        heartsCount = min(5, max < 1 ? 1 : cur);
+        sbiresCount = engaged ? logic.sbiresLeft(ent.type, id) : GoldEconomy.sbiresForHp(cur);
       }
     }
-    return _TileView(
+    final tileWidget = _TileView(
       tile: _map.at(x, y),
       visible: _revealed.contains('${x}_$y'),
       isAvatar: pos.x == x && pos.y == y,
@@ -328,6 +332,24 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
       picked: _picked,
       cs: cs,
       onTap: () => _onTap(_map.at(x, y)),
+      sbiresCount: sbiresCount,
+    );
+
+    if (ent == null || heartsCount == 0) return tileWidget;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          height: 12,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: List.generate(heartsCount,
+                (_) => const Text('❤️', style: TextStyle(fontSize: 8))),
+          ),
+        ),
+        tileWidget,
+      ],
     );
   }
 
@@ -635,7 +657,7 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
             ? 'Finis une tâche → 🗡️ épée'
             : weapon == 'arc'
                 ? 'Logge ~1 h de temps → 🏹 flèche'
-                : 'Fais une routine → 🩴 sandale';
+                : 'Fais une routine → 🔪 couteau';
         final accent =
             isGuardian ? const Color(0xFFFFC247) : const Color(0xFFE24A4A);
 
@@ -873,16 +895,23 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
       msg = '💰 +$gain or';
     }
     String? pickedAdd, collectionAdd;
+    String? weaponPickupKey;
     final collId = t.collectibleId;
     if (collId != null && !_picked.contains(collId)) {
-      final cat = collectibleById(collId);
       pickedAdd = collId;
-      collectionAdd = collId;
-      if (cat != null && cat.rare) {
-        gain += GoldEconomy.lootGoldMin +
-            _rng.nextInt(GoldEconomy.lootGoldMax - GoldEconomy.lootGoldMin + 1);
+      if (collId.startsWith('wpn_')) {
+        // Pickup d'arme : ne va pas dans la collection
+        weaponPickupKey = collId.substring(4); // 'arc' ou 'couteau'
+        msg = '${logic.weaponEmoji(weaponPickupKey)} +1 ${logic.weaponName(weaponPickupKey)} ramassé !';
+      } else {
+        final cat = collectibleById(collId);
+        collectionAdd = collId;
+        if (cat != null && cat.rare) {
+          gain += GoldEconomy.lootGoldMin +
+              _rng.nextInt(GoldEconomy.lootGoldMax - GoldEconomy.lootGoldMin + 1);
+        }
+        msg = '${cat?.emoji ?? '✨'} ${cat?.name ?? 'Trouvé'} ajouté à ta collection';
       }
-      msg = '${cat?.emoji ?? '✨'} ${cat?.name ?? 'Trouvé'} ajouté à ta collection';
     }
 
     final goldDelta = gain - cost;
@@ -903,6 +932,9 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
             category: goldDelta >= 0 ? 'gain' : 'loss',
             reasonCode: fogged ? 'hunt_torch' : 'hunt_step',
             label: 'Chasse');
+      }
+      if (weaponPickupKey != null) {
+        logic.addWeaponPickup(weaponPickupKey, 1, sync);
       }
       if (collectionAdd != null &&
           !logic.state.collection.contains(collectionAdd)) {
@@ -940,6 +972,9 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
           ..addAll(entities);
       }
       if (pickedAdd != null) logic.state.expeditionPicked.add(pickedAdd);
+      if (weaponPickupKey != null) {
+        logic.addWeaponPickup(weaponPickupKey, 1, sync);
+      }
       if (collectionAdd != null &&
           !logic.state.collection.contains(collectionAdd)) {
         logic.state.collection.add(collectionAdd);
@@ -1071,7 +1106,7 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
                     fontSize: 15, weight: FontWeight.bold, color: _kGold),
                 const SizedBox(height: 2),
                 Text(
-                    '🩴${logic.weaponsAvailable('sandale')}  🏹${logic.weaponsAvailable('arc')}  🗡️${logic.weaponsAvailable('epee')}',
+                    '🔪${logic.weaponsAvailable('couteau')}  🏹${logic.weaponsAvailable('arc')}  🗡️${logic.weaponsAvailable('epee')}',
                     style: const TextStyle(fontSize: 11)),
               ],
             ),
@@ -1161,6 +1196,7 @@ class _TileView extends StatelessWidget {
   final double hpFrac;
   // Vrai si un combat a déjà été engagé contre cet ennemi.
   final bool engaged;
+  final int sbiresCount;
   const _TileView({
     required this.tile,
     required this.visible,
@@ -1174,6 +1210,7 @@ class _TileView extends StatelessWidget {
     this.hpColor,
     this.hpFrac = 0,
     this.engaged = false,
+    this.sbiresCount = 0,
   });
 
   @override
@@ -1253,6 +1290,18 @@ class _TileView extends StatelessWidget {
                 child: Container(color: hpColor!.withOpacity(.5)),
               ),
             Text(content, style: const TextStyle(fontSize: 20)),
+            if (entity != null && sbiresCount > 0)
+              Positioned(
+                left: 0, right: 0, bottom: 1,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(
+                    sbiresCount.clamp(0, 5),
+                    (_) => Text(entityEmoji(entity!.type),
+                        style: const TextStyle(fontSize: 7)),
+                  ),
+                ),
+              ),
           ],
         ),
       ),

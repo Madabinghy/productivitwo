@@ -153,6 +153,13 @@ Future<void> showBacklogCombat(
         final maxHp = logic.enemyMaxHp(type, itemId);
         final itemName = logic.enemyItemName(type, itemId);
         final engaged = logic.isEngaged(type, itemId);
+        final ninjaEquipped = logic.hasSkin;
+        final sbires = engaged ? logic.sbiresLeft(type, itemId) : 0;
+        final minionW = GoldEconomy.minionWeaponForPest(type);
+        final minionWEmoji = logic.weaponEmoji(minionW);
+        final minionNeedsNinja = GoldEconomy.minionNeedsNinja(type);
+        final canKillSbire = logic.weaponsAvailable(minionW) >= 1 &&
+            (!minionNeedsNinja || ninjaEquipped);
         final alreadyScheduled = type == 'snake'
             ? logic.currentProjects
                     .expand((p) => p.tasks)
@@ -233,6 +240,16 @@ Future<void> showBacklogCombat(
           }
         }
 
+        Future<void> killOneSbire() async {
+          // Consommer l'arme manuellement (killSbire ne la consomme pas)
+          logic.state.weaponsSpent[minionW] =
+              (logic.state.weaponsSpent[minionW] ?? 0) + 1;
+          logic.killSbire(type, itemId, sync);
+          logic.onChange();
+          setLocal(() {});
+          onChanged?.call();
+        }
+
         Widget atk(IconData icon, String label, VoidCallback onTap) => Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: SizedBox(
@@ -273,15 +290,72 @@ Future<void> showBacklogCombat(
         }
 
         final List<Widget> attacks;
-        if (spiderTimer) {
-          attacks =
-              timerLadder(linkedId, finishMin: timerMin, finishRoutineId: itemId);
-        } else if (type == 'spider') {
-          attacks = [atk(Icons.local_fire_department_rounded, 'Faire la routine (+1)', inlineWork)];
-        } else if (type == 'scorpion') {
-          attacks = timerLadder(itemId);
+        if (engaged && sbires > 0) {
+          // Phase 1 : tuer les sbires
+          attacks = [
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    '$sbires sbire(s) garde(nt) le cœur',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.white.withOpacity(.65),
+                        decoration: TextDecoration.none),
+                  ),
+                  const SizedBox(height: 10),
+                  if (minionNeedsNinja && !ninjaEquipped)
+                    Text(
+                      '🔒 Skin ninja requis pour les sbires du serpent',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontSize: 11.5,
+                          color: Colors.orange.shade300,
+                          decoration: TextDecoration.none),
+                    )
+                  else
+                    atk(
+                      Icons.close_rounded,
+                      canKillSbire
+                          ? 'Éliminer 1 sbire  (−1 $minionWEmoji)'
+                          : 'Pas assez d\'armes (${logic.weaponsAvailable(minionW)} $minionWEmoji)',
+                      canKillSbire ? killOneSbire : () {},
+                    ),
+                ],
+              ),
+            ),
+          ];
+        } else if (!ninjaEquipped) {
+          // Cœur exposé mais sans ninja
+          attacks = [
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Text(
+                '🥷 Skin ninja requis pour attaquer le cœur',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.orange.shade300,
+                    decoration: TextDecoration.none),
+              ),
+            ),
+          ];
         } else {
-          attacks = [atk(Icons.check_circle_outline_rounded, 'Cocher des actions', fightSnake)];
+          // Phase 2 : attaquer le cœur (logique existante)
+          if (spiderTimer) {
+            attacks =
+                timerLadder(linkedId, finishMin: timerMin, finishRoutineId: itemId);
+          } else if (type == 'spider') {
+            attacks = [atk(Icons.local_fire_department_rounded, 'Faire la routine (+1)', inlineWork)];
+          } else if (type == 'scorpion') {
+            attacks = timerLadder(itemId);
+          } else {
+            attacks = [atk(Icons.check_circle_outline_rounded, 'Cocher des actions', fightSnake)];
+          }
         }
 
         final Widget hearts = Wrap(
@@ -296,7 +370,7 @@ Future<void> showBacklogCombat(
           ],
         );
 
-        final wEmoji = logic.weaponEmoji(GoldEconomy.weaponForPest(type));
+        final wEmoji = logic.weaponEmoji(GoldEconomy.minionWeaponForPest(type));
         final cost = logic.engageCost(type);
 
         const _kRed = Color(0xFFFF2B2B);

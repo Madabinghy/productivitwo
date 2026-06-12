@@ -341,7 +341,7 @@ class _StatsBar extends StatelessWidget {
         ),
         const SizedBox(width: 20),
         Text(
-          '🩴×${logic.weaponsAvailable('sandale')}  '
+          '🔪×${logic.weaponsAvailable('couteau')}  '
           '🏹×${logic.weaponsAvailable('arc')}  '
           '🗡️×${logic.weaponsAvailable('epee')}',
           style: const TextStyle(fontSize: 13),

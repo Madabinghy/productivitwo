@@ -1,3 +1,5 @@
+import 'dart:math' show max, min;
+
 /// Économie d'Or — constantes & formules PURES (aucune dépendance plateforme).
 /// Partagé par le moteur mobile (`gold_engine.dart`) ET l'app web, pour que les
 /// deux puissent calculer un coût et l'appliquer via `FirestoreSync.applyGold`.
@@ -151,19 +153,30 @@ class GoldEconomy {
   static int pestLootBase(String type, bool guardian) =>
       pestCost(type) * pestDrainCapHours * (guardian ? 2 : 1);
 
-  /// Arme requise pour tuer un nuisible : épée pour le serpent, sandale sinon.
-  // Chaque ennemi a son arme, adossée à un pilier de productivité :
-  // araignée→🩴 sandale (routine) · scorpion→🏹 arc (temps loggé) · serpent→🗡️ épée (tâche).
+  /// Arme requise pour tuer le CŒUR d'un nuisible (phase 2).
+  // araignée→🔪 couteau · scorpion→🔪 couteau · serpent→🗡️ épée.
   static String weaponForPest(String type) {
     switch (type) {
       case 'snake':
         return 'epee';
-      case 'scorpion':
-        return 'arc';
       default:
-        return 'sandale';
+        return 'couteau'; // spider et scorpion → couteau
     }
   }
+
+  /// Arme requise pour tuer les SBIRES (phase 1 avant le cœur).
+  /// snake sbires nécessitent aussi ninja skin (voir minionNeedsNinja).
+  static String minionWeaponForPest(String type) {
+    switch (type) {
+      case 'snake': return 'couteau';
+      default: return 'arc'; // spider et scorpion → arc
+    }
+  }
+
+  static bool minionNeedsNinja(String type) => type == 'snake';
+
+  /// Nombre de sbires en fonction des PV : 1 à 5 selon l'effort restant.
+  static int sbiresForHp(int hp) => max(1, min(5, (hp + 4) ~/ 5));
 
   static const int minutesPerArrow = 60; // 1 h de temps loggé = 1 flèche
 
@@ -192,7 +205,7 @@ class GoldEconomy {
   ];
 
   static const int weaponEpee = 8; // tue un serpent (consommable)
-  static const int weaponSandale = 5; // tue araignée/scorpion (consommable)
+  static const int weaponCouteau = 5; // tue araignée/scorpion — cœur (consommable)
 
   /// Plafond de l'« arsenal » d'une arme (épée/sandale/arc). Au-delà, faire une
   /// action ne sur-empile plus d'armes : c'est l'OR (toujours crédité par action)
@@ -200,7 +213,7 @@ class GoldEconomy {
   static const int weaponStockCap = 9;
 
   static int weaponBasePrice(String key) =>
-      key == 'epee' ? weaponEpee : weaponSandale;
+      key == 'epee' ? weaponEpee : weaponCouteau;
 
   // ── Skins d'avatar (cosmétiques, puits d'or) ───────────────────────────────
   // Possédés via cosmeticsOwned ('avatar_<id>') ; activeAvatar stocke l'emoji.

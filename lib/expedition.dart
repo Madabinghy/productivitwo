@@ -210,6 +210,8 @@ const overworldCollectibles = <({String id, String emoji, String name, bool rare
   (id: 'amphora', emoji: '🏺', name: 'Amphore', rare: true),
   (id: 'crown', emoji: '👑', name: 'Couronne', rare: true),
   (id: 'ring', emoji: '💍', name: 'Anneau', rare: true),
+  (id: 'wpn_arc', emoji: '🏹', name: 'Arc (pickup)', rare: false),
+  (id: 'wpn_couteau', emoji: '🔪', name: 'Couteau (pickup)', rare: false),
 ];
 
 ({String id, String emoji, String name, bool rare})? collectibleById(String id) {
