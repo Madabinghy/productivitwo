@@ -484,12 +484,42 @@ class _TerritoryViewState extends State<_TerritoryView> {
     );
   }
 
+  // Vrai fog-of-war : tu ne vois que ce que TES structures éclairent. Le château
+  // et chaque grotte que tu possèdes projettent un disque de vision (distance de
+  // Manhattan) ; une grotte mieux défendue voit plus loin (early-warning ↔
+  // investissement défensif). Une grotte prise par le bot n'éclaire plus rien (tu
+  // as perdu ce poste de guet). Renvoie l'ensemble des tuiles éclairées, encodées
+  // `y * cols + x`. Tes grottes/château eux-mêmes restent toujours rendus (cf.
+  // `_cell`) : le fog ne masque que le sol, les murs et l'envahisseur.
+  Set<int> _visibleTiles(Territory t, String? me) {
+    final vis = <int>{};
+    void disc(int cx, int cy, int r) {
+      for (int y = 0; y < t.rows; y++) {
+        for (int x = 0; x < t.cols; x++) {
+          if ((x - cx).abs() + (y - cy).abs() <= r) vis.add(y * t.cols + x);
+        }
+      }
+    }
+
+    disc(t.castle.x, t.castle.y, 3);
+    for (final c in t.caves) {
+      if (c.ownerUid == me) disc(c.x, c.y, 2 + (c.blueLevel >= 3 ? 1 : 0));
+    }
+    return vis;
+  }
+
   Widget _board(Territory t, String? me) {
     final grid = generateTerritoryGrid(t);
     // Index des grottes par position pour superposer niveau + propriété.
     final caveAt = <String, TerritoryCave>{
       for (final c in t.caves) '${c.x}_${c.y}': c,
     };
+    final vis = _visibleTiles(t, me);
+    final inv = t.invader;
+    // L'araignée n'est dessinée qu'une fois entrée dans ton champ de vision : sa
+    // POSITION est cachée tant qu'elle marche au loin (l'interception reste
+    // possible via la bannière, indépendante du plateau).
+    final invVisible = inv != null && vis.contains(inv.y * t.cols + inv.x);
     return LayoutBuilder(builder: (context, c) {
       final slot = (c.maxWidth / t.cols).clamp(18.0, 52.0);
       final inner = slot - 4;
@@ -501,8 +531,12 @@ class _TerritoryViewState extends State<_TerritoryView> {
               Row(mainAxisSize: MainAxisSize.min, children: [
                 for (int x = 0; x < t.cols; x++)
                   _cell(grid[y][x], caveAt['${x}_$y'], me, inner,
-                      isInvader:
-                          t.invader != null && t.invader!.x == x && t.invader!.y == y,
+                      // Château/grotte = tes structures, jamais masquées ; le fog
+                      // ne couvre que sol + murs hors vision.
+                      fogged: grid[y][x] != TerrTile.castle &&
+                          grid[y][x] != TerrTile.cave &&
+                          !vis.contains(y * t.cols + x),
+                      isInvader: invVisible && inv.x == x && inv.y == y,
                       onTapCave: caveAt['${x}_$y'] != null
                           ? () => _fightCave(t, caveAt['${x}_$y']!, me)
                           : null),
@@ -514,7 +548,20 @@ class _TerritoryViewState extends State<_TerritoryView> {
   }
 
   Widget _cell(TerrTile kind, TerritoryCave? cave, String? me, double inner,
-      {VoidCallback? onTapCave, bool isInvader = false}) {
+      {VoidCallback? onTapCave, bool isInvader = false, bool fogged = false}) {
+    // Hors vision : tuile noyée dans le brouillard, contenu masqué, non tappable.
+    if (fogged) {
+      return Container(
+        width: inner,
+        height: inner,
+        margin: const EdgeInsets.all(2),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(.55),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: Colors.white.withOpacity(.04)),
+        ),
+      );
+    }
     Color bg;
     Color border;
     Widget? child;
@@ -588,6 +635,7 @@ class _TerritoryViewState extends State<_TerritoryView> {
         item('❤️', 'Château', _kGold),
         item('🕳️', 'Grotte à toi', _kBlue),
         item('🕳️', 'Grotte prise', _kEnemy),
+        item('🌫️', 'Hors vision', Colors.white60),
       ],
     );
   }
