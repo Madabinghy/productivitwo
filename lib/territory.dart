@@ -57,12 +57,77 @@ class TerritoryCave {
       };
 }
 
+/// L'envahisseur courant sur une map (1 seul à la fois). En solo = le bot 🟡.
+/// Marche tick par tick vers `targetCaveId` ; sa FORCE (charge verte) n'est pas
+/// stockée en clair — seul son `level` l'est (révélé au combat = brouillard de
+/// force). `lastStepAtMs` cadence l'avancée (rapide en test, 1h en prod).
+class Invader {
+  final String attackerUid; // 'bot' en solo
+  final String color; // 'yellow' (bot) | 'red' (joueur)
+  final int level; // force → buildInvaderForce au combat
+  final int x, y;
+  final String targetCaveId;
+  final String state; // 'marching' | 'at_cave' | 'installed' | 'resolved'
+  final int lastStepAtMs;
+
+  const Invader({
+    required this.attackerUid,
+    required this.color,
+    required this.level,
+    required this.x,
+    required this.y,
+    required this.targetCaveId,
+    required this.state,
+    required this.lastStepAtMs,
+  });
+
+  bool get marching => state == 'marching';
+  bool get atCave => state == 'at_cave';
+
+  Invader copyWith({int? x, int? y, String? state, int? lastStepAtMs}) => Invader(
+        attackerUid: attackerUid,
+        color: color,
+        level: level,
+        x: x ?? this.x,
+        y: y ?? this.y,
+        targetCaveId: targetCaveId,
+        state: state ?? this.state,
+        lastStepAtMs: lastStepAtMs ?? this.lastStepAtMs,
+      );
+
+  static Invader? from(Map? j) {
+    if (j == null) return null;
+    return Invader(
+      attackerUid: (j['attackerUid'] ?? 'bot') as String,
+      color: (j['color'] ?? 'yellow') as String,
+      level: (j['level'] as num?)?.toInt() ?? 1,
+      x: (j['x'] as num?)?.toInt() ?? 0,
+      y: (j['y'] as num?)?.toInt() ?? 0,
+      targetCaveId: (j['targetCaveId'] ?? '') as String,
+      state: (j['state'] ?? 'marching') as String,
+      lastStepAtMs: (j['lastStepAtMs'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'attackerUid': attackerUid,
+        'color': color,
+        'level': level,
+        'x': x,
+        'y': y,
+        'targetCaveId': targetCaveId,
+        'state': state,
+        'lastStepAtMs': lastStepAtMs,
+      };
+}
+
 class Territory {
   final String uid, pseudo;
   final int seed, cols, rows;
   final Point<int> castle;
   final bool fog;
   final List<TerritoryCave> caves;
+  final Invader? invader;
 
   const Territory({
     required this.uid,
@@ -73,10 +138,13 @@ class Territory {
     required this.castle,
     required this.fog,
     required this.caves,
+    this.invader,
   });
 
-  /// Niveau de map = Σ des 4 niveaux de grottes (= rang ladder à venir).
-  int get level => caves.fold(0, (s, c) => s + c.blueLevel);
+  /// Niveau de map = Σ des niveaux des grottes que JE possède (= rang ladder à
+  /// venir). Une grotte prise par un envahisseur ne compte plus → ton niveau baisse.
+  int get level =>
+      caves.where((c) => c.ownerUid == uid).fold(0, (s, c) => s + c.blueLevel);
 
   /// Combien de grottes je possède encore.
   int ownedCount(String me) => caves.where((c) => c.ownerUid == me).length;
@@ -88,7 +156,13 @@ class Territory {
     return null;
   }
 
-  Territory copyWith({bool? fog, List<TerritoryCave>? caves, int? seed}) =>
+  Territory copyWith({
+    bool? fog,
+    List<TerritoryCave>? caves,
+    int? seed,
+    Invader? invader,
+    bool clearInvader = false,
+  }) =>
       Territory(
         uid: uid,
         pseudo: pseudo,
@@ -98,6 +172,7 @@ class Territory {
         castle: castle,
         fog: fog ?? this.fog,
         caves: caves ?? this.caves,
+        invader: clearInvader ? null : (invader ?? this.invader),
       );
 
   static Territory from(Map j) {
@@ -113,6 +188,7 @@ class Territory {
       caves: ((j['caves'] as List?) ?? const [])
           .map((e) => TerritoryCave.from(e as Map))
           .toList(),
+      invader: Invader.from(j['invader'] as Map?),
     );
   }
 
@@ -126,6 +202,7 @@ class Territory {
         'fog': fog,
         'level': level, // dénormalisé pour la query ladder
         'caves': [for (final c in caves) c.toJson()],
+        'invader': invader?.toJson(),
       };
 }
 
@@ -189,4 +266,76 @@ List<List<TerrTile>> generateTerritoryGrid(Territory t) {
     grid[c.y][c.x] = TerrTile.cave;
   }
   return grid;
+}
+
+// ── Envahisseur : spawn + marche (purs ; l'appelant fournit l'horloge nowMs) ──
+
+/// La grotte la + faible que JE possède (cible de l'envahisseur). Tie-break id.
+TerritoryCave? weakestOwnedCave(Territory t, String me) {
+  TerritoryCave? best;
+  for (final c in t.caves) {
+    if (c.ownerUid != me) continue;
+    if (best == null ||
+        c.blueLevel < best.blueLevel ||
+        (c.blueLevel == best.blueLevel && c.id.compareTo(best.id) < 0)) {
+      best = c;
+    }
+  }
+  return best;
+}
+
+/// Fait apparaître le bot 🟡 au bord (haut-centre), ciblant ta grotte la + faible.
+/// Brouillard levé. Sa MENACE = `botLevel` (DÉCORRÉLÉE du niveau de ta grotte :
+/// une grotte non défendue tombe si menace > son niveau ; la monter au-dessus de
+/// la menace la protège passivement). Caché → révélé au combat. En prod, `botLevel`
+/// scalera sur l'ampleur de la chute de score hebdo. null-safe si plus de grotte.
+Territory spawnBotInvader(Territory t, String me, int nowMs, {int botLevel = 2}) {
+  final target = weakestOwnedCave(t, me);
+  if (target == null) return t;
+  final inv = Invader(
+    attackerUid: 'bot',
+    color: 'yellow',
+    level: botLevel,
+    x: t.cols ~/ 2,
+    y: 0,
+    targetCaveId: target.id,
+    state: 'marching',
+    lastStepAtMs: nowMs,
+  );
+  return t.copyWith(invader: inv, fog: false);
+}
+
+/// Avance l'envahisseur des pas DUS depuis `lastStepAtMs` (cadence `stepMs`) ; un
+/// pas = une case vers la grotte cible (Manhattan, ignore les murs — la friction
+/// des murs est pour TOI, pas pour le maraudeur). Arrivé → state 'at_cave'.
+/// Retourne (territoire, a-bougé). Pur.
+({Territory t, bool moved}) advanceInvader(Territory t, int nowMs, int stepMs) {
+  final inv = t.invader;
+  if (inv == null || !inv.marching) return (t: t, moved: false);
+  final cave = t.caveById(inv.targetCaveId);
+  if (cave == null) return (t: t, moved: false);
+  var due = (nowMs - inv.lastStepAtMs) ~/ stepMs;
+  if (due <= 0) return (t: t, moved: false);
+  var x = inv.x, y = inv.y, steps = 0;
+  while (due > 0 && (x != cave.x || y != cave.y)) {
+    final dx = cave.x - x, dy = cave.y - y;
+    if (dx != 0 && (dy == 0 || dx.abs() >= dy.abs())) {
+      x += dx > 0 ? 1 : -1;
+    } else {
+      y += dy > 0 ? 1 : -1;
+    }
+    due--;
+    steps++;
+  }
+  if (steps == 0) return (t: t, moved: false);
+  final arrived = x == cave.x && y == cave.y;
+  return (
+    t: t.copyWith(
+        invader: inv.copyWith(
+            x: x,
+            y: y,
+            state: arrived ? 'at_cave' : 'marching',
+            lastStepAtMs: inv.lastStepAtMs + steps * stepMs)),
+    moved: true
+  );
 }

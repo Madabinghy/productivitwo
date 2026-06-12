@@ -58,6 +58,35 @@ List<BattleEvent> buildInvaderForce(int level, {int extra = 0}) {
   return out;
 }
 
+/// Défense BLEUE d'une grotte (side 1) pour la résolution AUTO green-vs-blue quand
+/// tu ne défends pas l'envahisseur à temps. Calquée sur `buildInvaderForce` mais en
+/// bloqueurs side 1, scalée par `blueLevel` → à niveau égal, combat ~équilibré
+/// (chaque cran de grotte montée pèse vraiment dans la résolution).
+List<BattleEvent> buildBlueDefense(int blueLevel) {
+  final boss = blueLevel >= 5 ? 'serpent' : (blueLevel >= 3 ? 'scorpion' : 'spider');
+  final grunt = blueLevel >= 3 ? 'scorpion' : 'spider';
+  const weak = 'spider';
+  final waves = blueLevel >= 5 ? 5 : (blueLevel >= 3 ? 4 : 3);
+  final lanesPerWave = blueLevel >= 5 ? 5 : (blueLevel >= 3 ? 4 : 3);
+  const laneOrder = [2, 1, 3, 0, 4];
+  final out = <BattleEvent>[];
+  var seq = 0;
+  for (var w = 0; w < waves; w++) {
+    final hasBoss = w.isEven;
+    for (var i = 0; i < lanesPerWave; i++) {
+      final tier = (i == 0 && hasBoss) ? boss : (i.isOdd ? grunt : weak);
+      out.add(BattleEvent(
+          id: 'blue${seq++}',
+          side: 1,
+          lane: laneOrder[i % laneOrder.length],
+          kind: 'pest',
+          tier: tier,
+          tick: w));
+    }
+  }
+  return out;
+}
+
 /// Compose la force OFFENSIVE d'une invasion depuis le deck vert : une COPIE
 /// (non consommée) de tous les nuisibles ≤ palier du rouge `redTier`, métrée en
 /// VAGUES (budget de masse par tick → gros deck = siège long). Boss (plus fort)
