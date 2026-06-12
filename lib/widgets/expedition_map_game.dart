@@ -340,13 +340,10 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        SizedBox(
-          height: 12,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: List.generate(heartsCount,
-                (_) => const Text('❤️', style: TextStyle(fontSize: 8))),
-          ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(heartsCount,
+              (_) => const Text('❤️', style: TextStyle(fontSize: 10))),
         ),
         tileWidget,
       ],
@@ -1292,13 +1289,13 @@ class _TileView extends StatelessWidget {
             Text(content, style: const TextStyle(fontSize: 20)),
             if (entity != null && sbiresCount > 0)
               Positioned(
-                left: 0, right: 0, bottom: 1,
+                left: 0, right: 0, bottom: 2,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: List.generate(
                     sbiresCount.clamp(0, 5),
                     (_) => Text(entityEmoji(entity!.type),
-                        style: const TextStyle(fontSize: 7)),
+                        style: const TextStyle(fontSize: 10)),
                   ),
                 ),
               ),

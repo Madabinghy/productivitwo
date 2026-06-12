@@ -141,8 +141,14 @@ extension GoldEngine on AppLogic {
       state.goldTodayGain = 0;
       state.goldTodayGainYmd = ymd;
     }
-    netDelta += earned - state.goldTodayGain;
-    state.goldTodayGain = earned;
+    // N'ajoute que si earned > ce qu'on a déjà crédité (donnée fraîche seulement).
+    // Si earned est inférieur (données périmées côté web p.ex.), on n'écrit rien
+    // localement : la transaction AUTORITATIVE corrigera via auth.
+    final toAdd = earned - state.goldTodayGain;
+    if (toAdd > 0) {
+      netDelta += toAdd;
+      state.goldTodayGain = earned;
+    }
     if (netDelta != 0) {
       state.gold += netDelta;
       if (state.gold < 0) state.gold = 0;

@@ -289,8 +289,46 @@ Future<void> showBacklogCombat(
           return out;
         }
 
+        // ── Compteur d'armes disponibles ─────────────────────────────────────────
+        final weaponRow = Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                '🔪 ${logic.weaponsAvailable('couteau')}   '
+                '🏹 ${logic.weaponsAvailable('arc')}   '
+                '🗡️ ${logic.weaponsAvailable('epee')}',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.white.withOpacity(.75),
+                  decoration: TextDecoration.none,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        );
+
         final List<Widget> attacks;
-        if (engaged && sbires > 0) {
+        if (!engaged) {
+          // Pas encore engagé : expliquer la mécanique
+          attacks = [
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Text(
+                type == 'snake'
+                    ? 'Engagez pour faire apparaître les sbires (🔪 couteau + 🥷 ninja requis).'
+                    : 'Engagez pour faire apparaître les sbires (🏹 arc requis).',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 11.5,
+                    color: Colors.white.withOpacity(.5),
+                    decoration: TextDecoration.none),
+              ),
+            ),
+          ];
+        } else if (sbires > 0) {
           // Phase 1 : tuer les sbires
           attacks = [
             Padding(
@@ -329,12 +367,12 @@ Future<void> showBacklogCombat(
             ),
           ];
         } else if (!ninjaEquipped) {
-          // Cœur exposé mais sans ninja
+          // Sbires éliminés, mais sans ninja pour toucher le cœur
           attacks = [
             Padding(
               padding: const EdgeInsets.all(8),
               child: Text(
-                '🥷 Skin ninja requis pour attaquer le cœur',
+                '🥷 Skin ninja requis pour attaquer le cœur\n(Boutique d\'or → Équipement)',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                     fontSize: 12.5,
@@ -345,7 +383,7 @@ Future<void> showBacklogCombat(
             ),
           ];
         } else {
-          // Phase 2 : attaquer le cœur (logique existante)
+          // Phase 2 : attaquer le cœur (ninja équipé)
           if (spiderTimer) {
             attacks =
                 timerLadder(linkedId, finishMin: timerMin, finishRoutineId: itemId);
@@ -425,6 +463,7 @@ Future<void> showBacklogCombat(
                     const SizedBox(height: 10),
                     hearts,
                     const SizedBox(height: 16),
+                    weaponRow,
                     ...attacks,
                     // CTA Engager
                     if (!engaged)
