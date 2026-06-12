@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:productivitwo_v1/web/assistant_widget.dart';
 import 'package:productivitwo_v1/web/web_auth_screen.dart';
 import 'package:productivitwo_v1/web/web_home_screen.dart';
 import 'package:productivitwo_v1/web/web_email_signin_screen.dart';
@@ -59,6 +60,9 @@ class WebApp extends StatelessWidget {
 
       themeMode: ThemeMode.dark,
 
+      // Overlay assistant au-dessus du Navigator → visible même par-dessus les
+      // sheets/modales (sinon caché).
+      builder: (context, child) => GlobalAssistantOverlay(child: child!),
       home: _AuthGate(),
     );
   }

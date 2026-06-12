@@ -5,6 +5,53 @@ import 'assistant_engine.dart';
 // Vitesse d'écriture (ms par caractère)
 const _kTypeSpeed = Duration(milliseconds: 22);
 
+// ── Canal global ──────────────────────────────────────────────────────────────
+// Les messages de l'assistant sont évalués DANS l'écran d'accueil, mais doivent
+// s'afficher AU-DESSUS de toutes les routes/sheets (sinon une modale les cache).
+// On les remonte via ce notifier global, lu par [GlobalAssistantOverlay] placé
+// dans `MaterialApp.builder` (donc au-dessus du Navigator).
+final ValueNotifier<List<AssistantMessageData>> assistantMessagesNotifier =
+    ValueNotifier<List<AssistantMessageData>>(const []);
+
+/// Handler d'action (navigation) enregistré par l'écran d'accueil.
+void Function(AssistantActionData action)? assistantActionHandler;
+
+/// À placer dans `MaterialApp.builder` : rend l'overlay de l'assistant au-dessus
+/// du Navigator → visible même quand un bottom sheet / une modale est ouvert.
+class GlobalAssistantOverlay extends StatelessWidget {
+  final Widget child;
+  const GlobalAssistantOverlay({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        child,
+        Positioned(
+          right: 16,
+          bottom: 90,
+          child: ValueListenableBuilder<List<AssistantMessageData>>(
+            valueListenable: assistantMessagesNotifier,
+            builder: (context, msgs, _) {
+              if (msgs.isEmpty) return const SizedBox.shrink();
+              // Material : fournit le contexte Material requis par l'overlay
+              // (il vit hors de tout Scaffold ici).
+              return Material(
+                color: Colors.transparent,
+                child: AssistantOverlay(
+                  key: ValueKey(msgs.first.id),
+                  messages: msgs,
+                  onAction: assistantActionHandler,
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class AssistantOverlay extends StatefulWidget {
   final List<AssistantMessageData> messages;
   final void Function(AssistantActionData action)? onAction;

@@ -818,6 +818,9 @@ class ProductivitwoApp extends StatelessWidget {
       theme: _buildTheme(Brightness.light),
       darkTheme: _buildTheme(Brightness.dark),
       themeMode: ThemeMode.system, // clair/sombre selon l'iPhone
+      // Overlay assistant AU-DESSUS du Navigator → visible même par-dessus les
+      // bottom sheets (sinon il était caché derrière, jamais vu).
+      builder: (context, child) => GlobalAssistantOverlay(child: child!),
       home: const AppRoot(),
     );
   }
@@ -1838,7 +1841,6 @@ class _AppRootState extends State<AppRoot>
   // arrête OU quand on lance une AUTRE activité (voir _buildBody).
   String? _focusActivityId;
   bool _wasOffline = false;
-  List<AssistantMessageData> _assistantMessages = [];
 
   late final ValueNotifier<int> _tick; // seconds
   late final ConfettiController _confettiController;
@@ -2264,7 +2266,8 @@ class _AppRootState extends State<AppRoot>
         domains: _state!.domains,
       );
       if (mounted && messages.isNotEmpty) {
-        setState(() => _assistantMessages = messages);
+        assistantActionHandler = _handleAssistantAction;
+        assistantMessagesNotifier.value = messages;
       }
     }());
 
@@ -5019,19 +5022,11 @@ class _AppRootState extends State<AppRoot>
       );
     }
 
-    // 2) App prête -> Scaffold complet
+    // 2) App prête -> Scaffold complet. L'overlay assistant est désormais rendu
+    // globalement (MaterialApp.builder → GlobalAssistantOverlay), au-dessus des
+    // sheets.
     return Stack(
       children: [
-        if (_assistantMessages.isNotEmpty)
-          Positioned(
-            right: 16,
-            bottom: 90,
-            child: AssistantOverlay(
-              key: ValueKey(_assistantMessages.first.id),
-              messages: _assistantMessages,
-              onAction: _handleAssistantAction,
-            ),
-          ),
         Scaffold(
       appBar: AppBar(
         titleSpacing: 5,

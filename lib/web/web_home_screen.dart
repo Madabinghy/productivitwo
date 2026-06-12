@@ -106,6 +106,8 @@ class _WebHomeScreenState extends State<WebHomeScreen>
         domains: loadedDomains,
       );
       if (mounted && messages.isNotEmpty) {
+        assistantActionHandler = _handleAssistantAction;
+        assistantMessagesNotifier.value = messages;
         setState(() => _assistantMessages = messages);
       }
     } catch (_) {
@@ -268,16 +270,8 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                     _OrionView(sync: _sync),
                   ],
                 ),
-                if (_assistantMessages.isNotEmpty)
-                  Positioned(
-                    right: 24,
-                    bottom: 24,
-                    child: AssistantOverlay(
-                      key: ValueKey(_assistantMessages.first.id),
-                      messages: _assistantMessages,
-                      onAction: _handleAssistantAction,
-                    ),
-                  ),
+                // Overlay assistant rendu globalement (MaterialApp.builder) →
+                // au-dessus des sheets. Plus d'overlay local ici (était caché).
               ],
             ),
           ),
