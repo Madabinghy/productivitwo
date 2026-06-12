@@ -30,7 +30,7 @@ Future<void> showUnifiedWorldSheet(
       backgroundColor: _kBg,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 620, maxHeight: 760),
+        constraints: const BoxConstraints(maxWidth: 680, maxHeight: 920),
         child: _UnifiedWorldView(logic: logic, sync: sync),
       ),
     ),
@@ -236,7 +236,41 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
                     child: CircularProgressIndicator(color: _kBlue)))
             : _content(t, w),
       ),
+      if (!_loading && t != null) _siegeBar(t),
     ]);
+  }
+
+  // Fine barre de statut du siège long-terme (épinglée en bas). En T2 elle
+  // résumera l'envahisseur spatial en marche ; ici elle lit déjà l'état du doc.
+  Widget _siegeBar(Territory t) {
+    final inv = t.invader;
+    final String msg;
+    final Color col;
+    if (t.mapTaken) {
+      msg = '💀 Map prise — reconquiers tes grottes (rouges).';
+      col = _kEnemy;
+    } else if (inv != null) {
+      final cible = inv.targetCaveId == 'castle'
+          ? 'ton château'
+          : 'grotte ${inv.targetCaveId.toUpperCase()}';
+      msg = '🕷️ Siège en cours — un envahisseur marche vers $cible.';
+      col = _kEnemy;
+    } else {
+      msg = '🛡️ Aucun siège en cours.';
+      col = _kFarm;
+    }
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+      decoration: BoxDecoration(
+        color: col.withOpacity(.10),
+        border: Border(top: BorderSide(color: col.withOpacity(.35))),
+      ),
+      child: Text(msg,
+          textAlign: TextAlign.center,
+          style:
+              TextStyle(color: col, fontSize: 12, fontWeight: FontWeight.w700)),
+    );
   }
 
   Widget _content(Territory t, UnifiedWorld w) {
@@ -282,7 +316,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
   Widget _board(Territory t, UnifiedWorld w) {
     final avatar = logic.state.activeAvatar ?? '🧍';
     return LayoutBuilder(builder: (context, c) {
-      final slot = (c.maxWidth / w.cols).clamp(20.0, 44.0);
+      final slot = (c.maxWidth / w.cols).clamp(22.0, 46.0);
       final inner = slot - 3;
       return Center(
         child: Column(
@@ -324,11 +358,21 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
     Color border = Colors.white.withOpacity(.05);
     Widget? child;
 
-    if (kind == UwTile.floor) {
-      // Teinte la zone farm (gauche du château) en vert discret.
+    if (kind == UwTile.wall) {
+      // Mur = terrain rocheux ; certains portent un rocher 🪨.
+      bg = const Color(0xFF241F1B).withOpacity(.55);
+      border = Colors.white.withOpacity(.06);
+      if (w.hasRock(x, y)) {
+        child = Text('🪨', style: TextStyle(fontSize: inner * 0.5));
+      }
+    } else if (kind == UwTile.floor) {
+      // Teinte la zone farm (gauche du château) en vert discret ; buissons 🌿.
       final farmSide = x < w.castle.x - 1;
       bg = (farmSide ? _kFarm : Colors.white).withOpacity(.08);
       border = (farmSide ? _kFarm : Colors.white).withOpacity(.12);
+      if (w.hasBush(x, y)) {
+        child = Text('🌿', style: TextStyle(fontSize: inner * 0.5));
+      }
     } else if (kind == UwTile.castle) {
       bg = _kGold.withOpacity(.22);
       border = _kGold.withOpacity(.7);

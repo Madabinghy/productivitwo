@@ -20,6 +20,10 @@ class UnifiedWorld {
   // matchent ceux du modèle Territory → on superpose l'état (niveau/propriété)
   // lu du doc sans dupliquer la position.
   final Map<String, Point<int>> caves;
+  // Décor déterministe (cosmétique en T0) : buissons 🌿 sur des cases sol,
+  // rochers 🪨 sur des cases mur. Encodés "x_y".
+  final Set<String> bushes;
+  final Set<String> rocks;
 
   const UnifiedWorld({
     required this.seed,
@@ -29,7 +33,12 @@ class UnifiedWorld {
     required this.start,
     required this.castle,
     required this.caves,
+    required this.bushes,
+    required this.rocks,
   });
+
+  bool hasBush(int x, int y) => bushes.contains('${x}_$y');
+  bool hasRock(int x, int y) => rocks.contains('${x}_$y');
 
   bool inBounds(int x, int y) => x >= 0 && x < cols && y >= 0 && y < rows;
   bool walkable(int x, int y) => inBounds(x, y) && grid[y][x] != UwTile.wall;
@@ -50,7 +59,9 @@ class UnifiedWorld {
 /// bande territoire pour atteindre les 4 grottes des coins.
 UnifiedWorld generateUnifiedWorld(int seed) {
   final rng = Random(seed);
-  const cols = 15, rows = 9;
+  // Grande carte : on respire (zone farm large, grottes espacées, vrai voyage
+  // gauche→droite). Surtout en hauteur (la largeur du dialog web est bornée).
+  const cols = 17, rows = 15;
   final grid = [
     for (int y = 0; y < rows; y++)
       [for (int x = 0; x < cols; x++) UwTile.wall]
@@ -99,11 +110,35 @@ UnifiedWorld generateUnifiedWorld(int seed) {
   // Grottes aux 4 coins de la bande droite (restent des cases sol : l'avatar
   // engage au contact/dessus en T1).
   final caves = <String, Point<int>>{
-    'nw': const Point(11, topRow),
-    'ne': const Point(14, topRow),
+    'nw': Point(leftCol, topRow),
+    'ne': Point(rightCol, topRow),
     'sw': Point(leftCol, botRow),
     'se': Point(rightCol, botRow),
   };
+  bool isCave(int x, int y) =>
+      caves.values.any((p) => p.x == x && p.y == y);
+
+  // Décor : buissons 🌿 sur des cases sol (hors château/grottes/entrée),
+  // rochers 🪨 sur des cases mur révélées → la carte ressemble à du terrain.
+  final bushes = <String>{};
+  final rocks = <String>{};
+  final bushCount = 12 + rng.nextInt(8);
+  final rockCount = 18 + rng.nextInt(10);
+  var tries = 0;
+  while ((bushes.length < bushCount || rocks.length < rockCount) &&
+      tries < 800) {
+    tries++;
+    final bx = rng.nextInt(cols), by = rng.nextInt(rows);
+    final isFloor = grid[by][bx] == UwTile.floor;
+    if (isFloor) {
+      if (bushes.length >= bushCount) continue;
+      if (isCave(bx, by) || (bx == 0 && by == midY)) continue; // grottes / entrée
+      bushes.add('${bx}_$by');
+    } else if (grid[by][bx] == UwTile.wall) {
+      if (rocks.length >= rockCount) continue;
+      rocks.add('${bx}_$by');
+    }
+  }
 
   return UnifiedWorld(
     seed: seed,
@@ -113,5 +148,7 @@ UnifiedWorld generateUnifiedWorld(int seed) {
     start: Point(0, midY),
     castle: Point(centerX, midY),
     caves: caves,
+    bushes: bushes,
+    rocks: rocks,
   );
 }
