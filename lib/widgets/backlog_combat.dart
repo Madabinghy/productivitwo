@@ -183,6 +183,9 @@ Future<void> showBacklogCombat(
           final loot =
               GoldEconomy.pestLootBase(type, false) + Random().nextInt(5);
           final unlocked = logic.recordKill(type, sync, spendWeapon: false);
+          // (La masse de « Bataille de nuisibles » est DÉRIVÉE de habitProgress,
+          // plus de mint ici → une routine complétée sur n'importe quel appareil
+          // compte. Voir gold_engine.battleMasseEarned.)
           logic.applyGold(sync, loot,
               category: 'gain',
               reasonCode: 'pest_loot',

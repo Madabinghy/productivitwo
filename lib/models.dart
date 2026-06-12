@@ -725,6 +725,27 @@ class AppState {
   // Attaquer les cœurs : capacité dérivée de cosmeticsOwned.contains('avatar_ninja')
   // (posséder l'avatar Ninja). Plus de flag dédié — l'avatar EST la capacité.
   Map<String, int> weaponPickups; // armes ramassées sur la carte (clé → count)
+  // Social « Le Monde » : jetons de relâche déjà consommés. Disponibles =
+  // (captures totales / capturesPerReleaseToken) − releaseTokensUsed.
+  int releaseTokensUsed;
+  // Invasion / Territoires : ARSENAL de nuisibles rouges craftés, par palier
+  // ('spider'/'scorpion'/'serpent') → nombre DISPONIBLE (non déployé). Et nuisibles
+  // (du deck lifetime) dépensés au craft, par PALIER → dispo = deck lifetime −
+  // craftSpent. Trust-client v1.
+  Map<String, int> redRoster;
+  Map<String, int> craftSpent;
+  // Dégâts au deck vert infligés par un boss PvE ayant franchi (par palier). RÉCUPÉRABLE
+  // (on refarme), monotone comme craftSpent : dispo = deck lifetime − craftSpent − deckDamage.
+  Map<String, int> deckDamage;
+  // Bataille de nuisibles : masse d'armée mintée à vie (1 capture de routine =
+  // effort-minutes, plancher 5) et masse déjà dépensée en déploiements.
+  // Disponible = battleMasseEarned − battleMasseUsed.
+  int battleMasseEarned;
+  int battleMasseUsed;
+  // Masse gagnée aujourd'hui (« +X aujourd'hui »), remise à 0 au changement de
+  // jour via battleMasseTodayYmd.
+  int battleMasseToday;
+  String battleMasseTodayYmd;
 
   AppState({
     required this.domains,
@@ -800,8 +821,16 @@ class AppState {
     this.donjonKeysYmd,
     this.expeditionDonjonLevel = 0,
     this.expeditionGuardianKilledLevel = 0,
+    this.releaseTokensUsed = 0,
+    this.battleMasseEarned = 0,
+    this.battleMasseUsed = 0,
+    this.battleMasseToday = 0,
+    this.battleMasseTodayYmd = '',
     Map<String, int>? weaponsSpent,
     Map<String, int>? pestKills,
+    Map<String, int>? redRoster,
+    Map<String, int>? craftSpent,
+    Map<String, int>? deckDamage,
     List<String>? engagedEnemies,
     Map<String, int>? weaponPickups,
     List<String>? expeditionChallenges,
@@ -848,6 +877,9 @@ class AppState {
         expeditionChallenges = expeditionChallenges ?? <String>[],
         weaponsSpent = weaponsSpent ?? <String, int>{},
         pestKills = pestKills ?? <String, int>{},
+        redRoster = redRoster ?? <String, int>{},
+        craftSpent = craftSpent ?? <String, int>{},
+        deckDamage = deckDamage ?? <String, int>{},
         engagedEnemies = engagedEnemies ?? <String>[],
         weaponPickups = weaponPickups ?? <String, int>{},
         collection = collection ?? <String>[],
@@ -919,6 +951,14 @@ class AppState {
         'expeditionGuardianKilledLevel': expeditionGuardianKilledLevel,
         'weaponsSpent': weaponsSpent,
         'pestKills': pestKills,
+        'redRoster': redRoster,
+        'craftSpent': craftSpent,
+        'deckDamage': deckDamage,
+        'releaseTokensUsed': releaseTokensUsed,
+        'battleMasseEarned': battleMasseEarned,
+        'battleMasseUsed': battleMasseUsed,
+        'battleMasseToday': battleMasseToday,
+        'battleMasseTodayYmd': battleMasseTodayYmd,
         'engagedEnemies': engagedEnemies,
         'weaponPickups': weaponPickups,
         'collection': collection,
@@ -1064,6 +1104,14 @@ class AppState {
       expeditionGuardianKilledLevel: (j['expeditionGuardianKilledLevel'] as num?)?.toInt() ?? 0,
       weaponsSpent: (j['weaponsSpent'] as Map?)?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ?? <String, int>{},
       pestKills: (j['pestKills'] as Map?)?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ?? <String, int>{},
+      redRoster: (j['redRoster'] as Map?)?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ?? <String, int>{},
+      craftSpent: (j['craftSpent'] as Map?)?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ?? <String, int>{},
+      deckDamage: (j['deckDamage'] as Map?)?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ?? <String, int>{},
+      releaseTokensUsed: (j['releaseTokensUsed'] as num?)?.toInt() ?? 0,
+      battleMasseEarned: (j['battleMasseEarned'] as num?)?.toInt() ?? 0,
+      battleMasseUsed: (j['battleMasseUsed'] as num?)?.toInt() ?? 0,
+      battleMasseToday: (j['battleMasseToday'] as num?)?.toInt() ?? 0,
+      battleMasseTodayYmd: (j['battleMasseTodayYmd'] as String?) ?? '',
       engagedEnemies: (j['engagedEnemies'] as List?)?.cast<String>() ?? <String>[],
       weaponPickups: (j['weaponPickups'] as Map?)?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ?? <String, int>{},
       collection: (j['collection'] as List?)?.cast<String>() ?? <String>[],
@@ -1760,5 +1808,83 @@ class DailySchedule {
                 ?.map((b) => ScheduleBlock.from(b))
                 .toList() ??
             [],
+      );
+}
+
+/// Routine relâchée dans « Le Monde » (social, audience-accountability).
+/// Document public `world_nuisibles/{id}` : les autres l'engagent, la combattent
+/// (à l'arme) puis suivent la progression de [ownerPseudo] sur cette routine.
+/// La difficulté ([hp]) est dérivée à la relâche de la série/niveau de l'émetteur
+/// (plus l'émetteur est régulier, plus son nuisible est dur → prestige à suivre).
+class WorldNuisible {
+  final String id;
+  final String ownerUid;
+  final String ownerPseudo;
+  final String routineId; // id de la routine source chez l'émetteur
+  final String name;
+  final String freq; // 'daily' | 'weekly' | 'monthly'
+  final int target;
+  final String? unit;
+  final int? iconCode;
+  final String? domainName;
+  final int hp; // points de vie = difficulté (dérivée série/niveau émetteur)
+  final int spectatorCount;
+  final int streak; // série actuelle de l'émetteur (snapshot d'affichage)
+  final bool active;
+  final DateTime createdAt;
+
+  const WorldNuisible({
+    required this.id,
+    required this.ownerUid,
+    required this.ownerPseudo,
+    required this.routineId,
+    required this.name,
+    required this.freq,
+    required this.target,
+    this.unit,
+    this.iconCode,
+    this.domainName,
+    required this.hp,
+    this.spectatorCount = 0,
+    this.streak = 0,
+    this.active = true,
+    required this.createdAt,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'ownerUid': ownerUid,
+        'ownerPseudo': ownerPseudo,
+        'routineId': routineId,
+        'name': name,
+        'freq': freq,
+        'target': target,
+        'unit': unit,
+        'iconCode': iconCode,
+        'domainName': domainName,
+        'hp': hp,
+        'spectatorCount': spectatorCount,
+        'streak': streak,
+        'active': active,
+        'createdAt': createdAt.toIso8601String(),
+      };
+
+  static WorldNuisible from(Map j) => WorldNuisible(
+        id: j['id'] as String,
+        ownerUid: (j['ownerUid'] ?? '') as String,
+        ownerPseudo: (j['ownerPseudo'] ?? '?') as String,
+        routineId: (j['routineId'] ?? '') as String,
+        name: (j['name'] ?? 'Routine') as String,
+        freq: (j['freq'] ?? 'daily') as String,
+        target: (j['target'] as num?)?.toInt() ?? 1,
+        unit: j['unit'] as String?,
+        iconCode: (j['iconCode'] as num?)?.toInt(),
+        domainName: j['domainName'] as String?,
+        hp: (j['hp'] as num?)?.toInt() ?? 1,
+        spectatorCount: (j['spectatorCount'] as num?)?.toInt() ?? 0,
+        streak: (j['streak'] as num?)?.toInt() ?? 0,
+        active: j['active'] as bool? ?? true,
+        createdAt: DateTime.tryParse((j['createdAt'] ?? '') as String) ??
+            DateTime.fromMillisecondsSinceEpoch(0),
       );
 }

@@ -624,6 +624,277 @@ extension GoldEngine on AppLogic {
     return missed.clamp(1, cap);
   }
 
+  // ── Social « Le Monde » : jetons de relâche ─────────────────────────────────
+  /// Total des captures (kills de backlog, tous types).
+  int get totalCaptures =>
+      state.pestKills.values.fold(0, (s, v) => s + v);
+
+  /// Jetons de relâche gagnés à vie (1 par tranche de captures).
+  int get releaseTokensEarned =>
+      totalCaptures ~/ GoldEconomy.capturesPerReleaseToken;
+
+  /// Jetons de relâche disponibles (gagnés − déjà consommés).
+  int get releaseTokensAvailable {
+    final a = releaseTokensEarned - state.releaseTokensUsed;
+    return a < 0 ? 0 : a;
+  }
+
+  /// Consomme 1 jeton (appelé par une relâche réussie). false si aucun dispo.
+  bool consumeReleaseToken(FirestoreSync sync) {
+    if (releaseTokensAvailable <= 0) return false;
+    state.releaseTokensUsed += 1;
+    sync.setReleaseTokensUsed(state.releaseTokensUsed);
+    onChange();
+    return true;
+  }
+
+  // ── Invasion / Territoires : arsenal de nuisibles rouges ────────────────────
+  /// Rouges DISPONIBLES (non déployés) d'un palier.
+  int redCount(String tier) => state.redRoster[tier] ?? 0;
+
+  /// Puissance de deck offensive = somme pondérée des rouges dispo (rang ladder).
+  int get invasionDeckPower {
+    var p = 0;
+    state.redRoster.forEach((tier, n) => p += GoldEconomy.redPower(tier) * n);
+    return p;
+  }
+
+  /// Crafte 1 rouge d'un palier en sacrifiant `redCraftCost` nuisibles du MÊME
+  /// palier (deck lifetime). false si nuisibles insuffisants. Trust-client v1.
+  bool craftRed(String tier, FirestoreSync sync) {
+    if (redCraftable(tier) < GoldEconomy.redCraftCost) return false;
+    state.craftSpent[tier] =
+        (state.craftSpent[tier] ?? 0) + GoldEconomy.redCraftCost;
+    state.redRoster[tier] = (state.redRoster[tier] ?? 0) + 1;
+    sync.setInvasionArsenal(state.redRoster, state.craftSpent);
+    onChange();
+    return true;
+  }
+
+  /// Nourrit un rouge pour le faire monter d'un cran : consomme 1 rouge du palier
+  /// `fromTier` + `redUpgradeCost` nuisibles du MÊME palier. false si impossible
+  /// (palier max, aucun rouge, nuisibles insuffisants).
+  bool upgradeRed(String fromTier, FirestoreSync sync) {
+    final to = GoldEconomy.tierAbove(fromTier);
+    if (to == null) return false;
+    if (redCount(fromTier) <= 0) return false;
+    if (redCraftable(fromTier) < GoldEconomy.redUpgradeCost) return false;
+    state.craftSpent[fromTier] =
+        (state.craftSpent[fromTier] ?? 0) + GoldEconomy.redUpgradeCost;
+    state.redRoster[fromTier] = (state.redRoster[fromTier] ?? 0) - 1;
+    state.redRoster[to] = (state.redRoster[to] ?? 0) + 1;
+    sync.setInvasionArsenal(state.redRoster, state.craftSpent);
+    onChange();
+    return true;
+  }
+
+  /// Consomme 1 rouge (ticket d'invasion) du roster DISPONIBLE au lancement d'une
+  /// invasion : le ticket est immobilisé → sort de la puissance de deck (mécanique
+  /// d'auto-équilibrage #6). À appeler APRÈS le succès serveur de `releaseInvasion`.
+  /// Le retour downgradé au repel arrive plus tard par le ledger `red_returns`.
+  bool releaseRed(String tier, FirestoreSync sync) {
+    if (redCount(tier) <= 0) return false;
+    state.redRoster[tier] = redCount(tier) - 1;
+    sync.setInvasionArsenal(state.redRoster, state.craftSpent);
+    onChange();
+    return true;
+  }
+
+  /// Combat « Le Monde » : dépense 1 arme pour frapper un nuisible public
+  /// (1 arme = 1 PV). Sink social pur — pas de butin local, pas de capture.
+  /// `key` ∈ {couteau, arc, epee}. false si l'arsenal est vide.
+  bool spendWeaponForWorld(String key, FirestoreSync sync) {
+    if (weaponsAvailable(key) <= 0) return false;
+    state.weaponsSpent[key] = (state.weaponsSpent[key] ?? 0) + 1;
+    sync.setCombatStats(state.weaponsSpent, state.pestKills);
+    onChange();
+    return true;
+  }
+
+  // ── Bataille de nuisibles : masse d'armée ───────────────────────────────────
+  /// Effort-minutes estimé d'une capture de routine : minuteur dédié, sinon
+  /// objectif de l'activité-temps liée, sinon plancher (routine sans temps).
+  int routineEffortMinutes(Activity a) {
+    if (a.timerMin != null && a.timerMin! > 0) return a.timerMin!;
+    final linked = a.linkedActivityId;
+    if (linked != null) {
+      for (final x in state.activities) {
+        if (x.id == linked && x.goalMin > 0) return x.goalMin;
+      }
+    }
+    return GoldEconomy.masseFloor;
+  }
+
+  /// Les N derniers jours (fenêtre glissante du deck) en `yyyymmdd`.
+  Set<String> _recentDays() {
+    final now = DateTime.now();
+    return {
+      for (int i = 0; i < GoldEconomy.battleDeckWindowDays; i++)
+        yyyymmdd(now.subtract(Duration(days: i)))
+    };
+  }
+
+  /// Captures de routine de la FENÊTRE (7 j glissants) : une entrée par
+  /// (routine, jour complété) avec son effort en masse. DÉRIVÉ des données
+  /// réelles → aucun historique stocké, un nuisible « vit » 7 j puis sort.
+  /// « Complétée un jour » = MÊME condition que le combat : tick habit ≥ cible
+  /// OU (routine minutée) temps loggué sur l'activité liée ≥ timerMin ce jour.
+  List<({String ymd, int effort})> _windowCaptures() =>
+      _capturesForDays(_recentDays());
+
+  /// Toutes les captures de routine de l'historique chargé (AUCUNE fenêtre) —
+  /// source LIFETIME de l'arsenal d'invasion (les rouges sont permanents, donc
+  /// alimentés par une source permanente, pas par la fenêtre 7 j de la Bataille).
+  List<({String ymd, int effort})> _allCaptures() => _capturesForDays(null);
+
+  /// Cœur commun fenêtre/lifetime : une entrée par (routine × jour complété) avec
+  /// son effort en masse. `days` = filtre de jours (null = tout l'historique).
+  List<({String ymd, int effort})> _capturesForDays(Set<String>? days) {
+    final linkedIds = <String>{};
+    for (final a in state.activities) {
+      if (a.isHabit && (a.timerMin ?? 0) > 0) {
+        final lid = (a.linkedActivityId ?? '').trim();
+        if (lid.isNotEmpty) linkedIds.add(lid);
+      }
+    }
+    final minByActDay = <String, Map<String, int>>{};
+    if (linkedIds.isNotEmpty) {
+      for (final s in state.sessions) {
+        if (!linkedIds.contains(s.activityId)) continue;
+        final ymd = yyyymmdd(s.startAt);
+        if (days != null && !days.contains(ymd)) continue;
+        (minByActDay[s.activityId] ??= {}).update(
+            ymd, (v) => v + s.duration.inMinutes,
+            ifAbsent: () => s.duration.inMinutes);
+      }
+    }
+    final hpByAct = <String, List<HabitProgress>>{};
+    for (final hp in state.habitProgress) {
+      if (days != null && !days.contains(hp.yyyymmdd)) continue;
+      (hpByAct[hp.activityId] ??= []).add(hp);
+    }
+    final out = <({String ymd, int effort})>[];
+    for (final a in state.activities) {
+      if (!a.isHabit) continue;
+      final target = activeHabitTarget(a);
+      if (target <= 0) continue;
+      final effort =
+          GoldEconomy.battleMasseForMinutes(routineEffortMinutes(a));
+      final done = <String>{};
+      for (final hp in (hpByAct[a.id] ?? const <HabitProgress>[])) {
+        if (hp.value >= target) done.add(hp.yyyymmdd);
+      }
+      final tm = a.timerMin ?? 0;
+      final lid = (a.linkedActivityId ?? '').trim();
+      if (tm > 0 && lid.isNotEmpty) {
+        minByActDay[lid]?.forEach((ymd, mins) {
+          if (mins >= tm) done.add(ymd);
+        });
+      }
+      for (final ymd in done) {
+        out.add((ymd: ymd, effort: effort));
+      }
+    }
+    return out;
+  }
+
+  /// Masse d'armée gagnée sur la fenêtre 7 j.
+  int get battleMasseEarned =>
+      _windowCaptures().fold(0, (s, c) => s + c.effort);
+
+  /// Masse gagnée aujourd'hui (captures du jour dans la fenêtre).
+  int get battleMasseEarnedToday {
+    final today = yyyymmdd(DateTime.now());
+    return _windowCaptures()
+        .where((c) => c.ymd == today)
+        .fold(0, (s, c) => s + c.effort);
+  }
+
+  /// Masse d'armée disponible (gagnée sur 7 j − dépensée), plancher 0.
+  int get battleMasseAvailable {
+    final a = battleMasseEarned - state.battleMasseUsed;
+    return a < 0 ? 0 : a;
+  }
+
+  /// Deck par CAPTURE : chaque routine complétée sur la fenêtre est décomposée
+  /// « telle quelle » (le plus gros d'abord) et accumulée par type. Conserve la
+  /// variété : 3 petites routines = 3 araignées ; une routine de 20 min = 🐍+🕷️.
+  ({int serpents, int scorpions, int spiders}) battleDeckByCapture() {
+    var serp = 0, scor = 0, spid = 0;
+    for (final c in _windowCaptures()) {
+      var m = c.effort;
+      serp += m ~/ GoldEconomy.masseSerpent;
+      m %= GoldEconomy.masseSerpent;
+      scor += m ~/ GoldEconomy.masseScorpion;
+      m %= GoldEconomy.masseScorpion;
+      spid += m ~/ GoldEconomy.masseSpider;
+    }
+    return (serpents: serp, scorpions: scor, spiders: spid);
+  }
+
+  /// Deck d'invasion LIFETIME par palier (source craftable des rouges). Même
+  /// décomposition que le deck Bataille, mais sur TOUT l'historique. Indépendant
+  /// de la masse Bataille : crafter un rouge ne dépense PAS ton deck défensif.
+  ({int serpents, int scorpions, int spiders}) invasionDeckByCapture() {
+    var serp = 0, scor = 0, spid = 0;
+    for (final c in _allCaptures()) {
+      var m = c.effort;
+      serp += m ~/ GoldEconomy.masseSerpent;
+      m %= GoldEconomy.masseSerpent;
+      scor += m ~/ GoldEconomy.masseScorpion;
+      m %= GoldEconomy.masseScorpion;
+      spid += m ~/ GoldEconomy.masseSpider;
+    }
+    return (serpents: serp, scorpions: scor, spiders: spid);
+  }
+
+  /// Nuisibles d'un palier encore disponibles pour crafter/nourrir des rouges =
+  /// deck lifetime − déjà dépensés au craft (`craftSpent`, par palier).
+  int redCraftable(String tier) {
+    final deck = invasionDeckByCapture();
+    final have = switch (tier) {
+      'serpent' => deck.serpents,
+      'scorpion' => deck.scorpions,
+      _ => deck.spiders,
+    };
+    final spent = state.craftSpent[tier] ?? 0;
+    final damaged = state.deckDamage[tier] ?? 0; // grignoté par un boss franchi
+    final a = have - spent - damaged;
+    return a < 0 ? 0 : a;
+  }
+
+  /// Enregistre des dégâts au deck vert (boss PvE ayant atteint le cœur). Plafonné
+  /// par palier (`bossDeckDamageCap`) et borné au deck restant → toujours
+  /// RÉCUPÉRABLE en refarmant. Persiste. Trust-client v1.
+  void applyBossDeckDamage(Map<String, int> byTier, FirestoreSync sync) {
+    var changed = false;
+    byTier.forEach((tier, n) {
+      if (n <= 0) return;
+      final capped =
+          n > GoldEconomy.bossDeckDamageCap ? GoldEconomy.bossDeckDamageCap : n;
+      final avail = redCraftable(tier); // tient déjà compte des dégâts existants
+      final eff = capped > avail ? avail : capped;
+      if (eff <= 0) return;
+      state.deckDamage[tier] = (state.deckDamage[tier] ?? 0) + eff;
+      changed = true;
+    });
+    if (changed) {
+      sync.setDeckDamage(state.deckDamage);
+      onChange();
+    }
+  }
+
+  /// Dépense de la masse pour déployer un palier. false si masse insuffisante.
+  /// Seul `battleMasseUsed` est stocké (le gagné est dérivé de habitProgress).
+  bool spendBattleMasse(String tier, FirestoreSync sync) {
+    final cost = GoldEconomy.masseCost(tier);
+    if (battleMasseAvailable < cost) return false;
+    state.battleMasseUsed += cost;
+    sync.setBattleMasseUsed(state.battleMasseUsed);
+    onChange();
+    return true;
+  }
+
   /// Revend 1 arme contre de l'or (liquidation du surplus). Incrémente le
   /// compteur de dépense (l'arme part de l'arsenal) + crédite l'or.
   bool sellWeapon(String key, FirestoreSync sync) {

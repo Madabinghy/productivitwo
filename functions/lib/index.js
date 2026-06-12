@@ -11,7 +11,7 @@ var __rest = (this && this.__rest) || function (s, e) {
     return t;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.resetDemoData = exports.getDemoToken = exports.superOrionCron = exports.subscribeChallenge = exports.submitChallenge = exports.recomputeLeaderboards = exports.claimPseudo = exports.applyFormationProfile = exports.getVisionAccess = exports.generateFormationAccess = exports.adminProductivitwo = exports.revenueCatWebhook = exports.onboardingChat = exports.structureProject = exports.orionCron = exports.orionBrief = exports.orionRunCount = exports.orionSaveConfig = exports.githubWebhook = exports.orionWebhook = exports.mcpHandler = exports.sendMagicLink = exports.getCustomToken = exports.pushAssistantMessage = exports.markPlanItemDone = exports.pushGantt = void 0;
+exports.resetDemoData = exports.getDemoToken = exports.resolveInvasion = exports.deployDefense = exports.engageInvasion = exports.releaseInvasion = exports.resolveBattle = exports.deployUnit = exports.joinBattle = exports.createBattle = exports.followNuisible = exports.releaseNuisible = exports.superOrionCron = exports.subscribeChallenge = exports.submitChallenge = exports.recomputeLeaderboards = exports.claimPseudo = exports.applyFormationProfile = exports.getVisionAccess = exports.generateFormationAccess = exports.adminProductivitwo = exports.revenueCatWebhook = exports.onboardingChat = exports.structureProject = exports.orionCron = exports.orionBrief = exports.orionRunCount = exports.orionSaveConfig = exports.githubWebhook = exports.orionWebhook = exports.mcpHandler = exports.sendMagicLink = exports.getCustomToken = exports.pushAssistantMessage = exports.markPlanItemDone = exports.pushGantt = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
@@ -2846,6 +2846,20 @@ Object.defineProperty(exports, "recomputeLeaderboards", { enumerable: true, get:
 Object.defineProperty(exports, "submitChallenge", { enumerable: true, get: function () { return social_1.submitChallenge; } });
 Object.defineProperty(exports, "subscribeChallenge", { enumerable: true, get: function () { return social_1.subscribeChallenge; } });
 Object.defineProperty(exports, "superOrionCron", { enumerable: true, get: function () { return social_1.superOrionCron; } });
+Object.defineProperty(exports, "releaseNuisible", { enumerable: true, get: function () { return social_1.releaseNuisible; } });
+Object.defineProperty(exports, "followNuisible", { enumerable: true, get: function () { return social_1.followNuisible; } });
+// ── Bataille de nuisibles (PvP async 1v1) ───────────────────────────────────
+var social_2 = require("./social");
+Object.defineProperty(exports, "createBattle", { enumerable: true, get: function () { return social_2.createBattle; } });
+Object.defineProperty(exports, "joinBattle", { enumerable: true, get: function () { return social_2.joinBattle; } });
+Object.defineProperty(exports, "deployUnit", { enumerable: true, get: function () { return social_2.deployUnit; } });
+Object.defineProperty(exports, "resolveBattle", { enumerable: true, get: function () { return social_2.resolveBattle; } });
+// ── Invasion / Territoires (tower-defense asymétrique + ladder) ──────────────
+var social_3 = require("./social");
+Object.defineProperty(exports, "releaseInvasion", { enumerable: true, get: function () { return social_3.releaseInvasion; } });
+Object.defineProperty(exports, "engageInvasion", { enumerable: true, get: function () { return social_3.engageInvasion; } });
+Object.defineProperty(exports, "deployDefense", { enumerable: true, get: function () { return social_3.deployDefense; } });
+Object.defineProperty(exports, "resolveInvasion", { enumerable: true, get: function () { return social_3.resolveInvasion; } });
 // ── Mode démo ────────────────────────────────────────────────────────────────
 const DEMO_UID = "demo-productivitwo";
 async function _seedDemoData(uid) {

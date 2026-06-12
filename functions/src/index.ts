@@ -2907,7 +2907,11 @@ export const applyFormationProfile = onRequest(
 );
 
 // ── Couche sociale (Phase 1) ────────────────────────────────────────────────
-export { claimPseudo, recomputeLeaderboards, submitChallenge, subscribeChallenge, superOrionCron } from "./social";
+export { claimPseudo, recomputeLeaderboards, submitChallenge, subscribeChallenge, superOrionCron, releaseNuisible, followNuisible } from "./social";
+// ── Bataille de nuisibles (PvP async 1v1) ───────────────────────────────────
+export { createBattle, joinBattle, deployUnit, resolveBattle } from "./social";
+// ── Invasion / Territoires (tower-defense asymétrique + ladder) ──────────────
+export { releaseInvasion, engageInvasion, deployDefense, resolveInvasion } from "./social";
 
 // ── Mode démo ────────────────────────────────────────────────────────────────
 

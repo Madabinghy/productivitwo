@@ -191,12 +191,87 @@ class GoldEconomy {
   /// décrassage, pas une source de revenu (l'arme vient déjà d'un gain d'or).
   static const int weaponSellPrice = 2;
 
+  // ── Social « Le Monde » ────────────────────────────────────────────────────
+  /// Captures (kills de ton backlog) requises pour gagner 1 jeton de relâche.
+  static const int capturesPerReleaseToken = 10;
+
+  /// PV (difficulté) d'un nuisible relâché, dérivé de la série/niveau de
+  /// l'émetteur : plus il est régulier, plus son nuisible est dur à battre
+  /// (prestige à le suivre). Le récepteur le combat à l'arme.
+  static int worldNuisibleHp(int streak, int level) =>
+      (3 + streak ~/ 2 + level).clamp(3, 30);
+
+  // ── Bataille de nuisibles ──────────────────────────────────────────────────
+  // Équité : la force d'une armée = effort RÉEL (temps), pas le nombre de
+  // routines. 1 capture de routine minte sa masse = effort-minutes (plancher 5).
+  // On dépense la masse en déployant un palier de nuisible.
+  static const int masseSpider = 5; // 🕷️ araignée = unité de base (~5 min)
+  static const int masseScorpion = 10; // 🦂 = 2 araignées
+  static const int masseSerpent = 15; // 🐍 = 3 araignées
+  static const int masseFloor = masseSpider; // routine sans temps → 1 araignée
+  // Anti-déluge : masse max déployable par tick (= 1 serpent, ou 1 scorpion +
+  // 1 araignée, ou 3 araignées). La réserve = endurance, pas un one-shot.
+  static const int masseBudgetPerTick = masseSerpent; // 15
+  // Durée de vie d'un nuisible dans le deck : fenêtre glissante. Le deck = effort
+  // des N derniers jours → frais + équitable pour les nouveaux joueurs.
+  static const int battleDeckWindowDays = 7;
+
+  /// Masse mintée à la capture d'une routine de `effortMin` minutes (plancher).
+  static int battleMasseForMinutes(int effortMin) =>
+      effortMin < masseFloor ? masseFloor : effortMin;
+
+  /// Coût en masse d'un palier déployé.
+  static int masseCost(String tier) => switch (tier) {
+        'serpent' => masseSerpent,
+        'scorpion' => masseScorpion,
+        _ => masseSpider,
+      };
+
+  /// Force d'un palier (résolution des collisions) : serpent > scorpion >
+  /// araignée. Égalité → les deux meurent ; sinon le plus fort survit dégradé.
+  static int tierStrength(String tier) => switch (tier) {
+        'serpent' => 3,
+        'scorpion' => 2,
+        _ => 1,
+      };
+
+  /// Palier juste en dessous (dégradation après avoir mangé un plus faible).
+  static String? tierBelow(String tier) => switch (tier) {
+        'serpent' => 'scorpion',
+        'scorpion' => 'spider',
+        _ => null, // une araignée vainqueur n'arrive jamais (égalité = double mort)
+      };
+
   static const int minutesPerArrow = 60; // 1 h de temps loggé = 1 flèche
 
   /// Coût en armes globales (du type adapté) pour ENGAGER un nuisible (l'épingler
   /// dans « Combats en cours »). Donne un rôle aux armes globales ; ne blesse pas
   /// (la blessure se fait au travail spécifique). Tunable.
   static const int engageCost = 2;
+
+  // ── Invasion / Territoires ─────────────────────────────────────────────────
+  // On CRAFTE des nuisibles ROUGES (asset offensif persistant) en sacrifiant des
+  // captures du TYPE correspondant. Le roster de rouges DISPONIBLES = la puissance
+  // de deck du ladder (un rouge déployé est immobilisé → retiré de la puissance).
+  static const int redCraftCost = 10; // nuisibles d'un palier → 1 rouge du palier
+  static const int redUpgradeCost = 6; // nuisibles du palier pour monter un rouge
+
+  /// Palier juste AU-DESSUS (montée en gamme d'un rouge nourri).
+  static String? tierAbove(String tier) => switch (tier) {
+        'spider' => 'scorpion',
+        'scorpion' => 'serpent',
+        _ => null,
+      };
+
+  /// Poids d'un rouge dans la puissance de deck (ladder).
+  static int redPower(String tier) => tierStrength(tier);
+
+  // ── Boss PvE (mode Territoires solo) ───────────────────────────────────────
+  /// Or gagné en repoussant un boss réel (récompense de défense).
+  static const int bossWinReward = 30;
+  /// Plafond de dégât au deck par invasion-boss (par palier), pour garder la
+  /// perte récupérable — jamais une brûlure massive du deck.
+  static const int bossDeckDamageCap = 3;
 
   // ── Bestiaire : créatures débloquées par RECETTES de captures ───────────────
   // Le BUT du farm : capturer X nuisibles d'un (ou plusieurs) type(s) débloque

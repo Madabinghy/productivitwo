@@ -13,6 +13,8 @@ import 'package:productivitwo_v1/widgets/expedition_map_game.dart';
 import 'package:productivitwo_v1/widgets/expedition_sheet.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
 import 'package:productivitwo_v1/widgets/gold_sheet.dart';
+import 'package:productivitwo_v1/web/world_sheet.dart';
+import 'package:productivitwo_v1/web/invasion_defense_sheet.dart';
 
 const _kGold = Color(0xFFD4A017);
 const _kCardBg = Color(0xFF120A0A);
@@ -805,6 +807,22 @@ class _ExplorationColumn extends StatelessWidget {
             subtitle: 'Ta collection de créatures et recettes de chasse',
             color: const Color(0xFF22C55E),
             onTap: () => showCollectionSheet(context, logic, sync),
+          ),
+          const SizedBox(height: 10),
+          _ExploreBtn(
+            emoji: '🌍',
+            title: 'Le Monde',
+            subtitle: 'Relâche tes routines, combats celles des autres, sois suivi',
+            color: const Color(0xFFEC4899),
+            onTap: () => showWorldSheet(context, logic, sync),
+          ),
+          const SizedBox(height: 10),
+          _ExploreBtn(
+            emoji: '👑',
+            title: 'Invasion',
+            subtitle: 'Forge ton armée, envahis le ladder, défends ton territoire',
+            color: const Color(0xFFA855F7),
+            onTap: () => showInvasionSheet(context, logic, sync),
           ),
         ],
       ),

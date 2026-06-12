@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:productivitwo_v1/gold_economy.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/battle_sim.dart';
 import 'package:productivitwo_v1/dev_logger.dart';
 
 /// Synchronisation Firestore.
@@ -257,6 +258,15 @@ class FirestoreSync {
             ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
         pestKills: (meta['pestKills'] as Map?)
             ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
+        redRoster: (meta['redRoster'] as Map?)
+            ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
+        craftSpent: (meta['craftSpent'] as Map?)
+            ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
+        releaseTokensUsed: (meta['releaseTokensUsed'] as num?)?.toInt() ?? 0,
+        battleMasseEarned: (meta['battleMasseEarned'] as num?)?.toInt() ?? 0,
+        battleMasseUsed: (meta['battleMasseUsed'] as num?)?.toInt() ?? 0,
+        battleMasseToday: (meta['battleMasseToday'] as num?)?.toInt() ?? 0,
+        battleMasseTodayYmd: (meta['battleMasseTodayYmd'] as String?) ?? '',
         engagedEnemies: (meta['engagedEnemies'] as List?)?.cast<String>(),
         weaponPickups: (meta['weaponPickups'] as Map?)?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
         collection: (meta['collection'] as List?)?.cast<String>(),
@@ -374,6 +384,17 @@ class FirestoreSync {
       // Compteurs monotones (dépenses d'armes / captures) → on garde le plus avancé.
       weaponsSpent:          _mapSum(local.weaponsSpent) >= _mapSum(remote.weaponsSpent) ? local.weaponsSpent : remote.weaponsSpent,
       pestKills:             _mapSum(local.pestKills) >= _mapSum(remote.pestKills) ? local.pestKills : remote.pestKills,
+      // Arsenal d'invasion : craftSpent monotone (somme) fait autorité ; le roster
+      // (qui peut baisser à l'upgrade/déploiement) suit le même côté que craftSpent.
+      craftSpent:            _mapSum(local.craftSpent) >= _mapSum(remote.craftSpent) ? local.craftSpent : remote.craftSpent,
+      redRoster:             _mapSum(local.craftSpent) >= _mapSum(remote.craftSpent) ? local.redRoster : remote.redRoster,
+      // Dégâts boss au deck : monotone (somme) fait autorité, comme craftSpent.
+      deckDamage:            _mapSum(local.deckDamage) >= _mapSum(remote.deckDamage) ? local.deckDamage : remote.deckDamage,
+      releaseTokensUsed:     local.releaseTokensUsed >= remote.releaseTokensUsed ? local.releaseTokensUsed : remote.releaseTokensUsed,
+      battleMasseEarned:     local.battleMasseEarned >= remote.battleMasseEarned ? local.battleMasseEarned : remote.battleMasseEarned,
+      battleMasseUsed:       local.battleMasseUsed >= remote.battleMasseUsed ? local.battleMasseUsed : remote.battleMasseUsed,
+      battleMasseTodayYmd:   local.battleMasseTodayYmd.compareTo(remote.battleMasseTodayYmd) >= 0 ? local.battleMasseTodayYmd : remote.battleMasseTodayYmd,
+      battleMasseToday:      local.battleMasseTodayYmd == remote.battleMasseTodayYmd ? (local.battleMasseToday >= remote.battleMasseToday ? local.battleMasseToday : remote.battleMasseToday) : (local.battleMasseTodayYmd.compareTo(remote.battleMasseTodayYmd) > 0 ? local.battleMasseToday : remote.battleMasseToday),
       engagedEnemies:        local.goldLifetime >= remote.goldLifetime ? local.engagedEnemies : remote.engagedEnemies,
       weaponPickups:         _mapSum(local.weaponPickups) >= _mapSum(remote.weaponPickups) ? local.weaponPickups : remote.weaponPickups,
       collection:            local.collection.length >= remote.collection.length ? local.collection : remote.collection,
@@ -943,6 +964,34 @@ class FirestoreSync {
   Future<void> setEngagedEnemies(List<String> engaged) async {
     if (uid == null) return;
     await _meta().set({'engagedEnemies': engaged}, SetOptions(merge: true));
+  }
+
+  /// Persiste le nombre de jetons de relâche consommés (social « Le Monde »).
+  Future<void> setReleaseTokensUsed(int used) async {
+    if (uid == null) return;
+    await _meta().set({'releaseTokensUsed': used}, SetOptions(merge: true));
+  }
+
+  /// Persiste l'arsenal d'invasion : roster de rouges dispo + captures dépensées
+  /// au craft (Invasion / Territoires). Trust-client v1.
+  Future<void> setInvasionArsenal(
+      Map<String, int> redRoster, Map<String, int> craftSpent) async {
+    if (uid == null) return;
+    await _meta().set(
+        {'redRoster': redRoster, 'craftSpent': craftSpent},
+        SetOptions(merge: true));
+  }
+
+  /// Persiste les dégâts de boss au deck vert (monotone, récupérable en farmant).
+  Future<void> setDeckDamage(Map<String, int> deckDamage) async {
+    if (uid == null) return;
+    await _meta().set({'deckDamage': deckDamage}, SetOptions(merge: true));
+  }
+
+  /// Persiste la masse de bataille DÉPENSÉE (le gagné est dérivé de habitProgress).
+  Future<void> setBattleMasseUsed(int used) async {
+    if (uid == null) return;
+    await _meta().set({'battleMasseUsed': used}, SetOptions(merge: true));
   }
 
   Future<void> setWeaponPickups(Map<String, int> pickups) async {
@@ -2060,4 +2109,389 @@ class FirestoreSync {
       SetOptions(merge: true),
     ).ignore();
   }
+
+  // ── Social « Le Monde » : nuisibles-routines relâchés ─────────────────────
+  static const _releaseNuisibleUrl =
+      'https://releasenuisible-dzos75b65q-uc.a.run.app';
+  static const _followNuisibleUrl =
+      'https://follownuisible-dzos75b65q-uc.a.run.app';
+
+  /// Relâche une routine dans Le Monde (le jeton est consommé côté appelant).
+  /// Retourne null si OK, sinon un message d'erreur.
+  Future<String?> releaseNuisible(WorldNuisible n) async {
+    final user = _auth.currentUser;
+    if (user == null) return 'Non connecté';
+    try {
+      final idToken = await user.getIdToken();
+      final res = await http.post(
+        Uri.parse(_releaseNuisibleUrl),
+        headers: {
+          'Authorization': 'Bearer $idToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'id': n.id,
+          'routineId': n.routineId,
+          'name': n.name,
+          'freq': n.freq,
+          'target': n.target,
+          'unit': n.unit,
+          'iconCode': n.iconCode,
+          'domainName': n.domainName,
+          'hp': n.hp,
+          'streak': n.streak,
+        }),
+      );
+      if (res.statusCode == 200) return null;
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      return (body['error'] as String?) ?? 'Erreur (${res.statusCode})';
+    } catch (_) {
+      return 'Erreur réseau';
+    }
+  }
+
+  /// Feed « Le Monde » : nuisibles actifs, les plus récents d'abord.
+  Future<List<WorldNuisible>> fetchWorldNuisibles({int limit = 50}) async {
+    try {
+      final snap = await _db
+          .collection('world_nuisibles')
+          .where('active', isEqualTo: true)
+          .orderBy('createdAt', descending: true)
+          .limit(limit)
+          .get();
+      return snap.docs
+          .map((d) => WorldNuisible.from(d.data() as Map))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Routines que j'ai relâchées (pour voir mes spectateurs).
+  Future<List<WorldNuisible>> fetchMyReleases() async {
+    if (uid == null) return [];
+    try {
+      final snap = await _db
+          .collection('world_nuisibles')
+          .where('ownerUid', isEqualTo: uid)
+          .get();
+      return snap.docs
+          .map((d) => WorldNuisible.from(d.data() as Map))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Suivre / ne plus suivre une routine relâchée (maj compteur spectateurs).
+  /// Retourne null si OK, sinon un message d'erreur.
+  Future<String?> followNuisible(String nuisibleId, bool follow) async {
+    final user = _auth.currentUser;
+    if (user == null) return 'Non connecté';
+    try {
+      final idToken = await user.getIdToken();
+      final res = await http.post(
+        Uri.parse(_followNuisibleUrl),
+        headers: {
+          'Authorization': 'Bearer $idToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'nuisibleId': nuisibleId, 'follow': follow}),
+      );
+      if (res.statusCode == 200) return null;
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      return (body['error'] as String?) ?? 'Erreur (${res.statusCode})';
+    } catch (_) {
+      return 'Erreur réseau';
+    }
+  }
+
+  /// Ids des nuisibles que je suis.
+  Future<Set<String>> fetchMyFollows() async {
+    if (uid == null) return {};
+    try {
+      final snap =
+          await _col('world_follows').get();
+      return snap.docs.map((d) => d.id).toSet();
+    } catch (_) {
+      return {};
+    }
+  }
+
+  // ── Combats publics engagés (sous-collection perso, écriture directe) ──────
+  /// Engage un nuisible public : l'épingle dans « Combats publics » avec ses PV.
+  Future<void> engageWorldCombat(String nuisibleId, int hp) async {
+    if (uid == null) return;
+    await _col('world_combats').doc(nuisibleId).set({
+      'nuisibleId': nuisibleId,
+      'hpLeft': hp,
+      'engagedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  /// Met à jour les PV restants d'un combat public (le retire si vaincu).
+  Future<void> setWorldCombatHp(String nuisibleId, int hpLeft) async {
+    if (uid == null) return;
+    final ref = _col('world_combats').doc(nuisibleId);
+    if (hpLeft <= 0) {
+      await ref.delete();
+    } else {
+      await ref.set({'hpLeft': hpLeft}, SetOptions(merge: true));
+    }
+  }
+
+  /// Mes combats publics en cours : {nuisibleId: hpLeft}.
+  Future<Map<String, int>> fetchWorldCombats() async {
+    if (uid == null) return {};
+    try {
+      final snap = await _col('world_combats').get();
+      return {
+        for (final d in snap.docs)
+          d.id: ((d.data() as Map)['hpLeft'] as num?)?.toInt() ?? 0
+      };
+    } catch (_) {
+      return {};
+    }
+  }
+
+  // ── Bataille de nuisibles (PvP async 1v1) ─────────────────────────────────
+  static const _createBattleUrl =
+      'https://createbattle-dzos75b65q-uc.a.run.app';
+  static const _joinBattleUrl = 'https://joinbattle-dzos75b65q-uc.a.run.app';
+  static const _deployUnitUrl = 'https://deployunit-dzos75b65q-uc.a.run.app';
+  static const _resolveBattleUrl =
+      'https://resolvebattle-dzos75b65q-uc.a.run.app';
+
+  Future<String?> _postBattle(String url, Map<String, dynamic> body) async {
+    final user = _auth.currentUser;
+    if (user == null) return null;
+    try {
+      final idToken = await user.getIdToken();
+      final res = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Authorization': 'Bearer $idToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(body),
+      );
+      if (res.statusCode == 200) return res.body; // JSON brut en succès
+      final m = jsonDecode(res.body) as Map<String, dynamic>;
+      return '__err__${(m['error'] as String?) ?? 'Erreur ${res.statusCode}'}';
+    } catch (_) {
+      return '__err__Erreur réseau';
+    }
+  }
+
+  /// Crée une partie. Retourne le battleId, ou null en cas d'échec.
+  Future<String?> createBattle(
+      {int width = 7, int lanes = 5, int tickMinutes = 60}) async {
+    final r = await _postBattle(_createBattleUrl,
+        {'width': width, 'lanes': lanes, 'tickMinutes': tickMinutes});
+    if (r == null || r.startsWith('__err__')) return null;
+    return (jsonDecode(r) as Map<String, dynamic>)['battleId'] as String?;
+  }
+
+  /// Rejoint une partie. null = OK, sinon message d'erreur.
+  Future<String?> joinBattle(String battleId) async {
+    final r = await _postBattle(_joinBattleUrl, {'battleId': battleId});
+    if (r == null) return 'Non connecté';
+    if (r.startsWith('__err__')) return r.substring(7);
+    return null;
+  }
+
+  /// Dépose une unité (la masse est débitée côté appelant). null = OK.
+  Future<String?> deployUnit(
+      String battleId, int lane, String kind, String tier) async {
+    final r = await _postBattle(_deployUnitUrl,
+        {'battleId': battleId, 'lane': lane, 'kind': kind, 'tier': tier});
+    if (r == null) return 'Non connecté';
+    if (r.startsWith('__err__')) return r.substring(7);
+    return null;
+  }
+
+  /// Demande au serveur de trancher la partie (re-simule + crédite la victoire).
+  /// Retourne l'uid vainqueur si la partie est finie, sinon null.
+  Future<String?> resolveBattle(String battleId) async {
+    final r = await _postBattle(_resolveBattleUrl, {'battleId': battleId});
+    if (r == null || r.startsWith('__err__')) return null;
+    return (jsonDecode(r) as Map<String, dynamic>)['winnerUid'] as String?;
+  }
+
+  Map<String, dynamic> _battleMap(Map<String, dynamic> d) {
+    // Convertit le Timestamp startAt en millis pour le modèle pur Battle.
+    final m = Map<String, dynamic>.from(d);
+    final ts = d['startAt'];
+    m['startAtMs'] = ts is Timestamp ? ts.millisecondsSinceEpoch : null;
+    return m;
+  }
+
+  /// Stream d'une partie (config + état).
+  Stream<Battle?> streamBattle(String battleId) => _db
+      .collection('battles')
+      .doc(battleId)
+      .snapshots()
+      .map((s) => s.exists ? Battle.from(_battleMap(s.data()!)) : null);
+
+  /// Stream du journal d'événements d'une partie (dépôts).
+  Stream<List<BattleEvent>> streamBattleEvents(String battleId) => _db
+      .collection('battles')
+      .doc(battleId)
+      .collection('events')
+      .snapshots()
+      .map((s) => s.docs.map((d) => BattleEvent.from(d.data())).toList());
+
+  /// Mes parties en cours ou en attente (créées ou rejointes).
+  Future<List<Battle>> fetchMyBattles() async {
+    if (uid == null) return [];
+    try {
+      final snap = await _db
+          .collection('battles')
+          .where('players', arrayContains: uid)
+          .where('status', whereIn: ['waiting', 'active']).get();
+      return snap.docs.map((d) => Battle.from(_battleMap(d.data()))).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // ── Invasion / Territoires : Cloud Functions + streams ─────────────────────
+  static const _releaseInvasionUrl =
+      'https://releaseinvasion-dzos75b65q-uc.a.run.app';
+  static const _engageInvasionUrl =
+      'https://engageinvasion-dzos75b65q-uc.a.run.app';
+  static const _deployDefenseUrl =
+      'https://deploydefense-dzos75b65q-uc.a.run.app';
+  static const _resolveInvasionUrl =
+      'https://resolveinvasion-dzos75b65q-uc.a.run.app';
+
+  /// Lance une invasion : `redTier` = ticket (plafond de palier), `force` = copie
+  /// du deck vert ≤ palier, métrée en vagues (`[{id,tier,lane,tick}]`). Le rouge
+  /// est décrémenté côté appelant (trust v1). Retourne {invasionId, defenderPseudo}
+  /// ou null (échec / pas de cible).
+  Future<Map<String, dynamic>?> releaseInvasion(
+      String redTier, List<Map<String, dynamic>> force) async {
+    final r = await _postBattle(_releaseInvasionUrl,
+        {'redTier': redTier, 'force': force});
+    if (r == null || r.startsWith('__err__')) return null;
+    final m = jsonDecode(r) as Map<String, dynamic>;
+    return (m['ok'] == true) ? m : null;
+  }
+
+  /// Le défenseur engage une invasion (lance l'horloge). null = OK.
+  Future<String?> engageInvasion(String invasionId) async {
+    final r = await _postBattle(_engageInvasionUrl, {'invasionId': invasionId});
+    if (r == null) return 'Non connecté';
+    if (r.startsWith('__err__')) return r.substring(7);
+    return null;
+  }
+
+  /// Le défenseur dépose un bloqueur (`kind:'pest'`) ou tire une flèche
+  /// (`kind:'arrow'`). Le stock est débité côté appelant (trust v1). null = OK.
+  Future<String?> deployDefense(
+      String invasionId, int lane, String kind, String tier) async {
+    final r = await _postBattle(_deployDefenseUrl,
+        {'invasionId': invasionId, 'lane': lane, 'kind': kind, 'tier': tier});
+    if (r == null) return 'Non connecté';
+    if (r.startsWith('__err__')) return r.substring(7);
+    return null;
+  }
+
+  /// Demande au serveur de trancher (re-simule, autoritatif). Retourne le statut
+  /// final ('repelled'|'held') si résolu, sinon null (en cours / erreur).
+  Future<String?> resolveInvasion(String invasionId) async {
+    final r = await _postBattle(_resolveInvasionUrl, {'invasionId': invasionId});
+    if (r == null || r.startsWith('__err__')) return null;
+    final m = jsonDecode(r) as Map<String, dynamic>;
+    if (m['ongoing'] == true) return null;
+    return m['status'] as String?;
+  }
+
+  Map<String, dynamic> _invasionMap(Map<String, dynamic> d) {
+    final m = Map<String, dynamic>.from(d);
+    final ts = d['startAt'];
+    m['startAtMs'] = ts is Timestamp ? ts.millisecondsSinceEpoch : null;
+    return m;
+  }
+
+  /// Stream d'une invasion (config + état + force figée).
+  Stream<Invasion?> streamInvasion(String invasionId) => _db
+      .collection('invasions')
+      .doc(invasionId)
+      .snapshots()
+      .map((s) => s.exists ? Invasion.from(_invasionMap(s.data()!)) : null);
+
+  /// Stream du journal d'événements défenseur (bloqueurs + flèches).
+  Stream<List<BattleEvent>> streamInvasionEvents(String invasionId) => _db
+      .collection('invasions')
+      .doc(invasionId)
+      .collection('events')
+      .snapshots()
+      .map((s) => s.docs.map((d) => BattleEvent.from(d.data())).toList());
+
+  /// Invasions que je SUBIS (en attente ou actives) — à défendre.
+  Future<List<Invasion>> fetchInvasionsAsDefender() async {
+    if (uid == null) return [];
+    try {
+      final snap = await _db
+          .collection('invasions')
+          .where('defenderUid', isEqualTo: uid)
+          .where('status', whereIn: ['pending', 'active']).get();
+      return snap.docs
+          .map((d) => Invasion.from(_invasionMap(d.data())))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Mes invasions en cours (spectateur live) — actives ou tenues.
+  Future<List<Invasion>> fetchInvasionsAsInvader() async {
+    if (uid == null) return [];
+    try {
+      final snap = await _db
+          .collection('invasions')
+          .where('invaderUid', isEqualTo: uid)
+          .where('status', whereIn: ['pending', 'active', 'held']).get();
+      return snap.docs
+          .map((d) => Invasion.from(_invasionMap(d.data())))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // ── Invasion / Territoires : classement par puissance de deck ──────────────
+  /// Classement par puissance de deck (roster de rouges). Trié décroissant.
+  /// Sert au matchmaking ladder (cibler ~3 rangs au-dessus de soi) et à la vue
+  /// classement. `deckPower` est posé serveur (writeLeaderboardEntry).
+  Future<List<DeckLadderEntry>> fetchDeckLadder({int limit = 100}) async {
+    try {
+      final snap = await _db
+          .collection('leaderboard_entries')
+          .where('optedIn', isEqualTo: true)
+          .orderBy('deckPower', descending: true)
+          .limit(limit)
+          .get();
+      return snap.docs.map((d) {
+        final m = d.data();
+        return DeckLadderEntry(
+          uid: d.id,
+          pseudo: (m['pseudo'] as String?) ?? 'Anonyme',
+          deckPower: (m['deckPower'] as num?)?.toInt() ?? 0,
+        );
+      }).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+}
+
+/// Une ligne du classement par puissance de deck d'invasion.
+class DeckLadderEntry {
+  final String uid;
+  final String pseudo;
+  final int deckPower;
+  const DeckLadderEntry(
+      {required this.uid, required this.pseudo, required this.deckPower});
 }
