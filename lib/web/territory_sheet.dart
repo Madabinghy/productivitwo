@@ -132,9 +132,12 @@ class _TerritoryViewState extends State<_TerritoryView> {
     final botWins = inv.level > cave.blueLevel;
     final Territory next;
     if (botWins) {
+      // Le bot s'installe avec SA force (blueLevel = sa menace) → la reprise devra
+      // battre ce boss installé (sous-tranche D).
       final caves = t.caves
-          .map((c) =>
-              c.id == cave.id ? c.copyWith(ownerUid: 'bot', occupied: true) : c)
+          .map((c) => c.id == cave.id
+              ? c.copyWith(ownerUid: 'bot', occupied: true, blueLevel: inv.level)
+              : c)
           .toList();
       next = t.copyWith(caves: caves, fog: true, clearInvader: true);
     } else {
@@ -147,7 +150,7 @@ class _TerritoryViewState extends State<_TerritoryView> {
     _toast(
         botWins
             ? '🟡 Le bot a PRIS ta grotte ${cave.id.toUpperCase()} ! '
-                '(reprise = partie longue, à venir)'
+                'Tape-la (rouge) pour la reprendre.'
             : '🛡️ Ta grotte ${cave.id.toUpperCase()} a tenu — le bot s\'est brisé dessus.',
         botWins ? _kEnemy : _kBlue);
   }
@@ -228,9 +231,9 @@ class _TerritoryViewState extends State<_TerritoryView> {
         _board(t, me),
         const SizedBox(height: 8),
         Text(
-          'Touche une de tes grottes 🕳️ pour entraîner son boss : le repousser '
-          'le fait monter d\'un niveau (ta défense + ton niveau de map). Ça dépense '
-          'tes flèches 🏹 — plus le boss est haut, plus c\'est dur.',
+          'Grotte BLEUE 🕳️ : touche-la pour entraîner son boss → +1 niveau (défense '
+          '+ niveau de map), ça dépense tes flèches 🏹. Grotte ROUGE (prise) : touche-la '
+          'pour la REPRENDRE en battant le boss installé.',
           textAlign: TextAlign.center,
           style: TextStyle(color: Colors.white.withOpacity(.45), fontSize: 11),
         ),
@@ -329,10 +332,11 @@ class _TerritoryViewState extends State<_TerritoryView> {
     );
   }
 
-  // Lever une grotte : combat partie-minute contre son boss ; victoire = +1 niveau.
+  // Grotte à MOI → entraîner son boss (+1 niveau). Grotte PRISE par le bot →
+  // REPRENDRE (sous-tranche D) : bats le boss installé pour récupérer ton territoire.
   Future<void> _fightCave(Territory t, TerritoryCave cave, String? me) async {
     if (cave.ownerUid != me) {
-      _toast('Cette grotte ne t\'appartient pas', _kEnemy);
+      await _reclaimCave(cave, me);
       return;
     }
     _paused = true;
@@ -341,14 +345,43 @@ class _TerritoryViewState extends State<_TerritoryView> {
     _paused = false;
     if (!mounted || winner != 'defender') return;
     // Persiste +1 niveau (le stream rafraîchit l'affichage).
-    final next = t.caves
-        .map((c) => c.id == cave.id
-            ? c.copyWith(blueLevel: c.blueLevel + 1)
-            : c)
+    final next = (_t ?? t)
+        .caves
+        .map((c) => c.id == cave.id ? c.copyWith(blueLevel: c.blueLevel + 1) : c)
         .toList();
-    await sync.saveTerritory(t.copyWith(caves: next));
+    await sync.saveTerritory((_t ?? t).copyWith(caves: next));
     if (!mounted) return;
     _toast('🕳️ Grotte ${cave.id.toUpperCase()} montée → niveau ${cave.blueLevel + 1}',
+        _kBlue);
+  }
+
+  // Sous-tranche D — reprendre une grotte prise : tu attaques le boss installé du
+  // bot et le fais fondre (partie-longue en prod = tick 1h ; modélisé ici sur le
+  // board partie-minute pour le solo). Victoire → la grotte te revient (défense à
+  // re-monter depuis 1) ; ton niveau de map remonte.
+  Future<void> _reclaimCave(TerritoryCave cave, String? me) async {
+    if (me == null) return;
+    _paused = true;
+    final winner = await showCaveFight(context, logic, sync,
+        blueLevel: cave.blueLevel,
+        title: 'Reprendre grotte ${cave.id.toUpperCase()}');
+    _paused = false;
+    if (!mounted) return;
+    if (winner != 'defender') {
+      _toast('Le boss installé a tenu — la grotte reste prise.', _kEnemy);
+      return;
+    }
+    final base = _t;
+    if (base == null) return;
+    final next = base.caves
+        .map((c) => c.id == cave.id
+            ? c.copyWith(ownerUid: me, occupied: false, blueLevel: 1)
+            : c)
+        .toList();
+    await sync.saveTerritory(base.copyWith(caves: next));
+    if (!mounted) return;
+    _toast(
+        '🔵 Grotte ${cave.id.toUpperCase()} REPRISE ! Défense à re-monter (niv. 1).',
         _kBlue);
   }
 
