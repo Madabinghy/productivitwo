@@ -5,6 +5,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/territory.dart';
 import 'package:productivitwo_v1/unified_world.dart';
+import 'package:productivitwo_v1/web/invasion_defense_sheet.dart';
 
 // MONDE UNIFIÉ — Tranche 0 : la grande carte traversable à l'avatar (farm gauche ·
 // château centre · grottes droite). On marche, le brouillard se lève autour de soi,
@@ -158,47 +159,94 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
     _announce(to);
   }
 
-  // T0 = simples repères (la défense/le combat arrivent en T1/T2).
+  // Repère château au passage (les grottes, elles, déclenchent l'engagement).
   void _announce(Point<int> to) {
-    final w = _w, t = _t;
-    if (w == null || t == null) return;
+    final w = _w;
+    if (w == null) return;
     if (to == w.castle) {
       _toast('🏰 Château — le cœur de ta map (à défendre).', _kGold);
-      return;
-    }
-    final id = w.caveIdAt(to.x, to.y);
-    if (id != null) {
-      final c = t.caveById(id);
-      final mine = c != null && c.ownerUid == t.uid;
-      _toast(
-          '🕳️ Grotte ${id.toUpperCase()} — ${mine ? 'à toi' : 'prise'} · niv ${c?.blueLevel ?? 0}'
-          ' (défendre : bientôt).',
-          mine ? _kBlue : _kEnemy);
     }
   }
 
-  void _onTap(int x, int y) {
+  Future<void> _onTap(int x, int y) async {
     final w = _w;
     if (_busy || w == null) return;
     final p = _pos;
-    if (x == p.x && y == p.y) return;
+    final caveId = w.caveIdAt(x, y);
+    // Re-tap de la case courante : si c'est une grotte, on (ré)engage.
+    if (x == p.x && y == p.y) {
+      if (caveId != null) await _engageCave(caveId);
+      return;
+    }
     if (!w.walkable(x, y)) {
       _toast('🧱 Un mur bloque ce passage.', Colors.white38);
       return;
     }
-    final id = '${x}_$y';
+    final tileId = '${x}_$y';
     final adjacent = (x - p.x).abs() + (y - p.y).abs() == 1;
     if (!adjacent) {
-      if (!_revealed.contains(id)) return;
+      if (!_revealed.contains(tileId)) return;
       final path = _bfsPath(p, Point(x, y));
       if (path.isEmpty) {
         _toast('🌫️ Chemin bloqué par le brouillard.', Colors.white38);
         return;
       }
-      _walkPath(path);
+      await _walkPath(path);
+    } else {
+      _step(Point(x, y));
+    }
+    // Arrivé sur une grotte (destination finale) → entrer : défendre / reprendre.
+    if (_pos.x == x && _pos.y == y && caveId != null) {
+      await _engageCave(caveId);
+    }
+  }
+
+  // T1 — défense par avatar : entrer dans une grotte au contact ouvre l'ENCOUNTER
+  // (board lanes `showCaveFight`). Grotte à moi → lever (+1 niveau) ; grotte prise
+  // → reprendre (battre le boss installé). Effets persistés dans territories/{uid}
+  // (identiques à la fiche god-view `territory_sheet`, mais pilotés par la position).
+  Future<void> _engageCave(String id) async {
+    final t = _t;
+    final me = sync.uid;
+    if (t == null || me == null) return;
+    final cave = t.caveById(id);
+    if (cave == null) return;
+    setState(() => _busy = true);
+    final reclaim = cave.ownerUid != me;
+    final winner = await showCaveFight(context, logic, sync,
+        blueLevel: cave.blueLevel,
+        title: reclaim
+            ? 'Reprendre grotte ${id.toUpperCase()}'
+            : 'Grotte ${id.toUpperCase()} — niv ${cave.blueLevel}');
+    if (mounted) setState(() => _busy = false);
+    if (!mounted) return;
+    final base = _t;
+    if (base == null) return;
+    if (winner != 'defender') {
+      if (reclaim) {
+        _toast('Le boss installé a tenu — la grotte reste prise.', _kEnemy);
+      }
       return;
     }
-    _step(Point(x, y));
+    if (reclaim) {
+      final caves = base.caves
+          .map((c) => c.id == id
+              ? c.copyWith(ownerUid: me, occupied: false, blueLevel: 1)
+              : c)
+          .toList();
+      // Reconquérir une grotte ramène le château (la map n'est plus prise).
+      await sync.saveTerritory(base.copyWith(caves: caves, mapTaken: false));
+      _toast('🔵 Grotte ${id.toUpperCase()} REPRISE ! Défense à re-monter (niv 1).',
+          _kBlue);
+    } else {
+      final caves = base.caves
+          .map((c) =>
+              c.id == id ? c.copyWith(blueLevel: c.blueLevel + 1) : c)
+          .toList();
+      await sync.saveTerritory(base.copyWith(caves: caves));
+      _toast('🕳️ Grotte ${id.toUpperCase()} montée → niveau ${cave.blueLevel + 1}',
+          _kBlue);
+    }
   }
 
   void _toast(String m, Color c) {
@@ -283,8 +331,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
         const SizedBox(height: 12),
         Text(
           'Déplace ton avatar : touche une case éclairée. Le brouillard se lève '
-          'autour de toi. Va farmer à gauche, défendre tes grottes à droite '
-          '(bientôt jouable), le château au centre.',
+          'autour de toi. Va à une grotte (droite) pour la DÉFENDRE : bleue → '
+          'entraîne son boss (+1 niveau) ; rouge (prise) → reprends-la. Le château '
+          'est au centre, la chasse à gauche (bientôt).',
           textAlign: TextAlign.center,
           style: TextStyle(color: Colors.white.withOpacity(.45), fontSize: 11),
         ),
