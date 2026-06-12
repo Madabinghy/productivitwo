@@ -111,6 +111,17 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
     _refresh();
   }
 
+  void _sellWeapon(String key) {
+    if (logic.sellWeapon(key, sync) && mounted) {
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+            'Vendu ${logic.weaponEmoji(key)} · +${GoldEconomy.weaponSellPrice} or'),
+        duration: const Duration(seconds: 1),
+      ));
+    }
+  }
+
   Future<void> _claimChest() async {
     final reward = logic.claimDailyChest(widget.sync);
     if (!mounted) return;
@@ -238,7 +249,7 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
             ],
           ),
           const SizedBox(height: 14),
-          // ── Arsenal (armes dispo) — visibles hors combat (parité web) ──────
+          // ── Arsenal (armes dispo) — touche une arme pour la vendre ─────────
           Row(
             children: [
               Text('Arsenal',
@@ -252,31 +263,42 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
                 Builder(builder: (_) {
                   final n = logic.weaponsAvailable(w);
                   final has = n > 0;
-                  return Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: has
-                          ? _kGold.withOpacity(.12)
-                          : cs.onSurface.withOpacity(.04),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                          color: has
-                              ? _kGold.withOpacity(.35)
-                              : cs.outline.withOpacity(.15)),
+                  return GestureDetector(
+                    onTap: has ? () => _sellWeapon(w) : null,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: has
+                            ? _kGold.withOpacity(.12)
+                            : cs.onSurface.withOpacity(.04),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                            color: has
+                                ? _kGold.withOpacity(.35)
+                                : cs.outline.withOpacity(.15)),
+                      ),
+                      child: Text('${logic.weaponEmoji(w)} $n',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: has
+                                  ? _kGold
+                                  : cs.onSurface.withOpacity(.4))),
                     ),
-                    child: Text('${logic.weaponEmoji(w)} $n',
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color:
-                                has ? _kGold : cs.onSurface.withOpacity(.4))),
                   );
                 }),
                 if (w != 'epee') const SizedBox(width: 6),
               ],
             ],
           ),
+          const SizedBox(height: 3),
+          Text(
+              'Touche une arme pour la vendre (+${GoldEconomy.weaponSellPrice} or)',
+              style: TextStyle(
+                  fontSize: 10,
+                  fontStyle: FontStyle.italic,
+                  color: cs.onSurface.withOpacity(.4))),
           const SizedBox(height: 16),
           // Niveau / rang
           Row(children: [

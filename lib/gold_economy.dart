@@ -1,5 +1,3 @@
-import 'dart:math' show max, min;
-
 /// Économie d'Or — constantes & formules PURES (aucune dépendance plateforme).
 /// Partagé par le moteur mobile (`gold_engine.dart`) ET l'app web, pour que les
 /// deux puissent calculer un coût et l'appliquer via `FirestoreSync.applyGold`.
@@ -181,8 +179,17 @@ class GoldEconomy {
 
   static bool minionNeedsNinja(String type) => type == 'snake';
 
-  /// Nombre de sbires en fonction des PV : 1 à 5 selon l'effort restant.
-  static int sbiresForHp(int hp) => max(1, min(5, (hp + 4) ~/ 5));
+  /// Plafond de sbires : la garde scale avec la SÉVÉRITÉ de la négligence
+  /// (jours en déficit / actions accumulées), mais reste bornée. Voir
+  /// `AppLogic.enemySbires`.
+  static const int maxSbires = 10;
+
+  /// Fenêtre (jours) sur laquelle on compte la négligence d'une routine/activité.
+  static const int neglectWindowDays = 14;
+
+  /// Prix de revente d'une arme (liquidation du surplus). Volontairement bas :
+  /// décrassage, pas une source de revenu (l'arme vient déjà d'un gain d'or).
+  static const int weaponSellPrice = 2;
 
   static const int minutesPerArrow = 60; // 1 h de temps loggé = 1 flèche
 

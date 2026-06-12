@@ -586,6 +586,56 @@ extension GoldEngine on AppLogic {
     return 0;
   }
 
+  /// Nombre de sbires d'un ennemi = SÉVÉRITÉ de la négligence (≥1, plafonné à
+  /// [GoldEconomy.maxSbires]) → plus tu as laissé pourrir, plus la garde est
+  /// épaisse, plus ça coûte d'armes à percer. Le vrai travail réduit le déficit
+  /// (donc la garde) en parallèle.
+  /// - routine 🕷️ / activité 🦂 : jours en déficit sur la fenêtre de négligence
+  /// - tâche 🐍 : actions non faites accumulées
+  int enemySbires(String type, String itemId) {
+    const cap = GoldEconomy.maxSbires;
+    if (type == 'snake') {
+      return enemyHp('snake', itemId).clamp(1, cap);
+    }
+    Activity? found;
+    for (final x in state.activities) {
+      if (x.id == itemId) {
+        found = x;
+        break;
+      }
+    }
+    if (found == null) return 1;
+    final a = found;
+    final base = DateTime.now();
+    final today = DateTime(base.year, base.month, base.day);
+    var missed = 0;
+    for (var i = 0; i < GoldEconomy.neglectWindowDays; i++) {
+      final d = today.subtract(Duration(days: i));
+      if (type == 'spider') {
+        final tgt = activeHabitTarget(a);
+        if (tgt > 0 && habitValueOn(a.id, d) < tgt) missed++;
+      } else {
+        // scorpion
+        if (a.goalMin > 0 && _loggedMinutesOnDay(a.id, yyyymmdd(d)) < a.goalMin) {
+          missed++;
+        }
+      }
+    }
+    return missed.clamp(1, cap);
+  }
+
+  /// Revend 1 arme contre de l'or (liquidation du surplus). Incrémente le
+  /// compteur de dépense (l'arme part de l'arsenal) + crédite l'or.
+  bool sellWeapon(String key, FirestoreSync sync) {
+    if (weaponsAvailable(key) <= 0) return false;
+    state.weaponsSpent[key] = (state.weaponsSpent[key] ?? 0) + 1;
+    sync.setCombatStats(state.weaponsSpent, state.pestKills);
+    applyGold(sync, GoldEconomy.weaponSellPrice,
+        category: 'gain', reasonCode: 'weapon_sell', label: 'Vente d\'arme');
+    onChange();
+    return true;
+  }
+
   bool isHeartExposed(String type, String itemId) =>
       isEngaged(type, itemId) && sbiresLeft(type, itemId) <= 0;
 
@@ -628,7 +678,7 @@ extension GoldEngine on AppLogic {
     final w = GoldEconomy.minionWeaponForPest(type);
     if (weaponsAvailable(w) < GoldEconomy.engageCost) return false;
     state.weaponsSpent[w] = (state.weaponsSpent[w] ?? 0) + GoldEconomy.engageCost;
-    final sbires = GoldEconomy.sbiresForHp(enemyHp(type, itemId));
+    final sbires = enemySbires(type, itemId);
     state.engagedEnemies.add('$type~$itemId~$sbires');
     sync.setCombatStats(state.weaponsSpent, state.pestKills);
     sync.setEngagedEnemies(state.engagedEnemies);
@@ -890,6 +940,17 @@ extension GoldEngine on AppLogic {
     for (final s in state.sessions) {
       if (s.activityId != activityId) continue;
       if (since != null && yyyymmdd(s.startAt).compareTo(since) < 0) continue;
+      min += s.duration.inMinutes;
+    }
+    return min;
+  }
+
+  /// Minutes loggées sur UN jour précis (pour la sévérité par jour).
+  int _loggedMinutesOnDay(String activityId, String ymd) {
+    var min = 0;
+    for (final s in state.sessions) {
+      if (s.activityId != activityId) continue;
+      if (yyyymmdd(s.startAt) != ymd) continue;
       min += s.duration.inMinutes;
     }
     return min;

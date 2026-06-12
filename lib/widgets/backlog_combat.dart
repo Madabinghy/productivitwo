@@ -450,7 +450,7 @@ Future<void> showBacklogCombat(
         // Sbires affichés : restants si engagé, sinon aperçu de ce qui gardera
         // le cœur (même règle que la tuile de carte).
         final sbiresShown =
-            engaged ? sbires : GoldEconomy.sbiresForHp(hp);
+            engaged ? sbires : logic.enemySbires(type, itemId);
 
         Widget statusLabel(String t) => Text(t,
             style: TextStyle(

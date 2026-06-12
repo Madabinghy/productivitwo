@@ -317,7 +317,7 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
             cs.primary;
         engaged = logic.isEngaged(ent.type, id);
         heartsCount = min(5, max < 1 ? 1 : cur);
-        sbiresCount = engaged ? logic.sbiresLeft(ent.type, id) : GoldEconomy.sbiresForHp(cur);
+        sbiresCount = engaged ? logic.sbiresLeft(ent.type, id) : logic.enemySbires(ent.type, id);
       }
     }
     final tileWidget = _TileView(
@@ -334,21 +334,11 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
       cs: cs,
       onTap: () => _onTap(_map.at(x, y)),
       sbiresCount: sbiresCount,
+      heartsCount: heartsCount,
     );
 
-    if (ent == null || heartsCount == 0) return tileWidget;
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: List.generate(heartsCount,
-              (_) => const Text('❤️', style: TextStyle(fontSize: 10))),
-        ),
-        tileWidget,
-      ],
-    );
+    // Cœurs et sbires sont DANS la case (Stack) → la grille ne se décale pas.
+    return tileWidget;
   }
 
   bool _walkable(int x, int y) =>
@@ -1195,6 +1185,7 @@ class _TileView extends StatelessWidget {
   // Vrai si un combat a déjà été engagé contre cet ennemi.
   final bool engaged;
   final int sbiresCount;
+  final int heartsCount;
   const _TileView({
     required this.tile,
     required this.visible,
@@ -1209,6 +1200,7 @@ class _TileView extends StatelessWidget {
     this.hpFrac = 0,
     this.engaged = false,
     this.sbiresCount = 0,
+    this.heartsCount = 0,
   });
 
   @override
@@ -1318,6 +1310,18 @@ class _TileView extends StatelessWidget {
                     sbiresCount.clamp(0, 5),
                     (_) => Text(entityEmoji(entity!.type),
                         style: const TextStyle(fontSize: 8)),
+                  ),
+                ),
+              ),
+            // Cœurs DANS la case (en haut) → pas de décalage de la grille.
+            if (entity != null && heartsCount > 0)
+              Positioned(
+                left: 0, right: 0, top: 1,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(
+                    heartsCount.clamp(0, 5),
+                    (_) => const Text('❤️', style: TextStyle(fontSize: 6.5)),
                   ),
                 ),
               ),
