@@ -16,6 +16,7 @@ import 'package:productivitwo_v1/widgets/gold_sheet.dart';
 import 'package:productivitwo_v1/web/world_sheet.dart';
 import 'package:productivitwo_v1/web/invasion_defense_sheet.dart';
 import 'package:productivitwo_v1/web/territory_sheet.dart';
+import 'package:productivitwo_v1/web/unified_world_sheet.dart';
 
 const _kGold = Color(0xFFD4A017);
 const _kCardBg = Color(0xFF120A0A);
@@ -824,6 +825,14 @@ class _ExplorationColumn extends StatelessWidget {
             subtitle: 'Forge ton armée, envahis le ladder, défends ton territoire',
             color: const Color(0xFFA855F7),
             onTap: () => showInvasionSheet(context, logic, sync),
+          ),
+          const SizedBox(height: 10),
+          _ExploreBtn(
+            emoji: '🗺️',
+            title: 'Monde',
+            subtitle: 'Une seule grande carte : farm · château · grottes (avatar)',
+            color: const Color(0xFF14B8A6),
+            onTap: () => showUnifiedWorldSheet(context, logic, sync),
           ),
           const SizedBox(height: 10),
           _ExploreBtn(
