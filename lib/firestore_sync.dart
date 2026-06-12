@@ -11,6 +11,7 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:productivitwo_v1/gold_economy.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/battle_sim.dart';
+import 'package:productivitwo_v1/territory.dart';
 import 'package:productivitwo_v1/dev_logger.dart';
 
 /// Synchronisation Firestore.
@@ -2459,6 +2460,36 @@ class FirestoreSync {
     } catch (_) {
       return [];
     }
+  }
+
+  // ── Jeu de territoire : map persistée ──────────────────────────────────────
+  /// Stream de la map d'un user (la sienne, ou celle qu'on envahit en spectateur).
+  Stream<Territory?> streamTerritory(String tuid) => _db
+      .collection('territories')
+      .doc(tuid)
+      .snapshots()
+      .map((s) => s.exists ? Territory.from(s.data()!) : null);
+
+  /// Crée ma map si elle n'existe pas encore (toutes grottes à moi, brouillard).
+  /// Idempotent. Trust-client v1 (CF-autoritatif au PvP plus tard).
+  Future<void> ensureTerritory(String pseudo) async {
+    if (uid == null) return;
+    final ref = _db.collection('territories').doc(uid);
+    final snap = await ref.get();
+    if (snap.exists) return;
+    await ref.set({
+      ...initialTerritory(uid!, pseudo).toJson(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Persiste un état de territoire (merge). Trust-client v1.
+  Future<void> saveTerritory(Territory t) async {
+    if (uid == null) return;
+    await _db.collection('territories').doc(t.uid).set(
+      {...t.toJson(), 'updatedAt': FieldValue.serverTimestamp()},
+      SetOptions(merge: true),
+    );
   }
 
   // ── Invasion / Territoires : classement par puissance de deck ──────────────

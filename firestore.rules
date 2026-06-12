@@ -75,5 +75,16 @@ service cloud.firestore {
         allow write: if false;
       }
     }
+    // Jeu de territoire : la map persistée d'un user (château + grottes + brouillard
+    // + envahisseur). Lisible par le PROPRIÉTAIRE et l'ENVAHISSEUR actif (spectateur
+    // live). Écriture par le propriétaire (trust-client v1 solo ; à durcir en
+    // CF-only quand le PvP serveur-autoritatif arrivera).
+    match /territories/{tid} {
+      allow read: if request.auth != null
+        && (request.auth.uid == tid
+            || (resource.data.invader != null
+                && request.auth.uid == resource.data.invader.attackerUid));
+      allow write: if request.auth != null && request.auth.uid == tid;
+    }
   }
 }

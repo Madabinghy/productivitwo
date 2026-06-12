@@ -116,6 +116,25 @@ Future<void> showInvasionSheet(
   );
 }
 
+/// Combat de grotte (lever ton deck bleu) : le boss de TA grotte t'assaille, tu le
+/// repousses. La difficulté monte avec `blueLevel` (boss + dur, plus de vagues) →
+/// plafonné par ton budget de flèches. Dépense tes vraies flèches/masse ; l'issue
+/// (montée de niveau) est gérée par l'appelant (applyDefaultOutcome=false).
+/// Retourne le vainqueur ('defender' = grotte tenue → monte d'un niveau).
+Future<String?> showCaveFight(
+    BuildContext context, AppLogic logic, FirestoreSync sync,
+    {required int blueLevel, required String title}) {
+  final level = blueLevel >= 5 ? 5 : (blueLevel >= 3 ? 3 : 1);
+  final extra = (blueLevel - 1).clamp(0, 6);
+  return Navigator.of(context).push<String>(MaterialPageRoute(
+    builder: (_) => _InvasionBoardScreen(
+      ctrl: _BotInvasionCtrl(logic, sync, level,
+          stakes: true, extra: extra, applyDefaultOutcome: false),
+      title: title,
+    ),
+  ));
+}
+
 // ── Contrôleur abstrait (partagé practice / remote à venir) ──────────────────
 
 abstract class _InvasionCtrl extends ChangeNotifier {
@@ -195,6 +214,9 @@ class _BotInvasionCtrl extends _InvasionCtrl {
   final FirestoreSync sync;
   final int level;
   final bool stakes;
+  final int extra; // vagues supplémentaires (siège de grotte plus dur)
+  // false = l'appelant gère l'issue (ex. lever une grotte) → pas d'or/deckDamage.
+  final bool applyDefaultOutcome;
 
   @override
   final int width = 7;
@@ -238,8 +260,9 @@ class _BotInvasionCtrl extends _InvasionCtrl {
   Timer? _timer;
   int _seq = 0;
 
-  _BotInvasionCtrl(this.logic, this.sync, this.level, {required this.stakes})
-      : _events = List<BattleEvent>.from(buildInvaderForce(level)) {
+  _BotInvasionCtrl(this.logic, this.sync, this.level,
+      {required this.stakes, this.extra = 0, this.applyDefaultOutcome = true})
+      : _events = List<BattleEvent>.from(buildInvaderForce(level, extra: extra)) {
     _timer = Timer.periodic(const Duration(milliseconds: 250), (_) => _pulse());
   }
 
@@ -260,7 +283,7 @@ class _BotInvasionCtrl extends _InvasionCtrl {
   }
 
   void _applyOutcome(InvasionSimResult r) {
-    if (!stakes || _outcomeApplied) return;
+    if (!stakes || _outcomeApplied || !applyDefaultOutcome) return;
     _outcomeApplied = true;
     if (r.winner == 'defender') {
       rewardGold = GoldEconomy.bossWinReward;
@@ -1045,7 +1068,7 @@ class _InvasionBoardScreenState extends State<_InvasionBoardScreen> {
   // Bilan supplémentaire en mode « Boss réel » (or gagné / deck grignoté).
   String _outcomeExtra(bool won) {
     final c = ctrl;
-    if (c is! _BotInvasionCtrl || !c.stakes) return '';
+    if (c is! _BotInvasionCtrl || !c.stakes || !c.applyDefaultOutcome) return '';
     if (won) return '\n\n+${c.rewardGold} or 🪙';
     if (c.deckLoss.isEmpty) return '';
     final parts = c.deckLoss.entries
@@ -1078,7 +1101,7 @@ class _InvasionBoardScreenState extends State<_InvasionBoardScreen> {
             FilledButton(
                 onPressed: () {
                   Navigator.pop(context); // dialog
-                  Navigator.pop(context); // board
+                  Navigator.pop(context, ctrl.winner); // board → renvoie le vainqueur
                 },
                 child: const Text('Retour')),
           ],
