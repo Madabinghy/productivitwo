@@ -908,6 +908,10 @@ class FirestoreSync {
       // Changement de jour : retire le flottant de la veille (sera banké à part).
       if (serverYmd != null && serverYmd != ymd) gold -= serverGain;
       final base = serverYmd == ymd ? serverGain : 0;
+      // Garde-fou multi-appareil : si le serveur sait déjà plus que nous (earned
+      // calculé sur données incomplètes/périmées), on ne rétrograde pas l'or.
+      // Un appareil ne peut qu'apporter de l'info, jamais en retirer.
+      if (serverYmd == ymd && earned <= serverGain) return gold;
       gold += earned - base;
       if (gold < 0) gold = 0;
       tx.set(metaRef, {
