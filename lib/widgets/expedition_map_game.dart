@@ -1295,7 +1295,7 @@ class _TileView extends StatelessWidget {
                   children: List.generate(
                     sbiresCount.clamp(0, 5),
                     (_) => Text(entityEmoji(entity!.type),
-                        style: const TextStyle(fontSize: 10)),
+                        style: const TextStyle(fontSize: 8)),
                   ),
                 ),
               ),
