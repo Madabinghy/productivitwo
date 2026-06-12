@@ -69,6 +69,10 @@ class Invader {
   final String targetCaveId;
   final String state; // 'marching' | 'at_cave' | 'installed' | 'resolved'
   final int lastStepAtMs;
+  // Horodatage du spawn (figé, jamais ré-écrit par advanceInvader). Permet à la
+  // map UNIFIÉE de dériver la position de l'araignée du temps écoulé le long de
+  // SON propre chemin (géométrie ≠ 9×9) sans corrompre x/y du substrat territoire.
+  final int spawnAtMs;
 
   const Invader({
     required this.attackerUid,
@@ -79,12 +83,15 @@ class Invader {
     required this.targetCaveId,
     required this.state,
     required this.lastStepAtMs,
+    this.spawnAtMs = 0,
   });
 
   bool get marching => state == 'marching';
   bool get atCave => state == 'at_cave';
 
-  Invader copyWith({int? x, int? y, String? state, int? lastStepAtMs}) => Invader(
+  Invader copyWith(
+          {int? x, int? y, String? state, int? lastStepAtMs, int? spawnAtMs}) =>
+      Invader(
         attackerUid: attackerUid,
         color: color,
         level: level,
@@ -93,10 +100,12 @@ class Invader {
         targetCaveId: targetCaveId,
         state: state ?? this.state,
         lastStepAtMs: lastStepAtMs ?? this.lastStepAtMs,
+        spawnAtMs: spawnAtMs ?? this.spawnAtMs,
       );
 
   static Invader? from(Map? j) {
     if (j == null) return null;
+    final last = (j['lastStepAtMs'] as num?)?.toInt() ?? 0;
     return Invader(
       attackerUid: (j['attackerUid'] ?? 'bot') as String,
       color: (j['color'] ?? 'yellow') as String,
@@ -105,7 +114,9 @@ class Invader {
       y: (j['y'] as num?)?.toInt() ?? 0,
       targetCaveId: (j['targetCaveId'] ?? '') as String,
       state: (j['state'] ?? 'marching') as String,
-      lastStepAtMs: (j['lastStepAtMs'] as num?)?.toInt() ?? 0,
+      lastStepAtMs: last,
+      // Rétro-compat : docs sans spawnAtMs → on retombe sur lastStepAtMs.
+      spawnAtMs: (j['spawnAtMs'] as num?)?.toInt() ?? last,
     );
   }
 
@@ -118,6 +129,7 @@ class Invader {
         'targetCaveId': targetCaveId,
         'state': state,
         'lastStepAtMs': lastStepAtMs,
+        'spawnAtMs': spawnAtMs,
       };
 }
 
@@ -324,6 +336,7 @@ Territory spawnBotInvader(Territory t, String me, int nowMs, {int botLevel = 2})
     targetCaveId: targetId,
     state: 'marching',
     lastStepAtMs: nowMs,
+    spawnAtMs: nowMs,
   );
   return t.copyWith(invader: inv, fog: false);
 }
