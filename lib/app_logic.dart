@@ -2129,6 +2129,31 @@ class AppLogic {
     return (current: current, previous: previous, days7: days7);
   }
 
+  /// Signal de menace pour le jeu de territoire (accountability) : déclin de la
+  /// DERNIÈRE semaine complète vs la précédente. Comparaison de deux semaines
+  /// CLOSES → stable (pas le bruit d'une semaine courante partielle). `drop` =
+  /// chute relative 0..1 (0 si semaine égale ou meilleure) ; `weekKey` = lundi de
+  /// la semaine COURANTE (clé d'idempotence : un seul déclenchement par semaine) ;
+  /// `hadData` = false si moins de 2 semaines exploitables (→ pas de menace).
+  ({double drop, String weekKey, bool hadData}) territoryThreatSignal() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final thisMonday = today.subtract(Duration(days: today.weekday - 1));
+    final lastMonday = thisMonday.subtract(const Duration(days: 7));
+    final prevMonday = lastMonday.subtract(const Duration(days: 7));
+    final ctx = _scoreContext();
+    final lastWeek = _weekScore(lastMonday,
+        until: lastMonday.add(const Duration(days: 6)), ctx: ctx);
+    final prevWeek = _weekScore(prevMonday,
+        until: prevMonday.add(const Duration(days: 6)), ctx: ctx);
+    final weekKey = yyyymmdd(thisMonday);
+    if (prevWeek <= 0 || lastWeek <= 0) {
+      return (drop: 0.0, weekKey: weekKey, hadData: false);
+    }
+    final drop = ((prevWeek - lastWeek) / prevWeek).clamp(0.0, 1.0);
+    return (drop: drop, weekKey: weekKey, hadData: true);
+  }
+
   /// Score moyen par jour de la semaine sur les N dernières semaines.
   /// Index 0 = lundi, 6 = dimanche. -1 si pas de données.
   List<double> weekdayAverageScores({int weeks = 12}) {

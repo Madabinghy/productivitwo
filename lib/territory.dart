@@ -129,6 +129,9 @@ class Territory {
   final List<TerritoryCave> caves;
   final Invader? invader;
   final bool mapTaken; // château tombé (4 grottes prises puis château) → défaite
+  // Lundi (YYYY-MM-DD) de la dernière semaine où l'auto-trigger de menace a été
+  // évalué → idempotence : un seul spawn hebdo de bot scalé sur la chute de score.
+  final String lastThreatWeek;
 
   const Territory({
     required this.uid,
@@ -141,6 +144,7 @@ class Territory {
     required this.caves,
     this.invader,
     this.mapTaken = false,
+    this.lastThreatWeek = '',
   });
 
   /// Niveau de map = Σ des niveaux des grottes que JE possède (= rang ladder à
@@ -165,6 +169,7 @@ class Territory {
     Invader? invader,
     bool clearInvader = false,
     bool? mapTaken,
+    String? lastThreatWeek,
   }) =>
       Territory(
         uid: uid,
@@ -177,6 +182,7 @@ class Territory {
         caves: caves ?? this.caves,
         invader: clearInvader ? null : (invader ?? this.invader),
         mapTaken: mapTaken ?? this.mapTaken,
+        lastThreatWeek: lastThreatWeek ?? this.lastThreatWeek,
       );
 
   static Territory from(Map j) {
@@ -194,6 +200,7 @@ class Territory {
           .toList(),
       invader: Invader.from(j['invader'] as Map?),
       mapTaken: (j['mapTaken'] as bool?) ?? false,
+      lastThreatWeek: (j['lastThreatWeek'] ?? '') as String,
     );
   }
 
@@ -209,6 +216,7 @@ class Territory {
         'caves': [for (final c in caves) c.toJson()],
         'invader': invader?.toJson(),
         'mapTaken': mapTaken,
+        'lastThreatWeek': lastThreatWeek,
       };
 }
 

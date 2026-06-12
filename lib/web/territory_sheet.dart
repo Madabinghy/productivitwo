@@ -61,6 +61,7 @@ class _TerritoryViewState extends State<_TerritoryView> {
   Territory? _t;
   bool _loading = true;
   bool _paused = false; // gelé pendant un combat/écran (pas de marche/résolution)
+  bool _autoThreatChecked = false; // auto-trigger hebdo évalué une fois par ouverture
   StreamSubscription<Territory?>? _sub;
   Timer? _timer;
 
@@ -82,6 +83,13 @@ class _TerritoryViewState extends State<_TerritoryView> {
         _t = t;
         _loading = false;
       });
+      // À la première map chargée : déclenche (au plus 1×/semaine) une invasion
+      // scalée sur la chute de score hebdo. Le boot, pas le tick (le tick re-tourne
+      // chaque seconde ; ici on veut une évaluation unique par ouverture).
+      if (!_autoThreatChecked && t != null) {
+        _autoThreatChecked = true;
+        _maybeAutoThreat(t);
+      }
     });
     // L'owner pilote la marche du bot en solo (trust v1) + persiste.
     _timer = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
@@ -181,6 +189,53 @@ class _TerritoryViewState extends State<_TerritoryView> {
         botWins ? _kEnemy : _kBlue);
   }
 
+  // Courbe DOUCE (validée) chute de score hebdo → menace du bot : pas de chute → 1
+  // (inoffensif), ≤25 % → 2, ≤50 % → 3, >50 % → 4. Pardonne une mauvaise semaine,
+  // punit l'effondrement. Une grotte tombe en passif si menace > son niveau (départ
+  // 1) → monter ses grottes au-dessus de la menace les protège.
+  int _threatLevel(double drop) {
+    if (drop <= 0) return 1;
+    if (drop <= 0.25) return 2;
+    if (drop <= 0.50) return 3;
+    return 4;
+  }
+
+  // Auto-trigger d'accountability : à l'ouverture, si la dernière semaine complète
+  // a décliné (menace ≥ 2) et qu'aucune invasion n'est en cours, fait spawner un bot
+  // scalé sur l'ampleur de la chute — une seule fois par semaine (clé `lastThreatWeek`).
+  // Une semaine égale/meilleure marque juste la semaine évaluée (pas de spawn).
+  void _maybeAutoThreat(Territory t) {
+    final me = sync.uid;
+    if (me == null || t.invader != null || t.mapTaken) return;
+    final sig = logic.territoryThreatSignal();
+    if (!sig.hadData || t.lastThreatWeek == sig.weekKey) return;
+    final level = _threatLevel(sig.drop);
+    if (level < 2) {
+      // Pas de déclin : marque la semaine pour ne pas ré-évaluer en boucle, sans spawn.
+      final marked = t.copyWith(lastThreatWeek: sig.weekKey);
+      _t = marked;
+      sync.saveTerritory(marked);
+      return;
+    }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final spawned = spawnBotInvader(t, me, now, botLevel: level)
+        .copyWith(lastThreatWeek: sig.weekKey);
+    if (spawned.invader == null) {
+      // Plus de grotte/map prise : marque quand même la semaine.
+      final marked = t.copyWith(lastThreatWeek: sig.weekKey);
+      _t = marked;
+      sync.saveTerritory(marked);
+      return;
+    }
+    _t = spawned;
+    sync.saveTerritory(spawned);
+    if (mounted) setState(() {});
+    final pct = (sig.drop * 100).round();
+    _toast(
+        '🕷️ Ta semaine a chuté de $pct % → une araignée niv $level marche sur ta map.',
+        _kEnemy);
+  }
+
   // Bascule la cadence. Rebase `lastStepAtMs` de l'envahisseur sur maintenant pour
   // éviter un saut de position au changement d'échelle de temps (sinon test→réel
   // gèlerait ~1 h, réel→test rattraperait des dizaines de pas d'un coup).
@@ -205,7 +260,13 @@ class _TerritoryViewState extends State<_TerritoryView> {
       _toast('Un envahisseur est déjà sur ta map (1 à la fois)', _kEnemy);
       return;
     }
-    final next = spawnBotInvader(t, me, DateTime.now().millisecondsSinceEpoch);
+    // Menace scalée sur la vraie chute hebdo ; bouton dev planché à 2 (toujours
+    // un test significatif même sans données de score).
+    final sig = logic.territoryThreatSignal();
+    final scaled = sig.hadData ? _threatLevel(sig.drop) : 1;
+    final level = scaled < 2 ? 2 : scaled;
+    final next = spawnBotInvader(t, me, DateTime.now().millisecondsSinceEpoch,
+        botLevel: level);
     if (next.invader == null) {
       _toast(t.mapTaken ? 'Map déjà prise — reconquiers tes grottes' : 'Plus de grotte à défendre',
           _kEnemy);
@@ -218,8 +279,8 @@ class _TerritoryViewState extends State<_TerritoryView> {
     final target = next.invader!.targetCaveId;
     _toast(
         target == 'castle'
-            ? '🟡 Toutes tes grottes sont prises — l\'araignée fonce sur ton CHÂTEAU ❤️ !'
-            : '🟡 Une araignée jaune marche vers ta grotte ${target.toUpperCase()} !',
+            ? '🟡 Toutes tes grottes sont prises — l\'araignée (niv $level) fonce sur ton CHÂTEAU ❤️ !'
+            : '🟡 Une araignée jaune (niv $level) marche vers ta grotte ${target.toUpperCase()} !',
         _kGold);
   }
 
@@ -287,6 +348,10 @@ class _TerritoryViewState extends State<_TerritoryView> {
           style: TextStyle(color: Colors.white.withOpacity(.45), fontSize: 11),
         ),
         const SizedBox(height: 12),
+        if (inv == null) ...[
+          _threatReadout(),
+          const SizedBox(height: 12),
+        ],
         _cadenceToggle(),
         const SizedBox(height: 12),
         if (inv == null) _summonBtn(),
@@ -341,6 +406,41 @@ class _TerritoryViewState extends State<_TerritoryView> {
           ),
         ),
       );
+
+  // Readout du signal d'accountability : où en est ta semaine et quelle menace elle
+  // appelle. Rend visible le lien chute de score → bot, même sans invasion en cours.
+  Widget _threatReadout() {
+    final sig = logic.territoryThreatSignal();
+    final String msg;
+    final Color col;
+    if (!sig.hadData) {
+      msg = '📊 Pas encore assez d\'historique de score pour jauger la menace hebdo.';
+      col = Colors.white54;
+    } else {
+      final level = _threatLevel(sig.drop);
+      final pct = (sig.drop * 100).round();
+      if (level < 2) {
+        msg = '📈 Semaine stable ou en hausse — aucune menace hebdo.';
+        col = _kBlue;
+      } else {
+        msg = '📉 Semaine en baisse de $pct % → menace niv $level '
+            '(le bot vient seul, 1×/sem).';
+        col = _kEnemy;
+      }
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: col.withOpacity(.10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: col.withOpacity(.35)),
+      ),
+      child: Text(msg,
+          textAlign: TextAlign.center,
+          style:
+              TextStyle(color: col, fontSize: 11.5, fontWeight: FontWeight.w700)),
+    );
+  }
 
   // Sélecteur de cadence (dev) : Test 3 s/pas pour jouer en session ⇄ Réel 1 h/pas
   // pour valider le rythme d'accountability. Cf note d'archi : affordance dev.
