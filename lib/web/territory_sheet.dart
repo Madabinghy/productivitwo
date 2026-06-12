@@ -42,10 +42,21 @@ class _TerritoryView extends StatefulWidget {
 }
 
 class _TerritoryViewState extends State<_TerritoryView> {
-  // Cadence de marche : TEST = 1 pas / 3 s (prod visée = 1 tick / 1 h).
-  static const int _kStepMs = 3000;
-  // Fenêtre devant la grotte avant l'auto-résolution (laisse le temps de Défendre).
-  static const int _kCaveWindowMs = 9000;
+  // Cadence de marche, configurable test/prod. La cadence est une INTERPRÉTATION
+  // client de `lastStepAtMs` (advanceInvader rattrape les pas dus à l'horloge
+  // murale) → toute valeur marche, et la marche se rattrape entre sessions. Le
+  // toggle Test est un affordance DEV (ne doit pas shipper activé : en PvP la
+  // cadence réelle doit être une constante partagée, sinon les positions divergent
+  // entre clients) — figé sur Réel quand le trigger hebdo (item #3) atterrira.
+  static const int _kStepMsTest = 3000; // 3 s/pas
+  static const int _kStepMsReal = 3600000; // 1 h/pas (prod)
+  // Fenêtre devant la grotte avant l'auto-résolution (laisse le temps d'intercepter).
+  static const int _kCaveWindowMsTest = 9000; // 9 s
+  static const int _kCaveWindowMsReal = 3600000; // 1 h (= 1 pas)
+
+  bool _realCadence = false; // défaut Test (jouable/démontrable en session)
+  int get _stepMs => _realCadence ? _kStepMsReal : _kStepMsTest;
+  int get _caveWindowMs => _realCadence ? _kCaveWindowMsReal : _kCaveWindowMsTest;
 
   Territory? _t;
   bool _loading = true;
@@ -83,7 +94,7 @@ class _TerritoryViewState extends State<_TerritoryView> {
     if (t == null || inv == null) return;
     final now = DateTime.now().millisecondsSinceEpoch;
     if (inv.marching) {
-      final r = advanceInvader(t, now, _kStepMs);
+      final r = advanceInvader(t, now, _stepMs);
       if (r.moved) {
         _t = r.t; // optimiste ; le stream confirmera
         sync.saveTerritory(r.t);
@@ -92,7 +103,7 @@ class _TerritoryViewState extends State<_TerritoryView> {
       return;
     }
     // Devant la grotte sans interception à temps → auto-résolution green-vs-blue.
-    if (inv.atCave && now - inv.lastStepAtMs >= _kCaveWindowMs) {
+    if (inv.atCave && now - inv.lastStepAtMs >= _caveWindowMs) {
       _autoResolveCave(t, inv);
     }
   }
@@ -168,6 +179,22 @@ class _TerritoryViewState extends State<_TerritoryView> {
                 'Tape-la (rouge) pour la reprendre.'
             : '🛡️ Ta grotte ${cave.id.toUpperCase()} a tenu — le bot s\'est brisé dessus.',
         botWins ? _kEnemy : _kBlue);
+  }
+
+  // Bascule la cadence. Rebase `lastStepAtMs` de l'envahisseur sur maintenant pour
+  // éviter un saut de position au changement d'échelle de temps (sinon test→réel
+  // gèlerait ~1 h, réel→test rattraperait des dizaines de pas d'un coup).
+  void _setCadence(bool real) {
+    if (_realCadence == real) return;
+    setState(() => _realCadence = real);
+    final t = _t;
+    final inv = t?.invader;
+    if (t != null && inv != null) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final next = t.copyWith(invader: inv.copyWith(lastStepAtMs: now));
+      _t = next;
+      sync.saveTerritory(next);
+    }
   }
 
   Future<void> _summon() async {
@@ -260,6 +287,8 @@ class _TerritoryViewState extends State<_TerritoryView> {
           style: TextStyle(color: Colors.white.withOpacity(.45), fontSize: 11),
         ),
         const SizedBox(height: 12),
+        _cadenceToggle(),
+        const SizedBox(height: 12),
         if (inv == null) _summonBtn(),
         const SizedBox(height: 12),
         _legend(),
@@ -312,6 +341,53 @@ class _TerritoryViewState extends State<_TerritoryView> {
           ),
         ),
       );
+
+  // Sélecteur de cadence (dev) : Test 3 s/pas pour jouer en session ⇄ Réel 1 h/pas
+  // pour valider le rythme d'accountability. Cf note d'archi : affordance dev.
+  Widget _cadenceToggle() {
+    Widget pill(String label, bool real) {
+      final sel = _realCadence == real;
+      return Expanded(
+        child: GestureDetector(
+          onTap: () => _setCadence(real),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: sel ? _kGold.withOpacity(.18) : Colors.transparent,
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(
+                  color: sel ? _kGold.withOpacity(.6) : Colors.transparent),
+            ),
+            child: Text(label,
+                style: TextStyle(
+                    color: sel ? _kGold : Colors.white54,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 11.5)),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: _kCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(.08)),
+      ),
+      child: Row(children: [
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 8),
+          child: Text('Cadence (dev)',
+              style: TextStyle(color: Colors.white54, fontSize: 11)),
+        ),
+        pill('Test · 3 s/pas', false),
+        const SizedBox(width: 4),
+        pill('Réel · 1 h/pas', true),
+      ]),
+    );
+  }
 
   Widget _summonBtn() => Center(
         child: InkWell(
