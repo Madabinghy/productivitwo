@@ -13,9 +13,7 @@ import 'package:productivitwo_v1/widgets/expedition_map_game.dart';
 import 'package:productivitwo_v1/widgets/expedition_sheet.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
 import 'package:productivitwo_v1/widgets/gold_sheet.dart';
-import 'package:productivitwo_v1/web/world_sheet.dart';
 import 'package:productivitwo_v1/web/invasion_defense_sheet.dart';
-import 'package:productivitwo_v1/web/territory_sheet.dart';
 import 'package:productivitwo_v1/web/unified_world_sheet.dart';
 
 const _kGold = Color(0xFFD4A017);
@@ -776,6 +774,15 @@ class _ExplorationColumn extends StatelessWidget {
             ]),
           ),
           const SizedBox(height: 14),
+          // En tête : la grande map unifiée (absorbe farm + défense de territoire).
+          _ExploreBtn(
+            emoji: '🗺️',
+            title: 'Monde',
+            subtitle: 'Une seule grande carte : farm · château · grottes (avatar)',
+            color: const Color(0xFF14B8A6),
+            onTap: () => showUnifiedWorldSheet(context, logic, sync),
+          ),
+          const SizedBox(height: 10),
           _ExploreBtn(
             emoji: biome.emoji,
             title: 'Carte overworld',
@@ -796,14 +803,6 @@ class _ExplorationColumn extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           _ExploreBtn(
-            emoji: '🏹',
-            title: 'Chasse',
-            subtitle: 'Farm les nuisibles pour leur butin et tes recettes',
-            color: const Color(0xFF0EA5E9),
-            onTap: () => showExpeditionGame(context, logic, sync, huntLevel: level),
-          ),
-          const SizedBox(height: 10),
-          _ExploreBtn(
             emoji: '🗺️',
             title: 'Mes cartes',
             subtitle: 'Ta collection de créatures et recettes de chasse',
@@ -812,35 +811,11 @@ class _ExplorationColumn extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           _ExploreBtn(
-            emoji: '🌍',
-            title: 'Le Monde',
-            subtitle: 'Relâche tes routines, combats celles des autres, sois suivi',
-            color: const Color(0xFFEC4899),
-            onTap: () => showWorldSheet(context, logic, sync),
-          ),
-          const SizedBox(height: 10),
-          _ExploreBtn(
             emoji: '👑',
             title: 'Invasion',
             subtitle: 'Forge ton armée, envahis le ladder, défends ton territoire',
             color: const Color(0xFFA855F7),
             onTap: () => showInvasionSheet(context, logic, sync),
-          ),
-          const SizedBox(height: 10),
-          _ExploreBtn(
-            emoji: '🗺️',
-            title: 'Monde',
-            subtitle: 'Une seule grande carte : farm · château · grottes (avatar)',
-            color: const Color(0xFF14B8A6),
-            onTap: () => showUnifiedWorldSheet(context, logic, sync),
-          ),
-          const SizedBox(height: 10),
-          _ExploreBtn(
-            emoji: '🗺️',
-            title: 'Mon territoire',
-            subtitle: 'Ta map : château + 4 grottes à défendre des envahisseurs',
-            color: const Color(0xFF3B82F6),
-            onTap: () => showTerritorySheet(context, logic, sync),
           ),
         ],
       ),
