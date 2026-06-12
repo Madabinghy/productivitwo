@@ -204,35 +204,56 @@ class _TerritoryViewState extends State<_TerritoryView> {
   // a décliné (menace ≥ 2) et qu'aucune invasion n'est en cours, fait spawner un bot
   // scalé sur l'ampleur de la chute — une seule fois par semaine (clé `lastThreatWeek`).
   // Une semaine égale/meilleure marque juste la semaine évaluée (pas de spawn).
-  void _maybeAutoThreat(Territory t) {
+  // `force` (bouton dev) : ignore la clé hebdo (rejouable) et NE consomme PAS la
+  // semaine (test répétable) ; toaste explicitement la décision même sans spawn.
+  void _maybeAutoThreat(Territory t, {bool force = false}) {
     final me = sync.uid;
-    if (me == null || t.invader != null || t.mapTaken) return;
+    if (me == null) return;
+    if (t.invader != null || t.mapTaken) {
+      if (force) _toast('Déjà une invasion en cours / map prise.', _kEnemy);
+      return;
+    }
     final sig = logic.territoryThreatSignal();
-    if (!sig.hadData || t.lastThreatWeek == sig.weekKey) return;
+    if (!force && t.lastThreatWeek == sig.weekKey) return; // déjà déclenché cette sem.
+    if (!sig.hadData) {
+      if (force) {
+        _toast('🐞 Moins de 2 semaines de score exploitables → aucun spawn.',
+            Colors.white60);
+      }
+      return;
+    }
     final level = _threatLevel(sig.drop);
     if (level < 2) {
-      // Pas de déclin : marque la semaine pour ne pas ré-évaluer en boucle, sans spawn.
-      final marked = t.copyWith(lastThreatWeek: sig.weekKey);
-      _t = marked;
-      sync.saveTerritory(marked);
+      if (force) {
+        _toast('🐞 Semaine stable ou en hausse → aucune menace (pas de spawn).',
+            _kBlue);
+      } else {
+        // Pas de déclin : marque la semaine pour ne pas ré-évaluer en boucle.
+        final marked = t.copyWith(lastThreatWeek: sig.weekKey);
+        _t = marked;
+        sync.saveTerritory(marked);
+      }
       return;
     }
     final now = DateTime.now().millisecondsSinceEpoch;
-    final spawned = spawnBotInvader(t, me, now, botLevel: level)
-        .copyWith(lastThreatWeek: sig.weekKey);
-    if (spawned.invader == null) {
-      // Plus de grotte/map prise : marque quand même la semaine.
-      final marked = t.copyWith(lastThreatWeek: sig.weekKey);
-      _t = marked;
-      sync.saveTerritory(marked);
+    final base = spawnBotInvader(t, me, now, botLevel: level);
+    if (base.invader == null) {
+      if (!force) {
+        final marked = t.copyWith(lastThreatWeek: sig.weekKey);
+        _t = marked;
+        sync.saveTerritory(marked);
+      }
       return;
     }
+    // Auto réel : consomme la semaine (idempotence). Forcé : ne consomme pas.
+    final spawned = force ? base : base.copyWith(lastThreatWeek: sig.weekKey);
     _t = spawned;
     sync.saveTerritory(spawned);
     if (mounted) setState(() {});
     final pct = (sig.drop * 100).round();
     _toast(
-        '🕷️ Ta semaine a chuté de $pct % → une araignée niv $level marche sur ta map.',
+        '${force ? '🐞 (forcé) ' : '🕷️ '}Ta semaine a chuté de $pct % → '
+        'araignée niv $level sur ta map.',
         _kEnemy);
   }
 
@@ -354,7 +375,11 @@ class _TerritoryViewState extends State<_TerritoryView> {
         ],
         _cadenceToggle(),
         const SizedBox(height: 12),
-        if (inv == null) _summonBtn(),
+        if (inv == null) ...[
+          _summonBtn(),
+          const SizedBox(height: 8),
+          _forceThreatBtn(),
+        ],
         const SizedBox(height: 12),
         _legend(),
       ],
@@ -488,6 +513,31 @@ class _TerritoryViewState extends State<_TerritoryView> {
       ]),
     );
   }
+
+  // Bouton dev : rejoue la décision d'auto-trigger maintenant (ignore la clé hebdo,
+  // ne consomme pas la semaine) pour tester le chemin sans attendre une vraie semaine.
+  Widget _forceThreatBtn() => Center(
+        child: InkWell(
+          onTap: () {
+            final t = _t;
+            if (t != null) _maybeAutoThreat(t, force: true);
+          },
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(.04),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.white.withOpacity(.14)),
+            ),
+            child: Text('🐞 Forcer l\'auto-trigger (dev)',
+                style: TextStyle(
+                    color: Colors.white.withOpacity(.55),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11)),
+          ),
+        ),
+      );
 
   Widget _summonBtn() => Center(
         child: InkWell(
