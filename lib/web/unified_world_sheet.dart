@@ -5,6 +5,8 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/territory.dart';
 import 'package:productivitwo_v1/unified_world.dart';
+import 'package:productivitwo_v1/expedition.dart';
+import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/web/invasion_defense_sheet.dart';
 
 // MONDE UNIFIÉ — Tranche 0 : la grande carte traversable à l'avatar (farm gauche ·
@@ -64,6 +66,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
   // État de marche LOCAL (éphémère en T0).
   late Point<int> _pos;
   final Set<String> _revealed = {};
+  // Nuisibles de FARM (zone gauche) : LOCAUX/éphémères (région farm procédurale,
+  // non persistée — cf split de persistance). tileId "x_y" → type de nuisible.
+  final Map<String, String> _farmPests = {};
+  final _rng = Random();
 
   @override
   void initState() {
@@ -98,15 +104,20 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
     super.dispose();
   }
 
-  void _revealAround(Point<int> p) {
+  // Lève le brouillard autour de [p] ; retourne les cases NOUVELLEMENT révélées.
+  List<String> _revealAround(Point<int> p) {
     final w = _w;
-    if (w == null) return;
+    if (w == null) return const [];
+    final added = <String>[];
     for (var dy = -_kReveal; dy <= _kReveal; dy++) {
       for (var dx = -_kReveal; dx <= _kReveal; dx++) {
         final nx = p.x + dx, ny = p.y + dy;
-        if (w.inBounds(nx, ny)) _revealed.add('${nx}_$ny');
+        if (!w.inBounds(nx, ny)) continue;
+        final id = '${nx}_$ny';
+        if (_revealed.add(id)) added.add(id);
       }
     }
+    return added;
   }
 
   List<Point<int>> _ortho(int x, int y) {
@@ -159,11 +170,60 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
   }
 
   void _step(Point<int> to) {
-    setState(() {
-      _pos = to;
-      _revealAround(to);
-    });
+    final added = _revealAround(to);
+    final t = _t;
+    if (t != null) _maybeSpawnFarm(added, t);
+    setState(() => _pos = to);
     _announce(to);
+  }
+
+  // Spawn de nuisibles à CHASSER dans la zone farm (gauche), à la révélation.
+  // Local/éphémère (farm non persistée), plafonné, type scalé sur le niveau de map.
+  void _maybeSpawnFarm(List<String> newly, Territory t) {
+    final w = _w;
+    if (w == null || _farmPests.length >= 3) return;
+    final farm = newly.where((id) {
+      final s = id.split('_');
+      final x = int.parse(s[0]), y = int.parse(s[1]);
+      if (x >= w.castle.x - 1) return false; // zone farm uniquement
+      if (w.at(x, y) != UwTile.floor) return false;
+      if (w.hasBush(x, y) || _farmPests.containsKey(id)) return false;
+      if (x == _pos.x && y == _pos.y) return false;
+      return true;
+    }).toList();
+    if (farm.isEmpty || _rng.nextInt(100) >= 30) return;
+    _farmPests[farm[_rng.nextInt(farm.length)]] =
+        GoldEconomy.pestTypeForLevel(t.level);
+  }
+
+  String _weaponHint(String w) => w == 'epee'
+      ? 'finis une tâche → 🗡️'
+      : w == 'arc'
+          ? 'logge ~1 h → 🏹'
+          : 'fais une routine → 🔪';
+
+  // Capture d'un nuisible de farm : arme requise dispo → recordKill (crédite la
+  // capture + recettes, dépense l'arme) + butin d'or. Réutilise l'éco existante.
+  Future<void> _captureFarmPest(String tileId, String type) async {
+    final weapon = GoldEconomy.weaponForPest(type);
+    if (logic.weaponsAvailable(weapon) < 1) {
+      _toast('${logic.weaponEmoji(weapon)} Pas d\'arme — ${_weaponHint(weapon)}',
+          _kGold);
+      return;
+    }
+    setState(() => _busy = true);
+    final unlocked = logic.recordKill(type, sync, spendWeapon: true);
+    final loot = GoldEconomy.pestLootBase(type, false);
+    logic.applyGold(sync, loot,
+        category: 'gain', reasonCode: 'pest_loot', label: 'Butin de chasse');
+    logic.onChange();
+    _farmPests.remove(tileId);
+    if (mounted) setState(() => _busy = false);
+    _toast('⚔️ ${pestName(type)} capturé ! +$loot or', _kFarm);
+    if (unlocked.isNotEmpty && mounted) {
+      _toast('${unlocked.first.emoji} ${unlocked.first.name} débloqué (recette) !',
+          _kFarm);
+    }
   }
 
   // Repère château au passage (les grottes, elles, déclenchent l'engagement).
@@ -361,12 +421,15 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
     if (_busy || w == null) return;
     final p = _pos;
     final caveId = w.caveIdAt(x, y);
+    final farmType = _farmPests['${x}_$y'];
     final spider = _spiderPos();
     final isSpider = spider != null && spider.x == x && spider.y == y;
-    // Re-tap de la case courante : (ré)engage l'araignée si elle y est, sinon grotte.
+    // Re-tap de la case courante : araignée > nuisible de farm > grotte.
     if (x == p.x && y == p.y) {
       if (isSpider) {
         await _intercept();
+      } else if (farmType != null) {
+        await _captureFarmPest('${x}_$y', farmType);
       } else if (caveId != null) {
         await _engageCave(caveId);
       }
@@ -389,11 +452,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
     } else {
       _step(Point(x, y));
     }
-    // Arrivé sur la case visée → engage : araignée (interception) prioritaire,
-    // sinon grotte (défendre / reprendre).
+    // Arrivé sur la case visée → engage : araignée (interception) > nuisible de
+    // farm (capture) > grotte (défendre / reprendre).
     if (_pos.x == x && _pos.y == y) {
       if (isSpider) {
         await _intercept();
+      } else if (farmType != null) {
+        await _captureFarmPest('${x}_$y', farmType);
       } else if (caveId != null) {
         await _engageCave(caveId);
       }
@@ -529,10 +594,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
         _board(t, w),
         const SizedBox(height: 12),
         Text(
-          'Déplace ton avatar : touche une case éclairée. Va à une grotte (droite) '
-          'pour la DÉFENDRE (bleue → +1 niveau ; rouge → reprends-la). Quand une '
-          'araignée 🕷️ arrive par l\'est, va à son contact pour l\'INTERCEPTER '
-          'avant qu\'elle atteigne sa cible.',
+          'Avatar : touche une case éclairée. À GAUCHE, chasse les nuisibles (va à '
+          'leur contact, arme requise) → captures + or. À DROITE, défends tes '
+          'grottes (bleue → +1 niveau ; rouge → reprends-la). Quand une araignée 🕷️ '
+          'arrive par l\'est, intercepte-la au contact avant sa cible.',
           textAlign: TextAlign.center,
           style: TextStyle(color: Colors.white.withOpacity(.45), fontSize: 11),
         ),
@@ -675,8 +740,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
       );
     }
 
-    // L'araignée se superpose à la case (sauf si l'avatar y est = interception).
+    // L'araignée d'invasion se superpose à la case (sauf si l'avatar y est =
+    // interception) ; un nuisible de farm (zone gauche) s'affiche à chasser.
     final spiderHere = isSpider && !isAvatar;
+    final farmType = _farmPests['${x}_$y'];
+    final farmHere = farmType != null && !isAvatar && !spiderHere;
     final tile = Container(
       width: inner,
       height: inner,
@@ -686,22 +754,29 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
             ? Colors.white.withOpacity(.16)
             : spiderHere
                 ? _kEnemy.withOpacity(.25)
-                : bg,
+                : farmHere
+                    ? _kFarm.withOpacity(.18)
+                    : bg,
         borderRadius: BorderRadius.circular(5),
         border: Border.all(
             color: isAvatar
                 ? Colors.white
                 : spiderHere
                     ? _kEnemy
-                    : border,
-            width: isAvatar || spiderHere ? 2 : 1),
+                    : farmHere
+                        ? _kFarm.withOpacity(.7)
+                        : border,
+            width: isAvatar || spiderHere || farmHere ? 2 : 1),
       ),
       alignment: Alignment.center,
       child: isAvatar
           ? Text(avatar, style: TextStyle(fontSize: inner * 0.55))
           : spiderHere
               ? Text('🕷️', style: TextStyle(fontSize: inner * 0.55))
-              : child,
+              : farmHere
+                  ? Text(entityEmoji(farmType),
+                      style: TextStyle(fontSize: inner * 0.5))
+                  : child,
     );
 
     return GestureDetector(onTap: () => _onTap(x, y), child: tile);
