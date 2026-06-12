@@ -612,48 +612,57 @@ class _ExplorationColumn extends StatelessWidget {
     final biome = expeditionBiome(level + 1);
     final inDungeon = logic.state.expeditionDonjonLevel > 0;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // ── Magasin ───────────────────────────────────────────────────────
-          GoldSheetBody(logic: logic, sync: sync),
-          const Divider(height: 32),
-          // ── Exploration ───────────────────────────────────────────────────
-          Text('Exploration',
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 4),
-          Text('Niveau : $level',
-              style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.55))),
-          const SizedBox(height: 16),
-          _ExploreBtn(
-            emoji: biome.emoji,
-            title: 'Carte overworld',
-            subtitle: '${biome.label} · niveau ${level + 1}',
-            color: _kGold,
-            onTap: () => showExpeditionGame(context, logic, sync),
+    // GoldSheetBody retourne un ListView qui requiert une hauteur bornée.
+    // On le met dans Expanded, et la section Exploration sous la divider.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // ── Magasin ─────────────────────────────────────────────────────────
+        Expanded(
+          child: GoldSheetBody(logic: logic, sync: sync),
+        ),
+        const Divider(height: 1),
+        // ── Exploration ─────────────────────────────────────────────────────
+        SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Exploration',
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 4),
+              Text('Niveau : $level',
+                  style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.55))),
+              const SizedBox(height: 16),
+              _ExploreBtn(
+                emoji: biome.emoji,
+                title: 'Carte overworld',
+                subtitle: '${biome.label} · niveau ${level + 1}',
+                color: _kGold,
+                onTap: () => showExpeditionGame(context, logic, sync),
+              ),
+              const SizedBox(height: 10),
+              _ExploreBtn(
+                emoji: inDungeon ? '🏰' : '🔒',
+                title: inDungeon ? 'Reprendre le donjon' : 'Donjon',
+                subtitle: inDungeon
+                    ? 'Reprends où tu t\'es arrêté'
+                    : 'Atteins le château sur la carte d\'abord',
+                color: const Color(0xFF8B5CF6),
+                onTap: inDungeon ? () => showExpeditionSheet(context, logic, sync) : null,
+              ),
+              const SizedBox(height: 10),
+              _ExploreBtn(
+                emoji: '🏹',
+                title: 'Chasse',
+                subtitle: 'Farm les nuisibles pour leur butin',
+                color: const Color(0xFF0EA5E9),
+                onTap: () => showExpeditionGame(context, logic, sync, huntLevel: level),
+              ),
+            ],
           ),
-          const SizedBox(height: 10),
-          _ExploreBtn(
-            emoji: inDungeon ? '🏰' : '🔒',
-            title: inDungeon ? 'Reprendre le donjon' : 'Donjon',
-            subtitle: inDungeon
-                ? 'Reprends où tu t\'es arrêté'
-                : 'Atteins le château sur la carte d\'abord',
-            color: const Color(0xFF8B5CF6),
-            onTap: inDungeon ? () => showExpeditionSheet(context, logic, sync) : null,
-          ),
-          const SizedBox(height: 10),
-          _ExploreBtn(
-            emoji: '🏹',
-            title: 'Chasse',
-            subtitle: 'Farm les nuisibles pour leur butin',
-            color: const Color(0xFF0EA5E9),
-            onTap: () => showExpeditionGame(context, logic, sync, huntLevel: level),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
