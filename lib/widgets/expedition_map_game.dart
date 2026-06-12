@@ -466,18 +466,87 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
     }
   }
 
+  /// BFS sur les cases révélées+praticables — chemin de [from] à [to] (exclu/inclus)
+  /// ou liste vide si inaccessible via terrain révélé.
+  List<OwTile> _bfsPath(Point<int> from, Point<int> to) {
+    if (from == to) return const [];
+    final startId = '${from.x}_${from.y}';
+    final goalId = '${to.x}_${to.y}';
+    final prev = <String, String?>{startId: null};
+    final queue = <Point<int>>[from];
+    int i = 0;
+    while (i < queue.length) {
+      final cur = queue[i++];
+      final curId = '${cur.x}_${cur.y}';
+      if (curId == goalId) break;
+      for (final n in _ortho(cur.x, cur.y)) {
+        final nid = '${n.x}_${n.y}';
+        if (prev.containsKey(nid)) continue;
+        if (!_revealed.contains(nid)) continue;
+        prev[nid] = curId;
+        queue.add(Point(n.x, n.y));
+      }
+    }
+    if (!prev.containsKey(goalId)) return const [];
+    final path = <OwTile>[];
+    var cur = goalId;
+    while (cur != startId) {
+      final s = cur.split('_');
+      path.add(_map.at(int.parse(s[0]), int.parse(s[1])));
+      cur = prev[cur]!;
+    }
+    return path.reversed.toList();
+  }
+
+  /// Déplace l'avatar le long de [path] (~200 ms/case).
+  /// S'arrête sur le premier nuisible rencontré et ouvre le combat.
+  Future<void> _walkPath(List<OwTile> path) async {
+    if (!mounted) return;
+    setState(() => _busy = true);
+    try {
+      for (final tile in path) {
+        if (!mounted) return;
+        final ent = _entityAt(tile.id);
+        if (ent != null && isPestType(ent.type)) {
+          await _engageCombat(ent.raw, ent.type);
+          return;
+        }
+        await _doMove(tile, ent);
+        if (!mounted) return;
+        await Future.delayed(const Duration(milliseconds: 200));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _onTap(OwTile t) async {
     if (_busy) return;
     final p = _pos;
+    if (t.x == p.x && t.y == p.y) return;
+    final isRevealed = _revealed.contains(t.id);
     final adjacent = (t.x - p.x).abs() + (t.y - p.y).abs() == 1;
-    if (!adjacent) return;
+
+    if (!adjacent && !isRevealed) return;
+
     if (t.kind == OwTileKind.wall) {
-      // Mur (parfois découvert en torchant une case sous brouillard).
-      if (!_revealed.contains(t.id)) {
+      if (!isRevealed) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('🧱 Un mur bloque ce passage.'),
             duration: Duration(seconds: 1)));
       }
+      return;
+    }
+
+    if (!adjacent) {
+      final path = _bfsPath(p, Point(t.x, t.y));
+      if (path.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('🌫️ Chemin bloqué par le brouillard.'),
+            duration: Duration(seconds: 1)));
+        return;
+      }
+      await _walkPath(path);
       return;
     }
 
@@ -759,7 +828,7 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
     });
   }
 
-  Future<void> _move(OwTile t,
+  Future<void> _doMove(OwTile t,
       ({String raw, String type, String tile, String meta})? ent) async {
     final fogged = !_revealed.contains(t.id);
     // Déplacement gratuit sur case éclairée ; on ne paie que l'éclairage du
@@ -818,8 +887,6 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
 
     final goldDelta = gain - cost;
     final entitiesChanged = entities.length != _ents.length;
-
-    setState(() => _busy = true);
 
     if (_hunt) {
       // Chasse : état carte LOCAL (éphémère) ; seuls or + collection persistent.
@@ -884,7 +951,7 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
       logic.onChange();
     }
     if (!mounted) return;
-    setState(() => _busy = false);
+    setState(() {});
 
     final toast = spawnMsg ?? msg;
     if (toast != null) {
@@ -894,6 +961,13 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
 
     if (!_hunt) _maybeCompletionBonus();
     if (t.kind == OwTileKind.castle) await _castle();
+  }
+
+  Future<void> _move(OwTile t,
+      ({String raw, String type, String tile, String meta})? ent) async {
+    setState(() => _busy = true);
+    await _doMove(t, ent);
+    if (mounted) setState(() => _busy = false);
   }
 
   void _maybeCompletionBonus() {
