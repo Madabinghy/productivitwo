@@ -128,6 +128,7 @@ class Territory {
   final bool fog;
   final List<TerritoryCave> caves;
   final Invader? invader;
+  final bool mapTaken; // château tombé (4 grottes prises puis château) → défaite
 
   const Territory({
     required this.uid,
@@ -139,6 +140,7 @@ class Territory {
     required this.fog,
     required this.caves,
     this.invader,
+    this.mapTaken = false,
   });
 
   /// Niveau de map = Σ des niveaux des grottes que JE possède (= rang ladder à
@@ -162,6 +164,7 @@ class Territory {
     int? seed,
     Invader? invader,
     bool clearInvader = false,
+    bool? mapTaken,
   }) =>
       Territory(
         uid: uid,
@@ -173,6 +176,7 @@ class Territory {
         fog: fog ?? this.fog,
         caves: caves ?? this.caves,
         invader: clearInvader ? null : (invader ?? this.invader),
+        mapTaken: mapTaken ?? this.mapTaken,
       );
 
   static Territory from(Map j) {
@@ -189,6 +193,7 @@ class Territory {
           .map((e) => TerritoryCave.from(e as Map))
           .toList(),
       invader: Invader.from(j['invader'] as Map?),
+      mapTaken: (j['mapTaken'] as bool?) ?? false,
     );
   }
 
@@ -203,6 +208,7 @@ class Territory {
         'level': level, // dénormalisé pour la query ladder
         'caves': [for (final c in caves) c.toJson()],
         'invader': invader?.toJson(),
+        'mapTaken': mapTaken,
       };
 }
 
@@ -291,14 +297,23 @@ TerritoryCave? weakestOwnedCave(Territory t, String me) {
 /// scalera sur l'ampleur de la chute de score hebdo. null-safe si plus de grotte.
 Territory spawnBotInvader(Territory t, String me, int nowMs, {int botLevel = 2}) {
   final target = weakestOwnedCave(t, me);
-  if (target == null) return t;
+  // Plus de grotte possédée → le bot vise le CHÂTEAU (targetCaveId='castle'). Si la
+  // map est déjà prise, rien à faire.
+  final String targetId;
+  if (target != null) {
+    targetId = target.id;
+  } else if (!t.mapTaken) {
+    targetId = 'castle';
+  } else {
+    return t;
+  }
   final inv = Invader(
     attackerUid: 'bot',
     color: 'yellow',
     level: botLevel,
     x: t.cols ~/ 2,
     y: 0,
-    targetCaveId: target.id,
+    targetCaveId: targetId,
     state: 'marching',
     lastStepAtMs: nowMs,
   );
@@ -312,13 +327,22 @@ Territory spawnBotInvader(Territory t, String me, int nowMs, {int botLevel = 2})
 ({Territory t, bool moved}) advanceInvader(Territory t, int nowMs, int stepMs) {
   final inv = t.invader;
   if (inv == null || !inv.marching) return (t: t, moved: false);
-  final cave = t.caveById(inv.targetCaveId);
-  if (cave == null) return (t: t, moved: false);
+  // Cible = une grotte, ou le château ('castle').
+  final int tx, ty;
+  if (inv.targetCaveId == 'castle') {
+    tx = t.castle.x;
+    ty = t.castle.y;
+  } else {
+    final cave = t.caveById(inv.targetCaveId);
+    if (cave == null) return (t: t, moved: false);
+    tx = cave.x;
+    ty = cave.y;
+  }
   var due = (nowMs - inv.lastStepAtMs) ~/ stepMs;
   if (due <= 0) return (t: t, moved: false);
   var x = inv.x, y = inv.y, steps = 0;
-  while (due > 0 && (x != cave.x || y != cave.y)) {
-    final dx = cave.x - x, dy = cave.y - y;
+  while (due > 0 && (x != tx || y != ty)) {
+    final dx = tx - x, dy = ty - y;
     if (dx != 0 && (dy == 0 || dx.abs() >= dy.abs())) {
       x += dx > 0 ? 1 : -1;
     } else {
@@ -328,7 +352,7 @@ Territory spawnBotInvader(Territory t, String me, int nowMs, {int botLevel = 2})
     steps++;
   }
   if (steps == 0) return (t: t, moved: false);
-  final arrived = x == cave.x && y == cave.y;
+  final arrived = x == tx && y == ty;
   return (
     t: t.copyWith(
         invader: inv.copyWith(

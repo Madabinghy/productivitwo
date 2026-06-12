@@ -124,9 +124,24 @@ class _TerritoryViewState extends State<_TerritoryView> {
   // les cas (reprise d'une grotte prise = partie longue, sous-tranche D).
   void _autoResolveCave(Territory t, Invader inv) {
     final me = sync.uid;
-    final cave = t.caveById(inv.targetCaveId);
-    if (me == null || cave == null) return;
+    if (me == null) return;
     _paused = true;
+    // Château (toutes les grottes sont prises) : sans interception → MAP PRISE.
+    if (inv.targetCaveId == 'castle') {
+      final next = t.copyWith(mapTaken: true, fog: true, clearInvader: true);
+      _t = next;
+      sync.saveTerritory(next);
+      if (mounted) setState(() {});
+      _paused = false;
+      _toast('💀 Ton château est tombé — MAP PRISE. Reconquiers tes grottes (rouges).',
+          _kEnemy);
+      return;
+    }
+    final cave = t.caveById(inv.targetCaveId);
+    if (cave == null) {
+      _paused = false;
+      return;
+    }
     // Résolution PASSIVE déterministe : la menace du bot vs le niveau de la grotte.
     // Tu n'as pas défendu activement → seul le niveau de ta grotte la protège.
     final botWins = inv.level > cave.blueLevel;
@@ -165,16 +180,19 @@ class _TerritoryViewState extends State<_TerritoryView> {
     }
     final next = spawnBotInvader(t, me, DateTime.now().millisecondsSinceEpoch);
     if (next.invader == null) {
-      _toast('Plus de grotte à défendre', _kEnemy);
+      _toast(t.mapTaken ? 'Map déjà prise — reconquiers tes grottes' : 'Plus de grotte à défendre',
+          _kEnemy);
       return;
     }
     _t = next;
     await sync.saveTerritory(next);
     if (!mounted) return;
     setState(() {});
+    final target = next.invader!.targetCaveId;
     _toast(
-        '🟡 Une araignée jaune marche vers ta grotte '
-        '${next.invader!.targetCaveId.toUpperCase()} !',
+        target == 'castle'
+            ? '🟡 Toutes tes grottes sont prises — l\'araignée fonce sur ton CHÂTEAU ❤️ !'
+            : '🟡 Une araignée jaune marche vers ta grotte ${target.toUpperCase()} !',
         _kGold);
   }
 
@@ -218,6 +236,10 @@ class _TerritoryViewState extends State<_TerritoryView> {
       children: [
         _statusBar(t),
         const SizedBox(height: 12),
+        if (t.mapTaken) ...[
+          _mapTakenBanner(),
+          const SizedBox(height: 12),
+        ],
         // Sous invasion : bannière + actions EN HAUT (visibles sans scroller).
         if (inv != null) ...[
           _invaderBanner(inv),
@@ -244,6 +266,29 @@ class _TerritoryViewState extends State<_TerritoryView> {
       ],
     );
   }
+
+  Widget _mapTakenBanner() => Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: _kEnemy.withOpacity(.14),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _kEnemy.withOpacity(.6)),
+        ),
+        child: Row(children: [
+          const Text('💀', style: TextStyle(fontSize: 26)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'MAP PRISE — ton château est tombé. Reconquiers tes grottes (rouges) '
+              'pour reprendre le contrôle.',
+              style: TextStyle(
+                  color: _kEnemy.withOpacity(.95),
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800),
+            ),
+          ),
+        ]),
+      );
 
   Widget _letGoBtn() => Center(
         child: InkWell(
@@ -306,27 +351,35 @@ class _TerritoryViewState extends State<_TerritoryView> {
 
   Widget _invaderBanner(Invader inv) {
     final atCave = inv.atCave;
+    final castle = inv.targetCaveId == 'castle';
+    final cible = castle ? 'ton CHÂTEAU ❤️' : 'grotte ${inv.targetCaveId.toUpperCase()}';
+    final String msg;
+    if (castle) {
+      msg = atCave
+          ? 'Devant $cible ! Intercepte ou ta MAP TOMBE.'
+          : 'L\'araignée fonce sur $cible — dernière ligne. Intercepte avant qu\'elle arrive.';
+    } else {
+      msg = atCave
+          ? 'Devant ta $cible ! Intercepte vite, sinon ta défense bleue résout seule '
+              '(et peut céder la grotte).'
+          : 'Une araignée jaune marche vers ta $cible — force inconnue (cachée jusqu\'au '
+              'combat). Intercepte avant la grotte.';
+    }
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
       decoration: BoxDecoration(
-        color: _kGold.withOpacity(.1),
+        color: (castle ? _kEnemy : _kGold).withOpacity(.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _kGold.withOpacity(.5)),
+        border: Border.all(color: (castle ? _kEnemy : _kGold).withOpacity(.5)),
       ),
       child: Row(children: [
         const Text('🕷️', style: TextStyle(fontSize: 22)),
         const SizedBox(width: 10),
         Expanded(
-          child: Text(
-            atCave
-                ? 'Devant ta grotte ${inv.targetCaveId.toUpperCase()} ! Intercepte vite, '
-                    'sinon ta défense bleue résout seule (et peut céder la grotte).'
-                : 'Une araignée jaune marche vers ${inv.targetCaveId.toUpperCase()} '
-                    '— force inconnue (cachée jusqu\'au combat). Intercepte avant la grotte.',
-            style: const TextStyle(
-                color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
-          ),
+          child: Text(msg,
+              style: const TextStyle(
+                  color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
         ),
       ]),
     );
@@ -378,7 +431,8 @@ class _TerritoryViewState extends State<_TerritoryView> {
             ? c.copyWith(ownerUid: me, occupied: false, blueLevel: 1)
             : c)
         .toList();
-    await sync.saveTerritory(base.copyWith(caves: next));
+    // Reconquérir une grotte ramène le château (la map n'est plus prise).
+    await sync.saveTerritory(base.copyWith(caves: next, mapTaken: false));
     if (!mounted) return;
     _toast(
         '🔵 Grotte ${cave.id.toUpperCase()} REPRISE ! Défense à re-monter (niv. 1).',
