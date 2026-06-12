@@ -73,7 +73,10 @@ class _GamificationHub extends StatelessWidget {
             child: TabBarView(
               children: [
                 GoldSheetBody(
-                    logic: logic, sync: sync, onLaunchRoutine: onLaunchRoutine),
+                    logic: logic,
+                    sync: sync,
+                    onLaunchRoutine: onLaunchRoutine,
+                    embeddedInSheet: true),
                 Builder(builder: scoreTab),
                 LeaderboardBody(sync: sync),
                 ScheduledChallengesBody(logic: logic, sync: sync),

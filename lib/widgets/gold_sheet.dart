@@ -43,8 +43,11 @@ class _GoldSheet extends StatelessWidget {
       maxChildSize: 0.95,
       minChildSize: 0.4,
       expand: false,
-      builder: (_, scroll) =>
-          GoldSheetBody(logic: logic, sync: sync, scrollController: scroll),
+      builder: (_, scroll) => GoldSheetBody(
+          logic: logic,
+          sync: sync,
+          scrollController: scroll,
+          embeddedInSheet: true),
     );
   }
 }
@@ -55,12 +58,16 @@ class GoldSheetBody extends StatefulWidget {
   final FirestoreSync sync;
   final ScrollController? scrollController;
   final RoutineLaunch? onLaunchRoutine;
+  // true = intégré dans un modal bottom sheet (pop avant d'ouvrir la boutique)
+  // false = intégré directement dans un layout (pas de pop navigation)
+  final bool embeddedInSheet;
   const GoldSheetBody(
       {super.key,
       required this.logic,
       required this.sync,
       this.scrollController,
-      this.onLaunchRoutine});
+      this.onLaunchRoutine,
+      this.embeddedInSheet = false});
 
   @override
   State<GoldSheetBody> createState() => _GoldSheetBodyState();
@@ -214,7 +221,7 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
                       foregroundColor: const Color(0xFF231900),
                       visualDensity: VisualDensity.compact),
                   onPressed: () {
-                    Navigator.pop(context);
+                    if (widget.embeddedInSheet) Navigator.pop(context);
                     showGoldShopSheet(context, logic, sync);
                   },
                 ),
