@@ -587,7 +587,10 @@ class _AujourdhuiColumn extends StatelessWidget {
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
         ),
         Expanded(
-          child: DailyScheduleView(date: ymd, logic: logic, onLaunch: onLaunch),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: DailyScheduleView(date: ymd, logic: logic, onLaunch: onLaunch),
+          ),
         ),
       ],
     );
