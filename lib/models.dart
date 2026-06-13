@@ -688,6 +688,7 @@ class AppState {
   // ── Monde unifié (walk state de l'avatar ; PAS dans le doc territoire spectatable) ──
   List<String> unifiedRevealed;    // cases éclairées "x_y" sur la grande map
   String? unifiedPos;              // case de l'avatar "x_y" sur la grande map
+  List<String> unifiedTurrets;     // tours TD posées "x_y" sur la grande map
   List<String> expeditionPicked;   // collectibles ramassés sur la map courante (ids)
   List<String> expeditionEntities; // nuisibles/bonus vivants "type:x_y:spawnYmd"
   List<String> collection;         // collectibles trouvés à vie (persistant → écran Collection)
@@ -811,6 +812,7 @@ class AppState {
     this.expeditionPos,
     List<String>? unifiedRevealed,
     this.unifiedPos,
+    List<String>? unifiedTurrets,
     List<String>? expeditionPicked,
     List<String>? expeditionEntities,
     List<String>? collection,
@@ -878,6 +880,7 @@ class AppState {
         expeditionCleared = expeditionCleared ?? <String>[],
         expeditionRevealed = expeditionRevealed ?? <String>[],
         unifiedRevealed = unifiedRevealed ?? <String>[],
+        unifiedTurrets = unifiedTurrets ?? <String>[],
         expeditionPicked = expeditionPicked ?? <String>[],
         expeditionEntities = expeditionEntities ?? <String>[],
         expeditionChallenges = expeditionChallenges ?? <String>[],
@@ -952,6 +955,7 @@ class AppState {
         'expeditionPos': expeditionPos,
         'unifiedRevealed': unifiedRevealed,
         'unifiedPos': unifiedPos,
+        'unifiedTurrets': unifiedTurrets,
         'expeditionPicked': expeditionPicked,
         'expeditionEntities': expeditionEntities,
         'expeditionChallenges': expeditionChallenges,
@@ -1105,6 +1109,8 @@ class AppState {
       unifiedRevealed:
           (j['unifiedRevealed'] as List?)?.cast<String>() ?? <String>[],
       unifiedPos: j['unifiedPos'] as String?,
+      unifiedTurrets:
+          (j['unifiedTurrets'] as List?)?.cast<String>() ?? <String>[],
       expeditionPicked:
           (j['expeditionPicked'] as List?)?.cast<String>() ?? <String>[],
       expeditionEntities:

@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
+import 'package:flutter/services.dart'
+    show KeyEvent, KeyDownEvent, KeyRepeatEvent, LogicalKeyboardKey;
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/territory.dart';
@@ -103,7 +105,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   static const double _kTurretRange = 4.5; // rayon de tir (cases), partagé logique/affichage
   final Map<String, int> _turrets = {}; // tileId "x_y" → niveau (1 pour le test)
   final Map<String, int> _turretLastFireMs = {};
-  String? _selectedTurret; // tour sélectionnée → affiche sa portée
+  String? _selectedTurret; // tour sélectionnée (tap, fallback tactile) → portée
+  String? _hoveredTurret; // tour survolée (souris) → affiche sa portée
+  // Combat de nuisible affiché en ENCART à droite (carte visible derrière).
+  ({String type, String id, String tileId})? _combat;
   final List<_Sbire> _sbires = [];
   final List<_Shot> _shots = [];
   static const double _gateHpMax = 120;
@@ -137,7 +142,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   }
 
   void _simulate(double dt) {
-    const gx = 8.0, gy = 7.0; // point d'assaut juste devant la porte
+    // Porte cassée (PV ≤ 0) → les sbires défilent vers le château (16,7) ;
+    // sinon ils s'arrêtent devant la porte (8,7) et l'assiègent.
+    final broken = _gateHp <= 0;
+    final gx = broken ? 16.0 : 8.0;
+    const gy = 7.0;
     for (final s in _sbires) {
       if (s.hp <= 0) continue;
       final dx = gx - s.x, dy = gy - s.y;
@@ -147,6 +156,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         s.x += dx / dist * speed * dt;
         s.y += dy / dist * speed * dt;
         s.atGate = false;
+      } else if (broken) {
+        s.hp = 0; // atteint le château → disparaît (proto : pas encore de PV château)
       } else {
         s.atGate = true;
         _gateHp = (_gateHp - 4 * dt).clamp(0, _gateHpMax); // 4 PV/s/sbire
@@ -218,6 +229,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             _pos = w.start;
           }
           _revealed.addAll(logic.state.unifiedRevealed);
+          // Tours TD persistées (état perso de la grande map).
+          for (final tile in logic.state.unifiedTurrets) {
+            _turrets[tile] = 1;
+          }
           _revealAround(_pos);
           _populateFarm(); // disperse le backlog sur toute la zone (caché par le fog)
         }
@@ -415,24 +430,43 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     }
   }
 
-  // Combat backlog : aller au contact d'un ennemi (= un vrai item négligé) ouvre le
-  // combat où FAIRE LE TRAVAIL le fait fondre (showBacklogCombat). Item rattrapé
-  // (PV 0) → l'ennemi disparaît de la map.
+  // Combat backlog : aller au contact d'un ennemi (= un vrai item négligé) ouvre la
+  // carte de combat en ENCART À DROITE (carte visible derrière). FAIRE LE TRAVAIL
+  // fait fondre l'ennemi ; PV 0 → il disparaît de la map.
   Future<void> _backlogCombat(String tileId, String type, String id) async {
-    await showBacklogCombat(
-      context, logic, sync, type, id,
+    setState(() => _combat = (type: type, id: id, tileId: tileId));
+  }
+
+  // Encart de combat (colonne droite) quand on attaque un nuisible.
+  Widget _combatPanel() {
+    final c = _combat!;
+    return BacklogCombatPanel(
+      key: ValueKey('${c.type}_${c.id}'),
+      logic: logic,
+      sync: sync,
+      type: c.type,
+      itemId: c.id,
+      compact: true,
+      rootContext: context,
       onChanged: () {
         if (!mounted) return;
-        if (logic.enemyHp(type, id) <= 0) _farmPests.remove(tileId);
+        if (logic.enemyHp(c.type, c.id) <= 0) _farmPests.remove(c.tileId);
         setState(() {});
       },
       onLaunchedTimer: () {
-        if (mounted) Navigator.pop(context); // minuteur lancé → on quitte la map
+        // Minuteur lancé → on ferme l'encart et on quitte la map.
+        if (mounted) Navigator.pop(context);
       },
+      onClose: _closeCombat,
     );
-    if (!mounted) return;
-    if (logic.enemyHp(type, id) <= 0) _farmPests.remove(tileId);
-    setState(() {});
+  }
+
+  // Ferme l'encart de combat (sans fermer la map) ; retire l'ennemi si vaincu.
+  void _closeCombat() {
+    final c = _combat;
+    if (c == null || !mounted) return;
+    if (logic.enemyHp(c.type, c.id) <= 0) _farmPests.remove(c.tileId);
+    setState(() => _combat = null);
   }
 
   // Repère château au passage (les grottes, elles, déclenchent l'engagement).
@@ -701,6 +735,58 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     }
   }
 
+  // Persiste les tours posées (état perso, comme position/brouillard).
+  void _persistTurrets() {
+    final list = _turrets.keys.toList();
+    logic.state.unifiedTurrets
+      ..clear()
+      ..addAll(list);
+    sync.setUnifiedTurrets(list);
+  }
+
+  // Maintien (TD) : retire la tour de cette case.
+  void _onLongPress(int x, int y) {
+    if (!_tdMode) return;
+    final tile = '${x}_$y';
+    if (_turrets.containsKey(tile)) {
+      setState(() {
+        _turrets.remove(tile);
+        _turretLastFireMs.remove(tile);
+        if (_selectedTurret == tile) _selectedTurret = null;
+      });
+      _persistTurrets();
+    }
+  }
+
+  // Déplacement de l'avatar d'une case (flèches clavier).
+  void _moveDir(int dx, int dy) {
+    final w = _w;
+    if (w == null || _busy) return;
+    final nx = _pos.x + dx, ny = _pos.y + dy;
+    if (!w.walkable(nx, ny)) return;
+    _step(Point(nx, ny));
+    _persistWalk();
+  }
+
+  KeyEventResult _onKey(FocusNode node, KeyEvent e) {
+    if (e is! KeyDownEvent && e is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final k = e.logicalKey;
+    if (k == LogicalKeyboardKey.arrowUp) {
+      _moveDir(0, -1);
+    } else if (k == LogicalKeyboardKey.arrowDown) {
+      _moveDir(0, 1);
+    } else if (k == LogicalKeyboardKey.arrowLeft) {
+      _moveDir(-1, 0);
+    } else if (k == LogicalKeyboardKey.arrowRight) {
+      _moveDir(1, 0);
+    } else {
+      return KeyEventResult.ignored;
+    }
+    return KeyEventResult.handled;
+  }
+
   Future<void> _onTap(int x, int y) async {
     final w = _w;
     if (_busy || w == null) return;
@@ -711,21 +797,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           w.at(x, y) == UwTile.floor &&
           w.caveIdAt(x, y) == null &&
           !w.isSpawner(x, y)) {
+        final placed = !_turrets.containsKey(tile);
         setState(() {
-          if (_turrets.containsKey(tile)) {
-            // Tour existante : 1er tap = sélectionne (montre la portée) ;
-            // re-tap de la tour sélectionnée = retire.
-            if (_selectedTurret == tile) {
-              _turrets.remove(tile);
-              _selectedTurret = null;
-            } else {
-              _selectedTurret = tile;
-            }
-          } else {
+          if (placed) {
+            // Pose sans sélectionner → pas de portée qui reste affichée.
             _turrets[tile] = 1;
-            _selectedTurret = tile; // posée + sélectionnée
+            _selectedTurret = null;
+          } else {
+            // Tour existante : tap = bascule l'affichage de sa portée.
+            _selectedTurret = _selectedTurret == tile ? null : tile;
           }
         });
+        if (placed) _persistTurrets();
       } else {
         _toast('Pose la tour sur une case de sol libre.', Colors.white38);
       }
@@ -837,7 +920,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   @override
   Widget build(BuildContext context) {
     final t = _t, w = _w;
-    return Column(mainAxisSize: MainAxisSize.min, children: [
+    return Focus(
+      autofocus: true,
+      onKeyEvent: _onKey,
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(20, 16, 8, 0),
         child: Row(children: [
@@ -862,7 +948,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             : _content(t, w),
       ),
       if (!_loading && t != null) _siegeBar(t),
-    ]);
+    ]),
+    );
   }
 
   // Fine barre de statut du siège long-terme (épinglée en bas). En T2 elle
@@ -904,6 +991,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // Panneau d'actions à gauche — masqué quand le combat est ouvert (place).
+        if (_combat == null)
         SizedBox(
           width: 236,
           child: ListView(
@@ -946,6 +1035,35 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             child: _board(t, w),
           ),
         ),
+        // Encart de COMBAT à droite (carte visible derrière) quand on attaque.
+        if (_combat != null)
+          Container(
+            width: 318,
+            decoration: BoxDecoration(
+              border: Border(
+                  left: BorderSide(color: Colors.white.withOpacity(.08))),
+            ),
+            child: Stack(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+                  child: _combatPanel(),
+                ),
+                // Croix : ferme le combat sans fermer la map.
+                Positioned(
+                  top: 2,
+                  right: 2,
+                  child: IconButton(
+                    iconSize: 20,
+                    visualDensity: VisualDensity.compact,
+                    tooltip: 'Fermer le combat',
+                    icon: const Icon(Icons.close, color: Colors.white54),
+                    onPressed: _closeCombat,
+                  ),
+                ),
+              ],
+            ),
+          ),
       ],
     );
   }
@@ -1118,6 +1236,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 _selectedTurret = null;
                 _gateHp = _gateHpMax;
               });
+              _persistTurrets();
             }),
         ],
       ),
@@ -1202,11 +1321,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             children: [
               grid,
               // ── Couche TD : tours, sbires, flèches, PV porte ────────────────
-              // Halo de portée : seulement sous la tour SÉLECTIONNÉE.
-              if (_selectedTurret != null &&
-                  _turrets.containsKey(_selectedTurret))
+              // Halo de portée : tour SURVOLÉE (souris) ou sélectionnée (tap).
+              if ((_hoveredTurret ?? _selectedTurret) != null &&
+                  _turrets.containsKey(_hoveredTurret ?? _selectedTurret))
                 () {
-                  final pp = _selectedTurret!.split('_');
+                  final pp = (_hoveredTurret ?? _selectedTurret)!.split('_');
                   final c0 =
                       centerD(double.parse(pp[0]), double.parse(pp[1]));
                   final r = _kTurretRange * slot;
@@ -1228,30 +1347,37 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     ),
                   );
                 }(),
-              // Tours posées (fixes).
+              // Tours posées (fixes) — survol souris = montre la portée.
               for (final tile in _turrets.keys)
                 () {
                   final pp = tile.split('_');
                   final c0 = centerD(
                       double.parse(pp[0]), double.parse(pp[1]));
+                  final lit = (_hoveredTurret ?? _selectedTurret) == tile;
                   return Positioned(
                     left: c0.dx - slot / 2,
                     top: c0.dy - slot / 2,
                     width: slot,
                     height: slot,
-                    child: Center(
-                      child: Container(
-                        decoration: _selectedTurret == tile
-                            ? BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: const Color(0xFFB07CF0).withOpacity(.25),
-                                border: Border.all(
-                                    color: const Color(0xFFB07CF0), width: 1.5))
-                            : null,
-                        padding: const EdgeInsets.all(1),
-                        child: Icon(Icons.cell_tower,
-                            size: slot * 0.62,
-                            color: const Color(0xFFC9B6F2)),
+                    child: MouseRegion(
+                      onEnter: (_) => setState(() => _hoveredTurret = tile),
+                      onExit: (_) => setState(() {
+                        if (_hoveredTurret == tile) _hoveredTurret = null;
+                      }),
+                      child: Center(
+                        child: Container(
+                          decoration: lit
+                              ? BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: const Color(0xFFB07CF0).withOpacity(.25),
+                                  border: Border.all(
+                                      color: const Color(0xFFB07CF0), width: 1.5))
+                              : null,
+                          padding: const EdgeInsets.all(1),
+                          child: Icon(Icons.cell_tower,
+                              size: slot * 0.62,
+                              color: const Color(0xFFC9B6F2)),
+                        ),
                       ),
                     ),
                   );
@@ -1396,11 +1522,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       child = Text('🏰', style: TextStyle(fontSize: inner * 0.5));
     }
 
-    // Porte en bois (chokepoint) : recouvre le mur en planches.
+    // Porte en bois (chokepoint) : planches intactes, ou cassée (PV ≤ 0).
     if (w.isGate(x, y)) {
-      bg = const Color(0xFF6B4423).withOpacity(.7);
-      border = const Color(0xFF3E2A18);
-      child = Text('🚪', style: TextStyle(fontSize: inner * 0.5));
+      final broken = _gateHp <= 0;
+      bg = const Color(0xFF6B4423).withOpacity(broken ? .22 : .7);
+      border = const Color(0xFF3E2A18).withOpacity(broken ? .4 : 1);
+      child = Text(broken ? '💥' : '🚪',
+          style: TextStyle(fontSize: inner * 0.5));
     }
     // Carte ennemie (spawner) = le même envahisseur araignée que l'invasion,
     // mais il lâche de petites araignées.
@@ -1508,7 +1636,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             ],
           )
         : tile;
-    return GestureDetector(onTap: () => _onTap(x, y), child: shown);
+    return GestureDetector(
+        onTap: () => _onTap(x, y),
+        onLongPress: () => _onLongPress(x, y),
+        child: shown);
   }
 }
 

@@ -1035,6 +1035,12 @@ class FirestoreSync {
         SetOptions(merge: true));
   }
 
+  /// Persiste les tours TD posées (état perso de la grande map).
+  Future<void> setUnifiedTurrets(List<String> turrets) async {
+    if (uid == null) return;
+    await _meta().set({'unifiedTurrets': turrets}, SetOptions(merge: true));
+  }
+
   /// Coffre de la quête du jour : crédite l'or (lifetime plafonné), ajoute le
   /// butin éventuel à la collection, et marque le jour comme réclamé (anti-rejeu).
   Future<void> claimDailyQuest(

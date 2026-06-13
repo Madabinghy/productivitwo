@@ -114,6 +114,9 @@ Future<void> _showTaskActionsSheet(
 /// CTA « Engager » (coût en armes globales) → épingle dans « Combats en cours ».
 /// [onChanged] : rafraîchir l'appelant après une action. [onLaunchedTimer] : le
 /// caller ferme son conteneur quand on lance un minuteur (pour voir le décompte).
+/// Wrapper modal historique : ouvre la carte de combat en pop-up centré.
+/// Conserve l'API d'origine (mobile + autres appels). L'UI vit désormais dans
+/// [BacklogCombatPanel], réutilisable en ENCART (ex. colonne droite du Monde).
 Future<void> showBacklogCombat(
   BuildContext context,
   AppLogic logic,
@@ -123,37 +126,101 @@ Future<void> showBacklogCombat(
   VoidCallback? onChanged,
   VoidCallback? onLaunchedTimer,
 }) async {
-  final rootCtx = context;
-  int timerMin = 0;
-  String linkedId = '';
-  if (type == 'spider') {
-    for (final x in logic.state.activities) {
-      if (x.id == itemId) {
-        timerMin = x.timerMin ?? 0;
-        linkedId = (x.linkedActivityId ?? '').trim();
-        break;
-      }
-    }
-  }
-  final spiderTimer = type == 'spider' && timerMin > 0 && linkedId.isNotEmpty;
-  final role = switch (type) {
-    'snake' => 'Tâche à terminer',
-    'scorpion' => 'Activité en retard',
-    _ => 'Routine à faire',
-  };
-
+  final rootContext = context;
   await showGeneralDialog<void>(
     context: context,
     barrierDismissible: true,
     barrierLabel: 'Combat',
     barrierColor: Colors.black.withOpacity(.65),
     transitionDuration: const Duration(milliseconds: 220),
-    pageBuilder: (ctx, a1, a2) {
-      // Persiste entre les rebuilds setLocal → déclenche le « punch » du sprite
-      // à chaque sbire éliminé (feedback de coup).
-      int hitTick = 0;
-      return StatefulBuilder(builder: (ctx, setLocal) {
-        final hp = logic.enemyHp(type, itemId);
+    pageBuilder: (dialogCtx, a1, a2) => SafeArea(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: BacklogCombatPanel(
+              logic: logic,
+              sync: sync,
+              type: type,
+              itemId: itemId,
+              rootContext: rootContext,
+              onChanged: onChanged,
+              onLaunchedTimer: onLaunchedTimer,
+              onClose: () => Navigator.pop(dialogCtx),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// Carte de combat d'un nuisible — extraite de sa modale pour s'afficher soit en
+/// pop-up (via [showBacklogCombat]), soit en ENCART (colonne droite du Monde).
+/// [onClose] ferme la carte (pop en modale, clear d'état en encart).
+class BacklogCombatPanel extends StatefulWidget {
+  final AppLogic logic;
+  final FirestoreSync sync;
+  final String type;
+  final String itemId;
+  final VoidCallback onClose;
+  final VoidCallback? onChanged;
+  final VoidCallback? onLaunchedTimer;
+  final BuildContext? rootContext;
+  /// Version condensée (sprite/cœurs/espacements réduits) pour un encart étroit.
+  final bool compact;
+  const BacklogCombatPanel({
+    super.key,
+    required this.logic,
+    required this.sync,
+    required this.type,
+    required this.itemId,
+    required this.onClose,
+    this.onChanged,
+    this.onLaunchedTimer,
+    this.rootContext,
+    this.compact = false,
+  });
+  @override
+  State<BacklogCombatPanel> createState() => _BacklogCombatPanelState();
+}
+
+class _BacklogCombatPanelState extends State<BacklogCombatPanel> {
+  // Persiste entre les rebuilds → « punch » du sprite à chaque sbire éliminé.
+  int hitTick = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final logic = widget.logic;
+    final sync = widget.sync;
+    final type = widget.type;
+    final itemId = widget.itemId;
+    final onChanged = widget.onChanged;
+    final onLaunchedTimer = widget.onLaunchedTimer;
+    final rootCtx = widget.rootContext ?? context;
+    final compact = widget.compact;
+    void setLocal(VoidCallback fn) => setState(fn);
+
+    int timerMin = 0;
+    String linkedId = '';
+    if (type == 'spider') {
+      for (final x in logic.state.activities) {
+        if (x.id == itemId) {
+          timerMin = x.timerMin ?? 0;
+          linkedId = (x.linkedActivityId ?? '').trim();
+          break;
+        }
+      }
+    }
+    final spiderTimer = type == 'spider' && timerMin > 0 && linkedId.isNotEmpty;
+    final role = switch (type) {
+      'snake' => 'Tâche à terminer',
+      'scorpion' => 'Activité en retard',
+      _ => 'Routine à faire',
+    };
+
+    final hp = logic.enemyHp(type, itemId);
         final maxHp = logic.enemyMaxHp(type, itemId);
         final itemName = logic.enemyItemName(type, itemId);
         final engaged = logic.isEngaged(type, itemId);
@@ -192,7 +259,7 @@ Future<void> showBacklogCombat(
               label: 'Butin de combat');
           logic.unengageEnemy(type, itemId, sync);
           logic.onChange();
-          Navigator.pop(ctx);
+          widget.onClose();
           if (rootCtx.mounted) {
             showConfetti(rootCtx, count: 22);
             ScaffoldMessenger.of(rootCtx).showSnackBar(SnackBar(
@@ -213,14 +280,14 @@ Future<void> showBacklogCombat(
           if (logic.launchTimerHook == null) return;
           logic.start(actId);
           logic.launchTimerHook!(min, itemName, routineId: routineId);
-          Navigator.pop(ctx);
+          widget.onClose();
           onLaunchedTimer?.call();
         }
 
         void launchChrono(String actId) {
           logic.start(actId);
           logic.onChange();
-          Navigator.pop(ctx);
+          widget.onClose();
           onLaunchedTimer?.call();
         }
 
@@ -479,8 +546,9 @@ Future<void> showBacklogCombat(
                 children: [
                   for (int i = 0; i < sbiresShown; i++)
                     Text(entityEmoji(type),
-                        style: const TextStyle(
-                            fontSize: 18, decoration: TextDecoration.none)),
+                        style: TextStyle(
+                            fontSize: compact ? 13 : 18,
+                            decoration: TextDecoration.none)),
                 ],
               ),
               const SizedBox(height: 12),
@@ -496,8 +564,9 @@ Future<void> showBacklogCombat(
               children: [
                 for (int i = 0; i < maxHp; i++)
                   Text(i < maxHp - hp ? '✅' : '❤️',
-                      style: const TextStyle(
-                          fontSize: 18, decoration: TextDecoration.none)),
+                      style: TextStyle(
+                          fontSize: compact ? 13 : 18,
+                          decoration: TextDecoration.none)),
               ],
             ),
           ],
@@ -513,13 +582,8 @@ Future<void> showBacklogCombat(
         final exposed = engaged && sbiresShown <= 0;
         final loot = GoldEconomy.pestLootBase(type, false);
 
-        return SafeArea(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 520),
-              child: SingleChildScrollView(
-                child: Container(
-                margin: const EdgeInsets.all(24),
+        return SingleChildScrollView(
+          child: Container(
                 padding: const EdgeInsets.fromLTRB(24, 22, 24, 18),
                 decoration: BoxDecoration(
                   color: _kCardBg,
@@ -582,19 +646,19 @@ Future<void> showBacklogCombat(
                                 )
                               : null,
                           child: Text(entityEmoji(type),
-                              style: const TextStyle(fontSize: 72)),
+                              style: TextStyle(fontSize: compact ? 44 : 72)),
                         ),
                       ),
                     ),
                     const SizedBox(height: 6),
                     Text(itemName,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
-                            fontSize: 20,
+                        style: TextStyle(
+                            fontSize: compact ? 15 : 20,
                             fontWeight: FontWeight.w800,
                             color: Colors.white,
                             decoration: TextDecoration.none)),
-                    const SizedBox(height: 12),
+                    SizedBox(height: compact ? 8 : 12),
                     statusBlock,
                     const SizedBox(height: 12),
                     // Récompense de victoire — moteur d'action
@@ -665,7 +729,7 @@ Future<void> showBacklogCombat(
                           overlayColor: Colors.white12,
                         ),
                         onPressed: () async {
-                          Navigator.pop(ctx);
+                          widget.onClose();
                           onLaunchedTimer?.call();
                           await logic.programBacklogHook!(type, itemId);
                         },
@@ -680,20 +744,15 @@ Future<void> showBacklogCombat(
                         foregroundColor: Colors.white38,
                         overlayColor: Colors.white12,
                       ),
-                      onPressed: () => Navigator.pop(ctx),
+                      onPressed: () => widget.onClose(),
                       child: const Text('Fuir',
                           style: TextStyle(decoration: TextDecoration.none)),
                     ),
                   ],
                 ),
               ),
-            ),
-          ),
-        ),
-      );
-      });
-    },
-  );
+        );
+  }
 }
 
 /// Section « Pouvoirs rapides » sous la carte de combat.
