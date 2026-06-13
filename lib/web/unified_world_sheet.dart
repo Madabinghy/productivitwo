@@ -190,7 +190,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     'snake': GoldEconomy.masseSerpent,
   };
   final Map<String, int> _myDeck = {}; // copie d'attaque {spider,scorpion,snake}
-  final Map<String, int> _nextSendMs = {}; // prochaine émission par type
+  int _nextWaveMs = 0; // prochaine vague d'émission
+  int _emitBatch = 1; // sbires émis par vague = 1/10 du deck au spawn
 
   @override
   void initState() {
@@ -288,17 +289,24 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         _grotteTaken = true; // → les sbires rentrent maintenant
       }
     }
-    // 1) Émission : 1 de chaque type possédé, toutes les 10 s (décalé 3 s).
-    for (final type in const ['spider', 'scorpion', 'snake']) {
-      final next = _nextSendMs[type];
-      if (next == null || _gameMs < next) continue;
-      if ((_myDeck[type] ?? 0) > 0) {
+    // 1) Émission par VAGUES : 1/10 du deck (au spawn) toutes les 10 s, émis depuis
+    //    mon attaquant rouge. Pioche serpent > scorpion > araignée (variété).
+    if (_gameMs >= _nextWaveMs) {
+      for (int i = 0; i < _emitBatch; i++) {
+        String? type;
+        for (final t in const ['spider', 'scorpion', 'snake']) {
+          if ((_myDeck[t] ?? 0) > 0) {
+            type = t;
+            break;
+          }
+        }
+        if (type == null) break; // deck vidé
         _myDeck[type] = _myDeck[type]! - 1;
         _myMass = (_myMass - (_massByType[type] ?? 0)).clamp(0, 1 << 30);
         _myAtk.add(_Atk(_sbireSeq++, type, _redSpawn.dx, _redSpawn.dy)
-          ..wp = _randomWaypoint(w)); // émis par mon attaquant rouge, via waypoint
+          ..wp = _randomWaypoint(w));
       }
-      _nextSendMs[type] = next + 10000;
+      _nextWaveMs += 10000;
     }
     // 2) Mes sbires : waypoint aléatoire D'ABORD, puis foncent SUR l'envahisseur
     //    (ne chassent jamais les sbires ennemis). Ralentis + ondulants → ils
@@ -382,34 +390,42 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           continue;
         }
       }
+      // PHASE 2 (porte cassée) : beeline DIRECT sur la grotte — pas de waypoint ni
+      // d'ondulation → convergence garantie (plus de sbire qui orbite sans entrer).
+      if (broken) {
+        final dx = goal.dx - s.x, dy = goal.dy - s.y;
+        final dist = sqrt(dx * dx + dy * dy);
+        if (dist > 0.45) {
+          const speed = 0.32;
+          s.x += dx / dist * speed * dt;
+          s.y += dy / dist * speed * dt;
+        } else if (_grotteTaken) {
+          s.hp = 0; // capture finie → il entre dans la grotte
+        } else if (!s.drained) {
+          // Entame les PV une fois (plancher 30 % → l'araignée finit), puis attend.
+          s.drained = true;
+          final floorHp = (_grotteHpMax * 0.3).round();
+          _grotteHp = (_grotteHp - 8).clamp(floorHp, _grotteHpMax);
+        }
+        continue;
+      }
+      // PHASE 1 (porte intacte) : waypoint aléatoire puis cap sur la porte (8,7),
+      // avec ondulation + évitement des buissons.
       final tx = s.wp?.dx ?? goal.dx, ty = s.wp?.dy ?? goal.dy;
       final dx = tx - s.x, dy = ty - s.y;
       final dist = sqrt(dx * dx + dy * dy);
       if (dist > 0.4) {
         const speed = 0.32; // ralenti (interception lisible)
         final ux = dx / dist, uy = dy / dist;
-        // Ondulation : composante perpendiculaire sinusoïdale (cap l'objectif).
         final wob = sin(_gameMs / 500.0 + s.phase) * 0.55;
         var ny = s.y + (uy * speed + ux * wob) * dt;
         s.x += (ux * speed - uy * wob) * dt;
-        // Évite les buissons : si la case visée en porte un, dévie en y.
         if (w.hasBush(s.x.round(), ny.round())) {
           ny += (s.id.isEven ? -1 : 1) * 0.6 * dt;
         }
         s.y = ny.clamp(1.0, (w.rows - 2).toDouble());
       } else if (s.wp != null) {
-        s.wp = null; // waypoint atteint → cap sur l'objectif (porte ou grotte)
-      } else if (broken) {
-        // Arrivé à la grotte. Prise (araignée disparue) → il rentre et disparaît.
-        // Sinon : il ENTAME les PV une seule fois (plancher 30 % → l'araignée
-        // finira le reste), puis ATTEND dehors la capture.
-        if (_grotteTaken) {
-          s.hp = 0;
-        } else if (!s.drained) {
-          s.drained = true;
-          final floorHp = (_grotteHpMax * 0.3).round();
-          _grotteHp = (_grotteHp - 8).clamp(floorHp, _grotteHpMax);
-        }
+        s.wp = null; // waypoint atteint → cap sur la porte
       } else {
         _gateHp = (_gateHp - 8).clamp(0, _gateHpMax); // touche la porte…
         s.hp = 0; // …et meurt
@@ -594,13 +610,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           sc * GoldEconomy.masseScorpion +
           se * GoldEconomy.masseSerpent;
       _gateHp = _gateHpMax;
-      _nextSendMs
-        ..clear()
-        ..addAll({
-          'spider': _gameMs,
-          'scorpion': _gameMs + 3000,
-          'snake': _gameMs + 6000,
-        });
+      // Émission par vagues : 1/10 du deck (au spawn) toutes les 10 s.
+      _nextWaveMs = _gameMs;
+      final total = sp + sc + se;
+      _emitBatch = total <= 0 ? 1 : ((total + 9) ~/ 10);
     });
   }
 
@@ -1647,7 +1660,6 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 _sbires.clear();
                 _myAtk.clear();
                 _myDeck.clear();
-                _nextSendMs.clear();
                 _garrison = 0;
                 _turrets.clear();
                 _turretLastFireMs.clear();
