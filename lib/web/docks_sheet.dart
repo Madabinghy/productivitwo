@@ -101,24 +101,11 @@ class _DocksViewState extends State<_DocksView> {
     return out;
   }
 
-  List<({String emoji, String name})> _collectionCards() {
-    final out = <({String emoji, String name})>[];
-    for (final id in logic.state.collection) {
-      if (id.startsWith('complete_') || id.startsWith('wpn_')) continue;
-      final c = collectibleById(id);
-      if (c != null) {
-        out.add((emoji: c.emoji, name: c.name));
-        continue;
-      }
-      for (final b in GoldEconomy.bestiaryRecipes) {
-        if (b.id == id) {
-          out.add((emoji: b.emoji, name: b.name));
-          break;
-        }
-      }
-    }
-    return out;
-  }
+  // « Cartes » = les MAPS du jeu (niveaux débloqués dans ta progression de joueur),
+  // 1..effectiveLevel, chacun avec son biome. (La collection d'ANIMAUX reste dans
+  // « Mes cartes » — futur tableau de chasse des projets réalisés.)
+  List<int> _unlockedMaps() =>
+      [for (var lv = 1; lv <= logic.effectiveLevel(); lv++) lv];
 
   @override
   Widget build(BuildContext context) {
@@ -275,22 +262,24 @@ class _DocksViewState extends State<_DocksView> {
   }
 
   Widget _cardsColumn() {
-    final cards = _collectionCards();
-    final shown = cards.take(_kMaxCards).toList();
-    final overflow = cards.length - shown.length;
+    final maps = _unlockedMaps();
+    final shown = maps.take(_kMaxCards).toList();
+    final overflow = maps.length - shown.length;
     return _columnFrame(
       '🃏',
       'Cartes',
-      'créatures débloquées',
+      'maps / niveaux débloqués',
       _kCardCol,
-      cards.isEmpty
-          ? _emptyHint('Débloque des créatures (chasse, recettes, exploration).')
+      maps.isEmpty
+          ? _emptyHint('Aucune map débloquée pour l\'instant.')
           : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Wrap(
                 spacing: 6,
                 runSpacing: 6,
                 children: [
-                  for (final c in shown) _emojiCard(c.emoji, _kCardCol, label: c.name)
+                  for (final lv in shown)
+                    _emojiCard(expeditionBiome(lv).emoji, _kCardCol,
+                        label: 'Niv $lv'),
                 ],
               ),
               if (overflow > 0)
