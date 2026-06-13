@@ -627,7 +627,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _myDeck
         ..clear()
         ..addAll({'spider': sp, 'scorpion': sc, 'snake': se});
-      _garrison = 45; // garnison de l'ENNEMI = 45 (test)
+      // Garnison de l'ENNEMI = TES RETARDS RÉELS : masse du backlog (routines sans
+      // streak 🕷️ + activités-temps en retard 🦂 + tâches en retard 🐍). Plancher
+      // 10 pour rester jouable même quand tu es à jour.
+      final retards = logic
+          .backlogEnemies()
+          .fold(0, (s, e) => s + (_massByType[e.type] ?? 0));
+      _garrison = retards < 10 ? 10 : retards;
       _enemyDeckPower = _garrison; // puissance du deck ennemi (affichée si prise)
       _assault = false;
       // Mon attaquant rouge + l'envahisseur : placés aléatoirement.
