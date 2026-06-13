@@ -100,10 +100,20 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
       setState(() {
         _t = t;
         _loading = false;
-        // Génère la map une fois (seed du territoire → déterministe/spectatable).
+        // Génère la map une fois (seed du territoire → déterministe/spectatable),
+        // et reprend le walk state persisté (position + brouillard) si présent.
         if (_w == null && t != null) {
-          _w = generateUnifiedWorld(t.seed);
-          _pos = _w!.start;
+          final w = generateUnifiedWorld(t.seed);
+          _w = w;
+          final saved = logic.state.unifiedPos;
+          if (saved != null && saved.contains('_')) {
+            final s = saved.split('_');
+            final px = int.tryParse(s[0]) ?? -1, py = int.tryParse(s[1]) ?? -1;
+            _pos = w.inBounds(px, py) ? Point(px, py) : w.start;
+          } else {
+            _pos = w.start;
+          }
+          _revealed.addAll(logic.state.unifiedRevealed);
           _revealAround(_pos);
         }
       });
@@ -195,6 +205,17 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
     if (t != null) _maybeSpawnFarm(added, t);
     setState(() => _pos = to);
     _announce(to);
+  }
+
+  // Persiste position + brouillard de l'avatar (état perso → doc meta de l'user,
+  // PAS le doc territoire spectatable). Appelé une fois après chaque déplacement.
+  void _persistWalk() {
+    final pos = '${_pos.x}_${_pos.y}';
+    logic.state.unifiedPos = pos;
+    logic.state.unifiedRevealed
+      ..clear()
+      ..addAll(_revealed);
+    sync.setUnifiedWorldState(pos, _revealed.toList());
   }
 
   // Spawn de nuisibles à CHASSER dans la zone farm (gauche), à la révélation.
@@ -576,6 +597,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
     } else {
       _step(Point(x, y));
     }
+    _persistWalk(); // position + brouillard (état perso, hors doc spectatable)
     // Arrivé sur la case visée → engage : araignée (interception) > nuisible de
     // farm (capture) > grotte (défendre / reprendre).
     if (_pos.x == x && _pos.y == y) {

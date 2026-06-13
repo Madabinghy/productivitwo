@@ -685,6 +685,9 @@ class AppState {
   // ── Overworld (carte 2D explorable, per-map ; vidés à la complétion) ──
   List<String> expeditionRevealed; // cases éclairées "x_y"
   String? expeditionPos;           // case du perso "x_y"
+  // ── Monde unifié (walk state de l'avatar ; PAS dans le doc territoire spectatable) ──
+  List<String> unifiedRevealed;    // cases éclairées "x_y" sur la grande map
+  String? unifiedPos;              // case de l'avatar "x_y" sur la grande map
   List<String> expeditionPicked;   // collectibles ramassés sur la map courante (ids)
   List<String> expeditionEntities; // nuisibles/bonus vivants "type:x_y:spawnYmd"
   List<String> collection;         // collectibles trouvés à vie (persistant → écran Collection)
@@ -806,6 +809,8 @@ class AppState {
     List<String>? expeditionCleared,
     List<String>? expeditionRevealed,
     this.expeditionPos,
+    List<String>? unifiedRevealed,
+    this.unifiedPos,
     List<String>? expeditionPicked,
     List<String>? expeditionEntities,
     List<String>? collection,
@@ -872,6 +877,7 @@ class AppState {
         goldBoostDays = goldBoostDays ?? <String>[],
         expeditionCleared = expeditionCleared ?? <String>[],
         expeditionRevealed = expeditionRevealed ?? <String>[],
+        unifiedRevealed = unifiedRevealed ?? <String>[],
         expeditionPicked = expeditionPicked ?? <String>[],
         expeditionEntities = expeditionEntities ?? <String>[],
         expeditionChallenges = expeditionChallenges ?? <String>[],
@@ -944,6 +950,8 @@ class AppState {
         'expeditionCleared': expeditionCleared,
         'expeditionRevealed': expeditionRevealed,
         'expeditionPos': expeditionPos,
+        'unifiedRevealed': unifiedRevealed,
+        'unifiedPos': unifiedPos,
         'expeditionPicked': expeditionPicked,
         'expeditionEntities': expeditionEntities,
         'expeditionChallenges': expeditionChallenges,
@@ -1094,6 +1102,9 @@ class AppState {
       expeditionRevealed:
           (j['expeditionRevealed'] as List?)?.cast<String>() ?? <String>[],
       expeditionPos: j['expeditionPos'] as String?,
+      unifiedRevealed:
+          (j['unifiedRevealed'] as List?)?.cast<String>() ?? <String>[],
+      unifiedPos: j['unifiedPos'] as String?,
       expeditionPicked:
           (j['expeditionPicked'] as List?)?.cast<String>() ?? <String>[],
       expeditionEntities:

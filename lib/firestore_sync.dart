@@ -245,6 +245,9 @@ class FirestoreSync {
         expeditionRevealed:
             (meta['expeditionRevealed'] as List?)?.cast<String>(),
         expeditionPos: meta['expeditionPos'] as String?,
+        unifiedRevealed:
+            (meta['unifiedRevealed'] as List?)?.cast<String>(),
+        unifiedPos: meta['unifiedPos'] as String?,
         expeditionPicked:
             (meta['expeditionPicked'] as List?)?.cast<String>(),
         expeditionEntities:
@@ -376,6 +379,8 @@ class FirestoreSync {
       expeditionCleared:     local.goldLifetime >= remote.goldLifetime ? local.expeditionCleared : remote.expeditionCleared,
       expeditionRevealed:    local.goldLifetime >= remote.goldLifetime ? local.expeditionRevealed : remote.expeditionRevealed,
       expeditionPos:         local.goldLifetime >= remote.goldLifetime ? local.expeditionPos : remote.expeditionPos,
+      unifiedRevealed:       local.goldLifetime >= remote.goldLifetime ? local.unifiedRevealed : remote.unifiedRevealed,
+      unifiedPos:            local.goldLifetime >= remote.goldLifetime ? local.unifiedPos : remote.unifiedPos,
       expeditionPicked:      local.goldLifetime >= remote.goldLifetime ? local.expeditionPicked : remote.expeditionPicked,
       expeditionEntities:    local.goldLifetime >= remote.goldLifetime ? local.expeditionEntities : remote.expeditionEntities,
       // Défis : écrits par Orion (serveur) → on garde la version distante dès qu'elle existe.
@@ -1018,6 +1023,16 @@ class FirestoreSync {
   Future<void> setExpeditionDonjonLevel(int level) async {
     if (uid == null) return;
     await _meta().set({'expeditionDonjonLevel': level}, SetOptions(merge: true));
+  }
+
+  /// Walk state de l'avatar sur le Monde unifié (position + brouillard). Hors du
+  /// doc territoire spectatable : c'est l'état personnel de marche, persisté dans
+  /// le doc meta de l'user (comme l'expédition).
+  Future<void> setUnifiedWorldState(String? pos, List<String> revealed) async {
+    if (uid == null) return;
+    await _meta().set(
+        {'unifiedPos': pos, 'unifiedRevealed': revealed},
+        SetOptions(merge: true));
   }
 
   /// Coffre de la quête du jour : crédite l'or (lifetime plafonné), ajoute le
