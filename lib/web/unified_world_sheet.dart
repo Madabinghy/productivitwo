@@ -97,19 +97,66 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   bool _autoThreatChecked = false; // auto-trigger hebdo évalué 1× par ouverture
   bool _showCoords = false; // dev : lève le fog + affiche x,y sur chaque case
 
-  // ── Prototype TOWER-DEFENSE (dev, local/éphémère, non persisté) ─────────────
-  // Mode test : on pose des tours qui auto-tirent des flèches (GRATUIT en dev) sur
-  // les sbires lâchés par la carte ennemie ; les sbires marchent vers la porte et
-  // l'assiègent. Couche overlay animée au-dessus de la grille (socle game-feel).
+  // ── PHASE 1 d'invasion (cinématique TD accélérée, dev) ──────────────────────
+  // Convoquer = positionne l'envahisseur à gauche. Mon deck (copie) envoie 1 de
+  // chaque type possédé /10 s (décalé 3 s) ; chaque sbire à moi qui l'atteint le
+  // force à lâcher 1/2/3 sbires (araignée/scorpion/serpent) qui filent vers la
+  // porte. Tourelles globales = SANS niveau, un tir = un mort, GRATUIT en Phase 1.
   bool _tdMode = false;
   static const double _kTurretRange = 4.5; // rayon de tir (cases), partagé logique/affichage
-  final Map<String, int> _turrets = {}; // tileId "x_y" → niveau (1 pour le test)
+  final Map<String, int> _turrets = {}; // tileId "x_y" → tour (sans niveau ici)
   final Map<String, int> _turretLastFireMs = {};
   String? _selectedTurret; // tour sélectionnée (tap, fallback tactile) → portée
   String? _hoveredTurret; // tour survolée (souris) → affiche sa portée
+  // Arcs fixes : 🏹 en (8,1) et (8,13). Portée ~demi-map, GRATUIT one-shot, mais
+  // MUETS sauf si l'avatar se tient sur une de leurs cases blanches (gâchette).
+  // Cases blanches + arcs sont sur des murs → rendus marchables/révélés, reliés au
+  // sol farm par une tuile-pont (8,2)/(8,12).
+  static const double _kBowRange = 8.5; // rayon de tir (cases) ≈ moitié de la map
+  static final List<({Point<int> at, Set<Point<int>> pads})> _bows = [
+    (
+      at: const Point(8, 1),
+      pads: {const Point(8, 0), const Point(9, 0), const Point(9, 1)}
+    ),
+    (
+      at: const Point(8, 13),
+      pads: {const Point(8, 14), const Point(9, 14), const Point(9, 13)}
+    ),
+  ];
+  static final Set<Point<int>> _bowTiles = {
+    const Point(8, 1),
+    const Point(8, 13)
+  };
+  static final Set<Point<int>> _bowPads = {
+    for (final b in _bows) ...b.pads
+  };
+  static final Set<Point<int>> _bowBridges = {
+    const Point(8, 2),
+    const Point(8, 12)
+  };
+  // Cases d'accès GRISES aux tourelles (haut/bas du territoire).
+  static final Set<Point<int>> _greyTiles = {
+    const Point(10, 0),
+    const Point(10, 14)
+  };
+  final Map<String, int> _bowLastFireMs = {};
+  bool _isBowWalkable(int x, int y) {
+    final p = Point(x, y);
+    return _bowTiles.contains(p) ||
+        _bowPads.contains(p) ||
+        _bowBridges.contains(p) ||
+        _greyTiles.contains(p);
+  }
+
+  // Un arc tire si l'AVATAR ou mon 🦂 défenseur se tient sur une de ses cases.
+  bool _bowManned(Set<Point<int>> pads) {
+    if (pads.contains(_pos)) return true;
+    return pads.contains(Point(_redSpawn.dx.round(), _redSpawn.dy.round()));
+  }
   // Combat de nuisible affiché en ENCART à droite (carte visible derrière).
   ({String type, String id, String tileId})? _combat;
-  final List<_Sbire> _sbires = [];
+  final List<_Sbire> _sbires = []; // sbires ENNEMIS lâchés (marchent vers la porte)
+  final List<_Atk> _myAtk = []; // MES sbires en route vers l'envahisseur
   final List<_Shot> _shots = [];
   static const double _gateHpMax = 120;
   double _gateHp = _gateHpMax;
@@ -117,6 +164,33 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   int _gameMs = 0; // horloge monotone (ms depuis le 1er frame)
   int _lastSimMs = 0;
   int _sbireSeq = 0;
+  // Phase 1
+  final Random _rng = Random();
+  bool _phase1 = false;
+  double _invX = 0.5, _invY = 7; // envahisseur FIXE (placé au hasard au lancement)
+  int _garrison = 0; // garnison restante de l'envahisseur (ENNEMI)
+  bool _assault = false; // mon deck fini → l'envahisseur a déjà tout déversé
+  Offset _grotteTarget = const Offset(16, 7); // grotte visée une fois la porte cassée
+  // Phase 2 : la grotte ciblée a des PV (= niveau bleu) ; les sbires les drainent.
+  String? _grotteCaveId; // id de la grotte assaillie
+  int _grotteHp = 0, _grotteHpMax = 0;
+  bool _grotteTaken = false; // capture finie → grotte prise (rouge, visuel ce run)
+  int? _captureStartMs; // ms où l'araignée a touché la grotte (anim de capture 5 s)
+  int _grotteHpAtCapture = 0; // PV restants quand l'araignée commence à finir
+  bool _invaderGone = false; // araignée disparue (fin de l'anim) → la horde rentre
+  static const int _kCaptureMs = 5000; // durée de l'anim de capture
+  Offset _redHome = const Offset(16, 6); // spawn du défenseur (y retourne si grotte prise)
+  int _arrows = 0; // pool de flèches du run (chaque tir tourelle/arc en coûte 1 en P2)
+  Offset _redSpawn = const Offset(8, 7); // mon attaquant rouge (émet mes sbires)
+  Offset? _redWander; // cible d'errance de mon attaquant rouge
+  int _myMass = 0; // masse de MON deck (décrémentée à chaque sbire émis)
+  static const Map<String, int> _massByType = {
+    'spider': GoldEconomy.masseSpider,
+    'scorpion': GoldEconomy.masseScorpion,
+    'snake': GoldEconomy.masseSerpent,
+  };
+  final Map<String, int> _myDeck = {}; // copie d'attaque {spider,scorpion,snake}
+  final Map<String, int> _nextSendMs = {}; // prochaine émission par type
 
   @override
   void initState() {
@@ -142,30 +216,212 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   }
 
   void _simulate(double dt) {
-    // Porte cassée (PV ≤ 0) → les sbires défilent vers le château (16,7) ;
-    // sinon ils s'arrêtent devant la porte (8,7) et l'assiègent.
-    final broken = _gateHp <= 0;
-    final gx = broken ? 16.0 : 8.0;
-    const gy = 7.0;
-    for (final s in _sbires) {
-      if (s.hp <= 0) continue;
-      final dx = gx - s.x, dy = gy - s.y;
-      final dist = sqrt(dx * dx + dy * dy);
-      if (dist > 0.5) {
-        const speed = 0.85; // cases/sec (ralenti)
-        s.x += dx / dist * speed * dt;
-        s.y += dy / dist * speed * dt;
-        s.atGate = false;
-      } else if (broken) {
-        s.hp = 0; // atteint le château → disparaît (proto : pas encore de PV château)
+    if (!_phase1) return;
+    final w = _w;
+    if (w == null) return;
+    // 0) Mouvement du 🦂 défenseur (l'envahisseur 🕷️ reste FIXE). Il erre tant qu'il
+    //    lui reste du deck OU des sbires en vie. Deck VIDE + sbires TOUS MORTS → il
+    //    file en (9,1) manier l'arc (comme le user peut le faire sur une case blanche).
+    const wanderSpeed = 0.45; // vitesse de l'envahisseur (avance vers la grotte)
+    const defSpeed = 0.30; // vitesse de MON défenseur (errance + rejoint l'arc)
+    final deckEmpty = (_myDeck['spider'] ?? 0) +
+            (_myDeck['scorpion'] ?? 0) +
+            (_myDeck['snake'] ?? 0) ==
+        0;
+    final manBow = deckEmpty && _myAtk.isEmpty;
+    if (_grotteTaken) {
+      // Grotte prise → le défenseur se replie sur son point de spawn.
+      final dx = _redHome.dx - _redSpawn.dx, dy = _redHome.dy - _redSpawn.dy;
+      final d = sqrt(dx * dx + dy * dy);
+      if (d > 0.05) {
+        _redSpawn = Offset(_redSpawn.dx + dx / d * defSpeed * dt,
+            _redSpawn.dy + dy / d * defSpeed * dt);
+      }
+    } else if (manBow) {
+      // Rejoint la case blanche la PLUS PROCHE entre l'arc haut (9,1) et bas (9,13).
+      const top = Offset(9, 1), bot = Offset(9, 13);
+      final dTop = pow(top.dx - _redSpawn.dx, 2) + pow(top.dy - _redSpawn.dy, 2);
+      final dBot = pow(bot.dx - _redSpawn.dx, 2) + pow(bot.dy - _redSpawn.dy, 2);
+      final target = dTop <= dBot ? top : bot;
+      final dx = target.dx - _redSpawn.dx, dy = target.dy - _redSpawn.dy;
+      final d = sqrt(dx * dx + dy * dy);
+      if (d <= 0.05) {
+        _redSpawn = target; // posté sur la case → l'arc tire
       } else {
-        s.atGate = true;
-        _gateHp = (_gateHp - 4 * dt).clamp(0, _gateHpMax); // 4 PV/s/sbire
+        _redSpawn = Offset(_redSpawn.dx + dx / d * defSpeed * dt,
+            _redSpawn.dy + dy / d * defSpeed * dt);
+      }
+    } else {
+      _redWander ??= _randomMapTile(w);
+      final rdx = _redWander!.dx - _redSpawn.dx,
+          rdy = _redWander!.dy - _redSpawn.dy;
+      final rd = sqrt(rdx * rdx + rdy * rdy);
+      if (rd < 0.4) {
+        _redWander = _randomMapTile(w);
+      } else {
+        _redSpawn = Offset(_redSpawn.dx + rdx / rd * defSpeed * dt,
+            _redSpawn.dy + rdy / rd * defSpeed * dt);
       }
     }
-    // Tours : ciblent le sbire vivant le plus proche dans le rayon, tirent gratis.
-    const range = _kTurretRange, cooldownMs = 650, dmg = 1.0;
-    _turrets.forEach((tile, lvl) {
+    // 0b) Porte EXPLOSÉE → l'envahisseur avance sur la grotte. Dès qu'il la TOUCHE,
+    //     démarre l'anim de capture (défenses muettes, sbires en attente dehors).
+    if (_gateHp <= 0 && !_invaderGone) {
+      final dx = _grotteTarget.dx - _invX, dy = _grotteTarget.dy - _invY;
+      final d = sqrt(dx * dx + dy * dy);
+      if (d > 0.6) {
+        _invX += dx / d * wanderSpeed * dt;
+        _invY += dy / d * wanderSpeed * dt;
+      } else if (_captureStartMs == null) {
+        // Touche la grotte → l'araignée FINIT les PV restants (laissés par les sbires).
+        _captureStartMs = _gameMs;
+        _grotteHpAtCapture = _grotteHp;
+      }
+    }
+    // 0c) Anim de capture : les PV restants tombent à 0 en 5 s, PUIS l'araignée
+    //     disparaît et SEULEMENT après la horde rentre (cf. bloc 3).
+    if (_captureStartMs != null && !_grotteTaken) {
+      final p = ((_gameMs - _captureStartMs!) / _kCaptureMs).clamp(0.0, 1.0);
+      _grotteHp = (_grotteHpAtCapture * (1 - p)).round();
+      if (p >= 1.0) {
+        _grotteHp = 0;
+        _invaderGone = true; // araignée disparue
+        _grotteTaken = true; // → les sbires rentrent maintenant
+      }
+    }
+    // 1) Émission : 1 de chaque type possédé, toutes les 10 s (décalé 3 s).
+    for (final type in const ['spider', 'scorpion', 'snake']) {
+      final next = _nextSendMs[type];
+      if (next == null || _gameMs < next) continue;
+      if ((_myDeck[type] ?? 0) > 0) {
+        _myDeck[type] = _myDeck[type]! - 1;
+        _myMass = (_myMass - (_massByType[type] ?? 0)).clamp(0, 1 << 30);
+        _myAtk.add(_Atk(_sbireSeq++, type, _redSpawn.dx, _redSpawn.dy)
+          ..wp = _randomWaypoint(w)); // émis par mon attaquant rouge, via waypoint
+      }
+      _nextSendMs[type] = next + 10000;
+    }
+    // 2) Mes sbires : waypoint aléatoire D'ABORD, puis foncent SUR l'envahisseur
+    //    (ne chassent jamais les sbires ennemis). Ralentis + ondulants → ils
+    //    partent dans tous les sens. Au contact de l'envahisseur → release.
+    for (final a in _myAtk) {
+      if (a.x < -100) continue;
+      final tx = a.wp?.dx ?? _invX, ty = a.wp?.dy ?? _invY;
+      final dx = tx - a.x, dy = ty - a.y;
+      final dist = sqrt(dx * dx + dy * dy);
+      if (dist > 0.4) {
+        const speed = 0.5; // ralenti (symétrique aux sbires ennemis)
+        final ux = dx / dist, uy = dy / dist;
+        final wob = sin(_gameMs / 500.0 + a.phase) * 0.5;
+        a.x += (ux * speed - uy * wob) * dt;
+        a.y += (uy * speed + ux * wob) * dt;
+      } else if (a.wp != null) {
+        a.wp = null; // waypoint atteint → cap sur l'envahisseur
+      } else {
+        // 1 masse = 1 unité de garnison sortie (🕷️5 / 🦂10 / 🐍15) → duel symétrique.
+        final n = (_massByType[a.type] ?? 1).clamp(0, _garrison);
+        _garrison -= n;
+        for (int i = 0; i < n; i++) {
+          final ox = (_rng.nextDouble() - 0.5) * 0.9;
+          final oy = (_rng.nextDouble() - 0.5) * 0.9;
+          _sbires.add(_Sbire(_sbireSeq++, _invX + 0.3 + ox, _invY + oy, 1)
+            ..wp = _randomWaypoint(w));
+        }
+        a.x = -999; // consommé
+      }
+    }
+    _myAtk.removeWhere((a) => a.x < -100);
+    // 2b) Mon deck ÉPUISÉ (rien en réserve, rien en vol) → l'envahisseur DÉVERSE
+    //     toute sa garnison restante d'un coup sur la porte (assaut final).
+    if (deckEmpty && _myAtk.isEmpty && !_assault && _garrison > 0) {
+      _assault = true;
+      final n = _garrison;
+      _garrison = 0;
+      for (int i = 0; i < n; i++) {
+        final ox = (_rng.nextDouble() - 0.5) * 1.2;
+        final oy = (_rng.nextDouble() - 0.5) * 1.2;
+        _sbires.add(_Sbire(_sbireSeq++, _invX + 0.3 + ox, _invY + oy, 1)
+          ..wp = _randomWaypoint(w));
+      }
+      _toast('⚔️ Ton deck est épuisé — l\'envahisseur jette toute sa garnison '
+          'sur la porte !', _kEnemy);
+    }
+    // 3) Sbires ennemis : waypoint aléatoire D'ABORD, puis cap sur la porte (8,7) ;
+    //    cassée → vers la GROTTE. MAIS si un de MES sbires est à portée, l'ennemi
+    //    LUI FONCE DESSUS (charge) et le tue au contact, puis reprend sa route.
+    final broken = _gateHp <= 0;
+    final goal = broken ? _grotteTarget : const Offset(8, 7);
+    const detect = 2.5; // rayon de détection d'un de mes sbires (charge)
+    for (final s in _sbires) {
+      if (s.hp <= 0) continue;
+      // Charge : tant qu'il n'a pas encore tué, si un de MES sbires est à portée
+      // il LUI FONCE DESSUS et le tue au contact — UN SEUL — puis file DROIT à la
+      // porte (ne harcèle plus → garde l'effet de masse, évite les tourelles).
+      if (!s.killed) {
+        _Atk? prey;
+        double preyD = detect;
+        for (final a in _myAtk) {
+          if (a.x < -100) continue;
+          final d = sqrt(pow(a.x - s.x, 2) + pow(a.y - s.y, 2));
+          if (d <= preyD) {
+            preyD = d;
+            prey = a;
+          }
+        }
+        if (prey != null) {
+          final dx = prey.x - s.x, dy = prey.y - s.y;
+          final dist = sqrt(dx * dx + dy * dy);
+          if (dist < 0.6) {
+            prey.x = -999; // une seule victime…
+            s.killed = true; // … puis cap DIRECT sur la porte
+            s.wp = null;
+          } else {
+            const speed = 0.45; // charge un brin plus vive que la marche
+            s.x += dx / dist * speed * dt;
+            s.y += dy / dist * speed * dt;
+          }
+          continue;
+        }
+      }
+      final tx = s.wp?.dx ?? goal.dx, ty = s.wp?.dy ?? goal.dy;
+      final dx = tx - s.x, dy = ty - s.y;
+      final dist = sqrt(dx * dx + dy * dy);
+      if (dist > 0.4) {
+        const speed = 0.32; // ralenti (interception lisible)
+        final ux = dx / dist, uy = dy / dist;
+        // Ondulation : composante perpendiculaire sinusoïdale (cap l'objectif).
+        final wob = sin(_gameMs / 500.0 + s.phase) * 0.55;
+        var ny = s.y + (uy * speed + ux * wob) * dt;
+        s.x += (ux * speed - uy * wob) * dt;
+        // Évite les buissons : si la case visée en porte un, dévie en y.
+        if (w.hasBush(s.x.round(), ny.round())) {
+          ny += (s.id.isEven ? -1 : 1) * 0.6 * dt;
+        }
+        s.y = ny.clamp(1.0, (w.rows - 2).toDouble());
+      } else if (s.wp != null) {
+        s.wp = null; // waypoint atteint → cap sur l'objectif (porte ou grotte)
+      } else if (broken) {
+        // Arrivé à la grotte. Prise (araignée disparue) → il rentre et disparaît.
+        // Sinon : il ENTAME les PV une seule fois (plancher 30 % → l'araignée
+        // finira le reste), puis ATTEND dehors la capture.
+        if (_grotteTaken) {
+          s.hp = 0;
+        } else if (!s.drained) {
+          s.drained = true;
+          final floorHp = (_grotteHpMax * 0.3).round();
+          _grotteHp = (_grotteHp - 8).clamp(floorHp, _grotteHpMax);
+        }
+      } else {
+        _gateHp = (_gateHp - 8).clamp(0, _gateHpMax); // touche la porte…
+        s.hp = 0; // …et meurt
+      }
+    }
+    _myAtk.removeWhere((a) => a.x < -100); // mes sbires tués par charge
+    // 4) Tourelles : un tir = un mort (GRATUIT en Phase 1, pas de niveau).
+    // Cadence lente (1 tir / 5 s) ; ne ciblent QUE les sbires déjà en chemin
+    // (sortis de la zone garnison) → interception sur la lane, pas à la source.
+    const range = _kTurretRange, cooldownMs = 5000, kGarrisonZone = 2.0;
+    _turrets.forEach((tile, _) {
+      if (_captureStartMs != null) return; // capture en cours → défenses muettes
       final p = tile.split('_');
       final tx = double.parse(p[0]), ty = double.parse(p[1]);
       if (_gameMs - (_turretLastFireMs[tile] ?? -99999) < cooldownMs) return;
@@ -173,6 +429,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       double bestD = range;
       for (final s in _sbires) {
         if (s.hp <= 0) continue;
+        // Encore collé à l'envahisseur → pas encore ciblable (pas « la garnison »).
+        if (sqrt(pow(s.x - _invX, 2) + pow(s.y - _invY, 2)) < kGarrisonZone) {
+          continue;
+        }
         final d = sqrt(pow(s.x - tx, 2) + pow(s.y - ty, 2));
         if (d <= bestD) {
           bestD = d;
@@ -180,22 +440,167 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         }
       }
       if (best != null) {
+        if (broken) {
+          if (_arrows <= 0) return; // Phase 2 : plus de flèches → tourelle muette
+          _arrows--;
+        }
         _turretLastFireMs[tile] = _gameMs;
-        _shots.add(_Shot(Offset(tx, ty), Offset(best.x, best.y), _gameMs, 520));
-        best.hp -= dmg; // hitscan : dégâts au tir (flèche = cosmétique)
+        _shots.add(_Shot(Offset(tx, ty), Offset(best.x, best.y), _gameMs, 420));
+        best.hp = 0; // one-shot
       }
     });
+    // 4b) Arcs fixes (8,1)/(8,13) : portée ~demi-map, one-shot GRATUIT, mais ne
+    //     tirent QUE si l'avatar se tient sur une de leurs cases blanches.
+    const bowCooldownMs = 1500;
+    for (final bow in _bows) {
+      if (_captureStartMs != null) break; // capture en cours → arcs muets
+      if (!_bowManned(bow.pads)) continue; // personne sur la gâchette → muet
+      final key = '${bow.at.x}_${bow.at.y}';
+      if (_gameMs - (_bowLastFireMs[key] ?? -99999) < bowCooldownMs) continue;
+      final bx = bow.at.x.toDouble(), by = bow.at.y.toDouble();
+      _Sbire? best;
+      double bestD = _kBowRange;
+      for (final s in _sbires) {
+        if (s.hp <= 0) continue;
+        final d = sqrt(pow(s.x - bx, 2) + pow(s.y - by, 2));
+        if (d <= bestD) {
+          bestD = d;
+          best = s;
+        }
+      }
+      if (best != null) {
+        if (broken) {
+          if (_arrows <= 0) continue; // Phase 2 : plus de flèches → arc muet
+          _arrows--;
+        }
+        _bowLastFireMs[key] = _gameMs;
+        _shots.add(_Shot(Offset(bx, by), Offset(best.x, best.y), _gameMs, 360));
+        best.hp = 0;
+      }
+    }
     _sbires.removeWhere((s) => s.hp <= 0);
+    // 5) Conditions de fin de Phase 1.
+    if (_gateHp <= 0) {
+      // Phase 2 : assaut sur la grotte. PV grotte à 0 → PRISE (rouge). Sinon, si
+      // toute la vague est neutralisée → grotte SAUVÉE.
+      if (_grotteTaken) {
+        // Grotte prise : on laisse TOUTE la horde finir de rentrer dedans (vraie
+        // invasion). Fin seulement quand le dernier sbire est entré.
+        if (_sbires.isEmpty) {
+          _phase1 = false;
+          _toast('🔴 Grotte ENVAHIE — domaine perdu ! (Phase 2)', _kEnemy);
+        }
+      } else if (_sbires.isEmpty) {
+        _phase1 = false;
+        _toast('🛡️ Grotte sauvée — assaut repoussé sur la grotte !', _kBlue);
+      }
+    } else if (_garrison <= 0 && _sbires.isEmpty && _myAtk.isEmpty) {
+      // Toute la garnison neutralisée AVANT de casser la porte → défense réussie.
+      _phase1 = false;
+      _toast('🛡️ Invasion repoussée — garnison anéantie avant la porte !', _kBlue);
+    }
   }
 
-  // Dev : lâche une vague de sbires depuis la carte ennemie (x=0, y 6..8).
-  void _spawnWave() {
+  // Point accessible aléatoire dans la chambre gauche (champ de bataille) : floor,
+  // hors rocher → chaque sbire (ennemi ET à moi) y passe avant sa cible, donc ils
+  // partent dans tous les sens au lieu de filer droit.
+  Offset _randomWaypoint(UnifiedWorld w) {
+    for (int tries = 0; tries < 24; tries++) {
+      final x = 1 + _rng.nextInt(7); // 1..7 (chambre avant la porte x=9)
+      final y = 2 + _rng.nextInt(11); // 2..12
+      if (w.at(x, y) == UwTile.floor && !w.hasRock(x, y)) {
+        return Offset(x.toDouble(), y.toDouble());
+      }
+    }
+    return const Offset(4, 7); // fallback centre chambre
+  }
+
+  // Case accessible aléatoire sur TOUTE la map (floor, hors rocher) — position de
+  // mon attaquant rouge, qui émet mes sbires d'où il se trouve.
+  Offset _randomMapTile(UnifiedWorld w) {
+    for (int tries = 0; tries < 40; tries++) {
+      final x = _rng.nextInt(w.cols), y = _rng.nextInt(w.rows);
+      if (w.at(x, y) == UwTile.floor && !w.hasRock(x, y)) {
+        return Offset(x.toDouble(), y.toDouble());
+      }
+    }
+    return const Offset(8, 7);
+  }
+
+  // Dev : place l'envahisseur + mon attaquant au hasard et lance la Phase 1.
+  void _startPhase1() {
+    // TEST « deck égal » : mon deck forcé à masse 30 (= garnison ennemie 30) pour
+    // voir qui gagne à armes égales. 🕷️5 + 🦂10 + 🐍15 = 30.
+    var sp = 1, sc = 1, se = 1;
     setState(() {
       _tdMode = true;
-      for (int i = 0; i < 6; i++) {
-        final sy = 6 + (i % 3); // 6,7,8
-        _sbires.add(_Sbire(_sbireSeq++, -0.8 * (i ~/ 3), sy.toDouble(), 3));
+      _phase1 = true;
+      _sbires.clear();
+      _myAtk.clear();
+      _shots.clear();
+      _myDeck
+        ..clear()
+        ..addAll({'spider': sp, 'scorpion': sc, 'snake': se});
+      _garrison = 45; // garnison de l'ENNEMI = 45 (test)
+      _assault = false;
+      // Mon attaquant rouge + l'envahisseur : placés aléatoirement.
+      final w = _w;
+      // Mon 🦂 défenseur spawn en (16,6) ; mon avatar posté en (16,8).
+      _redSpawn = const Offset(16, 6);
+      _redHome = const Offset(16, 6);
+      _redWander = null;
+      _pos = const Point(16, 8);
+      _revealAround(_pos);
+      if (w != null) {
+        // Envahisseur sur la COLONNE DE GAUCHE (x=0) : loin de la porte → long
+        // trajet vers la grotte en Phase 2.
+        int iy = 7;
+        for (int tries = 0; tries < 30; tries++) {
+          final y = _rng.nextInt(w.rows);
+          if (w.at(0, y) == UwTile.floor) {
+            iy = y;
+            break;
+          }
+        }
+        _invX = 0;
+        _invY = iy.toDouble();
+        // Grotte la plus proche de la porte = cible de l'assaut (Phase 2).
+        String? nearId;
+        Offset nearPt = const Offset(16, 7);
+        double bestD = 1e9;
+        for (final e in w.caves.entries) {
+          final d = (pow(e.value.x - 8, 2) + pow(e.value.y - 7, 2)).toDouble();
+          if (d < bestD) {
+            bestD = d;
+            nearId = e.key;
+            nearPt = Offset(e.value.x.toDouble(), e.value.y.toDouble());
+          }
+        }
+        _grotteTarget = nearPt;
+        _grotteCaveId = nearId;
+        final lvl =
+            (nearId != null ? _t?.caveById(nearId)?.blueLevel : null) ?? 1;
+        _grotteHpMax = (lvl * 25).clamp(40, 99999);
+        _grotteHp = _grotteHpMax;
+        _grotteTaken = false;
+        _captureStartMs = null;
+        _grotteHpAtCapture = 0;
+        _invaderGone = false;
+        _arrows = logic.weaponsAvailable('arc'); // pool de flèches du run
       }
+      // Masse de MON deck = somme des masses des sbires à émettre (décrémentée à
+      // chaque émission → atteint 0 pile quand le deck est vide).
+      _myMass = sp * GoldEconomy.masseSpider +
+          sc * GoldEconomy.masseScorpion +
+          se * GoldEconomy.masseSerpent;
+      _gateHp = _gateHpMax;
+      _nextSendMs
+        ..clear()
+        ..addAll({
+          'spider': _gameMs,
+          'scorpion': _gameMs + 3000,
+          'snake': _gameMs + 6000,
+        });
     });
   }
 
@@ -229,6 +634,15 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             _pos = w.start;
           }
           _revealed.addAll(logic.state.unifiedRevealed);
+          // Arcs/cases blanches/ponts toujours visibles (postes de tir fixes).
+          for (final p in [
+            ..._bowTiles,
+            ..._bowPads,
+            ..._bowBridges,
+            ..._greyTiles
+          ]) {
+            _revealed.add('${p.x}_${p.y}');
+          }
           // Tours TD persistées (état perso de la grande map).
           for (final tile in logic.state.unifiedTurrets) {
             _turrets[tile] = 1;
@@ -336,7 +750,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       Point(x - 1, y),
       Point(x, y + 1),
       Point(x, y - 1),
-    ].where((p) => w.walkable(p.x, p.y)).toList();
+    ].where((p) => w.walkable(p.x, p.y) || _isBowWalkable(p.x, p.y)).toList();
   }
 
   // BFS sur cases révélées + walkable (on ne traverse pas le brouillard).
@@ -763,7 +1177,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     final w = _w;
     if (w == null || _busy) return;
     final nx = _pos.x + dx, ny = _pos.y + dy;
-    if (!w.walkable(nx, ny)) return;
+    if (!w.walkable(nx, ny) && !_isBowWalkable(nx, ny)) return;
     _step(Point(nx, ny));
     _persistWalk();
   }
@@ -1225,11 +1639,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               const Color(0xFFB07CF0),
               () => setState(() => _tdMode = !_tdMode),
               on: _tdMode),
-          pill('🐀 Lâcher une vague', _kEnemy, _spawnWave),
+          pill('🕷️ Convoquer (Phase 1)', _kEnemy, _startPhase1),
           if (_tdMode)
             pill('🧹 Vider', Colors.white70, () {
               setState(() {
+                _phase1 = false;
                 _sbires.clear();
+                _myAtk.clear();
+                _myDeck.clear();
+                _nextSendMs.clear();
+                _garrison = 0;
                 _turrets.clear();
                 _turretLastFireMs.clear();
                 _shots.clear();
@@ -1243,7 +1662,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       if (_tdMode) ...[
         const SizedBox(height: 6),
         Text(
-            '🏹 $arcs flèches · 🚪 porte ${((_gateHp / _gateHpMax) * 100).round()}% · 🐀 ${_sbires.length} · 🗼 ${_turrets.length} tours · (tirs gratuits en dev)',
+            _phase1
+                ? (_gateHp <= 0
+                    ? 'PHASE 2 🔴 — assaut sur la grotte · 🕳️ PV ${_grotteHp}/${_grotteHpMax} · 🏹 $_arrows flèches · sbires ${_sbires.length} · 🗼 ${_turrets.length} (chaque tir = 1 flèche)'
+                    : 'PHASE 1 — mon attaquant 🦂 (deck $_myMass) · garnison ennemie $_garrison · mon deck 🕷️${_myDeck['spider'] ?? 0}/🦂${_myDeck['scorpion'] ?? 0}/🐍${_myDeck['snake'] ?? 0} · sbires lâchés ${_sbires.length} · 🚪 ${((_gateHp / _gateHpMax) * 100).round()}% · 🗼 ${_turrets.length} (1 tir = 1 mort, gratuit)')
+                : '🏹 $arcs flèches · 🚪 ${((_gateHp / _gateHpMax) * 100).round()}% · 🗼 ${_turrets.length} tours · pose tes tours puis « Convoquer »',
             textAlign: TextAlign.center,
             style: TextStyle(
                 color: Colors.white.withOpacity(.6), fontSize: 10.5)),
@@ -1321,6 +1744,30 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             children: [
               grid,
               // ── Couche TD : tours, sbires, flèches, PV porte ────────────────
+              // Halo de portée d'un arc ACTIF (avatar sur une de ses cases blanches).
+              for (final bow in _bows)
+                if (_bowManned(bow.pads))
+                  () {
+                    final c0 =
+                        centerD(bow.at.x.toDouble(), bow.at.y.toDouble());
+                    final r = _kBowRange * slot;
+                    return Positioned(
+                      left: c0.dx - r,
+                      top: c0.dy - r,
+                      width: r * 2,
+                      height: r * 2,
+                      child: IgnorePointer(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: _kGold.withOpacity(.06),
+                            border: Border.all(
+                                color: _kGold.withOpacity(.4), width: 1),
+                          ),
+                        ),
+                      ),
+                    );
+                  }(),
               // Halo de portée : tour SURVOLÉE (souris) ou sélectionnée (tap).
               if ((_hoveredTurret ?? _selectedTurret) != null &&
                   _turrets.containsKey(_hoveredTurret ?? _selectedTurret))
@@ -1382,32 +1829,125 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     ),
                   );
                 }(),
-              // Sbires (position continue) + petite barre de PV.
+              // Sbires ENNEMIS lâchés (one-shot, petite araignée vers la porte).
               for (final s in _sbires)
                 () {
                   final c0 = centerD(s.x, s.y);
                   return Positioned(
-                    left: c0.dx - slot / 2,
-                    top: c0.dy - slot / 2,
-                    width: slot,
-                    height: slot,
+                    left: c0.dx - slot * 0.25,
+                    top: c0.dy - slot * 0.25,
+                    child: Text('🕷️', style: TextStyle(fontSize: slot * 0.42)),
+                  );
+                }(),
+              // MES sbires d'attaque (cerclés de bleu) marchant vers l'envahisseur.
+              for (final a in _myAtk)
+                () {
+                  final c0 = centerD(a.x, a.y);
+                  return Positioned(
+                    left: c0.dx - slot * 0.3,
+                    top: c0.dy - slot * 0.3,
+                    child: Container(
+                      padding: const EdgeInsets.all(1),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _kBlue.withOpacity(.22),
+                        border: Border.all(color: _kBlue.withOpacity(.8)),
+                      ),
+                      child: Text(entityEmoji(a.type),
+                          style: TextStyle(fontSize: slot * 0.4)),
+                    ),
+                  );
+                }(),
+              // L'ENVAHISSEUR (Phase 1) — masqué une fois la capture terminée.
+              if (_phase1 && !_invaderGone)
+                () {
+                  final c0 = centerD(_invX, _invY);
+                  return Positioned(
+                    left: c0.dx - slot * 0.7,
+                    top: c0.dy - slot * 0.85,
+                    width: slot * 1.4,
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text('🕷️', style: TextStyle(fontSize: slot * 0.44)),
+                        Text('🕷️', style: TextStyle(fontSize: slot * 0.95)),
+                        Text('garnison $_garrison',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                color: _kEnemy,
+                                fontWeight: FontWeight.w900,
+                                fontSize: slot * 0.26,
+                                shadows: const [
+                                  Shadow(color: Colors.black, blurRadius: 2)
+                                ])),
+                      ],
+                    ),
+                  );
+                }(),
+              // MON attaquant rouge (Phase 1) : 🦂 placé aléatoirement, émet mes
+              // sbires depuis sa position + affiche la masse de mon deck.
+              if (_phase1)
+                () {
+                  final c0 = centerD(_redSpawn.dx, _redSpawn.dy);
+                  return Positioned(
+                    left: c0.dx - slot * 0.6,
+                    top: c0.dy - slot * 0.8,
+                    width: slot * 1.2,
+                    child: Column(
+                      children: [
+                        Text('🦂', style: TextStyle(fontSize: slot * 0.85)),
+                        Text('deck $_myMass',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                color: _kEnemy,
+                                fontWeight: FontWeight.w900,
+                                fontSize: slot * 0.26,
+                                shadows: const [
+                                  Shadow(color: Colors.black, blurRadius: 2)
+                                ])),
+                      ],
+                    ),
+                  );
+                }(),
+              // Barre de vie de la grotte CIBLÉE (Phase 2 : porte cassée).
+              if (_phase1 && _gateHp <= 0 && _grotteHpMax > 0)
+                () {
+                  final c0 = centerD(_grotteTarget.dx, _grotteTarget.dy);
+                  final frac = (_grotteHp / _grotteHpMax).clamp(0.0, 1.0);
+                  final bw = slot * 1.2;
+                  return Positioned(
+                    left: c0.dx - bw / 2,
+                    top: c0.dy - slot * 0.85,
+                    width: bw,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // PV au-dessus de la barre (lisibilité).
+                        Text('🕳️ $_grotteHp/$_grotteHpMax',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w900,
+                                fontSize: slot * 0.22,
+                                shadows: const [
+                                  Shadow(color: Colors.black, blurRadius: 2)
+                                ])),
+                        const SizedBox(height: 1),
                         Container(
-                          width: slot * 0.6,
-                          height: 3,
+                          height: 5,
                           decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(.5),
-                              borderRadius: BorderRadius.circular(2)),
+                            color: Colors.black.withOpacity(.55),
+                            borderRadius: BorderRadius.circular(3),
+                            border: Border.all(
+                                color: Colors.white.withOpacity(.4), width: .5),
+                          ),
                           child: FractionallySizedBox(
                             alignment: Alignment.centerLeft,
-                            widthFactor: (s.hp / s.maxHp).clamp(0.0, 1.0),
+                            widthFactor: frac,
                             child: Container(
-                                decoration: BoxDecoration(
-                                    color: _kEnemy,
-                                    borderRadius: BorderRadius.circular(2))),
+                              decoration: BoxDecoration(
+                                color: frac > .35 ? _kBlue : _kEnemy,
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                            ),
                           ),
                         ),
                       ],
@@ -1522,6 +2062,27 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       child = Text('🏰', style: TextStyle(fontSize: inner * 0.5));
     }
 
+    // Arcs fixes 🏹, leurs cases blanches (gâchette) et la tuile-pont d'accès.
+    final bp = Point(x, y);
+    if (_bowTiles.contains(bp)) {
+      final active = _bows.any((b) => b.at == bp && _bowManned(b.pads));
+      bg = (active ? _kGold : Colors.white).withOpacity(active ? .26 : .12);
+      border = (active ? _kGold : Colors.white).withOpacity(active ? .9 : .5);
+      child = Text('🏹', style: TextStyle(fontSize: inner * 0.5));
+    } else if (_bowPads.contains(bp)) {
+      bg = Colors.white.withOpacity(.7); // case blanche = poste de tir
+      border = Colors.white;
+      child = null;
+    } else if (_bowBridges.contains(bp)) {
+      bg = Colors.white.withOpacity(.32); // pont (blanc atténué) vers le sol farm
+      border = Colors.white.withOpacity(.6);
+      child = null;
+    } else if (_greyTiles.contains(bp)) {
+      bg = Colors.grey.withOpacity(.45); // case d'accès grise aux tourelles
+      border = Colors.grey.withOpacity(.75);
+      child = null;
+    }
+
     // Porte en bois (chokepoint) : planches intactes, ou cassée (PV ≤ 0).
     if (w.isGate(x, y)) {
       final broken = _gateHp <= 0;
@@ -1530,19 +2091,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       child = Text(broken ? '💥' : '🚪',
           style: TextStyle(fontSize: inner * 0.5));
     }
-    // Carte ennemie (spawner) = le même envahisseur araignée que l'invasion,
-    // mais il lâche de petites araignées.
-    if (w.isSpawner(x, y)) {
-      bg = _kEnemy.withOpacity(.2);
-      border = _kEnemy.withOpacity(.7);
-      child = Text('🕷️', style: TextStyle(fontSize: inner * 0.5));
-    }
+    // (Le spawner n'est plus dessiné case par case : l'envahisseur est rendu en
+    // overlay à sa position pendant la Phase 1.)
 
     // Grotte (overlay depuis le doc territoire).
     final caveId = w.caveIdAt(x, y);
     if (caveId != null) {
       final cave = t.caveById(caveId);
-      final mine = cave != null && cave.ownerUid == t.uid;
+      // Prise ce run (Phase 2, visuel) → rouge, même si elle est encore à moi en base.
+      final taken = _grotteTaken && caveId == _grotteCaveId;
+      final mine = !taken && cave != null && cave.ownerUid == t.uid;
       // Grotte à moi = couleur de son domaine (dashboard d'équilibre) ;
       // grotte prise = rouge (réservé à l'ennemi).
       final col = mine ? _caveColor(cave) : _kEnemy;
@@ -1649,13 +2207,29 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
 const _kArrowWood = Color(0xFF6B4423); // marron hampe
 const _kArrowHead = Color(0xFF3E2A18); // pointe (plus sombre)
 
-/// Sbire TD (éphémère) : position continue en coords de tuiles, PV, état d'assaut.
+/// Sbire ENNEMI (éphémère) : position continue en coords de tuiles, PV, assaut.
 class _Sbire {
   final int id;
   double x, y, hp;
   final double maxHp;
   bool atGate = false;
+  bool killed = false; // a déjà tué un de mes sbires → file droit à la porte
+  bool drained = false; // a déjà entamé les PV de la grotte (une seule fois)
+  Offset? wp; // point de déviation aléatoire (avant d'aller à la porte)
   _Sbire(this.id, this.x, this.y, this.hp) : maxHp = hp;
+  // Déphasage propre (chemin ondulant non synchronisé entre sbires).
+  double get phase => id * 1.7;
+}
+
+/// MON sbire d'attaque (Phase 1) : passe par un point de déviation puis fonce
+/// SUR L'ENVAHISSEUR (ne chasse jamais les sbires ennemis).
+class _Atk {
+  final int id;
+  final String type; // spider | scorpion | snake
+  double x, y;
+  Offset? wp; // point de déviation aléatoire (avant d'aller à l'envahisseur)
+  _Atk(this.id, this.type, this.x, this.y);
+  double get phase => id * 1.7;
 }
 
 /// Flèche en vol : from/to en coords de tuiles, animée par le temps (startMs+durMs).

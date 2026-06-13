@@ -52,7 +52,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   @override
   void initState() {
     super.initState();
-    _mainTabs = TabController(length: 5, vsync: this, initialIndex: 1);
+    _mainTabs = TabController(length: 5, vsync: this, initialIndex: 2);
     _load();
     // Sync temps réel des projets : les tâches/actions validées (ici, sur un
     // autre appareil, ou par Claude/MCP) se reflètent sans recharger la page.

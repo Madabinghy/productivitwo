@@ -16,7 +16,8 @@ final ValueNotifier<List<AssistantMessageData>> assistantMessagesNotifier =
 /// Coupe l'overlay assistant (Orion) tant que true — ex. dans l'arène/le Monde,
 /// où il gênerait le jeu. Posé par l'écran qui veut le silence, remis à false en
 /// sortant.
-final ValueNotifier<bool> assistantOverlaySuppressed = ValueNotifier<bool>(false);
+// Démarre SUPPRIMÉ (dev : pas de pop Orion au lancement).
+final ValueNotifier<bool> assistantOverlaySuppressed = ValueNotifier<bool>(true);
 
 /// Handler d'action (navigation) enregistré par l'écran d'accueil.
 void Function(AssistantActionData action)? assistantActionHandler;
