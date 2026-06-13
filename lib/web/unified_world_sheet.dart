@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/territory.dart';
@@ -9,6 +10,8 @@ import 'package:productivitwo_v1/expedition.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/widgets/backlog_combat.dart';
 import 'package:productivitwo_v1/web/invasion_defense_sheet.dart';
+import 'package:productivitwo_v1/utils/domain_colors.dart';
+import 'package:productivitwo_v1/web/assistant_widget.dart' show assistantOverlaySuppressed;
 
 // MONDE UNIFIÉ — Tranche 0 : la grande carte traversable à l'avatar (farm gauche ·
 // château centre · grottes droite). On marche, le brouillard se lève autour de soi,
@@ -32,6 +35,8 @@ const bool _kDev = true;
 
 Future<void> showUnifiedWorldSheet(
     BuildContext context, AppLogic logic, FirestoreSync sync) {
+  // Coupe l'overlay Orion tant qu'on est dans le Monde (il gênerait le jeu).
+  assistantOverlaySuppressed.value = true;
   return showDialog(
     context: context,
     barrierColor: Colors.black.withOpacity(.65),
@@ -40,11 +45,11 @@ Future<void> showUnifiedWorldSheet(
       backgroundColor: _kBg,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 680, maxHeight: 920),
+        constraints: const BoxConstraints(maxWidth: 940, maxHeight: 920),
         child: _UnifiedWorldView(logic: logic, sync: sync),
       ),
     ),
-  );
+  ).whenComplete(() => assistantOverlaySuppressed.value = false);
 }
 
 class _UnifiedWorldView extends StatefulWidget {
@@ -56,7 +61,8 @@ class _UnifiedWorldView extends StatefulWidget {
   State<_UnifiedWorldView> createState() => _UnifiedWorldViewState();
 }
 
-class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
+class _UnifiedWorldViewState extends State<_UnifiedWorldView>
+    with TickerProviderStateMixin {
   AppLogic get logic => widget.logic;
   FirestoreSync get sync => widget.sync;
 
@@ -87,25 +93,121 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
   int get _stepMs => _realCadence ? _kStepMsReal : _kStepMsTest;
   int get _caveWindowMs => _realCadence ? _kCaveWindowMsReal : _kCaveWindowMsTest;
   bool _autoThreatChecked = false; // auto-trigger hebdo évalué 1× par ouverture
+  bool _showCoords = false; // dev : lève le fog + affiche x,y sur chaque case
+
+  // ── Prototype TOWER-DEFENSE (dev, local/éphémère, non persisté) ─────────────
+  // Mode test : on pose des tours qui auto-tirent des flèches (GRATUIT en dev) sur
+  // les sbires lâchés par la carte ennemie ; les sbires marchent vers la porte et
+  // l'assiègent. Couche overlay animée au-dessus de la grille (socle game-feel).
+  bool _tdMode = false;
+  static const double _kTurretRange = 4.5; // rayon de tir (cases), partagé logique/affichage
+  final Map<String, int> _turrets = {}; // tileId "x_y" → niveau (1 pour le test)
+  final Map<String, int> _turretLastFireMs = {};
+  String? _selectedTurret; // tour sélectionnée → affiche sa portée
+  final List<_Sbire> _sbires = [];
+  final List<_Shot> _shots = [];
+  static const double _gateHpMax = 120;
+  double _gateHp = _gateHpMax;
+  Ticker? _gameTicker;
+  int _gameMs = 0; // horloge monotone (ms depuis le 1er frame)
+  int _lastSimMs = 0;
+  int _sbireSeq = 0;
 
   @override
   void initState() {
     super.initState();
+    _gameTicker = createTicker(_onGameFrame)..start();
     _boot();
   }
 
+  // Boucle de jeu (~30 fps). Avance la simulation TD et purge les flèches finies.
+  void _onGameFrame(Duration elapsed) {
+    _gameMs = elapsed.inMilliseconds;
+    final dt = _gameMs - _lastSimMs;
+    if (dt < 33) return;
+    _lastSimMs = _gameMs;
+    final hadShots = _shots.isNotEmpty;
+    _shots.removeWhere((s) => _gameMs - s.startMs > s.durMs);
+    if (_tdMode) {
+      _simulate(dt / 1000.0);
+      if (mounted) setState(() {});
+    } else if (hadShots && mounted) {
+      setState(() {});
+    }
+  }
+
+  void _simulate(double dt) {
+    const gx = 8.0, gy = 7.0; // point d'assaut juste devant la porte
+    for (final s in _sbires) {
+      if (s.hp <= 0) continue;
+      final dx = gx - s.x, dy = gy - s.y;
+      final dist = sqrt(dx * dx + dy * dy);
+      if (dist > 0.5) {
+        const speed = 0.85; // cases/sec (ralenti)
+        s.x += dx / dist * speed * dt;
+        s.y += dy / dist * speed * dt;
+        s.atGate = false;
+      } else {
+        s.atGate = true;
+        _gateHp = (_gateHp - 4 * dt).clamp(0, _gateHpMax); // 4 PV/s/sbire
+      }
+    }
+    // Tours : ciblent le sbire vivant le plus proche dans le rayon, tirent gratis.
+    const range = _kTurretRange, cooldownMs = 650, dmg = 1.0;
+    _turrets.forEach((tile, lvl) {
+      final p = tile.split('_');
+      final tx = double.parse(p[0]), ty = double.parse(p[1]);
+      if (_gameMs - (_turretLastFireMs[tile] ?? -99999) < cooldownMs) return;
+      _Sbire? best;
+      double bestD = range;
+      for (final s in _sbires) {
+        if (s.hp <= 0) continue;
+        final d = sqrt(pow(s.x - tx, 2) + pow(s.y - ty, 2));
+        if (d <= bestD) {
+          bestD = d;
+          best = s;
+        }
+      }
+      if (best != null) {
+        _turretLastFireMs[tile] = _gameMs;
+        _shots.add(_Shot(Offset(tx, ty), Offset(best.x, best.y), _gameMs, 520));
+        best.hp -= dmg; // hitscan : dégâts au tir (flèche = cosmétique)
+      }
+    });
+    _sbires.removeWhere((s) => s.hp <= 0);
+  }
+
+  // Dev : lâche une vague de sbires depuis la carte ennemie (x=0, y 6..8).
+  void _spawnWave() {
+    setState(() {
+      _tdMode = true;
+      for (int i = 0; i < 6; i++) {
+        final sy = 6 + (i % 3); // 6,7,8
+        _sbires.add(_Sbire(_sbireSeq++, -0.8 * (i ~/ 3), sy.toDouble(), 3));
+      }
+    });
+  }
+
   Future<void> _boot() async {
-    await sync.ensureTerritory('Toi');
+    final domainIds = logic.state.activeDomains.map((d) => d.id).toList();
+    await sync.ensureTerritory('Toi', domainIds: domainIds);
     final me = sync.uid ?? '';
-    _sub = sync.streamTerritory(me).listen((t) {
+    _sub = sync.streamTerritory(me).listen((t) async {
       if (!mounted) return;
+      // La map doit incarner exactement les domaines actifs (une grotte/domaine).
+      // Migration des docs legacy (nw/ne/sw/se) + ajout/retrait au fil des domaines.
+      if (t != null && _needsDomainReconcile(t)) {
+        await _reconcileDomains(t); // le save re-déclenche le stream, bonnes grottes
+        return;
+      }
       setState(() {
         _t = t;
         _loading = false;
         // Génère la map une fois (seed du territoire → déterministe/spectatable),
         // et reprend le walk state persisté (position + brouillard) si présent.
         if (_w == null && t != null) {
-          final w = generateUnifiedWorld(t.seed);
+          final w = generateUnifiedWorld(t.seed,
+              caveIds: t.caves.map((c) => c.id).toList());
           _w = w;
           final saved = logic.state.unifiedPos;
           if (saved != null && saved.contains('_')) {
@@ -134,8 +236,67 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
   void dispose() {
     _sub?.cancel();
     _timer?.cancel();
+    _gameTicker?.dispose();
     super.dispose();
   }
+
+  // ── Grottes = domaines ────────────────────────────────────────────────────
+  /// La map doit avoir une grotte par domaine actif (ni plus, ni moins).
+  bool _needsDomainReconcile(Territory t) {
+    final domains = logic.state.activeDomains;
+    if (domains.isEmpty) return false; // domaines pas chargés → ne pas toucher
+    final caveIds = t.caves.map((c) => c.id).toSet();
+    final domIds = domains.map((d) => d.id).toSet();
+    return caveIds.length != domIds.length || !caveIds.containsAll(domIds);
+  }
+
+  /// Reconstruit les grottes depuis les domaines actifs : conserve niveau/proprio
+  /// d'une grotte existante au même id, crée les manquantes (niv 1), retire celles
+  /// sans domaine (legacy nw/ne/…). Persiste (le stream se rafraîchit ensuite).
+  Future<void> _reconcileDomains(Territory t) async {
+    final me = sync.uid;
+    final domains = logic.state.activeDomains;
+    if (me == null || domains.isEmpty) return;
+    final byId = {for (final c in t.caves) c.id: c};
+    final caves = <TerritoryCave>[
+      for (final d in domains)
+        byId[d.id] != null
+            ? (byId[d.id]!.domainId == d.id
+                ? byId[d.id]!
+                : byId[d.id]!.copyWith(domainId: d.id))
+            : TerritoryCave(
+                id: d.id,
+                x: 0,
+                y: 0,
+                ownerUid: me,
+                blueLevel: 1,
+                occupied: false,
+                domainId: d.id),
+    ];
+    // L'envahisseur ciblait une grotte disparue → on l'annule (évite un target mort).
+    final keepIds = caves.map((c) => c.id).toSet();
+    final inv = t.invader;
+    final dropInvader = inv != null &&
+        inv.targetCaveId != 'castle' &&
+        !keepIds.contains(inv.targetCaveId);
+    await sync.saveTerritory(
+        t.copyWith(caves: caves, clearInvader: dropInvader));
+  }
+
+  /// Nom du domaine incarné par une grotte (pour titres/toasts/labels).
+  String _domainName(String domainId) {
+    for (final d in logic.state.activeDomains) {
+      if (d.id == domainId) return d.name;
+    }
+    return 'grotte';
+  }
+
+  /// Couleur d'une grotte que JE possède = couleur de son domaine (la map se lit
+  /// comme un dashboard d'équilibre). Le rouge reste réservé aux grottes prises.
+  Color _caveColor(TerritoryCave c) =>
+      domainColor(c.domainId.isEmpty ? c.id : c.domainId,
+          logic.state.activeDomains) ??
+      _kBlue;
 
   // Lève le brouillard autour de [p] ; retourne les cases NOUVELLEMENT révélées.
   List<String> _revealAround(Point<int> p) {
@@ -395,8 +556,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
     _paused = false;
     _toast(
         botWins
-            ? '🟡 Le bot a PRIS ta grotte ${cave.id.toUpperCase()} ! Va la reprendre.'
-            : '🛡️ Ta grotte ${cave.id.toUpperCase()} a tenu — le bot s\'est brisé dessus.',
+            ? '🟡 Le bot a PRIS ta grotte ${_domainName(cave.domainId)} ! Va la reprendre.'
+            : '🛡️ Ta grotte ${_domainName(cave.domainId)} a tenu — le bot s\'est brisé dessus.',
         botWins ? _kEnemy : _kBlue);
   }
 
@@ -459,9 +620,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
     await sync.saveTerritory(next);
     if (!mounted) return;
     setState(() {});
-    final cible = next.invader!.targetCaveId == 'castle'
+    final cibleInv = next.invader!.targetCaveId;
+    final cible = cibleInv == 'castle'
         ? 'ton CHÂTEAU ❤️'
-        : 'ta grotte ${next.invader!.targetCaveId.toUpperCase()}';
+        : 'ta grotte ${_domainName(cibleInv)}';
     _toast(
         '🕷️ Un envahisseur (niv $level) arrive par l\'ouest vers $cible !',
         _kEnemy);
@@ -542,6 +704,33 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
   Future<void> _onTap(int x, int y) async {
     final w = _w;
     if (_busy || w == null) return;
+    // Mode TD (dev) : tap = pose/retrait d'une tour sur une case sol marchable.
+    if (_tdMode) {
+      final tile = '${x}_$y';
+      if (w.walkable(x, y) &&
+          w.at(x, y) == UwTile.floor &&
+          w.caveIdAt(x, y) == null &&
+          !w.isSpawner(x, y)) {
+        setState(() {
+          if (_turrets.containsKey(tile)) {
+            // Tour existante : 1er tap = sélectionne (montre la portée) ;
+            // re-tap de la tour sélectionnée = retire.
+            if (_selectedTurret == tile) {
+              _turrets.remove(tile);
+              _selectedTurret = null;
+            } else {
+              _selectedTurret = tile;
+            }
+          } else {
+            _turrets[tile] = 1;
+            _selectedTurret = tile; // posée + sélectionnée
+          }
+        });
+      } else {
+        _toast('Pose la tour sur une case de sol libre.', Colors.white38);
+      }
+      return;
+    }
     final p = _pos;
     final caveId = w.caveIdAt(x, y);
     final farmPest = _farmPests['${x}_$y'];
@@ -604,8 +793,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
     final winner = await showCaveFight(context, logic, sync,
         blueLevel: cave.blueLevel,
         title: reclaim
-            ? 'Reprendre grotte ${id.toUpperCase()}'
-            : 'Grotte ${id.toUpperCase()} — niv ${cave.blueLevel}');
+            ? 'Reprendre ${_domainName(cave.domainId)}'
+            : '${_domainName(cave.domainId)} — niv ${cave.blueLevel}');
     if (mounted) setState(() => _busy = false);
     if (!mounted) return;
     final base = _t;
@@ -624,7 +813,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
           .toList();
       // Reconquérir une grotte ramène le château (la map n'est plus prise).
       await sync.saveTerritory(base.copyWith(caves: caves, mapTaken: false));
-      _toast('🔵 Grotte ${id.toUpperCase()} REPRISE ! Défense à re-monter (niv 1).',
+      _toast('🔵 Grotte ${_domainName(cave.domainId)} REPRISE ! Défense à re-monter (niv 1).',
           _kBlue);
     } else {
       final caves = base.caves
@@ -632,7 +821,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
               c.id == id ? c.copyWith(blueLevel: c.blueLevel + 1) : c)
           .toList();
       await sync.saveTerritory(base.copyWith(caves: caves));
-      _toast('🕳️ Grotte ${id.toUpperCase()} montée → niveau ${cave.blueLevel + 1}',
+      _toast('🕳️ Grotte ${_domainName(cave.domainId)} montée → niveau ${cave.blueLevel + 1}',
           _kBlue);
     }
   }
@@ -688,7 +877,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
     } else if (inv != null) {
       final cible = inv.targetCaveId == 'castle'
           ? 'ton château'
-          : 'grotte ${inv.targetCaveId.toUpperCase()}';
+          : 'grotte ${_domainName(inv.targetCaveId)}';
       msg = '🕷️ Siège en cours — un envahisseur marche vers $cible.';
       col = _kEnemy;
     } else {
@@ -710,36 +899,53 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
   }
 
   Widget _content(Territory t, UnifiedWorld w) {
-    return ListView(
-      padding: const EdgeInsets.all(14),
+    // Panneau d'ACTIONS à GAUCHE (scroll indépendant → pas de scroll global),
+    // plateau à DROITE (prend la place restante).
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _zonesLegend(),
-        const SizedBox(height: 12),
-        _board(t, w),
-        const SizedBox(height: 12),
-        Text(
-          'Avatar : touche une case éclairée. À GAUCHE rôdent tes routines/tâches '
-          'NÉGLIGÉES (🕷️🦂🐍) : va à leur contact → combat = fais le vrai travail '
-          'pour les vaincre. À DROITE, défends tes grottes (bleue → +1 niveau ; '
-          'rouge → reprends-la). Une araignée 🕷️ traverse depuis l\'ouest : '
-          'intercepte-la au contact avant qu\'elle atteigne sa grotte.',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.white.withOpacity(.45), fontSize: 11),
+        SizedBox(
+          width: 236,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(12, 12, 6, 12),
+            children: [
+              _zonesLegend(),
+              if (t.invader == null && !t.mapTaken) ...[
+                const SizedBox(height: 12),
+                _threatReadout(),
+              ],
+              if (_kDev) ...[
+                const SizedBox(height: 12),
+                _cadenceToggle(),
+                const SizedBox(height: 8),
+                _coordsToggle(),
+                const SizedBox(height: 8),
+                _tdControls(),
+                if (t.invader == null && !t.mapTaken) ...[
+                  const SizedBox(height: 8),
+                  _summonBtn(),
+                  const SizedBox(height: 8),
+                  _forceThreatBtn(),
+                ],
+              ],
+              const SizedBox(height: 12),
+              Text(
+                'Avatar : touche une case éclairée. À GAUCHE rôdent tes '
+                'routines/tâches NÉGLIGÉES (🕷️🦂🐍) : va à leur contact → '
+                'combat = fais le vrai travail. À DROITE, défends tes grottes '
+                '(bleue → +1 ; rouge → reprends-la).',
+                style:
+                    TextStyle(color: Colors.white.withOpacity(.4), fontSize: 10.5),
+              ),
+            ],
+          ),
         ),
-        if (t.invader == null && !t.mapTaken) ...[
-          const SizedBox(height: 12),
-          _threatReadout(),
-        ],
-        if (_kDev) ...[
-          const SizedBox(height: 12),
-          _cadenceToggle(),
-          if (t.invader == null && !t.mapTaken) ...[
-            const SizedBox(height: 8),
-            _summonBtn(),
-            const SizedBox(height: 8),
-            _forceThreatBtn(),
-          ],
-        ],
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(12),
+            child: _board(t, w),
+          ),
+        ),
       ],
     );
   }
@@ -848,6 +1054,84 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
         ),
       );
 
+  Widget _coordsToggle() => Center(
+        child: InkWell(
+          onTap: () => setState(() => _showCoords = !_showCoords),
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(_showCoords ? .12 : .04),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                  color: Colors.white.withOpacity(_showCoords ? .4 : .14)),
+            ),
+            child: Text(
+                _showCoords ? '🧭 Coords ON (fog levé)' : '🧭 Afficher coords',
+                style: TextStyle(
+                    color: Colors.white.withOpacity(.7),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11)),
+          ),
+        ),
+      );
+
+  Widget _tdControls() {
+    Widget pill(String label, Color c, VoidCallback onTap, {bool on = false}) =>
+        InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: c.withOpacity(on ? .18 : .08),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: c.withOpacity(on ? .6 : .35)),
+            ),
+            child: Text(label,
+                style: TextStyle(
+                    color: c.withOpacity(.9),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11)),
+          ),
+        );
+    final arcs = logic.weaponsAvailable('arc');
+    return Column(children: [
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        alignment: WrapAlignment.center,
+        children: [
+          pill(
+              _tdMode ? '⚔️ TD ON — pose des tours' : '⚔️ Mode tower-defense',
+              const Color(0xFFB07CF0),
+              () => setState(() => _tdMode = !_tdMode),
+              on: _tdMode),
+          pill('🐀 Lâcher une vague', _kEnemy, _spawnWave),
+          if (_tdMode)
+            pill('🧹 Vider', Colors.white70, () {
+              setState(() {
+                _sbires.clear();
+                _turrets.clear();
+                _turretLastFireMs.clear();
+                _shots.clear();
+                _selectedTurret = null;
+                _gateHp = _gateHpMax;
+              });
+            }),
+        ],
+      ),
+      if (_tdMode) ...[
+        const SizedBox(height: 6),
+        Text(
+            '🏹 $arcs flèches · 🚪 porte ${((_gateHp / _gateHpMax) * 100).round()}% · 🐀 ${_sbires.length} · 🗼 ${_turrets.length} tours · (tirs gratuits en dev)',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                color: Colors.white.withOpacity(.6), fontSize: 10.5)),
+      ],
+    ]);
+  }
+
   Widget _summonBtn() => Center(
         child: InkWell(
           onTap: _summon,
@@ -882,7 +1166,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
       children: [
         item('🏹', 'Farm (gauche)', _kFarm),
         item('🏰', 'Château', _kGold),
-        item('🕳️', 'Grottes (droite)', _kBlue),
+        item('🕳️', 'Grottes = tes domaines', Colors.white70),
       ],
     );
   }
@@ -893,18 +1177,173 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
     return LayoutBuilder(builder: (context, c) {
       final slot = (c.maxWidth / w.cols).clamp(22.0, 46.0);
       final inner = slot - 3;
+      final grid = Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (int y = 0; y < w.rows; y++)
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              for (int x = 0; x < w.cols; x++)
+                _cell(t, w, x, y, inner, avatar,
+                    isSpider:
+                        spider != null && spider.x == x && spider.y == y),
+            ]),
+        ],
+      );
+      // Centre pixel d'une tuile en coords continues (l'entité est au milieu).
+      Offset centerD(double x, double y) =>
+          Offset(x * slot + slot / 2, y * slot + slot / 2);
+      final aw = slot * 0.85, ah = slot * 0.34;
       return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (int y = 0; y < w.rows; y++)
-              Row(mainAxisSize: MainAxisSize.min, children: [
-                for (int x = 0; x < w.cols; x++)
-                  _cell(t, w, x, y, inner, avatar,
-                      isSpider:
-                          spider != null && spider.x == x && spider.y == y),
-              ]),
-          ],
+        child: SizedBox(
+          width: w.cols * slot,
+          height: w.rows * slot,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              grid,
+              // ── Couche TD : tours, sbires, flèches, PV porte ────────────────
+              // Halo de portée : seulement sous la tour SÉLECTIONNÉE.
+              if (_selectedTurret != null &&
+                  _turrets.containsKey(_selectedTurret))
+                () {
+                  final pp = _selectedTurret!.split('_');
+                  final c0 =
+                      centerD(double.parse(pp[0]), double.parse(pp[1]));
+                  final r = _kTurretRange * slot;
+                  return Positioned(
+                    left: c0.dx - r,
+                    top: c0.dy - r,
+                    width: r * 2,
+                    height: r * 2,
+                    child: IgnorePointer(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: const Color(0xFFB07CF0).withOpacity(.07),
+                          border: Border.all(
+                              color: const Color(0xFFB07CF0).withOpacity(.35),
+                              width: 1),
+                        ),
+                      ),
+                    ),
+                  );
+                }(),
+              // Tours posées (fixes).
+              for (final tile in _turrets.keys)
+                () {
+                  final pp = tile.split('_');
+                  final c0 = centerD(
+                      double.parse(pp[0]), double.parse(pp[1]));
+                  return Positioned(
+                    left: c0.dx - slot / 2,
+                    top: c0.dy - slot / 2,
+                    width: slot,
+                    height: slot,
+                    child: Center(
+                      child: Container(
+                        decoration: _selectedTurret == tile
+                            ? BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: const Color(0xFFB07CF0).withOpacity(.25),
+                                border: Border.all(
+                                    color: const Color(0xFFB07CF0), width: 1.5))
+                            : null,
+                        padding: const EdgeInsets.all(1),
+                        child: Icon(Icons.cell_tower,
+                            size: slot * 0.62,
+                            color: const Color(0xFFC9B6F2)),
+                      ),
+                    ),
+                  );
+                }(),
+              // Sbires (position continue) + petite barre de PV.
+              for (final s in _sbires)
+                () {
+                  final c0 = centerD(s.x, s.y);
+                  return Positioned(
+                    left: c0.dx - slot / 2,
+                    top: c0.dy - slot / 2,
+                    width: slot,
+                    height: slot,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text('🕷️', style: TextStyle(fontSize: slot * 0.44)),
+                        Container(
+                          width: slot * 0.6,
+                          height: 3,
+                          decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(.5),
+                              borderRadius: BorderRadius.circular(2)),
+                          child: FractionallySizedBox(
+                            alignment: Alignment.centerLeft,
+                            widthFactor: (s.hp / s.maxHp).clamp(0.0, 1.0),
+                            child: Container(
+                                decoration: BoxDecoration(
+                                    color: _kEnemy,
+                                    borderRadius: BorderRadius.circular(2))),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }(),
+              // Flèches en vol (marron, dérivées du temps).
+              for (final s in _shots)
+                () {
+                  final p = ((_gameMs - s.startMs) / s.durMs).clamp(0.0, 1.0);
+                  final from = centerD(s.from.dx, s.from.dy);
+                  final to = centerD(s.to.dx, s.to.dy);
+                  final pos = Offset.lerp(from, to, p)!;
+                  final ang = (to - from).direction;
+                  return Positioned(
+                    left: pos.dx - aw / 2,
+                    top: pos.dy - ah / 2,
+                    child: Transform.rotate(
+                      angle: ang,
+                      child: CustomPaint(
+                          size: Size(aw, ah),
+                          painter: const _ArrowPainter()),
+                    ),
+                  );
+                }(),
+              // Barre de PV de la porte (au-dessus du chokepoint).
+              if (_tdMode)
+                () {
+                  final c0 = centerD(9, 4.1);
+                  final bw = slot * 2.6;
+                  return Positioned(
+                    left: c0.dx - bw / 2,
+                    top: c0.dy - 4,
+                    child: Column(children: [
+                      Text('🚪 ${(_gateHp).round()}',
+                          style: TextStyle(
+                              color: const Color(0xFFC8924A),
+                              fontSize: slot * 0.28,
+                              fontWeight: FontWeight.w800,
+                              shadows: const [
+                                Shadow(color: Colors.black, blurRadius: 2)
+                              ])),
+                      Container(
+                        width: bw,
+                        height: 5,
+                        decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(.55),
+                            borderRadius: BorderRadius.circular(3)),
+                        child: FractionallySizedBox(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: (_gateHp / _gateHpMax).clamp(0.0, 1.0),
+                          child: Container(
+                              decoration: BoxDecoration(
+                                  color: const Color(0xFF8B5A2B),
+                                  borderRadius: BorderRadius.circular(3))),
+                        ),
+                      ),
+                    ]),
+                  );
+                }(),
+            ],
+          ),
         ),
       );
     });
@@ -914,7 +1353,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
       Territory t, UnifiedWorld w, int x, int y, double inner, String avatar,
       {bool isSpider = false}) {
     final id = '${x}_$y';
-    final revealed = _revealed.contains(id);
+    final revealed = _revealed.contains(id) || _showCoords;
     final isAvatar = _pos.x == x && _pos.y == y;
 
     // Hors vision : brouillard noir, non tappable.
@@ -957,24 +1396,54 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
       child = Text('🏰', style: TextStyle(fontSize: inner * 0.5));
     }
 
+    // Porte en bois (chokepoint) : recouvre le mur en planches.
+    if (w.isGate(x, y)) {
+      bg = const Color(0xFF6B4423).withOpacity(.7);
+      border = const Color(0xFF3E2A18);
+      child = Text('🚪', style: TextStyle(fontSize: inner * 0.5));
+    }
+    // Carte ennemie (spawner) = le même envahisseur araignée que l'invasion,
+    // mais il lâche de petites araignées.
+    if (w.isSpawner(x, y)) {
+      bg = _kEnemy.withOpacity(.2);
+      border = _kEnemy.withOpacity(.7);
+      child = Text('🕷️', style: TextStyle(fontSize: inner * 0.5));
+    }
+
     // Grotte (overlay depuis le doc territoire).
     final caveId = w.caveIdAt(x, y);
     if (caveId != null) {
       final cave = t.caveById(caveId);
       final mine = cave != null && cave.ownerUid == t.uid;
-      final col = mine ? _kBlue : _kEnemy;
+      // Grotte à moi = couleur de son domaine (dashboard d'équilibre) ;
+      // grotte prise = rouge (réservé à l'ennemi).
+      final col = mine ? _caveColor(cave) : _kEnemy;
       bg = col.withOpacity(.22);
       border = col.withOpacity(.7);
+      final name = cave != null ? _domainName(cave.domainId) : '';
       child = Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text('🕳️', style: TextStyle(fontSize: inner * 0.36)),
+          Text('🕳️', style: TextStyle(fontSize: inner * 0.32)),
           Text('${cave?.blueLevel ?? 0}',
               style: TextStyle(
                   color: col,
-                  fontSize: inner * 0.26,
+                  fontSize: inner * 0.24,
                   fontWeight: FontWeight.w900,
                   height: 1)),
+          if (inner >= 30 && name.isNotEmpty)
+            SizedBox(
+              width: inner,
+              child: Text(name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      color: col.withOpacity(.9),
+                      fontSize: inner * 0.16,
+                      fontWeight: FontWeight.w700,
+                      height: 1.1)),
+            ),
         ],
       );
     }
@@ -1018,6 +1487,78 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
                   : child,
     );
 
-    return GestureDetector(onTap: () => _onTap(x, y), child: tile);
+    final shown = _showCoords
+        ? Stack(
+            clipBehavior: Clip.none,
+            children: [
+              tile,
+              Positioned(
+                left: 3,
+                top: 2,
+                child: Text('$x,$y',
+                    style: TextStyle(
+                        fontSize: (inner * 0.26).clamp(7.0, 11.0),
+                        height: 1,
+                        color: Colors.white.withOpacity(.75),
+                        fontWeight: FontWeight.w700,
+                        shadows: const [
+                          Shadow(color: Colors.black, blurRadius: 2)
+                        ])),
+              ),
+            ],
+          )
+        : tile;
+    return GestureDetector(onTap: () => _onTap(x, y), child: shown);
   }
+}
+
+/// Flèche dessinée pointant vers +x (la droite) : hampe + pointe (réaliste, sans
+/// empennage). Marron. Orientée vers la cible par le `Transform.rotate` parent.
+/// Socle réutilisable pour « tourelle tire sur la grotte/le sbire ».
+const _kArrowWood = Color(0xFF6B4423); // marron hampe
+const _kArrowHead = Color(0xFF3E2A18); // pointe (plus sombre)
+
+/// Sbire TD (éphémère) : position continue en coords de tuiles, PV, état d'assaut.
+class _Sbire {
+  final int id;
+  double x, y, hp;
+  final double maxHp;
+  bool atGate = false;
+  _Sbire(this.id, this.x, this.y, this.hp) : maxHp = hp;
+}
+
+/// Flèche en vol : from/to en coords de tuiles, animée par le temps (startMs+durMs).
+class _Shot {
+  final Offset from, to;
+  final int startMs, durMs;
+  const _Shot(this.from, this.to, this.startMs, this.durMs);
+}
+
+class _ArrowPainter extends CustomPainter {
+  const _ArrowPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, h = size.height, cy = h / 2;
+    final sw = (h * 0.22).clamp(1.2, 2.6);
+    final shaft = Paint()
+      ..color = _kArrowWood
+      ..strokeWidth = sw
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    final tipX = w;
+    // Hampe (du talon jusqu'au début de la pointe).
+    canvas.drawLine(Offset(w * 0.05, cy), Offset(w * 0.78, cy), shaft);
+    // Pointe (triangle plein, sombre).
+    final headLen = w * 0.26, headHalf = h * 0.42;
+    final head = Path()
+      ..moveTo(tipX, cy)
+      ..lineTo(tipX - headLen, cy - headHalf)
+      ..lineTo(tipX - headLen, cy + headHalf)
+      ..close();
+    canvas.drawPath(head, Paint()..color = _kArrowHead);
+  }
+
+  @override
+  bool shouldRepaint(_ArrowPainter old) => false;
 }

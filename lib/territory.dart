@@ -13,11 +13,16 @@ enum TerrTile { wall, floor, castle, cave }
 /// (niveau `blueLevel`, monté en battant ton propre boss). `occupied` = un
 /// envahisseur s'y est installé (siège à venir, sous-tranche D).
 class TerritoryCave {
-  final String id; // 'nw' | 'ne' | 'sw' | 'se'
+  /// id = id du DOMAINE de vie que cette grotte incarne (la map = miroir de
+  /// l'équilibre des domaines). Docs legacy : 'nw'|'ne'|'sw'|'se' (migrés au load).
+  final String id;
   final int x, y;
   final String ownerUid;
   final int blueLevel;
   final bool occupied;
+  // Domaine de vie incarné par la grotte (= id, conservé explicite pour la
+  // lisibilité et la rétro-compat des docs legacy positionnels). Vide = legacy.
+  final String domainId;
 
   const TerritoryCave({
     required this.id,
@@ -26,9 +31,11 @@ class TerritoryCave {
     required this.ownerUid,
     required this.blueLevel,
     required this.occupied,
+    this.domainId = '',
   });
 
-  TerritoryCave copyWith({String? ownerUid, int? blueLevel, bool? occupied}) =>
+  TerritoryCave copyWith(
+          {String? ownerUid, int? blueLevel, bool? occupied, String? domainId}) =>
       TerritoryCave(
         id: id,
         x: x,
@@ -36,6 +43,7 @@ class TerritoryCave {
         ownerUid: ownerUid ?? this.ownerUid,
         blueLevel: blueLevel ?? this.blueLevel,
         occupied: occupied ?? this.occupied,
+        domainId: domainId ?? this.domainId,
       );
 
   static TerritoryCave from(Map j) => TerritoryCave(
@@ -45,6 +53,7 @@ class TerritoryCave {
         ownerUid: (j['ownerUid'] ?? '') as String,
         blueLevel: (j['blueLevel'] as num?)?.toInt() ?? 1,
         occupied: (j['occupied'] as bool?) ?? false,
+        domainId: (j['domainId'] ?? '') as String,
       );
 
   Map<String, dynamic> toJson() => {
@@ -54,6 +63,7 @@ class TerritoryCave {
         'ownerUid': ownerUid,
         'blueLevel': blueLevel,
         'occupied': occupied,
+        'domainId': domainId,
       };
 }
 
@@ -232,16 +242,27 @@ class Territory {
       };
 }
 
-/// Territoire initial d'un user : 9×9, château au centre, 4 grottes aux coins,
-/// toutes possédées (niveau 1), brouillard actif. Seed déterministe depuis l'uid.
-Territory initialTerritory(String uid, String pseudo, {int? seed}) {
+/// Territoire initial d'un user : 9×9, château au centre, **une grotte par
+/// domaine de vie** (la map = miroir de l'équilibre des domaines), toutes
+/// possédées (niveau 1), brouillard actif. Seed déterministe depuis l'uid.
+/// `domainIds` vide (legacy/inconnu) → retombe sur les 4 coins historiques.
+Territory initialTerritory(String uid, String pseudo,
+    {int? seed, List<String> domainIds = const []}) {
   const cols = 9, rows = 9;
   final s = seed ?? (uid.hashCode & 0x7fffffff);
+  final ids = domainIds.isEmpty ? const ['nw', 'ne', 'sw', 'se'] : domainIds;
+  final pts = perimeterSlots(cols, rows, ids.length);
   final caves = <TerritoryCave>[
-    TerritoryCave(id: 'nw', x: 0, y: 0, ownerUid: uid, blueLevel: 1, occupied: false),
-    TerritoryCave(id: 'ne', x: cols - 1, y: 0, ownerUid: uid, blueLevel: 1, occupied: false),
-    TerritoryCave(id: 'sw', x: 0, y: rows - 1, ownerUid: uid, blueLevel: 1, occupied: false),
-    TerritoryCave(id: 'se', x: cols - 1, y: rows - 1, ownerUid: uid, blueLevel: 1, occupied: false),
+    for (int i = 0; i < ids.length; i++)
+      TerritoryCave(
+        id: ids[i],
+        x: pts[i].x,
+        y: pts[i].y,
+        ownerUid: uid,
+        blueLevel: 1,
+        occupied: false,
+        domainId: domainIds.isEmpty ? '' : ids[i],
+      ),
   ];
   return Territory(
     uid: uid,
@@ -253,6 +274,23 @@ Territory initialTerritory(String uid, String pseudo, {int? seed}) {
     fog: true,
     caves: caves,
   );
+}
+
+/// `n` positions distinctes réparties sur le périmètre d'une grille cols×rows
+/// (coins d'abord, puis milieux d'arêtes). Positions vestigiales pour la
+/// god-view 9×9 retirée ; la géométrie jouée vient de `generateUnifiedWorld`.
+List<Point<int>> perimeterSlots(int cols, int rows, int n) {
+  final ring = <Point<int>>[];
+  for (int x = 0; x < cols; x++) ring.add(Point(x, 0));
+  for (int y = 1; y < rows; y++) ring.add(Point(cols - 1, y));
+  for (int x = cols - 2; x >= 0; x--) ring.add(Point(x, rows - 1));
+  for (int y = rows - 2; y >= 1; y--) ring.add(Point(0, y));
+  if (n <= 0) return const [];
+  final out = <Point<int>>[];
+  for (int i = 0; i < n; i++) {
+    out.add(ring[((i * ring.length) ~/ n) % ring.length]);
+  }
+  return out;
 }
 
 /// Grille DÉTERMINISTE depuis la seed : tout en mur, puis on creuse un chemin

@@ -2485,15 +2485,16 @@ class FirestoreSync {
       .snapshots()
       .map((s) => s.exists ? Territory.from(s.data()!) : null);
 
-  /// Crée ma map si elle n'existe pas encore (toutes grottes à moi, brouillard).
+  /// Crée ma map si elle n'existe pas encore (une grotte par domaine, brouillard).
   /// Idempotent. Trust-client v1 (CF-autoritatif au PvP plus tard).
-  Future<void> ensureTerritory(String pseudo) async {
+  Future<void> ensureTerritory(String pseudo,
+      {List<String> domainIds = const []}) async {
     if (uid == null) return;
     final ref = _db.collection('territories').doc(uid);
     final snap = await ref.get();
     if (snap.exists) return;
     await ref.set({
-      ...initialTerritory(uid!, pseudo).toJson(),
+      ...initialTerritory(uid!, pseudo, domainIds: domainIds).toJson(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }

@@ -24,6 +24,11 @@ class UnifiedWorld {
   // rochers 🪨 sur des cases mur. Encodés "x_y".
   final Set<String> bushes;
   final Set<String> rocks;
+  // Porte en bois (chokepoint) : murs spéciaux à PV partagé que l'ennemi doit
+  // forcer avant d'atteindre les domaines/château. Encodées "x_y".
+  final Set<String> gate;
+  // Carte ennemie (spawner) : cases d'où les sbires sont lâchés. Encodées "x_y".
+  final Set<String> spawner;
 
   const UnifiedWorld({
     required this.seed,
@@ -35,10 +40,14 @@ class UnifiedWorld {
     required this.caves,
     required this.bushes,
     required this.rocks,
+    this.gate = const {},
+    this.spawner = const {},
   });
 
   bool hasBush(int x, int y) => bushes.contains('${x}_$y');
   bool hasRock(int x, int y) => rocks.contains('${x}_$y');
+  bool isGate(int x, int y) => gate.contains('${x}_$y');
+  bool isSpawner(int x, int y) => spawner.contains('${x}_$y');
 
   bool inBounds(int x, int y) => x >= 0 && x < cols && y >= 0 && y < rows;
   bool walkable(int x, int y) => inBounds(x, y) && grid[y][x] != UwTile.wall;
@@ -57,7 +66,8 @@ class UnifiedWorld {
 /// CREUSE des couloirs garantissant la connexité : épine horizontale gauche→droite
 /// (passe par le château), poche ouverte côté farm, anneau de couloirs dans la
 /// bande territoire pour atteindre les 4 grottes des coins.
-UnifiedWorld generateUnifiedWorld(int seed) {
+UnifiedWorld generateUnifiedWorld(int seed,
+    {List<String> caveIds = const ['nw', 'ne', 'sw', 'se']}) {
   final rng = Random(seed);
   // Grande carte : on respire (zone farm large, grottes espacées, vrai voyage
   // gauche→droite). Surtout en hauteur (la largeur du dialog web est bornée).
@@ -71,22 +81,24 @@ UnifiedWorld generateUnifiedWorld(int seed) {
     if (grid[y][x] == UwTile.wall) grid[y][x] = UwTile.floor;
   }
 
-  final midY = rows ~/ 2; // 4
-  final centerX = cols ~/ 2; // 7
+  final midY = rows ~/ 2; // 7
+  final castleX = cols - 1; // 16 — château tout à droite
+  const gateX = 9; // porte en bois (chokepoint)
+  const gateTop = 5, gateBot = 9;
 
-  // Épine horizontale : entrée gauche → château → bande droite.
+  // Épine horizontale : entrée gauche → (porte) → domaines → château à droite.
   for (int x = 0; x < cols; x++) floor(x, midY);
 
-  // Zone FARM (gauche) : poche ouverte pour la chasse.
+  // Zone FARM (gauche, AVANT la porte) : poche ouverte pour poser les tours.
   for (int y = 2; y <= rows - 3; y++) {
-    for (int x = 0; x <= centerX - 2; x++) floor(x, y);
+    for (int x = 0; x <= gateX - 2; x++) floor(x, y); // x 0..7
   }
 
-  // Bande TERRITOIRE (droite) : anneau de couloirs reliant les 4 coins.
-  final leftCol = cols - 4; // 11
-  final rightCol = cols - 1; // 14
+  // Bande TERRITOIRE (APRÈS la porte) : grottes décalées en cols 11/14.
+  final leftCol = 11;
+  final rightCol = 14;
   const topRow = 1;
-  final botRow = rows - 2; // 7
+  final botRow = rows - 2; // 13
   for (int y = topRow; y <= botRow; y++) {
     floor(leftCol, y);
     floor(rightCol, y);
@@ -95,26 +107,62 @@ UnifiedWorld generateUnifiedWorld(int seed) {
     floor(x, topRow);
     floor(x, botRow);
   }
-  // Relie l'épine à la bande (le centre du parcours doit toucher l'anneau).
-  for (int x = centerX; x <= rightCol; x++) floor(x, midY);
+  // Relie l'épine à la bande et au château (couloir y=midY de la porte au château :
+  // on traverse tous les domaines pour arriver au château).
+  for (int x = gateX + 1; x <= castleX; x++) floor(x, midY);
 
-  // Quelques poches de sol déterministes côté farm (texture la chasse à venir).
+  // Quelques poches de sol déterministes côté farm (texture + emplacements tours).
   final pockets = 4 + rng.nextInt(3);
   for (int i = 0; i < pockets; i++) {
-    floor(rng.nextInt(centerX - 1), rng.nextInt(rows));
+    floor(rng.nextInt(gateX - 1), rng.nextInt(rows));
   }
 
-  // Château au centre.
-  grid[midY][centerX] = UwTile.castle;
+  // Château tout à droite, au milieu (le cœur, derrière tous les domaines).
+  grid[midY][castleX] = UwTile.castle;
 
-  // Grottes aux 4 coins de la bande droite (restent des cases sol : l'avatar
-  // engage au contact/dessus en T1).
-  final caves = <String, Point<int>>{
-    'nw': Point(leftCol, topRow),
-    'ne': Point(rightCol, topRow),
-    'sw': Point(leftCol, botRow),
-    'se': Point(rightCol, botRow),
-  };
+  // Porte en bois (x=9, y 5..9) : murs spéciaux (bloquent le passage) à PV
+  // partagé — l'ennemi doit la forcer avant d'atteindre les domaines.
+  final gate = <String>{};
+  for (int gy = gateTop; gy <= gateBot; gy++) {
+    grid[gy][gateX] = UwTile.wall;
+    gate.add('${gateX}_$gy');
+  }
+
+  // Carte ennemie (spawner) : x=0, y 6..8 — d'où les sbires sont lâchés.
+  final spawner = <String>{};
+  for (int sy = 6; sy <= 8; sy++) {
+    floor(0, sy);
+    spawner.add('0_$sy');
+  }
+
+  // Grottes = domaines, réparties sur les deux colonnes de la bande droite
+  // (leftCol/rightCol, entièrement creusées → toujours atteignables). Le nombre
+  // suit la liste des domaines (N variable). Restent des cases sol : l'avatar
+  // engage au contact/dessus.
+  final ids = caveIds.isEmpty ? const ['nw', 'ne', 'sw', 'se'] : caveIds;
+  final caves = <String, Point<int>>{};
+  final leftCount = (ids.length + 1) ~/ 2; // colonne gauche prend l'impair
+  List<int> rowsFor(int count) {
+    if (count <= 0) return const [];
+    if (count == 1) return [(topRow + botRow) ~/ 2];
+    final step = (botRow - topRow) / (count - 1);
+    return [for (int i = 0; i < count; i++) (topRow + step * i).round()];
+  }
+
+  final leftRows = rowsFor(leftCount);
+  final rightRows = rowsFor(ids.length - leftCount);
+  int li = 0, ri = 0;
+  for (int i = 0; i < ids.length; i++) {
+    final Point<int> p;
+    if (i.isEven && li < leftRows.length) {
+      p = Point(leftCol, leftRows[li++]);
+    } else if (ri < rightRows.length) {
+      p = Point(rightCol, rightRows[ri++]);
+    } else {
+      p = Point(leftCol, leftRows[li++]);
+    }
+    caves[ids[i]] = p;
+  }
   bool isCave(int x, int y) =>
       caves.values.any((p) => p.x == x && p.y == y);
 
@@ -129,14 +177,16 @@ UnifiedWorld generateUnifiedWorld(int seed) {
       tries < 800) {
     tries++;
     final bx = rng.nextInt(cols), by = rng.nextInt(rows);
+    final key = '${bx}_$by';
+    if (gate.contains(key) || spawner.contains(key)) continue;
     final isFloor = grid[by][bx] == UwTile.floor;
     if (isFloor) {
       if (bushes.length >= bushCount) continue;
       if (isCave(bx, by) || (bx == 0 && by == midY)) continue; // grottes / entrée
-      bushes.add('${bx}_$by');
+      bushes.add(key);
     } else if (grid[by][bx] == UwTile.wall) {
       if (rocks.length >= rockCount) continue;
-      rocks.add('${bx}_$by');
+      rocks.add(key);
     }
   }
 
@@ -146,9 +196,11 @@ UnifiedWorld generateUnifiedWorld(int seed) {
     rows: rows,
     grid: grid,
     start: Point(0, midY),
-    castle: Point(centerX, midY),
+    castle: Point(castleX, midY),
     caves: caves,
     bushes: bushes,
     rocks: rocks,
+    gate: gate,
+    spawner: spawner,
   );
 }

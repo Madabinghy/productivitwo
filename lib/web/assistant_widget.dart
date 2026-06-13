@@ -13,6 +13,11 @@ const _kTypeSpeed = Duration(milliseconds: 22);
 final ValueNotifier<List<AssistantMessageData>> assistantMessagesNotifier =
     ValueNotifier<List<AssistantMessageData>>(const []);
 
+/// Coupe l'overlay assistant (Orion) tant que true — ex. dans l'arène/le Monde,
+/// où il gênerait le jeu. Posé par l'écran qui veut le silence, remis à false en
+/// sortant.
+final ValueNotifier<bool> assistantOverlaySuppressed = ValueNotifier<bool>(false);
+
 /// Handler d'action (navigation) enregistré par l'écran d'accueil.
 void Function(AssistantActionData action)? assistantActionHandler;
 
@@ -30,10 +35,14 @@ class GlobalAssistantOverlay extends StatelessWidget {
         Positioned(
           right: 16,
           bottom: 90,
-          child: ValueListenableBuilder<List<AssistantMessageData>>(
-            valueListenable: assistantMessagesNotifier,
-            builder: (context, msgs, _) {
-              if (msgs.isEmpty) return const SizedBox.shrink();
+          child: AnimatedBuilder(
+            animation: Listenable.merge(
+                [assistantMessagesNotifier, assistantOverlaySuppressed]),
+            builder: (context, _) {
+              final msgs = assistantMessagesNotifier.value;
+              if (assistantOverlaySuppressed.value || msgs.isEmpty) {
+                return const SizedBox.shrink();
+              }
               // Material : fournit le contexte Material requis par l'overlay
               // (il vit hors de tout Scaffold ici).
               return Material(
