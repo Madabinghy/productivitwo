@@ -188,10 +188,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   //    teinté au domaine, avatar dans le gazon. On échange le monde actif
   //    (_w/_pos/_revealed) et on restaure en sortant.
   bool _inInterior = false;
+  String? _interiorCaveId; // domaine de la grotte intérieure (= filtre nuisibles)
   Color _interiorColor = _kBlue;
+  int _reconquestDeck = 0; // masse gagnée en battant les nuisibles du domaine
+  // La porte x9 = TOILES 🕸️ : tombent PENDANT le combat d'assaut (= _gateHp ≤ 0),
+  // pas par un tap. _webBroken ouvre alors le passage (`_passable`) + rend 💥.
+  bool _webBroken = false;
   UnifiedWorld? _savedW;
   Point<int>? _savedPos;
   Set<String>? _savedRevealed;
+  Map<String, ({String type, String id})>? _savedFarmPests;
   Offset _redSpawn = const Offset(16, 6); // mon défenseur 🦂 : vit sur sa case (16,6)
   Offset? _redWander; // cible d'errance de mon attaquant rouge
   int _myMass = 0; // masse de MON deck (décrémentée à chaque sbire émis)
@@ -324,8 +330,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         if (type == null) break; // deck vidé
         _myDeck[type] = _myDeck[type]! - 1;
         _myMass = (_myMass - (_massByType[type] ?? 0)).clamp(0, 1 << 30);
-        _myAtk.add(_Atk(_sbireSeq++, type, _redSpawn.dx, _redSpawn.dy)
-          ..wp = _randomWaypoint(w));
+        // À l'intérieur, les sbires de l'araignée jaillissent de SA GROTTE (repaire) ;
+        // sur la map principale, ils partent de mon défenseur.
+        final ox = _inInterior ? _grotteTarget.dx : _redSpawn.dx;
+        final oy = _inInterior ? _grotteTarget.dy : _redSpawn.dy;
+        _myAtk.add(_Atk(_sbireSeq++, type, ox, oy)..wp = _randomWaypoint(w));
       }
       _nextWaveMs += 10000;
     }
@@ -520,7 +529,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       }
     }
     _sbires.removeWhere((s) => s.hp <= 0);
-    // 5) Conditions de fin de Phase 1.
+    // 5) Conditions de fin de Phase 1. À l'INTÉRIEUR : rôles inversés — grotte
+    //    prise = JE GAGNE (reprise), grotte sauvée/réserve épuisée = JE PERDS.
+    if (_inInterior && _gateHp <= 0) _webBroken = true; // toiles tombées → passage
     if (_gateHp <= 0) {
       // Phase 2 : assaut sur la grotte. PV grotte à 0 → PRISE (rouge). Sinon, si
       // toute la vague est neutralisée → grotte SAUVÉE.
@@ -528,17 +539,35 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         // Grotte prise : on laisse TOUTE la horde finir de rentrer dedans (vraie
         // invasion). Fin seulement quand le dernier sbire est entré.
         if (_sbires.isEmpty) {
-          _phase1 = false;
-          _toast('🔴 Grotte ENVAHIE — domaine perdu ! (Phase 2)', _kEnemy);
+          if (_inInterior) {
+            _finishInteriorAssault(
+                win: true, message: '🔵 Grotte reprise — l\'araignée est délogée !');
+          } else {
+            _phase1 = false;
+            _toast('🔴 Grotte ENVAHIE — domaine perdu ! (Phase 2)', _kEnemy);
+          }
         }
       } else if (_sbires.isEmpty) {
-        _phase1 = false;
-        _toast('🛡️ Grotte sauvée — assaut repoussé sur la grotte !', _kBlue);
+        if (_inInterior) {
+          _finishInteriorAssault(
+              win: false,
+              message: '🛡️ L\'araignée a tenu sa grotte — refarme et relance ⚔️.');
+        } else {
+          _phase1 = false;
+          _toast('🛡️ Grotte sauvée — assaut repoussé sur la grotte !', _kBlue);
+        }
       }
     } else if (_garrison <= 0 && _sbires.isEmpty && _myAtk.isEmpty) {
-      // Toute la garnison neutralisée AVANT de casser la porte → défense réussie.
-      _phase1 = false;
-      _toast('🛡️ Invasion repoussée — garnison anéantie avant la porte !', _kBlue);
+      // Réserve d'assaut épuisée AVANT de casser la porte.
+      if (_inInterior) {
+        _finishInteriorAssault(
+            win: false,
+            message:
+                '🛡️ Ton deck de reconquête s\'est épuisé avant la porte — refarme.');
+      } else {
+        _phase1 = false;
+        _toast('🛡️ Invasion repoussée — garnison anéantie avant la porte !', _kBlue);
+      }
     }
     // (Phase terminée : le défenseur rentre à pied chez lui — géré en tête de
     //  _simulate dans la branche !_phase1.)
@@ -672,13 +701,35 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _savedW = w;
       _savedPos = _pos;
       _savedRevealed = {..._revealed};
+      _savedFarmPests = {..._farmPests};
       _interiorColor = cave != null ? _caveColor(cave) : _kBlue;
+      _interiorCaveId = caveId;
+      // Deck d'assaut du scorpion AMORCÉ par ta masse de captures à vie (même
+      // source que la défense de la map principale) → jamais vide si tu as déjà
+      // capturé ; farmer les nuisibles du domaine l'AUGMENTE par-dessus.
+      _reconquestDeck = logic.lifetimeBattleMasse;
+      _webBroken = false; // toiles intactes jusqu'à l'assaut
       _inInterior = true;
-      _tdMode = false; // pas de TD à l'intérieur
+      _tdMode = false; // pas de TD tant que l'assaut n'est pas lancé
+      // Purge de tout combat de la MAP PRINCIPALE (sinon scorpion/sbires fantômes
+      // restés à leur ancienne position fuient dans la grotte).
+      _phase1 = false;
+      _assault = false;
+      _sbires.clear();
+      _myAtk.clear();
+      _shots.clear();
+      _myDeck.clear();
+      _garrison = 0;
+      _grotteTaken = false;
+      _invaderGone = false;
+      _captureStartMs = null;
+      _gateHp = _gateHpMax;
       _w = interior;
       _pos = interior.start; // avatar dans le gazon (entrée gauche)
       _revealed.clear();
+      _farmPests.clear();
       _revealAround(_pos);
+      _populateFarm(); // peuple le gazon avec les nuisibles de CE domaine
       _toast(
           '🕳️ Tu entres dans ${cave != null ? _domainName(cave.domainId) : "la grotte"} '
           '— reconquiers-la !',
@@ -696,11 +747,97 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _revealed
         ..clear()
         ..addAll(_savedRevealed ?? const <String>{});
+      _farmPests
+        ..clear()
+        ..addAll(_savedFarmPests ?? const {});
       _inInterior = false;
+      _interiorCaveId = null;
       _savedW = null;
       _savedPos = null;
       _savedRevealed = null;
+      _savedFarmPests = null;
+      _tdMode = false;
+      _webBroken = false;
     });
+  }
+
+  // Assaut INTÉRIEUR (reconquête) = MIROIR de _startPhase1, rôles inversés :
+  // l'ARAIGNÉE défend (deck _myDeck émis en vagues, tient l'arc, possède les
+  // tourelles/arcs déjà posés) ; MOI j'attaque — mon deck de reconquête farmé
+  // joue la réserve d'assaut (= _garrison de l'« envahisseur » = mon scorpion 🦂).
+  // Le moteur _simulate est réutilisé tel quel ; seules la résolution finale
+  // (grotte prise = je GAGNE) et le visuel (🕷️↔🦂) sont inversés via _inInterior.
+  void _startInteriorAssault() {
+    final w = _w;
+    if (w == null || !_inInterior) return;
+    if (_reconquestDeck <= 0) {
+      _toast('Deck vide — bats les nuisibles du domaine avant l\'assaut ⚔️.',
+          _interiorColor);
+      return;
+    }
+    setState(() {
+      _tdMode = true;
+      _phase1 = true;
+      _assault = false;
+      _webBroken = false;
+      _sbires.clear();
+      _myAtk.clear();
+      _shots.clear();
+      _grotteTaken = false;
+      _invaderGone = false;
+      _captureStartMs = null;
+      _grotteHpAtCapture = 0;
+      // Deck de l'ARAIGNÉE (défenseur) — fixe pour l'instant : masse 30.
+      const sp = 4, sc = 1, se = 0;
+      _myDeck
+        ..clear()
+        ..addAll({'spider': sp, 'scorpion': sc, 'snake': se});
+      _myMass = sp * GoldEconomy.masseSpider +
+          sc * GoldEconomy.masseScorpion +
+          se * GoldEconomy.masseSerpent;
+      // MA réserve d'assaut = le deck de reconquête farmé (= garnison invader).
+      _garrison = _reconquestDeck;
+      _enemyDeckPower = _garrison;
+      // Araignée (défenseur) près de sa grotte 'coeur' ; mon scorpion (attaquant)
+      // démarre LÀ OÙ EST L'AVATAR (il l'accompagne depuis l'entrée).
+      _redSpawn = const Offset(11, 6);
+      _redHome = const Offset(11, 6);
+      _redWander = null;
+      _invX = _pos.x.toDouble();
+      _invY = _pos.y.toDouble();
+      _revealAround(_pos);
+      _grotteTarget = const Offset(11, 7);
+      _grotteCaveId = 'coeur';
+      _grotteHpMax = 60;
+      _grotteHp = _grotteHpMax;
+      _arrows = logic.weaponsAvailable('arc');
+      _gateHp = _gateHpMax;
+      _nextWaveMs = _gameMs;
+      final total = sp + sc + se;
+      _emitBatch = total <= 0 ? 1 : ((total + 9) ~/ 10);
+      _toast('⚔️ Assaut lancé — déloge l\'araignée !', _interiorColor);
+    });
+  }
+
+  // Fin d'assaut intérieur (appelé par _simulate). win = grotte 'coeur' prise.
+  void _finishInteriorAssault({required bool win, required String message}) {
+    _tdMode = false;
+    _phase1 = false;
+    _toast(message, win ? _kBlue : _kEnemy);
+    if (!win) return;
+    // Victoire → reprendre la VRAIE grotte du domaine (territories/{uid}).
+    final base = _t;
+    final me = sync.uid;
+    final id = _interiorCaveId;
+    if (base != null && me != null && id != null && base.caveById(id) != null) {
+      final caves = base.caves
+          .map((c) => c.id == id
+              ? c.copyWith(ownerUid: me, occupied: false, blueLevel: 1)
+              : c)
+          .toList();
+      sync.saveTerritory(base.copyWith(caves: caves, mapTaken: false));
+    }
+    _exitInterior();
   }
 
   Future<void> _boot() async {
@@ -839,17 +976,34 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         if (_revealed.add(id)) added.add(id);
       }
     }
+    // Intérieur : révéler la case (8,7) devant les TOILES 🕸️ lève TOUT le
+    // brouillard → on voit le château (16,7) et toute la grotte derrière la porte.
+    if (_inInterior && _revealed.contains('8_7')) {
+      for (var y = 0; y < w.rows; y++) {
+        for (var x = 0; x < w.cols; x++) {
+          if (_revealed.add('${x}_$y')) added.add('${x}_$y');
+        }
+      }
+    }
     return added;
   }
 
   List<Point<int>> _ortho(int x, int y) {
-    final w = _w!;
     return [
       Point(x + 1, y),
       Point(x - 1, y),
       Point(x, y + 1),
       Point(x, y - 1),
-    ].where((p) => w.walkable(p.x, p.y) || _isBowWalkable(p.x, p.y)).toList();
+    ].where((p) => _passable(p.x, p.y)).toList();
+  }
+
+  // Franchissable = sol/arc, OU les TOILES 🕸️ une fois percées (intérieur).
+  bool _passable(int x, int y) {
+    final w = _w;
+    if (w == null) return false;
+    return w.walkable(x, y) ||
+        _isBowWalkable(x, y) ||
+        (_inInterior && _webBroken && w.isGate(x, y));
   }
 
   // BFS sur cases révélées + walkable (on ne traverse pas le brouillard).
@@ -915,7 +1069,6 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // d'abord), purgés quand l'item est rattrapé (PV 0). Cap visuel, repioche dans le
   // backlog restant.
   void _populateFarm() {
-    if (_inInterior) return; // les nuisibles de l'intérieur = tranche 2
     final w = _w, t = _t;
     if (w == null || t == null) return;
     _farmPests.removeWhere((_, e) => logic.enemyHp(e.type, e.id) <= 0);
@@ -923,9 +1076,15 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     final room = cap - _farmPests.length;
     if (room <= 0) return;
     final placed = _farmPests.values.map((e) => e.id).toSet();
-    final backlog = logic.backlogEnemies()
+    var backlog = logic.backlogEnemies()
         .where((e) => !placed.contains(e.id))
         .toList();
+    if (_inInterior) {
+      // À l'intérieur d'une grotte : SEULEMENT les nuisibles de CE domaine.
+      backlog = backlog
+          .where((e) => logic.enemyDomainId(e.type, e.id) == _interiorCaveId)
+          .toList();
+    }
     if (backlog.isEmpty) return;
     // Toutes les cases farm libres, MÉLANGÉES (seed stable) → répartition sur TOUTE
     // la zone (pas un cluster à l'entrée). Le brouillard les révèle en explorant.
@@ -965,7 +1124,17 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       rootContext: context,
       onChanged: () {
         if (!mounted) return;
-        if (logic.enemyHp(c.type, c.id) <= 0) _farmPests.remove(c.tileId);
+        if (logic.enemyHp(c.type, c.id) <= 0) {
+          // À l'intérieur : battre un nuisible du domaine gonfle ton deck de
+          // reconquête (= la masse du nuisible : 🕷️5 / 🦂10 / 🐍15).
+          if (_inInterior && _farmPests.containsKey(c.tileId)) {
+            final gain = _massByType[c.type] ?? 0;
+            _reconquestDeck += gain;
+            _toast('+$gain deck de reconquête 🦂 (total $_reconquestDeck)',
+                _interiorColor);
+          }
+          _farmPests.remove(c.tileId);
+        }
         setState(() {});
       },
       onLaunchedTimer: () {
@@ -1278,7 +1447,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     final w = _w;
     if (w == null || _busy) return;
     final nx = _pos.x + dx, ny = _pos.y + dy;
-    if (!w.walkable(nx, ny) && !_isBowWalkable(nx, ny)) return;
+    if (!_passable(nx, ny)) return;
     _step(Point(nx, ny));
     _persistWalk();
   }
@@ -1339,7 +1508,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     }
     final p = _pos;
     final caveId = w.caveIdAt(x, y);
-    final farmPest = _inInterior ? null : _farmPests['${x}_$y'];
+    final farmPest = _farmPests['${x}_$y'];
     final spider = _inInterior ? null : _spiderPos();
     final isSpider = spider != null && spider.x == x && spider.y == y;
     // Re-tap de la case courante : araignée > ennemi backlog > grotte.
@@ -1353,7 +1522,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       }
       return;
     }
-    if (!w.walkable(x, y)) {
+    if (!_passable(x, y)) {
       _toast('🧱 Un mur bloque ce passage.', Colors.white38);
       return;
     }
@@ -1743,8 +1912,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         runSpacing: 8,
         alignment: WrapAlignment.center,
         children: [
-          if (_inInterior)
-            pill('🚪 Sortir de la grotte', _interiorColor, _exitInterior),
+          if (_inInterior) ...[
+            if (!_tdMode)
+              pill('⚔️ Lancer l\'assaut', _interiorColor, _startInteriorAssault),
+            pill('🚪 Sortir de la grotte', _interiorColor.withOpacity(.7),
+                _tdMode ? () {} : _exitInterior),
+          ],
           if (!_inInterior) ...[
             pill(
                 _tdMode ? '⚔️ TD ON — pose des tours' : '⚔️ Mode tower-defense',
@@ -1771,6 +1944,15 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           ],
         ],
       ),
+      if (_inInterior && !_tdMode) ...[
+        const SizedBox(height: 6),
+        Text(
+            '🦂 Deck de reconquête : $_reconquestDeck — bats les nuisibles du '
+            'domaine pour le gonfler, puis ⚔️ lance l\'assaut',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                color: _interiorColor, fontSize: 11, fontWeight: FontWeight.w700)),
+      ],
       if (_tdMode) ...[
         const SizedBox(height: 6),
         Text(
@@ -1941,14 +2123,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     ),
                   );
                 }(),
-              // Sbires ENNEMIS lâchés (one-shot, petite araignée vers la porte).
+              // Sbires lâchés (one-shot, vers la porte). À l'intérieur = MES sbires
+              // d'assaut 🦂 ; sur la map principale = les sbires ennemis 🕷️.
               for (final s in _sbires)
                 () {
                   final c0 = centerD(s.x, s.y);
                   return Positioned(
                     left: c0.dx - slot * 0.25,
                     top: c0.dy - slot * 0.25,
-                    child: Text('🕷️', style: TextStyle(fontSize: slot * 0.42)),
+                    child: Text(_inInterior ? '🦂' : '🕷️',
+                        style: TextStyle(fontSize: slot * 0.42)),
                   );
                 }(),
               // MES sbires d'attaque (cerclés de bleu) marchant vers l'envahisseur.
@@ -1970,7 +2154,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     ),
                   );
                 }(),
-              // L'ENVAHISSEUR (Phase 1) — masqué une fois la capture terminée.
+              // L'« ENVAHISSEUR » (Phase 1) — masqué une fois la capture terminée.
+              // À l'intérieur = MON scorpion 🦂 (attaquant) ; sinon = l'ennemi 🕷️.
               if (_phase1 && !_invaderGone)
                 () {
                   final c0 = centerD(_invX, _invY);
@@ -1980,11 +2165,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     width: slot * 1.4,
                     child: Column(
                       children: [
-                        Text('🕷️', style: TextStyle(fontSize: slot * 0.95)),
-                        Text('garnison $_garrison',
+                        Text(_inInterior ? '🦂' : '🕷️',
+                            style: TextStyle(fontSize: slot * 0.95)),
+                        Text(_inInterior ? 'deck $_garrison' : 'garnison $_garrison',
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                                color: _kEnemy,
+                                color: _inInterior ? _interiorColor : _kEnemy,
                                 fontWeight: FontWeight.w900,
                                 fontSize: slot * 0.26,
                                 shadows: const [
@@ -1994,9 +2180,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     ),
                   );
                 }(),
-              // MON défenseur 🦂 : visible sur la map principale (pas à l'intérieur
-              // d'une grotte). Pendant l'attaque il émet mes sbires + affiche son deck.
-              if (!_inInterior)
+              // Le DÉFENSEUR au poste _redSpawn : sur la map principale = MON 🦂
+              // (émet mon deck) ; à l'intérieur pendant l'assaut = l'ARAIGNÉE 🕷️
+              // qui défend sa grotte (émet son deck _myMass).
+              if (!_inInterior || _phase1)
                 () {
                 final c0 = centerD(_redSpawn.dx, _redSpawn.dy);
                 return Positioned(
@@ -2007,20 +2194,49 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     children: [
                       // Deck (juste le nombre) AU-DESSUS : VERT au repos (deck vert
                       // dispo), ROUGE quand il défend (deck en cours de dépense).
-                      Text('${_phase1 ? _myMass : logic.lifetimeBattleMasse}',
+                      Text(_inInterior
+                          ? '$_myMass'
+                          : '${_phase1 ? _myMass : logic.lifetimeBattleMasse}',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                              color: _phase1 ? _kEnemy : _kFarm,
+                              color: (_phase1 || _inInterior) ? _kEnemy : _kFarm,
                               fontWeight: FontWeight.w900,
                               fontSize: slot * 0.28,
                               shadows: const [
                                 Shadow(color: Colors.black, blurRadius: 2)
                               ])),
-                      Text('🦂', style: TextStyle(fontSize: slot * 0.85)),
+                      Text(_inInterior ? '🕷️' : '🦂',
+                          style: TextStyle(fontSize: slot * 0.85)),
                     ],
                   ),
                 );
               }(),
+              // Mon scorpion 🦂 ACCOMPAGNE l'avatar pendant la phase farm (posté à
+              // côté de lui) → au lancement de l'assaut il combat depuis cette case.
+              if (_inInterior && !_phase1)
+                () {
+                  final c0 = centerD(_pos.x.toDouble(), _pos.y.toDouble());
+                  return Positioned(
+                    left: c0.dx - slot * 0.85,
+                    top: c0.dy + slot * 0.05,
+                    child: Text('🦂', style: TextStyle(fontSize: slot * 0.6)),
+                  );
+                }(),
+              // Araignée AU REPOS dans sa grotte (phase farm, avant l'assaut) → on
+              // voit l'ennemi à déloger dès que le brouillard se lève.
+              if (_inInterior && !_phase1)
+                () {
+                  final c = _w?.caves['coeur'];
+                  if (c == null || !_revealed.contains('${c.x}_${c.y}')) {
+                    return const SizedBox.shrink();
+                  }
+                  final c0 = centerD(c.x.toDouble(), c.y.toDouble());
+                  return Positioned(
+                    left: c0.dx - slot * 0.35,
+                    top: c0.dy - slot * 0.55,
+                    child: Text('🕷️', style: TextStyle(fontSize: slot * 0.7)),
+                  );
+                }(),
               // Barre de vie de la grotte CIBLÉE (Phase 2 : porte cassée).
               if (_phase1 && _gateHp <= 0 && _grotteHpMax > 0)
                 () {
@@ -2200,13 +2416,21 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       child = null;
     }
 
-    // Porte en bois (chokepoint) : planches intactes, ou cassée (PV ≤ 0).
+    // Chokepoint x9 : à l'INTÉRIEUR = TOILES 🕸️ (percées en dépensant le deck) ;
+    // sur la map principale = porte en bois (cassée par l'envahisseur, PV ≤ 0).
     if (w.isGate(x, y)) {
-      final broken = _gateHp <= 0;
-      bg = const Color(0xFF6B4423).withOpacity(broken ? .22 : .7);
-      border = const Color(0xFF3E2A18).withOpacity(broken ? .4 : 1);
-      child = Text(broken ? '💥' : '🚪',
-          style: TextStyle(fontSize: inner * 0.5));
+      if (_inInterior) {
+        bg = _interiorColor.withOpacity(_webBroken ? .14 : .55);
+        border = _interiorColor.withOpacity(_webBroken ? .35 : .9);
+        child = Text(_webBroken ? '💥' : '🕸️',
+            style: TextStyle(fontSize: inner * 0.5));
+      } else {
+        final broken = _gateHp <= 0;
+        bg = const Color(0xFF6B4423).withOpacity(broken ? .22 : .7);
+        border = const Color(0xFF3E2A18).withOpacity(broken ? .4 : 1);
+        child = Text(broken ? '💥' : '🚪',
+            style: TextStyle(fontSize: inner * 0.5));
+      }
     }
     // (Le spawner n'est plus dessiné case par case : l'envahisseur est rendu en
     // overlay à sa position pendant la Phase 1.)
