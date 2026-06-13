@@ -249,8 +249,10 @@ class _BotInvasionCtrl extends _InvasionCtrl {
   final int extra; // vagues supplémentaires (siège de grotte plus dur)
   // false = l'appelant gère l'issue (ex. lever une grotte) → pas d'or/deckDamage.
   final bool applyDefaultOutcome;
-  // true = défense de territoire : la masse vient du DECK LIFETIME (force permanente)
-  // et n'est PAS consommée (copies, budget/tick). Cohérent avec le Dock vert.
+  // true = défense de territoire : on engage une COPIE de ton deck LIFETIME, qui se
+  // VIDE pendant la bataille (donc finie par combat → la taille du deck compte), mais
+  // RIEN n'est retiré de ton compte (ton deck reste intact). Mécanique « escarmouche »
+  // (consommation locale, non persistée) mais sourcée sur le deck lifetime (Dock vert).
   final bool defenseFromDeck;
 
   @override
@@ -270,16 +272,20 @@ class _BotInvasionCtrl extends _InvasionCtrl {
 
   @override
   int get masseAvailable {
-    // Défense de territoire : deck lifetime, constant (non consommé, copies).
-    if (defenseFromDeck) return logic.lifetimeBattleMasse;
-    final real = logic.battleMasseAvailable;
-    return stakes ? real : (real - _localMasse).clamp(0, real);
+    // Boss PvE réel : pool réel, dépense PERSISTÉE (pas de copie locale).
+    if (stakes && !defenseFromDeck) return logic.battleMasseAvailable;
+    // Défense de territoire = copie du DECK lifetime ; escarmouche = copie fenêtre.
+    // Une COPIE qui se vide pendant la bataille ; rien n'est retiré du compte.
+    final pool =
+        defenseFromDeck ? logic.lifetimeBattleMasse : logic.battleMasseAvailable;
+    return (pool - _localMasse).clamp(0, pool);
   }
 
   @override
   int get arrowsAvailable {
     final real = logic.weaponsAvailable('arc');
-    return stakes ? real : (real - _localArrows).clamp(0, real);
+    if (stakes && !defenseFromDeck) return real;
+    return (real - _localArrows).clamp(0, real);
   }
 
   String? _winner;
@@ -350,18 +356,18 @@ class _BotInvasionCtrl extends _InvasionCtrl {
     if (_winner != null) return 'Partie terminée';
     final err = validate(lane, kind, tier);
     if (err != null) return err;
-    if (stakes) {
-      if (kind == 'pest') {
-        // Défense de territoire : copies du deck lifetime → NON consommées.
-        if (!defenseFromDeck && !logic.spendBattleMasse(tier, sync)) {
-          return 'Masse insuffisante';
-        }
+    // Persiste seulement pour le boss PvE réel ; défense de territoire & escarmouche
+    // = copie locale qui se vide (compte intact).
+    final persist = stakes && !defenseFromDeck;
+    if (kind == 'pest') {
+      if (persist) {
+        if (!logic.spendBattleMasse(tier, sync)) return 'Masse insuffisante';
       } else {
-        if (!logic.spendWeaponForWorld('arc', sync)) return 'Plus de flèches';
+        _localMasse += GoldEconomy.masseCost(tier);
       }
     } else {
-      if (kind == 'pest') {
-        _localMasse += GoldEconomy.masseCost(tier);
+      if (persist) {
+        if (!logic.spendWeaponForWorld('arc', sync)) return 'Plus de flèches';
       } else {
         _localArrows += 1;
       }

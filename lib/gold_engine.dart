@@ -802,10 +802,10 @@ extension GoldEngine on AppLogic {
   int get battleMasseEarned =>
       _windowCaptures().fold(0, (s, c) => s + c.effort);
 
-  /// Masse de DÉFENSE de territoire = LIFETIME (équivalent permanent de
-  /// `battleMasseEarned`, SANS fenêtre 7 j ni dépense) : ta force défensive = tout
-  /// ton effort de routine cumulé. Branchée sur la défense de grotte (copies non
-  /// consommées, budget/tick) — cohérent avec le Dock vert (même source lifetime).
+  /// Taille du DECK de défense = LIFETIME (Σ effort de routine cumulé, SANS fenêtre
+  /// 7 j) — même source que le Dock vert. La défense de grotte engage une COPIE de ce
+  /// deck qui se VIDE pendant la bataille (finie par combat → la taille compte), sans
+  /// rien retirer du compte (le deck reste). Cf `_BotInvasionCtrl.defenseFromDeck`.
   int get lifetimeBattleMasse =>
       _allCaptures().fold(0, (s, c) => s + c.effort);
 
