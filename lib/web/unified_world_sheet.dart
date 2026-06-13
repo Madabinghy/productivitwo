@@ -22,8 +22,12 @@ const _kEnemy = Color(0xFFFF2B2B); // grotte prise
 const _kFarm = Color(0xFF22C55E); // accent zone farm
 
 const int _kReveal = 2; // rayon de brouillard levé autour de l'avatar (Chebyshev)
-const int _kStepMs = 3000; // cadence de marche de l'araignée (test : 1 pas / 3 s)
-const int _kCaveWindowMs = 9000; // fenêtre devant la cible avant résolution passive
+
+// Outils dev (convocation manuelle, forcer l'auto-trigger, toggle de cadence) :
+// affichés tant que true. ⚠️ à passer à false avant une vraie prod (comme pour
+// territory_sheet). kDebugMode ne convient pas : le build web release le met à
+// false → on ne pourrait plus tester en ligne.
+const bool _kDev = true;
 
 Future<void> showUnifiedWorldSheet(
     BuildContext context, AppLogic logic, FirestoreSync sync) {
@@ -71,6 +75,17 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
   final Map<String, String> _farmPests = {};
   final _rng = Random();
 
+  // Cadence de marche de l'araignée, configurable test/prod (portée depuis
+  // territory_sheet : la position est dérivée du temps écoulé → tout stepMs marche).
+  static const int _kStepMsTest = 3000; // 3 s/pas
+  static const int _kStepMsReal = 3600000; // 1 h/pas (prod)
+  static const int _kCaveWindowMsTest = 9000; // 9 s devant la cible
+  static const int _kCaveWindowMsReal = 3600000; // 1 h
+  bool _realCadence = false; // défaut Test (jouable en session)
+  int get _stepMs => _realCadence ? _kStepMsReal : _kStepMsTest;
+  int get _caveWindowMs => _realCadence ? _kCaveWindowMsReal : _kCaveWindowMsTest;
+  bool _autoThreatChecked = false; // auto-trigger hebdo évalué 1× par ouverture
+
   @override
   void initState() {
     super.initState();
@@ -92,6 +107,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
           _revealAround(_pos);
         }
       });
+      // À la 1ʳᵉ map chargée : auto-trigger hebdo (1×/sem) si la semaine a décliné.
+      if (!_autoThreatChecked && t != null) {
+        _autoThreatChecked = true;
+        _maybeAutoThreat(t);
+      }
     });
     // Pilote la marche de l'araignée (position dérivée du temps depuis le spawn).
     _timer = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
@@ -202,24 +222,56 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
           ? 'logge ~1 h → 🏹'
           : 'fais une routine → 🔪';
 
-  // Capture d'un nuisible de farm : arme requise dispo → recordKill (crédite la
+  // Chasse = ENGAGER UN COMBAT (pas un ramassage) : aller au contact ouvre un écran
+  // où l'on FRAPPE avec l'arme requise. Victoire → capture (recordKill : crédite la
   // capture + recettes, dépense l'arme) + butin d'or. Réutilise l'éco existante.
-  Future<void> _captureFarmPest(String tileId, String type) async {
+  Future<void> _huntCombat(String tileId, String type) async {
     final weapon = GoldEconomy.weaponForPest(type);
-    if (logic.weaponsAvailable(weapon) < 1) {
-      _toast('${logic.weaponEmoji(weapon)} Pas d\'arme — ${_weaponHint(weapon)}',
-          _kGold);
-      return;
-    }
+    final ready = logic.weaponsAvailable(weapon) >= 1;
+    final loot = GoldEconomy.pestLootBase(type, false);
+    final struck = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1010),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(children: [
+          Text(entityEmoji(type), style: const TextStyle(fontSize: 24)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text('${pestName(type)} sauvage',
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
+          ),
+        ]),
+        content: Text(
+          ready
+              ? 'Frappe-le avec ton ${logic.weaponName(weapon)} ${logic.weaponEmoji(weapon)} '
+                  '(${logic.weaponsAvailable(weapon)} dispo). Butin ~$loot or + capture.'
+              : 'Il te faut une arme : ${_weaponHint(weapon)} pour forger '
+                  '${logic.weaponEmoji(weapon)}.',
+          style: TextStyle(color: Colors.white.withOpacity(.75), fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Fuir', style: TextStyle(color: Colors.white54))),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: _kEnemy),
+            onPressed: ready ? () => Navigator.pop(ctx, true) : null,
+            child: Text('Frapper ${logic.weaponEmoji(weapon)}'),
+          ),
+        ],
+      ),
+    );
+    if (struck != true || !mounted) return;
     setState(() => _busy = true);
     final unlocked = logic.recordKill(type, sync, spendWeapon: true);
-    final loot = GoldEconomy.pestLootBase(type, false);
     logic.applyGold(sync, loot,
         category: 'gain', reasonCode: 'pest_loot', label: 'Butin de chasse');
     logic.onChange();
     _farmPests.remove(tileId);
     if (mounted) setState(() => _busy = false);
-    _toast('⚔️ ${pestName(type)} capturé ! +$loot or', _kFarm);
+    _toast('⚔️ ${pestName(type)} vaincu ! +$loot or', _kFarm);
     if (unlocked.isNotEmpty && mounted) {
       _toast('${unlocked.first.emoji} ${unlocked.first.name} débloqué (recette) !',
           _kFarm);
@@ -279,7 +331,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
     final spawn = _invaderSpawn(w, target);
     final len = _pathLen(spawn, target);
     final steps =
-        ((DateTime.now().millisecondsSinceEpoch - inv.spawnAtMs) ~/ _kStepMs)
+        ((DateTime.now().millisecondsSinceEpoch - inv.spawnAtMs) ~/ _stepMs)
             .clamp(0, len);
     return _posAt(spawn, target, steps);
   }
@@ -294,14 +346,14 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
     final spawn = _invaderSpawn(w, target);
     final len = _pathLen(spawn, target);
     final now = DateTime.now().millisecondsSinceEpoch;
-    final steps = (now - inv.spawnAtMs) ~/ _kStepMs;
+    final steps = (now - inv.spawnAtMs) ~/ _stepMs;
     if (steps < len) {
       setState(() {}); // marche → re-render la position
       return;
     }
     // Arrivée : fenêtre d'interception puis résolution passive.
-    final arrivalMs = inv.spawnAtMs + len * _kStepMs;
-    if (now - arrivalMs >= _kCaveWindowMs) {
+    final arrivalMs = inv.spawnAtMs + len * _stepMs;
+    if (now - arrivalMs >= _caveWindowMs) {
       _resolveArrival(t, inv);
     } else {
       setState(() {});
@@ -416,6 +468,78 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
         '🕷️ Un envahisseur (niv $level) arrive par l\'est vers $cible !', _kEnemy);
   }
 
+  // Auto-trigger d'accountability (porté de territory_sheet) : à l'ouverture, si la
+  // dernière semaine complète a décliné (menace ≥ 2) et qu'aucune invasion n'est en
+  // cours, spawn un bot scalé — 1×/semaine (clé `lastThreatWeek`). `force` (dev)
+  // ignore la clé hebdo et ne consomme pas la semaine ; toaste la décision.
+  void _maybeAutoThreat(Territory t, {bool force = false}) {
+    final me = sync.uid;
+    if (me == null) return;
+    if (t.invader != null || t.mapTaken) {
+      if (force) _toast('Déjà une invasion en cours / map prise.', _kEnemy);
+      return;
+    }
+    final sig = logic.territoryThreatSignal();
+    if (!force && t.lastThreatWeek == sig.weekKey) return;
+    if (!sig.hadData) {
+      if (force) {
+        _toast('🐞 Moins de 2 semaines de score exploitables → aucun spawn.',
+            Colors.white60);
+      }
+      return;
+    }
+    final level = _threatLevel(sig.drop);
+    if (level < 2) {
+      if (force) {
+        _toast('🐞 Semaine stable ou en hausse → aucune menace (pas de spawn).',
+            _kBlue);
+      } else {
+        final marked = t.copyWith(lastThreatWeek: sig.weekKey);
+        _t = marked;
+        sync.saveTerritory(marked);
+      }
+      return;
+    }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final base = spawnBotInvader(t, me, now, botLevel: level);
+    if (base.invader == null) {
+      if (!force) {
+        final marked = t.copyWith(lastThreatWeek: sig.weekKey);
+        _t = marked;
+        sync.saveTerritory(marked);
+      }
+      return;
+    }
+    final spawned = force ? base : base.copyWith(lastThreatWeek: sig.weekKey);
+    _t = spawned;
+    sync.saveTerritory(spawned);
+    if (mounted) setState(() {});
+    final pct = (sig.drop * 100).round();
+    _toast(
+        '${force ? '🐞 (forcé) ' : '🕷️ '}Ta semaine a chuté de $pct % → '
+        'araignée niv $level (arrive par l\'est).',
+        _kEnemy);
+  }
+
+  // Bascule la cadence ; rebase spawnAtMs pour garder l'araignée à sa position
+  // courante (la position est dérivée de stepMs → sinon elle saute au changement).
+  void _setCadence(bool real) {
+    if (_realCadence == real) return;
+    final t = _t;
+    final inv = t?.invader;
+    if (t != null && inv != null) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final oldSteps = (now - inv.spawnAtMs) ~/ _stepMs;
+      setState(() => _realCadence = real);
+      final rebased = now - oldSteps * _stepMs; // _stepMs reflète la NOUVELLE cadence
+      final next = t.copyWith(invader: inv.copyWith(spawnAtMs: rebased));
+      _t = next;
+      sync.saveTerritory(next);
+    } else {
+      setState(() => _realCadence = real);
+    }
+  }
+
   Future<void> _onTap(int x, int y) async {
     final w = _w;
     if (_busy || w == null) return;
@@ -429,7 +553,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
       if (isSpider) {
         await _intercept();
       } else if (farmType != null) {
-        await _captureFarmPest('${x}_$y', farmType);
+        await _huntCombat('${x}_$y', farmType);
       } else if (caveId != null) {
         await _engageCave(caveId);
       }
@@ -458,7 +582,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
       if (isSpider) {
         await _intercept();
       } else if (farmType != null) {
-        await _captureFarmPest('${x}_$y', farmType);
+        await _huntCombat('${x}_$y', farmType);
       } else if (caveId != null) {
         await _engageCave(caveId);
       }
@@ -603,11 +727,125 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
         ),
         if (t.invader == null && !t.mapTaken) ...[
           const SizedBox(height: 12),
-          _summonBtn(),
+          _threatReadout(),
+        ],
+        if (_kDev) ...[
+          const SizedBox(height: 12),
+          _cadenceToggle(),
+          if (t.invader == null && !t.mapTaken) ...[
+            const SizedBox(height: 8),
+            _summonBtn(),
+            const SizedBox(height: 8),
+            _forceThreatBtn(),
+          ],
         ],
       ],
     );
   }
+
+  // Readout d'accountability : où en est ta semaine et quelle menace elle appelle.
+  Widget _threatReadout() {
+    final sig = logic.territoryThreatSignal();
+    final String msg;
+    final Color col;
+    if (!sig.hadData) {
+      msg = '📊 Pas encore assez d\'historique de score pour jauger la menace hebdo.';
+      col = Colors.white54;
+    } else {
+      final level = _threatLevel(sig.drop);
+      final pct = (sig.drop * 100).round();
+      if (level < 2) {
+        msg = '📈 Semaine stable ou en hausse — aucune menace hebdo.';
+        col = _kBlue;
+      } else {
+        msg = '📉 Semaine en baisse de $pct % → menace niv $level '
+            '(le bot vient seul, 1×/sem).';
+        col = _kEnemy;
+      }
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: col.withOpacity(.10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: col.withOpacity(.35)),
+      ),
+      child: Text(msg,
+          textAlign: TextAlign.center,
+          style:
+              TextStyle(color: col, fontSize: 11.5, fontWeight: FontWeight.w700)),
+    );
+  }
+
+  // Dev : toggle de cadence Test 3 s/pas ⇄ Réel 1 h/pas.
+  Widget _cadenceToggle() {
+    Widget pill(String label, bool real) {
+      final sel = _realCadence == real;
+      return Expanded(
+        child: GestureDetector(
+          onTap: () => _setCadence(real),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: sel ? _kGold.withOpacity(.18) : Colors.transparent,
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(
+                  color: sel ? _kGold.withOpacity(.6) : Colors.transparent),
+            ),
+            child: Text(label,
+                style: TextStyle(
+                    color: sel ? _kGold : Colors.white54,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 11.5)),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF160C0C),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(.08)),
+      ),
+      child: Row(children: [
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 8),
+          child: Text('Cadence (dev)',
+              style: TextStyle(color: Colors.white54, fontSize: 11)),
+        ),
+        pill('Test · 3 s/pas', false),
+        const SizedBox(width: 4),
+        pill('Réel · 1 h/pas', true),
+      ]),
+    );
+  }
+
+  // Dev : rejoue la décision d'auto-trigger maintenant (sans clé hebdo, rejouable).
+  Widget _forceThreatBtn() => Center(
+        child: InkWell(
+          onTap: () {
+            final t = _t;
+            if (t != null) _maybeAutoThreat(t, force: true);
+          },
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(.04),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.white.withOpacity(.14)),
+            ),
+            child: Text('🐞 Forcer l\'auto-trigger (dev)',
+                style: TextStyle(
+                    color: Colors.white.withOpacity(.55),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11)),
+          ),
+        ),
+      );
 
   Widget _summonBtn() => Center(
         child: InkWell(
