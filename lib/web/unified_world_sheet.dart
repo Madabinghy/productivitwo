@@ -288,9 +288,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
   Point<int>? _invaderTarget(UnifiedWorld w, Invader inv) =>
       inv.targetCaveId == 'castle' ? w.castle : w.caves[inv.targetCaveId];
 
-  // Spawn = bord droit, rangée de la cible (« l'ennemi arrive par l'est »).
+  // Spawn = bord GAUCHE (ouest), rangée de la cible : l'araignée traverse alors
+  // TOUTE la largeur jusqu'à sa cible (grottes à droite) → vraie fenêtre de défense
+  // (et future « lane » de tower-defense). `_posAt` marche vers la cible → sens auto.
   Point<int> _invaderSpawn(UnifiedWorld w, Point<int> target) =>
-      Point(w.cols - 1, target.y);
+      Point(0, target.y);
 
   int _pathLen(Point<int> s, Point<int> t) =>
       (s.x - t.x).abs() + (s.y - t.y).abs();
@@ -455,7 +457,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
         ? 'ton CHÂTEAU ❤️'
         : 'ta grotte ${next.invader!.targetCaveId.toUpperCase()}';
     _toast(
-        '🕷️ Un envahisseur (niv $level) arrive par l\'est vers $cible !', _kEnemy);
+        '🕷️ Un envahisseur (niv $level) arrive par l\'ouest vers $cible !',
+        _kEnemy);
   }
 
   // Auto-trigger d'accountability (porté de territory_sheet) : à l'ouverture, si la
@@ -507,7 +510,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
     final pct = (sig.drop * 100).round();
     _toast(
         '${force ? '🐞 (forcé) ' : '🕷️ '}Ta semaine a chuté de $pct % → '
-        'araignée niv $level (arrive par l\'est).',
+        'araignée niv $level (arrive par l\'ouest).',
         _kEnemy);
   }
 
@@ -712,7 +715,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
           'Avatar : touche une case éclairée. À GAUCHE rôdent tes routines/tâches '
           'NÉGLIGÉES (🕷️🦂🐍) : va à leur contact → combat = fais le vrai travail '
           'pour les vaincre. À DROITE, défends tes grottes (bleue → +1 niveau ; '
-          'rouge → reprends-la). Une araignée 🕷️ arrive par l\'est : intercepte-la.',
+          'rouge → reprends-la). Une araignée 🕷️ traverse depuis l\'ouest : '
+          'intercepte-la au contact avant qu\'elle atteigne sa grotte.',
           textAlign: TextAlign.center,
           style: TextStyle(color: Colors.white.withOpacity(.45), fontSize: 11),
         ),
