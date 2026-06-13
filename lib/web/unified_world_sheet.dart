@@ -181,7 +181,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   static const int _kCaptureMs = 5000; // durée de l'anim de capture
   Offset _redHome = const Offset(16, 6); // spawn du défenseur (y retourne si grotte prise)
   int _arrows = 0; // pool de flèches du run (chaque tir tourelle/arc en coûte 1 en P2)
-  Offset _redSpawn = const Offset(8, 7); // mon attaquant rouge (émet mes sbires)
+  Offset _redSpawn = const Offset(16, 6); // mon défenseur 🦂 : vit sur sa case (16,6)
   Offset? _redWander; // cible d'errance de mon attaquant rouge
   int _myMass = 0; // masse de MON deck (décrémentée à chaque sbire émis)
   static const Map<String, int> _massByType = {
@@ -217,9 +217,19 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   }
 
   void _simulate(double dt) {
-    if (!_phase1) return;
     final w = _w;
     if (w == null) return;
+    if (!_phase1) {
+      // Hors attaque : le défenseur RENTRE À PIED chez lui (pas de téléport).
+      const defSpeed = 0.30;
+      final dx = _redHome.dx - _redSpawn.dx, dy = _redHome.dy - _redSpawn.dy;
+      final d = sqrt(dx * dx + dy * dy);
+      if (d > 0.05) {
+        _redSpawn = Offset(_redSpawn.dx + dx / d * defSpeed * dt,
+            _redSpawn.dy + dy / d * defSpeed * dt);
+      }
+      return;
+    }
     // 0) Mouvement du 🦂 défenseur (l'envahisseur 🕷️ reste FIXE). Il erre tant qu'il
     //    lui reste du deck OU des sbires en vie. Deck VIDE + sbires TOUS MORTS → il
     //    file en (9,1) manier l'arc (comme le user peut le faire sur une case blanche).
@@ -319,7 +329,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       if (dist > 0.4) {
         const speed = 0.5; // ralenti (symétrique aux sbires ennemis)
         final ux = dx / dist, uy = dy / dist;
-        final wob = sin(_gameMs / 500.0 + a.phase) * 0.5;
+        // Ondulation amortie à l'approche (sinon orbite sans atteindre la cible).
+        final wob =
+            sin(_gameMs / 500.0 + a.phase) * 0.5 * (dist - 0.5).clamp(0.0, 1.0);
         a.x += (ux * speed - uy * wob) * dt;
         a.y += (uy * speed + ux * wob) * dt;
       } else if (a.wp != null) {
@@ -332,7 +344,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           final ox = (_rng.nextDouble() - 0.5) * 0.9;
           final oy = (_rng.nextDouble() - 0.5) * 0.9;
           _sbires.add(_Sbire(_sbireSeq++, _invX + 0.3 + ox, _invY + oy, 1)
-            ..wp = _randomWaypoint(w));
+            ..wp = _gateApproachWaypoint(w));
         }
         a.x = -999; // consommé
       }
@@ -348,7 +360,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         final ox = (_rng.nextDouble() - 0.5) * 1.2;
         final oy = (_rng.nextDouble() - 0.5) * 1.2;
         _sbires.add(_Sbire(_sbireSeq++, _invX + 0.3 + ox, _invY + oy, 1)
-          ..wp = _randomWaypoint(w));
+          ..wp = _gateApproachWaypoint(w));
       }
       _toast('⚔️ Ton deck est épuisé — l\'envahisseur jette toute sa garnison '
           'sur la porte !', _kEnemy);
@@ -417,7 +429,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       if (dist > 0.4) {
         const speed = 0.32; // ralenti (interception lisible)
         final ux = dx / dist, uy = dy / dist;
-        final wob = sin(_gameMs / 500.0 + s.phase) * 0.55;
+        // Ondulation amortie à l'approche (sinon le sbire orbite sans toucher).
+        final wob =
+            sin(_gameMs / 500.0 + s.phase) * 0.55 * (dist - 0.5).clamp(0.0, 1.0);
         var ny = s.y + (uy * speed + ux * wob) * dt;
         s.x += (ux * speed - uy * wob) * dt;
         if (w.hasBush(s.x.round(), ny.round())) {
@@ -515,6 +529,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _phase1 = false;
       _toast('🛡️ Invasion repoussée — garnison anéantie avant la porte !', _kBlue);
     }
+    // (Phase terminée : le défenseur rentre à pied chez lui — géré en tête de
+    //  _simulate dans la branche !_phase1.)
   }
 
   // Point accessible aléatoire dans la chambre gauche (champ de bataille) : floor,
@@ -529,6 +545,20 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       }
     }
     return const Offset(4, 7); // fallback centre chambre
+  }
+
+  // Waypoint des sbires ENNEMIS : biaisé vers le couloir de la porte (x 3..7,
+  // y 5..9) → un peu de dispersion mais ils convergent vers la porte et passent
+  // dans la zone des tourelles (au lieu de filer aux bords haut/bas).
+  Offset _gateApproachWaypoint(UnifiedWorld w) {
+    for (int tries = 0; tries < 20; tries++) {
+      final x = 3 + _rng.nextInt(5); // 3..7 (vers la porte)
+      final y = 5 + _rng.nextInt(5); // 5..9 (couloir central)
+      if (w.at(x, y) == UwTile.floor && !w.hasRock(x, y)) {
+        return Offset(x.toDouble(), y.toDouble());
+      }
+    }
+    return const Offset(6, 7);
   }
 
   // Case accessible aléatoire sur TOUTE la map (floor, hors rocher) — position de
@@ -1894,31 +1924,32 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     ),
                   );
                 }(),
-              // MON attaquant rouge (Phase 1) : 🦂 placé aléatoirement, émet mes
-              // sbires depuis sa position + affiche la masse de mon deck.
-              if (_phase1)
-                () {
-                  final c0 = centerD(_redSpawn.dx, _redSpawn.dy);
-                  return Positioned(
-                    left: c0.dx - slot * 0.6,
-                    top: c0.dy - slot * 0.8,
-                    width: slot * 1.2,
-                    child: Column(
-                      children: [
-                        Text('🦂', style: TextStyle(fontSize: slot * 0.85)),
-                        Text('deck $_myMass',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                                color: _kEnemy,
-                                fontWeight: FontWeight.w900,
-                                fontSize: slot * 0.26,
-                                shadows: const [
-                                  Shadow(color: Colors.black, blurRadius: 2)
-                                ])),
-                      ],
-                    ),
-                  );
-                }(),
+              // MON défenseur 🦂 : visible EN PERMANENCE sur sa case (il y vit comme
+              // l'avatar). Pendant l'attaque il émet mes sbires + affiche son deck.
+              () {
+                final c0 = centerD(_redSpawn.dx, _redSpawn.dy);
+                return Positioned(
+                  left: c0.dx - slot * 0.6,
+                  top: c0.dy - slot * 1.05,
+                  width: slot * 1.2,
+                  child: Column(
+                    children: [
+                      // Deck (juste le nombre) AU-DESSUS : VERT au repos (deck vert
+                      // dispo), ROUGE quand il défend (deck en cours de dépense).
+                      Text('${_phase1 ? _myMass : logic.lifetimeBattleMasse}',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              color: _phase1 ? _kEnemy : _kFarm,
+                              fontWeight: FontWeight.w900,
+                              fontSize: slot * 0.28,
+                              shadows: const [
+                                Shadow(color: Colors.black, blurRadius: 2)
+                              ])),
+                      Text('🦂', style: TextStyle(fontSize: slot * 0.85)),
+                    ],
+                  ),
+                );
+              }(),
               // Barre de vie de la grotte CIBLÉE (Phase 2 : porte cassée).
               if (_phase1 && _gateHp <= 0 && _grotteHpMax > 0)
                 () {
@@ -2054,17 +2085,17 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     Widget? child;
 
     if (kind == UwTile.wall) {
-      // Mur = terrain rocheux ; certains portent un rocher 🪨.
-      bg = const Color(0xFF241F1B).withOpacity(.55);
-      border = Colors.white.withOpacity(.06);
+      // Mur = terrain rocheux SOMBRE (infranchissable) ; certains portent 🪨.
+      bg = const Color(0xFF1A120C).withOpacity(.82);
+      border = Colors.black.withOpacity(.5);
       if (w.hasRock(x, y)) {
         child = Text('🪨', style: TextStyle(fontSize: inner * 0.5));
       }
     } else if (kind == UwTile.floor) {
-      // Teinte la zone farm (gauche du château) en vert discret ; buissons 🌿.
+      // Sol praticable = CLAIR (contraste net avec les murs). Farm teintée vert.
       final farmSide = x < w.castle.x - 1;
-      bg = (farmSide ? _kFarm : Colors.white).withOpacity(.08);
-      border = (farmSide ? _kFarm : Colors.white).withOpacity(.12);
+      bg = (farmSide ? _kFarm : Colors.white).withOpacity(.18);
+      border = (farmSide ? _kFarm : Colors.white).withOpacity(.40);
       if (w.hasBush(x, y)) {
         child = Text('🌿', style: TextStyle(fontSize: inner * 0.5));
       }
