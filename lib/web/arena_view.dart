@@ -15,6 +15,7 @@ import 'package:productivitwo_v1/widgets/gold_icon.dart';
 import 'package:productivitwo_v1/widgets/gold_sheet.dart';
 import 'package:productivitwo_v1/web/invasion_defense_sheet.dart';
 import 'package:productivitwo_v1/web/unified_world_sheet.dart';
+import 'package:productivitwo_v1/web/docks_sheet.dart';
 
 const _kGold = Color(0xFFD4A017);
 const _kCardBg = Color(0xFF120A0A);
@@ -808,6 +809,14 @@ class _ExplorationColumn extends StatelessWidget {
             subtitle: 'Ta collection de créatures et recettes de chasse',
             color: const Color(0xFF22C55E),
             onTap: () => showCollectionSheet(context, logic, sync),
+          ),
+          const SizedBox(height: 10),
+          _ExploreBtn(
+            emoji: '🗃️',
+            title: 'Mes Docks',
+            subtitle: 'Tes decks en colonnes : vert · rouge · cartes · territoires',
+            color: const Color(0xFF06B6D4),
+            onTap: () => showDocksSheet(context, logic, sync),
           ),
           const SizedBox(height: 10),
           _ExploreBtn(
