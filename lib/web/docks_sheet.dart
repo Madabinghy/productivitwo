@@ -140,10 +140,12 @@ class _DocksViewState extends State<_DocksView> {
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.fromLTRB(12, 4, 12, 14),
           children: [
+            // Ordre = flux : tes cartes, puis verts → deviennent rouges →
+            // territoires conquis.
+            _cardsColumn(),
             _emojiColumn('🟢', 'Vert', 'captures à dépenser', _kGreen,
                 _greenEmojis()),
             _redColumn(),
-            _cardsColumn(),
             _territoiresColumn(),
           ],
         ),
