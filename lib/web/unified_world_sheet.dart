@@ -117,7 +117,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
           }
           _revealed.addAll(logic.state.unifiedRevealed);
           _revealAround(_pos);
-          _populateFarm(_revealed.toList()); // peuple la zone déjà visible
+          _populateFarm(); // disperse le backlog sur toute la zone (caché par le fog)
         }
       });
       // À la 1ʳᵉ map chargée : auto-trigger hebdo (1×/sem) si la semaine a décliné.
@@ -203,8 +203,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
   }
 
   void _step(Point<int> to) {
-    final added = _revealAround(to);
-    _populateFarm(added);
+    _revealAround(to);
+    _populateFarm();
     setState(() => _pos = to);
     _announce(to);
   }
@@ -224,27 +224,33 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
   // tâches négligées) — pas des pests génériques. Placés à la révélation (faciles
   // d'abord), purgés quand l'item est rattrapé (PV 0). Cap visuel, repioche dans le
   // backlog restant.
-  void _populateFarm(List<String> newly) {
-    final w = _w;
-    if (w == null) return;
+  void _populateFarm() {
+    final w = _w, t = _t;
+    if (w == null || t == null) return;
     _farmPests.removeWhere((_, e) => logic.enemyHp(e.type, e.id) <= 0);
-    if (_farmPests.length >= 6) return;
+    const cap = 12;
+    final room = cap - _farmPests.length;
+    if (room <= 0) return;
     final placed = _farmPests.values.map((e) => e.id).toSet();
     final backlog = logic.backlogEnemies()
         .where((e) => !placed.contains(e.id))
-        .toList()
-      ..sort((a, b) => a.hp.compareTo(b.hp)); // faciles d'abord
+        .toList();
     if (backlog.isEmpty) return;
-    for (final id in newly) {
-      if (_farmPests.length >= 6 || backlog.isEmpty) break;
-      final s = id.split('_');
-      final x = int.parse(s[0]), y = int.parse(s[1]);
-      if (x >= w.castle.x - 1) continue; // zone farm
-      if (w.at(x, y) != UwTile.floor) continue;
-      if (w.hasBush(x, y) || _farmPests.containsKey(id)) continue;
-      if (x == _pos.x && y == _pos.y) continue;
-      final e = backlog.removeAt(0);
-      _farmPests[id] = (type: e.type, id: e.id);
+    // Toutes les cases farm libres, MÉLANGÉES (seed stable) → répartition sur TOUTE
+    // la zone (pas un cluster à l'entrée). Le brouillard les révèle en explorant.
+    final free = <String>[];
+    for (int y = 0; y < w.rows; y++) {
+      for (int x = 0; x < w.castle.x - 1; x++) {
+        if (w.at(x, y) != UwTile.floor || w.hasBush(x, y)) continue;
+        final id = '${x}_$y';
+        if (_farmPests.containsKey(id)) continue;
+        if (x == _pos.x && y == _pos.y) continue;
+        free.add(id);
+      }
+    }
+    free.shuffle(Random(t.seed));
+    for (var i = 0; i < backlog.length && i < free.length && i < room; i++) {
+      _farmPests[free[i]] = (type: backlog[i].type, id: backlog[i].id);
     }
   }
 
