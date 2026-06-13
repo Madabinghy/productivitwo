@@ -7,6 +7,7 @@ import 'package:productivitwo_v1/territory.dart';
 import 'package:productivitwo_v1/unified_world.dart';
 import 'package:productivitwo_v1/expedition.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
+import 'package:productivitwo_v1/widgets/backlog_combat.dart';
 import 'package:productivitwo_v1/web/invasion_defense_sheet.dart';
 
 // MONDE UNIFIÉ — Tranche 0 : la grande carte traversable à l'avatar (farm gauche ·
@@ -70,10 +71,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
   // État de marche LOCAL (éphémère en T0).
   late Point<int> _pos;
   final Set<String> _revealed = {};
-  // Nuisibles de FARM (zone gauche) : LOCAUX/éphémères (région farm procédurale,
-  // non persistée — cf split de persistance). tileId "x_y" → type de nuisible.
-  final Map<String, String> _farmPests = {};
-  final _rng = Random();
+  // Nuisibles de FARM (zone gauche) = tes VRAIS ennemis backlog (routines/activités/
+  // tâches négligées), placés à la révélation, retirés quand l'item est rattrapé.
+  // tileId "x_y" → (type, id de l'item). Placement local/éphémère ; les PV vivent
+  // dans l'état réel (logic.enemyHp), pas dans le doc.
+  final Map<String, ({String type, String id})> _farmPests = {};
 
   // Cadence de marche de l'araignée, configurable test/prod (portée depuis
   // territory_sheet : la position est dérivée du temps écoulé → tout stepMs marche).
@@ -115,6 +117,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
           }
           _revealed.addAll(logic.state.unifiedRevealed);
           _revealAround(_pos);
+          _populateFarm(_revealed.toList()); // peuple la zone déjà visible
         }
       });
       // À la 1ʳᵉ map chargée : auto-trigger hebdo (1×/sem) si la semaine a décliné.
@@ -201,8 +204,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
 
   void _step(Point<int> to) {
     final added = _revealAround(to);
-    final t = _t;
-    if (t != null) _maybeSpawnFarm(added, t);
+    _populateFarm(added);
     setState(() => _pos = to);
     _announce(to);
   }
@@ -218,85 +220,52 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
     sync.setUnifiedWorldState(pos, _revealed.toList());
   }
 
-  // Spawn de nuisibles à CHASSER dans la zone farm (gauche), à la révélation.
-  // Local/éphémère (farm non persistée), plafonné, type scalé sur le niveau de map.
-  void _maybeSpawnFarm(List<String> newly, Territory t) {
+  // Peuple la zone farm (gauche) avec tes VRAIS ennemis backlog (routines/activités/
+  // tâches négligées) — pas des pests génériques. Placés à la révélation (faciles
+  // d'abord), purgés quand l'item est rattrapé (PV 0). Cap visuel, repioche dans le
+  // backlog restant.
+  void _populateFarm(List<String> newly) {
     final w = _w;
-    if (w == null || _farmPests.length >= 3) return;
-    final farm = newly.where((id) {
+    if (w == null) return;
+    _farmPests.removeWhere((_, e) => logic.enemyHp(e.type, e.id) <= 0);
+    if (_farmPests.length >= 6) return;
+    final placed = _farmPests.values.map((e) => e.id).toSet();
+    final backlog = logic.backlogEnemies()
+        .where((e) => !placed.contains(e.id))
+        .toList()
+      ..sort((a, b) => a.hp.compareTo(b.hp)); // faciles d'abord
+    if (backlog.isEmpty) return;
+    for (final id in newly) {
+      if (_farmPests.length >= 6 || backlog.isEmpty) break;
       final s = id.split('_');
       final x = int.parse(s[0]), y = int.parse(s[1]);
-      if (x >= w.castle.x - 1) return false; // zone farm uniquement
-      if (w.at(x, y) != UwTile.floor) return false;
-      if (w.hasBush(x, y) || _farmPests.containsKey(id)) return false;
-      if (x == _pos.x && y == _pos.y) return false;
-      return true;
-    }).toList();
-    if (farm.isEmpty || _rng.nextInt(100) >= 30) return;
-    _farmPests[farm[_rng.nextInt(farm.length)]] =
-        GoldEconomy.pestTypeForLevel(t.level);
+      if (x >= w.castle.x - 1) continue; // zone farm
+      if (w.at(x, y) != UwTile.floor) continue;
+      if (w.hasBush(x, y) || _farmPests.containsKey(id)) continue;
+      if (x == _pos.x && y == _pos.y) continue;
+      final e = backlog.removeAt(0);
+      _farmPests[id] = (type: e.type, id: e.id);
+    }
   }
 
-  String _weaponHint(String w) => w == 'epee'
-      ? 'finis une tâche → 🗡️'
-      : w == 'arc'
-          ? 'logge ~1 h → 🏹'
-          : 'fais une routine → 🔪';
-
-  // Chasse = ENGAGER UN COMBAT (pas un ramassage) : aller au contact ouvre un écran
-  // où l'on FRAPPE avec l'arme requise. Victoire → capture (recordKill : crédite la
-  // capture + recettes, dépense l'arme) + butin d'or. Réutilise l'éco existante.
-  Future<void> _huntCombat(String tileId, String type) async {
-    final weapon = GoldEconomy.weaponForPest(type);
-    final ready = logic.weaponsAvailable(weapon) >= 1;
-    final loot = GoldEconomy.pestLootBase(type, false);
-    final struck = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1010),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(children: [
-          Text(entityEmoji(type), style: const TextStyle(fontSize: 24)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text('${pestName(type)} sauvage',
-                style: const TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
-          ),
-        ]),
-        content: Text(
-          ready
-              ? 'Frappe-le avec ton ${logic.weaponName(weapon)} ${logic.weaponEmoji(weapon)} '
-                  '(${logic.weaponsAvailable(weapon)} dispo). Butin ~$loot or + capture.'
-              : 'Il te faut une arme : ${_weaponHint(weapon)} pour forger '
-                  '${logic.weaponEmoji(weapon)}.',
-          style: TextStyle(color: Colors.white.withOpacity(.75), fontSize: 13),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Fuir', style: TextStyle(color: Colors.white54))),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: _kEnemy),
-            onPressed: ready ? () => Navigator.pop(ctx, true) : null,
-            child: Text('Frapper ${logic.weaponEmoji(weapon)}'),
-          ),
-        ],
-      ),
+  // Combat backlog : aller au contact d'un ennemi (= un vrai item négligé) ouvre le
+  // combat où FAIRE LE TRAVAIL le fait fondre (showBacklogCombat). Item rattrapé
+  // (PV 0) → l'ennemi disparaît de la map.
+  Future<void> _backlogCombat(String tileId, String type, String id) async {
+    await showBacklogCombat(
+      context, logic, sync, type, id,
+      onChanged: () {
+        if (!mounted) return;
+        if (logic.enemyHp(type, id) <= 0) _farmPests.remove(tileId);
+        setState(() {});
+      },
+      onLaunchedTimer: () {
+        if (mounted) Navigator.pop(context); // minuteur lancé → on quitte la map
+      },
     );
-    if (struck != true || !mounted) return;
-    setState(() => _busy = true);
-    final unlocked = logic.recordKill(type, sync, spendWeapon: true);
-    logic.applyGold(sync, loot,
-        category: 'gain', reasonCode: 'pest_loot', label: 'Butin de chasse');
-    logic.onChange();
-    _farmPests.remove(tileId);
-    if (mounted) setState(() => _busy = false);
-    _toast('⚔️ ${pestName(type)} vaincu ! +$loot or', _kFarm);
-    if (unlocked.isNotEmpty && mounted) {
-      _toast('${unlocked.first.emoji} ${unlocked.first.name} débloqué (recette) !',
-          _kFarm);
-    }
+    if (!mounted) return;
+    if (logic.enemyHp(type, id) <= 0) _farmPests.remove(tileId);
+    setState(() {});
   }
 
   // Repère château au passage (les grottes, elles, déclenchent l'engagement).
@@ -566,15 +535,15 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
     if (_busy || w == null) return;
     final p = _pos;
     final caveId = w.caveIdAt(x, y);
-    final farmType = _farmPests['${x}_$y'];
+    final farmPest = _farmPests['${x}_$y'];
     final spider = _spiderPos();
     final isSpider = spider != null && spider.x == x && spider.y == y;
-    // Re-tap de la case courante : araignée > nuisible de farm > grotte.
+    // Re-tap de la case courante : araignée > ennemi backlog > grotte.
     if (x == p.x && y == p.y) {
       if (isSpider) {
         await _intercept();
-      } else if (farmType != null) {
-        await _huntCombat('${x}_$y', farmType);
+      } else if (farmPest != null) {
+        await _backlogCombat('${x}_$y', farmPest.type, farmPest.id);
       } else if (caveId != null) {
         await _engageCave(caveId);
       }
@@ -598,13 +567,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
       _step(Point(x, y));
     }
     _persistWalk(); // position + brouillard (état perso, hors doc spectatable)
-    // Arrivé sur la case visée → engage : araignée (interception) > nuisible de
-    // farm (capture) > grotte (défendre / reprendre).
+    // Arrivé sur la case visée → engage : araignée (interception) > ennemi backlog
+    // (combat = faire le travail) > grotte (défendre / reprendre).
     if (_pos.x == x && _pos.y == y) {
       if (isSpider) {
         await _intercept();
-      } else if (farmType != null) {
-        await _huntCombat('${x}_$y', farmType);
+      } else if (farmPest != null) {
+        await _backlogCombat('${x}_$y', farmPest.type, farmPest.id);
       } else if (caveId != null) {
         await _engageCave(caveId);
       }
@@ -740,10 +709,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
         _board(t, w),
         const SizedBox(height: 12),
         Text(
-          'Avatar : touche une case éclairée. À GAUCHE, chasse les nuisibles (va à '
-          'leur contact, arme requise) → captures + or. À DROITE, défends tes '
-          'grottes (bleue → +1 niveau ; rouge → reprends-la). Quand une araignée 🕷️ '
-          'arrive par l\'est, intercepte-la au contact avant sa cible.',
+          'Avatar : touche une case éclairée. À GAUCHE rôdent tes routines/tâches '
+          'NÉGLIGÉES (🕷️🦂🐍) : va à leur contact → combat = fais le vrai travail '
+          'pour les vaincre. À DROITE, défends tes grottes (bleue → +1 niveau ; '
+          'rouge → reprends-la). Une araignée 🕷️ arrive par l\'est : intercepte-la.',
           textAlign: TextAlign.center,
           style: TextStyle(color: Colors.white.withOpacity(.45), fontSize: 11),
         ),
@@ -1001,10 +970,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
     }
 
     // L'araignée d'invasion se superpose à la case (sauf si l'avatar y est =
-    // interception) ; un nuisible de farm (zone gauche) s'affiche à chasser.
+    // interception) ; un ennemi backlog (zone farm) s'affiche à combattre.
     final spiderHere = isSpider && !isAvatar;
-    final farmType = _farmPests['${x}_$y'];
-    final farmHere = farmType != null && !isAvatar && !spiderHere;
+    final farmPest = _farmPests['${x}_$y'];
+    final farmHere = farmPest != null && !isAvatar && !spiderHere;
     final tile = Container(
       width: inner,
       height: inner,
@@ -1034,7 +1003,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView> {
           : spiderHere
               ? Text('🕷️', style: TextStyle(fontSize: inner * 0.55))
               : farmHere
-                  ? Text(entityEmoji(farmType),
+                  ? Text(entityEmoji(farmPest.type),
                       style: TextStyle(fontSize: inner * 0.5))
                   : child,
     );
