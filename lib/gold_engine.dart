@@ -749,7 +749,9 @@ extension GoldEngine on AppLogic {
 
   /// Cœur commun fenêtre/lifetime : une entrée par (routine × jour complété) avec
   /// son effort en masse. `days` = filtre de jours (null = tout l'historique).
-  List<({String ymd, int effort})> _capturesForDays(Set<String>? days) {
+  List<({String ymd, int effort})> _capturesForDays(Set<String>? days,
+      {String? domainId}) {
+    final reset = state.deckResetYmd;
     final linkedIds = <String>{};
     for (final a in state.activities) {
       if (a.isHabit && (a.timerMin ?? 0) > 0) {
@@ -776,6 +778,7 @@ extension GoldEngine on AppLogic {
     final out = <({String ymd, int effort})>[];
     for (final a in state.activities) {
       if (!a.isHabit) continue;
+      if (domainId != null && a.domainId != domainId) continue;
       final target = activeHabitTarget(a);
       if (target <= 0) continue;
       final effort =
@@ -792,6 +795,8 @@ extension GoldEngine on AppLogic {
         });
       }
       for (final ymd in done) {
+        // Deck propre : on ignore les captures antérieures à la date de reset.
+        if (reset.isNotEmpty && ymd.compareTo(reset) < 0) continue;
         out.add((ymd: ymd, effort: effort));
       }
     }
@@ -808,6 +813,34 @@ extension GoldEngine on AppLogic {
   /// rien retirer du compte (le deck reste). Cf `_BotInvasionCtrl.defenseFromDeck`.
   int get lifetimeBattleMasse =>
       _allCaptures().fold(0, (s, c) => s + c.effort);
+
+  /// Masse lifetime des captures de routines d'UN domaine (dérivée de
+  /// `activity.domainId`, après `deckResetYmd`). Sert à amorcer le deck d'assaut
+  /// de reconquête d'une grotte = ce domaine précis (« petit deck spécifique »).
+  int lifetimeMasseForDomain(String domainId) =>
+      _capturesForDays(null, domainId: domainId).fold(0, (s, c) => s + c.effort);
+
+  /// Deck d'assaut amorcé pour reconquérir la grotte du domaine `domainId` :
+  /// la masse de CE domaine, avec un FALLBACK sur une fraction de la masse globale
+  /// (1/nb domaines actifs) si le domaine est vide → jamais bloqué au démarrage.
+  int reconquestDeckForDomain(String domainId) {
+    final own = lifetimeMasseForDomain(domainId);
+    if (own > 0) return own;
+    final n = state.domains.where((d) => !d.deleted).length;
+    final global = lifetimeBattleMasse;
+    return n > 0 ? global ~/ n : global;
+  }
+
+  /// Reset du deck d'invasion : pose la date de reset à AUJOURD'HUI (les captures
+  /// antérieures ne comptent plus → deck à zéro, réversible, sans toucher à
+  /// l'historique réel) et remet à zéro les captures de chasse (`pestKills`).
+  void resetDeck(FirestoreSync sync) {
+    final today = yyyymmdd(DateTime.now());
+    state.deckResetYmd = today;
+    state.pestKills.clear();
+    sync.setDeckReset(today, state.pestKills);
+    bumpRev();
+  }
 
   /// Masse gagnée aujourd'hui (captures du jour dans la fenêtre).
   int get battleMasseEarnedToday {

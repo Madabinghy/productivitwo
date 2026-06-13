@@ -704,10 +704,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _savedFarmPests = {..._farmPests};
       _interiorColor = cave != null ? _caveColor(cave) : _kBlue;
       _interiorCaveId = caveId;
-      // Deck d'assaut du scorpion AMORCÉ par ta masse de captures à vie (même
-      // source que la défense de la map principale) → jamais vide si tu as déjà
-      // capturé ; farmer les nuisibles du domaine l'AUGMENTE par-dessus.
-      _reconquestDeck = logic.lifetimeBattleMasse;
+      // Deck d'assaut du scorpion AMORCÉ par tes captures de CE domaine précis
+      // (petit deck spécifique, dérivé de activity.domainId ; fallback fraction
+      // globale si le domaine est vide) ; farmer les nuisibles l'AUGMENTE.
+      _reconquestDeck = cave != null
+          ? logic.reconquestDeckForDomain(cave.domainId)
+          : logic.lifetimeBattleMasse;
       _webBroken = false; // toiles intactes jusqu'à l'assaut
       _inInterior = true;
       _tdMode = false; // pas de TD tant que l'assaut n'est pas lancé

@@ -750,6 +750,10 @@ class AppState {
   // jour via battleMasseTodayYmd.
   int battleMasseToday;
   String battleMasseTodayYmd;
+  // Reset du deck d'invasion : les captures de routine dont le jour est ANTÉRIEUR
+  // à cette date (YYYY-MM-DD) ne comptent plus dans le deck lifetime (deck propre
+  // sans toucher à l'historique réel). '' = pas de reset (tout compte).
+  String deckResetYmd;
 
   AppState({
     required this.domains,
@@ -833,6 +837,7 @@ class AppState {
     this.battleMasseUsed = 0,
     this.battleMasseToday = 0,
     this.battleMasseTodayYmd = '',
+    this.deckResetYmd = '',
     Map<String, int>? weaponsSpent,
     Map<String, int>? pestKills,
     Map<String, int>? redRoster,
@@ -971,6 +976,7 @@ class AppState {
         'battleMasseUsed': battleMasseUsed,
         'battleMasseToday': battleMasseToday,
         'battleMasseTodayYmd': battleMasseTodayYmd,
+        'deckResetYmd': deckResetYmd,
         'engagedEnemies': engagedEnemies,
         'weaponPickups': weaponPickups,
         'collection': collection,
@@ -1129,6 +1135,7 @@ class AppState {
       battleMasseUsed: (j['battleMasseUsed'] as num?)?.toInt() ?? 0,
       battleMasseToday: (j['battleMasseToday'] as num?)?.toInt() ?? 0,
       battleMasseTodayYmd: (j['battleMasseTodayYmd'] as String?) ?? '',
+      deckResetYmd: (j['deckResetYmd'] as String?) ?? '',
       engagedEnemies: (j['engagedEnemies'] as List?)?.cast<String>() ?? <String>[],
       weaponPickups: (j['weaponPickups'] as Map?)?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ?? <String, int>{},
       collection: (j['collection'] as List?)?.cast<String>() ?? <String>[],

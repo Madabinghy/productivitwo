@@ -271,6 +271,7 @@ class FirestoreSync {
         battleMasseUsed: (meta['battleMasseUsed'] as num?)?.toInt() ?? 0,
         battleMasseToday: (meta['battleMasseToday'] as num?)?.toInt() ?? 0,
         battleMasseTodayYmd: (meta['battleMasseTodayYmd'] as String?) ?? '',
+        deckResetYmd: (meta['deckResetYmd'] as String?) ?? '',
         engagedEnemies: (meta['engagedEnemies'] as List?)?.cast<String>(),
         weaponPickups: (meta['weaponPickups'] as Map?)?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
         collection: (meta['collection'] as List?)?.cast<String>(),
@@ -401,6 +402,7 @@ class FirestoreSync {
       battleMasseUsed:       local.battleMasseUsed >= remote.battleMasseUsed ? local.battleMasseUsed : remote.battleMasseUsed,
       battleMasseTodayYmd:   local.battleMasseTodayYmd.compareTo(remote.battleMasseTodayYmd) >= 0 ? local.battleMasseTodayYmd : remote.battleMasseTodayYmd,
       battleMasseToday:      local.battleMasseTodayYmd == remote.battleMasseTodayYmd ? (local.battleMasseToday >= remote.battleMasseToday ? local.battleMasseToday : remote.battleMasseToday) : (local.battleMasseTodayYmd.compareTo(remote.battleMasseTodayYmd) > 0 ? local.battleMasseToday : remote.battleMasseToday),
+      deckResetYmd:          local.deckResetYmd.compareTo(remote.deckResetYmd) >= 0 ? local.deckResetYmd : remote.deckResetYmd,
       engagedEnemies:        local.goldLifetime >= remote.goldLifetime ? local.engagedEnemies : remote.engagedEnemies,
       weaponPickups:         _mapSum(local.weaponPickups) >= _mapSum(remote.weaponPickups) ? local.weaponPickups : remote.weaponPickups,
       collection:            local.collection.length >= remote.collection.length ? local.collection : remote.collection,
@@ -964,6 +966,13 @@ class FirestoreSync {
     await _meta().set(
         {'weaponsSpent': weaponsSpent, 'pestKills': pestKills},
         SetOptions(merge: true));
+  }
+
+  /// Reset du deck : pose la date de reset + remet à zéro les captures de chasse.
+  Future<void> setDeckReset(String ymd, Map<String, int> pestKills) async {
+    if (uid == null) return;
+    await _meta().set(
+        {'deckResetYmd': ymd, 'pestKills': pestKills}, SetOptions(merge: true));
   }
 
   /// Persiste la liste des combats engagés (épinglés).
