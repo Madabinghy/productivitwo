@@ -137,7 +137,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // Cases d'accès GRISES aux tourelles (haut/bas du territoire).
   static final Set<Point<int>> _greyTiles = {
     const Point(10, 0),
-    const Point(10, 14)
+    const Point(10, 14),
+    const Point(11, 0),
+    const Point(11, 14),
   };
   final Map<String, int> _bowLastFireMs = {};
   bool _isBowWalkable(int x, int y) {
@@ -167,8 +169,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // Phase 1
   final Random _rng = Random();
   bool _phase1 = false;
+  bool _reconquest = false; // assaut de reconquête d'une grotte rouge (envahie)
   double _invX = 0.5, _invY = 7; // envahisseur FIXE (placé au hasard au lancement)
   int _garrison = 0; // garnison restante de l'envahisseur (ENNEMI)
+  int _enemyDeckPower = 0; // puissance du deck ennemi (affichée sur la grotte prise)
   bool _assault = false; // mon deck fini → l'envahisseur a déjà tout déversé
   Offset _grotteTarget = const Offset(16, 7); // grotte visée une fois la porte cassée
   // Phase 2 : la grotte ciblée a des PV (= niveau bleu) ; les sbires les drainent.
@@ -209,7 +213,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     final hadShots = _shots.isNotEmpty;
     _shots.removeWhere((s) => _gameMs - s.startMs > s.durMs);
     if (_tdMode) {
-      _simulate(dt / 1000.0);
+      if (_reconquest) {
+        _simulateReconquest(dt / 1000.0);
+      } else {
+        _simulate(dt / 1000.0);
+      }
       if (mounted) setState(() {});
     } else if (hadShots && mounted) {
       setState(() {});
@@ -588,14 +596,15 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         ..clear()
         ..addAll({'spider': sp, 'scorpion': sc, 'snake': se});
       _garrison = 45; // garnison de l'ENNEMI = 45 (test)
+      _enemyDeckPower = _garrison; // puissance du deck ennemi (affichée si prise)
       _assault = false;
       // Mon attaquant rouge + l'envahisseur : placés aléatoirement.
       final w = _w;
-      // Mon 🦂 défenseur spawn en (16,6) ; mon avatar posté en (16,8).
+      // Mon 🦂 défenseur spawn en (16,6) ; mon avatar posté en (15,7).
       _redSpawn = const Offset(16, 6);
       _redHome = const Offset(16, 6);
       _redWander = null;
-      _pos = const Point(16, 8);
+      _pos = const Point(15, 7);
       _revealAround(_pos);
       if (w != null) {
         // Envahisseur sur la COLONNE DE GAUCHE (x=0) : loin de la porte → long
@@ -645,6 +654,81 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       final total = sp + sc + se;
       _emitBatch = total <= 0 ? 1 : ((total + 9) ~/ 10);
     });
+  }
+
+  // Reconquête : tap sur la grotte rouge → TON 🦂 (depuis chez lui) émet ton deck
+  // qui fonce DRAINER la puissance ennemie de la grotte (miroir de l'invasion).
+  // MVP : drain pur (pas encore de défense ennemie sur la grotte).
+  void _startReconquest() {
+    var sp = 1, sc = 1, se = 1; // TEST : ton deck (à brancher sur le deck vert).
+    setState(() {
+      _reconquest = true;
+      _myAtk.clear();
+      _myDeck
+        ..clear()
+        ..addAll({'spider': sp, 'scorpion': sc, 'snake': se});
+      _myMass = sp * GoldEconomy.masseSpider +
+          sc * GoldEconomy.masseScorpion +
+          se * GoldEconomy.masseSerpent;
+      _redSpawn = _redHome; // ton 🦂 attaque depuis sa case
+      _nextWaveMs = _gameMs;
+      final total = sp + sc + se;
+      _emitBatch = total <= 0 ? 1 : ((total + 9) ~/ 10);
+      _toast('🦂 Assaut de reconquête lancé sur la grotte !', _kBlue);
+    });
+  }
+
+  void _simulateReconquest(double dt) {
+    final w = _w;
+    if (w == null) return;
+    // Émission par vagues (1/10 du deck /10 s) depuis ton 🦂.
+    if (_gameMs >= _nextWaveMs) {
+      for (int i = 0; i < _emitBatch; i++) {
+        String? type;
+        for (final t in const ['spider', 'scorpion', 'snake']) {
+          if ((_myDeck[t] ?? 0) > 0) {
+            type = t;
+            break;
+          }
+        }
+        if (type == null) break;
+        _myDeck[type] = _myDeck[type]! - 1;
+        _myMass = (_myMass - (_massByType[type] ?? 0)).clamp(0, 1 << 30);
+        _myAtk.add(_Atk(_sbireSeq++, type, _redSpawn.dx, _redSpawn.dy));
+      }
+      _nextWaveMs += 10000;
+    }
+    // Tes sbires foncent DROIT sur la grotte et drainent sa puissance (= leur masse).
+    for (final a in _myAtk) {
+      if (a.x < -100) continue;
+      final dx = _grotteTarget.dx - a.x, dy = _grotteTarget.dy - a.y;
+      final dist = sqrt(dx * dx + dy * dy);
+      if (dist > 0.45) {
+        const speed = 0.5;
+        a.x += dx / dist * speed * dt;
+        a.y += dy / dist * speed * dt;
+      } else {
+        _enemyDeckPower =
+            (_enemyDeckPower - (_massByType[a.type] ?? 1)).clamp(0, 1 << 30);
+        a.x = -999;
+      }
+    }
+    _myAtk.removeWhere((a) => a.x < -100);
+    // Fin : puissance 0 → grotte reconquise ; deck vidé sans y arriver → échec.
+    if (_enemyDeckPower <= 0) {
+      _reconquest = false;
+      _grotteTaken = false; // reprise → la grotte repasse à ta couleur
+      _toast('🏰 Grotte reconquise !', _kBlue);
+    } else {
+      final deckLeft = (_myDeck['spider'] ?? 0) +
+          (_myDeck['scorpion'] ?? 0) +
+          (_myDeck['snake'] ?? 0);
+      if (deckLeft == 0 && _myAtk.isEmpty) {
+        _reconquest = false;
+        _toast('💢 Assaut épuisé — la grotte tient (puissance $_enemyDeckPower). '
+            'Farme le jardin et réessaie.', _kEnemy);
+      }
+    }
   }
 
   Future<void> _boot() async {
@@ -1247,6 +1331,14 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   Future<void> _onTap(int x, int y) async {
     final w = _w;
     if (_busy || w == null) return;
+    // Tap sur la grotte ROUGE (envahie) → lance l'assaut de reconquête.
+    if (_grotteTaken &&
+        !_reconquest &&
+        !_phase1 &&
+        w.caveIdAt(x, y) == _grotteCaveId) {
+      _startReconquest();
+      return;
+    }
     // Mode TD (dev) : tap = pose/retrait d'une tour sur une case sol marchable.
     if (_tdMode) {
       final tile = '${x}_$y';
@@ -1935,11 +2027,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                   child: Column(
                     children: [
                       // Deck (juste le nombre) AU-DESSUS : VERT au repos (deck vert
-                      // dispo), ROUGE quand il défend (deck en cours de dépense).
-                      Text('${_phase1 ? _myMass : logic.lifetimeBattleMasse}',
+                      // dispo), ROUGE quand il agit (défense OU reconquête).
+                      Text('${_phase1 || _reconquest ? _myMass : logic.lifetimeBattleMasse}',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                              color: _phase1 ? _kEnemy : _kFarm,
+                              color: _phase1 || _reconquest ? _kEnemy : _kFarm,
                               fontWeight: FontWeight.w900,
                               fontSize: slot * 0.28,
                               shadows: const [
@@ -2153,8 +2245,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       child = Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text('🕳️', style: TextStyle(fontSize: inner * 0.32)),
-          Text('${cave?.blueLevel ?? 0}',
+          // Grotte envahie → araignée 🕷️ + puissance du deck ennemi (au lieu du
+          // trou 🕳️ + niveau bleu).
+          Text(taken ? '🕷️' : '🕳️', style: TextStyle(fontSize: inner * 0.32)),
+          Text('${taken ? _enemyDeckPower : (cave?.blueLevel ?? 0)}',
               style: TextStyle(
                   color: col,
                   fontSize: inner * 0.24,
