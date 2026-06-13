@@ -158,7 +158,10 @@ Future<String?> showCaveFight(
   return Navigator.of(context).push<String>(MaterialPageRoute(
     builder: (_) => _InvasionBoardScreen(
       ctrl: _BotInvasionCtrl(logic, sync, level,
-          stakes: true, extra: extra, applyDefaultOutcome: false),
+          stakes: true,
+          extra: extra,
+          applyDefaultOutcome: false,
+          defenseFromDeck: true),
       title: title,
     ),
   ));
@@ -246,6 +249,9 @@ class _BotInvasionCtrl extends _InvasionCtrl {
   final int extra; // vagues supplémentaires (siège de grotte plus dur)
   // false = l'appelant gère l'issue (ex. lever une grotte) → pas d'or/deckDamage.
   final bool applyDefaultOutcome;
+  // true = défense de territoire : la masse vient du DECK LIFETIME (force permanente)
+  // et n'est PAS consommée (copies, budget/tick). Cohérent avec le Dock vert.
+  final bool defenseFromDeck;
 
   @override
   final int width = 7;
@@ -264,6 +270,8 @@ class _BotInvasionCtrl extends _InvasionCtrl {
 
   @override
   int get masseAvailable {
+    // Défense de territoire : deck lifetime, constant (non consommé, copies).
+    if (defenseFromDeck) return logic.lifetimeBattleMasse;
     final real = logic.battleMasseAvailable;
     return stakes ? real : (real - _localMasse).clamp(0, real);
   }
@@ -290,7 +298,10 @@ class _BotInvasionCtrl extends _InvasionCtrl {
   int _seq = 0;
 
   _BotInvasionCtrl(this.logic, this.sync, this.level,
-      {required this.stakes, this.extra = 0, this.applyDefaultOutcome = true})
+      {required this.stakes,
+      this.extra = 0,
+      this.applyDefaultOutcome = true,
+      this.defenseFromDeck = false})
       : _events = List<BattleEvent>.from(buildInvaderForce(level, extra: extra)) {
     _timer = Timer.periodic(const Duration(milliseconds: 250), (_) => _pulse());
   }
@@ -341,7 +352,10 @@ class _BotInvasionCtrl extends _InvasionCtrl {
     if (err != null) return err;
     if (stakes) {
       if (kind == 'pest') {
-        if (!logic.spendBattleMasse(tier, sync)) return 'Masse insuffisante';
+        // Défense de territoire : copies du deck lifetime → NON consommées.
+        if (!defenseFromDeck && !logic.spendBattleMasse(tier, sync)) {
+          return 'Masse insuffisante';
+        }
       } else {
         if (!logic.spendWeaponForWorld('arc', sync)) return 'Plus de flèches';
       }

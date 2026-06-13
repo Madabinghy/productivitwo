@@ -802,6 +802,13 @@ extension GoldEngine on AppLogic {
   int get battleMasseEarned =>
       _windowCaptures().fold(0, (s, c) => s + c.effort);
 
+  /// Masse de DÉFENSE de territoire = LIFETIME (équivalent permanent de
+  /// `battleMasseEarned`, SANS fenêtre 7 j ni dépense) : ta force défensive = tout
+  /// ton effort de routine cumulé. Branchée sur la défense de grotte (copies non
+  /// consommées, budget/tick) — cohérent avec le Dock vert (même source lifetime).
+  int get lifetimeBattleMasse =>
+      _allCaptures().fold(0, (s, c) => s + c.effort);
+
   /// Masse gagnée aujourd'hui (captures du jour dans la fenêtre).
   int get battleMasseEarnedToday {
     final today = yyyymmdd(DateTime.now());
