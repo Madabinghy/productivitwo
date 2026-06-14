@@ -7,6 +7,8 @@ import 'package:http/http.dart' as http;
 import 'package:productivitwo_v1/web/assistant_widget.dart';
 import 'package:productivitwo_v1/web/web_auth_screen.dart';
 import 'package:productivitwo_v1/web/web_home_screen.dart';
+import 'package:productivitwo_v1/web/mobile_preview_screen.dart';
+import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/web/web_email_signin_screen.dart';
 import 'package:productivitwo_v1/web/web_magic_link_complete_screen.dart';
 
@@ -172,6 +174,11 @@ class _AuthGateState extends State<_AuthGate> {
         }
         if (snapshot.hasError || snapshot.data == null) {
           return const WebAuthScreen();
+        }
+        // Page de DÉV : prévisu mobile native dans un cadre téléphone.
+        if (kIsWeb &&
+            Uri.base.queryParameters['mobilepreview'] == 'true') {
+          return MobilePreviewScreen(sync: FirestoreSync());
         }
         return WebHomeScreen(isDemo: isDemo);
       },

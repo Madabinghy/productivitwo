@@ -41,6 +41,20 @@ Future<void> showWorldMobile(
   );
 }
 
+/// Même UI, rendue comme PAGE plein-écran (pour la prévisu mobile sur le web,
+/// dans un cadre téléphone — itération hot-reload sans build Codemagic).
+class WorldMobileScreen extends StatelessWidget {
+  final AppLogic logic;
+  final FirestoreSync sync;
+  const WorldMobileScreen(
+      {required this.logic, required this.sync, super.key});
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: _kBg,
+        body: SafeArea(child: _WorldMobileList(logic: logic, sync: sync)),
+      );
+}
+
 class _WorldMobileList extends StatefulWidget {
   final AppLogic logic;
   final FirestoreSync sync;
