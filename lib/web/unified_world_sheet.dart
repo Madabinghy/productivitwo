@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter/services.dart'
     show KeyEvent, KeyDownEvent, KeyRepeatEvent, LogicalKeyboardKey;
 import 'package:productivitwo_v1/app_logic.dart';
@@ -2274,7 +2275,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.cell_tower, size: slot * 0.55, color: col),
+                        // Icône SVG game-icons.net (mono) TINTÉE à la couleur du
+                        // domaine — test du nouveau langage visuel.
+                        SvgPicture.asset('assets/icons/tower.svg',
+                            width: slot * 0.6,
+                            height: slot * 0.6,
+                            colorFilter:
+                                ColorFilter.mode(col, BlendMode.srcIn)),
                         Text('🔥${e.value.streak}',
                             textAlign: TextAlign.center,
                             style: TextStyle(
