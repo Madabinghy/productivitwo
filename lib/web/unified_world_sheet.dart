@@ -1714,6 +1714,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     final list = <({String id, String name, int charger})>[];
     for (final a in logic.state.activeActivities) {
       if (!a.isHabit || a.domainId != dom) continue;
+      // Calendrier = routines QUOTIDIENNES seulement (tokens vides = non-daily).
+      if (logic.routineWeekTokens(a.id).isEmpty) continue;
       list.add(
           (id: a.id, name: a.name, charger: logic.routineDefenseCharger(a.id)));
     }

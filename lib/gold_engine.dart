@@ -879,6 +879,7 @@ extension GoldEngine on AppLogic {
       }
     }
     if (a == null || !a.isHabit) return (webs: 0, leaves: 0);
+    if (effectiveHabitFreq(a) != HabitFreq.daily) return (webs: 0, leaves: 0);
     final quota = dayQuotaFor(a);
     if (quota <= 0) return (webs: 0, leaves: 0);
     final now = DateTime.now();
@@ -922,6 +923,9 @@ extension GoldEngine on AppLogic {
       }
     }
     if (a == null || !a.isHabit) return const [];
+    // Le tapis jour-par-jour ne vaut que pour les routines QUOTIDIENNES (une
+    // hebdo n'est pas « due » chaque jour → pas de toile les jours non-dus).
+    if (effectiveHabitFreq(a) != HabitFreq.daily) return const [];
     final quota = dayQuotaFor(a);
     if (quota <= 0) return const [];
     final out = <({String type, int hp})>[];
