@@ -71,8 +71,8 @@ class ActivityLog {
   static ActivityLog from(Map<String, dynamic> j) => ActivityLog(
         id: j['id'],
         activityId: j['activityId'],
-        start: DateTime.parse(j['start']),
-        end: j['end'] != null ? DateTime.parse(j['end']) : null,
+        start: _parseDate(j['start']),
+        end: _parseDateOrNull(j['end']),
       );
 }
 
@@ -92,7 +92,7 @@ class InboxItem {
   static InboxItem from(Map j) => InboxItem(
         id: j['id'],
         title: j['title'],
-        createdAt: DateTime.parse(j['createdAt']),
+        createdAt: _parseDate(j['createdAt']),
       );
 }
 
@@ -395,8 +395,8 @@ class Session {
   static Session from(Map j) => Session(
       id: j['id'],
       activityId: j['activityId'],
-      startAt: DateTime.parse(j['startAt']),
-      endAt: j['endAt'] != null ? DateTime.parse(j['endAt']) : null);
+      startAt: _parseDate(j['startAt']),
+      endAt: _parseDateOrNull(j['endAt']));
 }
 
 class HabitHit {
@@ -422,7 +422,7 @@ class HabitHit {
   static HabitHit from(Map j) => HabitHit(
         id: j['id'],
         habitId: j['habitId'],
-        ts: DateTime.parse(j['ts']),
+        ts: _parseDate(j['ts']),
         contextActivityId: j['contextActivityId'],
       );
 }
@@ -1302,8 +1302,8 @@ class ProjectPhase {
         id: j['id'],
         label: j['label'] ?? '',
         color: j['color'],
-        startDate: DateTime.parse(j['startDate']),
-        endDate: DateTime.parse(j['endDate']),
+        startDate: _parseDate(j['startDate']),
+        endDate: _parseDate(j['endDate']),
       );
 }
 
