@@ -841,6 +841,31 @@ extension GoldEngine on AppLogic {
     return n;
   }
 
+  /// Jours (0-6, lun→dim) de CETTE semaine où la routine est MANQUÉE (jours passés
+  /// ou aujourd'hui seulement) = les nuisibles de sa ligne dans le calendrier.
+  List<int> routineMissedThisWeek(String routineId) {
+    Activity? a;
+    for (final x in state.activeActivities) {
+      if (x.id == routineId) {
+        a = x;
+        break;
+      }
+    }
+    if (a == null || !a.isHabit) return const [];
+    final quota = dayQuotaFor(a);
+    if (quota <= 0) return const [];
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final mon = today.subtract(Duration(days: today.weekday - 1));
+    final out = <int>[];
+    for (var d = 0; d < 7; d++) {
+      final date = mon.add(Duration(days: d));
+      if (date.isAfter(today)) break; // jour futur → pas encore jouable
+      if (habitValueOn(a.id, date) < quota) out.add(d);
+    }
+    return out;
+  }
+
   /// CHARGEUR de défense d'une routine = ses complétions la SEMAINE PASSÉE (0..7).
   /// Ce que tu as tenu te défend, même si le streak du jour est cassé (le coussin).
   int routineDefenseCharger(String routineId) {

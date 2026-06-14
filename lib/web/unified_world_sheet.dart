@@ -2476,6 +2476,27 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                       ]),
                     );
                   }(),
+                // NUISIBLES = jours manqués de chaque routine (🕷️ sur la case du
+                // jour). CLIQUABLE → carte de combat de la routine (faire le travail).
+                for (var i = 0; i < topRoutines.length; i++)
+                  for (final d in logic.routineMissedThisWeek(topRoutines[i].id))
+                    () {
+                      final c0 = centerD(1.0 + d, (2 + i).toDouble());
+                      return Positioned(
+                        left: c0.dx - slot / 2,
+                        top: c0.dy - slot / 2,
+                        width: slot,
+                        height: slot,
+                        child: GestureDetector(
+                          onTap: () => showBacklogCombat(
+                              context, logic, sync, 'spider', topRoutines[i].id),
+                          child: Center(
+                            child: Text('🕷️',
+                                style: TextStyle(fontSize: slot * 0.5)),
+                          ),
+                        ),
+                      );
+                    }(),
               ],
               // ── Couche TD : tours, sbires, flèches, PV porte ────────────────
               // Halo de portée d'un arc ACTIF (avatar sur une de ses cases blanches).
