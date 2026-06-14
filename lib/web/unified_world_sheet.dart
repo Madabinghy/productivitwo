@@ -3047,7 +3047,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       // Mur = terrain rocheux SOMBRE (infranchissable) ; certains portent 🪨.
       bg = const Color(0xFF1A120C).withOpacity(.82);
       border = Colors.black.withOpacity(.5);
-      if (w.hasRock(x, y)) {
+      if (w.hasRock(x, y) && !_inInterior) {
         child = Text('🪨', style: TextStyle(fontSize: inner * 0.5));
       }
     } else if (kind == UwTile.floor) {
@@ -3058,7 +3058,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           _inInterior ? _interiorColor : (farmSide ? _kFarm : Colors.white);
       bg = base.withOpacity(.18);
       border = base.withOpacity(.40);
-      if (w.hasBush(x, y)) {
+      // Décor buisson 🌿 SEULEMENT sur la map principale — retiré à l'intérieur
+      // (calendrier) pour ne pas faire doublon avec les tokens 🌿.
+      if (w.hasBush(x, y) && !_inInterior) {
         child = Text('🌿', style: TextStyle(fontSize: inner * 0.5));
       }
     } else if (kind == UwTile.castle) {
