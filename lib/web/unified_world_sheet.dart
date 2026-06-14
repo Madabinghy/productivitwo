@@ -206,10 +206,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   final List<_DomTurret> _domTurrets = [];
   // SIMULATION de défense (preview, ne consomme rien — chargeur restauré après).
   bool _simDefense = false;
-  double _simX = 0, _simY = 7; // envahisseur simulé
-  List<Offset> _simPath = const []; // waypoints (comportement, pas de mur réel)
-  int _simWpIdx = 0;
-  int _simHp = 0, _simHpMax = 0;
+  final List<_DefAttacker> _defAttackers = []; // vrais nuisibles du domaine
+  static const List<Offset> _defPath = [Offset(3, 2), Offset(16, 7)];
   int _simTurretFireMs = 0;
   String? _simResult; // null pendant | 'hold' | 'fall'
   int _simEndMs = 0; // ms de fin (pour laisser le message + restaurer)
@@ -807,14 +805,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     );
   }
 
-  // SIMULATION de défense (preview gratuit) : un envahisseur marche vers le
-  // château du domaine, tes tours lui tirent dessus (chargeur qui descend à
-  // l'écran). Tout est RESTAURÉ à la fin → rien de consommé. Sert à tester ton
-  // placement. La vraie attaque (qui consomme) viendra avec la régression hebdo.
+  // SIMULATION de défense (preview gratuit) : tes VRAIS nuisibles du domaine
+  // (backlog) marchent vers le château, tes tours leur tirent dessus. Cliquer un
+  // nuisible → sa carte de combat. Tout est RESTAURÉ à la fin (rien consommé).
   void _startSimDefense() {
     if (!_inInterior || _simDefense || _tdMode) return;
     if (_domTurrets.isEmpty) {
-      _toast('Aucune tour de défense dans ce domaine (tiens des routines).',
+      _toast('Aucune tour de défense (tiens des routines la semaine passée).',
           _interiorColor);
       return;
     }
@@ -824,75 +821,90 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _simEndMs = 0;
       _shots.clear();
       for (final tr in _domTurrets) {
-        tr.ammo = tr.level; // chargeur plein
+        tr.ammo = tr.level;
       }
-      // Spawn bas-gauche (zone 0,13→7,14) ; COMPORTEMENT : monte la lane gauche
-      // (colonnes 0-5) jusqu'en haut, tourne à droite, file vers le château. Pas
-      // de mur réel — c'est le pathing des nuisibles (le jardin = la lane à couvrir).
-      _simX = 3;
-      _simY = 14;
-      _simPath = const [Offset(3, 2), Offset(16, 7)];
-      _simWpIdx = 0;
-      // DECK DE L'ENNEMI = ta RÉGRESSION sur ce domaine (chute N-2 → N-1, en
-      // jours-complétions). Même unité que la défense (chargeurs) → équilibré.
-      // Plancher 3 pour qu'il y ait toujours un petit test, même sans régression.
-      final reg =
-          _interiorDomainId != null ? logic.domainRegression(_interiorDomainId!) : 0;
-      _simHpMax = reg < 3 ? 3 : reg;
-      _simHp = _simHpMax;
-      _toast('🛡️ Simulation — voilà ce qui se passerait si tu étais attaqué.',
-          _interiorColor);
+      // Attaquants = les VRAIS nuisibles du backlog de CE domaine, spawn bas-gauche.
+      _defAttackers.clear();
+      final dom = _interiorDomainId;
+      var i = 0;
+      for (final e in logic.backlogEnemies()) {
+        if (dom != null && logic.enemyDomainId(e.type, e.id) != dom) continue;
+        final sx = (i % 6).toDouble();
+        final sy = (13 + (i ~/ 6) % 2).toDouble();
+        _defAttackers.add(
+            _DefAttacker(e.type, e.id, sx, sy, _massByType[e.type] ?? 5));
+        if (++i >= 30) break;
+      }
+      if (_defAttackers.isEmpty) {
+        _defAttackers.add(_DefAttacker('spider', '', 3, 14, 5)); // menace symbolique
+      }
+      _toast('🛡️ Simulation — tes retards attaquent. Clique un nuisible pour voir '
+          'sa carte de combat.', _interiorColor);
     });
   }
 
   void _simulateDefense(double dt) {
     if (_simResult != null) {
-      // Laisse le verdict ~2.5 s, puis RESTAURE tout (rien consommé) et sort.
       if (_gameMs - _simEndMs > 2500) {
         _simDefense = false;
         for (final tr in _domTurrets) {
           tr.ammo = tr.level;
         }
+        _defAttackers.clear();
         _shots.clear();
       }
       return;
     }
-    // Suit le chemin (waypoints) : monte la lane gauche puis file au château.
-    final target =
-        _simWpIdx < _simPath.length ? _simPath[_simWpIdx] : const Offset(16, 7);
-    final dx = target.dx - _simX, dy = target.dy - _simY;
-    final dist = sqrt(dx * dx + dy * dy);
-    if (dist > 0.4) {
-      const speed = 1.1;
-      _simX += dx / dist * speed * dt;
-      _simY += dy / dist * speed * dt;
-    } else if (_simWpIdx < _simPath.length - 1) {
-      _simWpIdx++; // waypoint atteint → suivant
-    } else {
-      _simResult = 'fall';
-      _simEndMs = _gameMs;
-      _toast('❌ Le domaine TOMBERAIT — défenses insuffisantes. Tiens plus de '
-          'routines (chargeurs ↑) ou repositionne tes tours.', _kEnemy);
-      return;
+    // 1) Marche de chaque nuisible le long du chemin (monte la lane → château).
+    const speed = 2.5; // accéléré (preview) ; en vrai ce sera 1 pas/jour
+    var anyReached = false;
+    for (final a in _defAttackers) {
+      final target = a.wpIdx < _defPath.length ? _defPath[a.wpIdx] : _defPath.last;
+      final dx = target.dx - a.x, dy = target.dy - a.y;
+      final dist = sqrt(dx * dx + dy * dy);
+      if (dist > 0.4) {
+        a.x += dx / dist * speed * dt;
+        a.y += dy / dist * speed * dt;
+      } else if (a.wpIdx < _defPath.length - 1) {
+        a.wpIdx++;
+      } else {
+        anyReached = true;
+      }
     }
-    // Volée des tours : un tir = −1 chargeur + dégât, si l'envahisseur est à portée.
-    const cd = 700, range = _kTurretRange;
+    // 2) Volée des tours : chaque tour tire sur le nuisible le plus proche à portée.
+    const cd = 500, range = _kTurretRange;
     if (_gameMs - _simTurretFireMs >= cd) {
       _simTurretFireMs = _gameMs;
       for (final tr in _domTurrets) {
         if (tr.ammo <= 0) continue;
-        final d = sqrt(pow(tr.x - _simX, 2) + pow(tr.y - _simY, 2));
-        if (d > range) continue;
-        tr.ammo--;
-        _shots.add(_Shot(Offset(tr.x, tr.y), Offset(_simX, _simY), _gameMs, 340));
-        _simHp -= 1; // 1 tir = 1 jour-complétion de dégât (même unité)
+        _DefAttacker? best;
+        double bestD = range;
+        for (final a in _defAttackers) {
+          if (a.hp <= 0) continue;
+          final d = sqrt(pow(tr.x - a.x, 2) + pow(tr.y - a.y, 2));
+          if (d <= bestD) {
+            bestD = d;
+            best = a;
+          }
+        }
+        if (best != null) {
+          tr.ammo--;
+          best.hp--;
+          _shots.add(_Shot(Offset(tr.x, tr.y), Offset(best.x, best.y), _gameMs, 320));
+        }
       }
     }
-    if (_simHp <= 0) {
+    _defAttackers.removeWhere((a) => a.hp <= 0); // tués par les tours
+    // 3) Verdict : un nuisible atteint le château → tomberait ; tous stoppés → tient.
+    if (anyReached) {
+      _simResult = 'fall';
+      _simEndMs = _gameMs;
+      _toast('❌ Un nuisible atteint le château → le domaine TOMBERAIT. Renforce '
+          'tes tours ou clique les nuisibles pour faire le vrai travail.', _kEnemy);
+    } else if (_defAttackers.isEmpty) {
       _simResult = 'hold';
       _simEndMs = _gameMs;
-      _toast('✅ Le domaine TIENDRAIT — tes défenses repoussent l\'envahisseur !',
-          _kBlue);
+      _toast('✅ Tous les nuisibles stoppés — le domaine TIENDRAIT !', _kBlue);
     }
   }
 
@@ -2537,30 +2549,41 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                       ),
                     );
                   }(),
-              // SIMULATION : l'envahisseur 🕷️ qui marche vers le château + ses PV.
+              // SIMULATION : les VRAIS nuisibles du domaine qui marchent vers le
+              // château. CLIQUABLES → leur carte de combat (faire le vrai travail).
               if (_simDefense)
-                () {
-                  final c0 = centerD(_simX, _simY);
-                  return Positioned(
-                    left: c0.dx - slot * 0.6,
-                    top: c0.dy - slot * 0.85,
-                    width: slot * 1.2,
-                    child: Column(
-                      children: [
-                        Text('🕷️', style: TextStyle(fontSize: slot * 0.8)),
-                        Text('${_simHp < 0 ? 0 : _simHp}/$_simHpMax',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                                color: _kEnemy,
-                                fontWeight: FontWeight.w900,
-                                fontSize: slot * 0.24,
-                                shadows: const [
-                                  Shadow(color: Colors.black, blurRadius: 2)
-                                ])),
-                      ],
-                    ),
-                  );
-                }(),
+                for (final a in _defAttackers)
+                  () {
+                    final c0 = centerD(a.x, a.y);
+                    return Positioned(
+                      left: c0.dx - slot * 0.5,
+                      top: c0.dy - slot * 0.7,
+                      width: slot,
+                      child: GestureDetector(
+                        onTap: () {
+                          if (a.id.isEmpty) return;
+                          showBacklogCombat(context, logic, sync, a.type, a.id);
+                        },
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(entityEmoji(a.type),
+                                style: TextStyle(fontSize: slot * 0.6)),
+                            Text('${a.hp}',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    color: _kEnemy,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: slot * 0.2,
+                                    height: 1,
+                                    shadows: const [
+                                      Shadow(color: Colors.black, blurRadius: 2)
+                                    ])),
+                          ],
+                        ),
+                      ),
+                    );
+                  }(),
               // Tours posées (fixes) — survol souris = montre la portée.
               for (final tile in _turrets.keys)
                 () {
@@ -3046,6 +3069,17 @@ class _Atk {
   Offset? wp; // point de déviation aléatoire (avant d'aller à l'envahisseur)
   _Atk(this.id, this.type, this.x, this.y);
   double get phase => id * 1.7;
+}
+
+/// Nuisible ATTAQUANT d'un domaine (défense) = un vrai item de backlog (routine
+/// lâchée / temps ou tâche en retard) qui marche vers le château. Cliquable → sa
+/// carte de combat (faire le vrai travail) → il disparaît de l'attaque.
+class _DefAttacker {
+  final String type, id; // identité backlog
+  double x, y;
+  int hp; // = masse (5/10/15) ; tombé à 0 par les tours
+  int wpIdx = 0;
+  _DefAttacker(this.type, this.id, this.x, this.y, this.hp);
 }
 
 /// Tourelle de DÉFENSE d'un domaine (intérieur de grotte). Posée par l'user en
