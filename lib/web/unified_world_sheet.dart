@@ -777,7 +777,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // entrer (plus de « grotte la plus proche » ambigu).
   void _quickEnter() {
     final t = _t;
-    if (t == null || _inInterior || t.caves.isEmpty) return;
+    if (t == null) {
+      _toast('Territoire pas encore chargé — réessaie dans un instant.',
+          Colors.white60);
+      return;
+    }
+    if (_inInterior) return;
+    if (t.caves.isEmpty) {
+      _toast('Aucune grotte dans le territoire (caves vides).', Colors.white60);
+      return;
+    }
     showDialog(
       context: context,
       builder: (_) => SimpleDialog(
