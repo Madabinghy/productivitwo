@@ -2279,10 +2279,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     ),
                   );
                 }(),
-              // BÂTI — tourelles dérivées des STREAKS de routines (couleur du
-              // domaine + 🔥 streak). Le dashboard de tes constances sur la map.
-              for (final e in _streakTurrets.entries)
-                () {
+              // BÂTI — tourelles dérivées des STREAKS de routines (map principale
+              // SEULEMENT ; à l'intérieur ce sont les _domTurrets draggables).
+              if (!_inInterior)
+                for (final e in _streakTurrets.entries)
+                  () {
                   // TOUJOURS visible (ton bâti, pas un ennemi caché par le fog).
                   final pp = e.key.split('_');
                   final c0 =
@@ -2337,8 +2338,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     final tr = _domTurrets[ti];
                     final c0 = centerD(tr.x, tr.y);
                     return Positioned(
+                      // Centré SUR la case (pas au-dessus) → pas coupé en y=0.
                       left: c0.dx - slot / 2,
-                      top: c0.dy - slot * 0.6,
+                      top: c0.dy - slot / 2,
                       width: slot,
                       child: GestureDetector(
                         onPanUpdate: (d) => setState(() {
