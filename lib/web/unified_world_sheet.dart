@@ -110,7 +110,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // Le « BÂTI » : tourelles AUTO dérivées des STREAKS de routines (1 routine tenue
   // = 1 tour dans la zone de sa grotte de domaine, niveau = streak). Recalculées au
   // chargement. Streak ↑ = cadence ↑. Pas posées à la main (la pose = dev).
-  final Map<String, ({int streak, Color color})> _streakTurrets = {};
+  final Map<String, ({int streak, Color color, String name})> _streakTurrets = {};
   final Map<String, int> _streakTurretFireMs = {};
   String? _selectedTurret; // tour sélectionnée (tap, fallback tactile) → portée
   String? _hoveredTurret; // tour survolée (souris) → affiche sa portée
@@ -1533,14 +1533,14 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _streakTurrets.clear();
     final w = _w, t = _t;
     if (w == null || t == null || _inInterior) return;
-    final byDomain = <String, List<int>>{};
+    final byDomain = <String, List<({String name, int streak})>>{};
     for (final a in logic.state.activeActivities) {
       if (!a.isHabit) continue;
       final s = logic.habitCurrentStreak(a.id);
       if (s < 1) continue;
-      (byDomain[a.domainId] ??= <int>[]).add(s);
+      (byDomain[a.domainId] ??= []).add((name: a.name, streak: s));
     }
-    byDomain.forEach((domainId, streaks) {
+    byDomain.forEach((domainId, routines) {
       TerritoryCave? cave;
       for (final c in t.caves) {
         if (c.domainId == domainId) {
@@ -1552,11 +1552,14 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       final cp = w.caves[cave.id];
       if (cp == null) return;
       final color = _caveColor(cave);
-      streaks.sort((a, b) => b.compareTo(a)); // grosses tours au plus près
-      final slots = _freeFloorNear(cp, streaks.length);
-      for (var i = 0; i < streaks.length && i < slots.length; i++) {
-        _streakTurrets['${slots[i].x}_${slots[i].y}'] =
-            (streak: streaks[i], color: color);
+      routines.sort((a, b) => b.streak.compareTo(a.streak)); // grosses au plus près
+      final slots = _freeFloorNear(cp, routines.length);
+      for (var i = 0; i < routines.length && i < slots.length; i++) {
+        _streakTurrets['${slots[i].x}_${slots[i].y}'] = (
+          streak: routines[i].streak,
+          color: color,
+          name: routines[i].name
+        );
       }
     });
   }
@@ -2261,17 +2264,15 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               // domaine + 🔥 streak). Le dashboard de tes constances sur la map.
               for (final e in _streakTurrets.entries)
                 () {
-                  if (!_revealed.contains(e.key)) {
-                    return const SizedBox.shrink();
-                  }
+                  // TOUJOURS visible (ton bâti, pas un ennemi caché par le fog).
                   final pp = e.key.split('_');
                   final c0 =
                       centerD(double.parse(pp[0]), double.parse(pp[1]));
                   final col = e.value.color;
                   return Positioned(
-                    left: c0.dx - slot / 2,
+                    left: c0.dx - slot * 0.75,
                     top: c0.dy - slot * 0.6,
-                    width: slot,
+                    width: slot * 1.5,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -2292,6 +2293,19 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                                 shadows: const [
                                   Shadow(color: Colors.black, blurRadius: 2)
                                 ])),
+                        if (slot >= 26)
+                          Text(e.value.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                  color: col.withOpacity(.95),
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: slot * 0.16,
+                                  height: 1.1,
+                                  shadows: const [
+                                    Shadow(color: Colors.black, blurRadius: 2)
+                                  ])),
                       ],
                     ),
                   );
