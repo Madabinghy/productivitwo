@@ -920,7 +920,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     // gauche). Le calendrier en overlay garde ses coords (déjà repère inversé).
     final interior = mirrorWorldX(generateUnifiedWorld(
         (_t?.seed ?? 1) ^ caveId.hashCode,
-        caveIds: const ['coeur']));
+        caveIds: const ['coeur'],
+        cols: 22)); // calendrier large : château gauche, jours/araignées à droite
     setState(() {
       _savedW = w;
       _savedPos = _pos;
@@ -2419,7 +2420,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 // Labels des jours (L M M J V S D) en haut, colonnes 1-7.
                 for (var d = 0; d < 7; d++)
                   () {
-                    final c0 = centerD(1.0 + d, 2);
+                    final c0 = centerD(11.0 + d, 2);
                     return Positioned(
                       left: c0.dx - slot / 2,
                       top: c0.dy - slot / 2,
@@ -2487,7 +2488,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 for (var i = 0; i < topRoutines.length; i++)
                   for (final d in logic.routineMissedThisWeek(topRoutines[i].id))
                     () {
-                      final c0 = centerD(10.0 + d, (3 + i).toDouble());
+                      final c0 = centerD(11.0 + d, (3 + i).toDouble());
                       return Positioned(
                         left: c0.dx - slot / 2,
                         top: c0.dy - slot / 2,

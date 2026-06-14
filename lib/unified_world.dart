@@ -67,11 +67,12 @@ class UnifiedWorld {
 /// (passe par le château), poche ouverte côté farm, anneau de couloirs dans la
 /// bande territoire pour atteindre les 4 grottes des coins.
 UnifiedWorld generateUnifiedWorld(int seed,
-    {List<String> caveIds = const ['nw', 'ne', 'sw', 'se']}) {
+    {List<String> caveIds = const ['nw', 'ne', 'sw', 'se'],
+    int cols = 17,
+    int rows = 15}) {
   final rng = Random(seed);
   // Grande carte : on respire (zone farm large, grottes espacées, vrai voyage
-  // gauche→droite). Surtout en hauteur (la largeur du dialog web est bornée).
-  const cols = 17, rows = 15;
+  // gauche→droite). Largeur paramétrable (calendrier de domaine = plus large).
   final grid = [
     for (int y = 0; y < rows; y++)
       [for (int x = 0; x < cols; x++) UwTile.wall]
