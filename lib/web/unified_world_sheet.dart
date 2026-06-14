@@ -762,22 +762,37 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     );
   }
 
-  // Raccourci : entre directement dans la grotte la PLUS PROCHE de l'avatar (évite
-  // de remarcher jusqu'à elle à chaque fois). NE lance PAS l'assaut — tu farmes
-  // puis « Lancer l'assaut » comme d'habitude.
+  // SÉLECTEUR de domaine : liste les grottes (domaines) → l'user CHOISIT laquelle
+  // entrer (plus de « grotte la plus proche » ambigu).
   void _quickEnter() {
-    final w = _w;
-    if (w == null || _inInterior || w.caves.isEmpty) return;
-    String? best;
-    num bestD = 1 << 30;
-    w.caves.forEach((id, p) {
-      final d = pow(p.x - _pos.x, 2) + pow(p.y - _pos.y, 2);
-      if (d < bestD) {
-        bestD = d;
-        best = id;
-      }
-    });
-    if (best != null) _enterInterior(best!);
+    final t = _t;
+    if (t == null || _inInterior || t.caves.isEmpty) return;
+    showDialog(
+      context: context,
+      builder: (_) => SimpleDialog(
+        backgroundColor: _kBg,
+        title: const Text('Entrer dans quel domaine ?',
+            style: TextStyle(color: Colors.white, fontSize: 16)),
+        children: [
+          for (final c in t.caves)
+            SimpleDialogOption(
+              onPressed: () {
+                Navigator.pop(context);
+                _enterInterior(c.id);
+              },
+              child: Row(children: [
+                Icon(Icons.circle, size: 13, color: _caveColor(c)),
+                const SizedBox(width: 10),
+                Text(_domainName(c.domainId),
+                    style: TextStyle(
+                        color: _caveColor(c),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700)),
+              ]),
+            ),
+        ],
+      ),
+    );
   }
 
   // Reconquête (tranche 1) : ENTRER dans la grotte = un CLONE de la map, gazon
