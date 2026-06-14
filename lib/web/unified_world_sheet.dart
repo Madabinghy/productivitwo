@@ -2400,8 +2400,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       final topRoutines = _inInterior
           ? _domTopRoutines()
           : const <({String id, String name, int charger})>[];
-      const dayLabels = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
-      // Tokens du tapis par ligne : 'spider'/'flame'/'bush' pour chaque jour.
+      // Labels = jour réel des 7 DERNIERS jours (aujourd'hui à droite, tourne seul).
+      final calToday = () {
+        final n = DateTime.now();
+        return DateTime(n.year, n.month, n.day);
+      }();
+      const weekdayLetters = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+      final dayLabels = [
+        for (var i = 0; i < 7; i++)
+          weekdayLetters[
+              calToday.subtract(Duration(days: 6 - i)).weekday - 1]
+      ];
+      // Tokens du tapis par ligne : 'spider'/'leaf'/'flame' pour chaque jour.
       final lanes = [for (final r in topRoutines) logic.routineWeekTokens(r.id)];
       final grid = Column(
         mainAxisSize: MainAxisSize.min,
@@ -2489,8 +2499,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     () {
                       final tok = lanes[i][d];
                       final c0 = centerD(10.0 + d, (3 + i).toDouble());
-                      final emoji =
-                          tok == 'flame' ? '🔥' : (tok == 'spider' ? '🕷️' : '🌿');
+                      final emoji = tok == 'flame'
+                          ? '🔥'
+                          : (tok == 'spider' ? '🕷️' : '🍃');
                       final spider = tok == 'spider';
                       return Positioned(
                         left: c0.dx - slot / 2,

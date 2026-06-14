@@ -875,9 +875,10 @@ extension GoldEngine on AppLogic {
     return 0;
   }
 
-  /// Token de chaque jour (0-6, lun→dim) de la routine cette semaine, pour le
-  /// tapis roulant : 'flame' (fait/streak ce jour), 'spider' (manqué), 'bush'
-  /// (jour futur ou sans quota = placeholder).
+  /// Tokens du tapis roulant pour les 7 DERNIERS jours (index 0 = il y a 6 jours,
+  /// 6 = AUJOURD'HUI à droite ; tourne tout seul chaque jour, pas de bouton) :
+  /// 'spider' (manqué) · 'leaf' (fait après un manque, 1er jour repris) · 'flame'
+  /// (fait avec ≥ 2 jours d'affilée, la série prend).
   List<String> routineWeekTokens(String routineId) {
     Activity? a;
     for (final x in state.activeActivities) {
@@ -888,17 +889,25 @@ extension GoldEngine on AppLogic {
     }
     if (a == null || !a.isHabit) return const [];
     final quota = dayQuotaFor(a);
+    if (quota <= 0) return const [];
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final mon = today.subtract(Duration(days: today.weekday - 1));
     final out = <String>[];
-    for (var d = 0; d < 7; d++) {
-      final date = mon.add(Duration(days: d));
-      if (quota <= 0 || date.isAfter(today)) {
-        out.add('bush');
-      } else {
-        out.add(habitValueOn(a.id, date) >= quota ? 'flame' : 'spider');
+    for (var i = 0; i < 7; i++) {
+      final date = today.subtract(Duration(days: 6 - i));
+      if (habitValueOn(a.id, date) < quota) {
+        out.add('spider');
+        continue;
       }
+      // Run de jours faits consécutifs finissant à `date` (≥2 = série prise).
+      var run = 0;
+      var d = date;
+      while (habitValueOn(a.id, d) >= quota) {
+        run++;
+        if (run >= 2) break;
+        d = d.subtract(const Duration(days: 1));
+      }
+      out.add(run >= 2 ? 'flame' : 'leaf');
     }
     return out;
   }
