@@ -941,21 +941,26 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           if (!a.isHabit || a.domainId != dom) continue;
           // Chargeur = complétions de la SEMAINE PASSÉE (0..7). Tour seulement si
           // tenue la semaine passée (>= 1) → ce que tu as bâti te défend.
-          final s = logic.routineDefenseCharger(a.id);
-          if (s < 1 || idx >= 16) continue; // zone de départ = 8×2 = 16 slots
-          // Position sauvée (placement stratégique) si elle existe, sinon départ.
-          final saved = logic.state.domTurretPos['$dom~${a.id}'];
-          double px = (idx % 8).toDouble(), py = (idx ~/ 8).toDouble();
-          if (saved != null && saved.contains('_')) {
-            final s2 = saved.split('_');
-            final sx = double.tryParse(s2[0]), sy = double.tryParse(s2[1]);
-            if (sx != null && sy != null) {
-              px = sx;
-              py = sy;
+          final charger = logic.routineDefenseCharger(a.id);
+          if (charger < 1) continue;
+          // Le STREAK actuel CLONE la tour : 1 base + 1 clone/jour de streak,
+          // plafonné à 8. Streak cassé (0) → 1 tour de base (le coussin tient).
+          final count = (1 + logic.habitCurrentStreak(a.id)).clamp(1, 8);
+          for (var ci = 0; ci < count && idx < 40; ci++) {
+            final key = '$dom~${a.id}~$ci';
+            double px = (idx % 8).toDouble(), py = (idx ~/ 8).toDouble();
+            final saved = logic.state.domTurretPos[key];
+            if (saved != null && saved.contains('_')) {
+              final s2 = saved.split('_');
+              final sx = double.tryParse(s2[0]), sy = double.tryParse(s2[1]);
+              if (sx != null && sy != null) {
+                px = sx;
+                py = sy;
+              }
             }
+            _domTurrets.add(_DomTurret(key, charger, col, a.name, px, py));
+            idx++;
           }
-          _domTurrets.add(_DomTurret(a.id, s, col, a.name, px, py));
-          idx++;
         }
       }
       _toast(
@@ -2490,13 +2495,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                               tr.y = ny.toDouble();
                             }
                           });
-                          // Persiste le placement (clé domainId~routineId → x_y).
-                          final dom = _interiorDomainId;
-                          if (dom != null) {
-                            logic.state.domTurretPos['$dom~${tr.routineId}'] =
-                                '${tr.x.round()}_${tr.y.round()}';
-                            sync.setDomTurretPos(logic.state.domTurretPos);
-                          }
+                          // Persiste le placement (clé complète domainId~routineId~clone).
+                          logic.state.domTurretPos[tr.posKey] =
+                              '${tr.x.round()}_${tr.y.round()}';
+                          sync.setDomTurretPos(logic.state.domTurretPos);
                         },
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
@@ -3040,14 +3042,14 @@ class _Atk {
 /// initial (`ammo`) qui diminue à chaque tir. Puissance = constance réelle ;
 /// agency = le placement. Niveau du domaine = Σ des niveaux de ses tourelles.
 class _DomTurret {
-  final String routineId; // clé de persistance du placement
-  final int level; // = streak de la routine (chargeur initial)
+  final String posKey; // clé de persistance "domainId~routineId~cloneIdx"
+  final int level; // = chargeur (complétions de la routine la semaine passée)
   final Color color; // couleur du domaine
   final String name; // nom de la routine
   double x, y; // position en cases (fractionnaire pendant le drag)
   int ammo; // tirs restants
   int lastFireMs = -99999;
-  _DomTurret(this.routineId, this.level, this.color, this.name, this.x, this.y)
+  _DomTurret(this.posKey, this.level, this.color, this.name, this.x, this.y)
       : ammo = level;
 }
 
