@@ -2162,8 +2162,19 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           ],
         ],
       ),
-      if (_inInterior && !_tdMode) ...[
+      if (_inInterior) ...[
         const SizedBox(height: 6),
+        Text(
+            '🏴 ${_interiorDomainId != null ? _domainName(_interiorDomainId!) : "Grotte"}'
+            ' · ${_domTurrets.length} tour${_domTurrets.length > 1 ? "s" : ""} de défense',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                color: _interiorColor,
+                fontSize: 13,
+                fontWeight: FontWeight.w900)),
+      ],
+      if (_inInterior && !_tdMode) ...[
+        const SizedBox(height: 4),
         Text(
             '🦂 Deck de reconquête : $_reconquestDeck — bats les nuisibles du '
             'domaine pour le gonfler, puis ⚔️ lance l\'assaut',
