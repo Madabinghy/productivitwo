@@ -2463,8 +2463,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     return LayoutBuilder(builder: (context, c) {
       // Panneau latéral des noms de routines (intérieur) : réservé hors grille
       // pour ne pas rétrécir les cases.
-      final nameW = _inInterior ? 200.0 : 0.0;
-      final slot = ((c.maxWidth - nameW) / w.cols).clamp(22.0, 46.0);
+      final nameW = _inInterior ? (widget.mobile ? 130.0 : 200.0) : 0.0;
+      // Mobile : slot fixe (calendrier scrollable, pas écrasé à l'écran du tel).
+      final slot = widget.mobile
+          ? 36.0
+          : ((c.maxWidth - nameW) / w.cols).clamp(22.0, 46.0);
       final inner = slot - 3;
       final topRoutines = _inInterior
           ? _domTopRoutines()
@@ -2527,8 +2530,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       Offset centerD(double x, double y) =>
           Offset(x * slot + slot / 2, y * slot + slot / 2);
       final aw = slot * 0.85, ah = slot * 0.34;
-      return Center(
-        child: Row(
+      final board = Row(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -3147,8 +3149,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 ),
               ),
           ],
-        ),
-      );
+        );
+      // Mobile : plateau pannable/zoomable (calendrier plus grand que l'écran).
+      return widget.mobile
+          ? InteractiveViewer(
+              constrained: false,
+              boundaryMargin: const EdgeInsets.all(140),
+              minScale: 0.4,
+              maxScale: 2.5,
+              child: board)
+          : Center(child: board);
     });
   }
 
