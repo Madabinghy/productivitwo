@@ -826,7 +826,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       }
       _simX = 0;
       _simY = 7;
-      _simHpMax = 20; // menace fixe (preview) — à brancher sur le backlog plus tard
+      // DECK DE L'ENNEMI = ta menace RÉELLE sur CE domaine = la masse de son
+      // backlog (routines sans série + tâches/temps en retard du domaine).
+      final threat = logic
+          .backlogEnemies()
+          .where((e) => logic.enemyDomainId(e.type, e.id) == _interiorDomainId)
+          .fold(0, (s, e) => s + (_massByType[e.type] ?? 0));
+      _simHpMax = threat < 5 ? 5 : threat; // plancher lisible
       _simHp = _simHpMax;
       _toast('🛡️ Simulation — voilà ce qui se passerait si tu étais attaqué.',
           _interiorColor);
