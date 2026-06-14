@@ -1,5 +1,5 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
@@ -10,6 +10,7 @@ import 'package:productivitwo_v1/widgets/backlog_combat.dart';
 const _kBg = Color(0xFF0E1512);
 const _kEnemy = Color(0xFFE5604D);
 const _kCharge = Color(0xFF4FC26B); // vert — chargeur (munitions non tirées)
+const _kLife = Color(0xFFF5C518); // jaune — barre de vie de la tour
 
 const _weekdayLetters = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 List<String> _last7DayLabels() {
@@ -408,31 +409,22 @@ class _DomainGameplayState extends State<_DomainGameplay> {
           ]),
           const SizedBox(height: 1),
           Row(children: [
-            // Tour (col. château) avec son chargeur.
+            // Tour : barres AU-DESSUS, puis le turret SVG qui vise les nuisibles.
             SizedBox(
               width: 60,
-              child: Row(
+              child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Tour pivotée pour « viser » horizontalement les araignées.
-                  Transform.rotate(
-                    angle: math.pi / 2,
-                    child: const Text('🗼', style: TextStyle(fontSize: 15)),
-                  ),
-                  const SizedBox(width: 3),
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Chargeur (cases vertes) : munitions NON tirées = jours
-                      // non faits → vide quand tout est fait (j'ai tiré).
-                      _segBar(7 - it.charger, _kCharge),
-                      const SizedBox(height: 3),
-                      // Vie (cases rouges) : santé = jours faits → pleine quand
-                      // j'ai tiré, vide quand j'ai dégusté (rien fait).
-                      _segBar(it.charger, _kEnemy),
-                    ],
-                  ),
+                  // Vie (jaune, continue) = jours faits → pleine quand j'ai tiré.
+                  _lifeBar(it.charger / 7),
+                  const SizedBox(height: 2),
+                  // Chargeur (cases vertes) = jours non faits (7-n) → vide si tiré.
+                  _segBar(7 - it.charger, _kCharge),
+                  const SizedBox(height: 2),
+                  SvgPicture.asset('assets/icons/turret.svg',
+                      width: 22,
+                      height: 22,
+                      colorFilter: ColorFilter.mode(c, BlendMode.srcIn)),
                 ],
               ),
             ),
@@ -443,6 +435,21 @@ class _DomainGameplayState extends State<_DomainGameplay> {
       ),
     );
   }
+
+  // Barre de vie CONTINUE (jaune) : remplissage `frac` (0..1).
+  Widget _lifeBar(double frac) => ClipRRect(
+        borderRadius: BorderRadius.circular(2),
+        child: Container(
+          width: 40,
+          height: 5,
+          color: _kLife.withOpacity(.18),
+          alignment: Alignment.centerLeft,
+          child: FractionallySizedBox(
+            widthFactor: frac.clamp(0.0, 1.0),
+            child: Container(color: _kLife),
+          ),
+        ),
+      );
 
   // Barre segmentée (7 cases) : les `filled` premières en `color`, le reste faible.
   Widget _segBar(int filled, Color color) => Row(

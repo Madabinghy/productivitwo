@@ -2769,7 +2769,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                       children: [
                         // Icône SVG game-icons.net (mono) TINTÉE à la couleur du
                         // domaine — test du nouveau langage visuel.
-                        SvgPicture.asset('assets/icons/tower.svg',
+                        SvgPicture.asset('assets/icons/turret.svg',
                             width: slot * 0.6,
                             height: slot * 0.6,
                             colorFilter:
@@ -2836,7 +2836,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            SvgPicture.asset('assets/icons/tower.svg',
+                            SvgPicture.asset('assets/icons/turret.svg',
                                 width: slot * 0.6,
                                 height: slot * 0.6,
                                 colorFilter: ColorFilter.mode(
