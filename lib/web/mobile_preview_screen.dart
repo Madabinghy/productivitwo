@@ -45,13 +45,50 @@ class _MobilePreviewScreenState extends State<MobilePreviewScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final uid = sync.uid;
+    final isDemo = uid == 'demo-productivitwo';
+    final account = isDemo
+        ? '🧪 compte DÉMO (données de test)'
+        : (sync.userEmail ?? uid ?? 'non connecté');
     // Téléphone « logique » de taille fixe (390×844), mis à l'échelle par
     // FittedBox pour TOUJOURS tenir dans le viewport — pas d'overflow même
     // sur petit écran ; le contenu garde 844px logiques.
     return Scaffold(
       backgroundColor: const Color(0xFF14110F),
       body: SafeArea(
-        child: Center(
+        child: Column(
+          children: [
+            // Bandeau : quel compte est connecté (lève le doute démo vs réel).
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: isDemo
+                  ? const Color(0xFF3A2A0A)
+                  : Colors.white.withOpacity(.04),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text('📱 Prévisu mobile — $account',
+                        style: TextStyle(
+                            color: isDemo
+                                ? const Color(0xFFE0B050)
+                                : Colors.white60,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600)),
+                  ),
+                  TextButton.icon(
+                    onPressed: () async {
+                      await sync.signOut();
+                      if (mounted) setState(() {});
+                    },
+                    icon: const Icon(Icons.logout, size: 14),
+                    label: const Text('Déconnexion', style: TextStyle(fontSize: 12)),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Center(
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: FittedBox(
@@ -92,6 +129,9 @@ class _MobilePreviewScreenState extends State<MobilePreviewScreen> {
               ),
             ),
           ),
+        ),
+              ),
+          ],
         ),
       ),
     );
