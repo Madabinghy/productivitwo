@@ -10,6 +10,12 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.12', '13 juin 2026', [
+    (Icons.public, '« Le Monde » disponible sur mobile (bouton 🌍 dans Mon Or) : farm, territoire et reconquête de grottes'),
+    (Icons.castle_outlined, 'Reconquête d\'une grotte de domaine : assaut tower-defense inversé (l\'araignée défend, ton scorpion attaque). Ton deck d\'assaut = tes captures de CE domaine'),
+    (Icons.bug_report_outlined, 'La menace d\'invasion reflète tes vrais retards : routines sans série, temps en retard sur objectif, tâches en retard'),
+    (Icons.restart_alt, 'Deck d\'invasion repartable de zéro proprement, sans toucher à ton historique réel'),
+  ]),
   _Entry('6.11', '11 juin 2026', [
     (Icons.shield_rounded, 'Onglet Arène dans l\'app web : combats, programme du jour et exploration (overworld, donjon, chasse) en 3 colonnes'),
     (Icons.bar_chart_rounded, 'Barre de stats en haut : or, niveau, barre de progression XP et arsenal disponible'),
