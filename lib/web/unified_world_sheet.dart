@@ -1509,7 +1509,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       return;
     }
     // Mode TD (dev) : tap = pose/retrait d'une tour sur une case sol marchable.
-    if (_tdMode) {
+    // MAIS à l'INTÉRIEUR (assaut de reconquête) le tap doit DÉPLACER l'avatar
+    // (sinon impossible de bouger pendant l'assaut) — tourelles intérieures = + tard.
+    if (_tdMode && !_inInterior) {
       final tile = '${x}_$y';
       if (w.walkable(x, y) &&
           w.at(x, y) == UwTile.floor &&
