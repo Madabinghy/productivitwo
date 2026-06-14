@@ -2401,6 +2401,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           ? _domTopRoutines()
           : const <({String id, String name, int charger})>[];
       const dayLabels = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+      // Tokens du tapis par ligne : 'spider'/'flame'/'bush' pour chaque jour.
+      final lanes = [for (final r in topRoutines) logic.routineWeekTokens(r.id)];
       final grid = Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -2479,23 +2481,40 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                       ),
                     );
                   }(),
-                // NUISIBLES = jours manqués de chaque routine (🕷️ sur la case du
-                // jour). CLIQUABLE → carte de combat de la routine (faire le travail).
-                for (var i = 0; i < topRoutines.length; i++)
-                  for (final d in logic.routineMissedThisWeek(topRoutines[i].id))
+                // TOKENS du tapis : 🕷️ araignée (manqué, PV=cible de la routine) ·
+                // 🔥 flemme (fait) · 🌿 buisson (placeholder). Araignée cliquable →
+                // carte de combat (faire le vrai travail).
+                for (var i = 0; i < lanes.length; i++)
+                  for (var d = 0; d < lanes[i].length; d++)
                     () {
+                      final tok = lanes[i][d];
                       final c0 = centerD(10.0 + d, (3 + i).toDouble());
+                      final emoji =
+                          tok == 'flame' ? '🔥' : (tok == 'spider' ? '🕷️' : '🌿');
+                      final spider = tok == 'spider';
                       return Positioned(
                         left: c0.dx - slot / 2,
                         top: c0.dy - slot / 2,
                         width: slot,
                         height: slot,
                         child: GestureDetector(
-                          onTap: () => showBacklogCombat(
-                              context, logic, sync, 'spider', topRoutines[i].id),
-                          child: Center(
-                            child: Text('🕷️',
-                                style: TextStyle(fontSize: slot * 0.5)),
+                          onTap: spider
+                              ? () => showBacklogCombat(
+                                  context, logic, sync, 'spider', topRoutines[i].id)
+                              : null,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(emoji,
+                                  style: TextStyle(fontSize: slot * 0.5)),
+                              if (spider)
+                                Text('${logic.routineTarget(topRoutines[i].id)}',
+                                    style: TextStyle(
+                                        color: _kEnemy,
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: slot * 0.2,
+                                        height: 1)),
+                            ],
                           ),
                         ),
                       );

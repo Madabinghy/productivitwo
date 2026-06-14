@@ -866,6 +866,43 @@ extension GoldEngine on AppLogic {
     return out;
   }
 
+  /// PV d'une araignée de cette routine = la CIBLE quotidienne (quota) : grosse
+  /// routine (boire 10 verres) = araignée à 10 PV.
+  int routineTarget(String routineId) {
+    for (final x in state.activeActivities) {
+      if (x.id == routineId) return x.isHabit ? dayQuotaFor(x) : 0;
+    }
+    return 0;
+  }
+
+  /// Token de chaque jour (0-6, lun→dim) de la routine cette semaine, pour le
+  /// tapis roulant : 'flame' (fait/streak ce jour), 'spider' (manqué), 'bush'
+  /// (jour futur ou sans quota = placeholder).
+  List<String> routineWeekTokens(String routineId) {
+    Activity? a;
+    for (final x in state.activeActivities) {
+      if (x.id == routineId) {
+        a = x;
+        break;
+      }
+    }
+    if (a == null || !a.isHabit) return const [];
+    final quota = dayQuotaFor(a);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final mon = today.subtract(Duration(days: today.weekday - 1));
+    final out = <String>[];
+    for (var d = 0; d < 7; d++) {
+      final date = mon.add(Duration(days: d));
+      if (quota <= 0 || date.isAfter(today)) {
+        out.add('bush');
+      } else {
+        out.add(habitValueOn(a.id, date) >= quota ? 'flame' : 'spider');
+      }
+    }
+    return out;
+  }
+
   /// CHARGEUR de défense d'une routine = ses complétions la SEMAINE PASSÉE (0..7).
   /// Ce que tu as tenu te défend, même si le streak du jour est cassé (le coussin).
   int routineDefenseCharger(String routineId) {
