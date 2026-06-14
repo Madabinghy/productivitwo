@@ -204,3 +204,32 @@ UnifiedWorld generateUnifiedWorld(int seed,
     spawner: spawner,
   );
 }
+
+/// Miroir HORIZONTAL d'un monde (x → cols-1-x) : château à gauche, farm à droite.
+/// Sert à prévisualiser l'inversion de la map.
+UnifiedWorld mirrorWorldX(UnifiedWorld w) {
+  String flip(String k) {
+    final p = k.split('_');
+    return '${w.cols - 1 - int.parse(p[0])}_${p[1]}';
+  }
+
+  return UnifiedWorld(
+    seed: w.seed,
+    cols: w.cols,
+    rows: w.rows,
+    grid: [
+      for (var y = 0; y < w.rows; y++)
+        [for (var x = 0; x < w.cols; x++) w.grid[y][w.cols - 1 - x]]
+    ],
+    start: Point(w.cols - 1 - w.start.x, w.start.y),
+    castle: Point(w.cols - 1 - w.castle.x, w.castle.y),
+    caves: {
+      for (final e in w.caves.entries)
+        e.key: Point(w.cols - 1 - e.value.x, e.value.y)
+    },
+    bushes: {for (final k in w.bushes) flip(k)},
+    rocks: {for (final k in w.rocks) flip(k)},
+    gate: {for (final k in w.gate) flip(k)},
+    spawner: {for (final k in w.spawner) flip(k)},
+  );
+}

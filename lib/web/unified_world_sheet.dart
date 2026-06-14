@@ -1122,8 +1122,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         // Génère la map une fois (seed du territoire → déterministe/spectatable),
         // et reprend le walk state persisté (position + brouillard) si présent.
         if (_w == null && t != null) {
-          final w = generateUnifiedWorld(t.seed,
-              caveIds: t.caves.map((c) => c.id).toList());
+          // Miroir horizontal (preview) : château à gauche, farm à droite.
+          final w = mirrorWorldX(generateUnifiedWorld(t.seed,
+              caveIds: t.caves.map((c) => c.id).toList()));
           _w = w;
           final saved = logic.state.unifiedPos;
           if (saved != null && saved.contains('_')) {
