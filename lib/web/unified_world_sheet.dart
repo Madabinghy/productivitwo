@@ -694,6 +694,36 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     });
   }
 
+  // Montre la composition du deck qui ATTAQUE (mon scorpion) : la masse décomposée
+  // en 🐍15 / 🦂10 / 🕷️5. Pendant l'assaut = réserve restante (_garrison), sinon le
+  // deck de reconquête amorcé (captures du domaine) + farming.
+  void _showAttackDeck() {
+    final mass = _tdMode ? _garrison : _reconquestDeck;
+    var m = mass;
+    final serp = m ~/ GoldEconomy.masseSerpent;
+    m %= GoldEconomy.masseSerpent;
+    final scor = m ~/ GoldEconomy.masseScorpion;
+    m %= GoldEconomy.masseScorpion;
+    final spid = m ~/ GoldEconomy.masseSpider;
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: _kBg,
+        title: Text('🃏 Deck d\'attaque — masse $mass',
+            style: TextStyle(color: _interiorColor, fontSize: 16)),
+        content: Text(
+          '🐍 Serpents : $serp\n🦂 Scorpions : $scor\n🕷️ Araignées : $spid',
+          style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.7),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Fermer')),
+        ],
+      ),
+    );
+  }
+
   // Raccourci : entre directement dans la grotte la PLUS PROCHE de l'avatar (évite
   // de remarcher jusqu'à elle à chaque fois). NE lance PAS l'assaut — tu farmes
   // puis « Lancer l'assaut » comme d'habitude.
@@ -1954,6 +1984,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           if (_inInterior) ...[
             if (!_tdMode)
               pill('⚔️ Lancer l\'assaut', _interiorColor, _startInteriorAssault),
+            pill('🃏 Deck', _interiorColor.withOpacity(.85), _showAttackDeck),
             pill('🚪 Sortir de la grotte', _interiorColor.withOpacity(.7),
                 _tdMode ? () {} : _exitInterior),
           ],
