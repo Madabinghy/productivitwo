@@ -68,8 +68,8 @@ class _WorldMobileListState extends State<_WorldMobileList> {
 
   // Statut du JOUR d'un domaine : nb de nuisibles en retard / faits aujourd'hui,
   // sur ses routines quotidiennes + activités-temps.
-  ({int overdue, int done}) _todayStatus(String domainId) {
-    var overdue = 0, done = 0;
+  ({int spiders, int scorpions, int done}) _todayStatus(String domainId) {
+    var spiders = 0, scorpions = 0, done = 0;
     for (final a in logic.state.activeActivities) {
       if (a.domainId != domainId) continue;
       final tokens =
@@ -77,12 +77,16 @@ class _WorldMobileListState extends State<_WorldMobileList> {
       if (tokens.isEmpty) continue;
       final t = tokens.last.type; // aujourd'hui = dernier
       if (t == 'spider') {
-        overdue++;
+        if (a.isHabit) {
+          spiders++; // routine en retard = 🕷️
+        } else {
+          scorpions++; // activité-temps en retard = 🦂
+        }
       } else if (t == 'flame' || t == 'leaf') {
         done++;
       }
     }
-    return (overdue: overdue, done: done);
+    return (spiders: spiders, scorpions: scorpions, done: done);
   }
 
   @override
@@ -155,10 +159,20 @@ class _WorldMobileListState extends State<_WorldMobileList> {
                       fontSize: 17,
                       fontWeight: FontWeight.w800)),
             ),
-            if (st.overdue > 0) ...[
+            if (st.spiders > 0) ...[
               const Text('🕷️', style: TextStyle(fontSize: 16)),
               const SizedBox(width: 3),
-              Text('${st.overdue}',
+              Text('${st.spiders}',
+                  style: const TextStyle(
+                      color: Color(0xFFE5604D),
+                      fontWeight: FontWeight.w900,
+                      fontSize: 15)),
+              const SizedBox(width: 10),
+            ],
+            if (st.scorpions > 0) ...[
+              const Text('🦂', style: TextStyle(fontSize: 16)),
+              const SizedBox(width: 3),
+              Text('${st.scorpions}',
                   style: const TextStyle(
                       color: Color(0xFFE5604D),
                       fontWeight: FontWeight.w900,
@@ -336,14 +350,46 @@ class _DomainGameplayState extends State<_DomainGameplay> {
             ],
           ),
         );
+    final routines = items.where((i) => i.kind == 'spider').toList();
+    final times = items.where((i) => i.kind == 'scorpion').toList();
     return ListView(
       padding: const EdgeInsets.fromLTRB(10, 4, 10, 8),
       children: [
         dayHeader(),
-        for (final it in items) _gardenRow(it, cell),
+        if (routines.isNotEmpty) ...[
+          _sectionHeader('🕷️ Routines', routines.length),
+          for (final it in routines) _gardenRow(it, cell),
+        ],
+        if (times.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          _sectionHeader('🦂 Activités-temps', times.length),
+          for (final it in times) _gardenRow(it, cell),
+        ],
       ],
     );
   }
+
+  Widget _sectionHeader(String label, int count) => Padding(
+        padding: const EdgeInsets.only(top: 10, bottom: 4),
+        child: Row(children: [
+          Text(label,
+              style: TextStyle(
+                  color: Colors.white.withOpacity(.85),
+                  fontWeight: FontWeight.w900,
+                  fontSize: 14)),
+          const SizedBox(width: 6),
+          Text('$count',
+              style: TextStyle(
+                  color: Colors.white.withOpacity(.35),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Container(
+                height: 1, color: Colors.white.withOpacity(.08)),
+          ),
+        ]),
+      );
 
   Widget _gardenRow(_Item it, double cell) {
     final c = widget.color;
