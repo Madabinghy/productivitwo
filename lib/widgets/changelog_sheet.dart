@@ -10,6 +10,11 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.13', '14 juin 2026', [
+    (Icons.calendar_view_week, '« Le Monde » sur mobile repensé en CALENDRIER par domaine : une ligne par routine (et par activité-temps), 7 derniers jours en colonnes'),
+    (Icons.bug_report_outlined, 'Chaque jour manqué = une araignée (PV = ce qu\'il reste à faire) ; jour fait = feuille 🍃 ou flamme 🔥 (2 jours d\'affilée) ; le château se remplit de toiles ou de feuilles selon ton historique'),
+    (Icons.touch_app_outlined, 'Clic sur un nuisible → sa carte de combat (fais le vrai travail pour l\'éliminer). Carte pannable/zoomable sur mobile'),
+  ]),
   _Entry('6.12', '13 juin 2026', [
     (Icons.public, '« Le Monde » disponible sur mobile (bouton 🌍 dans Mon Or) : farm, territoire et reconquête de grottes'),
     (Icons.castle_outlined, 'Reconquête d\'une grotte de domaine : assaut tower-defense inversé (l\'araignée défend, ton scorpion attaque). Ton deck d\'assaut = tes captures de CE domaine'),
