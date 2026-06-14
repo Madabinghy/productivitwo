@@ -694,6 +694,24 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     });
   }
 
+  // Raccourci : entre directement dans la grotte la PLUS PROCHE de l'avatar (évite
+  // de remarcher jusqu'à elle à chaque fois). NE lance PAS l'assaut — tu farmes
+  // puis « Lancer l'assaut » comme d'habitude.
+  void _quickEnter() {
+    final w = _w;
+    if (w == null || _inInterior || w.caves.isEmpty) return;
+    String? best;
+    num bestD = 1 << 30;
+    w.caves.forEach((id, p) {
+      final d = pow(p.x - _pos.x, 2) + pow(p.y - _pos.y, 2);
+      if (d < bestD) {
+        bestD = d;
+        best = id;
+      }
+    });
+    if (best != null) _enterInterior(best!);
+  }
+
   // Reconquête (tranche 1) : ENTRER dans la grotte = un CLONE de la map, gazon
   // teinté au domaine, avatar posé dans le gazon. On échange le monde actif
   // (_w/_pos/_revealed) et on le restaure en sortant (cf. _exitInterior).
@@ -1927,6 +1945,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 _tdMode ? () {} : _exitInterior),
           ],
           if (!_inInterior) ...[
+            pill('🕳️ Entrer dans la grotte', const Color(0xFF1E8E7E),
+                _quickEnter),
             pill(
                 _tdMode ? '⚔️ TD ON — pose des tours' : '⚔️ Mode tower-defense',
                 const Color(0xFFB07CF0),
