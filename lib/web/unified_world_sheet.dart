@@ -1727,6 +1727,26 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     return list.take(5).toList();
   }
 
+  // Les 5 activités-TEMPS (type=time) les plus actives sur 30j du domaine courant.
+  List<({String id, String name, int charger, int active})>
+      _domTopTimeActivities() {
+    final dom = _interiorDomainId;
+    if (dom == null) return const [];
+    final list = <({String id, String name, int charger, int active})>[];
+    for (final a in logic.state.activeActivities) {
+      if (a.isHabit || a.domainId != dom) continue;
+      if (logic.activityTimeTokens(a.id).isEmpty) continue; // goalMin > 0
+      list.add((
+        id: a.id,
+        name: a.name,
+        charger: 0,
+        active: logic.activityTime30dMin(a.id)
+      ));
+    }
+    list.sort((a, b) => b.active.compareTo(a.active));
+    return list.take(5).toList();
+  }
+
   // BÂTI — recalcule les tourelles dérivées des streaks : pour chaque routine
   // (habit) à streak ≥ 1, une tour dans la zone de SA grotte de domaine, niveau =
   // streak. C'est la constance réelle qui fortifie (pas une pose à la main).
@@ -2421,6 +2441,33 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       final lanes = [for (final r in topRoutines) logic.routineWeekTokens(r.id)];
       // Remplissage du château par ligne (toiles/feuilles des jours passés).
       final fills = [for (final r in topRoutines) logic.routineChateauFill(r.id)];
+      // Section ACTIVITÉS-TEMPS (bas, rows 8-12) : même tapis avec le temps.
+      final topTime = _inInterior
+          ? _domTopTimeActivities()
+          : const <({String id, String name, int charger, int active})>[];
+      final timeLanes = [for (final r in topTime) logic.activityTimeTokens(r.id)];
+      final timeFills =
+          [for (final r in topTime) logic.activityTimeChateauFill(r.id)];
+      // Toutes les lignes (routines rows 2-6 + temps rows 8-12) en une liste pour
+      // un rendu unifié.
+      final allRows = [
+        for (var i = 0; i < topRoutines.length; i++)
+          (
+            row: 2 + i,
+            lane: lanes[i],
+            fill: fills[i],
+            r: topRoutines[i],
+            kind: 'spider'
+          ),
+        for (var j = 0; j < topTime.length; j++)
+          (
+            row: 8 + j,
+            lane: timeLanes[j],
+            fill: timeFills[j],
+            r: topTime[j],
+            kind: 'scorpion'
+          ),
+      ];
       final grid = Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -2452,10 +2499,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               // ── CALENDRIER de domaine : 1 ligne = 1 routine, 7 colonnes = jours,
               //    tour collée au château (gauche), nuisibles = jours manqués. ──
               if (_inInterior) ...[
-                // Labels des jours (L M M J V S D) en haut, colonnes 1-7.
-                for (var d = 0; d < 7; d++)
+                // Labels des jours, au-dessus de CHAQUE section (row 1 routines,
+                // row 7 activités-temps).
+                for (final hdr in const [1, 7])
+                  for (var d = 0; d < 7; d++)
                   () {
-                    final c0 = centerD(10.0 + d, 1);
+                    final c0 = centerD(10.0 + d, hdr.toDouble());
                     return Positioned(
                       left: c0.dx - slot / 2,
                       top: c0.dy - slot / 2,
@@ -2472,10 +2521,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                   }(),
                 // (Le nom de la routine est dans le PANNEAU LATÉRAL à droite,
                 //  aligné à sa ligne — pas sur la grille.)
-                // TOUR de la routine à COLONNE 10 (icône + chargeur).
-                for (var i = 0; i < topRoutines.length; i++)
+                // TOUR à COLONNE 10 — une par ligne (routine ou activité-temps).
+                for (final e in allRows)
                   () {
-                    final c0 = centerD(10, (2 + i).toDouble());
+                    final c0 = centerD(10, e.row.toDouble());
                     return Positioned(
                       left: c0.dx - slot / 2,
                       top: c0.dy - slot / 2,
@@ -2489,12 +2538,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                               height: slot * 0.5,
                               colorFilter: ColorFilter.mode(
                                   _interiorColor, BlendMode.srcIn)),
-                          Text('🔋${topRoutines[i].charger}',
-                              style: TextStyle(
-                                  color: _interiorColor,
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: slot * 0.2,
-                                  height: 1)),
+                          if (e.r.charger > 0)
+                            Text('🔋${e.r.charger}',
+                                style: TextStyle(
+                                    color: _interiorColor,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: slot * 0.2,
+                                    height: 1)),
                         ],
                       ),
                     );
@@ -2502,16 +2552,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 // TOKENS du tapis : 🕷️ araignée (manqué, PV=cible de la routine) ·
                 // 🔥 flemme (fait) · 🌿 buisson (placeholder). Araignée cliquable →
                 // carte de combat (faire le vrai travail).
-                for (var i = 0; i < lanes.length; i++)
-                  for (var d = 0; d < lanes[i].length; d++)
+                for (final e in allRows)
+                  for (var d = 0; d < e.lane.length; d++)
                     () {
-                      final tok = lanes[i][d];
+                      final tok = e.lane[d];
                       if (tok.type == 'empty') return const SizedBox.shrink();
-                      final c0 = centerD(10.0 + d, (2 + i).toDouble());
+                      final c0 = centerD(10.0 + d, e.row.toDouble());
+                      final spider = tok.type == 'spider';
                       final emoji = tok.type == 'flame'
                           ? '🔥'
-                          : (tok.type == 'spider' ? '🕷️' : '🍃');
-                      final spider = tok.type == 'spider';
+                          : (spider
+                              ? (e.kind == 'scorpion' ? '🦂' : '🕷️')
+                              : '🍃');
                       return Positioned(
                         left: c0.dx - slot / 2,
                         top: c0.dy - slot / 2,
@@ -2520,7 +2572,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         child: GestureDetector(
                           onTap: spider
                               ? () => showBacklogCombat(
-                                  context, logic, sync, 'spider', topRoutines[i].id)
+                                  context, logic, sync, e.kind, e.r.id)
                               : null,
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
@@ -2539,11 +2591,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         ),
                       );
                     }(),
-                // PORTES à (9, 3+i) : une par routine (la porte que les nuisibles
-                // de la ligne ne doivent pas franchir).
-                for (var i = 0; i < topRoutines.length; i++)
+                // PORTES (col 9) : une par ligne (routine ou activité-temps).
+                for (final e in allRows)
                   () {
-                    final c0 = centerD(9, (2 + i).toDouble());
+                    final c0 = centerD(9, e.row.toDouble());
                     return Positioned(
                       left: c0.dx - slot / 2,
                       top: c0.dy - slot / 2,
@@ -2557,15 +2608,15 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 // CHÂTEAU (cols 8→0, à gauche de la porte) : se remplit des jours
                 // PASSÉS — 🕸️ toiles (manques) ou 🍃 feuilles (en avance), de la
                 // porte vers l'intérieur.
-                for (var i = 0; i < fills.length; i++)
+                for (final e in allRows)
                   for (var j = 0;
                       j <
-                          (fills[i].webs > 0 ? fills[i].webs : fills[i].leaves);
+                          (e.fill.webs > 0 ? e.fill.webs : e.fill.leaves);
                       j++)
                     () {
-                      final web = fills[i].webs > 0;
+                      final web = e.fill.webs > 0;
                       final c0 =
-                          centerD((8 - j).toDouble(), (2 + i).toDouble());
+                          centerD((8 - j).toDouble(), e.row.toDouble());
                       return Positioned(
                         left: c0.dx - slot / 2,
                         top: c0.dy - slot / 2,
@@ -3034,15 +3085,15 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    for (var i = 0; i < topRoutines.length; i++)
+                    for (final e in allRows)
                       Positioned(
-                        top: (2 + i) * slot,
+                        top: e.row * slot,
                         left: 6,
                         width: nameW - 12,
                         height: slot,
                         child: Align(
                           alignment: Alignment.centerLeft,
-                          child: Text(topRoutines[i].name,
+                          child: Text(e.r.name,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(

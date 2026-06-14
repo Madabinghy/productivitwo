@@ -923,6 +923,88 @@ extension GoldEngine on AppLogic {
     return 0;
   }
 
+  // ── ACTIVITÉS TEMPS (type=time) — même tapis mais en minutes vs objectif ──
+  int _minutesOnDay(String activityId, DateTime date) {
+    final ds = DateTime(date.year, date.month, date.day);
+    return totalForRangeByActivity(activityId, ds, ds.add(const Duration(days: 1)))
+        .inMinutes;
+  }
+
+  /// Tokens du tapis pour une activité TEMPS : par jour, minutes vs `goalMin`.
+  /// 'flame' (≥2j à l'objectif) · 'leaf' (objectif atteint) · 'spider' (PV =
+  /// minutes restantes pour l'objectif).
+  List<({String type, int hp})> activityTimeTokens(String activityId) {
+    Activity? a;
+    for (final x in state.activeActivities) {
+      if (x.id == activityId) {
+        a = x;
+        break;
+      }
+    }
+    if (a == null || a.isHabit) return const [];
+    final goal = a.goalMin;
+    if (goal <= 0) return const [];
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final out = <({String type, int hp})>[];
+    for (var i = 0; i < 7; i++) {
+      final date = today.subtract(Duration(days: 6 - i));
+      final mins = _minutesOnDay(a.id, date);
+      if (mins < goal) {
+        out.add((type: 'spider', hp: goal - mins));
+        continue;
+      }
+      var run = 0;
+      var d = date;
+      while (_minutesOnDay(a.id, d) >= goal) {
+        run++;
+        if (run >= 2) break;
+        d = d.subtract(const Duration(days: 1));
+      }
+      out.add((type: run >= 2 ? 'flame' : 'leaf', hp: 0));
+    }
+    return out;
+  }
+
+  /// Château d'une activité temps : net des jours passés (objectif manqué = toile).
+  ({int webs, int leaves}) activityTimeChateauFill(String activityId) {
+    Activity? a;
+    for (final x in state.activeActivities) {
+      if (x.id == activityId) {
+        a = x;
+        break;
+      }
+    }
+    if (a == null || a.isHabit) return (webs: 0, leaves: 0);
+    final goal = a.goalMin;
+    if (goal <= 0) return (webs: 0, leaves: 0);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    var misses = 0, dones = 0;
+    for (var k = 7; k < 28; k++) {
+      if (_minutesOnDay(a.id, today.subtract(Duration(days: k))) >= goal) {
+        dones++;
+      } else {
+        misses++;
+      }
+    }
+    final net = misses - dones;
+    final webs = net > 9 ? 9 : (net < 0 ? 0 : net);
+    final leaves = net < 0 ? (-net > 9 ? 9 : -net) : 0;
+    return (webs: webs, leaves: leaves);
+  }
+
+  /// Minutes loggées sur 30j (pour trier les activités temps les plus actives).
+  int activityTime30dMin(String activityId) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    var n = 0;
+    for (var k = 0; k < 30; k++) {
+      n += _minutesOnDay(activityId, today.subtract(Duration(days: k)));
+    }
+    return n;
+  }
+
   /// Activité d'une routine sur 30 jours = nb de jours faits (pour trier les plus
   /// actives).
   int routine30dActive(String routineId) {
