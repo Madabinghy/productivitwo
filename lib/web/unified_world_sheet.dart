@@ -916,8 +916,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     final w = _w;
     if (w == null) return;
     final cave = _t?.caveById(caveId);
-    final interior = generateUnifiedWorld((_t?.seed ?? 1) ^ caveId.hashCode,
-        caveIds: const ['coeur']);
+    // Backdrop intérieur MIROIR (même base que la map principale : château à
+    // gauche). Le calendrier en overlay garde ses coords (déjà repère inversé).
+    final interior = mirrorWorldX(generateUnifiedWorld(
+        (_t?.seed ?? 1) ^ caveId.hashCode,
+        caveIds: const ['coeur']));
     setState(() {
       _savedW = w;
       _savedPos = _pos;
