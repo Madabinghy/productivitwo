@@ -45,49 +45,53 @@ class _MobilePreviewScreenState extends State<MobilePreviewScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Téléphone « logique » de taille fixe (390×844), mis à l'échelle par
+    // FittedBox pour TOUJOURS tenir dans le viewport — pas d'overflow même
+    // sur petit écran ; le contenu garde 844px logiques.
     return Scaffold(
       backgroundColor: const Color(0xFF14110F),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text('📱 Prévisu mobile — Le Monde',
-                style: TextStyle(
-                    color: Colors.white38,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600)),
-            const SizedBox(height: 12),
-            Container(
-              width: 390,
-              height: 844,
-              decoration: BoxDecoration(
-                color: const Color(0xFF0E1512),
-                borderRadius: BorderRadius.circular(38),
-                border: Border.all(color: Colors.white24, width: 8),
-                boxShadow: const [
-                  BoxShadow(color: Colors.black87, blurRadius: 48, spreadRadius: 4)
-                ],
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: _error != null
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Text(_error!,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(color: Colors.redAccent)),
-                      ),
-                    )
-                  : _logic == null
-                      ? const Center(child: CircularProgressIndicator())
-                      : Navigator(
-                          onGenerateRoute: (_) => MaterialPageRoute(
-                            builder: (_) =>
-                                WorldMobileScreen(logic: _logic!, sync: sync),
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: FittedBox(
+              fit: BoxFit.contain,
+              child: SizedBox(
+                width: 390,
+                height: 844,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0E1512),
+                    borderRadius: BorderRadius.circular(38),
+                    border: Border.all(color: Colors.white24, width: 8),
+                    boxShadow: const [
+                      BoxShadow(
+                          color: Colors.black87, blurRadius: 48, spreadRadius: 4)
+                    ],
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: _error != null
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Text(_error!,
+                                textAlign: TextAlign.center,
+                                style:
+                                    const TextStyle(color: Colors.redAccent)),
                           ),
-                        ),
+                        )
+                      : _logic == null
+                          ? const Center(child: CircularProgressIndicator())
+                          : Navigator(
+                              onGenerateRoute: (_) => MaterialPageRoute(
+                                builder: (_) => WorldMobileScreen(
+                                    logic: _logic!, sync: sync),
+                              ),
+                            ),
+                ),
+              ),
             ),
-          ],
+          ),
         ),
       ),
     );

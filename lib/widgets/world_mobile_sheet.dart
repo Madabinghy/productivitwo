@@ -405,18 +405,24 @@ class _DomainGameplayState extends State<_DomainGameplay> {
         ),
         child: emoji.isEmpty
             ? null
-            : Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(emoji, style: const TextStyle(fontSize: 16)),
-                  if (spider)
-                    Text('${tok.hp}',
-                        style: const TextStyle(
-                            color: _kEnemy,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 10,
-                            height: 1)),
-                ],
+            : FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Padding(
+                  padding: const EdgeInsets.all(2),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(emoji, style: const TextStyle(fontSize: 15)),
+                      if (spider)
+                        Text('${tok.hp}',
+                            style: const TextStyle(
+                                color: _kEnemy,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 10,
+                                height: 1)),
+                    ],
+                  ),
+                ),
               ),
       ),
     );
