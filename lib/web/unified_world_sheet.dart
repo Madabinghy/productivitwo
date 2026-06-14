@@ -826,13 +826,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       }
       _simX = 0;
       _simY = 7;
-      // DECK DE L'ENNEMI = ta menace RÉELLE sur CE domaine = la masse de son
-      // backlog (routines sans série + tâches/temps en retard du domaine).
-      final threat = logic
-          .backlogEnemies()
-          .where((e) => logic.enemyDomainId(e.type, e.id) == _interiorDomainId)
-          .fold(0, (s, e) => s + (_massByType[e.type] ?? 0));
-      _simHpMax = threat < 5 ? 5 : threat; // plancher lisible
+      // DECK DE L'ENNEMI = ta RÉGRESSION sur ce domaine (chute N-2 → N-1, en
+      // jours-complétions). Même unité que la défense (chargeurs) → équilibré.
+      // Plancher 3 pour qu'il y ait toujours un petit test, même sans régression.
+      final reg =
+          _interiorDomainId != null ? logic.domainRegression(_interiorDomainId!) : 0;
+      _simHpMax = reg < 3 ? 3 : reg;
       _simHp = _simHpMax;
       _toast('🛡️ Simulation — voilà ce qui se passerait si tu étais attaqué.',
           _interiorColor);
@@ -875,7 +874,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         if (d > range) continue;
         tr.ammo--;
         _shots.add(_Shot(Offset(tr.x, tr.y), Offset(_simX, _simY), _gameMs, 340));
-        _simHp -= 2;
+        _simHp -= 1; // 1 tir = 1 jour-complétion de dégât (même unité)
       }
     }
     if (_simHp <= 0) {
@@ -940,7 +939,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         var idx = 0;
         for (final a in logic.state.activeActivities) {
           if (!a.isHabit || a.domainId != dom) continue;
-          final s = logic.habitCurrentStreak(a.id);
+          // Chargeur = complétions de la SEMAINE PASSÉE (0..7). Tour seulement si
+          // tenue la semaine passée (>= 1) → ce que tu as bâti te défend.
+          final s = logic.routineDefenseCharger(a.id);
           if (s < 1 || idx >= 16) continue; // zone de départ = 8×2 = 16 slots
           // Position sauvée (placement stratégique) si elle existe, sinon départ.
           final saved = logic.state.domTurretPos['$dom~${a.id}'];

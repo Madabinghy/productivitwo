@@ -820,6 +820,57 @@ extension GoldEngine on AppLogic {
   int lifetimeMasseForDomain(String domainId) =>
       _capturesForDays(null, domainId: domainId).fold(0, (s, c) => s + c.effort);
 
+  // ── DÉFENSE DE DOMAINE (semaine passée) ───────────────────────────────────
+  // Lundi de la dernière semaine COMPLÈTE (N-1) et de la précédente (N-2).
+  (DateTime, DateTime) _completeWeekMondays() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final thisMon = today.subtract(Duration(days: today.weekday - 1));
+    final lastMon = thisMon.subtract(const Duration(days: 7));
+    return (lastMon, lastMon.subtract(const Duration(days: 7)));
+  }
+
+  // Jours (0..7) où la routine a atteint son quota sur la semaine du `monday`.
+  int _routineWeekDone(Activity a, DateTime monday) {
+    final quota = dayQuotaFor(a);
+    if (quota <= 0) return 0;
+    var n = 0;
+    for (var i = 0; i < 7; i++) {
+      if (habitValueOn(a.id, monday.add(Duration(days: i))) >= quota) n++;
+    }
+    return n;
+  }
+
+  /// CHARGEUR de défense d'une routine = ses complétions la SEMAINE PASSÉE (0..7).
+  /// Ce que tu as tenu te défend, même si le streak du jour est cassé (le coussin).
+  int routineDefenseCharger(String routineId) {
+    Activity? a;
+    for (final x in state.activeActivities) {
+      if (x.id == routineId) {
+        a = x;
+        break;
+      }
+    }
+    if (a == null || !a.isHabit) return 0;
+    final (lastMon, _) = _completeWeekMondays();
+    return _routineWeekDone(a, lastMon);
+  }
+
+  /// ATTAQUE d'un domaine = RÉGRESSION N-2 → N-1 (en jours-complétions, ≥ 0) :
+  /// ce que tu as lâché d'une semaine complète à l'autre. 0 = pas de chute = pas
+  /// d'attaque. Même unité que la défense (jours) → équilibré.
+  int domainRegression(String domainId) {
+    final (lastMon, prevMon) = _completeWeekMondays();
+    var last = 0, prev = 0;
+    for (final a in state.activeActivities) {
+      if (!a.isHabit || a.domainId != domainId) continue;
+      last += _routineWeekDone(a, lastMon);
+      prev += _routineWeekDone(a, prevMon);
+    }
+    final drop = prev - last;
+    return drop < 0 ? 0 : drop;
+  }
+
   /// Deck d'assaut amorcé pour reconquérir la grotte du domaine `domainId` =
   /// UNIQUEMENT la masse capturée de CE domaine (petit deck spécifique, cloisonné).
   /// Vide si rien capturé dans ce domaine depuis le reset → on FARME les nuisibles
