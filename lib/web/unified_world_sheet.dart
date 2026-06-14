@@ -204,6 +204,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // Tourelles de DÉFENSE du domaine (intérieur) : posées en zone de départ
   // (0,0)→(7,1), draggables où l'user veut. Niveau = streak = chargeur.
   final List<_DomTurret> _domTurrets = [];
+  bool _legacyDragTurrets = false; // ancien rendu draggable (off ; calendrier l'a remplacé)
   // SIMULATION de défense (preview, ne consomme rien — chargeur restauré après).
   bool _simDefense = false;
   final List<_DefAttacker> _defAttackers = []; // vrais nuisibles du domaine
@@ -1692,6 +1693,21 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     sync.setUnifiedTurrets(list);
   }
 
+  // CALENDRIER de domaine : les 10 routines les PLUS FAITES (tri par complétions
+  // de la semaine passée) → 1 ligne chacune. charger = chargeur de la tour.
+  List<({String id, String name, int charger})> _domTopRoutines() {
+    final dom = _interiorDomainId;
+    if (dom == null) return const [];
+    final list = <({String id, String name, int charger})>[];
+    for (final a in logic.state.activeActivities) {
+      if (!a.isHabit || a.domainId != dom) continue;
+      list.add(
+          (id: a.id, name: a.name, charger: logic.routineDefenseCharger(a.id)));
+    }
+    list.sort((a, b) => b.charger.compareTo(a.charger));
+    return list.take(10).toList();
+  }
+
   // BÂTI — recalcule les tourelles dérivées des streaks : pour chaque routine
   // (habit) à streak ≥ 1, une tour dans la zone de SA grotte de domaine, niveau =
   // streak. C'est la constance réelle qui fortifie (pas une pose à la main).
@@ -2365,6 +2381,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     return LayoutBuilder(builder: (context, c) {
       final slot = (c.maxWidth / w.cols).clamp(22.0, 46.0);
       final inner = slot - 3;
+      final topRoutines = _inInterior
+          ? _domTopRoutines()
+          : const <({String id, String name, int charger})>[];
+      const dayLabels = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
       final grid = Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -2389,6 +2409,74 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             clipBehavior: Clip.none,
             children: [
               grid,
+              // ── CALENDRIER de domaine : 1 ligne = 1 routine, 7 colonnes = jours,
+              //    tour collée au château (gauche), nuisibles = jours manqués. ──
+              if (_inInterior) ...[
+                // Labels des jours (L M M J V S D) en haut, colonnes 1-7.
+                for (var d = 0; d < 7; d++)
+                  () {
+                    final c0 = centerD(1.0 + d, 0);
+                    return Positioned(
+                      left: c0.dx - slot / 2,
+                      top: c0.dy - slot / 2,
+                      width: slot,
+                      height: slot,
+                      child: Center(
+                        child: Text(dayLabels[d],
+                            style: TextStyle(
+                                color: Colors.white70,
+                                fontWeight: FontWeight.w900,
+                                fontSize: slot * 0.42)),
+                      ),
+                    );
+                  }(),
+                // 1 ligne par routine : tour (col 0, château) + chargeur + nom.
+                for (var i = 0; i < topRoutines.length; i++)
+                  () {
+                    final r = topRoutines[i];
+                    final c0 = centerD(0, (2 + i).toDouble());
+                    return Positioned(
+                      left: c0.dx - slot / 2,
+                      top: c0.dy - slot / 2,
+                      width: slot * 8.5,
+                      height: slot,
+                      child: Row(children: [
+                        SizedBox(
+                          width: slot,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SvgPicture.asset('assets/icons/tower.svg',
+                                  width: slot * 0.5,
+                                  height: slot * 0.5,
+                                  colorFilter: ColorFilter.mode(
+                                      _interiorColor, BlendMode.srcIn)),
+                              Text('🔋${r.charger}',
+                                  style: TextStyle(
+                                      color: _interiorColor,
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: slot * 0.2,
+                                      height: 1)),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(r.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  color: _interiorColor.withOpacity(.95),
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: slot * 0.26,
+                                  shadows: const [
+                                    Shadow(color: Colors.black, blurRadius: 2)
+                                  ])),
+                        ),
+                      ]),
+                    );
+                  }(),
+              ],
               // ── Couche TD : tours, sbires, flèches, PV porte ────────────────
               // Halo de portée d'un arc ACTIF (avatar sur une de ses cases blanches).
               for (final bow in _bows)
@@ -2491,9 +2579,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     ),
                   );
                 }(),
-              // DÉFENSES du domaine (intérieur) : tours DRAGGABLES, chargeur =
-              // niveau. Pan pour déplacer, snap sur case sol au relâché.
-              if (_inInterior)
+              // (Anciennes tours draggables désactivées — remplacées par le
+              // calendrier ci-dessus, 1 tour fixe par ligne de routine.)
+              if (_legacyDragTurrets)
                 for (var ti = 0; ti < _domTurrets.length; ti++)
                   () {
                     final tr = _domTurrets[ti];
