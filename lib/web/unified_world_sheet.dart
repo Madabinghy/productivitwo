@@ -28,7 +28,11 @@ const _kGold = Color(0xFFD4A017); // château
 const _kEnemy = Color(0xFFFF2B2B); // grotte prise
 const _kFarm = Color(0xFF22C55E); // accent zone farm
 const _kCharge = Color(0xFF4FC26B); // vert — chargeur de la tour (munitions)
-const _kLife = Color(0xFFF5C518); // jaune — barre de vie de la tour
+const _kLife = Color(0xFFF5C518); // jaune — vie moyenne
+
+// Code couleur de la vie : bleu (≥5/7) → jaune (≥3/7) → rouge.
+Color _lifeColor(double frac) =>
+    frac >= 5 / 7 ? _kBlue : (frac >= 3 / 7 ? _kLife : _kEnemy);
 
 const int _kReveal = 2; // rayon de brouillard levé autour de l'avatar (Chebyshev)
 
@@ -1723,20 +1727,23 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     sync.setUnifiedTurrets(list);
   }
 
-  // Barre de vie CONTINUE (jaune) : remplissage `frac` (0..1), dimensionnée sur slot.
-  Widget _webLifeBar(double frac, double slot) => ClipRRect(
-        borderRadius: BorderRadius.circular(slot * 0.03),
-        child: Container(
-          width: slot * 0.77,
-          height: slot * 0.1,
-          color: _kLife.withOpacity(.18),
-          alignment: Alignment.centerLeft,
-          child: FractionallySizedBox(
-            widthFactor: frac.clamp(0.0, 1.0),
-            child: Container(color: _kLife),
-          ),
+  // Barre de vie CONTINUE : remplissage `frac` (0..1), couleur = code santé.
+  Widget _webLifeBar(double frac, double slot) {
+    final col = _lifeColor(frac);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(slot * 0.03),
+      child: Container(
+        width: slot * 0.77,
+        height: slot * 0.1,
+        color: col.withOpacity(.18),
+        alignment: Alignment.centerLeft,
+        child: FractionallySizedBox(
+          widthFactor: frac.clamp(0.0, 1.0),
+          child: Container(color: col),
         ),
-      );
+      ),
+    );
+  }
 
   // Barre segmentée (7 cases) sous la tour, dimensionnée sur le `slot` de la grille.
   Widget _webSegBar(int filled, Color color, double slot) {

@@ -10,7 +10,12 @@ import 'package:productivitwo_v1/widgets/backlog_combat.dart';
 const _kBg = Color(0xFF0E1512);
 const _kEnemy = Color(0xFFE5604D);
 const _kCharge = Color(0xFF4FC26B); // vert — chargeur (munitions non tirées)
-const _kLife = Color(0xFFF5C518); // jaune — barre de vie de la tour
+const _kLife = Color(0xFFF5C518); // jaune — vie moyenne
+const _kLifeHigh = Color(0xFF4FA3FF); // bleu — bonne santé
+
+// Code couleur de la vie : bleu (≥5/7) → jaune (≥3/7) → rouge.
+Color _lifeColor(double frac) =>
+    frac >= 5 / 7 ? _kLifeHigh : (frac >= 3 / 7 ? _kLife : _kEnemy);
 
 const _weekdayLetters = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 List<String> _last7DayLabels() {
@@ -436,20 +441,23 @@ class _DomainGameplayState extends State<_DomainGameplay> {
     );
   }
 
-  // Barre de vie CONTINUE (jaune) : remplissage `frac` (0..1).
-  Widget _lifeBar(double frac) => ClipRRect(
-        borderRadius: BorderRadius.circular(2),
-        child: Container(
-          width: 40,
-          height: 5,
-          color: _kLife.withOpacity(.18),
-          alignment: Alignment.centerLeft,
-          child: FractionallySizedBox(
-            widthFactor: frac.clamp(0.0, 1.0),
-            child: Container(color: _kLife),
-          ),
+  // Barre de vie CONTINUE : remplissage `frac` (0..1), couleur = code santé.
+  Widget _lifeBar(double frac) {
+    final col = _lifeColor(frac);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(2),
+      child: Container(
+        width: 40,
+        height: 5,
+        color: col.withOpacity(.18),
+        alignment: Alignment.centerLeft,
+        child: FractionallySizedBox(
+          widthFactor: frac.clamp(0.0, 1.0),
+          child: Container(color: col),
         ),
-      );
+      ),
+    );
+  }
 
   // Barre segmentée (7 cases) : les `filled` premières en `color`, le reste faible.
   Widget _segBar(int filled, Color color) => Row(
