@@ -1093,8 +1093,9 @@ extension GoldEngine on AppLogic {
     return out;
   }
 
-  /// CHARGEUR de défense d'une routine = ses complétions la SEMAINE PASSÉE (0..7).
-  /// Ce que tu as tenu te défend, même si le streak du jour est cassé (le coussin).
+  /// CHARGEUR de défense d'une routine = ses complétions sur les 7 DERNIERS JOURS
+  /// GLISSANTS (0..7), même fenêtre que les tokens du jardin. Ce que tu as tenu te
+  /// défend, même si le streak du jour est cassé (le coussin).
   int routineDefenseCharger(String routineId) {
     Activity? a;
     for (final x in state.activeActivities) {
@@ -1104,8 +1105,16 @@ extension GoldEngine on AppLogic {
       }
     }
     if (a == null || !a.isHabit) return 0;
-    final (lastMon, _) = _completeWeekMondays();
-    return _routineWeekDone(a, lastMon);
+    final quota = dayQuotaFor(a);
+    if (quota <= 0) return 0;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    var done = 0;
+    for (var i = 0; i < 7; i++) {
+      final date = today.subtract(Duration(days: 6 - i));
+      if (habitValueOn(a.id, date) >= quota) done++;
+    }
+    return done;
   }
 
   /// ATTAQUE d'un domaine = RÉGRESSION N-2 → N-1 (en jours-complétions, ≥ 0) :

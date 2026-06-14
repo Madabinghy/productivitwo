@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -407,15 +408,25 @@ class _DomainGameplayState extends State<_DomainGameplay> {
             // Tour (col. château) avec son chargeur.
             SizedBox(
               width: 60,
-              child: Row(children: [
-                const Text('🗼', style: TextStyle(fontSize: 18)),
-                if (it.charger > 0)
-                  Text(' ${it.charger}',
-                      style: TextStyle(
-                          color: c,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 12)),
-              ]),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    // Tour pivotée pour « viser » horizontalement les araignées.
+                    Transform.rotate(
+                      angle: math.pi / 2,
+                      child: const Text('🗼', style: TextStyle(fontSize: 16)),
+                    ),
+                    const SizedBox(width: 3),
+                    Text('${it.charger}/7',
+                        style: TextStyle(
+                            color: c, fontWeight: FontWeight.w900, fontSize: 10)),
+                  ]),
+                  const SizedBox(height: 2),
+                  _chargeBar(it.charger, c),
+                ],
+              ),
             ),
             for (var d = 0; d < it.tokens.length; d++)
               _tokenCell(it, d, cell),
@@ -424,6 +435,23 @@ class _DomainGameplayState extends State<_DomainGameplay> {
       ),
     );
   }
+
+  // Barre de charge de la tour : 7 segments, remplis selon le chargeur (0..7).
+  Widget _chargeBar(int n, Color c) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < 7; i++)
+            Container(
+              width: 5,
+              height: 5,
+              margin: const EdgeInsets.only(right: 1.5),
+              decoration: BoxDecoration(
+                color: i < n ? c : Colors.white.withOpacity(.12),
+                borderRadius: BorderRadius.circular(1.5),
+              ),
+            ),
+        ],
+      );
 
   Widget _tokenCell(_Item it, int d, double cell) {
     final tok = it.tokens[d];
