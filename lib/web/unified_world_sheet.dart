@@ -2416,7 +2416,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 // Labels des jours (L M M J V S D) en haut, colonnes 1-7.
                 for (var d = 0; d < 7; d++)
                   () {
-                    final c0 = centerD(1.0 + d, 0);
+                    final c0 = centerD(1.0 + d, 2);
                     return Positioned(
                       left: c0.dx - slot / 2,
                       top: c0.dy - slot / 2,
@@ -2435,7 +2435,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 for (var i = 0; i < topRoutines.length; i++)
                   () {
                     final r = topRoutines[i];
-                    final c0 = centerD(0, (2 + i).toDouble());
+                    final c0 = centerD(0, (3 + i).toDouble());
                     return Positioned(
                       left: c0.dx - slot / 2,
                       top: c0.dy - slot / 2,
@@ -2482,7 +2482,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 for (var i = 0; i < topRoutines.length; i++)
                   for (final d in logic.routineMissedThisWeek(topRoutines[i].id))
                     () {
-                      final c0 = centerD(1.0 + d, (2 + i).toDouble());
+                      final c0 = centerD(1.0 + d, (3 + i).toDouble());
                       return Positioned(
                         left: c0.dx - slot / 2,
                         top: c0.dy - slot / 2,
@@ -2498,6 +2498,21 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         ),
                       );
                     }(),
+                // PORTES à (9, 3+i) : une par routine (la porte que les nuisibles
+                // de la ligne ne doivent pas franchir).
+                for (var i = 0; i < topRoutines.length; i++)
+                  () {
+                    final c0 = centerD(9, (3 + i).toDouble());
+                    return Positioned(
+                      left: c0.dx - slot / 2,
+                      top: c0.dy - slot / 2,
+                      width: slot,
+                      height: slot,
+                      child: Center(
+                        child: Text('🚪', style: TextStyle(fontSize: slot * 0.5)),
+                      ),
+                    );
+                  }(),
               ],
               // ── Couche TD : tours, sbires, flèches, PV porte ────────────────
               // Halo de portée d'un arc ACTIF (avatar sur une de ses cases blanches).
