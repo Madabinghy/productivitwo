@@ -9,6 +9,7 @@ import 'package:productivitwo_v1/widgets/backlog_combat.dart';
 
 const _kBg = Color(0xFF0E1512);
 const _kEnemy = Color(0xFFE5604D);
+const _kCharge = Color(0xFF4FC26B); // vert — chargeur (munitions non tirées)
 
 const _weekdayLetters = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 List<String> _last7DayLabels() {
@@ -253,8 +254,10 @@ class _DomainGameplayState extends State<_DomainGameplay> {
           id: a.id,
           name: a.name,
           kind: 'scorpion',
+          // Chargeur = jours où l'objectif-temps a été atteint sur les 7 glissants.
           tokens: tok,
-          charger: 0,
+          charger:
+              tok.where((t) => t.type == 'leaf' || t.type == 'flame').length,
           fill: logic.activityTimeChateauFill(a.id),
           active: logic.activityTime30dMin(a.id),
         ));
@@ -408,23 +411,28 @@ class _DomainGameplayState extends State<_DomainGameplay> {
             // Tour (col. château) avec son chargeur.
             SizedBox(
               width: 60,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(children: [
-                    // Tour pivotée pour « viser » horizontalement les araignées.
-                    Transform.rotate(
-                      angle: math.pi / 2,
-                      child: const Text('🗼', style: TextStyle(fontSize: 16)),
-                    ),
-                    const SizedBox(width: 3),
-                    Text('${it.charger}/7',
-                        style: TextStyle(
-                            color: c, fontWeight: FontWeight.w900, fontSize: 10)),
-                  ]),
-                  const SizedBox(height: 2),
-                  _chargeBar(it.charger, c),
+                  // Tour pivotée pour « viser » horizontalement les araignées.
+                  Transform.rotate(
+                    angle: math.pi / 2,
+                    child: const Text('🗼', style: TextStyle(fontSize: 15)),
+                  ),
+                  const SizedBox(width: 3),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Chargeur (cases vertes) : munitions NON tirées = jours
+                      // non faits → vide quand tout est fait (j'ai tiré).
+                      _segBar(7 - it.charger, _kCharge),
+                      const SizedBox(height: 3),
+                      // Vie (cases rouges) : santé = jours faits → pleine quand
+                      // j'ai tiré, vide quand j'ai dégusté (rien fait).
+                      _segBar(it.charger, _kEnemy),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -436,18 +444,18 @@ class _DomainGameplayState extends State<_DomainGameplay> {
     );
   }
 
-  // Barre de charge de la tour : 7 segments, remplis selon le chargeur (0..7).
-  Widget _chargeBar(int n, Color c) => Row(
+  // Barre segmentée (7 cases) : les `filled` premières en `color`, le reste faible.
+  Widget _segBar(int filled, Color color) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           for (var i = 0; i < 7; i++)
             Container(
-              width: 5,
-              height: 5,
-              margin: const EdgeInsets.only(right: 1.5),
+              width: 4.5,
+              height: 4.5,
+              margin: const EdgeInsets.only(right: 1.2),
               decoration: BoxDecoration(
-                color: i < n ? c : Colors.white.withOpacity(.12),
-                borderRadius: BorderRadius.circular(1.5),
+                color: i < filled ? color : Colors.white.withOpacity(.12),
+                borderRadius: BorderRadius.circular(1),
               ),
             ),
         ],
