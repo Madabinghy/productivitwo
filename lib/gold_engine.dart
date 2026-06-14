@@ -876,10 +876,12 @@ extension GoldEngine on AppLogic {
   }
 
   /// Tokens du tapis roulant pour les 7 DERNIERS jours (index 0 = il y a 6 jours,
-  /// 6 = AUJOURD'HUI à droite ; tourne tout seul chaque jour, pas de bouton) :
-  /// 'spider' (manqué) · 'leaf' (fait après un manque, 1er jour repris) · 'flame'
-  /// (fait avec ≥ 2 jours d'affilée, la série prend).
-  List<String> routineWeekTokens(String routineId) {
+  /// 6 = AUJOURD'HUI à droite ; tourne tout seul chaque jour, pas de bouton).
+  /// Chaque jour : `type` = 'spider' (manqué) · 'leaf' (fait, 1er jour repris) ·
+  /// 'flame' (fait avec ≥ 2 jours d'affilée) ; `hp` = PV RESTANTS d'une araignée
+  /// = cible − ce qui a été saisi ce jour (saisir 1 unité = −1 PV ; 0 PV = jour
+  /// fait). On reste « araignée » tant qu'il reste ≥ 1 PV.
+  List<({String type, int hp})> routineWeekTokens(String routineId) {
     Activity? a;
     for (final x in state.activeActivities) {
       if (x.id == routineId) {
@@ -890,16 +892,16 @@ extension GoldEngine on AppLogic {
     if (a == null || !a.isHabit) return const [];
     final quota = dayQuotaFor(a);
     if (quota <= 0) return const [];
+    final out = <({String type, int hp})>[];
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final out = <String>[];
     for (var i = 0; i < 7; i++) {
       final date = today.subtract(Duration(days: 6 - i));
-      if (habitValueOn(a.id, date) < quota) {
-        out.add('spider');
+      final value = habitValueOn(a.id, date);
+      if (value < quota) {
+        out.add((type: 'spider', hp: quota - value)); // PV restants
         continue;
       }
-      // Run de jours faits consécutifs finissant à `date` (≥2 = série prise).
       var run = 0;
       var d = date;
       while (habitValueOn(a.id, d) >= quota) {
@@ -907,7 +909,7 @@ extension GoldEngine on AppLogic {
         if (run >= 2) break;
         d = d.subtract(const Duration(days: 1));
       }
-      out.add(run >= 2 ? 'flame' : 'leaf');
+      out.add((type: run >= 2 ? 'flame' : 'leaf', hp: 0));
     }
     return out;
   }

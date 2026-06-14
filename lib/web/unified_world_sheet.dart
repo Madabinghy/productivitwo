@@ -2499,10 +2499,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     () {
                       final tok = lanes[i][d];
                       final c0 = centerD(10.0 + d, (3 + i).toDouble());
-                      final emoji = tok == 'flame'
+                      final emoji = tok.type == 'flame'
                           ? '🔥'
-                          : (tok == 'spider' ? '🕷️' : '🍃');
-                      final spider = tok == 'spider';
+                          : (tok.type == 'spider' ? '🕷️' : '🍃');
+                      final spider = tok.type == 'spider';
                       return Positioned(
                         left: c0.dx - slot / 2,
                         top: c0.dy - slot / 2,
@@ -2519,7 +2519,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                               Text(emoji,
                                   style: TextStyle(fontSize: slot * 0.5)),
                               if (spider)
-                                Text('${logic.routineTarget(topRoutines[i].id)}',
+                                Text('${tok.hp}', // PV restants ce jour
                                     style: TextStyle(
                                         color: _kEnemy,
                                         fontWeight: FontWeight.w900,
