@@ -211,6 +211,7 @@ typedef _Item = ({
   String id,
   String name,
   String kind, // 'spider' (routine) | 'scorpion' (temps)
+  String icon, // asset SVG de la tour (turret / DCA hebdo-mensuelle)
   List<({String type, int hp})> tokens,
   int charger,
   ({int webs, int leaves}) fill,
@@ -248,6 +249,10 @@ class _DomainGameplayState extends State<_DomainGameplay> {
           id: a.id,
           name: a.name,
           kind: 'spider',
+          // Hebdo/mensuelle → canon DCA ; quotidienne → turret.
+          icon: logic.effectiveHabitFreq(a).name != 'daily'
+              ? 'assets/icons/anti-aircraft-gun.svg'
+              : 'assets/icons/turret.svg',
           tokens: tok,
           charger: logic.routineDefenseCharger(a.id),
           fill: logic.routineChateauFill(a.id),
@@ -260,6 +265,7 @@ class _DomainGameplayState extends State<_DomainGameplay> {
           id: a.id,
           name: a.name,
           kind: 'scorpion',
+          icon: 'assets/icons/turret.svg',
           // Chargeur = jours où l'objectif-temps a été atteint sur les 7 glissants.
           tokens: tok,
           charger:
@@ -426,7 +432,7 @@ class _DomainGameplayState extends State<_DomainGameplay> {
                   // Chargeur (cases vertes) = jours non faits (7-n) → vide si tiré.
                   _segBar(7 - it.charger, _kCharge),
                   const SizedBox(height: 2),
-                  SvgPicture.asset('assets/icons/turret.svg',
+                  SvgPicture.asset(it.icon,
                       width: 22,
                       height: 22,
                       colorFilter: ColorFilter.mode(c, BlendMode.srcIn)),

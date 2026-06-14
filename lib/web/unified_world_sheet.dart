@@ -1727,6 +1727,22 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     sync.setUnifiedTurrets(list);
   }
 
+  // Icône de tour selon la fréquence : routine hebdo/mensuelle = canon DCA
+  // (anti-aircraft), sinon turret (quotidiennes + activités-temps).
+  String _turretIcon(String id, String kind) {
+    if (kind == 'spider') {
+      for (final a in logic.state.activeActivities) {
+        if (a.id == id) {
+          if (a.isHabit && logic.effectiveHabitFreq(a).name != 'daily') {
+            return 'assets/icons/anti-aircraft-gun.svg';
+          }
+          break;
+        }
+      }
+    }
+    return 'assets/icons/turret.svg';
+  }
+
   // Barre de vie CONTINUE : remplissage `frac` (0..1), couleur = code santé.
   Widget _webLifeBar(double frac, double slot) {
     final col = _lifeColor(frac);
@@ -2629,8 +2645,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                           // Chargeur (vert) = jours non faits (7-n) → vide si tout tiré.
                           _webSegBar(7 - e.r.charger, _kCharge, slot),
                           SizedBox(height: slot * 0.06),
-                          // Turret en orientation normale → pointe vers les nuisibles.
-                          SvgPicture.asset('assets/icons/turret.svg',
+                          // Turret (DCA si hebdo/mensuelle) → pointe vers les nuisibles.
+                          SvgPicture.asset(_turretIcon(e.r.id, e.kind),
                               width: slot * 0.5,
                               height: slot * 0.5,
                               colorFilter: ColorFilter.mode(
