@@ -207,6 +207,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // SIMULATION de défense (preview, ne consomme rien — chargeur restauré après).
   bool _simDefense = false;
   double _simX = 0, _simY = 7; // envahisseur simulé
+  List<Offset> _simPath = const []; // waypoints (comportement, pas de mur réel)
+  int _simWpIdx = 0;
   int _simHp = 0, _simHpMax = 0;
   int _simTurretFireMs = 0;
   String? _simResult; // null pendant | 'hold' | 'fall'
@@ -824,8 +826,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       for (final tr in _domTurrets) {
         tr.ammo = tr.level; // chargeur plein
       }
-      _simX = 0;
-      _simY = 7;
+      // Spawn bas-gauche (zone 0,13→7,14) ; COMPORTEMENT : monte la lane gauche
+      // (colonnes 0-5) jusqu'en haut, tourne à droite, file vers le château. Pas
+      // de mur réel — c'est le pathing des nuisibles (le jardin = la lane à couvrir).
+      _simX = 3;
+      _simY = 14;
+      _simPath = const [Offset(3, 2), Offset(16, 7)];
+      _simWpIdx = 0;
       // DECK DE L'ENNEMI = ta RÉGRESSION sur ce domaine (chute N-2 → N-1, en
       // jours-complétions). Même unité que la défense (chargeurs) → équilibré.
       // Plancher 3 pour qu'il y ait toujours un petit test, même sans régression.
@@ -850,13 +857,17 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       }
       return;
     }
-    const target = Offset(16, 7); // château du domaine
+    // Suit le chemin (waypoints) : monte la lane gauche puis file au château.
+    final target =
+        _simWpIdx < _simPath.length ? _simPath[_simWpIdx] : const Offset(16, 7);
     final dx = target.dx - _simX, dy = target.dy - _simY;
     final dist = sqrt(dx * dx + dy * dy);
     if (dist > 0.4) {
-      const speed = 0.9;
+      const speed = 1.1;
       _simX += dx / dist * speed * dt;
       _simY += dy / dist * speed * dt;
+    } else if (_simWpIdx < _simPath.length - 1) {
+      _simWpIdx++; // waypoint atteint → suivant
     } else {
       _simResult = 'fall';
       _simEndMs = _gameMs;
