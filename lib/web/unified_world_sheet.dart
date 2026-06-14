@@ -104,8 +104,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // porte. Tourelles globales = SANS niveau, un tir = un mort, GRATUIT en Phase 1.
   bool _tdMode = false;
   static const double _kTurretRange = 4.5; // rayon de tir (cases), partagé logique/affichage
-  final Map<String, int> _turrets = {}; // tileId "x_y" → tour (sans niveau ici)
+  final Map<String, int> _turrets = {}; // tileId "x_y" → tour POSÉE (dev-only)
   final Map<String, int> _turretLastFireMs = {};
+  // Le « BÂTI » : tourelles AUTO dérivées des STREAKS de routines (1 routine tenue
+  // = 1 tour dans la zone de sa grotte de domaine, niveau = streak). Recalculées au
+  // chargement. Streak ↑ = cadence ↑. Pas posées à la main (la pose = dev).
+  final Map<String, ({int streak, Color color})> _streakTurrets = {};
+  final Map<String, int> _streakTurretFireMs = {};
   String? _selectedTurret; // tour sélectionnée (tap, fallback tactile) → portée
   String? _hoveredTurret; // tour survolée (souris) → affiche sa portée
   // Arcs fixes : 🏹 en (8,1) et (8,13). Portée ~demi-map, GRATUIT one-shot, mais
@@ -497,6 +502,34 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         _turretLastFireMs[tile] = _gameMs;
         _shots.add(_Shot(Offset(tx, ty), Offset(best.x, best.y), _gameMs, 420));
         best.hp = 0; // one-shot
+      }
+    });
+    // 4a) BÂTI — tourelles dérivées des STREAKS : un tir = un mort, GRATUIT, mais
+    //     cadence ↑ avec le streak (constance forte = défense plus rapide : 5 s à
+    //     streak 1 → ~1.2 s aux gros streaks). C'est ta vraie agency (hors-écran).
+    _streakTurrets.forEach((tile, info) {
+      if (_captureStartMs != null) return;
+      final p = tile.split('_');
+      final tx = double.parse(p[0]), ty = double.parse(p[1]);
+      final cd = (5000 / (1 + info.streak / 5)).clamp(1200.0, 5000.0);
+      if (_gameMs - (_streakTurretFireMs[tile] ?? -99999) < cd) return;
+      _Sbire? best;
+      double bestD = range;
+      for (final s in _sbires) {
+        if (s.hp <= 0) continue;
+        if (sqrt(pow(s.x - _invX, 2) + pow(s.y - _invY, 2)) < kGarrisonZone) {
+          continue;
+        }
+        final d = sqrt(pow(s.x - tx, 2) + pow(s.y - ty, 2));
+        if (d <= bestD) {
+          bestD = d;
+          best = s;
+        }
+      }
+      if (best != null) {
+        _streakTurretFireMs[tile] = _gameMs;
+        _shots.add(_Shot(Offset(tx, ty), Offset(best.x, best.y), _gameMs, 420));
+        best.hp = 0;
       }
     });
     // 4b) Arcs fixes (8,1)/(8,13) : portée ~demi-map, one-shot GRATUIT, mais ne
@@ -949,6 +982,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           _revealAround(_pos);
           _populateFarm(); // disperse le backlog sur toute la zone (caché par le fog)
         }
+        _recomputeStreakTurrets(); // bâti = tourelles dérivées des streaks
       });
       // À la 1ʳᵉ map chargée : auto-trigger hebdo (1×/sem) si la semaine a décliné.
       if (!_autoThreatChecked && t != null) {
@@ -1489,6 +1523,68 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       ..clear()
       ..addAll(list);
     sync.setUnifiedTurrets(list);
+  }
+
+  // BÂTI — recalcule les tourelles dérivées des streaks : pour chaque routine
+  // (habit) à streak ≥ 1, une tour dans la zone de SA grotte de domaine, niveau =
+  // streak. C'est la constance réelle qui fortifie (pas une pose à la main).
+  void _recomputeStreakTurrets() {
+    _streakTurrets.clear();
+    final w = _w, t = _t;
+    if (w == null || t == null || _inInterior) return;
+    final byDomain = <String, List<int>>{};
+    for (final a in logic.state.activeActivities) {
+      if (!a.isHabit) continue;
+      final s = logic.habitCurrentStreak(a.id);
+      if (s < 1) continue;
+      (byDomain[a.domainId] ??= <int>[]).add(s);
+    }
+    byDomain.forEach((domainId, streaks) {
+      TerritoryCave? cave;
+      for (final c in t.caves) {
+        if (c.domainId == domainId) {
+          cave = c;
+          break;
+        }
+      }
+      if (cave == null) return;
+      final cp = w.caves[cave.id];
+      if (cp == null) return;
+      final color = _caveColor(cave);
+      streaks.sort((a, b) => b.compareTo(a)); // grosses tours au plus près
+      final slots = _freeFloorNear(cp, streaks.length);
+      for (var i = 0; i < streaks.length && i < slots.length; i++) {
+        _streakTurrets['${slots[i].x}_${slots[i].y}'] =
+            (streak: streaks[i], color: color);
+      }
+    });
+  }
+
+  // Cases sol libres autour d'un centre (anneaux croissants, ordre déterministe),
+  // hors grottes / rochers / buissons / tours déjà posées.
+  List<Point<int>> _freeFloorNear(Point<int> center, int n) {
+    final w = _w!;
+    final out = <Point<int>>[];
+    for (var r = 1; r <= 5 && out.length < n; r++) {
+      for (var dy = -r; dy <= r; dy++) {
+        for (var dx = -r; dx <= r; dx++) {
+          if (out.length >= n) break;
+          if (dx.abs() != r && dy.abs() != r) continue; // périmètre de l'anneau
+          final x = center.x + dx, y = center.y + dy;
+          if (!w.inBounds(x, y) || w.at(x, y) != UwTile.floor) continue;
+          if (w.hasRock(x, y) || w.hasBush(x, y) || w.caveIdAt(x, y) != null) {
+            continue;
+          }
+          final tile = '${x}_$y';
+          if (_streakTurrets.containsKey(tile) || _turrets.containsKey(tile)) {
+            continue;
+          }
+          if (out.any((p) => p.x == x && p.y == y)) continue;
+          out.add(Point(x, y));
+        }
+      }
+    }
+    return out;
   }
 
   // Maintien (TD) : retire la tour de cette case.
@@ -2157,6 +2253,39 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                               width: 1),
                         ),
                       ),
+                    ),
+                  );
+                }(),
+              // BÂTI — tourelles dérivées des STREAKS de routines (couleur du
+              // domaine + 🔥 streak). Le dashboard de tes constances sur la map.
+              for (final e in _streakTurrets.entries)
+                () {
+                  if (!_revealed.contains(e.key)) {
+                    return const SizedBox.shrink();
+                  }
+                  final pp = e.key.split('_');
+                  final c0 =
+                      centerD(double.parse(pp[0]), double.parse(pp[1]));
+                  final col = e.value.color;
+                  return Positioned(
+                    left: c0.dx - slot / 2,
+                    top: c0.dy - slot * 0.6,
+                    width: slot,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.cell_tower, size: slot * 0.55, color: col),
+                        Text('🔥${e.value.streak}',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                color: col,
+                                fontWeight: FontWeight.w900,
+                                fontSize: slot * 0.22,
+                                height: 1,
+                                shadows: const [
+                                  Shadow(color: Colors.black, blurRadius: 2)
+                                ])),
+                      ],
                     ),
                   );
                 }(),
