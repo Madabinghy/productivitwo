@@ -2502,6 +2502,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                   for (var d = 0; d < lanes[i].length; d++)
                     () {
                       final tok = lanes[i][d];
+                      if (tok.type == 'empty') return const SizedBox.shrink();
                       final c0 = centerD(10.0 + d, (3 + i).toDouble());
                       final emoji = tok.type == 'flame'
                           ? '🔥'

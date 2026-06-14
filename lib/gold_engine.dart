@@ -923,14 +923,28 @@ extension GoldEngine on AppLogic {
       }
     }
     if (a == null || !a.isHabit) return const [];
-    // Le tapis jour-par-jour ne vaut que pour les routines QUOTIDIENNES (une
-    // hebdo n'est pas « due » chaque jour → pas de toile les jours non-dus).
-    if (effectiveHabitFreq(a) != HabitFreq.daily) return const [];
     final quota = dayQuotaFor(a);
     if (quota <= 0) return const [];
-    final out = <({String type, int hp})>[];
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
+    final freq = effectiveHabitFreq(a);
+    if (freq != HabitFreq.daily) {
+      // Hebdo/mensuelle : UN seul token au bout (aujourd'hui) — 🍃 feuille si
+      // faite dans la période (7j / 30j), 🕷️ araignée sinon. Cases avant vides.
+      final period = freq == HabitFreq.weekly ? 7 : 30;
+      var done = false;
+      for (var k = 0; k < period; k++) {
+        if (habitValueOn(a.id, today.subtract(Duration(days: k))) >= quota) {
+          done = true;
+          break;
+        }
+      }
+      return [
+        for (var i = 0; i < 6; i++) (type: 'empty', hp: 0),
+        (type: done ? 'leaf' : 'spider', hp: done ? 0 : quota),
+      ];
+    }
+    final out = <({String type, int hp})>[];
     for (var i = 0; i < 7; i++) {
       final date = today.subtract(Duration(days: 6 - i));
       final value = habitValueOn(a.id, date);
