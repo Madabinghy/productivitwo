@@ -9,7 +9,7 @@ import 'package:productivitwo_v1/widgets/backlog_combat.dart';
 import 'package:productivitwo_v1/widgets/expedition_map_game.dart';
 import 'package:productivitwo_v1/widgets/expedition_sheet.dart';
 import 'package:productivitwo_v1/widgets/collection_sheet.dart';
-import 'package:productivitwo_v1/web/unified_world_sheet.dart';
+import 'package:productivitwo_v1/widgets/world_mobile_sheet.dart';
 import 'package:productivitwo_v1/widgets/confetti.dart';
 import 'package:productivitwo_v1/widgets/gold_shop_sheet.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
@@ -411,7 +411,7 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
             label: const Text('Le Monde',
                 style: TextStyle(fontWeight: FontWeight.w800)),
             onPressed: () async {
-              await showUnifiedWorldSheet(context, logic, sync, mobile: true);
+              await showWorldMobile(context, logic, sync);
               if (context.mounted) setState(() {});
             },
           ),
