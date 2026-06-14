@@ -332,38 +332,19 @@ class _DomainGameplayState extends State<_DomainGameplay> {
   Widget _gardenView(List<_Item> items) {
     final days = _last7DayLabels();
     const cell = 34.0;
-    Widget dayHeader() => Padding(
-          padding: const EdgeInsets.only(left: 64, bottom: 2),
-          child: Row(
-            children: [
-              for (final l in days)
-                SizedBox(
-                  width: cell,
-                  child: Center(
-                    child: Text(l,
-                        style: TextStyle(
-                            color: Colors.white.withOpacity(.45),
-                            fontWeight: FontWeight.w900,
-                            fontSize: 13)),
-                  ),
-                ),
-            ],
-          ),
-        );
     final routines = items.where((i) => i.kind == 'spider').toList();
     final times = items.where((i) => i.kind == 'scorpion').toList();
     return ListView(
       padding: const EdgeInsets.fromLTRB(10, 4, 10, 8),
       children: [
-        dayHeader(),
         if (routines.isNotEmpty) ...[
           _sectionHeader('🕷️ Routines', routines.length),
-          for (final it in routines) _gardenRow(it, cell),
+          for (final it in routines) _gardenRow(it, cell, days),
         ],
         if (times.isNotEmpty) ...[
           const SizedBox(height: 8),
           _sectionHeader('🦂 Activités-temps', times.length),
-          for (final it in times) _gardenRow(it, cell),
+          for (final it in times) _gardenRow(it, cell, days),
         ],
       ],
     );
@@ -391,7 +372,7 @@ class _DomainGameplayState extends State<_DomainGameplay> {
         ]),
       );
 
-  Widget _gardenRow(_Item it, double cell) {
+  Widget _gardenRow(_Item it, double cell, List<String> days) {
     final c = widget.color;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
@@ -406,6 +387,22 @@ class _DomainGameplayState extends State<_DomainGameplay> {
                   fontWeight: FontWeight.w700,
                   fontSize: 13)),
           const SizedBox(height: 2),
+          // Lettres des jours, centrées sur chaque case (alignées après la tour).
+          Row(children: [
+            const SizedBox(width: 60),
+            for (final l in days)
+              SizedBox(
+                width: cell + 2,
+                child: Center(
+                  child: Text(l,
+                      style: TextStyle(
+                          color: Colors.white.withOpacity(.4),
+                          fontWeight: FontWeight.w900,
+                          fontSize: 11)),
+                ),
+              ),
+          ]),
+          const SizedBox(height: 1),
           Row(children: [
             // Tour (col. château) avec son chargeur.
             SizedBox(
