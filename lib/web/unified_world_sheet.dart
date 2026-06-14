@@ -829,9 +829,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _redSpawn = const Offset(11, 6);
       _redHome = const Offset(11, 6);
       _redWander = null;
-      _invX = _pos.x.toDouble();
+      // Le scorpion est LANCÉ 2 cases sur la droite (charge vers la grotte) et
+      // toute la map se révèle → l'assaut se joue en cinématique (déplacement
+      // verrouillé tant que _tdMode est actif, cf. _onTap/_moveDir).
+      _invX = (_pos.x + 2).clamp(0, w.cols - 1).toDouble();
       _invY = _pos.y.toDouble();
-      _revealAround(_pos);
+      for (var yy = 0; yy < w.rows; yy++) {
+        for (var xx = 0; xx < w.cols; xx++) {
+          _revealed.add('${xx}_$yy');
+        }
+      }
       _grotteTarget = const Offset(11, 7);
       _grotteCaveId = 'coeur';
       _grotteHpMax = 60;
@@ -1472,6 +1479,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   void _moveDir(int dx, int dy) {
     final w = _w;
     if (w == null || _busy) return;
+    if (_inInterior && _tdMode) return; // assaut = cinématique, pas de déplacement
     final nx = _pos.x + dx, ny = _pos.y + dy;
     if (!_passable(nx, ny)) return;
     _step(Point(nx, ny));
@@ -1500,6 +1508,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   Future<void> _onTap(int x, int y) async {
     final w = _w;
     if (_busy || w == null) return;
+    // Assaut intérieur = cinématique : déplacement verrouillé (le scorpion charge
+    // tout seul). On laisse passer uniquement pour la phase farm (!_tdMode).
+    if (_inInterior && _tdMode) return;
     // Tap sur la grotte ROUGE (envahie) → ENTRER dans la grotte (niveau intérieur).
     if (_grotteTaken &&
         !_inInterior &&
