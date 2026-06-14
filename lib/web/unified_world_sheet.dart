@@ -2434,50 +2434,52 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                       ),
                     );
                   }(),
-                // 1 ligne par routine : tour (col 0, château) + chargeur + nom.
+                // NOM de la routine en label gauche (entre château et porte col 9).
                 for (var i = 0; i < topRoutines.length; i++)
                   () {
-                    final r = topRoutines[i];
-                    final c0 = centerD(0, (3 + i).toDouble());
+                    final c0 = centerD(1, (3 + i).toDouble());
+                    return Positioned(
+                      left: c0.dx - slot / 2,
+                      top: c0.dy - slot * 0.35,
+                      width: slot * 7.5,
+                      height: slot * 0.7,
+                      child: Text(topRoutines[i].name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              color: _interiorColor.withOpacity(.95),
+                              fontWeight: FontWeight.w700,
+                              fontSize: slot * 0.26,
+                              shadows: const [
+                                Shadow(color: Colors.black, blurRadius: 2)
+                              ])),
+                    );
+                  }(),
+                // TOUR de la routine à COLONNE 10 (icône + chargeur).
+                for (var i = 0; i < topRoutines.length; i++)
+                  () {
+                    final c0 = centerD(10, (3 + i).toDouble());
                     return Positioned(
                       left: c0.dx - slot / 2,
                       top: c0.dy - slot / 2,
-                      width: slot * 8.5,
+                      width: slot,
                       height: slot,
-                      child: Row(children: [
-                        SizedBox(
-                          width: slot,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              SvgPicture.asset('assets/icons/tower.svg',
-                                  width: slot * 0.5,
-                                  height: slot * 0.5,
-                                  colorFilter: ColorFilter.mode(
-                                      _interiorColor, BlendMode.srcIn)),
-                              Text('🔋${r.charger}',
-                                  style: TextStyle(
-                                      color: _interiorColor,
-                                      fontWeight: FontWeight.w900,
-                                      fontSize: slot * 0.2,
-                                      height: 1)),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(r.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SvgPicture.asset('assets/icons/tower.svg',
+                              width: slot * 0.5,
+                              height: slot * 0.5,
+                              colorFilter: ColorFilter.mode(
+                                  _interiorColor, BlendMode.srcIn)),
+                          Text('🔋${topRoutines[i].charger}',
                               style: TextStyle(
-                                  color: _interiorColor.withOpacity(.95),
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: slot * 0.26,
-                                  shadows: const [
-                                    Shadow(color: Colors.black, blurRadius: 2)
-                                  ])),
-                        ),
-                      ]),
+                                  color: _interiorColor,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: slot * 0.2,
+                                  height: 1)),
+                        ],
+                      ),
                     );
                   }(),
                 // NUISIBLES = jours manqués de chaque routine (🕷️ sur la case du
@@ -2485,7 +2487,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 for (var i = 0; i < topRoutines.length; i++)
                   for (final d in logic.routineMissedThisWeek(topRoutines[i].id))
                     () {
-                      final c0 = centerD(1.0 + d, (3 + i).toDouble());
+                      final c0 = centerD(10.0 + d, (3 + i).toDouble());
                       return Positioned(
                         left: c0.dx - slot / 2,
                         top: c0.dy - slot / 2,
