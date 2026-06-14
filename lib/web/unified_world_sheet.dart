@@ -2588,10 +2588,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                   }(),
                 // (Le nom de la routine est dans le PANNEAU LATÉRAL à droite,
                 //  aligné à sa ligne — pas sur la grille.)
-                // TOUR à COLONNE 10 — une par ligne (routine ou activité-temps).
+                // TOUR à COLONNE 9 — une par ligne (remplace l'ancienne porte).
                 for (final e in allRows)
                   () {
-                    final c0 = centerD(10, e.row.toDouble());
+                    final c0 = centerD(9, e.row.toDouble());
                     return Positioned(
                       left: c0.dx - slot / 2,
                       top: c0.dy - slot / 2,
@@ -2661,21 +2661,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         ),
                       );
                     }(),
-                // PORTES (col 9) : une par ligne (routine ou activité-temps).
-                for (final e in allRows)
-                  () {
-                    final c0 = centerD(9, e.row.toDouble());
-                    return Positioned(
-                      left: c0.dx - slot / 2,
-                      top: c0.dy - slot / 2,
-                      width: slot,
-                      height: slot,
-                      child: Center(
-                        child: Text('🚪', style: TextStyle(fontSize: slot * 0.5)),
-                      ),
-                    );
-                  }(),
-                // CHÂTEAU (cols 8→0, à gauche de la porte) : se remplit des jours
+                // (Portes retirées — la tour occupe désormais la col 9.)
+                // CHÂTEAU (cols 8→0, à gauche de la tour) : se remplit des jours
                 // PASSÉS — 🕸️ toiles (manques) ou 🍃 feuilles (en avance), de la
                 // porte vers l'intérieur.
                 for (final e in allRows)
