@@ -754,6 +754,9 @@ class AppState {
   // à cette date (YYYY-MM-DD) ne comptent plus dans le deck lifetime (deck propre
   // sans toucher à l'historique réel). '' = pas de reset (tout compte).
   String deckResetYmd;
+  // Position des tours de défense de domaine (placement stratégique persisté) :
+  // clé "domainId~routineId" → "x_y". Routine absente = retombe en zone de départ.
+  Map<String, String> domTurretPos;
 
   AppState({
     required this.domains,
@@ -838,6 +841,7 @@ class AppState {
     this.battleMasseToday = 0,
     this.battleMasseTodayYmd = '',
     this.deckResetYmd = '',
+    Map<String, String>? domTurretPos,
     Map<String, int>? weaponsSpent,
     Map<String, int>? pestKills,
     Map<String, int>? redRoster,
@@ -890,6 +894,7 @@ class AppState {
         expeditionEntities = expeditionEntities ?? <String>[],
         expeditionChallenges = expeditionChallenges ?? <String>[],
         weaponsSpent = weaponsSpent ?? <String, int>{},
+        domTurretPos = domTurretPos ?? <String, String>{},
         pestKills = pestKills ?? <String, int>{},
         redRoster = redRoster ?? <String, int>{},
         craftSpent = craftSpent ?? <String, int>{},
@@ -977,6 +982,7 @@ class AppState {
         'battleMasseToday': battleMasseToday,
         'battleMasseTodayYmd': battleMasseTodayYmd,
         'deckResetYmd': deckResetYmd,
+        'domTurretPos': domTurretPos,
         'engagedEnemies': engagedEnemies,
         'weaponPickups': weaponPickups,
         'collection': collection,
@@ -1136,6 +1142,9 @@ class AppState {
       battleMasseToday: (j['battleMasseToday'] as num?)?.toInt() ?? 0,
       battleMasseTodayYmd: (j['battleMasseTodayYmd'] as String?) ?? '',
       deckResetYmd: (j['deckResetYmd'] as String?) ?? '',
+      domTurretPos: (j['domTurretPos'] as Map?)
+              ?.map((k, v) => MapEntry(k.toString(), v.toString())) ??
+          <String, String>{},
       engagedEnemies: (j['engagedEnemies'] as List?)?.cast<String>() ?? <String>[],
       weaponPickups: (j['weaponPickups'] as Map?)?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ?? <String, int>{},
       collection: (j['collection'] as List?)?.cast<String>() ?? <String>[],

@@ -195,6 +195,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   //    (_w/_pos/_revealed) et on restaure en sortant.
   bool _inInterior = false;
   String? _interiorCaveId; // domaine de la grotte intérieure (= filtre nuisibles)
+  String? _interiorDomainId; // domainId courant (clé de persistance des tours)
   Color _interiorColor = _kBlue;
   int _reconquestDeck = 0; // masse gagnée en battant les nuisibles du domaine
   // La porte x9 = TOILES 🕸️ : tombent PENDANT le combat d'assaut (= _gateHp ≤ 0),
@@ -827,6 +828,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       // (0,0)→(7,1). L'user les drag où il veut. Niveau = streak = chargeur.
       _domTurrets.clear();
       final dom = cave?.domainId;
+      _interiorDomainId = dom;
       if (dom != null) {
         final col = cave != null ? _caveColor(cave) : _kBlue;
         var idx = 0;
@@ -834,8 +836,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           if (!a.isHabit || a.domainId != dom) continue;
           final s = logic.habitCurrentStreak(a.id);
           if (s < 1 || idx >= 16) continue; // zone de départ = 8×2 = 16 slots
-          _domTurrets.add(_DomTurret(s, col, a.name,
-              (idx % 8).toDouble(), (idx ~/ 8).toDouble()));
+          // Position sauvée (placement stratégique) si elle existe, sinon départ.
+          final saved = logic.state.domTurretPos['$dom~${a.id}'];
+          double px = (idx % 8).toDouble(), py = (idx ~/ 8).toDouble();
+          if (saved != null && saved.contains('_')) {
+            final s2 = saved.split('_');
+            final sx = double.tryParse(s2[0]), sy = double.tryParse(s2[1]);
+            if (sx != null && sy != null) {
+              px = sx;
+              py = sy;
+            }
+          }
+          _domTurrets.add(_DomTurret(a.id, s, col, a.name, px, py));
           idx++;
         }
       }
@@ -2347,15 +2359,24 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                           tr.x += d.delta.dx / slot;
                           tr.y += d.delta.dy / slot;
                         }),
-                        onPanEnd: (_) => setState(() {
-                          final nx = tr.x.round(), ny = tr.y.round();
-                          if (w.inBounds(nx, ny) &&
-                              w.walkable(nx, ny) &&
-                              !w.isGate(nx, ny)) {
-                            tr.x = nx.toDouble();
-                            tr.y = ny.toDouble();
+                        onPanEnd: (_) {
+                          setState(() {
+                            final nx = tr.x.round(), ny = tr.y.round();
+                            if (w.inBounds(nx, ny) &&
+                                w.walkable(nx, ny) &&
+                                !w.isGate(nx, ny)) {
+                              tr.x = nx.toDouble();
+                              tr.y = ny.toDouble();
+                            }
+                          });
+                          // Persiste le placement (clé domainId~routineId → x_y).
+                          final dom = _interiorDomainId;
+                          if (dom != null) {
+                            logic.state.domTurretPos['$dom~${tr.routineId}'] =
+                                '${tr.x.round()}_${tr.y.round()}';
+                            sync.setDomTurretPos(logic.state.domTurretPos);
                           }
-                        }),
+                        },
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -2874,13 +2895,15 @@ class _Atk {
 /// initial (`ammo`) qui diminue à chaque tir. Puissance = constance réelle ;
 /// agency = le placement. Niveau du domaine = Σ des niveaux de ses tourelles.
 class _DomTurret {
+  final String routineId; // clé de persistance du placement
   final int level; // = streak de la routine (chargeur initial)
   final Color color; // couleur du domaine
   final String name; // nom de la routine
   double x, y; // position en cases (fractionnaire pendant le drag)
   int ammo; // tirs restants
   int lastFireMs = -99999;
-  _DomTurret(this.level, this.color, this.name, this.x, this.y) : ammo = level;
+  _DomTurret(this.routineId, this.level, this.color, this.name, this.x, this.y)
+      : ammo = level;
 }
 
 /// Flèche en vol : from/to en coords de tuiles, animée par le temps (startMs+durMs).

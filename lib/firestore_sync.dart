@@ -272,6 +272,8 @@ class FirestoreSync {
         battleMasseToday: (meta['battleMasseToday'] as num?)?.toInt() ?? 0,
         battleMasseTodayYmd: (meta['battleMasseTodayYmd'] as String?) ?? '',
         deckResetYmd: (meta['deckResetYmd'] as String?) ?? '',
+        domTurretPos: (meta['domTurretPos'] as Map?)
+            ?.map((k, v) => MapEntry(k.toString(), v.toString())),
         engagedEnemies: (meta['engagedEnemies'] as List?)?.cast<String>(),
         weaponPickups: (meta['weaponPickups'] as Map?)?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
         collection: (meta['collection'] as List?)?.cast<String>(),
@@ -403,6 +405,7 @@ class FirestoreSync {
       battleMasseTodayYmd:   local.battleMasseTodayYmd.compareTo(remote.battleMasseTodayYmd) >= 0 ? local.battleMasseTodayYmd : remote.battleMasseTodayYmd,
       battleMasseToday:      local.battleMasseTodayYmd == remote.battleMasseTodayYmd ? (local.battleMasseToday >= remote.battleMasseToday ? local.battleMasseToday : remote.battleMasseToday) : (local.battleMasseTodayYmd.compareTo(remote.battleMasseTodayYmd) > 0 ? local.battleMasseToday : remote.battleMasseToday),
       deckResetYmd:          local.deckResetYmd.compareTo(remote.deckResetYmd) >= 0 ? local.deckResetYmd : remote.deckResetYmd,
+      domTurretPos:          local.domTurretPos.length >= remote.domTurretPos.length ? local.domTurretPos : remote.domTurretPos,
       engagedEnemies:        local.goldLifetime >= remote.goldLifetime ? local.engagedEnemies : remote.engagedEnemies,
       weaponPickups:         _mapSum(local.weaponPickups) >= _mapSum(remote.weaponPickups) ? local.weaponPickups : remote.weaponPickups,
       collection:            local.collection.length >= remote.collection.length ? local.collection : remote.collection,
@@ -966,6 +969,12 @@ class FirestoreSync {
     await _meta().set(
         {'weaponsSpent': weaponsSpent, 'pestKills': pestKills},
         SetOptions(merge: true));
+  }
+
+  /// Persiste le placement des tours de défense de domaine (clé domainId~routineId → x_y).
+  Future<void> setDomTurretPos(Map<String, String> pos) async {
+    if (uid == null) return;
+    await _meta().set({'domTurretPos': pos}, SetOptions(merge: true));
   }
 
   /// Reset du deck : pose la date de reset + remet à zéro les captures de chasse.
