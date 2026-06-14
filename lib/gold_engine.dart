@@ -820,16 +820,12 @@ extension GoldEngine on AppLogic {
   int lifetimeMasseForDomain(String domainId) =>
       _capturesForDays(null, domainId: domainId).fold(0, (s, c) => s + c.effort);
 
-  /// Deck d'assaut amorcé pour reconquérir la grotte du domaine `domainId` :
-  /// la masse de CE domaine, avec un FALLBACK sur une fraction de la masse globale
-  /// (1/nb domaines actifs) si le domaine est vide → jamais bloqué au démarrage.
-  int reconquestDeckForDomain(String domainId) {
-    final own = lifetimeMasseForDomain(domainId);
-    if (own > 0) return own;
-    final n = state.domains.where((d) => !d.deleted).length;
-    final global = lifetimeBattleMasse;
-    return n > 0 ? global ~/ n : global;
-  }
+  /// Deck d'assaut amorcé pour reconquérir la grotte du domaine `domainId` =
+  /// UNIQUEMENT la masse capturée de CE domaine (petit deck spécifique, cloisonné).
+  /// Vide si rien capturé dans ce domaine depuis le reset → on FARME les nuisibles
+  /// du domaine à l'intérieur pour le gonfler (pas de fallback global qui gonflerait
+  /// artificiellement le deck — cf. north star pilier 5, deck cloisonné par domaine).
+  int reconquestDeckForDomain(String domainId) => lifetimeMasseForDomain(domainId);
 
   /// Reset du deck d'invasion : pose la date de reset à AUJOURD'HUI (les captures
   /// antérieures ne comptent plus → deck à zéro, réversible, sans toucher à
