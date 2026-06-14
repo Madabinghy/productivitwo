@@ -27,6 +27,7 @@ const _kBlue = Color(0xFF3B82F6); // grotte à moi
 const _kGold = Color(0xFFD4A017); // château
 const _kEnemy = Color(0xFFFF2B2B); // grotte prise
 const _kFarm = Color(0xFF22C55E); // accent zone farm
+const _kCharge = Color(0xFF4FC26B); // vert — chargeur de la tour (munitions)
 
 const int _kReveal = 2; // rayon de brouillard levé autour de l'avatar (Chebyshev)
 
@@ -1721,6 +1722,26 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     sync.setUnifiedTurrets(list);
   }
 
+  // Barre segmentée (7 cases) sous la tour, dimensionnée sur le `slot` de la grille.
+  Widget _webSegBar(int filled, Color color, double slot) {
+    final seg = slot * 0.09;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < 7; i++)
+          Container(
+            width: seg,
+            height: seg * 0.9,
+            margin: EdgeInsets.only(right: slot * 0.02),
+            decoration: BoxDecoration(
+              color: i < filled ? color : Colors.white.withOpacity(.12),
+              borderRadius: BorderRadius.circular(1),
+            ),
+          ),
+      ],
+    );
+  }
+
   // CALENDRIER de domaine : les 10 routines les PLUS FAITES (tri par complétions
   // de la semaine passée) → 1 ligne chacune. charger = chargeur de la tour.
   List<({String id, String name, int charger, int active})> _domTopRoutines() {
@@ -1750,11 +1771,14 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     final list = <({String id, String name, int charger, int active})>[];
     for (final a in logic.state.activeActivities) {
       if (a.isHabit || a.domainId != dom) continue;
-      if (logic.activityTimeTokens(a.id).isEmpty) continue; // goalMin > 0
+      final tok = logic.activityTimeTokens(a.id);
+      if (tok.isEmpty) continue; // goalMin > 0
       list.add((
         id: a.id,
         name: a.name,
-        charger: 0,
+        // Chargeur = jours où l'objectif-temps a été atteint (7 glissants).
+        charger:
+            tok.where((t) => t.type == 'leaf' || t.type == 'flame').length,
         active: logic.activityTime30dMin(a.id)
       ));
     }
@@ -2576,18 +2600,21 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          SvgPicture.asset('assets/icons/tower.svg',
-                              width: slot * 0.5,
-                              height: slot * 0.5,
-                              colorFilter: ColorFilter.mode(
-                                  _interiorColor, BlendMode.srcIn)),
-                          if (e.r.charger > 0)
-                            Text('🔋${e.r.charger}',
-                                style: TextStyle(
-                                    color: _interiorColor,
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: slot * 0.2,
-                                    height: 1)),
+                          // Tour pivotée pour « viser » horizontalement.
+                          Transform.rotate(
+                            angle: pi / 2,
+                            child: SvgPicture.asset('assets/icons/tower.svg',
+                                width: slot * 0.42,
+                                height: slot * 0.42,
+                                colorFilter: ColorFilter.mode(
+                                    _interiorColor, BlendMode.srcIn)),
+                          ),
+                          SizedBox(height: slot * 0.06),
+                          // Chargeur (vert) = jours non faits (7-n) → vide si tout tiré.
+                          _webSegBar(7 - e.r.charger, _kCharge, slot),
+                          SizedBox(height: slot * 0.04),
+                          // Vie (rouge) = jours faits (n) → pleine si tout tiré.
+                          _webSegBar(e.r.charger, _kEnemy, slot),
                         ],
                       ),
                     );
