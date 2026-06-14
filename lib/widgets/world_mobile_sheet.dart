@@ -4,8 +4,28 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
+import 'package:productivitwo_v1/widgets/backlog_combat.dart';
 
 const _kBg = Color(0xFF0E1512);
+const _kEnemy = Color(0xFFE5604D);
+
+const _weekdayLetters = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+List<String> _last7DayLabels() {
+  final n = DateTime.now();
+  final today = DateTime(n.year, n.month, n.day);
+  return [
+    for (var i = 0; i < 7; i++)
+      _weekdayLetters[today.subtract(Duration(days: 6 - i)).weekday - 1]
+  ];
+}
+
+String _tokenEmoji(String type, {required bool scorpion}) => type == 'flame'
+    ? '🔥'
+    : type == 'spider'
+        ? (scorpion ? '🦂' : '🕷️')
+        : type == 'leaf'
+            ? '🍃'
+            : '';
 
 /// UI MOBILE native du « Monde » (reconstruite, pas le portage du sheet web).
 /// Étape 1 : la LISTE des domaines. Tap → gameplay mobile du domaine (étape 2).
@@ -95,14 +115,10 @@ class _WorldMobileListState extends State<_WorldMobileList> {
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () {
-          // Étape 2 (à venir) : ouvrir le gameplay mobile du domaine.
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            backgroundColor: color.withOpacity(.85),
-            content: Text('Gameplay « ${d.name} » — étape 2 à venir'),
-            duration: const Duration(milliseconds: 1400),
-          ));
-        },
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+            fullscreenDialog: true,
+            builder: (_) => _DomainGameplay(
+                logic: logic, sync: widget.sync, domain: d, color: color))),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           decoration: BoxDecoration(
@@ -149,6 +165,287 @@ class _WorldMobileListState extends State<_WorldMobileList> {
           ]),
         ),
       ),
+    );
+  }
+}
+
+// ── Gameplay d'un domaine, MOBILE-natif, coupé en 2 : JARDIN (les 7 jours, tokens
+//    + tours) ↔ CHÂTEAU (les toiles/feuilles accumulées). Bouton fléché pour passer.
+typedef _Item = ({
+  String id,
+  String name,
+  String kind, // 'spider' (routine) | 'scorpion' (temps)
+  List<({String type, int hp})> tokens,
+  int charger,
+  ({int webs, int leaves}) fill,
+  int active,
+});
+
+class _DomainGameplay extends StatefulWidget {
+  final AppLogic logic;
+  final FirestoreSync sync;
+  final Domain domain;
+  final Color color;
+  const _DomainGameplay(
+      {required this.logic,
+      required this.sync,
+      required this.domain,
+      required this.color});
+  @override
+  State<_DomainGameplay> createState() => _DomainGameplayState();
+}
+
+class _DomainGameplayState extends State<_DomainGameplay> {
+  AppLogic get logic => widget.logic;
+  bool _chateau = false; // false = jardin, true = intérieur château
+
+  List<_Item> _items() {
+    final dom = widget.domain.id;
+    final routines = <_Item>[];
+    final times = <_Item>[];
+    for (final a in logic.state.activeActivities) {
+      if (a.domainId != dom) continue;
+      if (a.isHabit) {
+        final tok = logic.routineWeekTokens(a.id);
+        if (tok.isEmpty) continue;
+        routines.add((
+          id: a.id,
+          name: a.name,
+          kind: 'spider',
+          tokens: tok,
+          charger: logic.routineDefenseCharger(a.id),
+          fill: logic.routineChateauFill(a.id),
+          active: logic.routine30dActive(a.id),
+        ));
+      } else {
+        final tok = logic.activityTimeTokens(a.id);
+        if (tok.isEmpty) continue;
+        times.add((
+          id: a.id,
+          name: a.name,
+          kind: 'scorpion',
+          tokens: tok,
+          charger: 0,
+          fill: logic.activityTimeChateauFill(a.id),
+          active: logic.activityTime30dMin(a.id),
+        ));
+      }
+    }
+    routines.sort((a, b) => b.active.compareTo(a.active));
+    times.sort((a, b) => b.active.compareTo(a.active));
+    return [...routines.take(5), ...times.take(5)];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.color;
+    final items = _items();
+    return Scaffold(
+      backgroundColor: _kBg,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // En-tête.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+              child: Row(children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.white70),
+                  onPressed: () => Navigator.of(context).maybePop(),
+                ),
+                Text('🏴 ${widget.domain.name}',
+                    style: TextStyle(
+                        color: c, fontSize: 18, fontWeight: FontWeight.w900)),
+                const Spacer(),
+                Text(_chateau ? '🏰 Château' : '🌿 Jardin',
+                    style: TextStyle(
+                        color: Colors.white.withOpacity(.5), fontSize: 12)),
+                const SizedBox(width: 12),
+              ]),
+            ),
+            Expanded(
+              child: items.isEmpty
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Text(
+                            'Aucune routine quotidienne ni activité-temps dans ce domaine.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.white38)),
+                      ),
+                    )
+                  : (_chateau ? _chateauView(items) : _gardenView(items)),
+            ),
+            // CTA de navigation jardin ↔ château (le bouton fléché).
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                      backgroundColor: c.withOpacity(.18),
+                      foregroundColor: c,
+                      minimumSize: const Size.fromHeight(46)),
+                  onPressed: () => setState(() => _chateau = !_chateau),
+                  icon: Icon(_chateau ? Icons.arrow_forward : Icons.arrow_back),
+                  label: Text(_chateau
+                      ? 'Retour au jardin 🌿'
+                      : 'Entrer dans le château 🏰'),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── JARDIN : en-tête des jours + une ligne par routine/activité ─────────────
+  Widget _gardenView(List<_Item> items) {
+    final days = _last7DayLabels();
+    const cell = 34.0;
+    Widget dayHeader() => Padding(
+          padding: const EdgeInsets.only(left: 64, bottom: 2),
+          child: Row(
+            children: [
+              for (final l in days)
+                SizedBox(
+                  width: cell,
+                  child: Center(
+                    child: Text(l,
+                        style: TextStyle(
+                            color: Colors.white.withOpacity(.45),
+                            fontWeight: FontWeight.w900,
+                            fontSize: 13)),
+                  ),
+                ),
+            ],
+          ),
+        );
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(10, 4, 10, 8),
+      children: [
+        dayHeader(),
+        for (final it in items) _gardenRow(it, cell),
+      ],
+    );
+  }
+
+  Widget _gardenRow(_Item it, double cell) {
+    final c = widget.color;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(it.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  color: c.withOpacity(.95),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13)),
+          const SizedBox(height: 2),
+          Row(children: [
+            // Tour (col. château) avec son chargeur.
+            SizedBox(
+              width: 60,
+              child: Row(children: [
+                const Text('🗼', style: TextStyle(fontSize: 18)),
+                if (it.charger > 0)
+                  Text(' ${it.charger}',
+                      style: TextStyle(
+                          color: c,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 12)),
+              ]),
+            ),
+            for (var d = 0; d < it.tokens.length; d++)
+              _tokenCell(it, d, cell),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  Widget _tokenCell(_Item it, int d, double cell) {
+    final tok = it.tokens[d];
+    final spider = tok.type == 'spider';
+    final emoji = _tokenEmoji(tok.type, scorpion: it.kind == 'scorpion');
+    return GestureDetector(
+      onTap: spider
+          ? () async {
+              await showBacklogCombat(
+                  context, logic, widget.sync, it.kind, it.id);
+              if (mounted) setState(() {});
+            }
+          : null,
+      child: Container(
+        width: cell,
+        height: cell,
+        margin: const EdgeInsets.all(1),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(.03),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: Colors.white.withOpacity(.06)),
+        ),
+        child: emoji.isEmpty
+            ? null
+            : Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(emoji, style: const TextStyle(fontSize: 16)),
+                  if (spider)
+                    Text('${tok.hp}',
+                        style: const TextStyle(
+                            color: _kEnemy,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 10,
+                            height: 1)),
+                ],
+              ),
+      ),
+    );
+  }
+
+  // ── CHÂTEAU : les toiles/feuilles accumulées par ligne ──────────────────────
+  Widget _chateauView(List<_Item> items) {
+    final c = widget.color;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+      children: [
+        for (final it in items)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(it.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        color: c.withOpacity(.95),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13)),
+                const SizedBox(height: 2),
+                Wrap(
+                  spacing: 2,
+                  children: [
+                    if (it.fill.webs == 0 && it.fill.leaves == 0)
+                      Text('— rien à signaler',
+                          style: TextStyle(
+                              color: Colors.white.withOpacity(.3),
+                              fontSize: 12)),
+                    for (var k = 0; k < it.fill.webs; k++)
+                      const Text('🕸️', style: TextStyle(fontSize: 18)),
+                    for (var k = 0; k < it.fill.leaves; k++)
+                      const Text('🍃', style: TextStyle(fontSize: 18)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }
