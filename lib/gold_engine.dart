@@ -879,19 +879,34 @@ extension GoldEngine on AppLogic {
       }
     }
     if (a == null || !a.isHabit) return (webs: 0, leaves: 0);
-    if (effectiveHabitFreq(a) != HabitFreq.daily) return (webs: 0, leaves: 0);
     final quota = dayQuotaFor(a);
     if (quota <= 0) return (webs: 0, leaves: 0);
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
+    final freq = effectiveHabitFreq(a);
+    final period =
+        freq == HabitFreq.weekly ? 7 : (freq == HabitFreq.monthly ? 30 : 1);
     var misses = 0, dones = 0;
     for (var k = 7; k < 28; k++) {
       final date = today.subtract(Duration(days: k));
       if (habitValueOn(a.id, date) >= quota) {
         dones++;
-      } else {
-        misses++;
+        continue;
       }
+      if (freq == HabitFreq.daily) {
+        misses++;
+        continue;
+      }
+      // Non-daily : ce jour compte comme retard SEULEMENT si rien fait dans la
+      // période (grâce). Sinon ni toile ni rien.
+      var doneInPeriod = false;
+      for (var p = 0; p < period; p++) {
+        if (habitValueOn(a.id, date.subtract(Duration(days: p))) >= quota) {
+          doneInPeriod = true;
+          break;
+        }
+      }
+      if (!doneInPeriod) misses++;
     }
     final net = misses - dones;
     final webs = net > 9 ? 9 : (net < 0 ? 0 : net);
@@ -929,20 +944,30 @@ extension GoldEngine on AppLogic {
     final today = DateTime(now.year, now.month, now.day);
     final freq = effectiveHabitFreq(a);
     if (freq != HabitFreq.daily) {
-      // Hebdo/mensuelle : UN seul token au bout (aujourd'hui) — 🍃 feuille si
-      // faite dans la période (7j / 30j), 🕷️ araignée sinon. Cases avant vides.
+      // Hebdo/mensuelle : par jour — 🍃 feuille si faite CE jour ; vide pendant
+      // la grâce (faite dans les `period` jours précédents) ; 🕷️ araignée si EN
+      // RETARD (rien fait dans la période) → une araignée chaque jour tant que pas
+      // faite.
       final period = freq == HabitFreq.weekly ? 7 : 30;
-      var done = false;
-      for (var k = 0; k < period; k++) {
-        if (habitValueOn(a.id, today.subtract(Duration(days: k))) >= quota) {
-          done = true;
-          break;
+      final out = <({String type, int hp})>[];
+      for (var i = 0; i < 7; i++) {
+        final date = today.subtract(Duration(days: 6 - i));
+        if (habitValueOn(a.id, date) >= quota) {
+          out.add((type: 'leaf', hp: 0));
+          continue;
         }
+        var doneInPeriod = false;
+        for (var k = 0; k < period; k++) {
+          if (habitValueOn(a.id, date.subtract(Duration(days: k))) >= quota) {
+            doneInPeriod = true;
+            break;
+          }
+        }
+        out.add(doneInPeriod
+            ? (type: 'empty', hp: 0)
+            : (type: 'spider', hp: quota));
       }
-      return [
-        for (var i = 0; i < 6; i++) (type: 'empty', hp: 0),
-        (type: done ? 'leaf' : 'spider', hp: done ? 0 : quota),
-      ];
+      return out;
     }
     final out = <({String type, int hp})>[];
     for (var i = 0; i < 7; i++) {
