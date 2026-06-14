@@ -411,7 +411,7 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
             label: const Text('Le Monde',
                 style: TextStyle(fontWeight: FontWeight.w800)),
             onPressed: () async {
-              await showUnifiedWorldSheet(context, logic, sync);
+              await showUnifiedWorldSheet(context, logic, sync, mobile: true);
               if (context.mounted) setState(() {});
             },
           ),

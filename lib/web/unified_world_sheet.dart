@@ -37,7 +37,8 @@ const int _kReveal = 2; // rayon de brouillard levé autour de l'avatar (Chebysh
 const bool _kDev = true;
 
 Future<void> showUnifiedWorldSheet(
-    BuildContext context, AppLogic logic, FirestoreSync sync) {
+    BuildContext context, AppLogic logic, FirestoreSync sync,
+    {bool mobile = false}) {
   // Coupe l'overlay Orion tant qu'on est dans le Monde (il gênerait le jeu).
   assistantOverlaySuppressed.value = true;
   return showDialog(
@@ -49,7 +50,7 @@ Future<void> showUnifiedWorldSheet(
       backgroundColor: _kBg,
       shape: const RoundedRectangleBorder(),
       child: SizedBox.expand(
-        child: _UnifiedWorldView(logic: logic, sync: sync),
+        child: _UnifiedWorldView(logic: logic, sync: sync, mobile: mobile),
       ),
     ),
   ).whenComplete(() => assistantOverlaySuppressed.value = false);
@@ -58,7 +59,10 @@ Future<void> showUnifiedWorldSheet(
 class _UnifiedWorldView extends StatefulWidget {
   final AppLogic logic;
   final FirestoreSync sync;
-  const _UnifiedWorldView({required this.logic, required this.sync});
+  // Mobile : pas de map principale, on affiche direct le calendrier par domaine.
+  final bool mobile;
+  const _UnifiedWorldView(
+      {required this.logic, required this.sync, this.mobile = false});
 
   @override
   State<_UnifiedWorldView> createState() => _UnifiedWorldViewState();
@@ -782,7 +786,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           Colors.white60);
       return;
     }
-    if (_inInterior) return;
+    // Sur mobile on est toujours dans un domaine → le sélecteur sert à CHANGER.
+    if (_inInterior && !widget.mobile) return;
     if (t.caves.isEmpty) {
       _toast('Aucune grotte dans le territoire (caves vides).', Colors.white60);
       return;
@@ -922,8 +927,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // teinté au domaine, avatar posé dans le gazon. On échange le monde actif
   // (_w/_pos/_revealed) et on le restaure en sortant (cf. _exitInterior).
   void _enterInterior(String caveId) {
+    // Mobile : pas de map principale → _w peut être null (rien à sauver).
     final w = _w;
-    if (w == null) return;
+    if (w == null && !widget.mobile) return;
     final cave = _t?.caveById(caveId);
     // Backdrop intérieur MIROIR (même base que la map principale : château à
     // gauche). Le calendrier en overlay garde ses coords (déjà repère inversé).
@@ -1131,9 +1137,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       setState(() {
         _t = t;
         _loading = false;
-        // Génère la map une fois (seed du territoire → déterministe/spectatable),
-        // et reprend le walk state persisté (position + brouillard) si présent.
-        if (_w == null && t != null) {
+        // Génère la map principale (sauf sur MOBILE : on entre direct dans un
+        // domaine — calendrier seul, pas d'overworld).
+        if (_w == null && t != null && !widget.mobile) {
           // Miroir horizontal (preview) : château à gauche, farm à droite.
           final w = mirrorWorldX(generateUnifiedWorld(t.seed,
               caveIds: t.caves.map((c) => c.id).toList()));
@@ -1165,8 +1171,17 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         }
         _recomputeStreakTurrets(); // bâti = tourelles dérivées des streaks
       });
+      // MOBILE : pas de map principale → on entre direct dans le 1er domaine
+      // (calendrier). Une seule fois (puis _inInterior bloque la ré-entrée).
+      if (widget.mobile &&
+          !_inInterior &&
+          t != null &&
+          t.caves.isNotEmpty &&
+          mounted) {
+        _enterInterior(t.caves.first.id);
+      }
       // À la 1ʳᵉ map chargée : auto-trigger hebdo (1×/sem) si la semaine a décliné.
-      if (!_autoThreatChecked && t != null) {
+      if (!_autoThreatChecked && t != null && !widget.mobile) {
         _autoThreatChecked = true;
         _maybeAutoThreat(t);
       }
@@ -2009,13 +2024,34 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       Padding(
         padding: const EdgeInsets.fromLTRB(20, 16, 8, 0),
         child: Row(children: [
-          const Text('🗺️ Monde',
-              style: TextStyle(
-                  fontSize: 18, fontWeight: FontWeight.w900, color: Colors.white)),
-          const SizedBox(width: 8),
-          Text('farm · château · territoire',
-              style: TextStyle(color: Colors.white.withOpacity(.4), fontSize: 11)),
-          const Spacer(),
+          if (widget.mobile) ...[
+            Text(
+                _interiorDomainId != null
+                    ? '🏴 ${_domainName(_interiorDomainId!)}'
+                    : '🏴 Domaine',
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: _interiorColor)),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: _quickEnter,
+              icon: const Icon(Icons.swap_horiz, size: 18, color: Colors.white70),
+              label: const Text('Changer',
+                  style: TextStyle(color: Colors.white70, fontSize: 13)),
+            ),
+          ] else ...[
+            const Text('🗺️ Monde',
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white)),
+            const SizedBox(width: 8),
+            Text('farm · château · territoire',
+                style:
+                    TextStyle(color: Colors.white.withOpacity(.4), fontSize: 11)),
+            const Spacer(),
+          ],
           IconButton(
               icon: const Icon(Icons.close, color: Colors.white54),
               onPressed: () => Navigator.pop(context)),
@@ -2029,7 +2065,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     child: CircularProgressIndicator(color: _kBlue)))
             : _content(t, w),
       ),
-      if (!_loading && t != null) _siegeBar(t),
+      if (!_loading && t != null && !widget.mobile) _siegeBar(t),
     ]),
     );
   }
@@ -2073,8 +2109,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Panneau d'actions à gauche — masqué quand le combat est ouvert (place).
-        if (_combat == null)
+        // Panneau d'actions à gauche — masqué quand le combat est ouvert (place)
+        // ET sur mobile (calendrier seul, pas d'overworld/dev).
+        if (_combat == null && !widget.mobile)
         SizedBox(
           width: 236,
           child: ListView(
@@ -2302,7 +2339,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         runSpacing: 8,
         alignment: WrapAlignment.center,
         children: [
-          if (_inInterior) ...[
+          if (_inInterior && widget.mobile) ...[
+            // MOBILE : juste le calendrier — changer de domaine + fermer.
+            pill('🔄 Changer de domaine', _interiorColor, _quickEnter),
+            pill('✕ Fermer', Colors.white70,
+                () => Navigator.of(context).maybePop()),
+          ],
+          if (_inInterior && !widget.mobile) ...[
             if (!_tdMode && !_simDefense)
               pill('🛡️ Simuler la défense', const Color(0xFF4FA3FF),
                   _startSimDefense),
