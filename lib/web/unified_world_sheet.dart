@@ -28,6 +28,7 @@ const _kGold = Color(0xFFD4A017); // château
 const _kEnemy = Color(0xFFFF2B2B); // grotte prise
 const _kFarm = Color(0xFF22C55E); // accent zone farm
 const _kCharge = Color(0xFF4FC26B); // vert — chargeur de la tour (munitions)
+const _kLife = Color(0xFFF5C518); // jaune — barre de vie de la tour
 
 const int _kReveal = 2; // rayon de brouillard levé autour de l'avatar (Chebyshev)
 
@@ -1722,6 +1723,21 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     sync.setUnifiedTurrets(list);
   }
 
+  // Barre de vie CONTINUE (jaune) : remplissage `frac` (0..1), dimensionnée sur slot.
+  Widget _webLifeBar(double frac, double slot) => ClipRRect(
+        borderRadius: BorderRadius.circular(slot * 0.03),
+        child: Container(
+          width: slot * 0.77,
+          height: slot * 0.1,
+          color: _kLife.withOpacity(.18),
+          alignment: Alignment.centerLeft,
+          child: FractionallySizedBox(
+            widthFactor: frac.clamp(0.0, 1.0),
+            child: Container(color: _kLife),
+          ),
+        ),
+      );
+
   // Barre segmentée (7 cases) sous la tour, dimensionnée sur le `slot` de la grille.
   Widget _webSegBar(int filled, Color color, double slot) {
     final seg = slot * 0.09;
@@ -2600,21 +2616,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // Tour pivotée pour « viser » horizontalement.
-                          Transform.rotate(
-                            angle: pi / 2,
-                            child: SvgPicture.asset('assets/icons/tower.svg',
-                                width: slot * 0.42,
-                                height: slot * 0.42,
-                                colorFilter: ColorFilter.mode(
-                                    _interiorColor, BlendMode.srcIn)),
-                          ),
-                          SizedBox(height: slot * 0.06),
+                          // Vie (jaune, continue) = jours faits (n) → pleine si tiré.
+                          _webLifeBar(e.r.charger / 7, slot),
+                          SizedBox(height: slot * 0.04),
                           // Chargeur (vert) = jours non faits (7-n) → vide si tout tiré.
                           _webSegBar(7 - e.r.charger, _kCharge, slot),
-                          SizedBox(height: slot * 0.04),
-                          // Vie (rouge) = jours faits (n) → pleine si tout tiré.
-                          _webSegBar(e.r.charger, _kEnemy, slot),
+                          SizedBox(height: slot * 0.06),
+                          // Turret en orientation normale → pointe vers les nuisibles.
+                          SvgPicture.asset('assets/icons/turret.svg',
+                              width: slot * 0.5,
+                              height: slot * 0.5,
+                              colorFilter: ColorFilter.mode(
+                                  _interiorColor, BlendMode.srcIn)),
                         ],
                       ),
                     );
