@@ -204,6 +204,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // Tourelles de DÉFENSE du domaine (intérieur) : posées en zone de départ
   // (0,0)→(7,1), draggables où l'user veut. Niveau = streak = chargeur.
   final List<_DomTurret> _domTurrets = [];
+  // SIMULATION de défense (preview, ne consomme rien — chargeur restauré après).
+  bool _simDefense = false;
+  double _simX = 0, _simY = 7; // envahisseur simulé
+  int _simHp = 0, _simHpMax = 0;
+  int _simTurretFireMs = 0;
+  String? _simResult; // null pendant | 'hold' | 'fall'
+  int _simEndMs = 0; // ms de fin (pour laisser le message + restaurer)
   UnifiedWorld? _savedW;
   Point<int>? _savedPos;
   Set<String>? _savedRevealed;
@@ -237,6 +244,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _shots.removeWhere((s) => _gameMs - s.startMs > s.durMs);
     if (_tdMode) {
       _simulate(dt / 1000.0);
+      if (mounted) setState(() {});
+    } else if (_simDefense) {
+      _simulateDefense(dt / 1000.0);
       if (mounted) setState(() {});
     } else if (hadShots && mounted) {
       setState(() {});
@@ -793,6 +803,81 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         ],
       ),
     );
+  }
+
+  // SIMULATION de défense (preview gratuit) : un envahisseur marche vers le
+  // château du domaine, tes tours lui tirent dessus (chargeur qui descend à
+  // l'écran). Tout est RESTAURÉ à la fin → rien de consommé. Sert à tester ton
+  // placement. La vraie attaque (qui consomme) viendra avec la régression hebdo.
+  void _startSimDefense() {
+    if (!_inInterior || _simDefense || _tdMode) return;
+    if (_domTurrets.isEmpty) {
+      _toast('Aucune tour de défense dans ce domaine (tiens des routines).',
+          _interiorColor);
+      return;
+    }
+    setState(() {
+      _simDefense = true;
+      _simResult = null;
+      _simEndMs = 0;
+      _shots.clear();
+      for (final tr in _domTurrets) {
+        tr.ammo = tr.level; // chargeur plein
+      }
+      _simX = 0;
+      _simY = 7;
+      _simHpMax = 20; // menace fixe (preview) — à brancher sur le backlog plus tard
+      _simHp = _simHpMax;
+      _toast('🛡️ Simulation — voilà ce qui se passerait si tu étais attaqué.',
+          _interiorColor);
+    });
+  }
+
+  void _simulateDefense(double dt) {
+    if (_simResult != null) {
+      // Laisse le verdict ~2.5 s, puis RESTAURE tout (rien consommé) et sort.
+      if (_gameMs - _simEndMs > 2500) {
+        _simDefense = false;
+        for (final tr in _domTurrets) {
+          tr.ammo = tr.level;
+        }
+        _shots.clear();
+      }
+      return;
+    }
+    const target = Offset(16, 7); // château du domaine
+    final dx = target.dx - _simX, dy = target.dy - _simY;
+    final dist = sqrt(dx * dx + dy * dy);
+    if (dist > 0.4) {
+      const speed = 0.9;
+      _simX += dx / dist * speed * dt;
+      _simY += dy / dist * speed * dt;
+    } else {
+      _simResult = 'fall';
+      _simEndMs = _gameMs;
+      _toast('❌ Le domaine TOMBERAIT — défenses insuffisantes. Tiens plus de '
+          'routines (chargeurs ↑) ou repositionne tes tours.', _kEnemy);
+      return;
+    }
+    // Volée des tours : un tir = −1 chargeur + dégât, si l'envahisseur est à portée.
+    const cd = 700, range = _kTurretRange;
+    if (_gameMs - _simTurretFireMs >= cd) {
+      _simTurretFireMs = _gameMs;
+      for (final tr in _domTurrets) {
+        if (tr.ammo <= 0) continue;
+        final d = sqrt(pow(tr.x - _simX, 2) + pow(tr.y - _simY, 2));
+        if (d > range) continue;
+        tr.ammo--;
+        _shots.add(_Shot(Offset(tr.x, tr.y), Offset(_simX, _simY), _gameMs, 340));
+        _simHp -= 2;
+      }
+    }
+    if (_simHp <= 0) {
+      _simResult = 'hold';
+      _simEndMs = _gameMs;
+      _toast('✅ Le domaine TIENDRAIT — tes défenses repoussent l\'envahisseur !',
+          _kBlue);
+    }
   }
 
   // Reconquête (tranche 1) : ENTRER dans la grotte = un CLONE de la map, gazon
@@ -2128,6 +2213,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         alignment: WrapAlignment.center,
         children: [
           if (_inInterior) ...[
+            if (!_tdMode && !_simDefense)
+              pill('🛡️ Simuler la défense', const Color(0xFF4FA3FF),
+                  _startSimDefense),
             if (!_tdMode)
               pill('⚔️ Lancer l\'assaut', _interiorColor, _startInteriorAssault),
             pill('🃏 Deck', _interiorColor.withOpacity(.85), _showAttackDeck),
@@ -2429,6 +2517,30 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                       ),
                     );
                   }(),
+              // SIMULATION : l'envahisseur 🕷️ qui marche vers le château + ses PV.
+              if (_simDefense)
+                () {
+                  final c0 = centerD(_simX, _simY);
+                  return Positioned(
+                    left: c0.dx - slot * 0.6,
+                    top: c0.dy - slot * 0.85,
+                    width: slot * 1.2,
+                    child: Column(
+                      children: [
+                        Text('🕷️', style: TextStyle(fontSize: slot * 0.8)),
+                        Text('${_simHp < 0 ? 0 : _simHp}/$_simHpMax',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                color: _kEnemy,
+                                fontWeight: FontWeight.w900,
+                                fontSize: slot * 0.24,
+                                shadows: const [
+                                  Shadow(color: Colors.black, blurRadius: 2)
+                                ])),
+                      ],
+                    ),
+                  );
+                }(),
               // Tours posées (fixes) — survol souris = montre la portée.
               for (final tile in _turrets.keys)
                 () {
