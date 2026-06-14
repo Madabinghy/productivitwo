@@ -200,6 +200,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // La porte x9 = TOILES 🕸️ : tombent PENDANT le combat d'assaut (= _gateHp ≤ 0),
   // pas par un tap. _webBroken ouvre alors le passage (`_passable`) + rend 💥.
   bool _webBroken = false;
+  // Tourelles de DÉFENSE du domaine (intérieur) : posées en zone de départ
+  // (0,0)→(7,1), draggables où l'user veut. Niveau = streak = chargeur.
+  final List<_DomTurret> _domTurrets = [];
   UnifiedWorld? _savedW;
   Point<int>? _savedPos;
   Set<String>? _savedRevealed;
@@ -820,6 +823,22 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _farmPests.clear();
       _revealAround(_pos);
       _populateFarm(); // peuple le gazon avec les nuisibles de CE domaine
+      // Défenses du domaine = ses routines à streak, posées en ZONE DE DÉPART
+      // (0,0)→(7,1). L'user les drag où il veut. Niveau = streak = chargeur.
+      _domTurrets.clear();
+      final dom = cave?.domainId;
+      if (dom != null) {
+        final col = cave != null ? _caveColor(cave) : _kBlue;
+        var idx = 0;
+        for (final a in logic.state.activeActivities) {
+          if (!a.isHabit || a.domainId != dom) continue;
+          final s = logic.habitCurrentStreak(a.id);
+          if (s < 1 || idx >= 16) continue; // zone de départ = 8×2 = 16 slots
+          _domTurrets.add(_DomTurret(s, col, a.name,
+              (idx % 8).toDouble(), (idx ~/ 8).toDouble()));
+          idx++;
+        }
+      }
       _toast(
           '🕳️ Tu entres dans ${cave != null ? _domainName(cave.domainId) : "la grotte"} '
           '— reconquiers-la !',
@@ -2310,6 +2329,57 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     ),
                   );
                 }(),
+              // DÉFENSES du domaine (intérieur) : tours DRAGGABLES, chargeur =
+              // niveau. Pan pour déplacer, snap sur case sol au relâché.
+              if (_inInterior)
+                for (var ti = 0; ti < _domTurrets.length; ti++)
+                  () {
+                    final tr = _domTurrets[ti];
+                    final c0 = centerD(tr.x, tr.y);
+                    return Positioned(
+                      left: c0.dx - slot / 2,
+                      top: c0.dy - slot * 0.6,
+                      width: slot,
+                      child: GestureDetector(
+                        onPanUpdate: (d) => setState(() {
+                          tr.x += d.delta.dx / slot;
+                          tr.y += d.delta.dy / slot;
+                        }),
+                        onPanEnd: (_) => setState(() {
+                          final nx = tr.x.round(), ny = tr.y.round();
+                          if (w.inBounds(nx, ny) &&
+                              w.walkable(nx, ny) &&
+                              !w.isGate(nx, ny)) {
+                            tr.x = nx.toDouble();
+                            tr.y = ny.toDouble();
+                          }
+                        }),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SvgPicture.asset('assets/icons/tower.svg',
+                                width: slot * 0.6,
+                                height: slot * 0.6,
+                                colorFilter: ColorFilter.mode(
+                                    tr.ammo > 0
+                                        ? tr.color
+                                        : Colors.white24, // chargeur vide = éteinte
+                                    BlendMode.srcIn)),
+                            Text('🔋${tr.ammo}/${tr.level}',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    color: tr.color,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: slot * 0.2,
+                                    height: 1,
+                                    shadows: const [
+                                      Shadow(color: Colors.black, blurRadius: 2)
+                                    ])),
+                          ],
+                        ),
+                      ),
+                    );
+                  }(),
               // Tours posées (fixes) — survol souris = montre la portée.
               for (final tile in _turrets.keys)
                 () {
@@ -2795,6 +2865,20 @@ class _Atk {
   Offset? wp; // point de déviation aléatoire (avant d'aller à l'envahisseur)
   _Atk(this.id, this.type, this.x, this.y);
   double get phase => id * 1.7;
+}
+
+/// Tourelle de DÉFENSE d'un domaine (intérieur de grotte). Posée par l'user en
+/// drag & drop selon sa stratégie ; niveau = streak de la routine = CHARGEUR
+/// initial (`ammo`) qui diminue à chaque tir. Puissance = constance réelle ;
+/// agency = le placement. Niveau du domaine = Σ des niveaux de ses tourelles.
+class _DomTurret {
+  final int level; // = streak de la routine (chargeur initial)
+  final Color color; // couleur du domaine
+  final String name; // nom de la routine
+  double x, y; // position en cases (fractionnaire pendant le drag)
+  int ammo; // tirs restants
+  int lastFireMs = -99999;
+  _DomTurret(this.level, this.color, this.name, this.x, this.y) : ammo = level;
 }
 
 /// Flèche en vol : from/to en coords de tuiles, animée par le temps (startMs+durMs).
