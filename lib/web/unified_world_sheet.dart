@@ -44,11 +44,11 @@ Future<void> showUnifiedWorldSheet(
     context: context,
     barrierColor: Colors.black.withOpacity(.65),
     builder: (_) => Dialog(
-      insetPadding: const EdgeInsets.all(10),
+      // Plein écran : toute la place pour la map (grosses cases + panneau latéral).
+      insetPadding: EdgeInsets.zero,
       backgroundColor: _kBg,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 940, maxHeight: 920),
+      shape: const RoundedRectangleBorder(),
+      child: SizedBox.expand(
         child: _UnifiedWorldView(logic: logic, sync: sync),
       ),
     ),
@@ -929,8 +929,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     // gauche). Le calendrier en overlay garde ses coords (déjà repère inversé).
     final interior = mirrorWorldX(generateUnifiedWorld(
         (_t?.seed ?? 1) ^ caveId.hashCode,
-        caveIds: const ['coeur'],
-        cols: 22)); // calendrier large : château gauche, jours/araignées à droite
+        caveIds: const ['coeur'])); // 17 cols (taille normale) ; noms en panneau latéral
     setState(() {
       _savedW = w;
       _savedPos = _pos;
@@ -2393,7 +2392,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     final avatar = logic.state.activeAvatar ?? '🧍';
     final spider = _inInterior ? null : _spiderPos();
     return LayoutBuilder(builder: (context, c) {
-      final slot = (c.maxWidth / w.cols).clamp(22.0, 46.0);
+      // Panneau latéral des noms de routines (intérieur) : réservé hors grille
+      // pour ne pas rétrécir les cases.
+      final nameW = _inInterior ? 200.0 : 0.0;
+      final slot = ((c.maxWidth - nameW) / w.cols).clamp(22.0, 46.0);
       final inner = slot - 3;
       final topRoutines = _inInterior
           ? _domTopRoutines()
@@ -2416,7 +2418,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           Offset(x * slot + slot / 2, y * slot + slot / 2);
       final aw = slot * 0.85, ah = slot * 0.34;
       return Center(
-        child: SizedBox(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
           width: w.cols * slot,
           height: w.rows * slot,
           child: Stack(
@@ -2429,7 +2435,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 // Labels des jours (L M M J V S D) en haut, colonnes 1-7.
                 for (var d = 0; d < 7; d++)
                   () {
-                    final c0 = centerD(11.0 + d, 2);
+                    final c0 = centerD(10.0 + d, 2);
                     return Positioned(
                       left: c0.dx - slot / 2,
                       top: c0.dy - slot / 2,
@@ -2444,27 +2450,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                       ),
                     );
                   }(),
-                // NOM de la routine en label gauche (entre château et porte col 9).
-                for (var i = 0; i < topRoutines.length; i++)
-                  () {
-                    final c0 = centerD(1, (3 + i).toDouble());
-                    return Positioned(
-                      left: c0.dx - slot / 2,
-                      top: c0.dy - slot * 0.35,
-                      width: slot * 7.5,
-                      height: slot * 0.7,
-                      child: Text(topRoutines[i].name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              color: _interiorColor.withOpacity(.95),
-                              fontWeight: FontWeight.w700,
-                              fontSize: slot * 0.26,
-                              shadows: const [
-                                Shadow(color: Colors.black, blurRadius: 2)
-                              ])),
-                    );
-                  }(),
+                // (Le nom de la routine est dans le PANNEAU LATÉRAL à droite,
+                //  aligné à sa ligne — pas sur la grille.)
                 // TOUR de la routine à COLONNE 10 (icône + chargeur).
                 for (var i = 0; i < topRoutines.length; i++)
                   () {
@@ -2497,7 +2484,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 for (var i = 0; i < topRoutines.length; i++)
                   for (final d in logic.routineMissedThisWeek(topRoutines[i].id))
                     () {
-                      final c0 = centerD(11.0 + d, (3 + i).toDouble());
+                      final c0 = centerD(10.0 + d, (3 + i).toDouble());
                       return Positioned(
                         left: c0.dx - slot / 2,
                         top: c0.dy - slot / 2,
@@ -2976,6 +2963,36 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 }(),
             ],
           ),
+            ),
+            // Panneau latéral : noms des routines, ALIGNÉS à leur ligne (row 3+i).
+            if (_inInterior)
+              SizedBox(
+                width: nameW,
+                height: w.rows * slot,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    for (var i = 0; i < topRoutines.length; i++)
+                      Positioned(
+                        top: (3 + i) * slot,
+                        left: 6,
+                        width: nameW - 12,
+                        height: slot,
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(topRoutines[i].name,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  color: _interiorColor.withOpacity(.95),
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13)),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+          ],
         ),
       );
     });
