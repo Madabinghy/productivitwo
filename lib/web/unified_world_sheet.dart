@@ -2413,6 +2413,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       ];
       // Tokens du tapis par ligne : 'spider'/'leaf'/'flame' pour chaque jour.
       final lanes = [for (final r in topRoutines) logic.routineWeekTokens(r.id)];
+      // Remplissage du château par ligne (toiles/feuilles des jours passés).
+      final fills = [for (final r in topRoutines) logic.routineChateauFill(r.id)];
       final grid = Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -2545,6 +2547,29 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                       ),
                     );
                   }(),
+                // CHÂTEAU (cols 8→0, à gauche de la porte) : se remplit des jours
+                // PASSÉS — 🕸️ toiles (manques) ou 🍃 feuilles (en avance), de la
+                // porte vers l'intérieur.
+                for (var i = 0; i < fills.length; i++)
+                  for (var j = 0;
+                      j <
+                          (fills[i].webs > 0 ? fills[i].webs : fills[i].leaves);
+                      j++)
+                    () {
+                      final web = fills[i].webs > 0;
+                      final c0 =
+                          centerD((8 - j).toDouble(), (3 + i).toDouble());
+                      return Positioned(
+                        left: c0.dx - slot / 2,
+                        top: c0.dy - slot / 2,
+                        width: slot,
+                        height: slot,
+                        child: Center(
+                          child: Text(web ? '🕸️' : '🍃',
+                              style: TextStyle(fontSize: slot * 0.5)),
+                        ),
+                      );
+                    }(),
               ],
               // ── Couche TD : tours, sbires, flèches, PV porte ────────────────
               // Halo de portée d'un arc ACTIF (avatar sur une de ses cases blanches).

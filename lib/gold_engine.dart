@@ -866,6 +866,38 @@ extension GoldEngine on AppLogic {
     return out;
   }
 
+  /// Remplissage du CHÂTEAU d'une ligne de routine = bilan des jours PASSÉS
+  /// (au-delà des 7 jours visibles, fenêtre ~3 semaines) : chaque jour manqué = +1
+  /// toile, chaque jour fait RETIRE une toile d'abord (net). Net > 0 → toiles ;
+  /// net < 0 (en avance) → feuilles. Plafonné à la largeur du château (9).
+  ({int webs, int leaves}) routineChateauFill(String routineId) {
+    Activity? a;
+    for (final x in state.activeActivities) {
+      if (x.id == routineId) {
+        a = x;
+        break;
+      }
+    }
+    if (a == null || !a.isHabit) return (webs: 0, leaves: 0);
+    final quota = dayQuotaFor(a);
+    if (quota <= 0) return (webs: 0, leaves: 0);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    var misses = 0, dones = 0;
+    for (var k = 7; k < 28; k++) {
+      final date = today.subtract(Duration(days: k));
+      if (habitValueOn(a.id, date) >= quota) {
+        dones++;
+      } else {
+        misses++;
+      }
+    }
+    final net = misses - dones;
+    final webs = net > 9 ? 9 : (net < 0 ? 0 : net);
+    final leaves = net < 0 ? (-net > 9 ? 9 : -net) : 0;
+    return (webs: webs, leaves: leaves);
+  }
+
   /// PV d'une araignée de cette routine = la CIBLE quotidienne (quota) : grosse
   /// routine (boire 10 verres) = araignée à 10 PV.
   int routineTarget(String routineId) {
