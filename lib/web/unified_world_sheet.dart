@@ -1708,19 +1708,23 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
 
   // CALENDRIER de domaine : les 10 routines les PLUS FAITES (tri par complétions
   // de la semaine passée) → 1 ligne chacune. charger = chargeur de la tour.
-  List<({String id, String name, int charger})> _domTopRoutines() {
+  List<({String id, String name, int charger, int active})> _domTopRoutines() {
     final dom = _interiorDomainId;
     if (dom == null) return const [];
-    final list = <({String id, String name, int charger})>[];
+    final list = <({String id, String name, int charger, int active})>[];
     for (final a in logic.state.activeActivities) {
       if (!a.isHabit || a.domainId != dom) continue;
       // Calendrier = routines QUOTIDIENNES seulement (tokens vides = non-daily).
       if (logic.routineWeekTokens(a.id).isEmpty) continue;
-      list.add(
-          (id: a.id, name: a.name, charger: logic.routineDefenseCharger(a.id)));
+      list.add((
+        id: a.id,
+        name: a.name,
+        charger: logic.routineDefenseCharger(a.id),
+        active: logic.routine30dActive(a.id)
+      ));
     }
-    list.sort((a, b) => b.charger.compareTo(a.charger));
-    return list.take(10).toList();
+    list.sort((a, b) => b.active.compareTo(a.active)); // les 5 plus actives /30j
+    return list.take(5).toList();
   }
 
   // BÂTI — recalcule les tourelles dérivées des streaks : pour chaque routine
@@ -2401,7 +2405,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       final inner = slot - 3;
       final topRoutines = _inInterior
           ? _domTopRoutines()
-          : const <({String id, String name, int charger})>[];
+          : const <({String id, String name, int charger, int active})>[];
       // Labels = jour réel des 7 DERNIERS jours (aujourd'hui à droite, tourne seul).
       final calToday = () {
         final n = DateTime.now();
@@ -2451,7 +2455,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 // Labels des jours (L M M J V S D) en haut, colonnes 1-7.
                 for (var d = 0; d < 7; d++)
                   () {
-                    final c0 = centerD(10.0 + d, 2);
+                    final c0 = centerD(10.0 + d, 1);
                     return Positioned(
                       left: c0.dx - slot / 2,
                       top: c0.dy - slot / 2,
@@ -2471,7 +2475,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 // TOUR de la routine à COLONNE 10 (icône + chargeur).
                 for (var i = 0; i < topRoutines.length; i++)
                   () {
-                    final c0 = centerD(10, (3 + i).toDouble());
+                    final c0 = centerD(10, (2 + i).toDouble());
                     return Positioned(
                       left: c0.dx - slot / 2,
                       top: c0.dy - slot / 2,
@@ -2503,7 +2507,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     () {
                       final tok = lanes[i][d];
                       if (tok.type == 'empty') return const SizedBox.shrink();
-                      final c0 = centerD(10.0 + d, (3 + i).toDouble());
+                      final c0 = centerD(10.0 + d, (2 + i).toDouble());
                       final emoji = tok.type == 'flame'
                           ? '🔥'
                           : (tok.type == 'spider' ? '🕷️' : '🍃');
@@ -2539,7 +2543,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 // de la ligne ne doivent pas franchir).
                 for (var i = 0; i < topRoutines.length; i++)
                   () {
-                    final c0 = centerD(9, (3 + i).toDouble());
+                    final c0 = centerD(9, (2 + i).toDouble());
                     return Positioned(
                       left: c0.dx - slot / 2,
                       top: c0.dy - slot / 2,
@@ -2561,7 +2565,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     () {
                       final web = fills[i].webs > 0;
                       final c0 =
-                          centerD((8 - j).toDouble(), (3 + i).toDouble());
+                          centerD((8 - j).toDouble(), (2 + i).toDouble());
                       return Positioned(
                         left: c0.dx - slot / 2,
                         top: c0.dy - slot / 2,
@@ -3032,7 +3036,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                   children: [
                     for (var i = 0; i < topRoutines.length; i++)
                       Positioned(
-                        top: (3 + i) * slot,
+                        top: (2 + i) * slot,
                         left: 6,
                         width: nameW - 12,
                         height: slot,

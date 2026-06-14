@@ -923,6 +923,28 @@ extension GoldEngine on AppLogic {
     return 0;
   }
 
+  /// Activité d'une routine sur 30 jours = nb de jours faits (pour trier les plus
+  /// actives).
+  int routine30dActive(String routineId) {
+    Activity? a;
+    for (final x in state.activeActivities) {
+      if (x.id == routineId) {
+        a = x;
+        break;
+      }
+    }
+    if (a == null || !a.isHabit) return 0;
+    final quota = dayQuotaFor(a);
+    if (quota <= 0) return 0;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    var n = 0;
+    for (var k = 0; k < 30; k++) {
+      if (habitValueOn(a.id, today.subtract(Duration(days: k))) >= quota) n++;
+    }
+    return n;
+  }
+
   /// Tokens du tapis roulant pour les 7 DERNIERS jours (index 0 = il y a 6 jours,
   /// 6 = AUJOURD'HUI à droite ; tourne tout seul chaque jour, pas de bouton).
   /// Chaque jour : `type` = 'spider' (manqué) · 'leaf' (fait, 1er jour repris) ·
