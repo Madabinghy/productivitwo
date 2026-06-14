@@ -2499,12 +2499,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               // ── CALENDRIER de domaine : 1 ligne = 1 routine, 7 colonnes = jours,
               //    tour collée au château (gauche), nuisibles = jours manqués. ──
               if (_inInterior) ...[
-                // Labels des jours, au-dessus de CHAQUE section (row 1 routines,
-                // row 7 activités-temps).
-                for (final hdr in const [1, 7])
-                  for (var d = 0; d < 7; d++)
+                // Labels des jours (L M M J V S D) — uniquement en haut (row 1).
+                for (var d = 0; d < 7; d++)
                   () {
-                    final c0 = centerD(10.0 + d, hdr.toDouble());
+                    final c0 = centerD(10.0 + d, 1);
                     return Positioned(
                       left: c0.dx - slot / 2,
                       top: c0.dy - slot / 2,
