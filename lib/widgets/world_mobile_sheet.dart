@@ -56,19 +56,29 @@ Future<void> showWorldMobile(
 class WorldMobileScreen extends StatelessWidget {
   final AppLogic logic;
   final FirestoreSync sync;
+  /// Optionnel : ouvre le VRAI sheet d'activité (FAB lanceur de main.dart) au tap
+  /// sur une tour d'activité-temps. Si null → sheet compact interne.
+  final void Function(String activityId)? onOpenActivity;
   const WorldMobileScreen(
-      {required this.logic, required this.sync, super.key});
+      {required this.logic,
+      required this.sync,
+      this.onOpenActivity,
+      super.key});
   @override
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: _kBg,
-        body: SafeArea(child: _WorldMobileList(logic: logic, sync: sync)),
+        body: SafeArea(
+            child: _WorldMobileList(
+                logic: logic, sync: sync, onOpenActivity: onOpenActivity)),
       );
 }
 
 class _WorldMobileList extends StatefulWidget {
   final AppLogic logic;
   final FirestoreSync sync;
-  const _WorldMobileList({required this.logic, required this.sync});
+  final void Function(String activityId)? onOpenActivity;
+  const _WorldMobileList(
+      {required this.logic, required this.sync, this.onOpenActivity});
   @override
   State<_WorldMobileList> createState() => _WorldMobileListState();
 }
@@ -161,7 +171,11 @@ class _WorldMobileListState extends State<_WorldMobileList> {
         onTap: () => Navigator.of(context).push(MaterialPageRoute(
             fullscreenDialog: true,
             builder: (_) => _DomainGameplay(
-                logic: logic, sync: widget.sync, domain: d, color: color))),
+                logic: logic,
+                sync: widget.sync,
+                domain: d,
+                color: color,
+                onOpenActivity: widget.onOpenActivity))),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           decoration: BoxDecoration(
@@ -266,11 +280,13 @@ class _DomainGameplay extends StatefulWidget {
   final FirestoreSync sync;
   final Domain domain;
   final Color color;
+  final void Function(String activityId)? onOpenActivity;
   const _DomainGameplay(
       {required this.logic,
       required this.sync,
       required this.domain,
-      required this.color});
+      required this.color,
+      this.onOpenActivity});
   @override
   State<_DomainGameplay> createState() => _DomainGameplayState();
 }
@@ -393,6 +409,9 @@ class _DomainGameplayState extends State<_DomainGameplay> {
     if (it.kind == 'spider') {
       await showRoutineSheet(context,
           logic: logic, habitId: it.id, day: DateTime.now());
+    } else if (widget.onOpenActivity != null) {
+      // Vrai sheet FAB (lanceur) fourni par l'app mobile.
+      widget.onOpenActivity!(it.id);
     } else {
       await showActivitySheet(context, logic, it.id);
     }

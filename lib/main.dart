@@ -48,7 +48,6 @@ import 'package:app_links/app_links.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:productivitwo_v1/widgets/project_sheet.dart';
 import 'package:productivitwo_v1/widgets/inbox_sheet.dart';
-import 'package:productivitwo_v1/widgets/proposals_sheet.dart';
 import 'package:productivitwo_v1/widgets/weekly_review_sheet.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/widgets/expedition_map_game.dart';
@@ -57,6 +56,7 @@ import 'package:productivitwo_v1/widgets/gold_sheet.dart';
 import 'package:productivitwo_v1/widgets/gamification_hub_sheet.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
 import 'package:productivitwo_v1/widgets/orion_screen.dart';
+import 'package:productivitwo_v1/widgets/world_mobile_sheet.dart';
 import 'package:productivitwo_v1/widgets/focus_view.dart';
 import 'package:productivitwo_v1/widgets/task_schedule.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
@@ -65,7 +65,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:productivitwo_v1/widget_service.dart';
 
-enum _Tab { dashboard, projets, maintenant, orion }
+enum _Tab { dashboard, projets, maintenant, monde }
 
 class MiniRingThick extends StatelessWidget {
   const MiniRingThick({
@@ -2818,7 +2818,7 @@ class _AppRootState extends State<AppRoot>
       case _Tab.dashboard:   return 0;
       case _Tab.projets:     return 1;
       case _Tab.maintenant:  return 2;
-      case _Tab.orion:       return 3;
+      case _Tab.monde:       return 3;
     }
   }
 
@@ -2827,7 +2827,7 @@ class _AppRootState extends State<AppRoot>
       case 0:  return _Tab.dashboard;
       case 1:  return _Tab.projets;
       case 2:  return _Tab.maintenant;
-      case 3:  return _Tab.orion;
+      case 3:  return _Tab.monde;
       default: return _Tab.dashboard;
     }
   }
@@ -2960,7 +2960,15 @@ class _AppRootState extends State<AppRoot>
               targetTaskId: task.id,
             ),
           ),
-          OrionScreen(sync: _sync, embedded: true),
+          WorldMobileScreen(
+            logic: logic,
+            sync: _sync,
+            onOpenActivity: (id) {
+              final a = logic.state.activities
+                  .firstWhereOrNull((x) => x.id == id);
+              if (a != null) _openActivitySheet(a);
+            },
+          ),
         ],
       ),
     );
@@ -5096,44 +5104,12 @@ class _AppRootState extends State<AppRoot>
                   ),
               ],
             ),
-            // File « À valider » : propositions ORION en attente
-            StreamBuilder<List<OrionProposal>>(
-              stream: _sync.streamProposals(),
-              builder: (context, snap) {
-                final count = snap.data?.length ?? 0;
-                return Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.fact_check_outlined, size: 20),
-                      tooltip: 'À valider',
-                      onPressed: () => showProposalsSheet(context, _sync),
-                    ),
-                    if (count > 0)
-                      Positioned(
-                        right: 4,
-                        top: 4,
-                        child: Container(
-                          padding: const EdgeInsets.all(2),
-                          constraints: const BoxConstraints(
-                              minWidth: 14, minHeight: 14),
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF1D9E75),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Text(
-                            '$count',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ),
-                  ],
-                );
-              },
+            // Orion Stratège (déplacé ici depuis l'onglet, remplacé par le Monde).
+            // « À valider » retiré : déjà accessible dans Revue de la semaine.
+            IconButton(
+              icon: const Icon(Icons.smart_toy_outlined, size: 20),
+              tooltip: 'Orion Stratège',
+              onPressed: () => OrionScreen.show(context, _sync),
             ),
             const SizedBox(width: 4),
             PopupMenuButton<String>(
@@ -5319,9 +5295,9 @@ class _AppRootState extends State<AppRoot>
               activeIcon: Icon(Icons.play_circle),
               label: 'Maintenant'),
           BottomNavigationBarItem(
-              icon: Icon(Icons.smart_toy_outlined),
-              activeIcon: Icon(Icons.smart_toy),
-              label: 'ORION'),
+              icon: Icon(Icons.public_outlined),
+              activeIcon: Icon(Icons.public),
+              label: 'Monde'),
         ],
       ),
 
