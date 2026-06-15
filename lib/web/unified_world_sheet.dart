@@ -1922,6 +1922,139 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _announce(to);
   }
 
+  // ── MODE TEMPS RÉEL (S2) : voyage automatique de l'avatar vers une routine ──
+  // Praticabilité d'AUTO-VOYAGE : plus permissive que `_passable` — l'avatar
+  // franchit la PORTE (x9), peut marcher sur une grotte, et ignore le brouillard
+  // (BFS dédié). Garantit qu'un domaine est TOUJOURS atteignable (cases accessibles).
+  bool _autoPassable(int x, int y) {
+    final w = _w;
+    if (w == null || !w.inBounds(x, y)) return false;
+    return w.walkable(x, y) ||
+        _isBowWalkable(x, y) ||
+        w.isGate(x, y) ||
+        w.caveIdAt(x, y) != null ||
+        (_inInterior && _interiorWalk.contains('${x}_$y'));
+  }
+
+  List<Point<int>> _orthoAuto(int x, int y) => [
+        Point(x + 1, y),
+        Point(x - 1, y),
+        Point(x, y + 1),
+        Point(x, y - 1),
+      ].where((p) => _autoPassable(p.x, p.y)).toList();
+
+  // BFS d'auto-voyage : ignore le brouillard (révèle en marchant).
+  List<Point<int>> _bfsPathAuto(Point<int> from, Point<int> to) {
+    if (from == to) return const [];
+    final startId = '${from.x}_${from.y}';
+    final goalId = '${to.x}_${to.y}';
+    final prev = <String, String?>{startId: null};
+    final queue = <Point<int>>[from];
+    var i = 0;
+    while (i < queue.length) {
+      final cur = queue[i++];
+      if ('${cur.x}_${cur.y}' == goalId) break;
+      for (final n in _orthoAuto(cur.x, cur.y)) {
+        final nid = '${n.x}_${n.y}';
+        if (prev.containsKey(nid)) continue;
+        prev[nid] = '${cur.x}_${cur.y}';
+        queue.add(n);
+      }
+    }
+    if (!prev.containsKey(goalId)) return const [];
+    final path = <Point<int>>[];
+    var cur = goalId;
+    while (cur != startId) {
+      final s = cur.split('_');
+      path.add(Point(int.parse(s[0]), int.parse(s[1])));
+      cur = prev[cur]!;
+    }
+    return path.reversed.toList();
+  }
+
+  // Ligne-tourelle d'une routine/activité DANS le domaine courant (col 12 ; case
+  // gauche = col 11). Routines au-dessus de la médiane, activités-temps en dessous.
+  int? _routineTurretRow(String id) {
+    final w = _w;
+    if (w == null) return null;
+    final mid = w.rows ~/ 2;
+    final routines = _domTopRoutines();
+    final idx = routines.indexWhere((r) => r.id == id);
+    if (idx >= 0) return mid - routines.length + idx;
+    final times = _domTopTimeActivities();
+    final j = times.indexWhere((r) => r.id == id);
+    if (j >= 0) return mid + 1 + j;
+    return null;
+  }
+
+  bool _traveling = false;
+
+  // Voyage complet : (sortir du mauvais domaine →) map principale → bon domaine →
+  // case à GAUCHE de la tourelle (col 11). Réutilise enter/exit + marche animée.
+  Future<void> _travelToRoutine(String routineId) async {
+    if (_traveling || widget.mobile) return;
+    // Domaine de la routine.
+    String? domId;
+    for (final a in logic.state.activeActivities) {
+      if (a.id == routineId) {
+        domId = a.domainId;
+        break;
+      }
+    }
+    final t = _t;
+    if (domId == null || t == null) return;
+    // Grotte de ce domaine.
+    String? caveId;
+    for (final c in t.caves) {
+      if (c.domainId == domId) {
+        caveId = c.id;
+        break;
+      }
+    }
+    if (caveId == null) return;
+    _traveling = true;
+    try {
+      // 1. Mauvais domaine ouvert → marcher vers la porte de sortie, sortir.
+      if (_inInterior && _interiorCaveId != caveId) {
+        final ex = _exitDoor;
+        if (ex != null) {
+          final path = _bfsPathAuto(_pos, ex);
+          if (path.isNotEmpty) await _walkPath(path);
+        }
+        _exitInterior();
+        await Future.delayed(const Duration(milliseconds: 140));
+      }
+      // 2. Sur la map principale → marcher jusqu'à la grotte, entrer.
+      if (!_inInterior) {
+        final w = _w;
+        final cp = w?.caves[caveId];
+        if (w != null && cp != null) {
+          final path = _bfsPathAuto(_pos, cp);
+          if (path.isNotEmpty) await _walkPath(path);
+        }
+        _enterInterior(caveId);
+        await Future.delayed(const Duration(milliseconds: 140));
+      }
+      // 3. Dans le bon domaine → case à gauche de la tourelle (col 11).
+      final row = _routineTurretRow(routineId);
+      if (row != null) {
+        final path = _bfsPathAuto(_pos, Point(11, row));
+        if (path.isNotEmpty) await _walkPath(path);
+      }
+      // 4. (S3) cinématique « 1 flamme » : la tour charge, vise, tire, −1. À venir.
+    } finally {
+      _traveling = false;
+    }
+  }
+
+  // Routine de TEST pour le voyage (S2) : 1ʳᵉ routine quotidienne active.
+  String? _firstTravelRoutineId() {
+    for (final a in logic.state.activeActivities) {
+      if (a.isHabit && logic.routineWeekTokens(a.id).isNotEmpty) return a.id;
+    }
+    return null;
+  }
+
   // Persiste position + brouillard de l'avatar (état perso → doc meta de l'user,
   // PAS le doc territoire spectatable). Appelé une fois après chaque déplacement.
   void _persistWalk() {
@@ -3028,6 +3161,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             pill('🚪 Sortir de la grotte', _interiorColor.withOpacity(.7),
                 _tdMode ? () {} : _exitInterior),
           ],
+          // TEST (S2) : simule une validation → l'avatar voyage vers la routine.
+          if (!widget.mobile)
+            pill('🤖 Voyage test', const Color(0xFF66BB6A), () {
+              final id = _firstTravelRoutineId();
+              if (id != null) {
+                _travelToRoutine(id);
+              } else {
+                _toast('Aucune routine quotidienne à viser.', Colors.white54);
+              }
+            }),
           if (!_inInterior) ...[
             pill('🕳️ Entrer dans la grotte', const Color(0xFF1E8E7E),
                 _quickEnter),
