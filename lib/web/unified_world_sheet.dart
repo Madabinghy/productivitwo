@@ -207,6 +207,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   //    (_w/_pos/_revealed) et on restaure en sortant.
   bool _inInterior = false;
   bool _interiorPeaceful = true; // grotte NON occupée → pas de cadre d'assaut
+  // ── Cinématique de reprise (Mise à jour 3) — phase PRÉPARATION des tours :
+  //    les flammes chargent chaque tourelle SÉQUENTIELLEMENT (tour 0, puis 1…).
+  bool _cineActive = false; // une cinématique de prépa est en cours
+  int _cinePrepIndex = 0; // tour en cours de charge (index dans allRows)
+  double _cinePrepCharge = 0; // 0..1 progression de la tour courante
+  int _cineRowCount = 0; // nb de tours à charger (figé au lancement)
+  static const double _kCinePrepPerTurret = 0.55; // secondes / tour
   String? _interiorCaveId; // domaine de la grotte intérieure (= filtre nuisibles)
   String? _interiorDomainId; // domainId courant (clé de persistance des tours)
   Color _interiorColor = _kBlue;
@@ -256,7 +263,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _lastSimMs = _gameMs;
     final hadShots = _shots.isNotEmpty;
     _shots.removeWhere((s) => _gameMs - s.startMs > s.durMs);
-    if (_tdMode) {
+    if (_cineActive) {
+      _simulateCine(dt / 1000.0);
+      if (mounted) setState(() {});
+    } else if (_tdMode) {
       _simulate(dt / 1000.0);
       if (mounted) setState(() {});
     } else if (_simDefense) {
@@ -265,6 +275,39 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     } else if (hadShots && mounted) {
       setState(() {});
     }
+  }
+
+  // Cinématique — PHASE PRÉPARATION : charge la jauge de flammes de la tour
+  // courante, puis passe à la suivante. Quand toutes sont chargées → la prépa
+  // est finie (slice suivant : nettoyage du terrain).
+  void _simulateCine(double dt) {
+    _cinePrepCharge += dt / _kCinePrepPerTurret;
+    if (_cinePrepCharge >= 1.0) {
+      _cinePrepCharge = 0;
+      _cinePrepIndex++;
+      if (_cinePrepIndex >= _cineRowCount) {
+        _cinePrepIndex = _cineRowCount; // toutes chargées
+        _cineActive = false; // fin de la préparation (provisoire)
+      }
+    }
+  }
+
+  // Démarre la cinématique de reprise (prépa des tours). rowCount = nb de tours.
+  void _startCine(int rowCount) {
+    setState(() {
+      _cineActive = true;
+      _cinePrepIndex = 0;
+      _cinePrepCharge = 0;
+      _cineRowCount = rowCount;
+    });
+  }
+
+  // Charge de flammes (0..1) de la tour d'index i pendant la cinématique :
+  // pleine si déjà passée, en cours si courante, vide sinon.
+  double _cineCharge(int i) {
+    if (i < _cinePrepIndex) return 1.0;
+    if (i == _cinePrepIndex && _cineActive) return _cinePrepCharge;
+    return 0.0;
   }
 
   void _simulate(double dt) {
@@ -1830,6 +1873,26 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     );
   }
 
+  // Jauge de FLAMMES (cinématique) sous la tour : barre orange qui se remplit
+  // (0..1) pendant la charge séquentielle. frac=0 → invisible (pas de place).
+  Widget _cineFlameGauge(double frac, double slot) {
+    if (frac <= 0) return const SizedBox.shrink();
+    const flame = Color(0xFFFF8A3D);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(slot * 0.05),
+      child: Container(
+        width: slot * 0.7,
+        height: slot * 0.12,
+        color: flame.withOpacity(.18),
+        alignment: Alignment.centerLeft,
+        child: FractionallySizedBox(
+          widthFactor: frac.clamp(0.0, 1.0),
+          child: Container(color: flame),
+        ),
+      ),
+    );
+  }
+
   // CALENDRIER de domaine : les 10 routines les PLUS FAITES (tri par complétions
   // de la semaine passée) → 1 ligne chacune. charger = chargeur de la tour.
   List<({String id, String name, int charger, int active})> _domTopRoutines() {
@@ -2463,6 +2526,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                   _startSimDefense),
             if (!_tdMode)
               pill('⚔️ Lancer l\'assaut', _interiorColor, _startInteriorAssault),
+            if (!_tdMode && !_cineActive)
+              pill('🎬 Préparer les tours', const Color(0xFFFF8A3D),
+                  () => _startCine(
+                      _domTopRoutines().length + _domTopTimeActivities().length)),
             pill('🃏 Deck', _interiorColor.withOpacity(.85), _showAttackDeck),
             pill('🚪 Sortir de la grotte', _interiorColor.withOpacity(.7),
                 _tdMode ? () {} : _exitInterior),
@@ -2683,8 +2750,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 // (Le nom de la routine est dans le PANNEAU LATÉRAL à droite,
                 //  aligné à sa ligne — pas sur la grille.)
                 // TOUR à COLONNE 12 — une par ligne (entre château et jours).
-                for (final e in allRows)
+                for (var ei = 0; ei < allRows.length; ei++)
                   () {
+                    final e = allRows[ei];
+                    final cineFlame = _cineCharge(ei); // 0..1 charge cinématique
                     final c0 = centerD(12, e.row.toDouble());
                     return Positioned(
                       left: c0.dx - slot / 2,
@@ -2703,16 +2772,36 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                             SizedBox(height: slot * 0.04),
                             // Chargeur (vert) = jours non faits (7-n) → vide si tout tiré.
                             _webSegBar(7 - e.r.charger, _kCharge, slot),
-                            SizedBox(height: slot * 0.06),
-                            // Turret (DCA si hebdo/mensuelle) → pointe vers les nuisibles.
-                            SvgPicture.asset(_turretIcon(e.r.id, e.kind),
-                                width: slot * 0.5,
-                                height: slot * 0.5,
-                                colorFilter: ColorFilter.mode(
-                                    e.r.charger == 0
-                                        ? _kEnemy
-                                        : _interiorColor,
-                                    BlendMode.srcIn)),
+                            SizedBox(height: slot * 0.04),
+                            // Jauge de FLAMMES (cinématique) — se charge séquentiellement.
+                            _cineFlameGauge(cineFlame, slot),
+                            SizedBox(height: slot * 0.04),
+                            // Turret — s'embrase (orange + glow) en chargeant.
+                            Container(
+                              decoration: cineFlame > 0
+                                  ? BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                            color: const Color(0xFFFF8A3D)
+                                                .withOpacity(.7 * cineFlame),
+                                            blurRadius: slot * 0.5 * cineFlame,
+                                            spreadRadius:
+                                                slot * 0.08 * cineFlame),
+                                      ])
+                                  : null,
+                              child: SvgPicture.asset(_turretIcon(e.r.id, e.kind),
+                                  width: slot * 0.5,
+                                  height: slot * 0.5,
+                                  colorFilter: ColorFilter.mode(
+                                      Color.lerp(
+                                          e.r.charger == 0
+                                              ? _kEnemy
+                                              : _interiorColor,
+                                          const Color(0xFFFF8A3D),
+                                          cineFlame)!,
+                                      BlendMode.srcIn)),
+                            ),
                           ],
                         ),
                       ),
