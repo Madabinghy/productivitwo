@@ -2144,8 +2144,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   int _liveFlashUntilMs = 0;
   Completer<void>? _liveDone;
 
-  // Cible du tir : une TOILE (semaine non tenue) de la ligne, côté château ; à
-  // défaut une case générique. col < 12 (château = cols 0..11).
+  // Cible du tir : vers le JARDIN (DROITE, cols 13+) — surtout PAS vers le château
+  // (gauche) où se tient l'avatar (col 11). Vise un nuisible de la ligne si présent,
+  // sinon la colonne d'AUJOURD'HUI (dernière).
   Offset _liveTarget(int row) {
     final id = _liveRoutineId;
     if (id != null) {
@@ -2156,14 +2157,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           break;
         }
       }
-      final heat = isHabit
-          ? logic.routineWeeklyHeatmap(id)
-          : logic.activityTimeWeeklyHeatmap(id);
-      for (var i = heat.length - 1; i >= 0; i--) {
-        if (i < 12 && heat[i] == 0) return Offset(i.toDouble(), row.toDouble());
+      final lane = isHabit
+          ? logic.routineWeekTokens(id)
+          : logic.activityTimeTokens(id);
+      for (var d = 0; d < lane.length; d++) {
+        if (lane[d].type == 'spider') {
+          return Offset((13 + d).toDouble(), row.toDouble());
+        }
       }
+      final dToday = (lane.length - 1).clamp(0, 6);
+      return Offset((13 + dToday).toDouble(), row.toDouble());
     }
-    return Offset(6, row.toDouble());
+    return Offset(18, row.toDouble());
   }
 
   void _simulateLive(double dt) {
@@ -3776,8 +3781,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                               // moment du NETTOYAGE (après que toutes les tours
                               // ont été renforcées). En prépa : sens naturel.
                               child: Transform.flip(
+                                // Tir d'arrivée = vers le jardin (droite) → PAS de
+                                // retournement (sinon le canon vise l'avatar à gauche).
                                 flipX: cineTurret &&
-                                    (_cineClearing || _cineAttack || liveHere),
+                                    !liveHere &&
+                                    (_cineClearing || _cineAttack),
                                 child: () {
                                   final tint = ColorFilter.mode(
                                       Color.lerp(
