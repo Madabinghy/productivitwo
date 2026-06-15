@@ -8,6 +8,7 @@ import 'package:productivitwo_v1/web/assistant_widget.dart';
 import 'package:productivitwo_v1/web/web_auth_screen.dart';
 import 'package:productivitwo_v1/web/web_home_screen.dart';
 import 'package:productivitwo_v1/web/mobile_preview_screen.dart';
+import 'package:productivitwo_v1/web/world_test_screen.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/web/web_email_signin_screen.dart';
 import 'package:productivitwo_v1/web/web_magic_link_complete_screen.dart';
@@ -179,6 +180,12 @@ class _AuthGateState extends State<_AuthGate> {
         if (kIsWeb &&
             Uri.base.queryParameters['mobilepreview'] == 'true') {
           return MobilePreviewScreen(sync: FirestoreSync());
+        }
+        // Page de DÉV : ouvre direct le Monde (cinématique/combat) — recharge
+        // la page pour re-tester.
+        if (kIsWeb &&
+            Uri.base.queryParameters['worldtest'] == 'true') {
+          return WorldTestScreen(sync: FirestoreSync());
         }
         return WebHomeScreen(isDemo: isDemo);
       },
