@@ -260,7 +260,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   static const double _kFlameRegrow = 30.0; // s pour recharger les flammes
   static const double _kBarrelAimDip = 0.7; // amplitude du mouvement de visée
   static const double _kSupportFbDur = 15.0; // s de vol cannon→cible (×5 = poli)
-  static const double _kFbIconOffset = pi / 2; // calage orientation icône fireball
+  // L'icône fireball « pointe » sa tête dense vers le BAS (+y) ; offset = -pi/2
+  // pour aligner cette tête sur la direction du vol.
+  static const double _kFbIconOffset = -pi / 2;
   final List<_CineShk> _shurikens = []; // shurikens en vol
   double _shkThrowT = 0; // cadence de lancer
   double _attackElapsed = 0; // temps écoulé → accélère les shurikens
@@ -3754,48 +3756,37 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                   for (final fb in _supportFbs)
                     ...() {
                       final widgets = <Widget>[];
-                      // Traînée : quelques échantillons en arrière sur l'arc.
-                      for (int i = 5; i >= 1; i--) {
-                        final u = fb.t - i * 0.045;
+                      // Toutes les copies (tête + traînée) sont ORIENTÉES par l'angle
+                      // à LEUR position sur l'arc → orientation cohérente partout.
+                      // i=0 = tête (plus grosse, opaque) ; i>0 = traînée décroissante.
+                      for (int i = 6; i >= 0; i--) {
+                        final u = i == 0 ? fb.t : fb.t - i * 0.05;
                         if (u <= 0) continue;
                         final ct = centerD(fb.xAt(u), fb.yAt(u));
-                        final f = 1 - i / 6.0; // décroît vers la queue
-                        final sz = slot * (0.16 + 0.20 * f);
+                        final f = 1 - i / 7.0; // 1 (tête) → ~0 (queue)
+                        final sz = slot * (0.10 + 0.20 * f); // tête ≈ 0.30
+                        final col = i == 0
+                            ? const Color(0xFFFF8A3D)
+                            : Color.lerp(const Color(0xFFFFE08A),
+                                    const Color(0xFFFF5A2A), 1 - f)!
+                                .withOpacity(0.22 + 0.45 * f);
                         widgets.add(Positioned(
                           left: ct.dx - slot / 2,
                           top: ct.dy - slot / 2,
                           width: slot,
                           height: slot,
                           child: Center(
-                            child: SvgPicture.asset('assets/icons/fireball.svg',
-                                width: sz,
-                                height: sz,
-                                colorFilter: ColorFilter.mode(
-                                    Color.lerp(const Color(0xFFFFE08A),
-                                        const Color(0xFFFF5A2A), 1 - f)!
-                                        .withOpacity(0.25 + 0.45 * f),
-                                    BlendMode.srcIn)),
+                            child: Transform.rotate(
+                              angle: fb.angleAt(u) + _kFbIconOffset,
+                              child: SvgPicture.asset('assets/icons/fireball.svg',
+                                  width: sz,
+                                  height: sz,
+                                  colorFilter:
+                                      ColorFilter.mode(col, BlendMode.srcIn)),
+                            ),
                           ),
                         ));
                       }
-                      // Tête : orientée dans la direction du vol (tangente à l'arc).
-                      final c0 = centerD(fb.x, fb.y);
-                      widgets.add(Positioned(
-                        left: c0.dx - slot / 2,
-                        top: c0.dy - slot / 2,
-                        width: slot,
-                        height: slot,
-                        child: Center(
-                          child: Transform.rotate(
-                            angle: fb.angle + _kFbIconOffset,
-                            child: SvgPicture.asset('assets/icons/fireball.svg',
-                                width: slot * 0.46,
-                                height: slot * 0.46,
-                                colorFilter: const ColorFilter.mode(
-                                    Color(0xFFFF8A3D), BlendMode.srcIn)),
-                          ),
-                        ),
-                      ));
                       return widgets;
                     }(),
                 // SHURIKENS en vol (lancés par le ninja sur les sbires).
@@ -4623,18 +4614,19 @@ class _CineFb {
   double yAt(double u) => fy + (ty - fy) * u - arc * sin(pi * u);
   double get x => xAt(t);
   double get y => yAt(t);
-  // Orientation : en MONTÉE (t<0.5) la boule vise le SOMMET de la trajectoire ;
-  // en DESCENTE (t≥0.5) elle se réoriente vers la CIBLE. (Tête en avant, queue
-  // derrière via la traînée.)
-  double get angle {
-    final ax = t < 0.5 ? xAt(0.5) : tx;
-    final ay = t < 0.5 ? yAt(0.5) : ty;
-    final ddx = ax - x, ddy = ay - y;
+  // Orientation à un temps u : en MONTÉE (u<0.5) la boule vise le SOMMET de la
+  // trajectoire ; en DESCENTE (u≥0.5) elle se réoriente vers la CIBLE.
+  double angleAt(double u) {
+    final ax = u < 0.5 ? xAt(0.5) : tx;
+    final ay = u < 0.5 ? yAt(0.5) : ty;
+    final ddx = ax - xAt(u), ddy = ay - yAt(u);
     if (ddx.abs() < 1e-4 && ddy.abs() < 1e-4) {
-      return atan2(ty - y, tx - x); // au sommet : bascule vers la cible
+      return atan2(ty - yAt(u), tx - xAt(u)); // au sommet : bascule vers la cible
     }
     return atan2(ddy, ddx);
   }
+
+  double get angle => angleAt(t);
 }
 
 class _Sbire {
