@@ -997,22 +997,37 @@ extension GoldEngine on AppLogic {
     if (goal <= 0) return const [];
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
+    // Cible HEBDO (fenêtre 7 jours glissants). Un jour SANS travail n'est un
+    // nuisible 🦂 que si, sur la fenêtre 7j FINISSANT ce jour-là, tu étais EN
+    // RETARD (total < cible). Si la cible était tenue → « satisfait » (vide) :
+    // pas besoin d'y toucher ce jour. Un jour travaillé = flamme/feuille.
+    final weekTarget = timeSliding(a.id, 7).targetMin;
+    final target7 = weekTarget > 0 ? weekTarget : goal * 7;
     final out = <({String type, int hp})>[];
     for (var i = 0; i < 7; i++) {
       final date = today.subtract(Duration(days: 6 - i));
       final mins = _minutesOnDay(a.id, date);
-      if (mins < goal) {
-        out.add((type: 'spider', hp: goal - mins));
+      if (mins >= goal) {
+        var run = 0;
+        var d = date;
+        while (_minutesOnDay(a.id, d) >= goal) {
+          run++;
+          if (run >= 2) break;
+          d = d.subtract(const Duration(days: 1));
+        }
+        out.add((type: run >= 2 ? 'flame' : 'leaf', hp: 0));
         continue;
       }
-      var run = 0;
-      var d = date;
-      while (_minutesOnDay(a.id, d) >= goal) {
-        run++;
-        if (run >= 2) break;
-        d = d.subtract(const Duration(days: 1));
+      // Pas (assez) travaillé ce jour → en retard sur la fenêtre 7j glissante ?
+      var trailing7 = 0;
+      for (var k = 0; k < 7; k++) {
+        trailing7 += _minutesOnDay(a.id, date.subtract(Duration(days: k)));
       }
-      out.add((type: run >= 2 ? 'flame' : 'leaf', hp: 0));
+      if (trailing7 < target7) {
+        out.add((type: 'spider', hp: (target7 - trailing7).clamp(1, 1 << 30)));
+      } else {
+        out.add((type: 'empty', hp: 0));
+      }
     }
     return out;
   }
