@@ -234,6 +234,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   int _ninjaHp = 10;
   final Random _cineRng = Random();
   static const double _kNinjaSpeed = 3.2; // cases / s
+  // Sbires de l'attaque : lâchés par l'araignée, foncent (en sinusoïde) sur le
+  // ninja ; le ninja leur tire dessus. Touché → -1 PV ninja.
+  final List<_Sbire> _cineSbires = [];
+  int _cineSbireSeq = 0;
+  int _ninjaShurikens = 0; // deck de shurikens = deck lifetime (munitions)
+  static const double _kSbireSpeed = 1.6; // cases / s (lent → esquivable)
 
   void _pickNinjaTarget() {
     final w = _w;
@@ -241,11 +247,56 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _ninjaTY = _cineRng.nextInt(w?.rows ?? 15).toDouble();
   }
 
+  // Toutes les toiles (🕸️ semaines à 0) du domaine avec leur position grille.
+  List<({String key, double col, double row})> _cineAllToiles() {
+    final w = _w;
+    if (w == null) return const [];
+    final mid = w.rows ~/ 2;
+    final routines = _domTopRoutines();
+    final times = _domTopTimeActivities();
+    final r0 = mid - routines.length;
+    final out = <({String key, double col, double row})>[];
+    for (var i = 0; i < routines.length; i++) {
+      final heat = logic.routineWeeklyHeatmap(routines[i].id);
+      for (var k = 0; k < heat.length; k++) {
+        if (heat[k] == 0) {
+          out.add((
+            key: 'toile:${routines[i].id}:$k',
+            col: k.toDouble(),
+            row: (r0 + i).toDouble()
+          ));
+        }
+      }
+    }
+    for (var j = 0; j < times.length; j++) {
+      final heat = logic.activityTimeWeeklyHeatmap(times[j].id);
+      for (var k = 0; k < heat.length; k++) {
+        if (heat[k] == 0) {
+          out.add((
+            key: 'toile:${times[j].id}:$k',
+            col: k.toDouble(),
+            row: (mid + 1 + j).toDouble()
+          ));
+        }
+      }
+    }
+    return out;
+  }
+
   void _startAttack() {
     _cineAttack = true;
     _ninjaHp = 10;
+    _ninjaShurikens = logic.lifetimeBattleMasse; // deck lifetime
     _ninjaX = _pos.x.toDouble();
     _ninjaY = _pos.y.toDouble();
+    // Chaque toile SURVIVANTE (non nettoyée par les tours) lâche un sbire.
+    _cineSbires.clear();
+    _cineSbireSeq = 0;
+    final shot = _cineShots.map((s) => s.key).toSet();
+    for (final t in _cineAllToiles()) {
+      if (shot.contains(t.key)) continue;
+      _cineSbires.add(_Sbire(_cineSbireSeq++, t.col, t.row, 1));
+    }
     _pickNinjaTarget();
   }
 
@@ -400,6 +451,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   void _simulateCine(double dt) {
     // PHASE ATTAQUE (étapes 7-8) : le ninja se déplace en continu sur la carte.
     if (_cineAttack) {
+      final w = _w;
+      final cols = w?.cols ?? 20, rows = w?.rows ?? 15;
+      // Ninja : déplacement ALÉATOIRE perpétuel.
       final dx = _ninjaTX - _ninjaX, dy = _ninjaTY - _ninjaY;
       final dist = sqrt(dx * dx + dy * dy);
       if (dist < 0.35) {
@@ -409,9 +463,23 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         _ninjaX += dx / dist * step;
         _ninjaY += dy / dist * step;
       }
-      final w = _w;
-      _pos = Point(_ninjaX.round().clamp(0, (w?.cols ?? 20) - 1),
-          _ninjaY.round().clamp(0, (w?.rows ?? 15) - 1));
+      _pos = Point(_ninjaX.round().clamp(0, cols - 1),
+          _ninjaY.round().clamp(0, rows - 1));
+      // Sbires : déplacement ALÉATOIRE (chacun erre vers un point au hasard ;
+      // en repique un à l'arrivée). Lents → esquivables.
+      for (final s in _cineSbires) {
+        if (s.wp == null ||
+            ((s.wp!.dx - s.x).abs() < 0.4 && (s.wp!.dy - s.y).abs() < 0.4)) {
+          s.wp = Offset(_cineRng.nextInt(cols).toDouble(),
+              _cineRng.nextInt(rows).toDouble());
+        }
+        final sdx = s.wp!.dx - s.x, sdy = s.wp!.dy - s.y;
+        final sd = sqrt(sdx * sdx + sdy * sdy);
+        if (sd > 0.05) {
+          s.x += sdx / sd * _kSbireSpeed * dt;
+          s.y += sdy / sd * _kSbireSpeed * dt;
+        }
+      }
       return;
     }
     // PHASE NETTOYAGE (après la prépa) : les tours tirent sur les cibles.
@@ -1986,7 +2054,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // le canon DCA (anti-aircraft). Sinon : hebdo/mensuelle = DCA, quotidienne +
   // activités-temps = turret.
   String _turretIcon(String id, String kind) {
-    if (_cineActive || _tdMode) return 'assets/icons/anti-aircraft-gun.svg';
+    if (_tdMode) return 'assets/icons/anti-aircraft-gun.svg';
     if (kind == 'spider') {
       for (final a in logic.state.activeActivities) {
         if (a.id == id) {
@@ -2929,14 +2997,17 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     final charge = _cineCharge(ei); // 0..1 charge cinématique
                     final flameMax =
                         e.lane.where((t) => t.type == 'flame').length;
+                    // SEULES les tours ayant ≥1 flamme sur leur ligne se
+                    // transforment (DCA) et combattent. Les autres restent
+                    // normales (vie + chargeur, icône turret) pendant la ciné.
+                    final cineTurret = _cineActive && flameMax > 0;
                     // Une flamme « touche » la tour à des paliers réguliers :
                     // la tour ne change QU'À l'arrivée de chaque flamme.
                     final arrived = flameMax > 0
                         ? (charge * flameMax).floor().clamp(0, flameMax)
                         : 0;
-                    final cineFlame = !_cineActive
-                        ? 0.0
-                        : (flameMax > 0 ? arrived / flameMax : charge);
+                    final cineFlame =
+                        cineTurret ? arrived / flameMax : 0.0;
                     // Visée du barillet : si CETTE tour tire sur une toile du
                     // château (col < 12), on l'incline vers l'horizontale pour la
                     // case la plus proche (col 11), naturel (relevé) pour la plus
@@ -2963,7 +3034,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                             // flammes de la semaine) s'allument à mesure que la
                             // tour charge → REMPLACENT le chargeur ; la jauge de
                             // vie DISPARAÎT. Hors cinématique : vie + chargeur.
-                            if (_cineActive)
+                            if (cineTurret)
                               _cineFlameRow(flameMax, arrived, slot)
                             else ...[
                               _webLifeBar(e.r.charger / 7, slot),
@@ -2989,7 +3060,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                               // moment du NETTOYAGE (après que toutes les tours
                               // ont été renforcées). En prépa : sens naturel.
                               child: Transform.flip(
-                                flipX: _cineClearing,
+                                flipX: cineTurret && _cineClearing,
                                 child: () {
                                   final tint = ColorFilter.mode(
                                       Color.lerp(
@@ -2999,7 +3070,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                                           const Color(0xFFFF8A3D),
                                           cineFlame)!,
                                       BlendMode.srcIn);
-                                  if (!_cineActive) {
+                                  if (!cineTurret) {
                                     return SvgPicture.asset(
                                         _turretIcon(e.r.id, e.kind),
                                         width: slot * 0.5,
@@ -3203,8 +3274,24 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                       ),
                     );
                   }(),
+                // SBIRES lâchés par l'araignée → foncent (sinusoïde) sur le ninja.
+                if (_cineAttack)
+                  for (final s in _cineSbires)
+                    () {
+                      final c0 = centerD(s.x, s.y);
+                      return Positioned(
+                        left: c0.dx - slot / 2,
+                        top: c0.dy - slot / 2,
+                        width: slot,
+                        height: slot,
+                        child: Center(
+                          child: Text('🕷️',
+                              style: TextStyle(fontSize: slot * 0.42)),
+                        ),
+                      );
+                    }(),
                 // NINJA (phase attaque) : déplacement perpétuel sur la carte +
-                // jauge de vie 10 PV au-dessus. (Shurikens → biens : à brancher.)
+                // jauge de vie 10 PV au-dessus. (Shurikens → sbires : à brancher.)
                 if (_cineAttack)
                   () {
                     final c0 = centerD(_ninjaX, _ninjaY);
