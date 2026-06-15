@@ -3036,8 +3036,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           ),
       ];
       // Cibles déjà éliminées (clés) + tir courant (tour → cible).
-      final cineCleared = _cineClearing
-          ? _cineShots.take(_cineClearIndex).map((s) => s.key).toSet()
+      // Toiles/nuisibles déjà nettoyés : pendant le nettoyage = ceux déjà tirés ;
+      // pendant l'attaque = TOUS (ils restent supprimés, ne réapparaissent pas).
+      final cineCleared = _cineActive
+          ? _cineShots
+              .take(_cineClearing ? _cineClearIndex : _cineShots.length)
+              .map((s) => s.key)
+              .toSet()
           : const <String>{};
       final cineCurShot =
           _cineClearing && _cineClearIndex < _cineShots.length
@@ -3073,9 +3078,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               // ── CALENDRIER de domaine : 1 ligne = 1 routine, 7 colonnes = jours,
               //    tour collée au château (gauche), nuisibles = jours manqués. ──
               if (_inInterior) ...[
-                // Labels des jours (L M M J V S D) — juste au-dessus des routines.
-                for (var d = 0; d < 7; d++)
-                  () {
+                // Labels des jours (L M M J V S D) — masqués en mode combat
+                // (visibilité : seules toiles + tours restent).
+                if (!_cineAttack)
+                  for (var d = 0; d < 7; d++)
+                    () {
                     final c0 = centerD(13.0 + d, (routineRow0 - 1).toDouble());
                     return Positioned(
                       left: c0.dx - slot / 2,
@@ -3163,7 +3170,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                               // moment du NETTOYAGE (après que toutes les tours
                               // ont été renforcées). En prépa : sens naturel.
                               child: Transform.flip(
-                                flipX: cineTurret && _cineClearing,
+                                flipX:
+                                    cineTurret && (_cineClearing || _cineAttack),
                                 child: () {
                                   final tint = ColorFilter.mode(
                                       Color.lerp(
@@ -3221,6 +3229,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                       final e = allRows[ei];
                       final tok = e.lane[d];
                       if (tok.type == 'empty') return const SizedBox.shrink();
+                      // Combat : on cache tous les tokens du jardin (cases vides).
+                      if (_cineAttack) return const SizedBox.shrink();
                       // Nuisible du jardin déjà nettoyé par une tour → vide.
                       if (tok.type == 'spider' &&
                           cineCleared.contains('nuis:${e.r.id}:$d')) {
@@ -3321,7 +3331,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     for (var i = 0; i < e.heat.length; i++)
                       () {
                       final n = e.heat[i];
-                      // Toile (🕸️ = semaine à 0) déjà nettoyée par une tour → vide.
+                      // Combat : on ne garde QUE les toiles (🕸️ = semaine à 0) ;
+                      // les cases chiffrées (n>0) sont cachées.
+                      if (_cineAttack && n > 0) {
+                        return const SizedBox.shrink();
+                      }
+                      // Toile déjà nettoyée par une tour → vide.
                       if (n == 0 &&
                           cineCleared.contains('toile:${e.r.id}:$i')) {
                         return const SizedBox.shrink();
