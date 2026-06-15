@@ -570,12 +570,21 @@ class _DomainGameplayState extends State<_DomainGameplay> {
     );
   }
 
-  // ── CHÂTEAU : les toiles/feuilles accumulées par ligne ──────────────────────
+  // ── CHÂTEAU : heatmap des 12 dernières semaines par ligne ───────────────────
+  // Chaque case = 1 semaine écoulée (ancienne → récente) ; nb de flammes tenues,
+  // ou 🕸️ toile si la semaine est perdue (0).
   Widget _chateauView(List<_Item> items) {
     final c = widget.color;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
       children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+              '🏰 Heatmap — 12 semaines · le nombre = jours tenus · 🕸️ = semaine perdue',
+              style: TextStyle(
+                  color: Colors.white.withOpacity(.4), fontSize: 11)),
+        ),
         for (final it in items)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
@@ -589,25 +598,43 @@ class _DomainGameplayState extends State<_DomainGameplay> {
                         color: c.withOpacity(.95),
                         fontWeight: FontWeight.w700,
                         fontSize: 13)),
-                const SizedBox(height: 2),
-                Wrap(
-                  spacing: 2,
-                  children: [
-                    if (it.fill.webs == 0 && it.fill.leaves == 0)
-                      Text('— rien à signaler',
-                          style: TextStyle(
-                              color: Colors.white.withOpacity(.3),
-                              fontSize: 12)),
-                    for (var k = 0; k < it.fill.webs; k++)
-                      const Text('🕸️', style: TextStyle(fontSize: 18)),
-                    for (var k = 0; k < it.fill.leaves; k++)
-                      const Text('🍃', style: TextStyle(fontSize: 18)),
-                  ],
-                ),
+                const SizedBox(height: 3),
+                Row(children: [
+                  for (final n in (it.kind == 'spider'
+                      ? logic.routineWeeklyHeatmap(it.id)
+                      : logic.activityTimeWeeklyHeatmap(it.id)))
+                    _heatCell(n),
+                ]),
               ],
             ),
           ),
       ],
+    );
+  }
+
+  // Case de heatmap : 0 = 🕸️ toile, sinon le nb de flammes avec un vert d'autant
+  // plus vif que la semaine a été tenue.
+  Widget _heatCell(int n) {
+    final filled = n > 0;
+    return Container(
+      width: 24,
+      height: 24,
+      margin: const EdgeInsets.all(1),
+      decoration: BoxDecoration(
+        color: filled
+            ? _kCharge.withOpacity(0.2 + 0.8 * (n / 7).clamp(0.0, 1.0))
+            : Colors.white.withOpacity(.04),
+        borderRadius: BorderRadius.circular(5),
+        border: Border.all(color: Colors.white.withOpacity(.06)),
+      ),
+      alignment: Alignment.center,
+      child: filled
+          ? Text('$n',
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 12))
+          : const Text('🕸️', style: TextStyle(fontSize: 12)),
     );
   }
 }

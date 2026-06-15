@@ -914,6 +914,57 @@ extension GoldEngine on AppLogic {
     return (webs: webs, leaves: leaves);
   }
 
+  /// HEATMAP HEBDO d'une routine : pour les `weeks` dernières semaines (lun→dim),
+  /// le nb de jours où le quota a été atteint (0..7) = les « flammes » de la
+  /// semaine. Index 0 = la plus ANCIENNE, dernier = la semaine EN COURS.
+  /// 0 → semaine perdue (toile d'araignée) ; >0 → nb de flammes.
+  List<int> routineWeeklyHeatmap(String routineId, {int weeks = 12}) {
+    Activity? a;
+    for (final x in state.activeActivities) {
+      if (x.id == routineId) {
+        a = x;
+        break;
+      }
+    }
+    if (a == null || !a.isHabit) return const [];
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final thisMon = today.subtract(Duration(days: today.weekday - 1));
+    return [
+      for (var w = weeks - 1; w >= 0; w--)
+        _routineWeekDone(a, thisMon.subtract(Duration(days: 7 * w)))
+    ];
+  }
+
+  /// HEATMAP HEBDO d'une activité-temps : nb de jours où l'objectif-temps a été
+  /// atteint par semaine (même ordre/convention que routineWeeklyHeatmap).
+  List<int> activityTimeWeeklyHeatmap(String activityId, {int weeks = 12}) {
+    Activity? a;
+    for (final x in state.activeActivities) {
+      if (x.id == activityId) {
+        a = x;
+        break;
+      }
+    }
+    if (a == null || a.isHabit) return const [];
+    final goal = a.goalMin;
+    if (goal <= 0) return const [];
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final thisMon = today.subtract(Duration(days: today.weekday - 1));
+    return [
+      for (var w = weeks - 1; w >= 0; w--)
+        () {
+          final mon = thisMon.subtract(Duration(days: 7 * w));
+          var n = 0;
+          for (var i = 0; i < 7; i++) {
+            if (_minutesOnDay(a!.id, mon.add(Duration(days: i))) >= goal) n++;
+          }
+          return n;
+        }()
+    ];
+  }
+
   /// PV d'une araignée de cette routine = la CIBLE quotidienne (quota) : grosse
   /// routine (boire 10 verres) = araignée à 10 PV.
   int routineTarget(String routineId) {
