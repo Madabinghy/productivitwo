@@ -2144,32 +2144,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   int _liveFlashUntilMs = 0;
   Completer<void>? _liveDone;
 
-  // Cible du tir : vers le JARDIN (DROITE, cols 13+) — surtout PAS vers le château
-  // (gauche) où se tient l'avatar (col 11). Vise un nuisible de la ligne si présent,
-  // sinon la colonne d'AUJOURD'HUI (dernière).
-  Offset _liveTarget(int row) {
-    final id = _liveRoutineId;
-    if (id != null) {
-      bool isHabit = true;
-      for (final a in logic.state.activeActivities) {
-        if (a.id == id) {
-          isHabit = a.isHabit;
-          break;
-        }
-      }
-      final lane = isHabit
-          ? logic.routineWeekTokens(id)
-          : logic.activityTimeTokens(id);
-      for (var d = 0; d < lane.length; d++) {
-        if (lane[d].type == 'spider') {
-          return Offset((13 + d).toDouble(), row.toDouble());
-        }
-      }
-      final dToday = (lane.length - 1).clamp(0, 6);
-      return Offset((13 + dToday).toDouble(), row.toDouble());
-    }
-    return Offset(18, row.toDouble());
-  }
+  // Cible du tir : la COLONNE 19 (jour courant) de la ligne de la routine — vers
+  // le jardin (droite), PAS le château (gauche) où se tient l'avatar (col 11).
+  Offset _liveTarget(int row) => Offset(19, row.toDouble());
 
   void _simulateLive(double dt) {
     if (_liveFb == null) {
