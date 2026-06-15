@@ -762,27 +762,18 @@ class _BacklogCombatPanelState extends State<BacklogCombatPanel> {
           child: Container(
                 padding: const EdgeInsets.fromLTRB(24, 22, 24, 18),
                 decoration: BoxDecoration(
-                  // Fond teinté rouge (chaud en haut → sombre en bas) pour le
-                  // punch « danger », au lieu du noir plat.
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Color.lerp(_kCardBg, _kRed, exposed ? .24 : .14)!,
-                      _kCardBg,
-                    ],
-                  ),
+                  color: _kCardBg,
                   borderRadius: BorderRadius.circular(24),
-                  border: Border.all(
-                      color: _kRed.withOpacity(exposed ? .7 : .38),
-                      width: exposed ? 1.8 : 1.2),
+                  border: exposed
+                      ? Border.all(color: _kRed.withOpacity(.55), width: 1.5)
+                      : null,
                   boxShadow: [
                     BoxShadow(
-                        color: _kRed.withOpacity(exposed ? .6 : .42),
-                        blurRadius: exposed ? 64 : 48,
-                        spreadRadius: exposed ? 5 : 3),
+                        color: _kRed.withOpacity(exposed ? .55 : .30),
+                        blurRadius: exposed ? 60 : 40,
+                        spreadRadius: exposed ? 4 : 2),
                     BoxShadow(
-                        color: Colors.black.withOpacity(.6),
+                        color: Colors.black.withOpacity(.55),
                         blurRadius: 20,
                         offset: const Offset(0, 8)),
                   ],
