@@ -129,21 +129,7 @@ class _WorldMobileListState extends State<_WorldMobileList> {
     final domains = logic.state.activeDomains;
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 8, 6),
-          child: Row(children: [
-            const Text('🌍 Tes domaines',
-                style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white)),
-            const Spacer(),
-            IconButton(
-              icon: const Icon(Icons.close, color: Colors.white54),
-              onPressed: () => Navigator.of(context).maybePop(),
-            ),
-          ]),
-        ),
+        const SizedBox(height: 12),
         Expanded(
           child: domains.isEmpty
               ? const Center(
@@ -168,14 +154,26 @@ class _WorldMobileListState extends State<_WorldMobileList> {
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () => Navigator.of(context).push(MaterialPageRoute(
-            fullscreenDialog: true,
-            builder: (_) => _DomainGameplay(
-                logic: logic,
-                sync: widget.sync,
-                domain: d,
-                color: color,
-                onOpenActivity: widget.onOpenActivity))),
+        // Sheet natif : le jardin/château s'ouvre en bottom sheet (glisser pour
+        // fermer ; la flèche retour de la fiche ferme aussi).
+        onTap: () => showModalBottomSheet<void>(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (_) => FractionallySizedBox(
+            heightFactor: 0.95,
+            child: ClipRRect(
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(20)),
+              child: _DomainGameplay(
+                  logic: logic,
+                  sync: widget.sync,
+                  domain: d,
+                  color: color,
+                  onOpenActivity: widget.onOpenActivity),
+            ),
+          ),
+        ),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           decoration: BoxDecoration(
