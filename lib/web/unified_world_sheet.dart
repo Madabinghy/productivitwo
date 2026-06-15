@@ -2821,11 +2821,20 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 // TOKENS du tapis : 🕷️ araignée (manqué, PV=cible de la routine) ·
                 // 🔥 flemme (fait) · 🌿 buisson (placeholder). Araignée cliquable →
                 // carte de combat (faire le vrai travail).
-                for (final e in allRows)
-                  for (var d = 0; d < e.lane.length; d++)
+                for (var ei = 0; ei < allRows.length; ei++)
+                  for (var d = 0; d < allRows[ei].lane.length; d++)
                     () {
+                      final e = allRows[ei];
                       final tok = e.lane[d];
                       if (tok.type == 'empty') return const SizedBox.shrink();
+                      // Cinématique : la flamme d'une ligne déjà chargée OU en
+                      // cours de charge a quitté sa case → ici rien (elle est en
+                      // vol via l'overlay, ou déjà sur la tour).
+                      if (_cineActive &&
+                          tok.type == 'flame' &&
+                          ei <= _cinePrepIndex) {
+                        return const SizedBox.shrink();
+                      }
                       final c0 = centerD(13.0 + d, e.row.toDouble());
                       final spider = tok.type == 'spider';
                       final emoji = tok.type == 'flame'
@@ -2857,6 +2866,34 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                                         height: 1)),
                             ],
                           ),
+                        ),
+                      );
+                    }(),
+                // FLAMMES EN VOL (cinématique) : pour la tour EN COURS de charge,
+                // ses flammes de la semaine quittent leur case (col 13+d) et
+                // rejoignent la tour (col 12) → renforcent la routine.
+                if (_cineActive && _cinePrepIndex < allRows.length)
+                  for (var d = 0;
+                      d < allRows[_cinePrepIndex].lane.length;
+                      d++)
+                    () {
+                      final e = allRows[_cinePrepIndex];
+                      if (e.lane[d].type != 'flame') {
+                        return const SizedBox.shrink();
+                      }
+                      final from = centerD(13.0 + d, e.row.toDouble());
+                      final to = centerD(12, e.row.toDouble());
+                      final p =
+                          Curves.easeIn.transform(_cinePrepCharge.clamp(0.0, 1.0));
+                      final pos = Offset.lerp(from, to, p)!;
+                      return Positioned(
+                        left: pos.dx - slot / 2,
+                        top: pos.dy - slot / 2,
+                        width: slot,
+                        height: slot,
+                        child: Center(
+                          child: Text('🔥',
+                              style: TextStyle(fontSize: slot * 0.5)),
                         ),
                       );
                     }(),
