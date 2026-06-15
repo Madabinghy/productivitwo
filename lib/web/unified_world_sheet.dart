@@ -210,6 +210,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   //    teinté au domaine, avatar dans le gazon. On échange le monde actif
   //    (_w/_pos/_revealed) et on restaure en sortant.
   bool _inInterior = false;
+  bool _interiorPeaceful = true; // grotte NON occupée → pas de cadre d'assaut
   String? _interiorCaveId; // domaine de la grotte intérieure (= filtre nuisibles)
   String? _interiorDomainId; // domainId courant (clé de persistance des tours)
   Color _interiorColor = _kBlue;
@@ -862,7 +863,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             _DefAttacker(e.type, e.id, sx, sy, _massByType[e.type] ?? 5));
         if (++i >= 30) break;
       }
-      if (_defAttackers.isEmpty) {
+      if (_defAttackers.isEmpty && !_interiorPeaceful) {
         _defAttackers.add(_DefAttacker('spider', '', 3, 14, 5)); // menace symbolique
       }
       _toast('🛡️ Simulation — tes retards attaquent. Clique un nuisible pour voir '
@@ -955,6 +956,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _savedRevealed = {..._revealed};
       _savedFarmPests = {..._farmPests};
       _interiorColor = cave != null ? _caveColor(cave) : _kBlue;
+      // Cadre d'assaut SEULEMENT si la grotte est réellement OCCUPÉE (état
+      // territoire), pas si simplement négligée.
+      _interiorPeaceful = cave == null || !cave.occupied;
       _interiorCaveId = caveId;
       // Deck d'assaut du scorpion AMORCÉ par tes captures de CE domaine précis
       // (petit deck spécifique, dérivé de activity.domainId ; fallback fraction
@@ -1026,9 +1030,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           }
         }
       }
+      final dname =
+          cave != null ? _domainName(cave.domainId) : "la grotte";
       _toast(
-          '🕳️ Tu entres dans ${cave != null ? _domainName(cave.domainId) : "la grotte"} '
-          '— reconquiers-la !',
+          _interiorPeaceful
+              ? '🏡 Tu entres dans $dname — domaine tenu, grotte en paix.'
+              : '🕳️ Tu entres dans $dname — grotte occupée, reconquiers-la !',
           _interiorColor);
     });
   }
