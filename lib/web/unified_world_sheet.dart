@@ -240,6 +240,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   int _cineSbireSeq = 0;
   int _ninjaShurikens = 0; // deck de shurikens = deck lifetime (munitions)
   static const double _kSbireSpeed = 1.6; // cases / s (lent → esquivable)
+  final List<_CineShk> _shurikens = []; // shurikens en vol
+  double _shkThrowT = 0; // cadence de lancer
+  static const double _kShkEvery = 0.5; // 2 shurikens / s
+  static const double _kShkSpeed = 3.4; // cases / s (lent → esquivable)
 
   void _pickNinjaTarget() {
     final w = _w;
@@ -289,6 +293,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _ninjaShurikens = logic.lifetimeBattleMasse; // deck lifetime
     _ninjaX = _pos.x.toDouble();
     _ninjaY = _pos.y.toDouble();
+    _shurikens.clear();
+    _shkThrowT = 0;
     // Chaque toile SURVIVANTE (non nettoyée par les tours) lâche un sbire.
     _cineSbires.clear();
     _cineSbireSeq = 0;
@@ -479,6 +485,64 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           s.x += sdx / sd * _kSbireSpeed * dt;
           s.y += sdy / sd * _kSbireSpeed * dt;
         }
+      }
+      // Ninja LANCE un shuriken (2/s) sur le sbire le plus proche (ligne droite ;
+      // le sbire peut l'esquiver). Consomme une munition du deck.
+      _shkThrowT += dt;
+      if (_shkThrowT >= _kShkEvery &&
+          _ninjaShurikens > 0 &&
+          _cineSbires.isNotEmpty) {
+        _shkThrowT = 0;
+        _Sbire? near;
+        var nd = double.infinity;
+        for (final s in _cineSbires) {
+          final d = (s.x - _ninjaX) * (s.x - _ninjaX) +
+              (s.y - _ninjaY) * (s.y - _ninjaY);
+          if (d < nd) {
+            nd = d;
+            near = s;
+          }
+        }
+        if (near != null) {
+          final ddx = near.x - _ninjaX, ddy = near.y - _ninjaY;
+          final dd = sqrt(ddx * ddx + ddy * ddy);
+          if (dd > 0.01) {
+            _shurikens.add(_CineShk(_ninjaX, _ninjaY,
+                ddx / dd * _kShkSpeed, ddy / dd * _kShkSpeed));
+            _ninjaShurikens--;
+          }
+        }
+      }
+      // Avance les shurikens + collision avec les sbires.
+      for (final shk in _shurikens) {
+        shk.x += shk.vx * dt;
+        shk.y += shk.vy * dt;
+        if (shk.x < -1 || shk.x > cols + 1 || shk.y < -1 || shk.y > rows + 1) {
+          shk.dead = true;
+          continue;
+        }
+        for (final s in _cineSbires) {
+          if ((shk.x - s.x).abs() < 0.5 && (shk.y - s.y).abs() < 0.5) {
+            s.hp = 0;
+            shk.dead = true;
+            break;
+          }
+        }
+      }
+      _shurikens.removeWhere((shk) => shk.dead);
+      _cineSbires.removeWhere((s) => s.hp <= 0);
+      // Un sbire TOUCHE le ninja → -1 PV (le sbire disparaît). 0 PV → échec.
+      _cineSbires.removeWhere((s) {
+        if ((s.x - _ninjaX).abs() < 0.55 && (s.y - _ninjaY).abs() < 0.55) {
+          _ninjaHp--;
+          return true;
+        }
+        return false;
+      });
+      if (_ninjaHp <= 0) {
+        _cineAttack = false;
+        _cineActive = false;
+        _toast('💀 Le ninja est tombé — l\'attaque échoue.', _kEnemy);
       }
       return;
     }
@@ -3290,8 +3354,28 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         ),
                       );
                     }(),
+                // SHURIKENS en vol (lancés par le ninja sur les sbires).
+                if (_cineAttack)
+                  for (final shk in _shurikens)
+                    () {
+                      final c0 = centerD(shk.x, shk.y);
+                      return Positioned(
+                        left: c0.dx - slot / 2,
+                        top: c0.dy - slot / 2,
+                        width: slot,
+                        height: slot,
+                        child: Center(
+                          child: SvgPicture.asset('assets/icons/shuriken.svg',
+                              width: slot * 0.34,
+                              height: slot * 0.34,
+                              colorFilter: ColorFilter.mode(
+                                  Colors.white.withOpacity(.92),
+                                  BlendMode.srcIn)),
+                        ),
+                      );
+                    }(),
                 // NINJA (phase attaque) : déplacement perpétuel sur la carte +
-                // jauge de vie 10 PV au-dessus. (Shurikens → sbires : à brancher.)
+                // jauge de vie 10 PV au-dessus + tire sur les sbires.
                 if (_cineAttack)
                   () {
                     final c0 = centerD(_ninjaX, _ninjaY);
@@ -4028,6 +4112,14 @@ const _kArrowWood = Color(0xFF6B4423); // marron hampe
 const _kArrowHead = Color(0xFF3E2A18); // pointe (plus sombre)
 
 /// Sbire ENNEMI (éphémère) : position continue en coords de tuiles, PV, assaut.
+// Shuriken lancé par le ninja : ligne droite (direction figée au lancer).
+class _CineShk {
+  double x, y;
+  final double vx, vy;
+  bool dead = false;
+  _CineShk(this.x, this.y, this.vx, this.vy);
+}
+
 class _Sbire {
   final int id;
   double x, y, hp;
