@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/expedition.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -409,6 +410,25 @@ class _BacklogCombatPanelState extends State<BacklogCombatPanel> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+                  SvgPicture.asset('assets/icons/rifle.svg',
+                      width: 13,
+                      height: 13,
+                      colorFilter: ColorFilter.mode(
+                          Colors.white.withOpacity(.45), BlendMode.srcIn)),
+                  const SizedBox(width: 5),
+                  Text('MUNITIONS',
+                      style: TextStyle(
+                          fontSize: 9.5,
+                          letterSpacing: 1.5,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white.withOpacity(.45),
+                          decoration: TextDecoration.none)),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
                   weaponChip('couteau'),
                   const SizedBox(width: 8),
                   weaponChip('arc'),
@@ -605,9 +625,27 @@ class _BacklogCombatPanelState extends State<BacklogCombatPanel> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // En-tête hero — bandeau de phase
-                    Text(exposed ? '🎯' : '⚔️',
-                        style: const TextStyle(fontSize: 28)),
+                    // En-tête hero — ta tourelle fait feu sur le nuisible.
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SvgPicture.asset('assets/icons/turret.svg',
+                            width: 30,
+                            height: 30,
+                            colorFilter: ColorFilter.mode(
+                                _kRed.withOpacity(.9), BlendMode.srcIn)),
+                        const SizedBox(width: 2),
+                        SvgPicture.asset('assets/icons/gunshot.svg',
+                            width: 22,
+                            height: 22,
+                            colorFilter: const ColorFilter.mode(
+                                Color(0xFFFFC83D), BlendMode.srcIn)),
+                        const SizedBox(width: 8),
+                        Text(exposed ? '🎯' : '⚔️',
+                            style: const TextStyle(fontSize: 28)),
+                      ],
+                    ),
                     const SizedBox(height: 4),
                     Text(exposed ? 'ACHÈVE-LE !' : role.toUpperCase(),
                         style: TextStyle(

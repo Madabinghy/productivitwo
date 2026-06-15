@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/expedition.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -593,6 +594,18 @@ class _HeroCombatCard extends StatelessWidget {
                     Text(entityEmoji(type),
                         style: const TextStyle(
                             fontSize: 22, decoration: TextDecoration.none)),
+                    const SizedBox(width: 4),
+                    // Ta tourelle fait feu sur le nuisible.
+                    SvgPicture.asset('assets/icons/turret.svg',
+                        width: 16,
+                        height: 16,
+                        colorFilter: ColorFilter.mode(
+                            _kRed.withOpacity(.85), BlendMode.srcIn)),
+                    SvgPicture.asset('assets/icons/gunshot.svg',
+                        width: 12,
+                        height: 12,
+                        colorFilter: const ColorFilter.mode(
+                            Color(0xFFFFC83D), BlendMode.srcIn)),
                     const Spacer(),
                     Text(role,
                         style: TextStyle(
@@ -671,6 +684,16 @@ class _HeroCombatCard extends StatelessWidget {
                                 fontSize: 8.5,
                                 color: Colors.white.withOpacity(.4),
                                 decoration: TextDecoration.none)),
+                        // Munitions restantes.
+                        SvgPicture.asset('assets/icons/rifle.svg',
+                            width: 9,
+                            height: 9,
+                            colorFilter: ColorFilter.mode(
+                                myWeapons >= 1
+                                    ? const Color(0xFFE8C24A)
+                                    : _kRed.withOpacity(.85),
+                                BlendMode.srcIn)),
+                        const SizedBox(width: 1),
                         Text('($myWeapons)',
                             style: TextStyle(
                                 fontSize: 8.5,
