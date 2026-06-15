@@ -6,6 +6,8 @@ import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/widgets/backlog_combat.dart';
+import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
+import 'package:productivitwo_v1/widgets/activity_detail_sheet.dart';
 
 const _kBg = Color(0xFF0E1512);
 const _kEnemy = Color(0xFFE5604D);
@@ -385,6 +387,17 @@ class _DomainGameplayState extends State<_DomainGameplay> {
     );
   }
 
+  // Ouvre le sheet de l'objet derrière la tour : routine (habit) ou activité-temps.
+  Future<void> _openItemSheet(_Item it) async {
+    if (it.kind == 'spider') {
+      await showRoutineSheet(context,
+          logic: logic, habitId: it.id, day: DateTime.now());
+    } else {
+      await showActivitySheet(context, logic, it.id);
+    }
+    if (mounted) setState(() {});
+  }
+
   // ── JARDIN : en-tête des jours + une ligne par routine/activité ─────────────
   Widget _gardenView(List<_Item> items) {
     final days = _last7DayLabels();
@@ -473,11 +486,15 @@ class _DomainGameplayState extends State<_DomainGameplay> {
                   // Chargeur (cases vertes) = jours non faits (7-n) → vide si tiré.
                   _segBar(7 - it.charger, _kCharge),
                   const SizedBox(height: 2),
-                  SvgPicture.asset(it.icon,
-                      width: 22,
-                      height: 22,
-                      colorFilter: ColorFilter.mode(
-                          it.charger == 0 ? _kEnemy : c, BlendMode.srcIn)),
+                  // Tap sur la tour → ouvre le sheet de la routine / activité.
+                  GestureDetector(
+                    onTap: () => _openItemSheet(it),
+                    child: SvgPicture.asset(it.icon,
+                        width: 22,
+                        height: 22,
+                        colorFilter: ColorFilter.mode(
+                            it.charger == 0 ? _kEnemy : c, BlendMode.srcIn)),
+                  ),
                 ],
               ),
             ),
