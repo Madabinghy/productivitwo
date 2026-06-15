@@ -1184,6 +1184,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _webBroken = false; // toiles intactes jusqu'à l'assaut
       _inInterior = true;
       _tdMode = false; // pas de TD tant que l'assaut n'est pas lancé
+      // Reset cinématique (sinon une grotte ré-entrée garde l'état DCA/attaque).
+      _cineActive = false;
+      _cineClearing = false;
+      _cineAttack = false;
+      _cinePrepIndex = 0;
+      _cineClearIndex = 0;
       // Purge de tout combat de la MAP PRINCIPALE (sinon scorpion/sbires fantômes
       // restés à leur ancienne position fuient dans la grotte).
       _phase1 = false;
