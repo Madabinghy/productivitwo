@@ -2725,9 +2725,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 // CHÂTEAU (cols 11→0) : HEATMAP des 12 dernières semaines. Case =
                 // nb de jours tenus (flammes) cette semaine, ou 🕸️ si semaine
                 // perdue (0). Récente près de la tour (col 11), ancienne à gauche.
-                for (final e in allRows)
-                  for (var i = 0; i < e.heat.length; i++)
-                    () {
+                // MASQUÉE quand l'avatar entre dans le château (col ≤ 12) → on
+                // voit alors le contenu/combat (araignée, etc.).
+                if (_pos.x > 12)
+                  for (final e in allRows)
+                    for (var i = 0; i < e.heat.length; i++)
+                      () {
                       final n = e.heat[i];
                       final c0 = centerD(i.toDouble(), e.row.toDouble());
                       return Positioned(
