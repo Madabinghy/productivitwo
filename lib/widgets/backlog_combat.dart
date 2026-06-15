@@ -30,11 +30,10 @@ String _ctTokenEmoji(String t, {required bool scorpion}) => t == 'flame'
             ? '🍃'
             : '';
 
-// Code couleur des PV du nuisible (menace) : rouge (≥5/7, encore fort) → jaune
-// (≥3/7) → vert (≤2/7, presque vaincu).
-Color _ctPestHpColor(double hp) => hp >= 5 / 7
-    ? const Color(0xFFFF2B2B)
-    : (hp >= 3 / 7 ? const Color(0xFFF5C518) : const Color(0xFF4FC26B));
+// Bleu (≥5/7) → jaune (≥3/7) → rouge : santé de la tour.
+Color _ctLifeColor(double f) => f >= 5 / 7
+    ? const Color(0xFF4FA3FF)
+    : (f >= 3 / 7 ? const Color(0xFFF5C518) : const Color(0xFFFF2B2B));
 
 /// Sheet (par-dessus le combat) listant les actions de la tâche-serpent à
 /// cocher. Chaque coche = −1 ❤️ (persistée) ; tout coché → ferme le sheet, et la
@@ -162,19 +161,24 @@ Future<void> showBacklogCombat(
     transitionDuration: const Duration(milliseconds: 220),
     pageBuilder: (dialogCtx, a1, a2) => SafeArea(
       child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: BacklogCombatPanel(
-              logic: logic,
-              sync: sync,
-              type: type,
-              itemId: itemId,
-              rootContext: rootContext,
-              onChanged: onChanged,
-              onLaunchedTimer: onLaunchedTimer,
-              onClose: () => Navigator.pop(dialogCtx),
+        // Material requis : sans lui, les Text sans ancêtre DefaultTextStyle
+        // s'affichent avec le double-souligné JAUNE de debug de Flutter.
+        child: Material(
+          type: MaterialType.transparency,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: BacklogCombatPanel(
+                logic: logic,
+                sync: sync,
+                type: type,
+                itemId: itemId,
+                rootContext: rootContext,
+                onChanged: onChanged,
+                onLaunchedTimer: onLaunchedTimer,
+                onClose: () => Navigator.pop(dialogCtx),
+              ),
             ),
           ),
         ),
@@ -646,18 +650,14 @@ class _BacklogCombatPanelState extends State<BacklogCombatPanel> {
         const _cell = 28.0;
         Widget weekRow() {
           final days = _ctWeekLetters();
-          // PV du nuisible sur la semaine = ce qu'il reste à faire (jours non
-          // tenus / 7). La tour le réduit quand tu fais la routine.
-          final pestHp = ((7 - weekCharger) / 7).clamp(0.0, 1.0);
-          final pestCol = _ctPestHpColor(pestHp);
           Widget tcell(int d) {
-            final emoji =
-                _ctTokenEmoji(weekTokens[d].type, scorpion: type == 'scorpion');
+            final tok = weekTokens[d];
+            final isSp = tok.type == 'spider';
+            final emoji = _ctTokenEmoji(tok.type, scorpion: type == 'scorpion');
             return Container(
               width: _cell,
               height: _cell,
               margin: const EdgeInsets.all(1),
-              alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(.03),
                 borderRadius: BorderRadius.circular(6),
@@ -665,31 +665,33 @@ class _BacklogCombatPanelState extends State<BacklogCombatPanel> {
               ),
               child: emoji.isEmpty
                   ? null
-                  : Text(emoji, style: const TextStyle(fontSize: 14)),
+                  : FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Padding(
+                        padding: const EdgeInsets.all(2),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(emoji, style: const TextStyle(fontSize: 13)),
+                            if (isSp)
+                              Text('${tok.hp}',
+                                  style: const TextStyle(
+                                      color: Color(0xFFFF2B2B),
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 9,
+                                      height: 1)),
+                          ],
+                        ),
+                      ),
+                    ),
             );
           }
 
+          final lifeCol = _ctLifeColor(weekCharger / 7);
           return Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: Column(
               children: [
-                // Gros trait jaune = barre de vie du nuisible sur la semaine.
-                Padding(
-                  padding: const EdgeInsets.only(left: 44, bottom: 5),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(3),
-                    child: Container(
-                      width: 7 * (_cell + 2),
-                      height: 7,
-                      color: pestCol.withOpacity(.16),
-                      alignment: Alignment.centerLeft,
-                      child: FractionallySizedBox(
-                        widthFactor: pestHp,
-                        child: Container(color: pestCol),
-                      ),
-                    ),
-                  ),
-                ),
                 Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                   const SizedBox(width: 44),
                   for (final l in days)
@@ -709,14 +711,45 @@ class _BacklogCombatPanelState extends State<BacklogCombatPanel> {
                 Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                   SizedBox(
                     width: 44,
-                    child: Center(
-                      child: SvgPicture.asset('assets/icons/turret.svg',
-                          width: 22,
-                          height: 22,
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      // Vie (jaune/bleu/rouge selon la tenue).
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(2),
+                        child: Container(
+                          width: 34,
+                          height: 4,
+                          color: lifeCol.withOpacity(.18),
+                          alignment: Alignment.centerLeft,
+                          child: FractionallySizedBox(
+                            widthFactor: (weekCharger / 7).clamp(0.0, 1.0),
+                            child: Container(color: lifeCol),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      // Chargeur (cases vertes = munitions non tirées = jours non faits).
+                      Row(mainAxisSize: MainAxisSize.min, children: [
+                        for (var i = 0; i < 7; i++)
+                          Container(
+                            width: 4,
+                            height: 4,
+                            margin: const EdgeInsets.only(right: 1),
+                            decoration: BoxDecoration(
+                              color: i < (7 - weekCharger)
+                                  ? const Color(0xFF4FC26B)
+                                  : Colors.white.withOpacity(.12),
+                              borderRadius: BorderRadius.circular(1),
+                            ),
+                          ),
+                      ]),
+                      const SizedBox(height: 2),
+                      SvgPicture.asset('assets/icons/turret.svg',
+                          width: 20,
+                          height: 20,
                           colorFilter: ColorFilter.mode(
                               weekCharger == 0 ? _kRed : domColor,
                               BlendMode.srcIn)),
-                    ),
+                    ]),
                   ),
                   for (var d = 0; d < weekTokens.length; d++) tcell(d),
                 ]),
