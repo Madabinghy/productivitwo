@@ -474,28 +474,28 @@ class _DomainGameplayState extends State<_DomainGameplay> {
           ]),
           const SizedBox(height: 1),
           Row(children: [
-            // Tour : barres AU-DESSUS, puis le turret SVG qui vise les nuisibles.
-            SizedBox(
-              width: 60,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Vie (jaune, continue) = jours faits → pleine quand j'ai tiré.
-                  _lifeBar(it.charger / 7),
-                  const SizedBox(height: 2),
-                  // Chargeur (cases vertes) = jours non faits (7-n) → vide si tiré.
-                  _segBar(7 - it.charger, _kCharge),
-                  const SizedBox(height: 2),
-                  // Tap sur la tour → ouvre le sheet de la routine / activité.
-                  GestureDetector(
-                    onTap: () => _openItemSheet(it),
-                    child: SvgPicture.asset(it.icon,
+            // Tour (barres + icône) : tap n'importe où dessus → ouvre le sheet.
+            GestureDetector(
+              onTap: () => _openItemSheet(it),
+              behavior: HitTestBehavior.opaque,
+              child: SizedBox(
+                width: 60,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Vie (jaune, continue) = jours faits → pleine quand j'ai tiré.
+                    _lifeBar(it.charger / 7),
+                    const SizedBox(height: 2),
+                    // Chargeur (cases vertes) = jours non faits (7-n) → vide si tiré.
+                    _segBar(7 - it.charger, _kCharge),
+                    const SizedBox(height: 2),
+                    SvgPicture.asset(it.icon,
                         width: 22,
                         height: 22,
                         colorFilter: ColorFilter.mode(
                             it.charger == 0 ? _kEnemy : c, BlendMode.srcIn)),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
             for (var d = 0; d < it.tokens.length; d++)
