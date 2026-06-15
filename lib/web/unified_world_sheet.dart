@@ -214,39 +214,96 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   double _cinePrepCharge = 0; // 0..1 progression de la tour courante
   int _cineRowCount = 0; // nb de tours à charger (figé au lancement)
   static const double _kCinePrepPerTurret = 1.05; // secondes / tour
-  // Phase NETTOYAGE : les tours tirent et éliminent les obstacles dans l'ordre
-  // de priorité (toiles du château d'abord, puis jardin). Cibles = clés stables.
+  // Phase NETTOYAGE : CHAQUE tour tire SON nombre de flammes (munitions), sur la
+  // cible la PLUS PROCHE (toiles du château prioritaires sur le jardin). Liste
+  // de tirs pré-calculée : chacun = tour d'origine + cible (clé + position).
   bool _cineClearing = false;
-  List<String> _cineTargetKeys = const []; // 'toile:<id>:<i>' | 'nuis:<id>:<d>'
-  int _cineClearIndex = 0; // cible en cours
+  List<({int turretRow, String key, double tx, double ty})> _cineShots = const [];
+  int _cineClearIndex = 0; // tir en cours
   double _cineClearT = 0; // 0..1 vol du projectile vers la cible courante
-  static const double _kCineClearPerTarget = 0.13; // secondes / cible
+  static const double _kCineClearPerTarget = 0.35; // secondes / tir (ralenti)
 
-  // Construit les cibles de nettoyage dans l'ordre de PRIORITÉ : d'abord TOUTES
-  // les toiles du château (🕸️ = semaines à 0), puis tous les nuisibles du jardin.
-  List<String> _cineBuildTargetKeys() {
-    final rows = [
-      for (final r in _domTopRoutines()) (id: r.id, kind: 'spider'),
-      for (final r in _domTopTimeActivities()) (id: r.id, kind: 'scorpion'),
+  // Pré-calcule la séquence de tirs : pour chaque tour (dans l'ordre), elle tire
+  // `flammes` projectiles, chacun sur la cible RESTANTE la plus proche — une
+  // toile (château) battant tout nuisible (jardin), sinon par distance.
+  List<({int turretRow, String key, double tx, double ty})> _cineBuildShots() {
+    final w = _w;
+    if (w == null) return const [];
+    final mid = w.rows ~/ 2;
+    final routines = _domTopRoutines();
+    final times = _domTopTimeActivities();
+    final r0 = mid - routines.length;
+    final rowsInfo = <({String id, String kind, int gridRow, int flames})>[
+      for (var i = 0; i < routines.length; i++)
+        (
+          id: routines[i].id,
+          kind: 'spider',
+          gridRow: r0 + i,
+          flames: logic
+              .routineWeekTokens(routines[i].id)
+              .where((t) => t.type == 'flame')
+              .length
+        ),
+      for (var j = 0; j < times.length; j++)
+        (
+          id: times[j].id,
+          kind: 'scorpion',
+          gridRow: mid + 1 + j,
+          flames: logic
+              .activityTimeTokens(times[j].id)
+              .where((t) => t.type == 'flame')
+              .length
+        ),
     ];
-    final keys = <String>[];
-    for (final r in rows) {
-      final heat = r.kind == 'spider'
-          ? logic.routineWeeklyHeatmap(r.id)
-          : logic.activityTimeWeeklyHeatmap(r.id);
+    final remaining = <String, ({double col, double row, bool toile})>{};
+    for (final ri in rowsInfo) {
+      final heat = ri.kind == 'spider'
+          ? logic.routineWeeklyHeatmap(ri.id)
+          : logic.activityTimeWeeklyHeatmap(ri.id);
       for (var i = 0; i < heat.length; i++) {
-        if (heat[i] == 0) keys.add('toile:${r.id}:$i');
+        if (heat[i] == 0) {
+          remaining['toile:${ri.id}:$i'] =
+              (col: i.toDouble(), row: ri.gridRow.toDouble(), toile: true);
+        }
       }
-    }
-    for (final r in rows) {
-      final lane = r.kind == 'spider'
-          ? logic.routineWeekTokens(r.id)
-          : logic.activityTimeTokens(r.id);
+      final lane = ri.kind == 'spider'
+          ? logic.routineWeekTokens(ri.id)
+          : logic.activityTimeTokens(ri.id);
       for (var d = 0; d < lane.length; d++) {
-        if (lane[d].type == 'spider') keys.add('nuis:${r.id}:$d');
+        if (lane[d].type == 'spider') {
+          remaining['nuis:${ri.id}:$d'] =
+              (col: 13.0 + d, row: ri.gridRow.toDouble(), toile: false);
+        }
       }
     }
-    return keys;
+    final shots = <({int turretRow, String key, double tx, double ty})>[];
+    for (final ri in rowsInfo) {
+      var ammo = ri.flames;
+      final tr = ri.gridRow;
+      while (ammo > 0 && remaining.isNotEmpty) {
+        String? bestKey;
+        double bestD = double.infinity;
+        bool bestToile = false;
+        remaining.forEach((k, v) {
+          final d =
+              (v.col - 12) * (v.col - 12) + (v.row - tr) * (v.row - tr);
+          final better = bestKey == null
+              ? true
+              : (v.toile != bestToile ? v.toile : d < bestD);
+          if (better) {
+            bestKey = k;
+            bestD = d;
+            bestToile = v.toile;
+          }
+        });
+        if (bestKey == null) break;
+        final v = remaining[bestKey]!;
+        shots.add((turretRow: tr, key: bestKey!, tx: v.col, ty: v.row));
+        remaining.remove(bestKey);
+        ammo--;
+      }
+    }
+    return shots;
   }
   String? _interiorCaveId; // domaine de la grotte intérieure (= filtre nuisibles)
   String? _interiorDomainId; // domainId courant (clé de persistance des tours)
@@ -317,13 +374,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   void _simulateCine(double dt) {
     // PHASE NETTOYAGE (après la prépa) : les tours tirent sur les cibles.
     if (_cineClearing) {
-      if (_cineClearIndex >= _cineTargetKeys.length) {
+      if (_cineClearIndex >= _cineShots.length) {
         _cineClearing = false;
         _cineActive = false; // cinématique terminée (provisoire)
         return;
       }
       _cineClearT += dt / _kCineClearPerTarget;
-      while (_cineClearT >= 1.0 && _cineClearIndex < _cineTargetKeys.length) {
+      while (_cineClearT >= 1.0 && _cineClearIndex < _cineShots.length) {
         _cineClearT -= 1.0;
         _cineClearIndex++;
       }
@@ -338,7 +395,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         _cinePrepIndex = _cineRowCount; // toutes chargées
         // → passe au NETTOYAGE.
         _cineClearing = true;
-        _cineTargetKeys = _cineBuildTargetKeys();
+        _cineShots = _cineBuildShots();
         _cineClearIndex = 0;
         _cineClearT = 0;
       }
@@ -353,7 +410,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _cinePrepCharge = 0;
       _cineRowCount = rowCount;
       _cineClearing = false;
-      _cineTargetKeys = const [];
+      _cineShots = const [];
       _cineClearIndex = 0;
       _cineClearT = 0;
     });
@@ -2758,14 +2815,14 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             heat: logic.activityTimeWeeklyHeatmap(topTime[j].id)
           ),
       ];
-      // Cibles de nettoyage déjà éliminées (clés) + clé de la cible courante.
+      // Cibles déjà éliminées (clés) + tir courant (tour → cible).
       final cineCleared = _cineClearing
-          ? _cineTargetKeys.take(_cineClearIndex).toSet()
+          ? _cineShots.take(_cineClearIndex).map((s) => s.key).toSet()
           : const <String>{};
-      final cineCurTarget = _cineClearing &&
-              _cineClearIndex < _cineTargetKeys.length
-          ? _cineTargetKeys[_cineClearIndex]
-          : null;
+      final cineCurShot =
+          _cineClearing && _cineClearIndex < _cineShots.length
+              ? _cineShots[_cineClearIndex]
+              : null;
       final grid = Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -2870,17 +2927,23 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                                                 slot * 0.08 * cineFlame),
                                       ])
                                   : null,
-                              child: SvgPicture.asset(_turretIcon(e.r.id, e.kind),
-                                  width: slot * 0.5,
-                                  height: slot * 0.5,
-                                  colorFilter: ColorFilter.mode(
-                                      Color.lerp(
-                                          e.r.charger == 0
-                                              ? _kEnemy
-                                              : _interiorColor,
-                                          const Color(0xFFFF8A3D),
-                                          cineFlame)!,
-                                      BlendMode.srcIn)),
+                              // Retournée pour pointer vers le château (gauche),
+                              // là où elle tire.
+                              child: Transform.flip(
+                                flipX: true,
+                                child: SvgPicture.asset(
+                                    _turretIcon(e.r.id, e.kind),
+                                    width: slot * 0.5,
+                                    height: slot * 0.5,
+                                    colorFilter: ColorFilter.mode(
+                                        Color.lerp(
+                                            e.r.charger == 0
+                                                ? _kEnemy
+                                                : _interiorColor,
+                                            const Color(0xFFFF8A3D),
+                                            cineFlame)!,
+                                        BlendMode.srcIn)),
+                              ),
                             ),
                           ],
                         ),
@@ -3030,26 +3093,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         ),
                       );
                     }(),
-                // PROJECTILE de nettoyage : la tour tire une flamme vers la cible
-                // courante (toile du château ou nuisible du jardin) puis elle
-                // disparaît à l'impact.
-                if (cineCurTarget != null)
+                // PROJECTILE de nettoyage : la tour tire une BOULE DE FEU vers sa
+                // cible (de la tour, col 12, vers la cible) puis elle disparaît.
+                if (cineCurShot != null)
                   () {
-                    final parts = cineCurTarget.split(':');
-                    final kind = parts[0]; // 'toile' | 'nuis'
-                    final id = parts[1];
-                    final n = int.tryParse(parts[2]) ?? 0;
-                    int? row;
-                    for (final e in allRows) {
-                      if (e.r.id == id) {
-                        row = e.row;
-                        break;
-                      }
-                    }
-                    if (row == null) return const SizedBox.shrink();
-                    final targetCol = kind == 'toile' ? n.toDouble() : 13.0 + n;
-                    final from = centerD(12, row.toDouble());
-                    final to = centerD(targetCol, row.toDouble());
+                    final from = centerD(12, cineCurShot.turretRow.toDouble());
+                    final to = centerD(cineCurShot.tx, cineCurShot.ty);
                     final pos = Offset.lerp(from, to,
                         Curves.easeOut.transform(_cineClearT.clamp(0.0, 1.0)))!;
                     return Positioned(
@@ -3058,8 +3107,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                       width: slot,
                       height: slot,
                       child: Center(
-                        child:
-                            Text('🔥', style: TextStyle(fontSize: slot * 0.42)),
+                        child: SvgPicture.asset('assets/icons/fireball.svg',
+                            width: slot * 0.42,
+                            height: slot * 0.42,
+                            colorFilter: const ColorFilter.mode(
+                                Color(0xFFFF8A3D), BlendMode.srcIn)),
                       ),
                     );
                   }(),
