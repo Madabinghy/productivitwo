@@ -213,7 +213,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   int _cinePrepIndex = 0; // tour en cours de charge (index dans allRows)
   double _cinePrepCharge = 0; // 0..1 progression de la tour courante
   int _cineRowCount = 0; // nb de tours à charger (figé au lancement)
-  static const double _kCinePrepPerTurret = 1.05; // secondes / tour
+  static const double _kCinePrepPerTurret = 1.8; // secondes / tour (ralenti)
   // Phase NETTOYAGE : CHAQUE tour tire SON nombre de flammes (munitions), sur la
   // cible la PLUS PROCHE (toiles du château prioritaires sur le jardin). Liste
   // de tirs pré-calculée : chacun = tour d'origine + cible (clé + position).
@@ -221,11 +221,33 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   List<({int turretRow, String key, double tx, double ty})> _cineShots = const [];
   int _cineClearIndex = 0; // tir en cours
   double _cineClearT = 0; // 0..1 vol du projectile vers la cible courante
-  static const double _kCineClearPerTarget = 0.35; // secondes / tir (ralenti)
+  static const double _kCineClearPerTarget = 0.6; // secondes / tir (ralenti)
   // Visée du canon : on incline la TÊTE (aa-head) autour de la monture. Pivot en
   // coords du widget (avant le flipX), angle naturel du barillet (~45°). Réglables.
   static const Alignment _kBarrelPivot = Alignment(-0.32, 0.25);
   static const double _kBarrelNatural = 0.78; // rad (~45°) = relevé d'origine
+  // Phase ATTAQUE (étapes 6-8) : le ninja se déplace en continu sur la carte et
+  // a une jauge de vie de 10 PV (les shurikens sur les « biens » : à brancher).
+  bool _cineAttack = false;
+  double _ninjaX = 0, _ninjaY = 0; // position lisse du ninja
+  double _ninjaTX = 0, _ninjaTY = 0; // cible de déplacement courante
+  int _ninjaHp = 10;
+  final Random _cineRng = Random();
+  static const double _kNinjaSpeed = 3.2; // cases / s
+
+  void _pickNinjaTarget() {
+    final w = _w;
+    _ninjaTX = _cineRng.nextInt(w?.cols ?? 20).toDouble();
+    _ninjaTY = _cineRng.nextInt(w?.rows ?? 15).toDouble();
+  }
+
+  void _startAttack() {
+    _cineAttack = true;
+    _ninjaHp = 10;
+    _ninjaX = _pos.x.toDouble();
+    _ninjaY = _pos.y.toDouble();
+    _pickNinjaTarget();
+  }
 
   // Pré-calcule la séquence de tirs : pour chaque tour (dans l'ordre), elle tire
   // `flammes` projectiles, chacun sur la cible RESTANTE la plus proche — une
@@ -376,11 +398,27 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // courante, puis passe à la suivante. Quand toutes sont chargées → la prépa
   // est finie (slice suivant : nettoyage du terrain).
   void _simulateCine(double dt) {
+    // PHASE ATTAQUE (étapes 7-8) : le ninja se déplace en continu sur la carte.
+    if (_cineAttack) {
+      final dx = _ninjaTX - _ninjaX, dy = _ninjaTY - _ninjaY;
+      final dist = sqrt(dx * dx + dy * dy);
+      if (dist < 0.35) {
+        _pickNinjaTarget();
+      } else {
+        final step = _kNinjaSpeed * dt;
+        _ninjaX += dx / dist * step;
+        _ninjaY += dy / dist * step;
+      }
+      final w = _w;
+      _pos = Point(_ninjaX.round().clamp(0, (w?.cols ?? 20) - 1),
+          _ninjaY.round().clamp(0, (w?.rows ?? 15) - 1));
+      return;
+    }
     // PHASE NETTOYAGE (après la prépa) : les tours tirent sur les cibles.
     if (_cineClearing) {
       if (_cineClearIndex >= _cineShots.length) {
         _cineClearing = false;
-        _cineActive = false; // cinématique terminée (provisoire)
+        _startAttack(); // → phase attaque (ninja)
         return;
       }
       _cineClearT += dt / _kCineClearPerTarget;
@@ -417,6 +455,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _cineShots = const [];
       _cineClearIndex = 0;
       _cineClearT = 0;
+      _cineAttack = false;
     });
   }
 
@@ -2940,9 +2979,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                                                 slot * 0.08 * cineFlame),
                                       ])
                                   : null,
-                              // Retournée pour pointer vers le château (gauche).
+                              // Se RETOURNE vers le château (gauche) seulement au
+                              // moment du NETTOYAGE (après que toutes les tours
+                              // ont été renforcées). En prépa : sens naturel.
                               child: Transform.flip(
-                                flipX: true,
+                                flipX: _cineClearing,
                                 child: () {
                                   final tint = ColorFilter.mode(
                                       Color.lerp(
@@ -3153,6 +3194,43 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                             height: slot * 0.42,
                             colorFilter: const ColorFilter.mode(
                                 Color(0xFFFF8A3D), BlendMode.srcIn)),
+                      ),
+                    );
+                  }(),
+                // NINJA (phase attaque) : déplacement perpétuel sur la carte +
+                // jauge de vie 10 PV au-dessus. (Shurikens → biens : à brancher.)
+                if (_cineAttack)
+                  () {
+                    final c0 = centerD(_ninjaX, _ninjaY);
+                    return Positioned(
+                      left: c0.dx - slot / 2,
+                      top: c0.dy - slot * 0.7,
+                      width: slot,
+                      height: slot * 1.4,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              for (var i = 0; i < 10; i++)
+                                Container(
+                                  width: slot * 0.05,
+                                  height: slot * 0.11,
+                                  margin: EdgeInsets.symmetric(
+                                      horizontal: slot * 0.006),
+                                  decoration: BoxDecoration(
+                                    color: i < _ninjaHp
+                                        ? const Color(0xFF4FC26B)
+                                        : Colors.white24,
+                                    borderRadius: BorderRadius.circular(1),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          SizedBox(height: slot * 0.04),
+                          Text(avatar, style: TextStyle(fontSize: slot * 0.6)),
+                        ],
                       ),
                     );
                   }(),
@@ -3652,7 +3730,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       {bool isSpider = false}) {
     final id = '${x}_$y';
     final revealed = _revealed.contains(id) || _showCoords;
-    final isAvatar = _pos.x == x && _pos.y == y;
+    // En phase attaque, le ninja est rendu en overlay lisse → pas d'avatar de
+    // case (sinon doublon).
+    final isAvatar = _pos.x == x && _pos.y == y && !_cineAttack;
 
     // Hors vision : brouillard noir, non tappable.
     if (!revealed) {
