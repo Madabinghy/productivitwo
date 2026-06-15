@@ -9,6 +9,31 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/confetti.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
 import 'package:productivitwo_v1/widgets/pulse.dart';
+import 'package:productivitwo_v1/utils/domain_colors.dart';
+
+// ── Helpers de la ligne calendrier (semaine glissante) sur la carte de combat ──
+const _kWeekLetters = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+List<String> _ctWeekLetters() {
+  final n = DateTime.now();
+  final today = DateTime(n.year, n.month, n.day);
+  return [
+    for (var i = 0; i < 7; i++)
+      _kWeekLetters[today.subtract(Duration(days: 6 - i)).weekday - 1]
+  ];
+}
+
+String _ctTokenEmoji(String t, {required bool scorpion}) => t == 'flame'
+    ? '🔥'
+    : t == 'spider'
+        ? (scorpion ? '🦂' : '🕷️')
+        : t == 'leaf'
+            ? '🍃'
+            : '';
+
+// Bleu (≥5/7) → jaune (≥3/7) → rouge : santé de la tour.
+Color _ctLifeColor(double f) => f >= 5 / 7
+    ? const Color(0xFF4FA3FF)
+    : (f >= 3 / 7 ? const Color(0xFFF5C518) : const Color(0xFFFF2B2B));
 
 /// Sheet (par-dessus le combat) listant les actions de la tâche-serpent à
 /// cocher. Chaque coche = −1 ❤️ (persistée) ; tout coché → ferme le sheet, et la
@@ -602,6 +627,132 @@ class _BacklogCombatPanelState extends State<BacklogCombatPanel> {
         final exposed = engaged && sbiresShown <= 0;
         final loot = GoldEconomy.pestLootBase(type, false);
 
+        // ── Ligne CALENDRIER de la semaine glissante (tour + 7 jours) du nuisible
+        //    quand c'est une routine (🕷️) ou une activité-temps (🦂). ──
+        final weekTokens = type == 'spider'
+            ? logic.routineWeekTokens(itemId)
+            : (type == 'scorpion'
+                ? logic.activityTimeTokens(itemId)
+                : const <({String type, int hp})>[]);
+        final weekCharger = type == 'spider'
+            ? logic.routineDefenseCharger(itemId)
+            : weekTokens
+                .where((t) => t.type == 'leaf' || t.type == 'flame')
+                .length;
+        final domColor =
+            domainColor(logic.enemyDomainId(type, itemId), logic.state.activeDomains) ??
+                const Color(0xFF4FA3FF);
+        const _cell = 28.0;
+        Widget weekRow() {
+          final days = _ctWeekLetters();
+          Widget tcell(int d) {
+            final tok = weekTokens[d];
+            final isSp = tok.type == 'spider';
+            final emoji = _ctTokenEmoji(tok.type, scorpion: type == 'scorpion');
+            return Container(
+              width: _cell,
+              height: _cell,
+              margin: const EdgeInsets.all(1),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(.03),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: Colors.white.withOpacity(.06)),
+              ),
+              child: emoji.isEmpty
+                  ? null
+                  : FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Padding(
+                        padding: const EdgeInsets.all(2),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(emoji, style: const TextStyle(fontSize: 13)),
+                            if (isSp)
+                              Text('${tok.hp}',
+                                  style: const TextStyle(
+                                      color: Color(0xFFFF2B2B),
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 9,
+                                      height: 1)),
+                          ],
+                        ),
+                      ),
+                    ),
+            );
+          }
+
+          final lifeCol = _ctLifeColor(weekCharger / 7);
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Column(
+              children: [
+                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  const SizedBox(width: 44),
+                  for (final l in days)
+                    SizedBox(
+                      width: _cell + 2,
+                      child: Center(
+                        child: Text(l,
+                            style: TextStyle(
+                                color: Colors.white.withOpacity(.4),
+                                fontWeight: FontWeight.w900,
+                                fontSize: 10,
+                                decoration: TextDecoration.none)),
+                      ),
+                    ),
+                ]),
+                const SizedBox(height: 2),
+                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  SizedBox(
+                    width: 44,
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      // Vie (jaune/bleu/rouge selon la tenue).
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(2),
+                        child: Container(
+                          width: 34,
+                          height: 4,
+                          color: lifeCol.withOpacity(.18),
+                          alignment: Alignment.centerLeft,
+                          child: FractionallySizedBox(
+                            widthFactor: (weekCharger / 7).clamp(0.0, 1.0),
+                            child: Container(color: lifeCol),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      // Chargeur (cases vertes = munitions non tirées = jours non faits).
+                      Row(mainAxisSize: MainAxisSize.min, children: [
+                        for (var i = 0; i < 7; i++)
+                          Container(
+                            width: 4,
+                            height: 4,
+                            margin: const EdgeInsets.only(right: 1),
+                            decoration: BoxDecoration(
+                              color: i < (7 - weekCharger)
+                                  ? const Color(0xFF4FC26B)
+                                  : Colors.white.withOpacity(.12),
+                              borderRadius: BorderRadius.circular(1),
+                            ),
+                          ),
+                      ]),
+                      const SizedBox(height: 2),
+                      SvgPicture.asset('assets/icons/turret.svg',
+                          width: 20,
+                          height: 20,
+                          colorFilter: ColorFilter.mode(
+                              weekCharger == 0 ? _kRed : domColor,
+                              BlendMode.srcIn)),
+                    ]),
+                  ),
+                  for (var d = 0; d < weekTokens.length; d++) tcell(d),
+                ]),
+              ],
+            ),
+          );
+        }
+
         return SingleChildScrollView(
           child: Container(
                 padding: const EdgeInsets.fromLTRB(24, 22, 24, 18),
@@ -699,6 +850,11 @@ class _BacklogCombatPanelState extends State<BacklogCombatPanel> {
                     SizedBox(height: compact ? 8 : 12),
                     statusBlock,
                     const SizedBox(height: 12),
+                    // Ligne calendrier de la semaine glissante (routine/activité).
+                    if (!compact && weekTokens.isNotEmpty) ...[
+                      weekRow(),
+                      const SizedBox(height: 8),
+                    ],
                     // Récompense de victoire — moteur d'action
                     Container(
                       padding: const EdgeInsets.symmetric(
