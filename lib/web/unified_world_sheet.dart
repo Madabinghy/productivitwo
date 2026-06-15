@@ -497,14 +497,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       // toile restante (la plus proche de sa tour, col 12). À l'impact → détruite.
       if (_cineToileSpawns.isNotEmpty) {
         _supportT += dt;
-        if (_supportT >= _kSupportEvery) {
-          _supportT -= _kSupportEvery;
-          // Toile la plus proche de sa tour (col la + haute = la + proche de 12).
-          var bi = 0;
-          for (var i = 1; i < _cineToileSpawns.length; i++) {
-            if (_cineToileSpawns[i].col > _cineToileSpawns[bi].col) bi = i;
-          }
-          final t = _cineToileSpawns[bi];
+        // Cadence qui RAMPE avec le temps (les tours tirent de plus en plus vite).
+        final supportEvery =
+            (_kSupportEvery - _attackElapsed * 0.05).clamp(0.4, _kSupportEvery);
+        if (_supportT >= supportEvery) {
+          _supportT -= supportEvery;
+          // Support (2ᵉ salve+) : cible une toile AU HASARD (plus le « plus proche »).
+          final t = _cineToileSpawns[_cineRng.nextInt(_cineToileSpawns.length)];
           final dxx = t.col - 12, dyy = 0.0;
           final dd = sqrt(dxx * dxx + dyy * dyy);
           final ux = dd > 0.01 ? dxx / dd : -1.0;
