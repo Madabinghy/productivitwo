@@ -1819,9 +1819,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     if (mounted) setState(() {});
   }
 
-  // Icône de tour selon la fréquence : routine hebdo/mensuelle = canon DCA
-  // (anti-aircraft), sinon turret (quotidiennes + activités-temps).
+  // Aspect des tours. SEULEMENT pendant la cinématique/combat : toutes prennent
+  // le canon DCA (anti-aircraft). Sinon : hebdo/mensuelle = DCA, quotidienne +
+  // activités-temps = turret.
   String _turretIcon(String id, String kind) {
+    if (_cineActive || _tdMode) return 'assets/icons/anti-aircraft-gun.svg';
     if (kind == 'spider') {
       for (final a in logic.state.activeActivities) {
         if (a.id == id) {
@@ -1873,23 +1875,21 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     );
   }
 
-  // Jauge de FLAMMES (cinématique) sous la tour : barre orange qui se remplit
-  // (0..1) pendant la charge séquentielle. frac=0 → invisible (pas de place).
-  Widget _cineFlameGauge(double frac, double slot) {
-    if (frac <= 0) return const SizedBox.shrink();
-    const flame = Color(0xFFFF8A3D);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(slot * 0.05),
-      child: Container(
-        width: slot * 0.7,
-        height: slot * 0.12,
-        color: flame.withOpacity(.18),
-        alignment: Alignment.centerLeft,
-        child: FractionallySizedBox(
-          widthFactor: frac.clamp(0.0, 1.0),
-          child: Container(color: flame),
-        ),
-      ),
+  // Rangée de jusqu'à `maxFlames` petites flammes (= jours-flammes de la semaine)
+  // au-dessus de la tour pendant la cinématique : les `charge` premières (0..1)
+  // sont allumées, le reste est en attente (éteint). Remplace le chargeur.
+  Widget _cineFlameRow(int maxFlames, double charge, double slot) {
+    if (maxFlames <= 0) return SizedBox(height: slot * 0.18);
+    final lit = (charge * maxFlames).round().clamp(0, maxFlames);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < maxFlames; i++)
+          Opacity(
+            opacity: i < lit ? 1.0 : 0.22,
+            child: Text('🔥', style: TextStyle(fontSize: slot * 0.2)),
+          ),
+      ],
     );
   }
 
@@ -2770,14 +2770,22 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            // Vie (jaune, continue) = jours faits (n) → pleine si tiré.
-                            _webLifeBar(e.r.charger / 7, slot),
-                            SizedBox(height: slot * 0.04),
-                            // Chargeur (vert) = jours non faits (7-n) → vide si tout tiré.
-                            _webSegBar(7 - e.r.charger, _kCharge, slot),
-                            SizedBox(height: slot * 0.04),
-                            // Jauge de FLAMMES (cinématique) — se charge séquentiellement.
-                            _cineFlameGauge(cineFlame, slot),
+                            // Cinématique : jusqu'à N petites flammes (= jours-
+                            // flammes de la semaine) s'allument à mesure que la
+                            // tour charge → REMPLACENT le chargeur ; la jauge de
+                            // vie DISPARAÎT. Hors cinématique : vie + chargeur.
+                            if (_cineActive)
+                              _cineFlameRow(
+                                  e.lane
+                                      .where((t) => t.type == 'flame')
+                                      .length,
+                                  cineFlame,
+                                  slot)
+                            else ...[
+                              _webLifeBar(e.r.charger / 7, slot),
+                              SizedBox(height: slot * 0.04),
+                              _webSegBar(7 - e.r.charger, _kCharge, slot),
+                            ],
                             SizedBox(height: slot * 0.04),
                             // Turret — s'embrase (orange + glow) en chargeant.
                             Container(
