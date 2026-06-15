@@ -252,7 +252,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   static const double _kSbireSpawnEvery = 1.0; // 1 sbire / s (cyclique)
   static const double _kSbireSpeed = 0.4; // cases / s (lent → esquivable)
   static const double _kSupportEvery = 1.4; // s entre 2 toiles détruites (régén)
-  static const double _kSupportFbSpeed = 7.0; // vitesse boule de feu de support
+  static const double _kSupportFbDur = 3.0; // s de vol cannon→cible (lent = poli)
+  static const double _kFbIconOffset = pi / 2; // calage orientation icône fireball
   final List<_CineShk> _shurikens = []; // shurikens en vol
   double _shkThrowT = 0; // cadence de lancer
   double _attackElapsed = 0; // temps écoulé → accélère les shurikens
@@ -506,18 +507,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           _supportT -= supportEvery;
           // Support (2ᵉ salve+) : cible une toile AU HASARD (plus le « plus proche »).
           final t = _cineToileSpawns[_cineRng.nextInt(_cineToileSpawns.length)];
-          final dxx = t.col - 12, dyy = 0.0;
-          final dd = sqrt(dxx * dxx + dyy * dyy);
-          final ux = dd > 0.01 ? dxx / dd : -1.0;
-          _supportFbs.add(_CineFb(12, t.row, ux * _kSupportFbSpeed, 0,
-              t.col, t.row, t.key));
+          // Arc d'autant plus haut que la cible est loin (lobe de mortier).
+          final arc = ((12 - t.col).abs() * 0.4).clamp(1.2, 5.0).toDouble();
+          _supportFbs.add(_CineFb(_kSupportFbDur, 12, t.row, t.col.toDouble(),
+              t.row.toDouble(), arc, t.key));
         }
       }
-      // Avance les boules de feu de support ; à l'arrivée, détruit la toile.
+      // Avance les boules de feu de support (paramétrique) ; à t≥1, détruit la toile.
       for (final fb in _supportFbs) {
-        fb.x += fb.vx * dt;
-        fb.y += fb.vy * dt;
-        if ((fb.x - fb.tx).abs() < 0.4) {
+        fb.t += dt / fb.dur;
+        if (fb.t >= 1.0) {
           fb.dead = true;
           _cineKilledToiles.add(fb.key);
           _cineToileSpawns.removeWhere((t) => t.key == fb.key);
@@ -3461,24 +3460,55 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         ),
                       );
                     }(),
-                // BOULES DE FEU de support (tours → toiles restantes).
+                // BOULES DE FEU de support (tours → toiles restantes) : tête orientée
+                // dans le sens du vol + traînée de flamme qui s'estompe vers la queue.
                 if (_cineAttack)
                   for (final fb in _supportFbs)
-                    () {
+                    ...() {
+                      final widgets = <Widget>[];
+                      // Traînée : quelques échantillons en arrière sur l'arc.
+                      for (int i = 5; i >= 1; i--) {
+                        final u = fb.t - i * 0.045;
+                        if (u <= 0) continue;
+                        final ct = centerD(fb.xAt(u), fb.yAt(u));
+                        final f = 1 - i / 6.0; // décroît vers la queue
+                        final sz = slot * (0.16 + 0.20 * f);
+                        widgets.add(Positioned(
+                          left: ct.dx - slot / 2,
+                          top: ct.dy - slot / 2,
+                          width: slot,
+                          height: slot,
+                          child: Center(
+                            child: SvgPicture.asset('assets/icons/fireball.svg',
+                                width: sz,
+                                height: sz,
+                                colorFilter: ColorFilter.mode(
+                                    Color.lerp(const Color(0xFFFFE08A),
+                                        const Color(0xFFFF5A2A), 1 - f)!
+                                        .withOpacity(0.25 + 0.45 * f),
+                                    BlendMode.srcIn)),
+                          ),
+                        ));
+                      }
+                      // Tête : orientée dans la direction du vol (tangente à l'arc).
                       final c0 = centerD(fb.x, fb.y);
-                      return Positioned(
+                      widgets.add(Positioned(
                         left: c0.dx - slot / 2,
                         top: c0.dy - slot / 2,
                         width: slot,
                         height: slot,
                         child: Center(
-                          child: SvgPicture.asset('assets/icons/fireball.svg',
-                              width: slot * 0.4,
-                              height: slot * 0.4,
-                              colorFilter: const ColorFilter.mode(
-                                  Color(0xFFFF8A3D), BlendMode.srcIn)),
+                          child: Transform.rotate(
+                            angle: fb.angle + _kFbIconOffset,
+                            child: SvgPicture.asset('assets/icons/fireball.svg',
+                                width: slot * 0.46,
+                                height: slot * 0.46,
+                                colorFilter: const ColorFilter.mode(
+                                    Color(0xFFFF8A3D), BlendMode.srcIn)),
+                          ),
                         ),
-                      );
+                      ));
+                      return widgets;
                     }(),
                 // SHURIKENS en vol (lancés par le ninja sur les sbires).
                 if (_cineAttack)
@@ -4268,14 +4298,22 @@ class _CineShk {
   _CineShk(this.x, this.y, this.vx, this.vy);
 }
 
-// Boule de feu de SUPPORT : tirée par une tour vers une toile ; à l'impact, la
-// toile (clé) est détruite.
+// Boule de feu de SUPPORT : tirée par une tour vers une toile, en ARC (parabole),
+// lente, orientée dans le sens du vol. À l'impact (t≥1) → la toile (clé) détruite.
 class _CineFb {
-  double x, y;
-  final double vx, vy, tx, ty;
+  double t = 0; // progression 0..1
+  final double dur, fx, fy, tx, ty, arc;
   final String key;
   bool dead = false;
-  _CineFb(this.x, this.y, this.vx, this.vy, this.tx, this.ty, this.key);
+  _CineFb(this.dur, this.fx, this.fy, this.tx, this.ty, this.arc, this.key);
+  // Position à un temps donné (lobe vers le HAUT = -y).
+  double xAt(double u) => fx + (tx - fx) * u;
+  double yAt(double u) => fy + (ty - fy) * u - arc * sin(pi * u);
+  double get x => xAt(t);
+  double get y => yAt(t);
+  // Angle de la tangente (direction du vol) pour orienter l'icône.
+  double get angle =>
+      atan2((ty - fy) - arc * pi * cos(pi * t), tx - fx);
 }
 
 class _Sbire {
