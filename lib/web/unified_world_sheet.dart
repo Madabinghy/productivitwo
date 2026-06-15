@@ -2065,17 +2065,21 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       if (row != null) {
         final path = _bfsPathAuto(_pos, Point(11, row));
         if (path.isNotEmpty) await _walkPath(path, stepMs: 230); // un peu plus lent
-        // 4. Bataille du jardin (sauf si déjà sur place) : SEMAINE (toggle, 1×/jour)
-        //    ou AUJOURD'HUI (défaut), puis tir final transformé sur la routine.
-        if (!alreadyHere) {
-          if (_replayWeek && !_weeklyPlayedToday) {
-            _weeklyBattleAt = DateTime.now();
-            await _runGardenBattle(weekly: true);
-          } else {
-            await _runGardenBattle(weekly: false);
+        // 4. On ne (re)joue la cinématique QUE s'il reste des toiles à détruire
+        //    (les détruites portent une 💥 persistante → pas de rejeu inutile).
+        if (_domainRemainingToiles(domId) > 0) {
+          // Bataille du jardin (sauf si déjà sur place) : SEMAINE (toggle, 1×/jour)
+          // ou AUJOURD'HUI (défaut), puis tir final transformé sur la routine.
+          if (!alreadyHere) {
+            if (_replayWeek && !_weeklyPlayedToday) {
+              _weeklyBattleAt = DateTime.now();
+              await _runGardenBattle(weekly: true);
+            } else {
+              await _runGardenBattle(weekly: false);
+            }
           }
+          await _fireArrival(routineId, row);
         }
-        await _fireArrival(routineId, row);
       }
     } finally {
       _traveling = false;
@@ -2136,7 +2140,6 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // ── CINÉMATIQUE D'ARRIVÉE (S3) : la tour charge 1 flamme, vise, tire, −1 ──
   bool _liveFiring = false;
   int _liveRow = 0;
-  String? _liveRoutineId;
   int _liveFlames = 1; // flamme(s) chargée(s) = nb de validations du jour
   double _liveAim = 0; // 0..1 : charge + visée
   _CineFb? _liveFb; // boulet du tir d'arrivée
@@ -2169,6 +2172,37 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         _liveDone = null;
       }
     }
+  }
+
+  // Une TOILE (jour-araignée d'une ligne) est DÉTRUITE si une flamme la couvre :
+  // les `flammes` premières toiles (gauche→droite) sont détruites. Dérivé des
+  // données (flammes = validations persistées) → persiste la journée, cross-device,
+  // sans état à gérer. Plus de flammes ⇒ plus de toiles détruites.
+  bool _toileDestroyed(List lane, int d) {
+    if (d >= lane.length || lane[d].type != 'spider') return false;
+    final flames = lane.where((t) => t.type == 'flame').length;
+    var rank = 0;
+    for (var i = 0; i < d; i++) {
+      if (lane[i].type == 'spider') rank++;
+    }
+    return rank < flames;
+  }
+
+  // Nb de toiles NON détruites (restantes) d'un domaine → gate la cinématique :
+  // on ne (re)joue que tant qu'il reste des toiles.
+  int _domainRemainingToiles(String domId) {
+    var rem = 0;
+    for (final a in logic.state.activeActivities) {
+      if (a.domainId != domId) continue;
+      final lane = a.isHabit
+          ? logic.routineWeekTokens(a.id)
+          : logic.activityTimeTokens(a.id);
+      if (lane.isEmpty) continue;
+      final toiles = lane.where((t) => t.type == 'spider').length;
+      final flames = lane.where((t) => t.type == 'flame').length;
+      rem += (toiles - flames).clamp(0, toiles).toInt();
+    }
+    return rem;
   }
 
   // Nb de validations AUJOURD'HUI pour une routine (= flammes chargées au tir).
@@ -2266,7 +2300,6 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // Joue le tir d'arrivée et attend sa fin (avatar déjà posé en col 11).
   Future<void> _fireArrival(String routineId, int row) async {
     if (!mounted) return;
-    _liveRoutineId = routineId;
     _liveRow = row;
     _liveFlames = _todayHits(routineId);
     _liveAim = 0;
@@ -3869,12 +3902,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         }
                       }
                       final c0 = centerD(13.0 + d, e.row.toDouble());
-                      final spider = tok.type == 'spider';
-                      final emoji = tok.type == 'flame'
-                          ? '🔥'
-                          : (spider
-                              ? (e.kind == 'scorpion' ? '🦂' : '🕷️')
-                              : '🍃');
+                      // Toile détruite (couverte par une flamme) → 💥 persistant.
+                      final destroyed = _toileDestroyed(e.lane, d);
+                      final spider = tok.type == 'spider' && !destroyed;
+                      final emoji = destroyed
+                          ? '💥'
+                          : (tok.type == 'flame'
+                              ? '🔥'
+                              : (tok.type == 'spider'
+                                  ? (e.kind == 'scorpion' ? '🦂' : '🕷️')
+                                  : '🍃'));
                       // Bataille : colonne déjà nettoyée → estompée (laisse voir
                       // la colonne suivante).
                       final battleFade =
