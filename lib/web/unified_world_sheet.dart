@@ -6,6 +6,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter/services.dart'
     show KeyEvent, KeyDownEvent, KeyRepeatEvent, LogicalKeyboardKey;
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/territory.dart';
 import 'package:productivitwo_v1/unified_world.dart';
@@ -1704,6 +1705,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     final domainIds = logic.state.activeDomains.map((d) => d.id).toList();
     await sync.ensureTerritory('Toi', domainIds: domainIds);
     final me = sync.uid ?? '';
+    _subscribeHits(); // temps réel : valider une routine → l'avatar voyage
     _sub = sync.streamTerritory(me).listen((t) async {
       if (!mounted) return;
       // La map doit incarner exactement les domaines actifs (une grotte/domaine).
@@ -1771,6 +1773,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   @override
   void dispose() {
     _sub?.cancel();
+    _hitSub?.cancel();
     _timer?.cancel();
     _gameTicker?.dispose();
     super.dispose();
@@ -2055,6 +2058,49 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       if (a.isHabit && logic.routineWeekTokens(a.id).isNotEmpty) return a.id;
     }
     return null;
+  }
+
+  // ── TEMPS RÉEL (S4) : déclencher le voyage à chaque validation de routine ──
+  StreamSubscription<List<HabitHit>>? _hitSub;
+  final Set<String> _seenHits = {}; // ids déjà vus (dédup)
+  bool _hitsPrimed = false; // 1ʳᵉ salve Firestore = état initial (pas de voyage)
+  DateTime? _hitPrimeTime;
+  final List<String> _travelQueue = []; // routines à visiter, dans l'ordre
+
+  void _subscribeHits() {
+    if (widget.mobile) return; // mode spectateur = web
+    _hitSub = sync.streamHabitHits().listen((hits) {
+      if (!_hitsPrimed) {
+        for (final h in hits) {
+          _seenHits.add(h.id);
+        }
+        _hitsPrimed = true;
+        _hitPrimeTime = DateTime.now();
+        return;
+      }
+      final since = _hitPrimeTime ?? DateTime.now();
+      for (final h in hits) {
+        if (_seenHits.contains(h.id)) continue;
+        _seenHits.add(h.id);
+        // Validation FRAÎCHE (après l'amorçage) → l'avatar va frapper sa tour.
+        if (h.ts.isAfter(since.subtract(const Duration(minutes: 2)))) {
+          _enqueueTravel(h.habitId);
+        }
+      }
+    });
+  }
+
+  void _enqueueTravel(String routineId) {
+    _travelQueue.add(routineId);
+    _pumpTravelQueue();
+  }
+
+  Future<void> _pumpTravelQueue() async {
+    if (_traveling) return; // un voyage tourne déjà → il reprendra la file
+    while (_travelQueue.isNotEmpty && mounted) {
+      final id = _travelQueue.removeAt(0);
+      await _travelToRoutine(id);
+    }
   }
 
   // Persiste position + brouillard de l'avatar (état perso → doc meta de l'user,

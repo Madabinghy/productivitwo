@@ -544,6 +544,15 @@ class FirestoreSync {
     );
   }
 
+  // Temps réel : tous les incréments de routine (HabitHit). Le web s'en sert pour
+  // déclencher le voyage de l'avatar dès qu'une routine est validée (y compris
+  // depuis le mobile — Firestore synchronise entre appareils).
+  Stream<List<HabitHit>> streamHabitHits() {
+    if (uid == null) return const Stream.empty();
+    return _col('habitHits').snapshots().map(
+        (snap) => snap.docs.map((d) => HabitHit.from(d.data() as Map)).toList());
+  }
+
   Stream<List<Domain>> streamDomains() {
     if (uid == null) return const Stream.empty();
     return _col('domains').snapshots().map((snap) => snap.docs
