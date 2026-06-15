@@ -941,7 +941,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     // gauche). Le calendrier en overlay garde ses coords (déjà repère inversé).
     final interior = mirrorWorldX(generateUnifiedWorld(
         (_t?.seed ?? 1) ^ caveId.hashCode,
-        caveIds: const ['coeur'])); // 17 cols (taille normale) ; noms en panneau latéral
+        caveIds: const ['coeur'],
+        cols: 20)); // 20 cols : château heatmap 12 sem (0→11) + tour (12) + 7 jours (13→19)
     setState(() {
       _savedW = w;
       _savedPos = _pos;
@@ -2566,7 +2567,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             lane: lanes[i],
             fill: fills[i],
             r: topRoutines[i],
-            kind: 'spider'
+            kind: 'spider',
+            heat: logic.routineWeeklyHeatmap(topRoutines[i].id)
           ),
         for (var j = 0; j < topTime.length; j++)
           (
@@ -2574,7 +2576,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             lane: timeLanes[j],
             fill: timeFills[j],
             r: topTime[j],
-            kind: 'scorpion'
+            kind: 'scorpion',
+            heat: logic.activityTimeWeeklyHeatmap(topTime[j].id)
           ),
       ];
       final grid = Column(
@@ -2610,7 +2613,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 // Labels des jours (L M M J V S D) — uniquement en haut (row 1).
                 for (var d = 0; d < 7; d++)
                   () {
-                    final c0 = centerD(10.0 + d, 1);
+                    final c0 = centerD(13.0 + d, 1);
                     return Positioned(
                       left: c0.dx - slot / 2,
                       top: c0.dy - slot / 2,
@@ -2627,10 +2630,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                   }(),
                 // (Le nom de la routine est dans le PANNEAU LATÉRAL à droite,
                 //  aligné à sa ligne — pas sur la grille.)
-                // TOUR à COLONNE 9 — une par ligne (remplace l'ancienne porte).
+                // TOUR à COLONNE 12 — une par ligne (entre château et jours).
                 for (final e in allRows)
                   () {
-                    final c0 = centerD(9, e.row.toDouble());
+                    final c0 = centerD(12, e.row.toDouble());
                     return Positioned(
                       left: c0.dx - slot / 2,
                       top: c0.dy - slot / 2,
@@ -2664,7 +2667,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     () {
                       final tok = e.lane[d];
                       if (tok.type == 'empty') return const SizedBox.shrink();
-                      final c0 = centerD(10.0 + d, e.row.toDouble());
+                      final c0 = centerD(13.0 + d, e.row.toDouble());
                       final spider = tok.type == 'spider';
                       final emoji = tok.type == 'flame'
                           ? '🔥'
@@ -2698,27 +2701,39 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         ),
                       );
                     }(),
-                // (Portes retirées — la tour occupe désormais la col 9.)
-                // CHÂTEAU (cols 8→0, à gauche de la tour) : se remplit des jours
-                // PASSÉS — 🕸️ toiles (manques) ou 🍃 feuilles (en avance), de la
-                // porte vers l'intérieur.
+                // CHÂTEAU (cols 11→0) : HEATMAP des 12 dernières semaines. Case =
+                // nb de jours tenus (flammes) cette semaine, ou 🕸️ si semaine
+                // perdue (0). Récente près de la tour (col 11), ancienne à gauche.
                 for (final e in allRows)
-                  for (var j = 0;
-                      j <
-                          (e.fill.webs > 0 ? e.fill.webs : e.fill.leaves);
-                      j++)
+                  for (var i = 0; i < e.heat.length; i++)
                     () {
-                      final web = e.fill.webs > 0;
-                      final c0 =
-                          centerD((8 - j).toDouble(), e.row.toDouble());
+                      final n = e.heat[i];
+                      final c0 = centerD(i.toDouble(), e.row.toDouble());
                       return Positioned(
                         left: c0.dx - slot / 2,
                         top: c0.dy - slot / 2,
                         width: slot,
                         height: slot,
-                        child: Center(
-                          child: Text(web ? '🕸️' : '🍃',
-                              style: TextStyle(fontSize: slot * 0.5)),
+                        child: Container(
+                          margin: EdgeInsets.all(slot * 0.07),
+                          decoration: BoxDecoration(
+                            color: n > 0
+                                ? _kCharge.withOpacity(
+                                    0.2 + 0.8 * (n / 7).clamp(0.0, 1.0))
+                                : Colors.white.withOpacity(.04),
+                            borderRadius: BorderRadius.circular(slot * 0.12),
+                            border: Border.all(
+                                color: Colors.white.withOpacity(.06)),
+                          ),
+                          alignment: Alignment.center,
+                          child: n > 0
+                              ? Text('$n',
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: slot * 0.34))
+                              : Text('🕸️',
+                                  style: TextStyle(fontSize: slot * 0.4)),
                         ),
                       );
                     }(),
