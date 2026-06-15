@@ -2927,22 +2927,46 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                                                 slot * 0.08 * cineFlame),
                                       ])
                                   : null,
-                              // Retournée pour pointer vers le château (gauche),
-                              // là où elle tire.
+                              // Retournée pour pointer vers le château (gauche).
                               child: Transform.flip(
                                 flipX: true,
-                                child: SvgPicture.asset(
-                                    _turretIcon(e.r.id, e.kind),
+                                child: () {
+                                  final tint = ColorFilter.mode(
+                                      Color.lerp(
+                                          e.r.charger == 0
+                                              ? _kEnemy
+                                              : _interiorColor,
+                                          const Color(0xFFFF8A3D),
+                                          cineFlame)!,
+                                      BlendMode.srcIn);
+                                  if (!_cineActive) {
+                                    return SvgPicture.asset(
+                                        _turretIcon(e.r.id, e.kind),
+                                        width: slot * 0.5,
+                                        height: slot * 0.5,
+                                        colorFilter: tint);
+                                  }
+                                  // DCA en 2 morceaux : base FIXE + tête
+                                  // (barillet + monture) — superposées (visée à
+                                  // venir : on incline la tête autour de la
+                                  // monture).
+                                  return SizedBox(
                                     width: slot * 0.5,
                                     height: slot * 0.5,
-                                    colorFilter: ColorFilter.mode(
-                                        Color.lerp(
-                                            e.r.charger == 0
-                                                ? _kEnemy
-                                                : _interiorColor,
-                                            const Color(0xFFFF8A3D),
-                                            cineFlame)!,
-                                        BlendMode.srcIn)),
+                                    child: Stack(children: [
+                                      SvgPicture.asset(
+                                          'assets/icons/aa-base.svg',
+                                          width: slot * 0.5,
+                                          height: slot * 0.5,
+                                          colorFilter: tint),
+                                      SvgPicture.asset(
+                                          'assets/icons/aa-head.svg',
+                                          width: slot * 0.5,
+                                          height: slot * 0.5,
+                                          colorFilter: tint),
+                                    ]),
+                                  );
+                                }(),
                               ),
                             ),
                           ],
