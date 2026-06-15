@@ -233,17 +233,24 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   double _ninjaTX = 0, _ninjaTY = 0; // cible de déplacement courante
   int _ninjaHp = 10;
   final Random _cineRng = Random();
-  static const double _kNinjaSpeed = 1.5; // cases / s
-  // Sbires de l'attaque : lâchés par l'araignée, foncent (en sinusoïde) sur le
-  // ninja ; le ninja leur tire dessus. Touché → -1 PV ninja.
+  static const double _kNinjaSpeed = 0.75; // cases / s
+  List<int> _cineRowFlames = const []; // nb de flammes par ligne (ordre allRows)
+  // Sbires de l'attaque : chaque toile SURVIVANTE lâche un sbire (spawn 1/s,
+  // cyclique), qui erre aléatoirement ; le ninja leur tire dessus (-1 PV si touché).
   final List<_Sbire> _cineSbires = [];
   int _cineSbireSeq = 0;
   int _ninjaShurikens = 0; // deck de shurikens = deck lifetime (munitions)
-  static const double _kSbireSpeed = 0.8; // cases / s (lent → esquivable)
+  List<({double col, double row})> _cineToileSpawns = const []; // toiles survivantes
+  int _cineSpawnIdx = 0; // toile suivante à faire spawn (cyclique)
+  double _cineSpawnT = 0;
+  static const double _kSbireSpawnEvery = 1.0; // 1 sbire / s (cyclique)
+  static const double _kSbireSpeed = 0.4; // cases / s (lent → esquivable)
   final List<_CineShk> _shurikens = []; // shurikens en vol
   double _shkThrowT = 0; // cadence de lancer
-  static const double _kShkEvery = 0.8; // 2 shurikens / s
-  static const double _kShkSpeed = 2.2; // cases / s (lent → esquivable)
+  double _attackElapsed = 0; // temps écoulé → accélère les shurikens
+  static const double _kShkEvery = 0.5; // 2 shurikens / s
+  static const double _kShkSpeedBase = 1.1; // vitesse initiale (esquivable)
+  static const double _kShkAccel = 0.12; // +cases/s par s (finit par gagner)
 
   void _pickNinjaTarget() {
     final w = _w;
@@ -295,14 +302,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _ninjaY = _pos.y.toDouble();
     _shurikens.clear();
     _shkThrowT = 0;
-    // Chaque toile SURVIVANTE (non nettoyée par les tours) lâche un sbire.
+    _attackElapsed = 0;
+    _cineSpawnT = 0;
+    _cineSpawnIdx = 0;
     _cineSbires.clear();
     _cineSbireSeq = 0;
+    // Sources de spawn = toiles SURVIVANTES (non nettoyées). Elles font spawn un
+    // sbire chacune leur tour (1/s, cyclique) — pas tout d'un coup.
     final shot = _cineShots.map((s) => s.key).toSet();
-    for (final t in _cineAllToiles()) {
-      if (shot.contains(t.key)) continue;
-      _cineSbires.add(_Sbire(_cineSbireSeq++, t.col, t.row, 1));
-    }
+    _cineToileSpawns = [
+      for (final t in _cineAllToiles())
+        if (!shot.contains(t.key)) (col: t.col, row: t.row)
+    ];
     _pickNinjaTarget();
   }
 
@@ -459,6 +470,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     if (_cineAttack) {
       final w = _w;
       final cols = w?.cols ?? 20, rows = w?.rows ?? 15;
+      _attackElapsed += dt;
+      // Spawn 1 sbire / s, en CYCLANT les toiles survivantes (pas tout d'un coup ;
+      // après la dernière, on recommence à la première).
+      if (_cineToileSpawns.isNotEmpty) {
+        _cineSpawnT += dt;
+        if (_cineSpawnT >= _kSbireSpawnEvery) {
+          _cineSpawnT -= _kSbireSpawnEvery;
+          final t = _cineToileSpawns[_cineSpawnIdx % _cineToileSpawns.length];
+          _cineSpawnIdx++;
+          _cineSbires.add(_Sbire(_cineSbireSeq++, t.col, t.row, 1));
+        }
+      }
       // Ninja : déplacement ALÉATOIRE perpétuel.
       final dx = _ninjaTX - _ninjaX, dy = _ninjaTY - _ninjaY;
       final dist = sqrt(dx * dx + dy * dy);
@@ -507,8 +530,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           final ddx = near.x - _ninjaX, ddy = near.y - _ninjaY;
           final dd = sqrt(ddx * ddx + ddy * ddy);
           if (dd > 0.01) {
+            // Vitesse qui AUGMENTE avec le temps → finit par toucher (le ninja
+            // tire 2/s vs 1/s de spawn) : pas de boucle infinie.
+            final shkSpeed = _kShkSpeedBase + _attackElapsed * _kShkAccel;
             _shurikens.add(_CineShk(_ninjaX, _ninjaY,
-                ddx / dd * _kShkSpeed, ddy / dd * _kShkSpeed));
+                ddx / dd * shkSpeed, ddy / dd * shkSpeed));
             _ninjaShurikens--;
           }
         }
@@ -560,29 +586,43 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       }
       return;
     }
-    // PHASE PRÉPARATION : charge séquentielle des tours.
+    // PHASE PRÉPARATION : charge séquentielle. Les tours SANS flamme ne
+    // participent pas → on les saute INSTANTANÉMENT (pas de temps d'attente).
+    while (_cinePrepIndex < _cineRowCount &&
+        (_cinePrepIndex >= _cineRowFlames.length ||
+            _cineRowFlames[_cinePrepIndex] == 0)) {
+      _cinePrepIndex++;
+      _cinePrepCharge = 0;
+    }
+    if (_cinePrepIndex >= _cineRowCount) {
+      // → passe au NETTOYAGE.
+      _cineClearing = true;
+      _cineShots = _cineBuildShots();
+      _cineClearIndex = 0;
+      _cineClearT = 0;
+      return;
+    }
     _cinePrepCharge += dt / _kCinePrepPerTurret;
     if (_cinePrepCharge >= 1.0) {
       _cinePrepCharge = 0;
       _cinePrepIndex++;
-      if (_cinePrepIndex >= _cineRowCount) {
-        _cinePrepIndex = _cineRowCount; // toutes chargées
-        // → passe au NETTOYAGE.
-        _cineClearing = true;
-        _cineShots = _cineBuildShots();
-        _cineClearIndex = 0;
-        _cineClearT = 0;
-      }
     }
   }
 
   // Démarre la cinématique de reprise (prépa des tours). rowCount = nb de tours.
-  void _startCine(int rowCount) {
+  void _startCine() {
+    // Flammes par ligne (ordre allRows = routines puis activités-temps).
+    _cineRowFlames = [
+      for (final r in _domTopRoutines())
+        logic.routineWeekTokens(r.id).where((t) => t.type == 'flame').length,
+      for (final r in _domTopTimeActivities())
+        logic.activityTimeTokens(r.id).where((t) => t.type == 'flame').length,
+    ];
     setState(() {
       _cineActive = true;
       _cinePrepIndex = 0;
       _cinePrepCharge = 0;
-      _cineRowCount = rowCount;
+      _cineRowCount = _cineRowFlames.length;
       _cineClearing = false;
       _cineShots = const [];
       _cineClearIndex = 0;
@@ -2822,8 +2862,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               pill('⚔️ Lancer l\'assaut', _interiorColor, _startInteriorAssault),
             if (!_tdMode && !_cineActive)
               pill('🎬 Préparer les tours', const Color(0xFFFF8A3D),
-                  () => _startCine(
-                      _domTopRoutines().length + _domTopTimeActivities().length)),
+                  _startCine),
             pill('🃏 Deck', _interiorColor.withOpacity(.85), _showAttackDeck),
             pill('🚪 Sortir de la grotte', _interiorColor.withOpacity(.7),
                 _tdMode ? () {} : _exitInterior),
@@ -3730,9 +3769,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                   ),
                 );
               }(),
-              // Mon scorpion 🦂 ACCOMPAGNE l'avatar pendant la phase farm (posté à
-              // côté de lui) → au lancement de l'assaut il combat depuis cette case.
-              if (_inInterior && !_phase1)
+              // Mon scorpion 🦂 ACCOMPAGNE l'avatar (phase farm). Masqué pendant
+              // la cinématique (sinon il suit le ninja partout).
+              if (_inInterior && !_phase1 && !_cineActive)
                 () {
                   final c0 = centerD(_pos.x.toDouble(), _pos.y.toDouble());
                   return Positioned(
