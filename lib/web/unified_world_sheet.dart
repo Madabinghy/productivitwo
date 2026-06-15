@@ -254,6 +254,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // victoire.
   List<({String key, double col, double row})> _cineToileSpawns = const [];
   final Set<String> _cineKilledToiles = {}; // détruites pendant l'attaque
+  // Toiles-château détruites, PERSISTÉES la journée → 💥 affichée même hors combat
+  // (incite à avoir un max de flammes). Non vidé en ré-entrant (clés = routine+sem).
+  final Set<String> _dayKilledToiles = {};
   int _cineSpawnIdx = 0; // toile suivante à faire spawn (cyclique)
   double _cineSpawnT = 0;
   final List<_CineFb> _supportFbs = []; // boules de feu de support en vol
@@ -627,6 +630,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         if (fb.t >= 1.0) {
           fb.dead = true;
           _cineKilledToiles.add(fb.key);
+          if (fb.key.startsWith('toile:')) _dayKilledToiles.add(fb.key);
           _cineToileSpawns.removeWhere((t) => t.key == fb.key);
           _inFlightKeys.remove(fb.key);
         }
@@ -779,6 +783,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _cineClearT += dt / _kCineClearPerTarget;
       while (_cineClearT >= 1.0 && _cineClearIndex < _cineShots.length) {
         _cineClearT -= 1.0;
+        // Toile-château détruite → 💥 PERSISTÉE la journée.
+        final key = _cineShots[_cineClearIndex].key;
+        if (key.startsWith('toile:')) _dayKilledToiles.add(key);
         _cineClearIndex++;
       }
       return;
@@ -4055,13 +4062,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                       if (_cineAttack && n > 0) {
                         return const SizedBox.shrink();
                       }
-                      // Toile nettoyée (prépa) OU détruite en support → vide.
-                      if (n == 0 &&
-                          (cineCleared.contains('toile:${e.r.id}:$i') ||
-                              _cineKilledToiles
-                                  .contains('toile:${e.r.id}:$i'))) {
-                        return const SizedBox.shrink();
-                      }
+                      // Toile détruite (prépa/support OU jours précédents) → 💥
+                      // PERSISTÉE la journée (au lieu de disparaître).
+                      final toileKey = 'toile:${e.r.id}:$i';
+                      final killedToile = n == 0 &&
+                          (cineCleared.contains(toileKey) ||
+                              _cineKilledToiles.contains(toileKey) ||
+                              _dayKilledToiles.contains(toileKey));
                       final c0 = centerD(i.toDouble(), e.row.toDouble());
                       return Positioned(
                         left: c0.dx - slot / 2,
@@ -4086,7 +4093,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                                       color: Colors.white,
                                       fontWeight: FontWeight.w900,
                                       fontSize: slot * 0.34))
-                              : Text('🕸️',
+                              : Text(killedToile ? '💥' : '🕸️',
                                   style: TextStyle(fontSize: slot * 0.4)),
                         ),
                       );
