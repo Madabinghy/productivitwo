@@ -11,7 +11,7 @@ class _Entry {
 
 const _changelog = [
   _Entry('6.14', '15 juin 2026', [
-    (Icons.public, 'Nouvel onglet « Monde » (remplace ORION dans la barre du bas) : tes domaines en jardin/château, tours de défense et heatmap 12 semaines'),
+    (Icons.gps_fixed, 'Nouvel onglet « Combattre » (remplace ORION dans la barre du bas) : tes domaines en jardin/château, tours de défense et heatmap 12 semaines'),
     (Icons.smart_toy_outlined, 'Orion Stratège déplacé dans la barre du haut ; « À valider » retiré (déjà dans Revue de la semaine)'),
     (Icons.gps_fixed, 'Tours de défense : barre de vie (bleu/jaune/rouge) + chargeur de munitions, canon DCA pour les routines hebdo/mensuelles ; tap sur une tour → lance la routine / l\'activité'),
     (Icons.local_fire_department_outlined, 'Carte de combat enrichie : tourelle qui fait feu, munitions, et la semaine glissante de la routine/activité'),

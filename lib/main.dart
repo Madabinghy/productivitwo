@@ -57,6 +57,7 @@ import 'package:productivitwo_v1/widgets/gamification_hub_sheet.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
 import 'package:productivitwo_v1/widgets/orion_screen.dart';
 import 'package:productivitwo_v1/widgets/world_mobile_sheet.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:productivitwo_v1/widgets/focus_view.dart';
 import 'package:productivitwo_v1/widgets/task_schedule.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
@@ -5281,23 +5282,32 @@ class _AppRootState extends State<AppRoot>
         type: BottomNavigationBarType.fixed,
         selectedFontSize: 11,
         unselectedFontSize: 11,
-        items: const [
-          BottomNavigationBarItem(
+        items: [
+          const BottomNavigationBarItem(
               icon: Icon(Icons.dashboard_outlined),
               activeIcon: Icon(Icons.dashboard),
               label: 'Accueil'),
-          BottomNavigationBarItem(
+          const BottomNavigationBarItem(
               icon: Icon(Icons.account_tree_outlined),
               activeIcon: Icon(Icons.account_tree),
               label: 'Projets'),
-          BottomNavigationBarItem(
+          const BottomNavigationBarItem(
               icon: Icon(Icons.play_circle_outline),
               activeIcon: Icon(Icons.play_circle),
               label: 'Maintenant'),
           BottomNavigationBarItem(
-              icon: Icon(Icons.public_outlined),
-              activeIcon: Icon(Icons.public),
-              label: 'Monde'),
+              icon: SvgPicture.asset('assets/icons/gunshot.svg',
+                  width: 24,
+                  height: 24,
+                  colorFilter: ColorFilter.mode(
+                      Theme.of(context).unselectedWidgetColor,
+                      BlendMode.srcIn)),
+              activeIcon: SvgPicture.asset('assets/icons/gunshot.svg',
+                  width: 24,
+                  height: 24,
+                  colorFilter: ColorFilter.mode(
+                      Theme.of(context).colorScheme.primary, BlendMode.srcIn)),
+              label: 'Combattre'),
         ],
       ),
 
