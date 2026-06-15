@@ -233,17 +233,17 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   double _ninjaTX = 0, _ninjaTY = 0; // cible de déplacement courante
   int _ninjaHp = 10;
   final Random _cineRng = Random();
-  static const double _kNinjaSpeed = 3.2; // cases / s
+  static const double _kNinjaSpeed = 1.5; // cases / s
   // Sbires de l'attaque : lâchés par l'araignée, foncent (en sinusoïde) sur le
   // ninja ; le ninja leur tire dessus. Touché → -1 PV ninja.
   final List<_Sbire> _cineSbires = [];
   int _cineSbireSeq = 0;
   int _ninjaShurikens = 0; // deck de shurikens = deck lifetime (munitions)
-  static const double _kSbireSpeed = 1.6; // cases / s (lent → esquivable)
+  static const double _kSbireSpeed = 0.8; // cases / s (lent → esquivable)
   final List<_CineShk> _shurikens = []; // shurikens en vol
   double _shkThrowT = 0; // cadence de lancer
-  static const double _kShkEvery = 0.5; // 2 shurikens / s
-  static const double _kShkSpeed = 3.4; // cases / s (lent → esquivable)
+  static const double _kShkEvery = 0.8; // 2 shurikens / s
+  static const double _kShkSpeed = 2.2; // cases / s (lent → esquivable)
 
   void _pickNinjaTarget() {
     final w = _w;
