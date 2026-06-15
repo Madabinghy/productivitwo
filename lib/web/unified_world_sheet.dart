@@ -213,7 +213,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   int _cinePrepIndex = 0; // tour en cours de charge (index dans allRows)
   double _cinePrepCharge = 0; // 0..1 progression de la tour courante
   int _cineRowCount = 0; // nb de tours à charger (figé au lancement)
-  static const double _kCinePrepPerTurret = 0.55; // secondes / tour
+  static const double _kCinePrepPerTurret = 1.05; // secondes / tour
   String? _interiorCaveId; // domaine de la grotte intérieure (= filtre nuisibles)
   String? _interiorDomainId; // domainId courant (clé de persistance des tours)
   Color _interiorColor = _kBlue;
@@ -1878,9 +1878,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // Rangée de jusqu'à `maxFlames` petites flammes (= jours-flammes de la semaine)
   // au-dessus de la tour pendant la cinématique : les `charge` premières (0..1)
   // sont allumées, le reste est en attente (éteint). Remplace le chargeur.
-  Widget _cineFlameRow(int maxFlames, double charge, double slot) {
+  Widget _cineFlameRow(int maxFlames, int lit, double slot) {
     if (maxFlames <= 0) return SizedBox(height: slot * 0.18);
-    final lit = (charge * maxFlames).round().clamp(0, maxFlames);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -2756,7 +2755,17 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 for (var ei = 0; ei < allRows.length; ei++)
                   () {
                     final e = allRows[ei];
-                    final cineFlame = _cineCharge(ei); // 0..1 charge cinématique
+                    final charge = _cineCharge(ei); // 0..1 charge cinématique
+                    final flameMax =
+                        e.lane.where((t) => t.type == 'flame').length;
+                    // Une flamme « touche » la tour à des paliers réguliers :
+                    // la tour ne change QU'À l'arrivée de chaque flamme.
+                    final arrived = flameMax > 0
+                        ? (charge * flameMax).floor().clamp(0, flameMax)
+                        : 0;
+                    final cineFlame = !_cineActive
+                        ? 0.0
+                        : (flameMax > 0 ? arrived / flameMax : charge);
                     final c0 = centerD(12, e.row.toDouble());
                     return Positioned(
                       left: c0.dx - slot / 2,
@@ -2775,12 +2784,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                             // tour charge → REMPLACENT le chargeur ; la jauge de
                             // vie DISPARAÎT. Hors cinématique : vie + chargeur.
                             if (_cineActive)
-                              _cineFlameRow(
-                                  e.lane
-                                      .where((t) => t.type == 'flame')
-                                      .length,
-                                  cineFlame,
-                                  slot)
+                              _cineFlameRow(flameMax, arrived, slot)
                             else ...[
                               _webLifeBar(e.r.charger / 7, slot),
                               SizedBox(height: slot * 0.04),
@@ -2827,13 +2831,24 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                       final e = allRows[ei];
                       final tok = e.lane[d];
                       if (tok.type == 'empty') return const SizedBox.shrink();
-                      // Cinématique : la flamme d'une ligne déjà chargée OU en
-                      // cours de charge a quitté sa case → ici rien (elle est en
-                      // vol via l'overlay, ou déjà sur la tour).
-                      if (_cineActive &&
-                          tok.type == 'flame' &&
-                          ei <= _cinePrepIndex) {
-                        return const SizedBox.shrink();
+                      // Cinématique : une flamme quitte sa case quand elle vole.
+                      // Ligne déjà chargée → toutes parties ; ligne en cours →
+                      // seules celles déjà parties/en vol disparaissent ; les
+                      // suivantes restent en case jusqu'à leur tour.
+                      if (_cineActive && tok.type == 'flame') {
+                        if (ei < _cinePrepIndex) {
+                          return const SizedBox.shrink();
+                        }
+                        if (ei == _cinePrepIndex) {
+                          final order = [
+                            for (var dd = 0; dd < d; dd++)
+                              if (e.lane[dd].type == 'flame') dd
+                          ].length;
+                          final count =
+                              e.lane.where((t) => t.type == 'flame').length;
+                          final arrived = (_cinePrepCharge * count).floor();
+                          if (order <= arrived) return const SizedBox.shrink();
+                        }
                       }
                       final c0 = centerD(13.0 + d, e.row.toDouble());
                       final spider = tok.type == 'spider';
@@ -2869,34 +2884,38 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         ),
                       );
                     }(),
-                // FLAMMES EN VOL (cinématique) : pour la tour EN COURS de charge,
-                // ses flammes de la semaine quittent leur case (col 13+d) et
-                // rejoignent la tour (col 12) → renforcent la routine.
+                // FLAMME EN VOL (cinématique) : pour la tour EN COURS de charge,
+                // ses flammes partent UNE PAR UNE de leur case (col 13+d) et
+                // rejoignent la tour (col 12). La tour ne change qu'à l'arrivée.
                 if (_cineActive && _cinePrepIndex < allRows.length)
-                  for (var d = 0;
-                      d < allRows[_cinePrepIndex].lane.length;
-                      d++)
-                    () {
-                      final e = allRows[_cinePrepIndex];
-                      if (e.lane[d].type != 'flame') {
-                        return const SizedBox.shrink();
-                      }
-                      final from = centerD(13.0 + d, e.row.toDouble());
-                      final to = centerD(12, e.row.toDouble());
-                      final p =
-                          Curves.easeIn.transform(_cinePrepCharge.clamp(0.0, 1.0));
-                      final pos = Offset.lerp(from, to, p)!;
-                      return Positioned(
-                        left: pos.dx - slot / 2,
-                        top: pos.dy - slot / 2,
-                        width: slot,
-                        height: slot,
-                        child: Center(
-                          child: Text('🔥',
-                              style: TextStyle(fontSize: slot * 0.5)),
-                        ),
-                      );
-                    }(),
+                  () {
+                    final e = allRows[_cinePrepIndex];
+                    final flameDays = [
+                      for (var d = 0; d < e.lane.length; d++)
+                        if (e.lane[d].type == 'flame') d
+                    ];
+                    final count = flameDays.length;
+                    if (count == 0) return const SizedBox.shrink();
+                    final prog = _cinePrepCharge * count;
+                    final arrived = prog.floor();
+                    if (arrived >= count) return const SizedBox.shrink();
+                    final sub = (prog - arrived).clamp(0.0, 1.0);
+                    final flyD = flameDays[arrived];
+                    final from = centerD(13.0 + flyD, e.row.toDouble());
+                    final to = centerD(12, e.row.toDouble());
+                    final pos =
+                        Offset.lerp(from, to, Curves.easeIn.transform(sub))!;
+                    return Positioned(
+                      left: pos.dx - slot / 2,
+                      top: pos.dy - slot / 2,
+                      width: slot,
+                      height: slot,
+                      child: Center(
+                        child:
+                            Text('🔥', style: TextStyle(fontSize: slot * 0.5)),
+                      ),
+                    );
+                  }(),
                 // CHÂTEAU (cols 11→0) : HEATMAP des 12 dernières semaines. Case =
                 // nb de jours tenus (flammes) cette semaine, ou 🕸️ si semaine
                 // perdue (0). Récente près de la tour (col 11), ancienne à gauche.
