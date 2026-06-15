@@ -74,6 +74,21 @@ class _WorldMobileList extends StatefulWidget {
 class _WorldMobileListState extends State<_WorldMobileList> {
   AppLogic get logic => widget.logic;
 
+  // Santé agrégée du domaine (0..1) = jours tenus / jours possibles sur ses
+  // routines + activités-temps (fenêtre 7 jours glissants). Couleur de la tour.
+  double _domainLife(String domainId) {
+    var done = 0, total = 0;
+    for (final a in logic.state.activeActivities) {
+      if (a.domainId != domainId) continue;
+      final tokens =
+          a.isHabit ? logic.routineWeekTokens(a.id) : logic.activityTimeTokens(a.id);
+      if (tokens.isEmpty) continue;
+      done += tokens.where((t) => t.type == 'leaf' || t.type == 'flame').length;
+      total += 7;
+    }
+    return total == 0 ? 0 : done / total;
+  }
+
   // Statut du JOUR d'un domaine : nb de nuisibles en retard / faits aujourd'hui,
   // sur ses routines quotidiennes + activités-temps.
   ({int spiders, int scorpions, int done}) _todayStatus(String domainId) {
@@ -152,11 +167,36 @@ class _WorldMobileListState extends State<_WorldMobileList> {
             border: Border.all(color: color.withOpacity(.45)),
           ),
           child: Row(children: [
-            Container(
-              width: 14,
-              height: 14,
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-            ),
+            // Tour du domaine + son état (barre de vie agrégée) à la place du point.
+            () {
+              final life = _domainLife(d.id);
+              return SizedBox(
+                width: 30,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SvgPicture.asset('assets/icons/turret.svg',
+                        width: 26,
+                        height: 26,
+                        colorFilter: ColorFilter.mode(color, BlendMode.srcIn)),
+                    const SizedBox(height: 3),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(2),
+                      child: Container(
+                        width: 26,
+                        height: 4,
+                        color: _lifeColor(life).withOpacity(.2),
+                        alignment: Alignment.centerLeft,
+                        child: FractionallySizedBox(
+                          widthFactor: life.clamp(0.0, 1.0),
+                          child: Container(color: _lifeColor(life)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }(),
             const SizedBox(width: 14),
             Expanded(
               child: Text(d.name,
