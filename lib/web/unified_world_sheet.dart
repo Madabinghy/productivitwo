@@ -214,6 +214,40 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   double _cinePrepCharge = 0; // 0..1 progression de la tour courante
   int _cineRowCount = 0; // nb de tours à charger (figé au lancement)
   static const double _kCinePrepPerTurret = 1.05; // secondes / tour
+  // Phase NETTOYAGE : les tours tirent et éliminent les obstacles dans l'ordre
+  // de priorité (toiles du château d'abord, puis jardin). Cibles = clés stables.
+  bool _cineClearing = false;
+  List<String> _cineTargetKeys = const []; // 'toile:<id>:<i>' | 'nuis:<id>:<d>'
+  int _cineClearIndex = 0; // cible en cours
+  double _cineClearT = 0; // 0..1 vol du projectile vers la cible courante
+  static const double _kCineClearPerTarget = 0.13; // secondes / cible
+
+  // Construit les cibles de nettoyage dans l'ordre de PRIORITÉ : d'abord TOUTES
+  // les toiles du château (🕸️ = semaines à 0), puis tous les nuisibles du jardin.
+  List<String> _cineBuildTargetKeys() {
+    final rows = [
+      for (final r in _domTopRoutines()) (id: r.id, kind: 'spider'),
+      for (final r in _domTopTimeActivities()) (id: r.id, kind: 'scorpion'),
+    ];
+    final keys = <String>[];
+    for (final r in rows) {
+      final heat = r.kind == 'spider'
+          ? logic.routineWeeklyHeatmap(r.id)
+          : logic.activityTimeWeeklyHeatmap(r.id);
+      for (var i = 0; i < heat.length; i++) {
+        if (heat[i] == 0) keys.add('toile:${r.id}:$i');
+      }
+    }
+    for (final r in rows) {
+      final lane = r.kind == 'spider'
+          ? logic.routineWeekTokens(r.id)
+          : logic.activityTimeTokens(r.id);
+      for (var d = 0; d < lane.length; d++) {
+        if (lane[d].type == 'spider') keys.add('nuis:${r.id}:$d');
+      }
+    }
+    return keys;
+  }
   String? _interiorCaveId; // domaine de la grotte intérieure (= filtre nuisibles)
   String? _interiorDomainId; // domainId courant (clé de persistance des tours)
   Color _interiorColor = _kBlue;
@@ -281,13 +315,32 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // courante, puis passe à la suivante. Quand toutes sont chargées → la prépa
   // est finie (slice suivant : nettoyage du terrain).
   void _simulateCine(double dt) {
+    // PHASE NETTOYAGE (après la prépa) : les tours tirent sur les cibles.
+    if (_cineClearing) {
+      if (_cineClearIndex >= _cineTargetKeys.length) {
+        _cineClearing = false;
+        _cineActive = false; // cinématique terminée (provisoire)
+        return;
+      }
+      _cineClearT += dt / _kCineClearPerTarget;
+      while (_cineClearT >= 1.0 && _cineClearIndex < _cineTargetKeys.length) {
+        _cineClearT -= 1.0;
+        _cineClearIndex++;
+      }
+      return;
+    }
+    // PHASE PRÉPARATION : charge séquentielle des tours.
     _cinePrepCharge += dt / _kCinePrepPerTurret;
     if (_cinePrepCharge >= 1.0) {
       _cinePrepCharge = 0;
       _cinePrepIndex++;
       if (_cinePrepIndex >= _cineRowCount) {
         _cinePrepIndex = _cineRowCount; // toutes chargées
-        _cineActive = false; // fin de la préparation (provisoire)
+        // → passe au NETTOYAGE.
+        _cineClearing = true;
+        _cineTargetKeys = _cineBuildTargetKeys();
+        _cineClearIndex = 0;
+        _cineClearT = 0;
       }
     }
   }
@@ -299,6 +352,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _cinePrepIndex = 0;
       _cinePrepCharge = 0;
       _cineRowCount = rowCount;
+      _cineClearing = false;
+      _cineTargetKeys = const [];
+      _cineClearIndex = 0;
+      _cineClearT = 0;
     });
   }
 
@@ -2701,6 +2758,14 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             heat: logic.activityTimeWeeklyHeatmap(topTime[j].id)
           ),
       ];
+      // Cibles de nettoyage déjà éliminées (clés) + clé de la cible courante.
+      final cineCleared = _cineClearing
+          ? _cineTargetKeys.take(_cineClearIndex).toSet()
+          : const <String>{};
+      final cineCurTarget = _cineClearing &&
+              _cineClearIndex < _cineTargetKeys.length
+          ? _cineTargetKeys[_cineClearIndex]
+          : null;
       final grid = Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -2831,6 +2896,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                       final e = allRows[ei];
                       final tok = e.lane[d];
                       if (tok.type == 'empty') return const SizedBox.shrink();
+                      // Nuisible du jardin déjà nettoyé par une tour → vide.
+                      if (tok.type == 'spider' &&
+                          cineCleared.contains('nuis:${e.r.id}:$d')) {
+                        return const SizedBox.shrink();
+                      }
                       // Cinématique : une flamme quitte sa case quand elle vole.
                       // Ligne déjà chargée → toutes parties ; ligne en cours →
                       // seules celles déjà parties/en vol disparaissent ; les
@@ -2921,11 +2991,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 // perdue (0). Récente près de la tour (col 11), ancienne à gauche.
                 // MASQUÉE quand l'avatar entre dans le château (col ≤ 12) → on
                 // voit alors le contenu/combat (araignée, etc.).
-                if (_pos.x > 12)
+                if (_pos.x > 12 || _cineActive)
                   for (final e in allRows)
                     for (var i = 0; i < e.heat.length; i++)
                       () {
                       final n = e.heat[i];
+                      // Toile (🕸️ = semaine à 0) déjà nettoyée par une tour → vide.
+                      if (n == 0 &&
+                          cineCleared.contains('toile:${e.r.id}:$i')) {
+                        return const SizedBox.shrink();
+                      }
                       final c0 = centerD(i.toDouble(), e.row.toDouble());
                       return Positioned(
                         left: c0.dx - slot / 2,
@@ -2955,6 +3030,39 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         ),
                       );
                     }(),
+                // PROJECTILE de nettoyage : la tour tire une flamme vers la cible
+                // courante (toile du château ou nuisible du jardin) puis elle
+                // disparaît à l'impact.
+                if (cineCurTarget != null)
+                  () {
+                    final parts = cineCurTarget.split(':');
+                    final kind = parts[0]; // 'toile' | 'nuis'
+                    final id = parts[1];
+                    final n = int.tryParse(parts[2]) ?? 0;
+                    int? row;
+                    for (final e in allRows) {
+                      if (e.r.id == id) {
+                        row = e.row;
+                        break;
+                      }
+                    }
+                    if (row == null) return const SizedBox.shrink();
+                    final targetCol = kind == 'toile' ? n.toDouble() : 13.0 + n;
+                    final from = centerD(12, row.toDouble());
+                    final to = centerD(targetCol, row.toDouble());
+                    final pos = Offset.lerp(from, to,
+                        Curves.easeOut.transform(_cineClearT.clamp(0.0, 1.0)))!;
+                    return Positioned(
+                      left: pos.dx - slot / 2,
+                      top: pos.dy - slot / 2,
+                      width: slot,
+                      height: slot,
+                      child: Center(
+                        child:
+                            Text('🔥', style: TextStyle(fontSize: slot * 0.42)),
+                      ),
+                    );
+                  }(),
               ],
               // ── Couche TD : tours, sbires, flèches, PV porte ────────────────
               // Halo de portée d'un arc ACTIF (avatar sur une de ses cases blanches).
