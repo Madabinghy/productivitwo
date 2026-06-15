@@ -953,14 +953,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         if (logic.activityTimeTokens(a.id).isNotEmpty) nt++;
       }
     }
-    final calRows = 2 + nr + 1 + nt + 2;
+    // Grille CENTRÉE sur midY (= rows~/2 = ligne de spawn château/araignée/avatar).
+    // Routines AU-DESSUS de midY, activités EN DESSOUS → la ligne vide du milieu
+    // (midY) porte naturellement le château/l'araignée/l'avatar.
+    final m = nr > nt ? nr : nt;
+    final calRows = 2 * m + 3;
     // Backdrop intérieur MIROIR (même base que la map principale : château à
     // gauche). Le calendrier en overlay garde ses coords (déjà repère inversé).
     final interior = mirrorWorldX(generateUnifiedWorld(
         (_t?.seed ?? 1) ^ caveId.hashCode,
         caveIds: const ['coeur'],
         cols: 20, // château heatmap 12 sem (0→11) + tour (12) + 7 jours (13→19)
-        rows: calRows < 15 ? 15 : calRows));
+        rows: calRows < 9 ? 9 : calRows));
     setState(() {
       _savedW = w;
       _savedPos = _pos;
@@ -2602,13 +2606,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       final timeLanes = [for (final r in topTime) logic.activityTimeTokens(r.id)];
       final timeFills =
           [for (final r in topTime) logic.activityTimeChateauFill(r.id)];
-      // Toutes les lignes : routines à partir de la row 2, puis les activités-temps
-      // juste après (1 ligne d'écart) — placement DYNAMIQUE pour tout afficher.
-      final timeRow0 = 2 + topRoutines.length + 1;
+      // Calendrier CENTRÉ sur midY (ligne de spawn château/araignée/avatar) :
+      // routines au-dessus (finissent à midY-1), activités en dessous (à partir
+      // de midY+1). La ligne midY reste vide = la ligne de combat.
+      final mid = w.rows ~/ 2;
+      final routineRow0 = mid - topRoutines.length; // 1ère routine
+      final timeRow0 = mid + 1;
       final allRows = [
         for (var i = 0; i < topRoutines.length; i++)
           (
-            row: 2 + i,
+            row: routineRow0 + i,
             lane: lanes[i],
             fill: fills[i],
             r: topRoutines[i],
@@ -2655,10 +2662,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               // ── CALENDRIER de domaine : 1 ligne = 1 routine, 7 colonnes = jours,
               //    tour collée au château (gauche), nuisibles = jours manqués. ──
               if (_inInterior) ...[
-                // Labels des jours (L M M J V S D) — uniquement en haut (row 1).
+                // Labels des jours (L M M J V S D) — juste au-dessus des routines.
                 for (var d = 0; d < 7; d++)
                   () {
-                    final c0 = centerD(13.0 + d, 1);
+                    final c0 = centerD(13.0 + d, (routineRow0 - 1).toDouble());
                     return Positioned(
                       left: c0.dx - slot / 2,
                       top: c0.dy - slot / 2,
