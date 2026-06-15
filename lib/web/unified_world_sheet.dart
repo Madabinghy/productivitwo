@@ -456,6 +456,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   }
   String? _interiorCaveId; // domaine de la grotte intérieure (= filtre nuisibles)
   String? _interiorDomainId; // domainId courant (clé de persistance des tours)
+  // MODE TEMPS RÉEL (S1) : cases FORCÉES praticables dans l'intérieur (col 11 à
+  // gauche des tours + col 12 + couloir vertical + porte de sortie) pour garantir
+  // que l'avatar atteint toujours sa cible (cf. « cases accessibles »).
+  final Set<String> _interiorWalk = {};
+  Point<int>? _exitDoor; // porte de sortie intérieur → map principale
   Color _interiorColor = _kBlue;
   int _reconquestDeck = 0; // masse gagnée en battant les nuisibles du domaine
   // La porte x9 = TOILES 🕸️ : tombent PENDANT le combat d'assaut (= _gateHp ≤ 0),
@@ -1516,6 +1521,32 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _domTurrets.clear();
       final dom = cave?.domainId;
       _interiorDomainId = dom;
+      // ACCESSIBILITÉ (S1) : force praticables la case à gauche de chaque tour
+      // (col 11), la tour (col 12), un couloir vertical col 11 qui les relie, et
+      // pose une PORTE DE SORTIE en haut du couloir. La ligne médiane (sol) relie
+      // le couloir au spawn de l'avatar → BFS toujours résoluble.
+      _interiorWalk.clear();
+      _exitDoor = null;
+      {
+        final midI = interior.rows ~/ 2;
+        final nRout = _domTopRoutines().length;
+        final nTime = _domTopTimeActivities().length;
+        final trows = <int>[
+          for (var i = 0; i < nRout; i++) midI - nRout + i,
+          for (var j = 0; j < nTime; j++) midI + 1 + j,
+        ];
+        if (trows.isNotEmpty) {
+          final lo = (trows.reduce(min) - 1).clamp(0, interior.rows - 1);
+          final hi = trows.reduce(max).clamp(0, interior.rows - 1);
+          for (var y = lo; y <= hi; y++) _interiorWalk.add('11_$y');
+          _interiorWalk.add('11_$midI'); // jonction avec la ligne médiane (spawn)
+          for (final y in trows) {
+            _interiorWalk.add('11_$y');
+            _interiorWalk.add('12_$y');
+          }
+          _exitDoor = Point(11, lo); // haut du couloir = sortie
+        }
+      }
       if (dom != null) {
         final col = cave != null ? _caveColor(cave) : _kBlue;
         var idx = 0;
@@ -1570,6 +1601,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         ..addAll(_savedFarmPests ?? const {});
       _inInterior = false;
       _interiorCaveId = null;
+      _interiorWalk.clear();
+      _exitDoor = null;
       _savedW = null;
       _savedPos = null;
       _savedRevealed = null;
@@ -1839,6 +1872,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     if (w == null) return false;
     return w.walkable(x, y) ||
         _isBowWalkable(x, y) ||
+        (_inInterior && _interiorWalk.contains('${x}_$y')) ||
         (_inInterior && _webBroken && w.isGate(x, y));
   }
 
@@ -2548,9 +2582,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     final farmPest = _farmPests['${x}_$y'];
     final spider = _inInterior ? null : _spiderPos();
     final isSpider = spider != null && spider.x == x && spider.y == y;
-    // Re-tap de la case courante : araignée > ennemi backlog > grotte.
+    // Re-tap de la case courante : porte de sortie > araignée > backlog > grotte.
     if (x == p.x && y == p.y) {
-      if (isSpider) {
+      if (_inInterior && _exitDoor != null && _exitDoor!.x == x && _exitDoor!.y == y) {
+        _exitInterior();
+      } else if (isSpider) {
         await _intercept();
       } else if (farmPest != null) {
         await _backlogCombat('${x}_$y', farmPest.type, farmPest.id);
@@ -2580,7 +2616,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     // Arrivé sur la case visée → engage : araignée (interception) > ennemi backlog
     // (combat = faire le travail) > grotte (défendre / reprendre).
     if (_pos.x == x && _pos.y == y) {
-      if (isSpider) {
+      if (_inInterior && _exitDoor != null && _exitDoor!.x == x && _exitDoor!.y == y) {
+        _exitInterior();
+      } else if (isSpider) {
         await _intercept();
       } else if (farmPest != null) {
         await _backlogCombat('${x}_$y', farmPest.type, farmPest.id);
@@ -4281,6 +4319,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     // (Le spawner n'est plus dessiné case par case : l'envahisseur est rendu en
     // overlay à sa position pendant la Phase 1.)
 
+    // ACCESSIBILITÉ (S1) : couloir d'accès forcé (cases murs rendues praticables)
+    // teinté discrètement + PORTE DE SORTIE en haut du couloir.
+    if (_inInterior && _interiorWalk.contains(id) && kind == UwTile.wall) {
+      bg = _interiorColor.withOpacity(.10);
+      border = _interiorColor.withOpacity(.30);
+    }
+    if (_inInterior && _exitDoor != null && _exitDoor!.x == x && _exitDoor!.y == y) {
+      bg = _kFarm.withOpacity(.30);
+      border = _kFarm.withOpacity(.9);
+      child = Text('🚪', style: TextStyle(fontSize: inner * 0.5));
+    }
+
     // Grotte (overlay depuis le doc territoire).
     final caveId = w.caveIdAt(x, y);
     if (caveId != null) {
@@ -4430,9 +4480,18 @@ class _CineFb {
   double yAt(double u) => fy + (ty - fy) * u - arc * sin(pi * u);
   double get x => xAt(t);
   double get y => yAt(t);
-  // Angle de la tangente (direction du vol) pour orienter l'icône.
-  double get angle =>
-      atan2((ty - fy) - arc * pi * cos(pi * t), tx - fx);
+  // Orientation : en MONTÉE (t<0.5) la boule vise le SOMMET de la trajectoire ;
+  // en DESCENTE (t≥0.5) elle se réoriente vers la CIBLE. (Tête en avant, queue
+  // derrière via la traînée.)
+  double get angle {
+    final ax = t < 0.5 ? xAt(0.5) : tx;
+    final ay = t < 0.5 ? yAt(0.5) : ty;
+    final ddx = ax - x, ddy = ay - y;
+    if (ddx.abs() < 1e-4 && ddy.abs() < 1e-4) {
+      return atan2(ty - y, tx - x); // au sommet : bascule vers la cible
+    }
+    return atan2(ddy, ddx);
+  }
 }
 
 class _Sbire {
