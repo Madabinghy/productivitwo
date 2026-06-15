@@ -259,6 +259,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   static const double _kShkEvery = 0.5; // 2 shurikens / s
   static const double _kShkSpeedBase = 1.1; // vitesse initiale (esquivable)
   static const double _kShkAccel = 0.12; // +cases/s par s (finit par gagner)
+  static const double _kShkSpeedMax = 3.5; // plafond (sinon invisible + tunneling)
+  static const double _kNinjaRange = 4.5; // portée de tir (sinon gaspille le deck)
 
   void _pickNinjaTarget() {
     final w = _w;
@@ -573,13 +575,15 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             near = s;
           }
         }
-        if (near != null) {
+        // Ne tire QUE si le sbire le plus proche est À PORTÉE (sinon gaspille).
+        if (near != null && nd <= _kNinjaRange * _kNinjaRange) {
           final ddx = near.x - _ninjaX, ddy = near.y - _ninjaY;
           final dd = sqrt(ddx * ddx + ddy * ddy);
           if (dd > 0.01) {
             // Vitesse qui AUGMENTE avec le temps → finit par toucher (le ninja
             // tire 2/s vs 1/s de spawn) : pas de boucle infinie.
-            final shkSpeed = _kShkSpeedBase + _attackElapsed * _kShkAccel;
+            final shkSpeed = (_kShkSpeedBase + _attackElapsed * _kShkAccel)
+                .clamp(0.0, _kShkSpeedMax);
             _shurikens.add(_CineShk(_ninjaX, _ninjaY,
                 ddx / dd * shkSpeed, ddy / dd * shkSpeed));
             _ninjaShurikens--;
@@ -3505,7 +3509,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                       left: c0.dx - slot / 2,
                       top: c0.dy - slot * 0.7,
                       width: slot,
-                      height: slot * 1.4,
+                      height: slot * 1.8,
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -3529,6 +3533,28 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                           ),
                           SizedBox(height: slot * 0.04),
                           Text(avatar, style: TextStyle(fontSize: slot * 0.6)),
+                          SizedBox(height: slot * 0.02),
+                          // Compteur de shurikens (deck lifetime).
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SvgPicture.asset('assets/icons/shuriken.svg',
+                                  width: slot * 0.18,
+                                  height: slot * 0.18,
+                                  colorFilter: const ColorFilter.mode(
+                                      Colors.white70, BlendMode.srcIn)),
+                              SizedBox(width: slot * 0.03),
+                              Text('$_ninjaShurikens',
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: slot * 0.22,
+                                      shadows: const [
+                                        Shadow(
+                                            color: Colors.black, blurRadius: 2)
+                                      ])),
+                            ],
+                          ),
                         ],
                       ),
                     );
