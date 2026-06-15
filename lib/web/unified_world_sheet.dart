@@ -240,11 +240,19 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   final List<_Sbire> _cineSbires = [];
   int _cineSbireSeq = 0;
   int _ninjaShurikens = 0; // deck de shurikens = deck lifetime (munitions)
-  List<({double col, double row})> _cineToileSpawns = const []; // toiles survivantes
+  // Toiles SURVIVANTES (avec clé + position) : sources de spawn ET cibles que
+  // les tours continuent de détruire en SUPPORT. Quand toutes sont détruites →
+  // victoire.
+  List<({String key, double col, double row})> _cineToileSpawns = const [];
+  final Set<String> _cineKilledToiles = {}; // détruites pendant l'attaque
   int _cineSpawnIdx = 0; // toile suivante à faire spawn (cyclique)
   double _cineSpawnT = 0;
+  double _supportT = 0; // cadence de destruction des toiles par les tours
+  final List<_CineFb> _supportFbs = []; // boules de feu de support en vol
   static const double _kSbireSpawnEvery = 1.0; // 1 sbire / s (cyclique)
   static const double _kSbireSpeed = 0.4; // cases / s (lent → esquivable)
+  static const double _kSupportEvery = 1.4; // s entre 2 toiles détruites (régén)
+  static const double _kSupportFbSpeed = 7.0; // vitesse boule de feu de support
   final List<_CineShk> _shurikens = []; // shurikens en vol
   double _shkThrowT = 0; // cadence de lancer
   double _attackElapsed = 0; // temps écoulé → accélère les shurikens
@@ -305,14 +313,17 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _attackElapsed = 0;
     _cineSpawnT = 0;
     _cineSpawnIdx = 0;
+    _supportT = 0;
+    _supportFbs.clear();
+    _cineKilledToiles.clear();
     _cineSbires.clear();
     _cineSbireSeq = 0;
-    // Sources de spawn = toiles SURVIVANTES (non nettoyées). Elles font spawn un
-    // sbire chacune leur tour (1/s, cyclique) — pas tout d'un coup.
+    // Toiles SURVIVANTES (non nettoyées) : sources de spawn ET cibles que les
+    // tours continuent de détruire en support.
     final shot = _cineShots.map((s) => s.key).toSet();
     _cineToileSpawns = [
       for (final t in _cineAllToiles())
-        if (!shot.contains(t.key)) (col: t.col, row: t.row)
+        if (!shot.contains(t.key)) (key: t.key, col: t.col, row: t.row)
     ];
     _pickNinjaTarget();
   }
@@ -481,6 +492,43 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           _cineSpawnIdx++;
           _cineSbires.add(_Sbire(_cineSbireSeq++, t.col, t.row, 1));
         }
+      }
+      // SUPPORT des tours : régulièrement, une tour tire une boule de feu sur une
+      // toile restante (la plus proche de sa tour, col 12). À l'impact → détruite.
+      if (_cineToileSpawns.isNotEmpty) {
+        _supportT += dt;
+        if (_supportT >= _kSupportEvery) {
+          _supportT -= _kSupportEvery;
+          // Toile la plus proche de sa tour (col la + haute = la + proche de 12).
+          var bi = 0;
+          for (var i = 1; i < _cineToileSpawns.length; i++) {
+            if (_cineToileSpawns[i].col > _cineToileSpawns[bi].col) bi = i;
+          }
+          final t = _cineToileSpawns[bi];
+          final dxx = t.col - 12, dyy = 0.0;
+          final dd = sqrt(dxx * dxx + dyy * dyy);
+          final ux = dd > 0.01 ? dxx / dd : -1.0;
+          _supportFbs.add(_CineFb(12, t.row, ux * _kSupportFbSpeed, 0,
+              t.col, t.row, t.key));
+        }
+      }
+      // Avance les boules de feu de support ; à l'arrivée, détruit la toile.
+      for (final fb in _supportFbs) {
+        fb.x += fb.vx * dt;
+        fb.y += fb.vy * dt;
+        if ((fb.x - fb.tx).abs() < 0.4) {
+          fb.dead = true;
+          _cineKilledToiles.add(fb.key);
+          _cineToileSpawns.removeWhere((t) => t.key == fb.key);
+        }
+      }
+      _supportFbs.removeWhere((fb) => fb.dead);
+      // VICTOIRE : toutes les toiles détruites.
+      if (_cineToileSpawns.isEmpty && _supportFbs.isEmpty) {
+        _cineAttack = false;
+        _cineActive = false;
+        _toast('🏰 Château reconquis — toutes les toiles détruites !', _kBlue);
+        return;
       }
       // Ninja : déplacement ALÉATOIRE perpétuel.
       final dx = _ninjaTX - _ninjaX, dy = _ninjaTY - _ninjaY;
@@ -3336,9 +3384,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                       if (_cineAttack && n > 0) {
                         return const SizedBox.shrink();
                       }
-                      // Toile déjà nettoyée par une tour → vide.
+                      // Toile nettoyée (prépa) OU détruite en support → vide.
                       if (n == 0 &&
-                          cineCleared.contains('toile:${e.r.id}:$i')) {
+                          (cineCleared.contains('toile:${e.r.id}:$i') ||
+                              _cineKilledToiles
+                                  .contains('toile:${e.r.id}:$i'))) {
                         return const SizedBox.shrink();
                       }
                       final c0 = centerD(i.toDouble(), e.row.toDouble());
@@ -3405,6 +3455,25 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         child: Center(
                           child: Text('🕷️',
                               style: TextStyle(fontSize: slot * 0.42)),
+                        ),
+                      );
+                    }(),
+                // BOULES DE FEU de support (tours → toiles restantes).
+                if (_cineAttack)
+                  for (final fb in _supportFbs)
+                    () {
+                      final c0 = centerD(fb.x, fb.y);
+                      return Positioned(
+                        left: c0.dx - slot / 2,
+                        top: c0.dy - slot / 2,
+                        width: slot,
+                        height: slot,
+                        child: Center(
+                          child: SvgPicture.asset('assets/icons/fireball.svg',
+                              width: slot * 0.4,
+                              height: slot * 0.4,
+                              colorFilter: const ColorFilter.mode(
+                                  Color(0xFFFF8A3D), BlendMode.srcIn)),
                         ),
                       );
                     }(),
@@ -4174,8 +4243,19 @@ class _CineShk {
   _CineShk(this.x, this.y, this.vx, this.vy);
 }
 
+// Boule de feu de SUPPORT : tirée par une tour vers une toile ; à l'impact, la
+// toile (clé) est détruite.
+class _CineFb {
+  double x, y;
+  final double vx, vy, tx, ty;
+  final String key;
+  bool dead = false;
+  _CineFb(this.x, this.y, this.vx, this.vy, this.tx, this.ty, this.key);
+}
+
 class _Sbire {
   final int id;
+  String? src; // toile d'origine (cinématique) : tué → la toile est détruite
   double x, y, hp;
   final double maxHp;
   bool atGate = false;
