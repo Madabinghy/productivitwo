@@ -233,6 +233,14 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   double _ninjaX = 0, _ninjaY = 0; // position lisse du ninja
   double _ninjaTX = 0, _ninjaTY = 0; // cible de déplacement courante
   int _ninjaHp = 10;
+  double _bossAttackT = 0; // s écoulées → l'araignée frappe le ninja chaque minute
+  // ARC : quand activé, le ninja s'arrête 5 s et tire 3 flèches/s (gratuit).
+  bool _ninjaBow = false;
+  double _bowDur = 0;
+  double _bowArrowT = 0;
+  static const double _kBowDuration = 5.0; // s d'immobilité / tir à l'arc
+  static const double _kBowEvery = 1 / 3; // 3 flèches / s
+  static const double _kArrowSpeed = 4.0; // flèches rapides
   final Random _cineRng = Random();
   static const double _kNinjaSpeed = 0.75; // cases / s
   List<int> _cineRowFlames = const []; // nb de flammes par ligne (ordre allRows)
@@ -319,6 +327,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   void _startAttack() {
     _cineAttack = true;
     _ninjaHp = 10;
+    _bossAttackT = 0;
     _ninjaShurikens = logic.lifetimeBattleMasse; // deck lifetime
     _ninjaX = _pos.x.toDouble();
     _ninjaY = _pos.y.toDouble();
@@ -603,8 +612,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 _inFlightKeys.add(t.key);
                 // Arc d'autant plus haut que la cible est loin (lobe de mortier).
                 final arc = ((12 - t.col).abs() * 0.4).clamp(1.2, 5.0).toDouble();
-                _supportFbs.add(_CineFb(_kSupportFbDur, 12, tu.row.toDouble(),
-                    t.col, t.row, arc, t.key));
+                // Départ au BOUT du canon (décalé vers la cible), pas au centre.
+                final sx = 12 + 0.5 * (t.col > 12 ? 1 : -1);
+                _supportFbs.add(_CineFb(_kSupportFbDur, sx, tu.row - 0.25, t.col,
+                    t.row, arc, t.key));
               }
             }
           }
@@ -628,15 +639,45 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         _toast('🏰 Château reconquis — toutes les toiles détruites !', _kBlue);
         return;
       }
-      // Ninja : déplacement ALÉATOIRE perpétuel.
-      final dx = _ninjaTX - _ninjaX, dy = _ninjaTY - _ninjaY;
-      final dist = sqrt(dx * dx + dy * dy);
-      if (dist < 0.35) {
-        _pickNinjaTarget();
+      // ARC actif : le ninja S'ARRÊTE 5 s et tire 3 flèches/s (sans consommer ses
+      // shurikens), puis reprend sa route.
+      if (_ninjaBow) {
+        _bowDur += dt;
+        _bowArrowT += dt;
+        if (_bowArrowT >= _kBowEvery && _cineSbires.isNotEmpty) {
+          _bowArrowT -= _kBowEvery;
+          _Sbire? near;
+          var nd = double.infinity;
+          for (final s in _cineSbires) {
+            final d = (s.x - _ninjaX) * (s.x - _ninjaX) +
+                (s.y - _ninjaY) * (s.y - _ninjaY);
+            if (d < nd) {
+              nd = d;
+              near = s;
+            }
+          }
+          if (near != null) {
+            final ddx = near.x - _ninjaX, ddy = near.y - _ninjaY;
+            final dd = sqrt(ddx * ddx + ddy * ddy);
+            if (dd > 0.01) {
+              _shurikens.add(_CineShk(_ninjaX, _ninjaY, ddx / dd * _kArrowSpeed,
+                  ddy / dd * _kArrowSpeed,
+                  arrow: true)); // gratuit : pas de _ninjaShurikens--
+            }
+          }
+        }
+        if (_bowDur >= _kBowDuration) _ninjaBow = false;
       } else {
-        final step = _kNinjaSpeed * dt;
-        _ninjaX += dx / dist * step;
-        _ninjaY += dy / dist * step;
+        // Ninja : déplacement ALÉATOIRE perpétuel.
+        final dx = _ninjaTX - _ninjaX, dy = _ninjaTY - _ninjaY;
+        final dist = sqrt(dx * dx + dy * dy);
+        if (dist < 0.35) {
+          _pickNinjaTarget();
+        } else {
+          final step = _kNinjaSpeed * dt;
+          _ninjaX += dx / dist * step;
+          _ninjaY += dy / dist * step;
+        }
       }
       _pos = Point(_ninjaX.round().clamp(0, cols - 1),
           _ninjaY.round().clamp(0, rows - 1));
@@ -658,7 +699,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       // Ninja LANCE un shuriken (2/s) sur le sbire le plus proche (ligne droite ;
       // le sbire peut l'esquiver). Consomme une munition du deck.
       _shkThrowT += dt;
-      if (_shkThrowT >= _kShkEvery &&
+      if (!_ninjaBow &&
+          _shkThrowT >= _kShkEvery &&
           _ninjaShurikens > 0 &&
           _cineSbires.isNotEmpty) {
         _shkThrowT = 0;
@@ -713,6 +755,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         }
         return false;
       });
+      // L'ARAIGNÉE-BOSS frappe le ninja chaque minute d'assaut → -1 PV.
+      _bossAttackT += dt;
+      if (_bossAttackT >= 60.0) {
+        _bossAttackT -= 60.0;
+        _ninjaHp--;
+        _toast('🕷️ L\'araignée frappe le ninja — -1 PV !', _kEnemy);
+      }
       if (_ninjaHp <= 0) {
         _cineAttack = false;
         _cineActive = false;
@@ -1647,6 +1696,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // joue la réserve d'assaut (= _garrison de l'« envahisseur » = mon scorpion 🦂).
   // Le moteur _simulate est réutilisé tel quel ; seules la résolution finale
   // (grotte prise = je GAGNE) et le visuel (🕷️↔🦂) sont inversés via _inInterior.
+  // Bouton retiré (remplacé par « Lancer l'assaut » = cinématique) ; conservé pour
+  // un éventuel re-câblage.
+  // ignore: unused_element
   void _startInteriorAssault() {
     final w = _w;
     if (w == null || !_inInterior) return;
@@ -2167,8 +2219,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         _liveAim = 1.0;
         final tgt = _liveTarget(_liveRow);
         final arc = ((12 - tgt.dx).abs() * 0.4).clamp(1.2, 5.0).toDouble();
+        // Départ au BOUT du canon (décalé vers la cible = droite), pas au centre.
+        final sx = 12 + 0.5 * (tgt.dx > 12 ? 1 : -1);
         _liveFb = _CineFb(
-            _kLiveFbDur, 12, _liveRow.toDouble(), tgt.dx, tgt.dy, arc, 'live');
+            _kLiveFbDur, sx, _liveRow - 0.25, tgt.dx, tgt.dy, arc, 'live');
       }
     } else {
       _liveFb!.t += dt / _liveFb!.dur;
@@ -3435,11 +3489,21 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             if (!_tdMode && !_simDefense)
               pill('🛡️ Simuler la défense', const Color(0xFF4FA3FF),
                   _startSimDefense),
-            if (!_tdMode)
-              pill('⚔️ Lancer l\'assaut', _interiorColor, _startInteriorAssault),
+            // Rejoue la cinématique complète d'assaut (prépa → nettoyage → attaque).
             if (!_tdMode && !_cineActive)
-              pill('🎬 Préparer les tours', const Color(0xFFFF8A3D),
-                  _startCine),
+              pill('⚔️ Lancer l\'assaut', const Color(0xFFFF8A3D), _startCine),
+            // ARC : pendant l'attaque, le ninja s'arrête 5 s et tire 3 flèches/s.
+            if (_cineAttack)
+              pill(_ninjaBow ? '🏹 Arc en cours…' : '🏹 Tirer à l\'arc', _kGold,
+                  () {
+                if (!_ninjaBow) {
+                  setState(() {
+                    _ninjaBow = true;
+                    _bowDur = 0;
+                    _bowArrowT = 0;
+                  });
+                }
+              }, on: _ninjaBow),
             pill('🃏 Deck', _interiorColor.withOpacity(.85), _showAttackDeck),
             pill('🚪 Sortir de la grotte', _interiorColor.withOpacity(.7),
                 _tdMode ? () {} : _exitInterior),
@@ -4116,28 +4180,35 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                       ),
                     );
                   }(),
-                // SHURIKENS en vol (lancés par le ninja sur les sbires).
+                // SHURIKENS / FLÈCHES en vol (lancés par le ninja sur les sbires).
                 if (_cineAttack)
                   for (final shk in _shurikens)
                     () {
                       final c0 = centerD(shk.x, shk.y);
+                      // Flèche d'arc : dard orienté dans le sens du vol (pas de spin).
+                      final child = shk.arrow
+                          ? Transform.rotate(
+                              angle: atan2(shk.vy, shk.vx),
+                              child: Text('➤',
+                                  style: TextStyle(
+                                      color: _kGold, fontSize: slot * 0.42)),
+                            )
+                          : Transform.rotate(
+                              angle: _gameMs * 0.018, // shuriken : spin continu
+                              child: SvgPicture.asset(
+                                  'assets/icons/shuriken.svg',
+                                  width: slot * 0.34,
+                                  height: slot * 0.34,
+                                  colorFilter: ColorFilter.mode(
+                                      Colors.white.withOpacity(.92),
+                                      BlendMode.srcIn)),
+                            );
                       return Positioned(
                         left: c0.dx - slot / 2,
                         top: c0.dy - slot / 2,
                         width: slot,
                         height: slot,
-                        child: Center(
-                          child: Transform.rotate(
-                            // Tourne sur lui-même en vol (rotation continue).
-                            angle: _gameMs * 0.018,
-                            child: SvgPicture.asset('assets/icons/shuriken.svg',
-                                width: slot * 0.34,
-                                height: slot * 0.34,
-                                colorFilter: ColorFilter.mode(
-                                    Colors.white.withOpacity(.92),
-                                    BlendMode.srcIn)),
-                          ),
-                        ),
+                        child: Center(child: child),
                       );
                     }(),
                 // NINJA (phase attaque) : déplacement perpétuel sur la carte +
@@ -4916,8 +4987,9 @@ const _kArrowHead = Color(0xFF3E2A18); // pointe (plus sombre)
 class _CineShk {
   double x, y;
   final double vx, vy;
+  final bool arrow; // true = flèche d'arc (rendu différent, ne consomme pas le deck)
   bool dead = false;
-  _CineShk(this.x, this.y, this.vx, this.vy);
+  _CineShk(this.x, this.y, this.vx, this.vy, {this.arrow = false});
 }
 
 // Tour en mode support pendant l'attaque : tire 1/10 s (coûte 1 flamme), se
