@@ -187,6 +187,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // Phase 1
   final Random _rng = Random();
   bool _phase1 = false;
+  int _calOffset = 0; // pagination verticale des lignes du calendrier (cachées)
   double _invX = 0.5, _invY = 7; // envahisseur FIXE (placé au hasard au lancement)
   int _garrison = 0; // garnison restante de l'envahisseur (ENNEMI)
   int _enemyDeckPower = 0; // puissance du deck ennemi (affichée sur la grotte prise)
@@ -976,6 +977,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _gateHp = _gateHpMax;
       _w = interior;
       _pos = interior.start; // avatar dans le gazon (entrée gauche)
+      _calOffset = 0; // pagination remise à zéro à chaque domaine
       _revealed.clear();
       _farmPests.clear();
       // Intérieur = plateau calendrier/combat (pas un donjon à explorer) → on
@@ -1821,8 +1823,26 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         active: logic.routine30dActive(a.id)
       ));
     }
-    list.sort((a, b) => b.active.compareTo(a.active)); // les 5 plus actives /30j
-    return list.take(5).toList();
+    list.sort((a, b) => b.active.compareTo(a.active)); // tri par activité /30j
+    return list.skip(_calOffset).take(5).toList();
+  }
+
+  // Décalage max de pagination = ce qui dépasse 5 dans la plus longue des deux
+  // sections (routines / activités-temps) du domaine courant.
+  int _domMaxCalOffset() {
+    final dom = _interiorDomainId;
+    if (dom == null) return 0;
+    var r = 0, t = 0;
+    for (final a in logic.state.activeActivities) {
+      if (a.domainId != dom) continue;
+      if (a.isHabit) {
+        if (logic.routineWeekTokens(a.id).isNotEmpty) r++;
+      } else {
+        if (logic.activityTimeTokens(a.id).isNotEmpty) t++;
+      }
+    }
+    final m = r > t ? r : t;
+    return m > 5 ? m - 5 : 0;
   }
 
   // Les 5 activités-TEMPS (type=time) les plus actives sur 30j du domaine courant.
@@ -1845,7 +1865,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       ));
     }
     list.sort((a, b) => b.active.compareTo(a.active));
-    return list.take(5).toList();
+    return list.skip(_calOffset).take(5).toList();
   }
 
   // BÂTI — recalcule les tourelles dérivées des streaks : pour chaque routine
@@ -2769,6 +2789,59 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         ),
                       );
                     }(),
+                // FLÈCHE HAUT (19,1) : monter les lignes → voir les routines /
+                // activités cachées (au-delà des 5 affichées).
+                if (_calOffset < _domMaxCalOffset())
+                  () {
+                    final c0 = centerD(19, 1);
+                    return Positioned(
+                      left: c0.dx - slot / 2,
+                      top: c0.dy - slot / 2,
+                      width: slot,
+                      height: slot,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => setState(() => _calOffset++),
+                        child: Container(
+                          margin: EdgeInsets.all(slot * 0.12),
+                          decoration: BoxDecoration(
+                            color: _interiorColor.withOpacity(.18),
+                            borderRadius: BorderRadius.circular(slot * 0.2),
+                            border: Border.all(
+                                color: _interiorColor.withOpacity(.5)),
+                          ),
+                          child: Icon(Icons.keyboard_arrow_up,
+                              color: _interiorColor, size: slot * 0.6),
+                        ),
+                      ),
+                    );
+                  }(),
+                // FLÈCHE BAS (19,13) : revenir aux lignes précédentes.
+                if (_calOffset > 0)
+                  () {
+                    final c0 = centerD(19, 13);
+                    return Positioned(
+                      left: c0.dx - slot / 2,
+                      top: c0.dy - slot / 2,
+                      width: slot,
+                      height: slot,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => setState(() => _calOffset--),
+                        child: Container(
+                          margin: EdgeInsets.all(slot * 0.12),
+                          decoration: BoxDecoration(
+                            color: _interiorColor.withOpacity(.18),
+                            borderRadius: BorderRadius.circular(slot * 0.2),
+                            border: Border.all(
+                                color: _interiorColor.withOpacity(.5)),
+                          ),
+                          child: Icon(Icons.keyboard_arrow_down,
+                              color: _interiorColor, size: slot * 0.6),
+                        ),
+                      ),
+                    );
+                  }(),
               ],
               // ── Couche TD : tours, sbires, flèches, PV porte ────────────────
               // Halo de portée d'un arc ACTIF (avatar sur une de ses cases blanches).
