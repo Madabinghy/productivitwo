@@ -261,9 +261,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   static const double _kFlameRegrow = 30.0; // s pour recharger les flammes
   static const double _kBarrelAimDip = 0.7; // amplitude du mouvement de visée
   static const double _kSupportFbDur = 15.0; // s de vol cannon→cible (×5 = poli)
-  // L'icône fireball « pointe » sa tête dense vers le BAS (+y) ; offset = -pi/2
-  // pour aligner cette tête sur la direction du vol.
-  static const double _kFbIconOffset = -pi / 2;
+  static const double _kLiveFbDur = 2.4; // s de vol pour le tir d'arrivée (S3)
+  // L'icône fireball « pointe » sa tête dense vers le BAS (+y) ; -pi/2 aligne
+  // cette tête sur la direction du vol, +pi/6 = +30° horaire (calage demandé).
+  static const double _kFbIconOffset = -pi / 2 + pi / 6;
   final List<_CineShk> _shurikens = []; // shurikens en vol
   double _shkThrowT = 0; // cadence de lancer
   double _attackElapsed = 0; // temps écoulé → accélère les shurikens
@@ -511,7 +512,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _lastSimMs = _gameMs;
     final hadShots = _shots.isNotEmpty;
     _shots.removeWhere((s) => _gameMs - s.startMs > s.durMs);
-    if (_cineActive) {
+    if (_liveFiring) {
+      _simulateLive(dt / 1000.0);
+      if (mounted) setState(() {});
+    } else if (_cineActive) {
       _simulateCine(dt / 1000.0);
       if (mounted) setState(() {});
     } else if (_tdMode) {
@@ -575,7 +579,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             tu.aim += dt / _kTurretAimDur;
             if (tu.aim >= 1.0) {
               tu.aim = -1;
-              tu.cd = _kTurretFireEvery;
+              // Cadence rendue ALÉATOIRE (≈7–13 s) → les canons se désynchronisent.
+              tu.cd = _kTurretFireEvery * (0.7 + _cineRng.nextDouble() * 0.6);
               final avail = [
                 for (final t in _cineToileSpawns)
                   if (!_inFlightKeys.contains(t.key)) t
@@ -1606,6 +1611,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _interiorCaveId = null;
       _interiorWalk.clear();
       _exitDoor = null;
+      // Coupe un éventuel tir d'arrivée en cours.
+      _liveFiring = false;
+      _liveFb = null;
+      _liveDone?.complete();
+      _liveDone = null;
       _savedW = null;
       _savedPos = null;
       _savedRevealed = null;
@@ -1910,12 +1920,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     return path.reversed.toList();
   }
 
-  Future<void> _walkPath(List<Point<int>> path) async {
+  Future<void> _walkPath(List<Point<int>> path, {int stepMs = 150}) async {
     setState(() => _busy = true);
     for (final p in path) {
       if (!mounted) break;
       _step(p);
-      await Future.delayed(const Duration(milliseconds: 150));
+      await Future.delayed(Duration(milliseconds: stepMs));
     }
     if (mounted) setState(() => _busy = false);
   }
@@ -2044,9 +2054,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       final row = _routineTurretRow(routineId);
       if (row != null) {
         final path = _bfsPathAuto(_pos, Point(11, row));
-        if (path.isNotEmpty) await _walkPath(path);
+        if (path.isNotEmpty) await _walkPath(path, stepMs: 230); // un peu plus lent
+        // 4. Cinématique d'arrivée : la tour charge 1 flamme, vise, tire, −1.
+        await _fireArrival(routineId, row);
       }
-      // 4. (S3) cinématique « 1 flamme » : la tour charge, vise, tire, −1. À venir.
     } finally {
       _traveling = false;
     }
@@ -2101,6 +2112,108 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       final id = _travelQueue.removeAt(0);
       await _travelToRoutine(id);
     }
+  }
+
+  // ── CINÉMATIQUE D'ARRIVÉE (S3) : la tour charge 1 flamme, vise, tire, −1 ──
+  bool _liveFiring = false;
+  int _liveRow = 0;
+  String? _liveRoutineId;
+  double _liveAim = 0; // 0..1 : charge + visée
+  _CineFb? _liveFb; // boulet du tir d'arrivée
+  Offset? _liveFlashAt; // case d'impact (flash)
+  int _liveFlashUntilMs = 0;
+  Completer<void>? _liveDone;
+
+  // Cible du tir : une TOILE (semaine non tenue) de la ligne, côté château ; à
+  // défaut une case générique. col < 12 (château = cols 0..11).
+  Offset _liveTarget(int row) {
+    final id = _liveRoutineId;
+    if (id != null) {
+      bool isHabit = true;
+      for (final a in logic.state.activeActivities) {
+        if (a.id == id) {
+          isHabit = a.isHabit;
+          break;
+        }
+      }
+      final heat = isHabit
+          ? logic.routineWeeklyHeatmap(id)
+          : logic.activityTimeWeeklyHeatmap(id);
+      for (var i = heat.length - 1; i >= 0; i--) {
+        if (i < 12 && heat[i] == 0) return Offset(i.toDouble(), row.toDouble());
+      }
+    }
+    return Offset(6, row.toDouble());
+  }
+
+  void _simulateLive(double dt) {
+    if (_liveFb == null) {
+      _liveAim += dt / _kTurretAimDur; // charge + visée
+      if (_liveAim >= 1.0) {
+        _liveAim = 1.0;
+        final tgt = _liveTarget(_liveRow);
+        final arc = ((12 - tgt.dx).abs() * 0.4).clamp(1.2, 5.0).toDouble();
+        _liveFb = _CineFb(
+            _kLiveFbDur, 12, _liveRow.toDouble(), tgt.dx, tgt.dy, arc, 'live');
+      }
+    } else {
+      _liveFb!.t += dt / _liveFb!.dur;
+      if (_liveFb!.t >= 1.0) {
+        _liveFlashAt = Offset(_liveFb!.tx, _liveFb!.ty);
+        _liveFlashUntilMs = _gameMs + 450;
+        _liveFb = null;
+        _liveFiring = false;
+        _liveDone?.complete();
+        _liveDone = null;
+      }
+    }
+  }
+
+  // Joue le tir d'arrivée et attend sa fin (avatar déjà posé en col 11).
+  Future<void> _fireArrival(String routineId, int row) async {
+    if (!mounted) return;
+    _liveRoutineId = routineId;
+    _liveRow = row;
+    _liveAim = 0;
+    _liveFb = null;
+    _liveDone = Completer<void>();
+    setState(() => _liveFiring = true);
+    await _liveDone!.future;
+    if (mounted) _toast('✅ −1 — routine frappée !', _interiorColor);
+  }
+
+  // Copies orientées d'un boulet (tête + traînée) — partagé tir support/arrivée.
+  // `centerD` (closure locale du board) projette une case en pixels.
+  List<Widget> _fbWidgets(
+      _CineFb fb, double slot, Offset Function(double, double) centerD) {
+    final widgets = <Widget>[];
+    for (int i = 6; i >= 0; i--) {
+      final u = i == 0 ? fb.t : fb.t - i * 0.05;
+      if (u <= 0) continue;
+      final ct = centerD(fb.xAt(u), fb.yAt(u));
+      final f = 1 - i / 7.0;
+      final sz = slot * (0.10 + 0.20 * f);
+      final col = i == 0
+          ? const Color(0xFFFF8A3D)
+          : Color.lerp(const Color(0xFFFFE08A), const Color(0xFFFF5A2A), 1 - f)!
+              .withOpacity(0.22 + 0.45 * f);
+      widgets.add(Positioned(
+        left: ct.dx - slot / 2,
+        top: ct.dy - slot / 2,
+        width: slot,
+        height: slot,
+        child: Center(
+          child: Transform.rotate(
+            angle: fb.angleAt(u) + _kFbIconOffset,
+            child: SvgPicture.asset('assets/icons/fireball.svg',
+                width: sz,
+                height: sz,
+                colorFilter: ColorFilter.mode(col, BlendMode.srcIn)),
+          ),
+        ),
+      ));
+    }
+    return widgets;
   }
 
   // Persiste position + brouillard de l'avatar (état perso → doc meta de l'user,
@@ -3799,42 +3912,43 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 // BOULES DE FEU de support (tours → toiles restantes) : tête orientée
                 // dans le sens du vol + traînée de flamme qui s'estompe vers la queue.
                 if (_cineAttack)
-                  for (final fb in _supportFbs)
-                    ...() {
-                      final widgets = <Widget>[];
-                      // Toutes les copies (tête + traînée) sont ORIENTÉES par l'angle
-                      // à LEUR position sur l'arc → orientation cohérente partout.
-                      // i=0 = tête (plus grosse, opaque) ; i>0 = traînée décroissante.
-                      for (int i = 6; i >= 0; i--) {
-                        final u = i == 0 ? fb.t : fb.t - i * 0.05;
-                        if (u <= 0) continue;
-                        final ct = centerD(fb.xAt(u), fb.yAt(u));
-                        final f = 1 - i / 7.0; // 1 (tête) → ~0 (queue)
-                        final sz = slot * (0.10 + 0.20 * f); // tête ≈ 0.30
-                        final col = i == 0
-                            ? const Color(0xFFFF8A3D)
-                            : Color.lerp(const Color(0xFFFFE08A),
-                                    const Color(0xFFFF5A2A), 1 - f)!
-                                .withOpacity(0.22 + 0.45 * f);
-                        widgets.add(Positioned(
-                          left: ct.dx - slot / 2,
-                          top: ct.dy - slot / 2,
-                          width: slot,
-                          height: slot,
-                          child: Center(
-                            child: Transform.rotate(
-                              angle: fb.angleAt(u) + _kFbIconOffset,
-                              child: SvgPicture.asset('assets/icons/fireball.svg',
-                                  width: sz,
-                                  height: sz,
-                                  colorFilter:
-                                      ColorFilter.mode(col, BlendMode.srcIn)),
-                            ),
-                          ),
-                        ));
-                      }
-                      return widgets;
-                    }(),
+                  for (final fb in _supportFbs) ..._fbWidgets(fb, slot, centerD),
+                // Boulet du tir d'ARRIVÉE (S3, hors cinématique d'assaut).
+                if (_liveFb != null) ..._fbWidgets(_liveFb!, slot, centerD),
+                // Charge de la tour pendant la visée (avant le tir d'arrivée).
+                if (_liveFiring && _liveFb == null)
+                  () {
+                    final c0 = centerD(12, _liveRow.toDouble());
+                    return Positioned(
+                      left: c0.dx - slot / 2,
+                      top: c0.dy - slot / 2,
+                      width: slot,
+                      height: slot,
+                      child: Center(
+                        child: Opacity(
+                          opacity: _liveAim.clamp(0.0, 1.0),
+                          child: Text('🔥',
+                              style: TextStyle(
+                                  fontSize: slot * (0.22 + 0.26 * _liveAim))),
+                        ),
+                      ),
+                    );
+                  }(),
+                // Flash d'impact du tir d'arrivée.
+                if (_liveFlashAt != null && _gameMs < _liveFlashUntilMs)
+                  () {
+                    final c0 = centerD(_liveFlashAt!.dx, _liveFlashAt!.dy);
+                    return Positioned(
+                      left: c0.dx - slot / 2,
+                      top: c0.dy - slot / 2,
+                      width: slot,
+                      height: slot,
+                      child: Center(
+                        child: Text('💥',
+                            style: TextStyle(fontSize: slot * 0.6)),
+                      ),
+                    );
+                  }(),
                 // SHURIKENS en vol (lancés par le ninja sur les sbires).
                 if (_cineAttack)
                   for (final shk in _shurikens)
@@ -3846,12 +3960,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         width: slot,
                         height: slot,
                         child: Center(
-                          child: SvgPicture.asset('assets/icons/shuriken.svg',
-                              width: slot * 0.34,
-                              height: slot * 0.34,
-                              colorFilter: ColorFilter.mode(
-                                  Colors.white.withOpacity(.92),
-                                  BlendMode.srcIn)),
+                          child: Transform.rotate(
+                            // Tourne sur lui-même en vol (rotation continue).
+                            angle: _gameMs * 0.018,
+                            child: SvgPicture.asset('assets/icons/shuriken.svg',
+                                width: slot * 0.34,
+                                height: slot * 0.34,
+                                colorFilter: ColorFilter.mode(
+                                    Colors.white.withOpacity(.92),
+                                    BlendMode.srcIn)),
+                          ),
                         ),
                       );
                     }(),
