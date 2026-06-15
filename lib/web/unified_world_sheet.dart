@@ -222,6 +222,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   int _cineClearIndex = 0; // tir en cours
   double _cineClearT = 0; // 0..1 vol du projectile vers la cible courante
   static const double _kCineClearPerTarget = 0.35; // secondes / tir (ralenti)
+  // Visée du canon : on incline la TÊTE (aa-head) autour de la monture. Pivot en
+  // coords du widget (avant le flipX), angle naturel du barillet (~45°). Réglables.
+  static const Alignment _kBarrelPivot = Alignment(-0.32, 0.25);
+  static const double _kBarrelNatural = 0.78; // rad (~45°) = relevé d'origine
 
   // Pré-calcule la séquence de tirs : pour chaque tour (dans l'ordre), elle tire
   // `flammes` projectiles, chacun sur la cible RESTANTE la plus proche — une
@@ -2888,6 +2892,15 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     final cineFlame = !_cineActive
                         ? 0.0
                         : (flameMax > 0 ? arrived / flameMax : charge);
+                    // Visée du barillet : si CETTE tour tire sur une toile du
+                    // château (col < 12), on l'incline vers l'horizontale pour la
+                    // case la plus proche (col 11), naturel (relevé) pour la plus
+                    // lointaine (col 0). Sinon angle naturel (0).
+                    final headAngle = (cineCurShot != null &&
+                            cineCurShot.turretRow == e.row &&
+                            cineCurShot.tx < 12)
+                        ? _kBarrelNatural * (cineCurShot.tx / 11).clamp(0.0, 1.0)
+                        : 0.0;
                     final c0 = centerD(12, e.row.toDouble());
                     return Positioned(
                       left: c0.dx - slot / 2,
@@ -2959,11 +2972,15 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                                           width: slot * 0.5,
                                           height: slot * 0.5,
                                           colorFilter: tint),
-                                      SvgPicture.asset(
-                                          'assets/icons/aa-head.svg',
-                                          width: slot * 0.5,
-                                          height: slot * 0.5,
-                                          colorFilter: tint),
+                                      Transform.rotate(
+                                        angle: headAngle,
+                                        alignment: _kBarrelPivot,
+                                        child: SvgPicture.asset(
+                                            'assets/icons/aa-head.svg',
+                                            width: slot * 0.5,
+                                            height: slot * 0.5,
+                                            colorFilter: tint),
+                                      ),
                                     ]),
                                   );
                                 }(),
