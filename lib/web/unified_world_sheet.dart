@@ -12,6 +12,8 @@ import 'package:productivitwo_v1/unified_world.dart';
 import 'package:productivitwo_v1/expedition.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/widgets/backlog_combat.dart';
+import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
+import 'package:productivitwo_v1/widgets/activity_detail_sheet.dart';
 import 'package:productivitwo_v1/web/invasion_defense_sheet.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/web/assistant_widget.dart' show assistantOverlaySuppressed;
@@ -1728,6 +1730,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     sync.setUnifiedTurrets(list);
   }
 
+  // Tap sur une tour → ouvre le sheet de la routine ou de l'activité. La heatmap
+  // du sheet activité est masquée (le château la montre déjà → redondant).
+  Future<void> _openRowSheet(String id, String kind) async {
+    if (kind == 'spider') {
+      await showRoutineSheet(context,
+          logic: logic, habitId: id, day: DateTime.now());
+    } else {
+      await showActivitySheet(context, logic, id, showHeatmap: false);
+    }
+    if (mounted) setState(() {});
+  }
+
   // Icône de tour selon la fréquence : routine hebdo/mensuelle = canon DCA
   // (anti-aircraft), sinon turret (quotidiennes + activités-temps).
   String _turretIcon(String id, String kind) {
@@ -2639,23 +2653,30 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                       top: c0.dy - slot / 2,
                       width: slot,
                       height: slot,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Vie (jaune, continue) = jours faits (n) → pleine si tiré.
-                          _webLifeBar(e.r.charger / 7, slot),
-                          SizedBox(height: slot * 0.04),
-                          // Chargeur (vert) = jours non faits (7-n) → vide si tout tiré.
-                          _webSegBar(7 - e.r.charger, _kCharge, slot),
-                          SizedBox(height: slot * 0.06),
-                          // Turret (DCA si hebdo/mensuelle) → pointe vers les nuisibles.
-                          SvgPicture.asset(_turretIcon(e.r.id, e.kind),
-                              width: slot * 0.5,
-                              height: slot * 0.5,
-                              colorFilter: ColorFilter.mode(
-                                  e.r.charger == 0 ? _kEnemy : _interiorColor,
-                                  BlendMode.srcIn)),
-                        ],
+                      // Tap (barres + icône) → ouvre le sheet routine / activité.
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => _openRowSheet(e.r.id, e.kind),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Vie (jaune, continue) = jours faits (n) → pleine si tiré.
+                            _webLifeBar(e.r.charger / 7, slot),
+                            SizedBox(height: slot * 0.04),
+                            // Chargeur (vert) = jours non faits (7-n) → vide si tout tiré.
+                            _webSegBar(7 - e.r.charger, _kCharge, slot),
+                            SizedBox(height: slot * 0.06),
+                            // Turret (DCA si hebdo/mensuelle) → pointe vers les nuisibles.
+                            SvgPicture.asset(_turretIcon(e.r.id, e.kind),
+                                width: slot * 0.5,
+                                height: slot * 0.5,
+                                colorFilter: ColorFilter.mode(
+                                    e.r.charger == 0
+                                        ? _kEnemy
+                                        : _interiorColor,
+                                    BlendMode.srcIn)),
+                          ],
+                        ),
                       ),
                     );
                   }(),

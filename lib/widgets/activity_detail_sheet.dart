@@ -10,7 +10,8 @@ const _kCharge = Color(0xFF4FC26B);
 /// jour/semaine/mois, heatmap 12 semaines. Version réutilisable hors main.dart
 /// (le sheet riche du « Maintenant » reste couplé à l'app principale).
 Future<void> showActivitySheet(
-    BuildContext context, AppLogic logic, String activityId) async {
+    BuildContext context, AppLogic logic, String activityId,
+    {bool showHeatmap = true}) async {
   Activity? found;
   for (final x in logic.state.activeActivities) {
     if (x.id == activityId) {
@@ -71,36 +72,38 @@ Future<void> showActivitySheet(
               stat('Mois',
                   logic.totalForRangeByActivity(a.id, monthStart, now)),
             ]),
-            const SizedBox(height: 20),
-            const Text('12 semaines (jours objectif atteint)',
-                style: TextStyle(color: Colors.white38, fontSize: 11)),
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 3,
-              runSpacing: 3,
-              children: [
-                for (final n in logic.activityTimeWeeklyHeatmap(a.id))
-                  Container(
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      color: n > 0
-                          ? _kCharge.withOpacity(0.2 + 0.8 * (n / 7).clamp(0.0, 1.0))
-                          : Colors.white.withOpacity(.04),
-                      borderRadius: BorderRadius.circular(5),
-                      border: Border.all(color: Colors.white.withOpacity(.06)),
+            if (showHeatmap) ...[
+              const SizedBox(height: 20),
+              const Text('12 semaines (jours objectif atteint)',
+                  style: TextStyle(color: Colors.white38, fontSize: 11)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 3,
+                runSpacing: 3,
+                children: [
+                  for (final n in logic.activityTimeWeeklyHeatmap(a.id))
+                    Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: n > 0
+                            ? _kCharge.withOpacity(0.2 + 0.8 * (n / 7).clamp(0.0, 1.0))
+                            : Colors.white.withOpacity(.04),
+                        borderRadius: BorderRadius.circular(5),
+                        border: Border.all(color: Colors.white.withOpacity(.06)),
+                      ),
+                      alignment: Alignment.center,
+                      child: n > 0
+                          ? Text('$n',
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 12))
+                          : const Text('🕸️', style: TextStyle(fontSize: 12)),
                     ),
-                    alignment: Alignment.center,
-                    child: n > 0
-                        ? Text('$n',
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w900,
-                                fontSize: 12))
-                        : const Text('🕸️', style: TextStyle(fontSize: 12)),
-                  ),
-              ],
-            ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
