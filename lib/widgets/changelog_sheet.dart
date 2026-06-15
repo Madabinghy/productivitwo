@@ -10,6 +10,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.15', '15 juin 2026', [
+    (Icons.gps_fixed, 'Détail d\'un domaine (Combattre) : bouton « Faire feu » — la tour se transforme en canon et attaque le nuisible du jour (boulet en arc, -1, 💥 si l\'araignée tombe)'),
+    (Icons.local_fire_department_outlined, 'Cinématique de tir : canon DCA, boulet de feu orienté en arc partant du bout du canon'),
+  ]),
   _Entry('6.14', '15 juin 2026', [
     (Icons.gps_fixed, 'Nouvel onglet « Combattre » (remplace ORION dans la barre du bas) : tes domaines en jardin/château, tours de défense et heatmap 12 semaines'),
     (Icons.smart_toy_outlined, 'Orion Stratège déplacé dans la barre du haut ; « À valider » retiré (déjà dans Revue de la semaine)'),

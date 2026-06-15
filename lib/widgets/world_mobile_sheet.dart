@@ -289,9 +289,50 @@ class _DomainGameplay extends StatefulWidget {
   State<_DomainGameplay> createState() => _DomainGameplayState();
 }
 
-class _DomainGameplayState extends State<_DomainGameplay> {
+class _DomainGameplayState extends State<_DomainGameplay>
+    with SingleTickerProviderStateMixin {
   AppLogic get logic => widget.logic;
   bool _chateau = false; // false = jardin, true = intérieur château
+
+  // ── « Faire feu » : la tour se transforme en canon et attaque le nuisible du
+  //    jour (dernière colonne). Décrément persistant (💥 si l'araignée meurt). ──
+  late final AnimationController _fireCtrl = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1600))
+    ..addListener(() => setState(() {}));
+  String? _firingId; // ligne en cours de tir
+  final Map<String, int> _mobileDec = {}; // décréments du jour par itemId
+
+  @override
+  void dispose() {
+    _fireCtrl.dispose();
+    super.dispose();
+  }
+
+  // Lance le tir sur le nuisible du JOUR (dernière colonne) de la 1ʳᵉ ligne qui
+  // en a un (sinon la 1ʳᵉ ligne). La tour se transforme (DCA) le temps du tir.
+  void _fire() {
+    if (_firingId != null) return;
+    final items = _items();
+    _Item? target;
+    for (final it in items) {
+      final n = it.tokens.length;
+      if (n > 0 && it.tokens[n - 1].type == 'spider') {
+        target = it;
+        break;
+      }
+    }
+    target ??= items.isNotEmpty ? items.first : null;
+    if (target == null) return;
+    final id = target.id;
+    setState(() => _firingId = id);
+    _fireCtrl.forward(from: 0).then((_) {
+      if (!mounted) return;
+      setState(() {
+        _mobileDec[id] = (_mobileDec[id] ?? 0) + 1; // -1 sur l'araignée du jour
+        _firingId = null;
+      });
+    });
+  }
 
   List<_Item> _items() {
     final dom = widget.domain.id;
@@ -378,6 +419,24 @@ class _DomainGameplayState extends State<_DomainGameplay> {
                     )
                   : (_chateau ? _chateauView(items) : _gardenView(items)),
             ),
+            // FAIRE FEU : la tour se transforme en canon et attaque le nuisible
+            // du jour (vue jardin uniquement).
+            if (!_chateau && items.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFFFF8A3D).withOpacity(.22),
+                        foregroundColor: const Color(0xFFFF8A3D),
+                        minimumSize: const Size.fromHeight(46)),
+                    onPressed: _firingId == null ? _fire : null,
+                    icon: const Icon(Icons.gps_fixed),
+                    label: Text(_firingId == null ? 'Faire feu 🔥' : 'Tir en cours…'),
+                  ),
+                ),
+              ),
             // CTA de navigation jardin ↔ château (le bouton fléché).
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
@@ -491,34 +550,74 @@ class _DomainGameplayState extends State<_DomainGameplay> {
               ),
           ]),
           const SizedBox(height: 1),
-          Row(children: [
-            // Tour (barres + icône) : tap n'importe où dessus → ouvre le sheet.
-            GestureDetector(
-              onTap: () => _openItemSheet(it),
-              behavior: HitTestBehavior.opaque,
-              child: SizedBox(
-                width: 60,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Vie (jaune, continue) = jours faits → pleine quand j'ai tiré.
-                    _lifeBar(it.charger / 7),
-                    const SizedBox(height: 2),
-                    // Chargeur (cases vertes) = jours non faits (7-n) → vide si tiré.
-                    _segBar(7 - it.charger, _kCharge),
-                    const SizedBox(height: 2),
-                    SvgPicture.asset(it.icon,
-                        width: 22,
-                        height: 22,
-                        colorFilter: ColorFilter.mode(
-                            it.charger == 0 ? _kEnemy : c, BlendMode.srcIn)),
-                  ],
-                ),
-              ),
-            ),
-            for (var d = 0; d < it.tokens.length; d++)
-              _tokenCell(it, d, cell),
-          ]),
+          () {
+            final firing = _firingId == it.id;
+            // Position du boulet : de la tour (x≈30) vers la case du JOUR.
+            final todayX = 60.0 + (it.tokens.length - 1) * (cell + 2) + cell / 2;
+            final fx = 30 + (todayX - 30) * _fireCtrl.value;
+            return Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Row(children: [
+                  // Tour (barres + icône) : tap → ouvre le sheet. Pendant le tir,
+                  // l'icône se TRANSFORME en canon DCA (+ lueur orange).
+                  GestureDetector(
+                    onTap: () => _openItemSheet(it),
+                    behavior: HitTestBehavior.opaque,
+                    child: SizedBox(
+                      width: 60,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _lifeBar(it.charger / 7),
+                          const SizedBox(height: 2),
+                          _segBar(7 - it.charger, _kCharge),
+                          const SizedBox(height: 2),
+                          Container(
+                            decoration: firing
+                                ? BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                          color: const Color(0xFFFF8A3D)
+                                              .withOpacity(.7),
+                                          blurRadius: 10,
+                                          spreadRadius: 1)
+                                    ])
+                                : null,
+                            child: SvgPicture.asset(
+                                firing
+                                    ? 'assets/icons/anti-aircraft-gun.svg'
+                                    : it.icon,
+                                width: 22,
+                                height: 22,
+                                colorFilter: ColorFilter.mode(
+                                    firing
+                                        ? const Color(0xFFFF8A3D)
+                                        : (it.charger == 0 ? _kEnemy : c),
+                                    BlendMode.srcIn)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  for (var d = 0; d < it.tokens.length; d++)
+                    _tokenCell(it, d, cell),
+                ]),
+                // Boulet de feu en vol (tour → jour) pendant le tir.
+                if (firing && _fireCtrl.value < 0.96)
+                  Positioned(
+                    left: fx - 8,
+                    top: 22,
+                    child: SvgPicture.asset('assets/icons/fireball.svg',
+                        width: 16,
+                        height: 16,
+                        colorFilter: const ColorFilter.mode(
+                            Color(0xFFFF8A3D), BlendMode.srcIn)),
+                  ),
+              ],
+            );
+          }(),
         ],
       ),
     );
@@ -561,8 +660,16 @@ class _DomainGameplayState extends State<_DomainGameplay> {
 
   Widget _tokenCell(_Item it, int d, double cell) {
     final tok = it.tokens[d];
-    final spider = tok.type == 'spider';
-    final emoji = _tokenEmoji(tok.type, scorpion: it.kind == 'scorpion');
+    // Le tir d'arrivée décrémente le nuisible du JOUR (dernière colonne).
+    final isToday = d == it.tokens.length - 1;
+    final dec = isToday ? (_mobileDec[it.id] ?? 0) : 0;
+    final shownHp = tok.type == 'spider' ? tok.hp - dec : 0;
+    final killed = tok.type == 'spider' && shownHp <= 0;
+    final impact = isToday && _firingId == it.id && _fireCtrl.value > 0.9;
+    final spider = tok.type == 'spider' && !killed;
+    final emoji = (killed || impact)
+        ? '💥'
+        : _tokenEmoji(tok.type, scorpion: it.kind == 'scorpion');
     return GestureDetector(
       onTap: spider
           ? () async {
@@ -591,7 +698,7 @@ class _DomainGameplayState extends State<_DomainGameplay> {
                     children: [
                       Text(emoji, style: const TextStyle(fontSize: 15)),
                       if (spider)
-                        Text('${tok.hp}',
+                        Text('$shownHp',
                             style: const TextStyle(
                                 color: _kEnemy,
                                 fontWeight: FontWeight.w900,
