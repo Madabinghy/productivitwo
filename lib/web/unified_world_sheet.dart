@@ -978,7 +978,14 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _pos = interior.start; // avatar dans le gazon (entrée gauche)
       _revealed.clear();
       _farmPests.clear();
-      _revealAround(_pos);
+      // Intérieur = plateau calendrier/combat (pas un donjon à explorer) → on
+      // révèle TOUT à l'entrée. L'ancien déclencheur de case (8,7) ne tient plus
+      // depuis l'élargissement de la grille (20 cols) → le brouillard restait.
+      for (var y = 0; y < interior.rows; y++) {
+        for (var x = 0; x < interior.cols; x++) {
+          _revealed.add('${x}_$y');
+        }
+      }
       _populateFarm(); // peuple le gazon avec les nuisibles de CE domaine
       // Défenses du domaine = ses routines à streak, posées en ZONE DE DÉPART
       // (0,0)→(7,1). L'user les drag où il veut. Niveau = streak = chargeur.
