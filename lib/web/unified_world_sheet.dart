@@ -1807,7 +1807,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         if (_w == null && t != null && !widget.mobile) {
           // Miroir horizontal (preview) : château à gauche, farm à droite.
           final w = mirrorWorldX(generateUnifiedWorld(t.seed,
-              caveIds: t.caves.map((c) => c.id).toList()));
+              caveIds: t.caves.map((c) => c.id).toList(),
+              withDistricts: true));
           _w = w;
           final saved = logic.state.unifiedPos;
           if (saved != null && saved.contains('_')) {
@@ -4805,15 +4806,40 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       }
     } else if (kind == UwTile.floor) {
       // Sol praticable = CLAIR (contraste net avec les murs). À l'intérieur d'une
-      // grotte : gazon teinté à la couleur du domaine ; sinon farm vert.
+      // grotte : gazon teinté au domaine ; sinon farm vert.
       final farmSide = x < w.castle.x - 1;
-      final base =
-          _inInterior ? _interiorColor : (farmSide ? _kFarm : Colors.white);
-      bg = base.withOpacity(.18);
-      border = base.withOpacity(.40);
-      // Décor buisson 🌿 SEULEMENT sur la map principale — retiré à l'intérieur
-      // (calendrier) pour ne pas faire doublon avec les tokens 🌿.
-      if (w.hasBush(x, y) && !_inInterior) {
+      // QUARTIER : si la case appartient à la parcelle d'un domaine, gazon teinté
+      // à SA couleur → petit voisinage coloré sur la map principale.
+      final distId = _inInterior ? null : w.districtIdAt(x, y);
+      Color base;
+      if (_inInterior) {
+        base = _interiorColor;
+      } else if (distId != null) {
+        final dc = t.caveById(distId);
+        base = dc != null ? _caveColor(dc) : _kBlue;
+      } else {
+        base = farmSide ? _kFarm : Colors.white;
+      }
+      bg = base.withOpacity(distId != null ? .16 : .18);
+      border = base.withOpacity(distId != null ? .45 : .40);
+      // Maison 🏠 du quartier (devant la parcelle) + décor d'univers déterministe
+      // (arbres/fleurs) sur le reste de la parcelle, hors grotte.
+      final houseId = _inInterior ? null : w.houseIdAt(x, y);
+      if (houseId != null) {
+        child = Text('🏠', style: TextStyle(fontSize: inner * 0.55));
+      } else if (distId != null && w.caveIdAt(x, y) == null) {
+        final h = (x * 7 + y * 13) % 7;
+        final deco = h == 0
+            ? '🌲'
+            : h == 1
+                ? '🌳'
+                : h == 2
+                    ? '🌸'
+                    : null;
+        if (deco != null) {
+          child = Text(deco, style: TextStyle(fontSize: inner * 0.42));
+        }
+      } else if (w.hasBush(x, y) && !_inInterior) {
         child = Text('🌿', style: TextStyle(fontSize: inner * 0.5));
       }
     } else if (kind == UwTile.castle) {

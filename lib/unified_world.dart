@@ -29,6 +29,11 @@ class UnifiedWorld {
   final Set<String> gate;
   // Carte ennemie (spawner) : cases d'où les sbires sont lâchés. Encodées "x_y".
   final Set<String> spawner;
+  // QUARTIERS : id de domaine → cases "x_y" de sa parcelle (la « maison » du
+  // domaine, façon voisinage Sims). La grotte (caves[id]) en est l'antichambre.
+  final Map<String, Set<String>> districts;
+  // Marqueur 🏠 d'un quartier : id de domaine → case où poser l'icône maison.
+  final Map<String, Point<int>> houses;
 
   const UnifiedWorld({
     required this.seed,
@@ -42,12 +47,31 @@ class UnifiedWorld {
     required this.rocks,
     this.gate = const {},
     this.spawner = const {},
+    this.districts = const {},
+    this.houses = const {},
   });
 
   bool hasBush(int x, int y) => bushes.contains('${x}_$y');
   bool hasRock(int x, int y) => rocks.contains('${x}_$y');
   bool isGate(int x, int y) => gate.contains('${x}_$y');
   bool isSpawner(int x, int y) => spawner.contains('${x}_$y');
+
+  /// id du quartier (domaine) qui couvre cette case, ou null.
+  String? districtIdAt(int x, int y) {
+    final k = '${x}_$y';
+    for (final e in districts.entries) {
+      if (e.value.contains(k)) return e.key;
+    }
+    return null;
+  }
+
+  /// id du quartier dont la case porte le marqueur maison 🏠, ou null.
+  String? houseIdAt(int x, int y) {
+    for (final e in houses.entries) {
+      if (e.value.x == x && e.value.y == y) return e.key;
+    }
+    return null;
+  }
 
   bool inBounds(int x, int y) => x >= 0 && x < cols && y >= 0 && y < rows;
   bool walkable(int x, int y) => inBounds(x, y) && grid[y][x] != UwTile.wall;
@@ -69,7 +93,8 @@ class UnifiedWorld {
 UnifiedWorld generateUnifiedWorld(int seed,
     {List<String> caveIds = const ['nw', 'ne', 'sw', 'se'],
     int cols = 17,
-    int rows = 15}) {
+    int rows = 15,
+    bool withDistricts = false}) {
   final rng = Random(seed);
   // Grande carte : on respire (zone farm large, grottes espacées, vrai voyage
   // gauche→droite). Largeur paramétrable (calendrier de domaine = plus large).
@@ -142,27 +167,83 @@ UnifiedWorld generateUnifiedWorld(int seed,
   // engage au contact/dessus.
   final ids = caveIds.isEmpty ? const ['nw', 'ne', 'sw', 'se'] : caveIds;
   final caves = <String, Point<int>>{};
+  final districts = <String, Set<String>>{};
+  final houses = <String, Point<int>>{};
   final leftCount = (ids.length + 1) ~/ 2; // colonne gauche prend l'impair
-  List<int> rowsFor(int count) {
-    if (count <= 0) return const [];
-    if (count == 1) return [(topRow + botRow) ~/ 2];
-    final step = (botRow - topRow) / (count - 1);
-    return [for (int i = 0; i < count; i++) (topRow + step * i).round()];
-  }
 
-  final leftRows = rowsFor(leftCount);
-  final rightRows = rowsFor(ids.length - leftCount);
-  int li = 0, ri = 0;
-  for (int i = 0; i < ids.length; i++) {
-    final Point<int> p;
-    if (i.isEven && li < leftRows.length) {
-      p = Point(leftCol, leftRows[li++]);
-    } else if (ri < rightRows.length) {
-      p = Point(rightCol, rightRows[ri++]);
-    } else {
-      p = Point(leftCol, leftRows[li++]);
+  if (withDistricts) {
+    // QUARTIERS : chaque domaine = une PARCELLE rectangulaire (sa « maison »),
+    // façon voisinage. 2 colonnes de parcelles (x10-12 / x13-15), empilées selon
+    // le nombre de domaines (déterministe, ≤10). La grotte = antichambre au fond
+    // (côté château), la maison 🏠 sur le devant.
+    const xMin = 10, xMid = 12, xMax = 15;
+    // Rues verticales sur les bords (relient toutes les parcelles d'une colonne).
+    for (int y = topRow; y <= botRow; y++) {
+      floor(xMin, y);
+      floor(xMax, y);
     }
-    caves[ids[i]] = p;
+    List<List<int>> slots(int count) {
+      if (count <= 0) return const [];
+      final total = botRow - topRow + 1;
+      final h = (total / count).floor();
+      return [
+        for (int i = 0; i < count; i++)
+          [topRow + i * h, topRow + i * h + (h - 2 < 0 ? 0 : h - 2)]
+      ];
+    }
+
+    final ls = slots(leftCount);
+    final rs = slots(ids.length - leftCount);
+    void carveRoom(
+        String id, int cx0, int cx1, int ry0, int ry1, int caveX, int houseX) {
+      final cells = <String>{};
+      for (int y = ry0; y <= ry1; y++) {
+        for (int x = cx0; x <= cx1; x++) {
+          floor(x, y);
+          cells.add('${x}_$y');
+        }
+      }
+      districts[id] = cells;
+      final midR = ((ry0 + ry1) / 2).round();
+      caves[id] = Point(caveX, midR);
+      houses[id] = Point(houseX, midR);
+    }
+
+    int lii = 0, rii = 0;
+    for (int i = 0; i < ids.length; i++) {
+      if (i.isEven && lii < ls.length) {
+        final s = ls[lii++];
+        carveRoom(ids[i], xMin, xMid, s[0], s[1], xMid, xMin);
+      } else if (rii < rs.length) {
+        final s = rs[rii++];
+        carveRoom(ids[i], xMid + 1, xMax, s[0], s[1], xMax, xMid + 1);
+      } else if (lii < ls.length) {
+        final s = ls[lii++];
+        carveRoom(ids[i], xMin, xMid, s[0], s[1], xMid, xMin);
+      }
+    }
+  } else {
+    List<int> rowsFor(int count) {
+      if (count <= 0) return const [];
+      if (count == 1) return [(topRow + botRow) ~/ 2];
+      final step = (botRow - topRow) / (count - 1);
+      return [for (int i = 0; i < count; i++) (topRow + step * i).round()];
+    }
+
+    final leftRows = rowsFor(leftCount);
+    final rightRows = rowsFor(ids.length - leftCount);
+    int li = 0, ri = 0;
+    for (int i = 0; i < ids.length; i++) {
+      final Point<int> p;
+      if (i.isEven && li < leftRows.length) {
+        p = Point(leftCol, leftRows[li++]);
+      } else if (ri < rightRows.length) {
+        p = Point(rightCol, rightRows[ri++]);
+      } else {
+        p = Point(leftCol, leftRows[li++]);
+      }
+      caves[ids[i]] = p;
+    }
   }
   bool isCave(int x, int y) =>
       caves.values.any((p) => p.x == x && p.y == y);
@@ -203,6 +284,8 @@ UnifiedWorld generateUnifiedWorld(int seed,
     rocks: rocks,
     gate: gate,
     spawner: spawner,
+    districts: districts,
+    houses: houses,
   );
 }
 
@@ -232,5 +315,12 @@ UnifiedWorld mirrorWorldX(UnifiedWorld w) {
     rocks: {for (final k in w.rocks) flip(k)},
     gate: {for (final k in w.gate) flip(k)},
     spawner: {for (final k in w.spawner) flip(k)},
+    districts: {
+      for (final e in w.districts.entries) e.key: {for (final k in e.value) flip(k)}
+    },
+    houses: {
+      for (final e in w.houses.entries)
+        e.key: Point(w.cols - 1 - e.value.x, e.value.y)
+    },
   );
 }
