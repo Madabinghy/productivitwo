@@ -37,6 +37,9 @@ Color _lifeColor(double frac) =>
     frac >= 5 / 7 ? _kBlue : (frac >= 3 / 7 ? _kLife : _kEnemy);
 
 const int _kReveal = 2; // rayon de brouillard levé autour de l'avatar (Chebyshev)
+// TEMPORAIRE (test pagination) : nb de lignes affichées par section du calendrier.
+// Remettre à 5 pour la cohérence du château après tests.
+const int _kCalWindow = 2;
 
 // Outils dev (convocation manuelle, forcer l'auto-trigger, toggle de cadence) :
 // affichés tant que true. ⚠️ à passer à false avant une vraie prod (comme pour
@@ -1824,7 +1827,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       ));
     }
     list.sort((a, b) => b.active.compareTo(a.active)); // tri par activité /30j
-    return list.skip(_calOffset).take(5).toList();
+    return list.skip(_calOffset).take(_kCalWindow).toList();
   }
 
   // Décalage max de pagination = ce qui dépasse 5 dans la plus longue des deux
@@ -1842,7 +1845,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       }
     }
     final m = r > t ? r : t;
-    return m > 5 ? m - 5 : 0;
+    return m > _kCalWindow ? m - _kCalWindow : 0;
   }
 
   // Les 5 activités-TEMPS (type=time) les plus actives sur 30j du domaine courant.
@@ -1865,7 +1868,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       ));
     }
     list.sort((a, b) => b.active.compareTo(a.active));
-    return list.skip(_calOffset).take(5).toList();
+    return list.skip(_calOffset).take(_kCalWindow).toList();
   }
 
   // BÂTI — recalcule les tourelles dérivées des streaks : pour chaque routine

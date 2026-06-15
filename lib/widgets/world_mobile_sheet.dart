@@ -320,7 +320,8 @@ class _DomainGameplayState extends State<_DomainGameplay> {
     }
     routines.sort((a, b) => b.active.compareTo(a.active));
     times.sort((a, b) => b.active.compareTo(a.active));
-    return [...routines.take(5), ...times.take(5)];
+    // Cap retiré : toutes les routines/activités (le jardin défile en ListView).
+    return [...routines, ...times];
   }
 
   @override
