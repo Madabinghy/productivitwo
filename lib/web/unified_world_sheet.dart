@@ -258,7 +258,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   static const double _kSbireSpeed = 0.4; // cases / s (lent → esquivable)
   static const double _kTurretFireEvery = 10.0; // s entre 2 tirs d'une tour
   static const double _kTurretAimDur = 2.0; // s d'animation de visée (canon)
-  static const double _kFlameRegrow = 30.0; // s pour recharger les flammes
+  static const double _kFlameRegrow = 45.0; // s (base) pour recharger les flammes
   static const double _kBarrelAimDip = 0.7; // amplitude du mouvement de visée
   static const double _kSupportFbDur = 15.0; // s de vol cannon→cible (×5 = poli)
   static const double _kLiveFbDur = 2.4; // s de vol pour le tir d'arrivée (S3)
@@ -344,8 +344,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       final r0 = mid - routines.length;
       void addTurret(int row, int flames) {
         if (flames <= 0) return;
+        // Recharge ≈45 s ± aléatoire + phase initiale aléatoire → les canons ne
+        // rechargent pas tous en même temps.
+        final reloadEvery = _kFlameRegrow * (0.8 + _cineRng.nextDouble() * 0.4);
         final tu = _CineTurret(
-            row, flames, flames, _cineRng.nextDouble() * _kTurretFireEvery);
+            row,
+            flames,
+            flames,
+            _cineRng.nextDouble() * _kTurretFireEvery,
+            reloadEvery,
+            _cineRng.nextDouble() * reloadEvery);
         _cineTurrets.add(tu);
         _cineTurretByRow[row] = tu;
       }
@@ -558,10 +566,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       // n'est pas reciblée (1 flamme = 1 toile, pas de gaspillage).
       if (_cineToileSpawns.isNotEmpty) {
         for (final tu in _cineTurrets) {
-          // Recharge : les flammes de départ regarnissent la tour toutes les 30 s.
+          // Recharge : les flammes regarnissent la tour ≈toutes les 45 s (aléatoire
+          // par tour → désynchronisé).
           tu.reload += dt;
-          if (tu.reload >= _kFlameRegrow) {
-            tu.reload -= _kFlameRegrow;
+          if (tu.reload >= tu.reloadEvery) {
+            tu.reload -= tu.reloadEvery;
             tu.ammo = tu.maxFlames;
           }
           if (tu.aim < 0) {
@@ -2166,6 +2175,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       if (_liveFb!.t >= 1.0) {
         _liveFlashAt = Offset(_liveFb!.tx, _liveFb!.ty);
         _liveFlashUntilMs = _gameMs + 450;
+        // Impact : -1 sur l'araignée du jour (col 19). Le rendu affiche 💥 si elle
+        // tombe à 0, sinon le nombre décrémenté.
+        if (_liveDecKey != null) {
+          _toileDec[_liveDecKey!] = (_toileDec[_liveDecKey!] ?? 0) + 1;
+        }
+        _liveDecKey = null;
         _liveFb = null;
         _liveFiring = false;
         _liveDone?.complete();
@@ -2174,19 +2189,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     }
   }
 
-  // Une TOILE (jour-araignée d'une ligne) est DÉTRUITE si une flamme la couvre :
-  // les `flammes` premières toiles (gauche→droite) sont détruites. Dérivé des
-  // données (flammes = validations persistées) → persiste la journée, cross-device,
-  // sans état à gérer. Plus de flammes ⇒ plus de toiles détruites.
-  bool _toileDestroyed(List lane, int d) {
-    if (d >= lane.length || lane[d].type != 'spider') return false;
-    final flames = lane.where((t) => t.type == 'flame').length;
-    var rank = 0;
-    for (var i = 0; i < d; i++) {
-      if (lane[i].type == 'spider') rank++;
-    }
-    return rank < flames;
-  }
+  // Décréments visuels du tir d'arrivée par case ('routineId_colIndex' → -N).
+  // Quand le nombre tombe à 0, l'araignée meurt (💥 persistante la journée).
+  final Map<String, int> _toileDec = {};
+  String? _liveDecKey; // case (col 19) visée par le tir d'arrivée en cours
 
   // Nb de toiles NON détruites (restantes) d'un domaine → gate la cinématique :
   // on ne (re)joue que tant qu'il reste des toiles.
@@ -2203,19 +2209,6 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       rem += (toiles - flames).clamp(0, toiles).toInt();
     }
     return rem;
-  }
-
-  // Nb de validations AUJOURD'HUI pour une routine (= flammes chargées au tir).
-  int _todayHits(String routineId) {
-    final now = DateTime.now();
-    var n = 0;
-    for (final h in logic.state.habitHits) {
-      if (h.habitId == routineId &&
-          h.ts.year == now.year &&
-          h.ts.month == now.month &&
-          h.ts.day == now.day) n++;
-    }
-    return n < 1 ? 1 : n;
   }
 
   // ── BATAILLE HEBDO (jardin) : vagues colonne par colonne sur 7 jours glissants ──
@@ -2301,7 +2294,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   Future<void> _fireArrival(String routineId, int row) async {
     if (!mounted) return;
     _liveRow = row;
-    _liveFlames = _todayHits(routineId);
+    _liveFlames = 1; // une seule flamme au-dessus du canon pour cette cinématique
+    _liveDecKey = '${routineId}_6'; // col 19 = index 6 (jour courant)
     _liveAim = 0;
     _liveFb = null;
     _liveDone = Completer<void>();
@@ -3860,7 +3854,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         if (tok.type != 'flame') return const SizedBox.shrink();
                         final tu = _cineTurretByRow[e.row];
                         if (tu == null) return const SizedBox.shrink();
-                        final g = (tu.reload / _kFlameRegrow).clamp(0.0, 1.0);
+                        final g = (tu.reload / tu.reloadEvery).clamp(0.0, 1.0);
                         final c0 = centerD(13.0 + d, e.row.toDouble());
                         return Positioned(
                           left: c0.dx - slot / 2,
@@ -3902,10 +3896,14 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         }
                       }
                       final c0 = centerD(13.0 + d, e.row.toDouble());
-                      // Toile détruite (couverte par une flamme) → 💥 persistant.
-                      final destroyed = _toileDestroyed(e.lane, d);
-                      final spider = tok.type == 'spider' && !destroyed;
-                      final emoji = destroyed
+                      // Décrément du tir d'arrivée : -1 sur le nombre sous l'araignée.
+                      // Tombe à 0 → MORTE → 💥 persistante ; sinon nombre décrémenté.
+                      final dec = _toileDec['${e.r.id}_$d'] ?? 0;
+                      final shownHp =
+                          tok.type == 'spider' ? tok.hp - dec : 0;
+                      final killed = tok.type == 'spider' && shownHp <= 0;
+                      final spider = tok.type == 'spider' && !killed;
+                      final emoji = killed
                           ? '💥'
                           : (tok.type == 'flame'
                               ? '🔥'
@@ -3934,7 +3932,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                                 Text(emoji,
                                     style: TextStyle(fontSize: slot * 0.5)),
                                 if (spider)
-                                  Text('${tok.hp}', // PV restants ce jour
+                                  Text('$shownHp', // PV restants (après décréments)
                                       style: TextStyle(
                                           color: _kEnemy,
                                           fontWeight: FontWeight.w900,
@@ -4930,8 +4928,10 @@ class _CineTurret {
   int ammo;
   double cd; // s avant le prochain tir
   double aim = -1; // -1 = repos ; 0..1 = visée en cours (canon plonge/relève)
-  double reload = 0; // 0..kFlameRegrow : cycle de recharge des flammes
-  _CineTurret(this.row, this.maxFlames, this.ammo, this.cd);
+  double reload; // 0..reloadEvery : cycle de recharge des flammes
+  final double reloadEvery; // ≈45 s ± aléatoire (désynchronise les recharges)
+  _CineTurret(
+      this.row, this.maxFlames, this.ammo, this.cd, this.reloadEvery, this.reload);
 }
 
 // Trait de tir de la bataille hebdo (tour → token d'une colonne-jour) ; placeholder
