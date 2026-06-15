@@ -831,7 +831,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
 
   // SÉLECTEUR de domaine : liste les grottes (domaines) → l'user CHOISIT laquelle
   // entrer (plus de « grotte la plus proche » ambigu).
-  void _quickEnter() {
+  void _quickEnter({bool forceOccupied = false}) {
     final t = _t;
     if (t == null) {
       _toast('Territoire pas encore chargé — réessaie dans un instant.',
@@ -855,7 +855,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             SimpleDialogOption(
               onPressed: () {
                 Navigator.pop(context);
-                _enterInterior(c.id);
+                _enterInterior(c.id, forceOccupied: forceOccupied);
               },
               child: Row(children: [
                 Icon(Icons.circle, size: 13, color: _caveColor(c)),
@@ -978,7 +978,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // Reconquête (tranche 1) : ENTRER dans la grotte = un CLONE de la map, gazon
   // teinté au domaine, avatar posé dans le gazon. On échange le monde actif
   // (_w/_pos/_revealed) et on le restaure en sortant (cf. _exitInterior).
-  void _enterInterior(String caveId) {
+  void _enterInterior(String caveId, {bool forceOccupied = false}) {
     // Mobile : pas de map principale → _w peut être null (rien à sauver).
     final w = _w;
     if (w == null && !widget.mobile) return;
@@ -1016,7 +1016,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _interiorColor = cave != null ? _caveColor(cave) : _kBlue;
       // Cadre d'assaut SEULEMENT si la grotte est réellement OCCUPÉE (état
       // territoire), pas si simplement négligée.
-      _interiorPeaceful = cave == null || !cave.occupied;
+      _interiorPeaceful = forceOccupied ? false : (cave == null || !cave.occupied);
       _interiorCaveId = caveId;
       // Deck d'assaut du scorpion AMORCÉ par tes captures de CE domaine précis
       // (petit deck spécifique, dérivé de activity.domainId ; fallback fraction
@@ -2537,6 +2537,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           if (!_inInterior) ...[
             pill('🕳️ Entrer dans la grotte', const Color(0xFF1E8E7E),
                 _quickEnter),
+            // TEST : force la grotte « occupée » → cadre d'assaut/cinématique.
+            pill('🕳️🕷️ Entrer (grotte occupée)', _kEnemy,
+                () => _quickEnter(forceOccupied: true)),
             pill(
                 _tdMode ? '⚔️ TD ON — pose des tours' : '⚔️ Mode tower-defense',
                 const Color(0xFFB07CF0),
