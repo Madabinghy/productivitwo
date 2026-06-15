@@ -247,12 +247,19 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   final Set<String> _cineKilledToiles = {}; // détruites pendant l'attaque
   int _cineSpawnIdx = 0; // toile suivante à faire spawn (cyclique)
   double _cineSpawnT = 0;
-  double _supportT = 0; // cadence de destruction des toiles par les tours
   final List<_CineFb> _supportFbs = []; // boules de feu de support en vol
+  // Tours en mode SUPPORT (attaque) : seules celles ayant des flammes tirent,
+  // 1 boule / 10 s (coûte 1 flamme), rechargées par leurs flammes-source / 30 s.
+  final List<_CineTurret> _cineTurrets = [];
+  final Map<int, _CineTurret> _cineTurretByRow = {};
+  final Set<String> _inFlightKeys = {}; // toiles déjà visées par un boulet en vol
   static const double _kSbireSpawnEvery = 1.0; // 1 sbire / s (cyclique)
   static const double _kSbireSpeed = 0.4; // cases / s (lent → esquivable)
-  static const double _kSupportEvery = 1.4; // s entre 2 toiles détruites (régén)
-  static const double _kSupportFbDur = 3.0; // s de vol cannon→cible (lent = poli)
+  static const double _kTurretFireEvery = 10.0; // s entre 2 tirs d'une tour
+  static const double _kTurretAimDur = 2.0; // s d'animation de visée (canon)
+  static const double _kFlameRegrow = 30.0; // s pour recharger les flammes
+  static const double _kBarrelAimDip = 0.7; // amplitude du mouvement de visée
+  static const double _kSupportFbDur = 15.0; // s de vol cannon→cible (×5 = poli)
   static const double _kFbIconOffset = pi / 2; // calage orientation icône fireball
   final List<_CineShk> _shurikens = []; // shurikens en vol
   double _shkThrowT = 0; // cadence de lancer
@@ -316,11 +323,45 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _attackElapsed = 0;
     _cineSpawnT = 0;
     _cineSpawnIdx = 0;
-    _supportT = 0;
     _supportFbs.clear();
+    _inFlightKeys.clear();
     _cineKilledToiles.clear();
     _cineSbires.clear();
     _cineSbireSeq = 0;
+    // Tours de support : UNE par ligne ayant ≥1 flamme cette semaine (les autres
+    // ne tirent pas). Décompte d'amorce échelonné pour ne pas tirer en rafale.
+    _cineTurrets.clear();
+    _cineTurretByRow.clear();
+    final wt = _w;
+    if (wt != null) {
+      final mid = wt.rows ~/ 2;
+      final routines = _domTopRoutines();
+      final times = _domTopTimeActivities();
+      final r0 = mid - routines.length;
+      void addTurret(int row, int flames) {
+        if (flames <= 0) return;
+        final tu = _CineTurret(
+            row, flames, flames, _cineRng.nextDouble() * _kTurretFireEvery);
+        _cineTurrets.add(tu);
+        _cineTurretByRow[row] = tu;
+      }
+      for (var i = 0; i < routines.length; i++) {
+        addTurret(
+            r0 + i,
+            logic
+                .routineWeekTokens(routines[i].id)
+                .where((t) => t.type == 'flame')
+                .length);
+      }
+      for (var j = 0; j < times.length; j++) {
+        addTurret(
+            mid + 1 + j,
+            logic
+                .activityTimeTokens(times[j].id)
+                .where((t) => t.type == 'flame')
+                .length);
+      }
+    }
     // Toiles SURVIVANTES (non nettoyées) : sources de spawn ET cibles que les
     // tours continuent de détruire en support.
     final shot = _cineShots.map((s) => s.key).toSet();
@@ -496,21 +537,52 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           _cineSbires.add(_Sbire(_cineSbireSeq++, t.col, t.row, 1));
         }
       }
-      // SUPPORT des tours : régulièrement, une tour tire une boule de feu sur une
-      // toile restante (la plus proche de sa tour, col 12). À l'impact → détruite.
+      // SUPPORT des tours : chaque tour AYANT des flammes tire 1 boule / 10 s
+      // (après une animation de visée), coûte 1 flamme ; ses flammes-source la
+      // rechargent toutes les 30 s. Une toile déjà visée par un boulet en vol
+      // n'est pas reciblée (1 flamme = 1 toile, pas de gaspillage).
       if (_cineToileSpawns.isNotEmpty) {
-        _supportT += dt;
-        // Cadence qui RAMPE avec le temps (les tours tirent de plus en plus vite).
-        final supportEvery =
-            (_kSupportEvery - _attackElapsed * 0.05).clamp(0.4, _kSupportEvery);
-        if (_supportT >= supportEvery) {
-          _supportT -= supportEvery;
-          // Support (2ᵉ salve+) : cible une toile AU HASARD (plus le « plus proche »).
-          final t = _cineToileSpawns[_cineRng.nextInt(_cineToileSpawns.length)];
-          // Arc d'autant plus haut que la cible est loin (lobe de mortier).
-          final arc = ((12 - t.col).abs() * 0.4).clamp(1.2, 5.0).toDouble();
-          _supportFbs.add(_CineFb(_kSupportFbDur, 12, t.row, t.col.toDouble(),
-              t.row.toDouble(), arc, t.key));
+        for (final tu in _cineTurrets) {
+          // Recharge : les flammes de départ regarnissent la tour toutes les 30 s.
+          tu.reload += dt;
+          if (tu.reload >= _kFlameRegrow) {
+            tu.reload -= _kFlameRegrow;
+            tu.ammo = tu.maxFlames;
+          }
+          if (tu.aim < 0) {
+            if (tu.ammo <= 0) continue;
+            tu.cd -= dt;
+            if (tu.cd <= 0) {
+              final hasTarget =
+                  _cineToileSpawns.any((t) => !_inFlightKeys.contains(t.key));
+              if (hasTarget) {
+                tu.aim = 0; // démarre la visée
+              } else {
+                tu.cd = 1.0; // rien à viser : réessaie bientôt
+              }
+            }
+          } else {
+            // Visée lente : le canon plonge (0→0.5) puis se relève (0.5→1) ; tir
+            // à la fin de l'animation.
+            tu.aim += dt / _kTurretAimDur;
+            if (tu.aim >= 1.0) {
+              tu.aim = -1;
+              tu.cd = _kTurretFireEvery;
+              final avail = [
+                for (final t in _cineToileSpawns)
+                  if (!_inFlightKeys.contains(t.key)) t
+              ];
+              if (avail.isNotEmpty && tu.ammo > 0) {
+                tu.ammo--;
+                final t = avail[_cineRng.nextInt(avail.length)];
+                _inFlightKeys.add(t.key);
+                // Arc d'autant plus haut que la cible est loin (lobe de mortier).
+                final arc = ((12 - t.col).abs() * 0.4).clamp(1.2, 5.0).toDouble();
+                _supportFbs.add(_CineFb(_kSupportFbDur, 12, tu.row.toDouble(),
+                    t.col, t.row, arc, t.key));
+              }
+            }
+          }
         }
       }
       // Avance les boules de feu de support (paramétrique) ; à t≥1, détruit la toile.
@@ -520,6 +592,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           fb.dead = true;
           _cineKilledToiles.add(fb.key);
           _cineToileSpawns.removeWhere((t) => t.key == fb.key);
+          _inFlightKeys.remove(fb.key);
         }
       }
       _supportFbs.removeWhere((fb) => fb.dead);
@@ -3168,15 +3241,27 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         : 0;
                     final cineFlame =
                         cineTurret ? arrived / flameMax : 0.0;
-                    // Visée du barillet : si CETTE tour tire sur une toile du
-                    // château (col < 12), on l'incline vers l'horizontale pour la
-                    // case la plus proche (col 11), naturel (relevé) pour la plus
-                    // lointaine (col 0). Sinon angle naturel (0).
-                    final headAngle = (cineCurShot != null &&
-                            cineCurShot.turretRow == e.row &&
-                            cineCurShot.tx < 12)
-                        ? _kBarrelNatural * (cineCurShot.tx / 11).clamp(0.0, 1.0)
-                        : 0.0;
+                    // État de tir (phase attaque) : flammes restantes + visée.
+                    final tu = _cineAttack ? _cineTurretByRow[e.row] : null;
+                    // Flammes affichées : pendant l'attaque = munitions restantes
+                    // (consommées par tir, rechargées /30 s) ; sinon = charge ciné.
+                    final lit =
+                        tu != null ? tu.ammo.clamp(0, flameMax) : arrived;
+                    // Visée du barillet :
+                    //  - attaque : le canon PLONGE puis se RELÈVE (animation lente)
+                    //    avant chaque tir ;
+                    //  - nettoyage : inclinaison vers la toile-château ciblée.
+                    final double headAngle;
+                    if (tu != null && tu.aim >= 0) {
+                      headAngle = -sin(pi * tu.aim) * _kBarrelAimDip;
+                    } else if (cineCurShot != null &&
+                        cineCurShot.turretRow == e.row &&
+                        cineCurShot.tx < 12) {
+                      headAngle =
+                          _kBarrelNatural * (cineCurShot.tx / 11).clamp(0.0, 1.0);
+                    } else {
+                      headAngle = 0.0;
+                    }
                     final c0 = centerD(12, e.row.toDouble());
                     return Positioned(
                       left: c0.dx - slot / 2,
@@ -3195,7 +3280,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                             // tour charge → REMPLACENT le chargeur ; la jauge de
                             // vie DISPARAÎT. Hors cinématique : vie + chargeur.
                             if (cineTurret)
-                              _cineFlameRow(flameMax, arrived, slot)
+                              _cineFlameRow(flameMax, lit, slot)
                             else ...[
                               _webLifeBar(e.r.charger / 7, slot),
                               SizedBox(height: slot * 0.04),
@@ -3279,8 +3364,30 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                       final e = allRows[ei];
                       final tok = e.lane[d];
                       if (tok.type == 'empty') return const SizedBox.shrink();
-                      // Combat : on cache tous les tokens du jardin (cases vides).
-                      if (_cineAttack) return const SizedBox.shrink();
+                      // Combat : on cache le jardin (cases vides), MAIS on garde les
+                      // flammes-source — elles rechargent la tour et « regrandissent »
+                      // sur le cycle de recharge (30 s).
+                      if (_cineAttack) {
+                        if (tok.type != 'flame') return const SizedBox.shrink();
+                        final tu = _cineTurretByRow[e.row];
+                        if (tu == null) return const SizedBox.shrink();
+                        final g = (tu.reload / _kFlameRegrow).clamp(0.0, 1.0);
+                        final c0 = centerD(13.0 + d, e.row.toDouble());
+                        return Positioned(
+                          left: c0.dx - slot / 2,
+                          top: c0.dy - slot / 2,
+                          width: slot,
+                          height: slot,
+                          child: Center(
+                            child: Opacity(
+                              opacity: 0.35 + 0.65 * g,
+                              child: Text('🔥',
+                                  style: TextStyle(
+                                      fontSize: slot * (0.30 + 0.25 * g))),
+                            ),
+                          ),
+                        );
+                      }
                       // Nuisible du jardin déjà nettoyé par une tour → vide.
                       if (tok.type == 'spider' &&
                           cineCleared.contains('nuis:${e.r.id}:$d')) {
@@ -4296,6 +4403,18 @@ class _CineShk {
   final double vx, vy;
   bool dead = false;
   _CineShk(this.x, this.y, this.vx, this.vy);
+}
+
+// Tour en mode support pendant l'attaque : tire 1/10 s (coûte 1 flamme), se
+// recharge via ses flammes-source toutes les 30 s. `aim` = animation de visée.
+class _CineTurret {
+  final int row;
+  final int maxFlames;
+  int ammo;
+  double cd; // s avant le prochain tir
+  double aim = -1; // -1 = repos ; 0..1 = visée en cours (canon plonge/relève)
+  double reload = 0; // 0..kFlameRegrow : cycle de recharge des flammes
+  _CineTurret(this.row, this.maxFlames, this.ammo, this.cd);
 }
 
 // Boule de feu de SUPPORT : tirée par une tour vers une toile, en ARC (parabole),
