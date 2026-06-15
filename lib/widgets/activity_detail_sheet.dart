@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
-import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
-
-const _kCharge = Color(0xFF4FC26B);
 
 /// Sheet d'une activité-temps, calqué sur le sheet du FAB mobile (stats semaine
 /// + progression, aujourd'hui/mois, courbe 60 j, heatmap 12 sem). Réutilisable
@@ -61,6 +58,32 @@ Future<void> showActivitySheet(
   final s30 = movingAvgHoursSeries(
       minutesByDay: mbd, today: now, windowDays: 30, points: 30);
   final goalH = (logic.timeSliding(a.id, 7).targetMin / 7.0) / 60.0;
+
+  // Heatmap DÉTAIL par jour sur 12 semaines (7 lignes × 12 colonnes), unités =
+  // 30 min. Référence = 90e percentile des jours actifs (intensité relative).
+  const cellSize = 12.0, gap = 2.0, weeks = 12;
+  final thisMonday = today.subtract(Duration(days: today.weekday - 1));
+  final startMonday = thisMonday.subtract(const Duration(days: 77));
+  final Map<String, int> countByYmd = {};
+  for (final s in logic.state.sessions.where((s) => s.activityId == a.id)) {
+    final sEnd = s.endAt ?? now;
+    if (s.startAt.isAfter(now) || sEnd.isBefore(startMonday)) continue;
+    var cursor = DateTime(s.startAt.year, s.startAt.month, s.startAt.day);
+    while (!cursor.isAfter(today)) {
+      final dayEnd = cursor.add(const Duration(days: 1));
+      final segStart = cursor.isBefore(s.startAt) ? s.startAt : cursor;
+      final segEnd = dayEnd.isAfter(sEnd) ? sEnd : dayEnd;
+      final mins = segEnd.difference(segStart).inMinutes;
+      if (mins > 0) {
+        final ymd =
+            '${cursor.year}${cursor.month.toString().padLeft(2, '0')}${cursor.day.toString().padLeft(2, '0')}';
+        countByYmd[ymd] = (countByYmd[ymd] ?? 0) + (mins / 30).ceil();
+      }
+      cursor = dayEnd;
+    }
+  }
+  final referenceCount =
+      percentileOf(countByYmd.values.toList(), 0.90).clamp(1.0, double.infinity);
 
   await showModalBottomSheet<void>(
     context: context,
@@ -184,35 +207,67 @@ Future<void> showActivitySheet(
                 ),
                 if (showHeatmap) ...[
                   const SizedBox(height: 18),
-                  Text('12 semaines (jours objectif atteint)',
-                      style: TextStyle(
-                          color: cs.onSurface.withOpacity(.4), fontSize: 11)),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 3,
-                    runSpacing: 3,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      for (final n in logic.activityTimeWeeklyHeatmap(a.id))
-                        Container(
-                          width: 24,
-                          height: 24,
-                          decoration: BoxDecoration(
-                            color: n > 0
-                                ? _kCharge.withOpacity(
-                                    0.2 + 0.8 * (n / 7).clamp(0.0, 1.0))
-                                : cs.onSurface.withOpacity(.06),
-                            borderRadius: BorderRadius.circular(5),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: List.generate(
+                                weeks,
+                                (col) => Padding(
+                                      padding: const EdgeInsets.only(right: gap),
+                                      child: Column(
+                                        children: List.generate(7, (row) {
+                                          final d = startMonday.add(
+                                              Duration(days: col * 7 + row));
+                                          if (d.isAfter(today)) {
+                                            return const SizedBox(
+                                                height: cellSize + gap,
+                                                width: cellSize);
+                                          }
+                                          final ymd =
+                                              '${d.year}${d.month.toString().padLeft(2, '0')}${d.day.toString().padLeft(2, '0')}';
+                                          final count = countByYmd[ymd] ?? 0;
+                                          final intensity = count == 0
+                                              ? 0.0
+                                              : (count / referenceCount)
+                                                  .clamp(0.15, 1.0);
+                                          final emptyColor =
+                                              cs.onSurface.withOpacity(.10);
+                                          final cellColor = count == 0
+                                              ? emptyColor
+                                              : Color.lerp(emptyColor, color,
+                                                  intensity)!;
+                                          return Padding(
+                                            padding: const EdgeInsets.only(
+                                                bottom: gap),
+                                            child: Container(
+                                              width: cellSize,
+                                              height: cellSize,
+                                              decoration: BoxDecoration(
+                                                color: cellColor,
+                                                borderRadius:
+                                                    BorderRadius.circular(2),
+                                              ),
+                                            ),
+                                          );
+                                        }),
+                                      ),
+                                    )),
                           ),
-                          alignment: Alignment.center,
-                          child: n > 0
-                              ? Text('$n',
-                                  style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w900,
-                                      fontSize: 12))
-                              : const Text('🕸️',
-                                  style: TextStyle(fontSize: 12)),
                         ),
+                      ),
+                      const SizedBox(width: 10),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text('12 sem.',
+                            style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: cs.onSurface.withOpacity(.35))),
+                      ),
                     ],
                   ),
                 ],

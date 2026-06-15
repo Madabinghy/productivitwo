@@ -1731,13 +1731,14 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   }
 
   // Tap sur une tour → ouvre le sheet de la routine ou de l'activité. La heatmap
-  // du sheet activité est masquée (le château la montre déjà → redondant).
+  // du sheet (détail par jour) est gardée : complémentaire du château (qui résume
+  // par semaine).
   Future<void> _openRowSheet(String id, String kind) async {
     if (kind == 'spider') {
       await showRoutineSheet(context,
           logic: logic, habitId: id, day: DateTime.now());
     } else {
-      await showActivitySheet(context, logic, id, showHeatmap: false);
+      await showActivitySheet(context, logic, id);
     }
     if (mounted) setState(() {});
   }
