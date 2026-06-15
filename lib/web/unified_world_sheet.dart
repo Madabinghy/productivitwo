@@ -515,6 +515,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     if (_liveFiring) {
       _simulateLive(dt / 1000.0);
       if (mounted) setState(() {});
+    } else if (_battleActive) {
+      _simulateBattle(dt / 1000.0);
+      if (mounted) setState(() {});
     } else if (_cineActive) {
       _simulateCine(dt / 1000.0);
       if (mounted) setState(() {});
@@ -1611,11 +1614,15 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _interiorCaveId = null;
       _interiorWalk.clear();
       _exitDoor = null;
-      // Coupe un éventuel tir d'arrivée en cours.
+      // Coupe un éventuel tir d'arrivée / bataille en cours.
       _liveFiring = false;
       _liveFb = null;
       _liveDone?.complete();
       _liveDone = null;
+      _battleActive = false;
+      _battleBeams.clear();
+      _battleDone?.complete();
+      _battleDone = null;
       _savedW = null;
       _savedPos = null;
       _savedRevealed = null;
@@ -2027,6 +2034,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       }
     }
     if (caveId == null) return;
+    // Déjà dans CE domaine → on ne rejoue PAS la bataille (juste le tir) : ça
+    // favorise de rester sur un seul domaine à la fois.
+    final alreadyHere = _inInterior && _interiorCaveId == caveId;
     _traveling = true;
     try {
       // 1. Mauvais domaine ouvert → marcher vers la porte de sortie, sortir.
@@ -2055,7 +2065,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       if (row != null) {
         final path = _bfsPathAuto(_pos, Point(11, row));
         if (path.isNotEmpty) await _walkPath(path, stepMs: 230); // un peu plus lent
-        // 4. Cinématique d'arrivée : la tour charge 1 flamme, vise, tire, −1.
+        // 4. Bataille du jardin (sauf si déjà sur place) : SEMAINE (toggle, 1×/jour)
+        //    ou AUJOURD'HUI (défaut), puis tir final transformé sur la routine.
+        if (!alreadyHere) {
+          if (_replayWeek && !_weeklyPlayedToday) {
+            _weeklyBattleAt = DateTime.now();
+            await _runGardenBattle(weekly: true);
+          } else {
+            await _runGardenBattle(weekly: false);
+          }
+        }
         await _fireArrival(routineId, row);
       }
     } finally {
@@ -2118,6 +2137,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   bool _liveFiring = false;
   int _liveRow = 0;
   String? _liveRoutineId;
+  int _liveFlames = 1; // flamme(s) chargée(s) = nb de validations du jour
   double _liveAim = 0; // 0..1 : charge + visée
   _CineFb? _liveFb; // boulet du tir d'arrivée
   Offset? _liveFlashAt; // case d'impact (flash)
@@ -2169,11 +2189,104 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     }
   }
 
+  // Nb de validations AUJOURD'HUI pour une routine (= flammes chargées au tir).
+  int _todayHits(String routineId) {
+    final now = DateTime.now();
+    var n = 0;
+    for (final h in logic.state.habitHits) {
+      if (h.habitId == routineId &&
+          h.ts.year == now.year &&
+          h.ts.month == now.month &&
+          h.ts.day == now.day) n++;
+    }
+    return n < 1 ? 1 : n;
+  }
+
+  // ── BATAILLE HEBDO (jardin) : vagues colonne par colonne sur 7 jours glissants ──
+  bool _battleActive = false;
+  int _battleCol = 0; // colonne-jour en cours (0..6)
+  double _battleColT = 0;
+  bool _battleVolleyDone = false;
+  final Set<int> _battleFaded = {}; // colonnes déjà nettoyées (estompées)
+  final List<_Beam> _battleBeams = []; // traits en vol
+  List<({int row, List tokens})> _battleRows = const [];
+  Completer<void>? _battleDone;
+  static const double _kBattleColDur = 1.0; // s par colonne (vague)
+  // Toggle « à l'arrivée » : rejouer la SEMAINE (7 colonnes, lourd, 1×/jour) ou
+  // seulement AUJOURD'HUI (dernière colonne). Défaut = aujourd'hui.
+  bool _replayWeek = false;
+  DateTime? _weeklyBattleAt; // dernier jour où la bataille HEBDO a été jouée
+  bool get _weeklyPlayedToday {
+    final a = _weeklyBattleAt;
+    if (a == null) return false;
+    final n = DateTime.now();
+    return a.year == n.year && a.month == n.month && a.day == n.day;
+  }
+
+  // weekly=true → 7 colonnes (jours glissants) ; false → seulement aujourd'hui
+  // (dernière colonne, index 6).
+  Future<void> _runGardenBattle({required bool weekly}) async {
+    final w = _w;
+    if (!mounted || w == null) return;
+    final mid = w.rows ~/ 2;
+    final routines = _domTopRoutines();
+    final times = _domTopTimeActivities();
+    final rows = <({int row, List tokens})>[];
+    for (var i = 0; i < routines.length; i++) {
+      rows.add((
+        row: mid - routines.length + i,
+        tokens: logic.routineWeekTokens(routines[i].id)
+      ));
+    }
+    for (var j = 0; j < times.length; j++) {
+      rows.add(
+          (row: mid + 1 + j, tokens: logic.activityTimeTokens(times[j].id)));
+    }
+    if (rows.isEmpty) return;
+    _battleRows = rows;
+    _battleCol = weekly ? 0 : 6; // aujourd'hui = dernière colonne-jour
+    _battleColT = 0;
+    _battleVolleyDone = false;
+    _battleFaded.clear();
+    _battleBeams.clear();
+    _battleDone = Completer<void>();
+    setState(() => _battleActive = true);
+    await _battleDone!.future;
+  }
+
+  void _simulateBattle(double dt) {
+    _battleBeams.removeWhere((b) => _gameMs - b.bornMs > 240);
+    // Volée au début de chaque colonne : un trait par ligne ayant un token là.
+    if (!_battleVolleyDone && _battleColT > 0.12) {
+      for (final r in _battleRows) {
+        if (_battleCol < r.tokens.length &&
+            r.tokens[_battleCol].type != 'empty') {
+          _battleBeams.add(_Beam(12, r.row.toDouble(),
+              (13 + _battleCol).toDouble(), r.row.toDouble(), _gameMs));
+        }
+      }
+      _battleVolleyDone = true;
+    }
+    _battleColT += dt;
+    if (_battleColT >= _kBattleColDur) {
+      _battleFaded.add(_battleCol); // colonne nettoyée → s'estompe
+      _battleCol++;
+      _battleColT = 0;
+      _battleVolleyDone = false;
+      if (_battleCol >= 7) {
+        _battleActive = false;
+        _battleDone?.complete();
+        _battleDone = null;
+      }
+    }
+  }
+
   // Joue le tir d'arrivée et attend sa fin (avatar déjà posé en col 11).
   Future<void> _fireArrival(String routineId, int row) async {
     if (!mounted) return;
     _liveRoutineId = routineId;
     _liveRow = row;
+    _liveFlames = _todayHits(routineId);
     _liveAim = 0;
     _liveFb = null;
     _liveDone = Completer<void>();
@@ -3322,6 +3435,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             pill('🚪 Sortir de la grotte', _interiorColor.withOpacity(.7),
                 _tdMode ? () {} : _exitInterior),
           ],
+          // Toggle « à l'arrivée » : revoir la semaine (1×/jour) ou aujourd'hui.
+          if (!widget.mobile)
+            pill(
+                _replayWeek ? '🔁 Revoir : semaine' : '🔁 Revoir : aujourd\'hui',
+                const Color(0xFF8E7CC3),
+                () => setState(() => _replayWeek = !_replayWeek),
+                on: _replayWeek),
           // TEST (S2) : simule une validation → l'avatar voyage vers la routine.
           if (!widget.mobile)
             pill('🤖 Voyage test', const Color(0xFF66BB6A), () {
@@ -3575,20 +3695,26 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     // SEULES les tours ayant ≥1 flamme sur leur ligne se
                     // transforment (DCA) et combattent. Les autres restent
                     // normales (vie + chargeur, icône turret) pendant la ciné.
-                    final cineTurret = _cineActive && flameMax > 0;
+                    // Tir d'ARRIVÉE (S3) : la tour de la routine validée se
+                    // TRANSFORME aussi en canon (DCA) pour lancer le boulet.
+                    final liveHere = _liveFiring && e.row == _liveRow;
+                    final cineTurret = (_cineActive && flameMax > 0) || liveHere;
                     // Une flamme « touche » la tour à des paliers réguliers :
                     // la tour ne change QU'À l'arrivée de chaque flamme.
                     final arrived = flameMax > 0
                         ? (charge * flameMax).floor().clamp(0, flameMax)
                         : 0;
-                    final cineFlame =
-                        cineTurret ? arrived / flameMax : 0.0;
+                    final cineFlame = liveHere
+                        ? 1.0
+                        : (cineTurret && flameMax > 0 ? arrived / flameMax : 0.0);
                     // État de tir (phase attaque) : flammes restantes + visée.
                     final tu = _cineAttack ? _cineTurretByRow[e.row] : null;
-                    // Flammes affichées : pendant l'attaque = munitions restantes
-                    // (consommées par tir, rechargées /30 s) ; sinon = charge ciné.
-                    final lit =
-                        tu != null ? tu.ammo.clamp(0, flameMax) : arrived;
+                    // Flammes affichées : arrivée = flamme(s) du jour ; attaque =
+                    // munitions restantes ; sinon = charge ciné.
+                    final flameRowMax = liveHere ? _liveFlames : flameMax;
+                    final lit = liveHere
+                        ? _liveFlames
+                        : (tu != null ? tu.ammo.clamp(0, flameMax) : arrived);
                     // Visée du barillet :
                     //  - attaque : le canon PLONGE puis se RELÈVE (animation lente)
                     //    avant chaque tir ;
@@ -3596,6 +3722,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     final double headAngle;
                     if (tu != null && tu.aim >= 0) {
                       headAngle = -sin(pi * tu.aim) * _kBarrelAimDip;
+                    } else if (liveHere) {
+                      headAngle =
+                          -sin(pi * _liveAim.clamp(0.0, 1.0)) * _kBarrelAimDip;
                     } else if (cineCurShot != null &&
                         cineCurShot.turretRow == e.row &&
                         cineCurShot.tx < 12) {
@@ -3622,7 +3751,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                             // tour charge → REMPLACENT le chargeur ; la jauge de
                             // vie DISPARAÎT. Hors cinématique : vie + chargeur.
                             if (cineTurret)
-                              _cineFlameRow(flameMax, lit, slot)
+                              _cineFlameRow(flameRowMax, lit, slot)
                             else ...[
                               _webLifeBar(e.r.charger / 7, slot),
                               SizedBox(height: slot * 0.04),
@@ -3647,8 +3776,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                               // moment du NETTOYAGE (après que toutes les tours
                               // ont été renforcées). En prépa : sens naturel.
                               child: Transform.flip(
-                                flipX:
-                                    cineTurret && (_cineClearing || _cineAttack),
+                                flipX: cineTurret &&
+                                    (_cineClearing || _cineAttack || liveHere),
                                 child: () {
                                   final tint = ColorFilter.mode(
                                       Color.lerp(
@@ -3761,29 +3890,36 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                           : (spider
                               ? (e.kind == 'scorpion' ? '🦂' : '🕷️')
                               : '🍃');
+                      // Bataille : colonne déjà nettoyée → estompée (laisse voir
+                      // la colonne suivante).
+                      final battleFade =
+                          _battleActive && _battleFaded.contains(d) ? 0.18 : 1.0;
                       return Positioned(
                         left: c0.dx - slot / 2,
                         top: c0.dy - slot / 2,
                         width: slot,
                         height: slot,
-                        child: GestureDetector(
-                          onTap: spider
-                              ? () => showBacklogCombat(
-                                  context, logic, sync, e.kind, e.r.id)
-                              : null,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(emoji,
-                                  style: TextStyle(fontSize: slot * 0.5)),
-                              if (spider)
-                                Text('${tok.hp}', // PV restants ce jour
-                                    style: TextStyle(
-                                        color: _kEnemy,
-                                        fontWeight: FontWeight.w900,
-                                        fontSize: slot * 0.2,
-                                        height: 1)),
-                            ],
+                        child: Opacity(
+                          opacity: battleFade,
+                          child: GestureDetector(
+                            onTap: spider
+                                ? () => showBacklogCombat(
+                                    context, logic, sync, e.kind, e.r.id)
+                                : null,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(emoji,
+                                    style: TextStyle(fontSize: slot * 0.5)),
+                                if (spider)
+                                  Text('${tok.hp}', // PV restants ce jour
+                                      style: TextStyle(
+                                          color: _kEnemy,
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: slot * 0.2,
+                                          height: 1)),
+                              ],
+                            ),
                           ),
                         ),
                       );
@@ -3915,25 +4051,36 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                   for (final fb in _supportFbs) ..._fbWidgets(fb, slot, centerD),
                 // Boulet du tir d'ARRIVÉE (S3, hors cinématique d'assaut).
                 if (_liveFb != null) ..._fbWidgets(_liveFb!, slot, centerD),
-                // Charge de la tour pendant la visée (avant le tir d'arrivée).
-                if (_liveFiring && _liveFb == null)
-                  () {
-                    final c0 = centerD(12, _liveRow.toDouble());
-                    return Positioned(
-                      left: c0.dx - slot / 2,
-                      top: c0.dy - slot / 2,
-                      width: slot,
-                      height: slot,
-                      child: Center(
-                        child: Opacity(
-                          opacity: _liveAim.clamp(0.0, 1.0),
-                          child: Text('🔥',
-                              style: TextStyle(
-                                  fontSize: slot * (0.22 + 0.26 * _liveAim))),
+                // Traits de la BATAILLE HEBDO (couleur du domaine, placeholder).
+                if (_battleActive)
+                  for (final b in _battleBeams)
+                    () {
+                      final p1 = centerD(b.fx, b.fy);
+                      final p2 = centerD(b.tx, b.ty);
+                      final dxx = p2.dx - p1.dx, dyy = p2.dy - p1.dy;
+                      final len = sqrt(dxx * dxx + dyy * dyy);
+                      return Positioned(
+                        left: p1.dx,
+                        top: p1.dy,
+                        child: Transform.rotate(
+                          angle: atan2(dyy, dxx),
+                          alignment: Alignment.topLeft,
+                          child: Container(
+                            width: len,
+                            height: 3,
+                            decoration: BoxDecoration(
+                              color: _interiorColor,
+                              borderRadius: BorderRadius.circular(2),
+                              boxShadow: [
+                                BoxShadow(
+                                    color: _interiorColor.withOpacity(.6),
+                                    blurRadius: 4)
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
-                    );
-                  }(),
+                      );
+                    }(),
                 // Flash d'impact du tir d'arrivée.
                 if (_liveFlashAt != null && _gameMs < _liveFlashUntilMs)
                   () {
@@ -4763,6 +4910,14 @@ class _CineTurret {
   double aim = -1; // -1 = repos ; 0..1 = visée en cours (canon plonge/relève)
   double reload = 0; // 0..kFlameRegrow : cycle de recharge des flammes
   _CineTurret(this.row, this.maxFlames, this.ammo, this.cd);
+}
+
+// Trait de tir de la bataille hebdo (tour → token d'une colonne-jour) ; placeholder
+// visuel (couleur du domaine) avant polish.
+class _Beam {
+  final double fx, fy, tx, ty;
+  final int bornMs;
+  _Beam(this.fx, this.fy, this.tx, this.ty, this.bornMs);
 }
 
 // Boule de feu de SUPPORT : tirée par une tour vers une toile, en ARC (parabole),
