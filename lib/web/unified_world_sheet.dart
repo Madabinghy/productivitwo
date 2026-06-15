@@ -2650,7 +2650,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                               width: slot * 0.5,
                               height: slot * 0.5,
                               colorFilter: ColorFilter.mode(
-                                  _interiorColor, BlendMode.srcIn)),
+                                  e.r.charger == 0 ? _kEnemy : _interiorColor,
+                                  BlendMode.srcIn)),
                         ],
                       ),
                     );

@@ -178,7 +178,8 @@ class _WorldMobileListState extends State<_WorldMobileList> {
                     SvgPicture.asset('assets/icons/turret.svg',
                         width: 26,
                         height: 26,
-                        colorFilter: ColorFilter.mode(color, BlendMode.srcIn)),
+                        colorFilter: ColorFilter.mode(
+                            life <= 0 ? _kEnemy : color, BlendMode.srcIn)),
                     const SizedBox(height: 3),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(2),
@@ -475,7 +476,8 @@ class _DomainGameplayState extends State<_DomainGameplay> {
                   SvgPicture.asset(it.icon,
                       width: 22,
                       height: 22,
-                      colorFilter: ColorFilter.mode(c, BlendMode.srcIn)),
+                      colorFilter: ColorFilter.mode(
+                          it.charger == 0 ? _kEnemy : c, BlendMode.srcIn)),
                 ],
               ),
             ),
