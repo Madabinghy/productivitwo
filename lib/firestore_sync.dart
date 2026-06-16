@@ -227,6 +227,8 @@ class FirestoreSync {
             ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
         challengeWinsByDay: (meta['challengeWinsByDay'] as Map?)
             ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
+        battleShurikensByDay: (meta['battleShurikensByDay'] as Map?)
+            ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
         gold: (meta['gold'] as num?)?.toInt() ?? 0,
         goldLifetime: (meta['goldLifetime'] as num?)?.toInt() ?? 0,
         goldLastProcessedDay: meta['goldLastProcessedDay'] as String?,
@@ -470,6 +472,7 @@ class FirestoreSync {
         'lastChallengeYmd': st.lastChallengeYmd,
         'ganttActionsByDay': st.ganttActionsByDay,
         'challengeWinsByDay': st.challengeWinsByDay,
+        'battleShurikensByDay': st.battleShurikensByDay,
         // Clés du donjon : état quotidien éphémère, pas or-autoritatif → miroir OK.
         'donjonKeysUsed': st.donjonKeysUsed,
         'donjonKeysYmd': st.donjonKeysYmd,

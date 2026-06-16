@@ -217,9 +217,77 @@ class BacklogCombatPanel extends StatefulWidget {
   State<BacklogCombatPanel> createState() => _BacklogCombatPanelState();
 }
 
-class _BacklogCombatPanelState extends State<BacklogCombatPanel> {
+class _BacklogCombatPanelState extends State<BacklogCombatPanel>
+    with SingleTickerProviderStateMixin {
   // Persiste entre les rebuilds → « punch » du sprite à chaque sbire éliminé.
   int hitTick = 0;
+
+  // ── Cinématique de canon : la tourelle du calendrier tire sur le nuisible du
+  //    jour (dernière colonne) AVANT d'appliquer le coup. ──
+  late final AnimationController _fireCtrl = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1000))
+    ..addListener(() {
+      if (mounted) setState(() {});
+    });
+  bool _firing = false;
+
+  @override
+  void dispose() {
+    _fireCtrl.dispose();
+    super.dispose();
+  }
+
+  // Encart le calendrier (tourelle + 7 jours) dans un Stack et fait voler une
+  // boule de feu de la tourelle jusqu'à la case du JOUR pendant le tir.
+  Widget _cannonRow(int dayCount, Widget row) {
+    const turretColW = 44.0;
+    const cellW = 30.0; // 28 + marge all(1)
+    const turretCx = 22.0;
+    final todayCx = turretColW + (dayCount - 1) * cellW + cellW / 2;
+    final t = _fireCtrl.value;
+    final fx = turretCx + (todayCx - turretCx) * t;
+    final dy = -sin(t * pi) * 14.0;
+    return Center(
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          row,
+          if (_firing) ...[
+            Positioned(
+              left: fx - 9,
+              top: 0,
+              bottom: 0,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Transform.translate(
+                  offset: Offset(0, dy),
+                  child: Opacity(
+                    opacity: t < 0.96 ? 1 : 0,
+                    child: const Text('🔥',
+                        style: TextStyle(
+                            fontSize: 16, decoration: TextDecoration.none)),
+                  ),
+                ),
+              ),
+            ),
+            if (t > 0.82)
+              Positioned(
+                left: todayCx - 11,
+                top: 0,
+                bottom: 0,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('💥',
+                      style: TextStyle(
+                          fontSize: 18 + (t - 0.82) * 18,
+                          decoration: TextDecoration.none)),
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -333,6 +401,17 @@ class _BacklogCombatPanelState extends State<BacklogCombatPanel> {
             setLocal(() {});
             onChanged?.call();
           }
+        }
+
+        // Joue la cinématique de canon (tourelle → nuisible du jour) PUIS applique
+        // le coup. Réutilisée par « Faire la routine » (web + mobile, même widget).
+        Future<void> cannonThen(Future<void> Function() apply) async {
+          if (_firing) return;
+          setLocal(() => _firing = true);
+          await _fireCtrl.forward(from: 0);
+          if (!mounted) return;
+          setLocal(() => _firing = false);
+          await apply();
         }
 
         // Serpent : ouvre la checklist des actions ; tout coché → mise à mort.
@@ -559,7 +638,10 @@ class _BacklogCombatPanelState extends State<BacklogCombatPanel> {
             attacks =
                 timerLadder(linkedId, finishMin: timerMin, finishRoutineId: itemId);
           } else if (type == 'spider') {
-            attacks = [atk(Icons.local_fire_department_rounded, 'Faire la routine (+1)', inlineWork)];
+            attacks = [
+              atk(Icons.local_fire_department_rounded, 'Faire la routine (+1)',
+                  () => cannonThen(inlineWork))
+            ];
           } else if (type == 'scorpion') {
             attacks = timerLadder(itemId);
           } else {
@@ -708,51 +790,56 @@ class _BacklogCombatPanelState extends State<BacklogCombatPanel> {
                     ),
                 ]),
                 const SizedBox(height: 2),
-                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  SizedBox(
-                    width: 44,
-                    child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      // Vie (jaune/bleu/rouge selon la tenue).
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(2),
-                        child: Container(
-                          width: 34,
-                          height: 4,
-                          color: lifeCol.withOpacity(.18),
-                          alignment: Alignment.centerLeft,
-                          child: FractionallySizedBox(
-                            widthFactor: (weekCharger / 7).clamp(0.0, 1.0),
-                            child: Container(color: lifeCol),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      // Chargeur (cases vertes = munitions non tirées = jours non faits).
-                      Row(mainAxisSize: MainAxisSize.min, children: [
-                        for (var i = 0; i < 7; i++)
-                          Container(
-                            width: 4,
+                _cannonRow(
+                  weekTokens.length,
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    SizedBox(
+                      width: 44,
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        // Vie (jaune/bleu/rouge selon la tenue).
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(2),
+                          child: Container(
+                            width: 34,
                             height: 4,
-                            margin: const EdgeInsets.only(right: 1),
-                            decoration: BoxDecoration(
-                              color: i < (7 - weekCharger)
-                                  ? const Color(0xFF4FC26B)
-                                  : Colors.white.withOpacity(.12),
-                              borderRadius: BorderRadius.circular(1),
+                            color: lifeCol.withOpacity(.18),
+                            alignment: Alignment.centerLeft,
+                            child: FractionallySizedBox(
+                              widthFactor: (weekCharger / 7).clamp(0.0, 1.0),
+                              child: Container(color: lifeCol),
                             ),
                           ),
+                        ),
+                        const SizedBox(height: 2),
+                        // Chargeur (cases vertes = munitions non tirées = jours non faits).
+                        Row(mainAxisSize: MainAxisSize.min, children: [
+                          for (var i = 0; i < 7; i++)
+                            Container(
+                              width: 4,
+                              height: 4,
+                              margin: const EdgeInsets.only(right: 1),
+                              decoration: BoxDecoration(
+                                color: i < (7 - weekCharger)
+                                    ? const Color(0xFF4FC26B)
+                                    : Colors.white.withOpacity(.12),
+                                borderRadius: BorderRadius.circular(1),
+                              ),
+                            ),
+                        ]),
+                        const SizedBox(height: 2),
+                        SvgPicture.asset('assets/icons/turret.svg',
+                            width: 20,
+                            height: 20,
+                            colorFilter: ColorFilter.mode(
+                                _firing
+                                    ? const Color(0xFFFFC83D)
+                                    : (weekCharger == 0 ? _kRed : domColor),
+                                BlendMode.srcIn)),
                       ]),
-                      const SizedBox(height: 2),
-                      SvgPicture.asset('assets/icons/turret.svg',
-                          width: 20,
-                          height: 20,
-                          colorFilter: ColorFilter.mode(
-                              weekCharger == 0 ? _kRed : domColor,
-                              BlendMode.srcIn)),
-                    ]),
-                  ),
-                  for (var d = 0; d < weekTokens.length; d++) tcell(d),
-                ]),
+                    ),
+                    for (var d = 0; d < weekTokens.length; d++) tcell(d),
+                  ]),
+                ),
               ],
             ),
           );

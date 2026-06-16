@@ -10,6 +10,12 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.17', '16 juin 2026', [
+    (Icons.local_fire_department_outlined, 'Carte de combat : la tourelle du calendrier tire une boule de feu sur le nuisible du jour avant chaque coup (mobile + web)'),
+    (Icons.public, '« Le Monde » sur le web : une seule grande carte explorable au doigt (drag-pan) — village, jardin de serpents et calendrier de chaque domaine empilés'),
+    (Icons.bug_report_outlined, 'Araignée-boss d\'invasion : à 10 jours manqués dans la semaine, une araignée s\'installe ; nettoie ta semaine puis affronte-la pour la déloger (combat aux shurikens)'),
+    (Icons.savings_outlined, 'Bataille à l\'araignée : ton stock de shurikens du jour = ton backlog ; consommés à la victoire seulement (défaite = tu peux refarmer et réessayer)'),
+  ]),
   _Entry('6.16', '16 juin 2026', [
     (Icons.gps_fixed, 'Combattre : un viseur 🎯 devant chaque routine/activité — tape-le pour choisir la cible de « Faire feu »'),
     (Icons.checklist_outlined, 'Combattre : nouvel onglet « Actions » — tes projets/tâches du domaine (lance-missiles + calendrier des actions validées, fusil devant chaque action)'),

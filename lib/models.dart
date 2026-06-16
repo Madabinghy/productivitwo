@@ -668,6 +668,7 @@ class AppState {
   String? lastChallengeYmd;    // dernier jour (YYYYMMDD) où un défi a été relevé
   Map<String, int> ganttActionsByDay;  // actions Gantt cochées par jour (XP)
   Map<String, int> challengeWinsByDay; // défis relevés par jour (XP du jour)
+  Map<String, int> battleShurikensByDay; // shurikens dépensés par jour (déloges gagnés)
 
   // ── Économie d'Or (système stratégique : gagner/perdre/dépenser) ──────────
   int gold;                    // solde de pièces d'or courant (plancher 0)
@@ -803,6 +804,7 @@ class AppState {
     this.lastChallengeYmd,
     Map<String, int>? ganttActionsByDay,
     Map<String, int>? challengeWinsByDay,
+    Map<String, int>? battleShurikensByDay,
     this.gold = 0,
     this.goldLifetime = 0,
     this.goldLastProcessedDay,
@@ -882,6 +884,7 @@ class AppState {
         skippedChallengeDates = skippedChallengeDates ?? <String>[],
         ganttActionsByDay = ganttActionsByDay ?? <String, int>{},
         challengeWinsByDay = challengeWinsByDay ?? <String, int>{},
+        battleShurikensByDay = battleShurikensByDay ?? <String, int>{},
         goldInventory = goldInventory ?? <String, int>{},
         goldGelDays = goldGelDays ?? <String>[],
         goldTaskShieldDays = goldTaskShieldDays ?? <String>[],
@@ -949,6 +952,7 @@ class AppState {
         'lastChallengeYmd': lastChallengeYmd,
         'ganttActionsByDay': ganttActionsByDay,
         'challengeWinsByDay': challengeWinsByDay,
+        'battleShurikensByDay': battleShurikensByDay,
         'gold': gold,
         'goldLifetime': goldLifetime,
         'goldLastProcessedDay': goldLastProcessedDay,
@@ -1095,6 +1099,9 @@ class AppState {
               ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ??
           <String, int>{},
       challengeWinsByDay: (j['challengeWinsByDay'] as Map?)
+              ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ??
+          <String, int>{},
+      battleShurikensByDay: (j['battleShurikensByDay'] as Map?)
               ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ??
           <String, int>{},
       gold: (j['gold'] as num?)?.toInt() ?? 0,

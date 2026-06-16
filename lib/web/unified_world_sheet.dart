@@ -290,7 +290,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // cyclique), qui erre aléatoirement ; le ninja leur tire dessus (-1 PV si touché).
   final List<_Sbire> _cineSbires = [];
   int _cineSbireSeq = 0;
-  int _ninjaShurikens = 0; // deck de shurikens = deck lifetime (munitions)
+  int _ninjaShurikens = 0; // deck de shurikens = budget du jour (munitions)
+  int _battleShkStart = 0; // shurikens au DÉBUT du combat (pour calculer le dépensé)
   // Toiles SURVIVANTES (avec clé + position) : sources de spawn ET cibles que
   // les tours continuent de détruire en SUPPORT. Quand toutes sont détruites →
   // victoire.
@@ -369,11 +370,30 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     return out;
   }
 
+  // Shurikens dépensés AUJOURD'HUI (budget journalier = lifetime − dépensé).
+  String get _todayYmd {
+    final n = DateTime.now();
+    return '${n.year}-${n.month.toString().padLeft(2, '0')}-${n.day.toString().padLeft(2, '0')}';
+  }
+
+  int _shurikenSpentToday() =>
+      logic.state.battleShurikensByDay[_todayYmd] ?? 0;
+
+  void _consumeShurikens(int n) {
+    if (n <= 0) return;
+    logic.state.battleShurikensByDay[_todayYmd] = _shurikenSpentToday() + n;
+    sync.pushAll(logic.state); // persiste (j'ai payé pour cette déloge)
+  }
+
   void _startAttack() {
     _cineAttack = true;
     _ninjaHp = 10;
     _bossAttackT = 0;
-    _ninjaShurikens = logic.lifetimeBattleMasse; // deck lifetime
+    // Budget du JOUR : lifetime − déjà dépensé aujourd'hui (≥ 0). À 0 → tu tombes
+    // vite à court → défaite : farme/attends demain pour reconstituer le deck.
+    _ninjaShurikens =
+        (logic.lifetimeBattleMasse - _shurikenSpentToday()).clamp(0, 1 << 30);
+    _battleShkStart = _ninjaShurikens;
     _ninjaX = _pos.x.toDouble();
     _ninjaY = _pos.y.toDouble();
     _shurikens.clear();
@@ -697,11 +717,15 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         }
       }
       _supportFbs.removeWhere((fb) => fb.dead);
-      // VICTOIRE : toutes les toiles détruites.
+      // VICTOIRE : toutes les toiles détruites → l'araignée est DÉLOGÉE (définitif)
+      // et on PAIE les shurikens dépensés (budget du jour décrémenté & persisté).
       if (_cineToileSpawns.isEmpty && _supportFbs.isEmpty) {
         _cineAttack = false;
         _cineActive = false;
-        _toast('🏰 Château reconquis — toutes les toiles détruites !', _kBlue);
+        _consumeShurikens(_battleShkStart - _ninjaShurikens);
+        final dom = _interiorDomainId;
+        if (dom != null) _v2Dislodged.add(dom); // ne reviendra pas
+        _toast('🏰 Araignée délogée ! (toiles détruites)', _kBlue);
         return;
       }
       // ARC actif : le ninja S'ARRÊTE 5 s et tire 3 flèches/s (sans consommer ses
@@ -828,9 +852,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         _toast('🕷️ L\'araignée frappe le ninja — -1 PV !', _kEnemy);
       }
       if (_ninjaHp <= 0) {
+        // DÉFAITE : on NE consomme PAS les shurikens (rien persisté) → tu peux
+        // refarmer ton deck et réessayer ; l'araignée n'est PAS délogée.
         _cineAttack = false;
         _cineActive = false;
-        _toast('💀 Le ninja est tombé — l\'attaque échoue.', _kEnemy);
+        _toast('💀 Le ninja est tombé — l\'araignée tient. Farme et réessaie.',
+            _kEnemy);
       }
       return;
     }
@@ -5373,12 +5400,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             _kEnemy);
         return;
       }
-      // < N → on peut l'affronter ; une fois délogée, elle ne revient pas.
+      // < N → on peut TENTER de l'affronter. La déloge (et la conso de shurikens)
+      // n'a lieu qu'en cas de VICTOIRE du combat (cf. _simulateCine), pas au clic.
       _launchV2Cine(x, y, _posV2.x); // shuriken/jet vers l'araignée
       await Future.delayed(const Duration(milliseconds: 350));
       if (!mounted) return;
-      _v2Invaded.remove(araDom);
-      _v2Dislodged.add(araDom);
       _enterDomainFromV2(araDom);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _inInterior) _startCine();
@@ -5612,15 +5638,28 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     if (w == null) {
       return const Center(child: CircularProgressIndicator(color: _kBlue));
     }
-    return SingleChildScrollView(
-      controller: _v2VCtrl,
-      scrollDirection: Axis.vertical,
+    // Exploration : on déplace la carte au DOIGT (drag‑pan). Les scrolls sont
+    // pilotés par le geste (physics désactivée) ; le tap sur une case marche
+    // toujours l'avatar (un drag ≠ un tap).
+    return GestureDetector(
+      onPanUpdate: (d) {
+        if (!_v2HCtrl.hasClients || !_v2VCtrl.hasClients) return;
+        _v2HCtrl.jumpTo((_v2HCtrl.offset - d.delta.dx)
+            .clamp(0.0, _v2HCtrl.position.maxScrollExtent));
+        _v2VCtrl.jumpTo((_v2VCtrl.offset - d.delta.dy)
+            .clamp(0.0, _v2VCtrl.position.maxScrollExtent));
+      },
       child: SingleChildScrollView(
-        controller: _v2HCtrl,
-        scrollDirection: Axis.horizontal,
-        child: SizedBox(
-          width: w.cols * _kV2Slot,
-          height: w.rows * _kV2Slot,
+        controller: _v2VCtrl,
+        scrollDirection: Axis.vertical,
+        physics: const NeverScrollableScrollPhysics(),
+        child: SingleChildScrollView(
+          controller: _v2HCtrl,
+          scrollDirection: Axis.horizontal,
+          physics: const NeverScrollableScrollPhysics(),
+          child: SizedBox(
+            width: w.cols * _kV2Slot,
+            height: w.rows * _kV2Slot,
           child: Stack(
             children: [
               // GRILLE CULLÉE : seules les cases VISIBLES sont construites
@@ -5659,6 +5698,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               ),
             ],
           ),
+        ),
         ),
       ),
     );
