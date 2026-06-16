@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.23', '16 juin 2026', [
+    (Icons.speed_outlined, '« Le Monde » web : navigation plus fluide — la carte ne reconstruit plus ses cases à chaque pixel de scroll et la mini-carte ne se redessine qu\'à l\'essentiel. Le glissé et le défilement restent nets même sur un grand monde'),
+  ]),
   _Entry('6.22', '16 juin 2026', [
     (Icons.park_outlined, '« Le Monde » web : décor ambiant — arbres, rochers et buissons sur le terrain extérieur, maisons dans les villages, torches le long des remparts. La carte respire enfin (décor purement visuel, généré de façon stable)'),
   ]),
