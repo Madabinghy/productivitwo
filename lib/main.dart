@@ -56,6 +56,7 @@ import 'package:productivitwo_v1/widgets/gold_sheet.dart';
 import 'package:productivitwo_v1/widgets/gamification_hub_sheet.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
 import 'package:productivitwo_v1/widgets/orion_screen.dart';
+import 'package:productivitwo_v1/widgets/proposals_sheet.dart';
 import 'package:productivitwo_v1/widgets/world_mobile_sheet.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:productivitwo_v1/widgets/focus_view.dart';
@@ -5105,12 +5106,12 @@ class _AppRootState extends State<AppRoot>
                   ),
               ],
             ),
-            // Orion Stratège (déplacé ici depuis l'onglet, remplacé par le Monde).
-            // « À valider » retiré : déjà accessible dans Revue de la semaine.
+            // Propositions à valider (déplacé ici depuis la Revue de la semaine).
+            // Orion Stratège déplacé dans le menu « Plus ».
             IconButton(
-              icon: const Icon(Icons.smart_toy_outlined, size: 20),
-              tooltip: 'Orion Stratège',
-              onPressed: () => OrionScreen.show(context, _sync),
+              icon: const Icon(Icons.fact_check_outlined, size: 20),
+              tooltip: 'Propositions à valider',
+              onPressed: () => showProposalsSheet(context, _sync),
             ),
             const SizedBox(width: 4),
             PopupMenuButton<String>(
@@ -5126,6 +5127,8 @@ class _AppRootState extends State<AppRoot>
                     Navigator.of(context).push(
                         MaterialPageRoute(builder: (_) => const DevConsoleScreen()));
                   }
+                } else if (v == 'orion') {
+                  OrionScreen.show(context, _sync);
                 } else if (v == 'weekly_review') {
                   showWeeklyReviewSheet(context, _sync);
                 } else if (v == 'filters') {
@@ -5181,6 +5184,14 @@ class _AppRootState extends State<AppRoot>
                   ),
                 ),
                 const PopupMenuDivider(),
+                const PopupMenuItem(
+                  value: 'orion',
+                  child: Row(children: [
+                    Icon(Icons.smart_toy_outlined, size: 18),
+                    SizedBox(width: 12),
+                    Text('Orion Stratège'),
+                  ]),
+                ),
                 const PopupMenuItem(
                   value: 'weekly_review',
                   child: Row(children: [
