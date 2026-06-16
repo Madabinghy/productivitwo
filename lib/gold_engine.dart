@@ -481,10 +481,27 @@ extension GoldEngine on AppLogic {
         if (hp > 0) out.add((type: 'scorpion', id: a.id, hp: hp));
       }
     }
+    final now = DateTime.now();
+    final todayYmd = DateTime(now.year, now.month, now.day);
     for (final p in currentProjects) {
       if (p.status == 'archived' || p.status == 'done') continue;
       for (final t in p.tasks) {
         if (t.status == 'done' || t.status == 'skipped') continue;
+        // Tâche = serpent dans le jardin SEULEMENT si en retard. Échéance
+        // EFFECTIVE : celle de la tâche, sinon celle de sa phase, sinon celle du
+        // projet (les tâches Gantt portent souvent la date sur la phase).
+        DateTime? due = t.endDate;
+        if (due == null && t.phaseId != null) {
+          for (final ph in p.phases) {
+            if (ph.id == t.phaseId) {
+              due = ph.endDate;
+              break;
+            }
+          }
+        }
+        due ??= p.endDate;
+        if (due == null) continue;
+        if (!DateTime(due.year, due.month, due.day).isBefore(todayYmd)) continue;
         final hp = enemyHp('snake', t.id);
         if (hp > 0) out.add((type: 'snake', id: t.id, hp: hp));
       }

@@ -44,6 +44,19 @@
     }
   </script>
   <script src="flutter_bootstrap.js" async></script>
+  <!-- Empêche le swipe-back du navigateur (2 doigts) de voler le scroll horizontal de la map.
+       Posé large (root + vue Flutter + universel) par sécurité selon les moteurs/renderers. -->
+  <style>
+    html, body {
+      overscroll-behavior: none;
+      overscroll-behavior-x: none;
+      overscroll-behavior-y: none;
+    }
+    flutter-view, flt-glass-pane, flt-scene-host, #_fl_load {
+      overscroll-behavior: none;
+    }
+    * { overscroll-behavior-x: none; }
+  </style>
 </head>
 <body>
   <!-- Écran de chargement — masqué au premier frame Flutter -->

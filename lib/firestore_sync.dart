@@ -553,6 +553,15 @@ class FirestoreSync {
         (snap) => snap.docs.map((d) => HabitHit.from(d.data() as Map)).toList());
   }
 
+  // Temps réel : toutes les sessions de temps. Le web s'en sert pour détecter un
+  // MINUTEUR EN COURS (session ouverte, endAt == null) lancé depuis le mobile et
+  // déclencher la cinématique d'assaut sur l'activité correspondante.
+  Stream<List<Session>> streamSessions() {
+    if (uid == null) return const Stream.empty();
+    return _col('sessions').snapshots().map(
+        (snap) => snap.docs.map((d) => Session.from(d.data() as Map)).toList());
+  }
+
   Stream<List<Domain>> streamDomains() {
     if (uid == null) return const Stream.empty();
     return _col('domains').snapshots().map((snap) => snap.docs

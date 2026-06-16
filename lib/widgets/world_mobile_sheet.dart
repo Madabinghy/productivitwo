@@ -293,6 +293,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
     with SingleTickerProviderStateMixin {
   AppLogic get logic => widget.logic;
   bool _chateau = false; // false = jardin, true = intérieur château
+  int _tab = 0; // 0 = Routines/Activités · 1 = Actions (projets/tâches)
 
   // ── « Faire feu » : la tour se transforme en canon et attaque le nuisible du
   //    jour (dernière colonne). Décrément persistant (💥 si l'araignée meurt). ──
@@ -300,6 +301,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
       vsync: this, duration: const Duration(milliseconds: 1600))
     ..addListener(() => setState(() {}));
   String? _firingId; // ligne en cours de tir
+  String? _targetId; // ligne VISÉE (viseur) → cible de « Faire feu »
   final Map<String, int> _mobileDec = {}; // décréments du jour par itemId
 
   @override
@@ -314,14 +316,26 @@ class _DomainGameplayState extends State<_DomainGameplay>
     if (_firingId != null) return;
     final items = _items();
     _Item? target;
-    for (final it in items) {
-      final n = it.tokens.length;
-      if (n > 0 && it.tokens[n - 1].type == 'spider') {
-        target = it;
-        break;
+    // Cible VISÉE (viseur) en priorité.
+    if (_targetId != null) {
+      for (final it in items) {
+        if (it.id == _targetId) {
+          target = it;
+          break;
+        }
       }
     }
-    target ??= items.isNotEmpty ? items.first : null;
+    // Sinon : 1ʳᵉ ligne avec un nuisible du jour, sinon la 1ʳᵉ.
+    if (target == null) {
+      for (final it in items) {
+        final n = it.tokens.length;
+        if (n > 0 && it.tokens[n - 1].type == 'spider') {
+          target = it;
+          break;
+        }
+      }
+      target ??= items.isNotEmpty ? items.first : null;
+    }
     if (target == null) return;
     final id = target.id;
     setState(() => _firingId = id);
@@ -406,22 +420,33 @@ class _DomainGameplayState extends State<_DomainGameplay>
                 const SizedBox(width: 12),
               ]),
             ),
+            // Sous‑onglets : Routines/Activités · Actions (projets/tâches).
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
+              child: Row(children: [
+                _subTabBtn('Routines/Activités', 0, c),
+                const SizedBox(width: 6),
+                _subTabBtn('Actions', 1, c),
+              ]),
+            ),
             Expanded(
-              child: items.isEmpty
-                  ? const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(24),
-                        child: Text(
-                            'Aucune routine quotidienne ni activité-temps dans ce domaine.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: Colors.white38)),
-                      ),
-                    )
-                  : (_chateau ? _chateauView(items) : _gardenView(items)),
+              child: _tab == 1
+                  ? _actionsView()
+                  : (items.isEmpty
+                      ? const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(24),
+                            child: Text(
+                                'Aucune routine quotidienne ni activité-temps dans ce domaine.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.white38)),
+                          ),
+                        )
+                      : (_chateau ? _chateauView(items) : _gardenView(items))),
             ),
             // FAIRE FEU : la tour se transforme en canon et attaque le nuisible
-            // du jour (vue jardin uniquement).
-            if (!_chateau && items.isNotEmpty)
+            // du jour (onglet Routines/Activités · vue jardin uniquement).
+            if (_tab == 0 && !_chateau && items.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
                 child: SizedBox(
@@ -437,24 +462,26 @@ class _DomainGameplayState extends State<_DomainGameplay>
                   ),
                 ),
               ),
-            // CTA de navigation jardin ↔ château (le bouton fléché).
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
-              child: SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                      backgroundColor: c.withOpacity(.18),
-                      foregroundColor: c,
-                      minimumSize: const Size.fromHeight(46)),
-                  onPressed: () => setState(() => _chateau = !_chateau),
-                  icon: Icon(_chateau ? Icons.arrow_forward : Icons.arrow_back),
-                  label: Text(_chateau
-                      ? 'Retour au jardin 🌿'
-                      : 'Entrer dans le château 🏰'),
+            // CTA de navigation jardin ↔ château (onglet Routines/Activités).
+            if (_tab == 0)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: c.withOpacity(.18),
+                        foregroundColor: c,
+                        minimumSize: const Size.fromHeight(46)),
+                    onPressed: () => setState(() => _chateau = !_chateau),
+                    icon:
+                        Icon(_chateau ? Icons.arrow_forward : Icons.arrow_back),
+                    label: Text(_chateau
+                        ? 'Retour au jardin 🌿'
+                        : 'Entrer dans le château 🏰'),
+                  ),
                 ),
               ),
-            ),
           ],
         ),
       ),
@@ -519,6 +546,163 @@ class _DomainGameplayState extends State<_DomainGameplay>
         ]),
       );
 
+  // ── Sous‑onglet ACTIONS : projets/tâches du domaine, même structure ──────────
+  Widget _subTabBtn(String label, int idx, Color c) {
+    final on = _tab == idx;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _tab = idx),
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: on ? c.withOpacity(.22) : Colors.white.withOpacity(.04),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: on ? c.withOpacity(.7) : Colors.white12),
+          ),
+          alignment: Alignment.center,
+          child: Text(label,
+              style: TextStyle(
+                  color: on ? c : Colors.white54,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13)),
+        ),
+      ),
+    );
+  }
+
+  bool _sameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  Widget _actionsView() {
+    final dom = widget.domain.id;
+    final projects = logic.currentProjects
+        .where((p) =>
+            p.domainId == dom && p.status != 'archived' && p.status != 'done')
+        .toList();
+    if (projects.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text('Aucun projet dans ce domaine.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white38)),
+        ),
+      );
+    }
+    final days = _last7DayLabels();
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(10, 4, 10, 8),
+      children: [
+        for (final p in projects) ...[
+          _sectionHeader(
+              '📋 ${p.title}',
+              p.tasks
+                  .where((t) => t.status != 'done' && t.status != 'skipped')
+                  .length),
+          for (final t in p.tasks
+              .where((t) => t.status != 'done' && t.status != 'skipped'))
+            _actionTaskRow(t, days),
+        ],
+      ],
+    );
+  }
+
+  Widget _actionTaskRow(ProjectTask t, List<String> days) {
+    const cell = 34.0;
+    final c = widget.color;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    bool validatedOn(DateTime d) => t.actions
+        .any((a) => a.done && a.doneAt != null && _sameDay(a.doneAt!, d));
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(t.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  color: c.withOpacity(.95),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13)),
+          const SizedBox(height: 2),
+          Row(children: [
+            const SizedBox(width: 60),
+            for (final l in days)
+              SizedBox(
+                width: cell + 2,
+                child: Center(
+                  child: Text(l,
+                      style: TextStyle(
+                          color: Colors.white.withOpacity(.4),
+                          fontWeight: FontWeight.w900,
+                          fontSize: 11)),
+                ),
+              ),
+          ]),
+          const SizedBox(height: 1),
+          // Lance‑missiles (à la place de la tourelle) + cases‑jours (validations).
+          Row(children: [
+            SizedBox(
+              width: 60,
+              child: Center(
+                child: SvgPicture.asset('assets/icons/missile-launcher.svg',
+                    width: 24,
+                    height: 24,
+                    colorFilter: ColorFilter.mode(c, BlendMode.srcIn)),
+              ),
+            ),
+            for (var d = 0; d < 7; d++)
+              () {
+                final done = validatedOn(today.subtract(Duration(days: 6 - d)));
+                return SizedBox(
+                  width: cell + 2,
+                  height: cell,
+                  child: Center(
+                    child: done
+                        ? const Text('🍃', style: TextStyle(fontSize: 16))
+                        : Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.white.withOpacity(.12))),
+                  ),
+                );
+              }(),
+          ]),
+          const SizedBox(height: 4),
+          // Liste des ACTIONS — fusil devant chacune.
+          for (final a in t.actions)
+            Padding(
+              padding: const EdgeInsets.only(left: 8, top: 2, bottom: 2),
+              child: Row(children: [
+                SvgPicture.asset('assets/icons/rifle.svg',
+                    width: 15,
+                    height: 15,
+                    colorFilter: ColorFilter.mode(
+                        a.done ? c.withOpacity(.5) : Colors.white60,
+                        BlendMode.srcIn)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(a.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          color: a.done ? Colors.white38 : Colors.white70,
+                          decoration:
+                              a.done ? TextDecoration.lineThrough : null,
+                          fontSize: 12)),
+                ),
+              ]),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _gardenRow(_Item it, double cell, List<String> days) {
     final c = widget.color;
     return Padding(
@@ -526,13 +710,31 @@ class _DomainGameplayState extends State<_DomainGameplay>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(it.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  color: c.withOpacity(.95),
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13)),
+          // Viseur : tap → cette ligne devient la cible de « Faire feu ».
+          Row(children: [
+            GestureDetector(
+              onTap: () => setState(
+                  () => _targetId = _targetId == it.id ? null : it.id),
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 6, top: 1, bottom: 1),
+                child: Icon(Icons.gps_fixed,
+                    size: 18,
+                    color: _targetId == it.id
+                        ? const Color(0xFFFF8A3D)
+                        : Colors.white24),
+              ),
+            ),
+            Expanded(
+              child: Text(it.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      color: c.withOpacity(.95),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13)),
+            ),
+          ]),
           const SizedBox(height: 2),
           // Lettres des jours, centrées sur chaque case (alignées après la tour).
           Row(children: [

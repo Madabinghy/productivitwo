@@ -10,6 +10,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.16', '16 juin 2026', [
+    (Icons.gps_fixed, 'Combattre : un viseur 🎯 devant chaque routine/activité — tape-le pour choisir la cible de « Faire feu »'),
+    (Icons.checklist_outlined, 'Combattre : nouvel onglet « Actions » — tes projets/tâches du domaine (lance-missiles + calendrier des actions validées, fusil devant chaque action)'),
+  ]),
   _Entry('6.15', '15 juin 2026', [
     (Icons.gps_fixed, 'Détail d\'un domaine (Combattre) : bouton « Faire feu » — la tour se transforme en canon et attaque le nuisible du jour (boulet en arc, -1, 💥 si l\'araignée tombe)'),
     (Icons.local_fire_department_outlined, 'Cinématique de tir : canon DCA, boulet de feu orienté en arc partant du bout du canon'),

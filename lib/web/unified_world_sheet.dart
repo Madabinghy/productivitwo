@@ -10,6 +10,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/territory.dart';
 import 'package:productivitwo_v1/unified_world.dart';
+import 'package:productivitwo_v1/world_layout.dart';
 import 'package:productivitwo_v1/expedition.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/widgets/backlog_combat.dart';
@@ -44,6 +45,16 @@ const int _kReveal = 2; // rayon de brouillard levé autour de l'avatar (Chebysh
 // territory_sheet). kDebugMode ne convient pas : le build web release le met à
 // false → on ne pourrait plus tester en ligne.
 const bool _kDev = true;
+// Map en PLEIN ÉCRAN : masque le panneau d'actions/dev à gauche (sera supprimé) →
+// toutes les interactions se font directement dans le jeu (taps sur la carte).
+const bool _kMapFullscreen = true;
+// MONDE V2 (data‑driven, grandit avec l'utilisateur) — derrière un flag le temps
+// de la construction. true → grande map V2 (world_layout) ; false → ancien overworld.
+const bool _kWorldV2 = true;
+const double _kV2Slot = 48; // taille de case FIXE de la grande map V2
+// ≥ N araignées (jours manqués) dans la semaine = INVASION ; il faut redescendre
+// sous N (valider ses routines) pour pouvoir déloger l'araignée.
+const int _kInvasionN = 10;
 
 Future<void> showUnifiedWorldSheet(
     BuildContext context, AppLogic logic, FirestoreSync sync,
@@ -84,10 +95,47 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
 
   Territory? _t;
   UnifiedWorld? _w;
+  // ── MONDE V2 (data‑driven) ─────────────────────────────────────────────────
+  WorldLayout? _wv2;
+  Point<int> _posV2 = const Point(0, 0);
+  final Map<String, Color> _v2Tint = {}; // "x_y" → couleur domaine (château)
+  // "x_y" → serpent (tâche en retard) à farmer dans le jardin du domaine.
+  final Map<String, ({String type, String id, Color color})> _v2Pests = {};
+  // Calendrier inline projeté (réutilise routineWeekTokens/activityTimeTokens).
+  final Map<String, String> _v2DayTok = {}; // tileId → emoji du jour
+  final Map<String, int> _v2DayCount = {}; // tileId → PV nuisible (compteur)
+  // tileId tourelle → chargeur (0..7) + routine/activité (couleur 🕷️/🦂).
+  final Map<String, ({int charger, bool isRoutine})> _v2Turret = {};
+  final Set<String> _v2Sep = {}; // tileIds de la ligne séparatrice routines/activités
+  final Map<String, int> _v2DayTurretX = {}; // tileId jour → X de la tourelle de sa lane
+  final Map<String, String> _v2DayLabel = {}; // tileId entête → lettre du jour
+  // INVASION : case araignée‑boss (≥ 10 araignées accumulées) → clic = combat.
+  final Map<String, String> _v2Araignee = {}; // tileId → domainId en invasion
+  final Map<String, String> _v2Toiles = {}; // tileId (jardin) → domainId (marqueur)
+  final Set<String> _v2Invaded = {}; // domaines envahis (collant : reste tant que pas délogé)
+  final Set<String> _v2Dislodged = {}; // domaines délogés (réduits < N) → ne reviennent pas
+  final Map<String, String> _v2LaneName = {}; // tileId → nom routine/activité
+  // Cinématique V2 : volée de boulets (tourelle → jour) + flashs d'impact.
+  final List<_CineFb> _v2Fbs = [];
+  final List<({Offset at, int untilMs})> _v2Flashes = [];
+  String? _v2ActiveDomain; // domaine où se trouve l'avatar (révélé à l'entrée)
+  // Tourelles ARMÉES du domaine actif : chacune tire à un délai aléatoire 5–15 s,
+  // puis se réarme (défense réaliste tant que l'avatar est dans le domaine).
+  final List<_V2Cannon> _v2Cannons = [];
+  final Set<String> _v2ArmedDomains = {}; // domaines actuellement armés (à l'écran)
+  int _v2CannonRefreshMs = 0; // throttle du recalcul des domaines visibles
+  bool _v2Walking = false; // marche en cours (évite les clics concurrents)
+  bool _v2Spawned = false; // 1ᵉʳ spawn posé (bas‑gauche)
+  // Tick d'animation ISOLÉ : la cinématique repeint SEULEMENT son overlay
+  // (via AnimatedBuilder), pas toute la grille de cases → pas de surcharge.
+  final ValueNotifier<int> _v2CineTick = ValueNotifier(0);
+  final ScrollController _v2HCtrl = ScrollController();
+  final ScrollController _v2VCtrl = ScrollController();
   bool _loading = true;
   bool _busy = false;
   bool _paused = false; // gelé pendant un combat (pas d'avance/résolution)
   StreamSubscription<Territory?>? _sub;
+  StreamSubscription<List<Project>>? _projSub;
   Timer? _timer;
 
   // État de marche LOCAL (éphémère en T0).
@@ -169,15 +217,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         _greyTiles.contains(p);
   }
 
-  // Un arc tire si l'AVATAR ou mon 🦂 défenseur se tient sur une de ses cases.
-  bool _bowManned(Set<Point<int>> pads) {
-    if (pads.contains(_pos)) return true;
-    return pads.contains(Point(_redSpawn.dx.round(), _redSpawn.dy.round()));
-  }
+  // Un arc tire si l'AVATAR se tient sur une de ses cases.
+  bool _bowManned(Set<Point<int>> pads) => pads.contains(_pos);
   // Combat de nuisible affiché en ENCART à droite (carte visible derrière).
   ({String type, String id, String tileId})? _combat;
-  final List<_Sbire> _sbires = []; // sbires ENNEMIS lâchés (marchent vers la porte)
-  final List<_Atk> _myAtk = []; // MES sbires en route vers l'envahisseur
+  final List<_Sbire> _sbires = []; // sbires lâchés (marchent vers la porte)
   final List<_Shot> _shots = [];
   static const double _gateHpMax = 120;
   double _gateHp = _gateHpMax;
@@ -191,7 +235,6 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   double _invX = 0.5, _invY = 7; // envahisseur FIXE (placé au hasard au lancement)
   int _garrison = 0; // garnison restante de l'envahisseur (ENNEMI)
   int _enemyDeckPower = 0; // puissance du deck ennemi (affichée sur la grotte prise)
-  bool _assault = false; // mon deck fini → l'envahisseur a déjà tout déversé
   Offset _grotteTarget = const Offset(16, 7); // grotte visée une fois la porte cassée
   // Phase 2 : la grotte ciblée a des PV (= niveau bleu) ; les sbires les drainent.
   String? _grotteCaveId; // id de la grotte assaillie
@@ -201,7 +244,6 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   int _grotteHpAtCapture = 0; // PV restants quand l'araignée commence à finir
   bool _invaderGone = false; // araignée disparue (fin de l'anim) → la horde rentre
   static const int _kCaptureMs = 5000; // durée de l'anim de capture
-  Offset _redHome = const Offset(16, 6); // spawn du défenseur (y retourne si grotte prise)
   int _arrows = 0; // pool de flèches du run (chaque tir tourelle/arc en coûte 1 en P2)
   // ── Intérieur de grotte (reconquête) : on entre dans un CLONE de la map, gazon
   //    teinté au domaine, avatar dans le gazon. On échange le monde actif
@@ -271,7 +313,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   static const double _kTurretAimDur = 2.0; // s d'animation de visée (canon)
   static const double _kFlameRegrow = 45.0; // s (base) pour recharger les flammes
   static const double _kBarrelAimDip = 0.7; // amplitude du mouvement de visée
-  static const double _kSupportFbDur = 15.0; // s de vol cannon→cible (×5 = poli)
+  static const double _kSupportFbDur = 10.0; // s de vol cannon→cible (accéléré un peu)
   static const double _kLiveFbDur = 2.4; // s de vol pour le tir d'arrivée (S3)
   // L'icône fireball « pointe » sa tête dense vers le BAS (+y) ; -pi/2 aligne
   // cette tête sur la direction du vol, +pi/6 = +30° horaire (calage demandé).
@@ -505,17 +547,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   Point<int>? _savedPos;
   Set<String>? _savedRevealed;
   Map<String, ({String type, String id})>? _savedFarmPests;
-  Offset _redSpawn = const Offset(16, 6); // mon défenseur 🦂 : vit sur sa case (16,6)
-  Offset? _redWander; // cible d'errance de mon attaquant rouge
-  int _myMass = 0; // masse de MON deck (décrémentée à chaque sbire émis)
   static const Map<String, int> _massByType = {
     'spider': GoldEconomy.masseSpider,
     'scorpion': GoldEconomy.masseScorpion,
     'snake': GoldEconomy.masseSerpent,
   };
-  final Map<String, int> _myDeck = {}; // copie d'attaque {spider,scorpion,snake}
   int _nextWaveMs = 0; // prochaine vague d'émission
-  int _emitBatch = 1; // sbires émis par vague = 1/10 du deck au spawn
+  int _emitBatch = 1; // sbires émis par vague = 1/10 de la garnison au spawn
 
   @override
   void initState() {
@@ -532,6 +570,29 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _lastSimMs = _gameMs;
     final hadShots = _shots.isNotEmpty;
     _shots.removeWhere((s) => _gameMs - s.startMs > s.durMs);
+    // Tourelles armées (map V2 seulement) : tir aléatoire 5–15 s. Suspendues
+    // pendant un combat / dans l'intérieur (sinon ça parasite l'assaut).
+    if (!_inInterior && !_combatBusy) {
+      // Recalcule les domaines visibles (≈ 2×/s) → on arme ce qui est à l'écran.
+      if (_gameMs - _v2CannonRefreshMs > 500) {
+        _v2CannonRefreshMs = _gameMs;
+        _v2RefreshCannons();
+      }
+      for (final c in _v2Cannons) {
+        if (_gameMs >= c.nextMs) {
+          _fireV2Bolt(c.todayX, c.y, c.turretX);
+          c.nextMs = _gameMs + _rand5to15ms();
+        }
+      }
+    }
+    // Reprise des cinématiques mobiles mises en file après la fin d'un combat.
+    if (!_combatBusy && !_traveling && _travelQueue.isNotEmpty) {
+      _pumpTravelQueue();
+    }
+    if (_v2Fbs.isNotEmpty || _v2Flashes.isNotEmpty) {
+      _simulateV2Cine(dt / 1000.0);
+      _v2CineTick.value++; // repeint l'overlay seul (pas la grille)
+    }
     if (_liveFiring) {
       _simulateLive(dt / 1000.0);
       if (mounted) setState(() {});
@@ -846,61 +907,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   void _simulate(double dt) {
     final w = _w;
     if (w == null) return;
-    if (!_phase1) {
-      // Hors attaque : le défenseur RENTRE À PIED chez lui (pas de téléport).
-      const defSpeed = 0.30;
-      final dx = _redHome.dx - _redSpawn.dx, dy = _redHome.dy - _redSpawn.dy;
-      final d = sqrt(dx * dx + dy * dy);
-      if (d > 0.05) {
-        _redSpawn = Offset(_redSpawn.dx + dx / d * defSpeed * dt,
-            _redSpawn.dy + dy / d * defSpeed * dt);
-      }
-      return;
-    }
-    // 0) Mouvement du 🦂 défenseur (l'envahisseur 🕷️ reste FIXE). Il erre tant qu'il
-    //    lui reste du deck OU des sbires en vie. Deck VIDE + sbires TOUS MORTS → il
-    //    file en (9,1) manier l'arc (comme le user peut le faire sur une case blanche).
+    if (!_phase1) return;
+    // L'attaquant 🕷️ reste FIXE tant que la porte tient, puis avance sur la grotte.
     const wanderSpeed = 0.45; // vitesse de l'envahisseur (avance vers la grotte)
-    const defSpeed = 0.30; // vitesse de MON défenseur (errance + rejoint l'arc)
-    final deckEmpty = (_myDeck['spider'] ?? 0) +
-            (_myDeck['scorpion'] ?? 0) +
-            (_myDeck['snake'] ?? 0) ==
-        0;
-    final manBow = deckEmpty && _myAtk.isEmpty;
-    if (_grotteTaken) {
-      // Grotte prise → le défenseur se replie sur son point de spawn.
-      final dx = _redHome.dx - _redSpawn.dx, dy = _redHome.dy - _redSpawn.dy;
-      final d = sqrt(dx * dx + dy * dy);
-      if (d > 0.05) {
-        _redSpawn = Offset(_redSpawn.dx + dx / d * defSpeed * dt,
-            _redSpawn.dy + dy / d * defSpeed * dt);
-      }
-    } else if (manBow) {
-      // Rejoint la case blanche la PLUS PROCHE entre l'arc haut (9,1) et bas (9,13).
-      const top = Offset(9, 1), bot = Offset(9, 13);
-      final dTop = pow(top.dx - _redSpawn.dx, 2) + pow(top.dy - _redSpawn.dy, 2);
-      final dBot = pow(bot.dx - _redSpawn.dx, 2) + pow(bot.dy - _redSpawn.dy, 2);
-      final target = dTop <= dBot ? top : bot;
-      final dx = target.dx - _redSpawn.dx, dy = target.dy - _redSpawn.dy;
-      final d = sqrt(dx * dx + dy * dy);
-      if (d <= 0.05) {
-        _redSpawn = target; // posté sur la case → l'arc tire
-      } else {
-        _redSpawn = Offset(_redSpawn.dx + dx / d * defSpeed * dt,
-            _redSpawn.dy + dy / d * defSpeed * dt);
-      }
-    } else {
-      _redWander ??= _randomMapTile(w);
-      final rdx = _redWander!.dx - _redSpawn.dx,
-          rdy = _redWander!.dy - _redSpawn.dy;
-      final rd = sqrt(rdx * rdx + rdy * rdy);
-      if (rd < 0.4) {
-        _redWander = _randomMapTile(w);
-      } else {
-        _redSpawn = Offset(_redSpawn.dx + rdx / rd * defSpeed * dt,
-            _redSpawn.dy + rdy / rd * defSpeed * dt);
-      }
-    }
     // 0b) Porte EXPLOSÉE → l'envahisseur avance sur la grotte. Dès qu'il la TOUCHE,
     //     démarre l'anim de capture (défenses muettes, sbires en attente dehors).
     if (_gateHp <= 0 && !_invaderGone) {
@@ -926,112 +935,26 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         _grotteTaken = true; // → les sbires rentrent maintenant
       }
     }
-    // 1) Émission par VAGUES : 1/10 du deck (au spawn) toutes les 10 s, émis depuis
-    //    mon attaquant rouge. Pioche serpent > scorpion > araignée (variété).
-    if (_gameMs >= _nextWaveMs) {
-      for (int i = 0; i < _emitBatch; i++) {
-        String? type;
-        for (final t in const ['spider', 'scorpion', 'snake']) {
-          if ((_myDeck[t] ?? 0) > 0) {
-            type = t;
-            break;
-          }
-        }
-        if (type == null) break; // deck vidé
-        _myDeck[type] = _myDeck[type]! - 1;
-        _myMass = (_myMass - (_massByType[type] ?? 0)).clamp(0, 1 << 30);
-        // À l'intérieur, les sbires de l'araignée jaillissent de SA GROTTE (repaire) ;
-        // sur la map principale, ils partent de mon défenseur.
-        final ox = _inInterior ? _grotteTarget.dx : _redSpawn.dx;
-        final oy = _inInterior ? _grotteTarget.dy : _redSpawn.dy;
-        _myAtk.add(_Atk(_sbireSeq++, type, ox, oy)..wp = _randomWaypoint(w));
-      }
-      _nextWaveMs += 10000;
-    }
-    // 2) Mes sbires : waypoint aléatoire D'ABORD, puis foncent SUR l'envahisseur
-    //    (ne chassent jamais les sbires ennemis). Ralentis + ondulants → ils
-    //    partent dans tous les sens. Au contact de l'envahisseur → release.
-    for (final a in _myAtk) {
-      if (a.x < -100) continue;
-      final tx = a.wp?.dx ?? _invX, ty = a.wp?.dy ?? _invY;
-      final dx = tx - a.x, dy = ty - a.y;
-      final dist = sqrt(dx * dx + dy * dy);
-      if (dist > 0.4) {
-        const speed = 0.5; // ralenti (symétrique aux sbires ennemis)
-        final ux = dx / dist, uy = dy / dist;
-        // Ondulation amortie à l'approche (sinon orbite sans atteindre la cible).
-        final wob =
-            sin(_gameMs / 500.0 + a.phase) * 0.5 * (dist - 0.5).clamp(0.0, 1.0);
-        a.x += (ux * speed - uy * wob) * dt;
-        a.y += (uy * speed + ux * wob) * dt;
-      } else if (a.wp != null) {
-        a.wp = null; // waypoint atteint → cap sur l'envahisseur
-      } else {
-        // 1 masse = 1 unité de garnison sortie (🕷️5 / 🦂10 / 🐍15) → duel symétrique.
-        final n = (_massByType[a.type] ?? 1).clamp(0, _garrison);
-        _garrison -= n;
-        for (int i = 0; i < n; i++) {
-          final ox = (_rng.nextDouble() - 0.5) * 0.9;
-          final oy = (_rng.nextDouble() - 0.5) * 0.9;
-          _sbires.add(_Sbire(_sbireSeq++, _invX + 0.3 + ox, _invY + oy, 1)
-            ..wp = _gateApproachWaypoint(w));
-        }
-        a.x = -999; // consommé
-      }
-    }
-    _myAtk.removeWhere((a) => a.x < -100);
-    // 2b) Mon deck ÉPUISÉ (rien en réserve, rien en vol) → l'envahisseur DÉVERSE
-    //     toute sa garnison restante d'un coup sur la porte (assaut final).
-    if (deckEmpty && _myAtk.isEmpty && !_assault && _garrison > 0) {
-      _assault = true;
-      final n = _garrison;
-      _garrison = 0;
+    // 1) CONVOCATION DE MONSTRES : l'envahisseur 🕷️ déverse sa garnison vers la
+    //    porte, ~1/10 par vague toutes les 10 s, depuis sa propre case (x=0). Plus
+    //    de duel : la défense, c'est la porte + les tourelles/arcs posés.
+    if (_garrison > 0 && _gameMs >= _nextWaveMs) {
+      final n = _emitBatch.clamp(0, _garrison);
+      _garrison -= n;
       for (int i = 0; i < n; i++) {
-        final ox = (_rng.nextDouble() - 0.5) * 1.2;
-        final oy = (_rng.nextDouble() - 0.5) * 1.2;
+        final ox = (_rng.nextDouble() - 0.5) * 0.9;
+        final oy = (_rng.nextDouble() - 0.5) * 0.9;
         _sbires.add(_Sbire(_sbireSeq++, _invX + 0.3 + ox, _invY + oy, 1)
           ..wp = _gateApproachWaypoint(w));
       }
-      _toast('⚔️ Ton deck est épuisé — l\'envahisseur jette toute sa garnison '
-          'sur la porte !', _kEnemy);
+      _nextWaveMs += 10000;
     }
     // 3) Sbires ennemis : waypoint aléatoire D'ABORD, puis cap sur la porte (8,7) ;
-    //    cassée → vers la GROTTE. MAIS si un de MES sbires est à portée, l'ennemi
-    //    LUI FONCE DESSUS (charge) et le tue au contact, puis reprend sa route.
+    //    cassée → vers la GROTTE.
     final broken = _gateHp <= 0;
     final goal = broken ? _grotteTarget : const Offset(8, 7);
-    const detect = 2.5; // rayon de détection d'un de mes sbires (charge)
     for (final s in _sbires) {
       if (s.hp <= 0) continue;
-      // Charge : tant qu'il n'a pas encore tué, si un de MES sbires est à portée
-      // il LUI FONCE DESSUS et le tue au contact — UN SEUL — puis file DROIT à la
-      // porte (ne harcèle plus → garde l'effet de masse, évite les tourelles).
-      if (!s.killed) {
-        _Atk? prey;
-        double preyD = detect;
-        for (final a in _myAtk) {
-          if (a.x < -100) continue;
-          final d = sqrt(pow(a.x - s.x, 2) + pow(a.y - s.y, 2));
-          if (d <= preyD) {
-            preyD = d;
-            prey = a;
-          }
-        }
-        if (prey != null) {
-          final dx = prey.x - s.x, dy = prey.y - s.y;
-          final dist = sqrt(dx * dx + dy * dy);
-          if (dist < 0.6) {
-            prey.x = -999; // une seule victime…
-            s.killed = true; // … puis cap DIRECT sur la porte
-            s.wp = null;
-          } else {
-            const speed = 0.45; // charge un brin plus vive que la marche
-            s.x += dx / dist * speed * dt;
-            s.y += dy / dist * speed * dt;
-          }
-          continue;
-        }
-      }
       // PHASE 2 (porte cassée) : beeline DIRECT sur la grotte — pas de waypoint ni
       // d'ondulation → convergence garantie (plus de sbire qui orbite sans entrer).
       if (broken) {
@@ -1075,7 +998,6 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         s.hp = 0; // …et meurt
       }
     }
-    _myAtk.removeWhere((a) => a.x < -100); // mes sbires tués par charge
     // 4) Tourelles : un tir = un mort (GRATUIT en Phase 1, pas de niveau).
     // Cadence lente (1 tir / 5 s) ; ne ciblent QUE les sbires déjà en chemin
     // (sortis de la zone garnison) → interception sur la lane, pas à la source.
@@ -1195,7 +1117,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           _toast('🛡️ Grotte sauvée — assaut repoussé sur la grotte !', _kBlue);
         }
       }
-    } else if (_garrison <= 0 && _sbires.isEmpty && _myAtk.isEmpty) {
+    } else if (_garrison <= 0 && _sbires.isEmpty) {
       // Réserve d'assaut épuisée AVANT de casser la porte.
       if (_inInterior) {
         _finishInteriorAssault(
@@ -1207,22 +1129,6 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         _toast('🛡️ Invasion repoussée — garnison anéantie avant la porte !', _kBlue);
       }
     }
-    // (Phase terminée : le défenseur rentre à pied chez lui — géré en tête de
-    //  _simulate dans la branche !_phase1.)
-  }
-
-  // Point accessible aléatoire dans la chambre gauche (champ de bataille) : floor,
-  // hors rocher → chaque sbire (ennemi ET à moi) y passe avant sa cible, donc ils
-  // partent dans tous les sens au lieu de filer droit.
-  Offset _randomWaypoint(UnifiedWorld w) {
-    for (int tries = 0; tries < 24; tries++) {
-      final x = 1 + _rng.nextInt(7); // 1..7 (chambre avant la porte x=9)
-      final y = 2 + _rng.nextInt(11); // 2..12
-      if (w.at(x, y) == UwTile.floor && !w.hasRock(x, y)) {
-        return Offset(x.toDouble(), y.toDouble());
-      }
-    }
-    return const Offset(4, 7); // fallback centre chambre
   }
 
   // Waypoint des sbires ENNEMIS : biaisé vers le couloir de la porte (x 3..7,
@@ -1239,32 +1145,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     return const Offset(6, 7);
   }
 
-  // Case accessible aléatoire sur TOUTE la map (floor, hors rocher) — position de
-  // mon attaquant rouge, qui émet mes sbires d'où il se trouve.
-  Offset _randomMapTile(UnifiedWorld w) {
-    for (int tries = 0; tries < 40; tries++) {
-      final x = _rng.nextInt(w.cols), y = _rng.nextInt(w.rows);
-      if (w.at(x, y) == UwTile.floor && !w.hasRock(x, y)) {
-        return Offset(x.toDouble(), y.toDouble());
-      }
-    }
-    return const Offset(8, 7);
-  }
-
-  // Dev : place l'envahisseur + mon attaquant au hasard et lance la Phase 1.
+  // Dev : place l'envahisseur 🕷️ à gauche et lance la Phase 1 (convocation).
   void _startPhase1() {
-    // TEST « deck égal » : mon deck forcé à masse 30 (= garnison ennemie 30) pour
-    // voir qui gagne à armes égales. 🕷️5 + 🦂10 + 🐍15 = 30.
-    var sp = 1, sc = 1, se = 1;
     setState(() {
       _tdMode = true;
       _phase1 = true;
       _sbires.clear();
-      _myAtk.clear();
       _shots.clear();
-      _myDeck
-        ..clear()
-        ..addAll({'spider': sp, 'scorpion': sc, 'snake': se});
       // Garnison de l'ENNEMI = TES RETARDS RÉELS : masse du backlog (routines sans
       // streak 🕷️ + activités-temps en retard 🦂 + tâches en retard 🐍). Plancher
       // 10 pour rester jouable même quand tu es à jour.
@@ -1273,13 +1160,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           .fold(0, (s, e) => s + (_massByType[e.type] ?? 0));
       _garrison = retards < 10 ? 10 : retards;
       _enemyDeckPower = _garrison; // puissance du deck ennemi (affichée si prise)
-      _assault = false;
-      // Mon attaquant rouge + l'envahisseur : placés aléatoirement.
       final w = _w;
-      // Mon 🦂 défenseur spawn en (16,6) ; mon avatar posté en (15,7).
-      _redSpawn = const Offset(16, 6);
-      _redHome = const Offset(16, 6);
-      _redWander = null;
+      // Avatar posté côté château (15,7), face à l'invasion qui vient de gauche.
       _pos = const Point(15, 7);
       _revealAround(_pos);
       if (w != null) {
@@ -1319,16 +1201,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         _invaderGone = false;
         _arrows = logic.weaponsAvailable('arc'); // pool de flèches du run
       }
-      // Masse de MON deck = somme des masses des sbires à émettre (décrémentée à
-      // chaque émission → atteint 0 pile quand le deck est vide).
-      _myMass = sp * GoldEconomy.masseSpider +
-          sc * GoldEconomy.masseScorpion +
-          se * GoldEconomy.masseSerpent;
       _gateHp = _gateHpMax;
-      // Émission par vagues : 1/10 du deck (au spawn) toutes les 10 s.
+      // Convocation par vagues : ~1/10 de la garnison toutes les 10 s.
       _nextWaveMs = _gameMs;
-      final total = sp + sc + se;
-      _emitBatch = total <= 0 ? 1 : ((total + 9) ~/ 10);
+      _emitBatch = ((_garrison + 9) ~/ 10).clamp(1, _garrison);
     });
   }
 
@@ -1569,11 +1445,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       // Purge de tout combat de la MAP PRINCIPALE (sinon scorpion/sbires fantômes
       // restés à leur ancienne position fuient dans la grotte).
       _phase1 = false;
-      _assault = false;
       _sbires.clear();
-      _myAtk.clear();
       _shots.clear();
-      _myDeck.clear();
       _garrison = 0;
       _grotteTaken = false;
       _invaderGone = false;
@@ -1698,13 +1571,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   }
 
   // Assaut INTÉRIEUR (reconquête) = MIROIR de _startPhase1, rôles inversés :
-  // l'ARAIGNÉE défend (deck _myDeck émis en vagues, tient l'arc, possède les
-  // tourelles/arcs déjà posés) ; MOI j'attaque — mon deck de reconquête farmé
-  // joue la réserve d'assaut (= _garrison de l'« envahisseur » = mon scorpion 🦂).
-  // Le moteur _simulate est réutilisé tel quel ; seules la résolution finale
-  // (grotte prise = je GAGNE) et le visuel (🕷️↔🦂) sont inversés via _inInterior.
-  // Bouton retiré (remplacé par « Lancer l'assaut » = cinématique) ; conservé pour
-  // un éventuel re-câblage.
+  // MOI j'attaque (mon scorpion 🦂) — mon deck de reconquête farmé joue la
+  // réserve d'assaut (= _garrison de l'« envahisseur »), qui se déverse en vagues
+  // vers la grotte 'coeur'. Le moteur _simulate est réutilisé tel quel ; seules la
+  // résolution finale (grotte prise = je GAGNE) et le visuel (🕷️↔🦂) sont inversés
+  // via _inInterior. Bouton retiré ; conservé pour un éventuel re-câblage.
   // ignore: unused_element
   void _startInteriorAssault() {
     final w = _w;
@@ -1717,34 +1588,20 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     setState(() {
       _tdMode = true;
       _phase1 = true;
-      _assault = false;
       _webBroken = false;
       _sbires.clear();
-      _myAtk.clear();
       _shots.clear();
       _grotteTaken = false;
       _invaderGone = false;
       _captureStartMs = null;
       _grotteHpAtCapture = 0;
-      // Deck de l'ARAIGNÉE (défenseur) — fixe pour l'instant : masse 30.
-      const sp = 4, sc = 1, se = 0;
-      _myDeck
-        ..clear()
-        ..addAll({'spider': sp, 'scorpion': sc, 'snake': se});
-      _myMass = sp * GoldEconomy.masseSpider +
-          sc * GoldEconomy.masseScorpion +
-          se * GoldEconomy.masseSerpent;
       // MA réserve d'assaut = le deck de reconquête farmé (= garnison invader).
       _garrison = _reconquestDeck;
       _enemyDeckPower = _garrison;
-      // Araignée (défenseur) près de sa grotte 'coeur' ; mon scorpion (attaquant)
-      // démarre LÀ OÙ EST L'AVATAR (il l'accompagne depuis l'entrée).
-      _redSpawn = const Offset(11, 6);
-      _redHome = const Offset(11, 6);
-      _redWander = null;
-      // Le scorpion est LANCÉ 2 cases sur la droite (charge vers la grotte) et
-      // toute la map se révèle → l'assaut se joue en cinématique (déplacement
-      // verrouillé tant que _tdMode est actif, cf. _onTap/_moveDir).
+      // Mon scorpion 🦂 (attaquant) démarre LÀ OÙ EST L'AVATAR (il l'accompagne
+      // depuis l'entrée). Le scorpion est LANCÉ 2 cases sur la droite (charge vers
+      // la grotte) et toute la map se révèle → l'assaut se joue en cinématique
+      // (déplacement verrouillé tant que _tdMode est actif, cf. _onTap/_moveDir).
       _invX = (_pos.x + 2).clamp(0, w.cols - 1).toDouble();
       _invY = _pos.y.toDouble();
       for (var yy = 0; yy < w.rows; yy++) {
@@ -1759,8 +1616,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _arrows = logic.weaponsAvailable('arc');
       _gateHp = _gateHpMax;
       _nextWaveMs = _gameMs;
-      final total = sp + sc + se;
-      _emitBatch = total <= 0 ? 1 : ((total + 9) ~/ 10);
+      _emitBatch = ((_garrison + 9) ~/ 10).clamp(1, _garrison);
       _toast('⚔️ Assaut lancé — déloge l\'araignée !', _interiorColor);
     });
   }
@@ -1791,6 +1647,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     await sync.ensureTerritory('Toi', domainIds: domainIds);
     final me = sync.uid ?? '';
     _subscribeHits(); // temps réel : valider une routine → l'avatar voyage
+    _subscribeSessions(); // temps réel : minuteur d'activité → assaut live
+    // Projets Gantt → logic.currentProjects (sinon backlogEnemies() ne voit aucune
+    // tâche → aucun serpent dans le jardin). Le web_home ne le faisait pas pour la map.
+    _projSub = sync.streamProjects().listen((projects) {
+      if (!mounted) return;
+      logic.updateGanttCounts(projects);
+      _populateFarm(); // repeuple le jardin avec les tâches en retard fraîches
+      setState(() {
+        if (_kWorldV2) _rebuildWv2(); // la map V2 grandit avec les données
+      });
+    });
+    if (_kWorldV2) setState(_rebuildWv2); // 1ère construction du monde V2
     _sub = sync.streamTerritory(me).listen((t) async {
       if (!mounted) return;
       // La map doit incarner exactement les domaines actifs (une grotte/domaine).
@@ -1836,6 +1704,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           _populateFarm(); // disperse le backlog sur toute la zone (caché par le fog)
         }
         _recomputeStreakTurrets(); // bâti = tourelles dérivées des streaks
+        if (_kWorldV2) _rebuildWv2(); // domaines dispo (grottes) → (re)pose la map V2
       });
       // MOBILE : pas de map principale → on entre direct dans le 1er domaine
       // (calendrier). Une seule fois (puis _inInterior bloque la ré-entrée).
@@ -1859,9 +1728,17 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   @override
   void dispose() {
     _sub?.cancel();
+    _projSub?.cancel();
     _hitSub?.cancel();
+    _sessionSub?.cancel();
+    for (final t in _actFireTimers.values) {
+      t.cancel();
+    }
     _timer?.cancel();
     _gameTicker?.dispose();
+    _v2HCtrl.dispose();
+    _v2VCtrl.dispose();
+    _v2CineTick.dispose();
     super.dispose();
   }
 
@@ -1923,6 +1800,39 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           logic.state.activeDomains) ??
       _kBlue;
 
+  // Couleur du domaine où le PLUS de temps a été loggué AUJOURD'HUI (somme des
+  // sessions du jour, comme _loggedMinutesOnDay). null si rien aujourd'hui.
+  Color? _topTimeDomainColorToday() {
+    final now = DateTime.now();
+    final perDomain = <String, int>{};
+    for (final s in logic.state.sessions) {
+      if (s.startAt.year != now.year ||
+          s.startAt.month != now.month ||
+          s.startAt.day != now.day) continue;
+      final mins = s.duration.inMinutes;
+      if (mins <= 0) continue;
+      String? dom;
+      for (final a in logic.state.activities) {
+        if (a.id == s.activityId) {
+          dom = a.domainId;
+          break;
+        }
+      }
+      if (dom == null || dom.isEmpty) continue;
+      perDomain[dom] = (perDomain[dom] ?? 0) + mins;
+    }
+    if (perDomain.isEmpty) return null;
+    var topDom = '';
+    var best = -1;
+    perDomain.forEach((d, m) {
+      if (m > best) {
+        best = m;
+        topDom = d;
+      }
+    });
+    return domainColor(topDom, logic.state.activeDomains);
+  }
+
   // Lève le brouillard autour de [p] ; retourne les cases NOUVELLEMENT révélées.
   List<String> _revealAround(Point<int> p) {
     final w = _w;
@@ -1963,6 +1873,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     if (w == null) return false;
     return w.walkable(x, y) ||
         _isBowWalkable(x, y) ||
+        // Grande map : la PORTE est franchissable par l'avatar (déplacement libre
+        // château ↔ jardin) — elle ne reste un chokepoint que pour l'invasion.
+        (!_inInterior && w.isGate(x, y)) ||
         (_inInterior && _interiorWalk.contains('${x}_$y')) ||
         (_inInterior && _webBroken && w.isGate(x, y));
   }
@@ -1980,7 +1893,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       if ('${cur.x}_${cur.y}' == goalId) break;
       for (final n in _ortho(cur.x, cur.y)) {
         final nid = '${n.x}_${n.y}';
-        if (prev.containsKey(nid) || !_revealed.contains(nid)) continue;
+        // Sur la grande map (pas de fog) toute case walkable passe ; le brouillard
+        // ne bloque le chemin qu'à l'intérieur d'un domaine.
+        if (prev.containsKey(nid) || (_inInterior && !_revealed.contains(nid))) {
+          continue;
+        }
         prev[nid] = '${cur.x}_${cur.y}';
         queue.add(n);
       }
@@ -2082,9 +1999,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
 
   // Voyage complet : (sortir du mauvais domaine →) map principale → bon domaine →
   // case à GAUCHE de la tourelle (col 11). Réutilise enter/exit + marche animée.
-  Future<void> _travelToRoutine(String routineId) async {
+  Future<void> _travelToRoutine(String routineId, {bool blank = false}) async {
     if (_traveling || widget.mobile) return;
-    // Domaine de la routine.
+    // Domaine de la routine/activité.
     String? domId;
     for (final a in logic.state.activeActivities) {
       if (a.id == routineId) {
@@ -2147,7 +2064,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               await _runGardenBattle(weekly: false);
             }
           }
-          await _fireArrival(routineId, row);
+          await _fireArrival(routineId, row, blank: blank);
         }
       }
     } finally {
@@ -2168,7 +2085,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   final Set<String> _seenHits = {}; // ids déjà vus (dédup)
   bool _hitsPrimed = false; // 1ʳᵉ salve Firestore = état initial (pas de voyage)
   DateTime? _hitPrimeTime;
-  final List<String> _travelQueue = []; // routines à visiter, dans l'ordre
+  // routines/activités à visiter, dans l'ordre. blank = 1ᵉʳ tir cinématique (sans PV).
+  final List<({String id, bool blank})> _travelQueue = [];
 
   void _subscribeHits() {
     if (widget.mobile) return; // mode spectateur = web
@@ -2193,17 +2111,121 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     });
   }
 
-  void _enqueueTravel(String routineId) {
-    _travelQueue.add(routineId);
+  // ── TEMPS RÉEL : minuteur d'activité (session ouverte) → assaut live ──
+  StreamSubscription<List<Session>>? _sessionSub;
+  bool _sessionsPrimed = false;
+  final Set<String> _runningActs = {}; // activités dont le minuteur tourne
+  // Tir périodique pendant qu'un minuteur tourne : -1 PV / 5 min (1 PV = 5 min de
+  // retard sur le scorpion, cf. gold_engine.enemyHp). 1ᵉʳ tir = cinématique (blank).
+  final Map<String, Timer> _actFireTimers = {};
+  static const Duration _kActFireEvery = Duration(minutes: 5);
+
+  void _subscribeSessions() {
+    if (widget.mobile) return; // mode spectateur = web
+    _sessionSub = sync.streamSessions().listen((sessions) {
+      final running = <String>{
+        for (final s in sessions)
+          if (s.endAt == null) s.activityId
+      };
+      if (!_sessionsPrimed) {
+        // Amorçage : un minuteur déjà en cours à l'ouverture → on lance l'assaut.
+        _sessionsPrimed = true;
+        for (final id in running) {
+          _onTimerStart(id);
+        }
+        _runningActs
+          ..clear()
+          ..addAll(running);
+        return;
+      }
+      // Démarrages frais → assaut ; arrêts → on coupe le tir périodique.
+      for (final id in running.difference(_runningActs)) {
+        _onTimerStart(id);
+      }
+      for (final id in _runningActs.difference(running)) {
+        _onTimerStop(id);
+      }
+      _runningActs
+        ..clear()
+        ..addAll(running);
+    });
+  }
+
+  void _onTimerStart(String activityId) {
+    // 1ᵉʳ tir = cinématique (n'enlève rien), puis -1 PV toutes les 5 min.
+    _enqueueTravel(activityId, blank: true);
+    _actFireTimers[activityId]?.cancel();
+    _actFireTimers[activityId] = Timer.periodic(_kActFireEvery, (_) {
+      if (!mounted || !_runningActs.contains(activityId)) return;
+      _enqueueTravel(activityId, blank: false); // tir -1 PV
+    });
+  }
+
+  void _onTimerStop(String activityId) {
+    _actFireTimers.remove(activityId)?.cancel();
+  }
+
+  void _enqueueTravel(String id, {bool blank = false}) {
+    _travelQueue.add((id: id, blank: blank));
     _pumpTravelQueue();
   }
 
+  // Un COMBAT (assaut/bataille/tir d'arrivée) est en cours → on ne joue PAS les
+  // cinématiques déclenchées par le mobile (elles swappent _w/_pos et cassent tout).
+  bool get _combatBusy =>
+      _cineActive || _battleActive || _liveFiring || _simDefense;
+
   Future<void> _pumpTravelQueue() async {
-    if (_traveling) return; // un voyage tourne déjà → il reprendra la file
-    while (_travelQueue.isNotEmpty && mounted) {
-      final id = _travelQueue.removeAt(0);
-      await _travelToRoutine(id);
+    if (_traveling || _combatBusy) return; // combat en cours → la file attend
+    if (_kWorldV2) {
+      // Cinématique mobile sur la NOUVELLE map V2 (l'ancienne sert d'arène).
+      _traveling = true;
+      while (_travelQueue.isNotEmpty && mounted && !_combatBusy) {
+        _v2OnRoutineValidated(_travelQueue.removeAt(0).id);
+        await Future.delayed(const Duration(milliseconds: 450));
+      }
+      _traveling = false;
+    } else {
+      while (_travelQueue.isNotEmpty && mounted && !_combatBusy) {
+        final next = _travelQueue.removeAt(0);
+        await _travelToRoutine(next.id, blank: next.blank);
+      }
     }
+  }
+
+  // Action mobile (routine validée / minuteur) → tir célébratoire de SA tourelle
+  // sur la map V2 : on révèle le domaine et le canon de la ligne fait feu.
+  void _v2OnRoutineValidated(String id) {
+    final w = _wv2;
+    if (w == null) return;
+    String? dom;
+    for (final a in logic.state.activeActivities) {
+      if (a.id == id) {
+        dom = a.domainId;
+        break;
+      }
+    }
+    if (dom == null) return;
+    final c = w.byDomain[dom];
+    if (c == null) return;
+    LaneRow? lane;
+    for (final l in c.lanes) {
+      if (l.id == id) {
+        lane = l;
+        break;
+      }
+    }
+    if (lane == null) return;
+    // Révèle le domaine (pour voir le tir) sans bouger la caméra.
+    final b = c.bounds;
+    setState(() {
+      for (var yy = b.top; yy < b.top + b.height; yy++) {
+        for (var xx = b.left; xx < b.left + b.width; xx++) {
+          _revealed.add('${xx}_$yy');
+        }
+      }
+    });
+    _fireV2Bolt(lane.dayX0 + 6, lane.y, lane.turretX);
   }
 
   // ── CINÉMATIQUE D'ARRIVÉE (S3) : la tour charge 1 flamme, vise, tire, −1 ──
@@ -2236,12 +2258,14 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _liveFb!.t += dt / _liveFb!.dur;
       if (_liveFb!.t >= 1.0) {
         _liveFlashAt = Offset(_liveFb!.tx, _liveFb!.ty);
-        _liveFlashUntilMs = _gameMs + 450;
+        _liveFlashUntilMs = _gameMs + 5000; // 💥 reste 5 s puis disparaît
         // Impact : -1 sur l'araignée du jour (col 19). Le rendu affiche 💥 si elle
-        // tombe à 0, sinon le nombre décrémenté.
-        if (_liveDecKey != null) {
+        // tombe à 0, sinon le nombre décrémenté. Tir CINÉMATIQUE (_liveBlank) → on
+        // ne retire RIEN (1ᵉʳ tir d'une session-minuteur d'activité).
+        if (_liveDecKey != null && !_liveBlank) {
           _toileDec[_liveDecKey!] = (_toileDec[_liveDecKey!] ?? 0) + 1;
         }
+        _liveBlank = false;
         _liveDecKey = null;
         _liveFb = null;
         _liveFiring = false;
@@ -2255,6 +2279,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // Quand le nombre tombe à 0, l'araignée meurt (💥 persistante la journée).
   final Map<String, int> _toileDec = {};
   String? _liveDecKey; // case (col 19) visée par le tir d'arrivée en cours
+  bool _liveBlank = false; // tir purement cinématique (ne retire aucun PV)
 
   // Nb de toiles NON détruites (restantes) d'un domaine → gate la cinématique :
   // on ne (re)joue que tant qu'il reste des toiles.
@@ -2353,17 +2378,20 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   }
 
   // Joue le tir d'arrivée et attend sa fin (avatar déjà posé en col 11).
-  Future<void> _fireArrival(String routineId, int row) async {
+  // [blank] = tir purement cinématique (ne retire aucun PV) — utilisé pour le
+  // 1ᵉʳ tir d'une session-minuteur d'activité.
+  Future<void> _fireArrival(String routineId, int row, {bool blank = false}) async {
     if (!mounted) return;
     _liveRow = row;
     _liveFlames = 1; // une seule flamme au-dessus du canon pour cette cinématique
     _liveDecKey = '${routineId}_6'; // col 19 = index 6 (jour courant)
+    _liveBlank = blank;
     _liveAim = 0;
     _liveFb = null;
     _liveDone = Completer<void>();
     setState(() => _liveFiring = true);
     await _liveDone!.future;
-    if (mounted) _toast('✅ −1 — routine frappée !', _interiorColor);
+    if (mounted && !blank) _toast('✅ −1 — frappée !', _interiorColor);
   }
 
   // Copies orientées d'un boulet (tête + traînée) — partagé tir support/arrivée.
@@ -2412,17 +2440,23 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     sync.setUnifiedWorldState(pos, _revealed.toList());
   }
 
-  // Peuple la zone farm (gauche) avec tes VRAIS ennemis backlog (routines/activités/
-  // tâches négligées) — pas des pests génériques. Placés à la révélation (faciles
-  // d'abord), purgés quand l'item est rattrapé (PV 0). Cap visuel, repioche dans le
-  // backlog restant.
+  // Peuple la zone farm avec tes VRAIS ennemis backlog (routines/activités/tâches
+  // négligées) — pas des pests génériques. WYSIWYG : PAS de cap, on affiche TOUT le
+  // backlog (1 case = 1 nuisible), purgé quand l'item est rattrapé (PV 0).
+  // Côté JARDIN (farm) = côté de la PORTE opposé au château. Robuste au miroir :
+  // la grande map est mirrorWorldX (château à GAUCHE, jardin à DROITE), donc on
+  // ne peut pas se fier à `x < castle.x`.
+  bool _isFarmX(UnifiedWorld w, int x) {
+    final gateX = w.gate.isEmpty
+        ? w.cols ~/ 2
+        : int.parse(w.gate.first.split('_')[0]);
+    return w.castle.x < gateX ? x > gateX : x < gateX;
+  }
+
   void _populateFarm() {
     final w = _w, t = _t;
     if (w == null || t == null) return;
     _farmPests.removeWhere((_, e) => logic.enemyHp(e.type, e.id) <= 0);
-    const cap = 12;
-    final room = cap - _farmPests.length;
-    if (room <= 0) return;
     final placed = _farmPests.values.map((e) => e.id).toSet();
     var backlog = logic.backlogEnemies()
         .where((e) => !placed.contains(e.id))
@@ -2435,10 +2469,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     }
     if (backlog.isEmpty) return;
     // Toutes les cases farm libres, MÉLANGÉES (seed stable) → répartition sur TOUTE
-    // la zone (pas un cluster à l'entrée). Le brouillard les révèle en explorant.
+    // la zone (pas un cluster à l'entrée).
     final free = <String>[];
     for (int y = 0; y < w.rows; y++) {
-      for (int x = 0; x < w.castle.x - 1; x++) {
+      for (int x = 0; x < w.cols; x++) {
+        if (!_isFarmX(w, x)) continue;
         if (w.at(x, y) != UwTile.floor || w.hasBush(x, y)) continue;
         final id = '${x}_$y';
         if (_farmPests.containsKey(id)) continue;
@@ -2447,7 +2482,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       }
     }
     free.shuffle(Random(t.seed));
-    for (var i = 0; i < backlog.length && i < free.length && i < room; i++) {
+    // WYSIWYG : tout le backlog (borné seulement par le nb de cases libres).
+    for (var i = 0; i < backlog.length && i < free.length; i++) {
       _farmPests[free[i]] = (type: backlog[i].type, id: backlog[i].id);
     }
   }
@@ -2482,6 +2518,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 _interiorColor);
           }
           _farmPests.remove(c.tileId);
+          // MONDE V2 : retirer le serpent du jardin + rafraîchir le calendrier.
+          if (_kWorldV2 && _v2Pests.containsKey(c.tileId)) {
+            _v2Pests.remove(c.tileId);
+            _populateV2Calendar();
+          }
         }
         setState(() {});
       },
@@ -3080,7 +3121,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     final tileId = '${x}_$y';
     final adjacent = (x - p.x).abs() + (y - p.y).abs() == 1;
     if (!adjacent) {
-      if (!_revealed.contains(tileId)) return;
+      if (_inInterior && !_revealed.contains(tileId)) return;
       final path = _bfsPath(p, Point(x, y));
       if (path.isEmpty) {
         _toast('🌫️ Chemin bloqué par le brouillard.', Colors.white38);
@@ -3206,14 +3247,35 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         ]),
       ),
       Flexible(
-        child: (_loading || t == null || w == null)
-            ? const Center(
-                child: Padding(
-                    padding: EdgeInsets.all(40),
-                    child: CircularProgressIndicator(color: _kBlue)))
-            : _content(t, w),
+        child: (_kWorldV2 && !widget.mobile && !_inInterior)
+            ? (_wv2 == null
+                ? const Center(
+                    child: Padding(
+                        padding: EdgeInsets.all(40),
+                        child: CircularProgressIndicator(color: _kBlue)))
+                : Stack(children: [
+                    Positioned.fill(child: _contentV2()),
+                    Positioned(top: 10, right: 10, child: _miniMapV2()),
+                    if (_combat != null)
+                      Positioned(
+                        top: 0,
+                        bottom: 0,
+                        right: 0,
+                        width: 340,
+                        child: Material(
+                          color: const Color(0xFF0E1714),
+                          child: _combatPanel(),
+                        ),
+                      ),
+                  ]))
+            : ((_loading || t == null || w == null)
+                ? const Center(
+                    child: Padding(
+                        padding: EdgeInsets.all(40),
+                        child: CircularProgressIndicator(color: _kBlue)))
+                : _content(t, w)),
       ),
-      if (!_loading && t != null && !widget.mobile) _siegeBar(t),
+      if (!_kWorldV2 && !_loading && t != null && !widget.mobile) _siegeBar(t),
     ]),
     );
   }
@@ -3257,9 +3319,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Panneau d'actions à gauche — masqué quand le combat est ouvert (place)
-        // ET sur mobile (calendrier seul, pas d'overworld/dev).
-        if (_combat == null && !widget.mobile)
+        // Panneau d'actions à gauche — masqué en plein écran (_kMapFullscreen),
+        // quand le combat est ouvert (place), ET sur mobile (calendrier seul).
+        if (!_kMapFullscreen && _combat == null && !widget.mobile)
         SizedBox(
           width: 236,
           child: ListView(
@@ -3297,10 +3359,17 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           ),
         ),
         Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(12),
-            child: _board(t, w),
-          ),
+          // Grande map : plein espace (hauteur bornée → le board se dimensionne
+          // pour remplir). Mobile/intérieur : scroll vertical (calendrier).
+          child: (widget.mobile || _inInterior)
+              ? SingleChildScrollView(
+                  padding: const EdgeInsets.all(12),
+                  child: _board(t, w),
+                )
+              : Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Center(child: _board(t, w)),
+                ),
         ),
         // Encart de COMBAT à droite (carte visible derrière) quand on attaque.
         if (_combat != null)
@@ -3550,8 +3619,6 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               setState(() {
                 _phase1 = false;
                 _sbires.clear();
-                _myAtk.clear();
-                _myDeck.clear();
                 _garrison = 0;
                 _turrets.clear();
                 _turretLastFireMs.clear();
@@ -3590,7 +3657,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             _phase1
                 ? (_gateHp <= 0
                     ? 'PHASE 2 🔴 — assaut sur la grotte · 🕳️ PV ${_grotteHp}/${_grotteHpMax} · 🏹 $_arrows flèches · sbires ${_sbires.length} · 🗼 ${_turrets.length} (chaque tir = 1 flèche)'
-                    : 'PHASE 1 — mon attaquant 🦂 (deck $_myMass) · garnison ennemie $_garrison · mon deck 🕷️${_myDeck['spider'] ?? 0}/🦂${_myDeck['scorpion'] ?? 0}/🐍${_myDeck['snake'] ?? 0} · sbires lâchés ${_sbires.length} · 🚪 ${((_gateHp / _gateHpMax) * 100).round()}% · 🗼 ${_turrets.length} (1 tir = 1 mort, gratuit)')
+                    : 'PHASE 1 — 🕷️ garnison ennemie $_garrison · sbires lâchés ${_sbires.length} · 🚪 ${((_gateHp / _gateHpMax) * 100).round()}% · 🗼 ${_turrets.length} (1 tir = 1 mort, gratuit)')
                 : '🏹 $arcs flèches · 🚪 ${((_gateHp / _gateHpMax) * 100).round()}% · 🗼 ${_turrets.length} tours · pose tes tours puis « Convoquer »',
             textAlign: TextAlign.center,
             style: TextStyle(
@@ -3646,9 +3713,20 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       // pour ne pas rétrécir les cases.
       final nameW = _inInterior ? (widget.mobile ? 130.0 : 200.0) : 0.0;
       // Mobile : slot fixe (calendrier scrollable, pas écrasé à l'écran du tel).
+      // Grande map (overworld) : on REMPLIT l'espace dispo (largeur ET hauteur),
+      // cases carrées, pour une carte la plus grande possible. Intérieur : largeur.
       final slot = widget.mobile
           ? 36.0
-          : ((c.maxWidth - nameW) / w.cols).clamp(22.0, 46.0);
+          : _inInterior
+              // -2 px de marge : évite le débordement sous‑pixel de la Row
+              // [grille + panneau de noms] (RenderFlex « RIGHT OVERFLOWED »).
+              ? ((c.maxWidth - nameW - 2) / w.cols).clamp(22.0, 46.0)
+              : (() {
+                  final byW = c.maxWidth / w.cols;
+                  // Hauteur non bornée (rare) → on retombe sur la largeur.
+                  final byH = c.maxHeight.isFinite ? c.maxHeight / w.rows : byW;
+                  return (byW < byH ? byW : byH).clamp(22.0, 200.0);
+                })();
       final inner = slot - 3;
       final topRoutines = _inInterior
           ? _domTopRoutines()
@@ -4521,25 +4599,6 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         style: TextStyle(fontSize: slot * 0.42)),
                   );
                 }(),
-              // MES sbires d'attaque (cerclés de bleu) marchant vers l'envahisseur.
-              for (final a in _myAtk)
-                () {
-                  final c0 = centerD(a.x, a.y);
-                  return Positioned(
-                    left: c0.dx - slot * 0.3,
-                    top: c0.dy - slot * 0.3,
-                    child: Container(
-                      padding: const EdgeInsets.all(1),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: _kBlue.withOpacity(.22),
-                        border: Border.all(color: _kBlue.withOpacity(.8)),
-                      ),
-                      child: Text(entityEmoji(a.type),
-                          style: TextStyle(fontSize: slot * 0.4)),
-                    ),
-                  );
-                }(),
               // L'« ENVAHISSEUR » (Phase 1) — masqué une fois la capture terminée.
               // À l'intérieur = MON scorpion 🦂 (attaquant) ; sinon = l'ennemi 🕷️.
               if (_phase1 && !_invaderGone)
@@ -4566,37 +4625,6 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     ),
                   );
                 }(),
-              // Le DÉFENSEUR au poste _redSpawn : sur la map principale = MON 🦂
-              // (émet mon deck) ; à l'intérieur pendant l'assaut = l'ARAIGNÉE 🕷️
-              // qui défend sa grotte (émet son deck _myMass).
-              if (!_inInterior || _phase1)
-                () {
-                final c0 = centerD(_redSpawn.dx, _redSpawn.dy);
-                return Positioned(
-                  left: c0.dx - slot * 0.6,
-                  top: c0.dy - slot * 1.05,
-                  width: slot * 1.2,
-                  child: Column(
-                    children: [
-                      // Deck (juste le nombre) AU-DESSUS : VERT au repos (deck vert
-                      // dispo), ROUGE quand il défend (deck en cours de dépense).
-                      Text(_inInterior
-                          ? '$_myMass'
-                          : '${_phase1 ? _myMass : logic.lifetimeBattleMasse}',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              color: (_phase1 || _inInterior) ? _kEnemy : _kFarm,
-                              fontWeight: FontWeight.w900,
-                              fontSize: slot * 0.28,
-                              shadows: const [
-                                Shadow(color: Colors.black, blurRadius: 2)
-                              ])),
-                      Text(_inInterior ? '🕷️' : '🦂',
-                          style: TextStyle(fontSize: slot * 0.85)),
-                    ],
-                  ),
-                );
-              }(),
               // Mon scorpion 🦂 ACCOMPAGNE l'avatar (phase farm). Masqué pendant
               // la cinématique (sinon il suit le ninja partout).
               if (_inInterior && !_phase1 && !_cineActive)
@@ -4758,6 +4786,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           ],
         );
       // Mobile : plateau pannable/zoomable (calendrier plus grand que l'écran).
+      // Web : scroll horizontal → absorbe tout débordement sous‑pixel de la Row
+      // [grille + noms] (plus de « RIGHT OVERFLOWED »).
       return widget.mobile
           ? InteractiveViewer(
               constrained: false,
@@ -4765,7 +4795,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               minScale: 0.4,
               maxScale: 2.5,
               child: board)
-          : Center(child: board);
+          : SingleChildScrollView(
+              scrollDirection: Axis.horizontal, child: board);
     });
   }
 
@@ -4773,7 +4804,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       Territory t, UnifiedWorld w, int x, int y, double inner, String avatar,
       {bool isSpider = false}) {
     final id = '${x}_$y';
-    final revealed = _revealed.contains(id) || _showCoords;
+    // Pas de brouillard sur la GRANDE MAP : tout visible. Le fog ne subsiste qu'à
+    // l'intérieur d'un domaine (exploration du calendrier/plateau).
+    final revealed = !_inInterior || _revealed.contains(id) || _showCoords;
     // En phase attaque, le ninja est rendu en overlay lisse → pas d'avatar de
     // case (sinon doublon).
     final isAvatar = _pos.x == x && _pos.y == y && !_cineAttack;
@@ -4807,7 +4840,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     } else if (kind == UwTile.floor) {
       // Sol praticable = CLAIR (contraste net avec les murs). À l'intérieur d'une
       // grotte : gazon teinté au domaine ; sinon farm vert.
-      final farmSide = x < w.castle.x - 1;
+      final farmSide = _isFarmX(w, x);
       // QUARTIER : si la case appartient à la parcelle d'un domaine, gazon teinté
       // à SA couleur → petit voisinage coloré sur la map principale.
       final distId = _inInterior ? null : w.districtIdAt(x, y);
@@ -4843,9 +4876,14 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         child = Text('🌿', style: TextStyle(fontSize: inner * 0.5));
       }
     } else if (kind == UwTile.castle) {
-      bg = _kGold.withOpacity(.22);
-      border = _kGold.withOpacity(.7);
-      child = Text('🏰', style: TextStyle(fontSize: inner * 0.5));
+      // Teinte = domaine où tu as passé le PLUS de temps aujourd'hui (défaut : or).
+      final cc = _topTimeDomainColorToday() ?? _kGold;
+      bg = cc.withOpacity(.22);
+      border = cc.withOpacity(.7);
+      child = SvgPicture.asset('assets/icons/justice.svg',
+          width: inner * 0.62,
+          height: inner * 0.62,
+          colorFilter: ColorFilter.mode(cc, BlendMode.srcIn));
     }
 
     // Arcs fixes 🏹, leurs cases blanches (gâchette) et la tuile-pont d'accès.
@@ -4947,6 +4985,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     final spiderHere = isSpider && !isAvatar;
     final farmPest = _inInterior ? null : _farmPests['${x}_$y'];
     final farmHere = farmPest != null && !isAvatar && !spiderHere;
+    // Nuisible : couleur de SON domaine + fraction de PV (la case se remplit au %).
+    Color pestColor = _kFarm;
+    double pestHpFrac = 0;
+    if (farmHere) {
+      final dom = logic.enemyDomainId(farmPest.type, farmPest.id);
+      pestColor =
+          (dom != null ? domainColor(dom, logic.state.activeDomains) : null) ??
+              _kFarm;
+      final mx = logic.enemyMaxHp(farmPest.type, farmPest.id);
+      pestHpFrac = (logic.enemyHp(farmPest.type, farmPest.id) / (mx <= 0 ? 1 : mx))
+          .clamp(0.0, 1.0);
+    }
     final tile = Container(
       width: inner,
       height: inner,
@@ -4957,7 +5007,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             : spiderHere
                 ? _kEnemy.withOpacity(.25)
                 : farmHere
-                    ? _kFarm.withOpacity(.18)
+                    ? pestColor.withOpacity(.15)
                     : bg,
         borderRadius: BorderRadius.circular(5),
         border: Border.all(
@@ -4966,7 +5016,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 : spiderHere
                     ? _kEnemy
                     : farmHere
-                        ? _kFarm.withOpacity(.7)
+                        ? pestColor.withOpacity(.85)
                         : border,
             width: isAvatar || spiderHere || farmHere ? 2 : 1),
       ),
@@ -4976,8 +5026,27 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           : spiderHere
               ? Text('🕷️', style: TextStyle(fontSize: inner * 0.55))
               : farmHere
-                  ? Text(entityEmoji(farmPest.type),
-                      style: TextStyle(fontSize: inner * 0.5))
+                  ? Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        // Remplissage couleur du domaine, du bas vers le haut, au
+                        // prorata des PV restants du nuisible.
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: Align(
+                            alignment: Alignment.bottomCenter,
+                            child: FractionallySizedBox(
+                              heightFactor: pestHpFrac,
+                              child: Container(color: pestColor.withOpacity(.55)),
+                            ),
+                          ),
+                        ),
+                        Center(
+                          child: Text(entityEmoji(farmPest.type),
+                              style: TextStyle(fontSize: inner * 0.5)),
+                        ),
+                      ],
+                    )
                   : child,
     );
 
@@ -5002,11 +5071,958 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             ],
           )
         : tile;
-    return GestureDetector(
+    final cell = GestureDetector(
         onTap: () => _onTap(x, y),
         onLongPress: () => _onLongPress(x, y),
         child: shown);
+    // Survol souris (web) : titre de l'item + PV du nuisible du jardin.
+    if (farmHere) {
+      final hp = logic.enemyHp(farmPest.type, farmPest.id);
+      final maxHp = logic.enemyMaxHp(farmPest.type, farmPest.id);
+      return Tooltip(
+        message: '${logic.enemyItemName(farmPest.type, farmPest.id)}\n'
+            'PV $hp/$maxHp',
+        waitDuration: const Duration(milliseconds: 250),
+        decoration: BoxDecoration(
+          color: const Color(0xF21A1A1A),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: pestColor.withOpacity(.7)),
+        ),
+        textStyle: const TextStyle(
+            color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+        child: cell,
+      );
+    }
+    return cell;
   }
+
+  // ══ MONDE V2 (data‑driven) ════════════════════════════════════════════════
+  // Domaines + leurs lignes (routines daily / activités‑temps) → spécif de monde.
+  List<DomainSpec> _domainSpecs() {
+    // Source des domaines = les GROTTES de la territoire (streamée + réconciliée
+    // = 1 grotte/domaine actif), fiable même si logic.state n'est pas encore chargé.
+    final t = _t;
+    final domIds = <String>[];
+    if (t != null) {
+      for (final c in t.caves) {
+        if (c.domainId.isNotEmpty && !domIds.contains(c.domainId)) {
+          domIds.add(c.domainId);
+        }
+      }
+    }
+    // Repli : si pas de territoire, on tente l'état applicatif.
+    if (domIds.isEmpty) {
+      for (final d in logic.state.activeDomains) {
+        domIds.add(d.id);
+      }
+    }
+    final out = <DomainSpec>[];
+    for (final domId in domIds) {
+      int? color;
+      for (final d in logic.state.activeDomains) {
+        if (d.id == domId) {
+          color = d.colorValue;
+          break;
+        }
+      }
+      final routines = <String>[];
+      final acts = <String>[];
+      for (final a in logic.state.activeActivities) {
+        if (a.domainId != domId) continue;
+        if (a.isHabit) {
+          if (logic.routineWeekTokens(a.id).isEmpty) continue;
+          routines.add(a.id);
+        } else {
+          if (logic.activityTimeTokens(a.id).isEmpty) continue;
+          acts.add(a.id);
+        }
+      }
+      out.add(DomainSpec(
+          domainId: domId,
+          colorValue: color,
+          routineIds: routines,
+          activityIds: acts));
+    }
+    // Le domaine où l'on passe le PLUS DE TEMPS (minutes 30 j de ses activités) est
+    // placé TOUT EN BAS = près du spawn → accès rapide à ce sur quoi on bosse le
+    // plus, cinématiques plus vite, sans traverser toute la map.
+    int timeOf(DomainSpec d) {
+      var m = 0;
+      for (final aid in d.activityIds) {
+        m += logic.activityTime30dMin(aid);
+      }
+      return m;
+    }
+
+    out.sort((a, b) => timeOf(a).compareTo(timeOf(b))); // croissant → max en bas
+    return out;
+  }
+
+  // (Re)construit la grande map V2 depuis l'état → elle GRANDIT avec les données.
+  void _rebuildWv2() {
+    final layout = buildWorld(_domainSpecs());
+    _wv2 = layout;
+    _v2Tint.clear();
+    for (final c in layout.castles) {
+      final col = domainColor(c.domainId, logic.state.activeDomains) ?? _kGold;
+      // Château ET village teintés de la couleur du domaine.
+      for (final r in [c.castleRect, c.villageRect]) {
+        for (var y = r.top; y < r.top + r.height; y++) {
+          for (var x = r.left; x < r.left + r.width; x++) {
+            _v2Tint['${x}_$y'] = col;
+          }
+        }
+      }
+    }
+    final firstSpawn = !_v2Spawned;
+    if (!_v2Spawned) {
+      _posV2 = layout.start; // 1ᵉʳ spawn = bas‑gauche (dernier domaine)
+      _v2Spawned = true;
+    } else if (!layout.inBounds(_posV2.x, _posV2.y) ||
+        !layout.walkable(_posV2.x, _posV2.y)) {
+      _posV2 = layout.start;
+    }
+    _populateV2Gardens();
+    _populateV2Calendar();
+    _populateV2Araignees();
+    _revealAroundV2(_posV2); // nuage de guerre : on révèle autour de l'avatar
+    // Caméra cadrée sur le spawn UNE seule fois (plus d'auto‑centrage ensuite).
+    if (firstSpawn) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToAvatarV2());
+    }
+  }
+
+  // Peuple les jardins : SEULS les serpents (tâches en retard) de chaque domaine —
+  // routines/activités se défendent dans la grotte. 1 case = 1 serpent.
+  void _populateV2Gardens() {
+    _v2Pests.clear();
+    final w = _wv2;
+    if (w == null) return;
+    final byDom = <String, List<({String type, String id, int hp})>>{};
+    for (final e in logic.backlogEnemies()) {
+      if (e.type != 'snake') continue;
+      final dom = logic.enemyDomainId(e.type, e.id);
+      if (dom == null) continue;
+      (byDom[dom] ??= []).add(e);
+    }
+    for (final c in w.castles) {
+      final snakes = byDom[c.domainId] ?? const [];
+      if (snakes.isEmpty) continue;
+      final color =
+          domainColor(c.domainId, logic.state.activeDomains) ?? _kFarm;
+      final free = <String>[];
+      final g = c.gardenRect;
+      for (var y = g.top; y < g.top + g.height; y++) {
+        for (var x = g.left; x < g.left + g.width; x++) {
+          free.add('${x}_$y');
+        }
+      }
+      // Dispersés sur TOUT le jardin (mélange déterministe) — pas tassés dans un coin.
+      free.shuffle(Random(c.domainId.hashCode));
+      for (var i = 0; i < snakes.length && i < free.length; i++) {
+        _v2Pests[free[i]] =
+            (type: snakes[i].type, id: snakes[i].id, color: color);
+      }
+    }
+  }
+
+  // Le type 'spider' = jour manqué = NUISIBLE : 🕷️ pour une routine, 🦂 pour une
+  // activité‑temps (le type de token est générique, la lane décide).
+  static String _tokEmoji(String type, bool isRoutine) {
+    switch (type) {
+      case 'leaf':
+        return '🍃';
+      case 'flame':
+        return '🔥';
+      case 'spider':
+        return isRoutine ? '🕷️' : '🦂';
+      default:
+        return '';
+    }
+  }
+
+  // Projette le CALENDRIER de chaque domaine inline : tourelle + 7 tokens‑jours
+  // (+ compteur PV), séparateur routines/activités. Réutilise les mêmes helpers
+  // que le rendu intérieur (routineWeekTokens / activityTimeTokens).
+  void _populateV2Calendar() {
+    _v2DayTok.clear();
+    _v2DayCount.clear();
+    _v2Turret.clear();
+    _v2Sep.clear();
+    _v2DayTurretX.clear();
+    _v2DayLabel.clear();
+    _v2LaneName.clear();
+    final w = _wv2;
+    if (w == null) return;
+    const wd = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    for (final c in w.castles) {
+      for (var j = 0; j < 7; j++) {
+        final d = today.subtract(Duration(days: 6 - j));
+        _v2DayLabel['${c.dayX0 + j}_${c.headerY}'] = wd[d.weekday - 1];
+      }
+    }
+    for (final c in w.castles) {
+      for (final lane in c.lanes) {
+        final name = _activityName(lane.id);
+        final toks = lane.isRoutine
+            ? logic.routineWeekTokens(lane.id)
+            : logic.activityTimeTokens(lane.id);
+        final charger =
+            toks.where((t) => t.type == 'leaf' || t.type == 'flame').length;
+        _v2Turret['${lane.turretX}_${lane.y}'] =
+            (charger: charger, isRoutine: lane.isRoutine);
+        _v2LaneName['${lane.turretX}_${lane.y}'] = name;
+        for (var j = 0; j < 7 && j < toks.length; j++) {
+          final id = '${lane.dayX0 + j}_${lane.y}';
+          final t = toks[j];
+          final e = _tokEmoji(t.type, lane.isRoutine);
+          if (e.isNotEmpty) _v2DayTok[id] = e;
+          if (t.type == 'spider' && t.hp > 0) _v2DayCount[id] = t.hp;
+          _v2DayTurretX[id] = lane.turretX;
+          _v2LaneName[id] = name;
+        }
+      }
+      if (c.sepY >= 0) {
+        final r = c.castleRect;
+        for (var x = r.left; x < r.left + r.width; x++) {
+          _v2Sep.add('${x}_${c.sepY}');
+        }
+      }
+    }
+  }
+
+  String _activityName(String id) {
+    for (final a in logic.state.activeActivities) {
+      if (a.id == id) return a.name;
+    }
+    return '';
+  }
+
+  // Araignées d'un domaine = jours manqués (🕷️/🦂) sur les 7 jours (AUJOURD'HUI
+  // inclus → valider une routine du jour fait baisser le compte) de toutes ses
+  // lignes. À ≥ N → invasion.
+  int _v2InvasionCount(CastleBlock c) {
+    var n = 0;
+    for (final lane in c.lanes) {
+      final toks = lane.isRoutine
+          ? logic.routineWeekTokens(lane.id)
+          : logic.activityTimeTokens(lane.id);
+      for (var j = 0; j < 7 && j < toks.length; j++) {
+        if (toks[j].type == 'spider') n++;
+      }
+    }
+    return n;
+  }
+
+  void _populateV2Araignees() {
+    _v2Araignee.clear();
+    _v2Toiles.clear();
+    final w = _wv2;
+    if (w == null) return;
+    for (final c in w.castles) {
+      if (_v2Dislodged.contains(c.domainId)) continue; // délogée → ne revient pas
+      // Invasion COLLANTE : dès qu'on atteint N, le domaine reste envahi jusqu'à
+      // ce qu'on l'ait DÉLOGÉE (réduit < N + affrontée).
+      if (_v2InvasionCount(c) >= _kInvasionN) _v2Invaded.add(c.domainId);
+      if (!_v2Invaded.contains(c.domainId)) continue;
+      // Case‑séparateur (entre tourelles routines et activités), colonne tourelles.
+      final y = c.sepY >= 0
+          ? c.sepY
+          : (c.lanes.isNotEmpty
+              ? c.lanes[c.lanes.length ~/ 2].y
+              : c.castleRect.top);
+      _v2Araignee['${c.castleRect.left}_$y'] = c.domainId;
+      // Une toile dans le jardin (marqueur : valide tes routines pour la déloger).
+      final g = c.gardenRect;
+      _v2Toiles['${g.left + g.width ~/ 2}_${g.top + g.height ~/ 2}'] = c.domainId;
+    }
+  }
+
+  void _revealAroundV2(Point<int> p) {
+    final w = _wv2;
+    if (w == null) return;
+    for (var dy = -_kReveal; dy <= _kReveal; dy++) {
+      for (var dx = -_kReveal; dx <= _kReveal; dx++) {
+        final nx = p.x + dx, ny = p.y + dy;
+        if (w.inBounds(nx, ny)) _revealed.add('${nx}_$ny');
+      }
+    }
+  }
+
+  // Clic sur la grande map = TÉLÉPORTATION directe du ninja sur la case (pas de
+  // marche). Puis combat si serpent, ou coffre.
+  // Clic sur la grande map = le ninja MARCHE jusqu'à la case (BFS, case par case,
+  // révèle le brouillard en chemin). Case‑jour = cinématique. Arrivée = combat/coffre.
+  Future<void> _onTapV2(int x, int y) async {
+    final w = _wv2;
+    if (w == null || _v2Walking) return;
+    final id = '${x}_$y';
+    // Araignée‑boss : clic → shuriken → on change de map (combat dans l'intérieur).
+    final araDom = _v2Araignee[id] ?? _v2Toiles[id];
+    if (araDom != null) {
+      final castle = w.byDomain[araDom];
+      final n = castle == null ? 0 : _v2InvasionCount(castle);
+      // ≥ N araignées cette semaine → trop tôt : il faut valider ses routines pour
+      // redescendre sous N avant de pouvoir la déloger.
+      if (castle == null || n >= _kInvasionN) {
+        _toast(
+            '🕸️ ${_domainName(araDom)} : $n araignées cette semaine. Valide tes '
+            'routines pour descendre sous $_kInvasionN, puis déloge‑la.',
+            _kEnemy);
+        return;
+      }
+      // < N → on peut l'affronter ; une fois délogée, elle ne revient pas.
+      _launchV2Cine(x, y, _posV2.x); // shuriken/jet vers l'araignée
+      await Future.delayed(const Duration(milliseconds: 350));
+      if (!mounted) return;
+      _v2Invaded.remove(araDom);
+      _v2Dislodged.add(araDom);
+      _enterDomainFromV2(araDom);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _inInterior) _startCine();
+      });
+      return;
+    }
+    if (_v2DayTok.containsKey(id) && _v2DayTurretX.containsKey(id)) {
+      _launchV2Cine(x, y, _v2DayTurretX[id]!);
+      return;
+    }
+    if (!w.walkable(x, y)) {
+      _toast('🧱 Un mur bloque le passage.', Colors.white38);
+      return;
+    }
+    final path = _bfsV2(_posV2, Point(x, y));
+    if (path.isEmpty) return;
+    _v2Walking = true;
+    for (final step in path) {
+      if (!mounted) break;
+      setState(() {
+        _posV2 = step;
+        _revealAroundV2(step);
+      });
+      _v2CheckDomainEntry();
+      await Future.delayed(const Duration(milliseconds: 75));
+    }
+    _v2Walking = false;
+    if (!mounted) return;
+    final pest = _v2Pests['${_posV2.x}_${_posV2.y}'];
+    if (pest != null) {
+      await _backlogCombat('${_posV2.x}_${_posV2.y}', pest.type, pest.id);
+    } else if (w.at(_posV2.x, _posV2.y) == WtTile.chest) {
+      _toast('🎁 Coffre ! (récompense à venir)', _kGold);
+    }
+  }
+
+  // Entre dans l'intérieur EXISTANT d'un domaine (la « map de combat ») → la
+  // cinématique d'assaut s'y joue ; en ressortant on revient sur la map V2.
+  void _enterDomainFromV2(String domainId) {
+    final t = _t;
+    if (t == null) return;
+    String? caveId;
+    for (final c in t.caves) {
+      if (c.domainId == domainId) {
+        caveId = c.id;
+        break;
+      }
+    }
+    // Repli : certaines grottes ont id == domainId (legacy/réconcilié).
+    caveId ??= t.caveById(domainId) != null ? domainId : null;
+    if (caveId == null) {
+      _toast('🕸️ Grotte introuvable pour ${_domainName(domainId)}.', _kEnemy);
+      return;
+    }
+    _enterInterior(caveId);
+  }
+
+  List<Point<int>> _bfsV2(Point<int> from, Point<int> to) {
+    final w = _wv2;
+    if (w == null || from == to || !w.walkable(to.x, to.y)) return const [];
+    final prev = <String, Point<int>?>{'${from.x}_${from.y}': null};
+    final q = <Point<int>>[from];
+    var i = 0;
+    while (i < q.length) {
+      final cur = q[i++];
+      if (cur == to) break;
+      for (final n in [
+        Point(cur.x + 1, cur.y),
+        Point(cur.x - 1, cur.y),
+        Point(cur.x, cur.y + 1),
+        Point(cur.x, cur.y - 1),
+      ]) {
+        final nid = '${n.x}_${n.y}';
+        if (prev.containsKey(nid) || !w.walkable(n.x, n.y)) continue;
+        prev[nid] = cur;
+        q.add(n);
+      }
+    }
+    if (!prev.containsKey('${to.x}_${to.y}')) return const [];
+    final path = <Point<int>>[];
+    Point<int>? cur = to;
+    while (cur != null && cur != from) {
+      path.add(cur);
+      cur = prev['${cur.x}_${cur.y}'];
+    }
+    return path.reversed.toList();
+  }
+
+  // Cinématique du jour : la tourelle de la lane tire un boulet sur la case‑jour.
+  // Un boulet tourelle → case (delay = échelonnement de la volée).
+  void _fireV2Bolt(int dayX, int dayY, int turretX, {double delay = 0}) {
+    final arc = ((dayX - turretX).abs() * 0.28).clamp(0.8, 3.0).toDouble();
+    // Durée 2,2 s = cinématique ralentie de moitié.
+    final fb = _CineFb(2.2, turretX + 0.5, dayY.toDouble(), dayX.toDouble(),
+        dayY.toDouble(), arc, 'v2');
+    fb.t = -delay; // tir différé (volée)
+    _v2Fbs.add(fb);
+    _v2CineTick.value++;
+  }
+
+  void _launchV2Cine(int dayX, int dayY, int turretX) =>
+      _fireV2Bolt(dayX, dayY, turretX);
+
+  int _rand5to15ms() => 5000 + _rng.nextInt(10001); // 5–15 s
+
+  // Une routine/activité a‑t‑elle été LOGGUÉE aujourd'hui ? (≥ 1 validation pour une
+  // routine, ≥ 1 min loggée pour une activité). → sa tourelle peut défendre.
+  bool _loggedTodayV2(String id, bool isRoutine) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (isRoutine) return logic.habitValueOn(id, today) > 0;
+    for (final s in logic.state.sessions) {
+      if (s.activityId != id) continue;
+      if (s.startAt.year == today.year &&
+          s.startAt.month == today.month &&
+          s.startAt.day == today.day &&
+          s.duration.inMinutes > 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Arme/désarme les tourelles selon le VIEWPORT : tous les châteaux DÉCOUVERTS qui
+  // chevauchent l'écran combattent (coût borné par ce qui est affiché). Seules les
+  // tourelles dont la routine/activité a été logguée AUJOURD'HUI tirent (délai 5–15 s).
+  void _v2RefreshCannons() {
+    final w = _wv2;
+    if (w == null || !_v2HCtrl.hasClients || !_v2VCtrl.hasClients) return;
+    const slot = _kV2Slot;
+    final x0 = _v2HCtrl.offset / slot - 1;
+    final x1 = (_v2HCtrl.offset + _v2HCtrl.position.viewportDimension) / slot + 1;
+    final y0 = _v2VCtrl.offset / slot - 1;
+    final y1 = (_v2VCtrl.offset + _v2VCtrl.position.viewportDimension) / slot + 1;
+    final visible = <String>{};
+    for (final c in w.castles) {
+      if (c.lanes.isEmpty) continue;
+      final b = c.bounds;
+      final overlaps = b.left <= x1 &&
+          (b.left + b.width - 1) >= x0 &&
+          b.top <= y1 &&
+          (b.top + b.height - 1) >= y0;
+      // Découvert = l'avatar y est déjà passé (case tourelle révélée).
+      if (!overlaps ||
+          !(_revealed.contains('${c.castleRect.left}_${c.lanes.first.y}') ||
+              _showCoords)) {
+        continue;
+      }
+      visible.add(c.domainId);
+    }
+    _v2Cannons.removeWhere((cn) => !visible.contains(cn.domainId));
+    _v2ArmedDomains.removeWhere((d) => !visible.contains(d));
+    for (final c in w.castles) {
+      if (!visible.contains(c.domainId) ||
+          _v2ArmedDomains.contains(c.domainId)) continue;
+      _v2ArmedDomains.add(c.domainId);
+      final todayX = c.dayX0 + 6;
+      for (final lane in c.lanes) {
+        if (!_loggedTodayV2(lane.id, lane.isRoutine)) continue;
+        _v2Cannons.add(_V2Cannon(
+            c.domainId, lane.turretX, lane.y, todayX, _gameMs + _rand5to15ms()));
+      }
+    }
+  }
+
+  // Détecte l'entrée dans un nouveau domaine (bande contenant l'avatar) → volée.
+  void _v2CheckDomainEntry() {
+    final w = _wv2;
+    if (w == null) return;
+    CastleBlock? here;
+    for (final c in w.castles) {
+      final b = c.bounds;
+      if (_posV2.x >= b.left &&
+          _posV2.x < b.left + b.width &&
+          _posV2.y >= b.top &&
+          _posV2.y < b.top + b.height) {
+        here = c;
+        break;
+      }
+    }
+    if (here == null) {
+      _v2ActiveDomain = null;
+      return;
+    }
+    // Entrée dans un nouveau domaine → on l'ÉCLAIRE en entier (l'armement des
+    // tourelles est géré par le viewport, cf. _v2RefreshCannons).
+    if (here.domainId != _v2ActiveDomain) {
+      _v2ActiveDomain = here.domainId;
+      final b = here.bounds;
+      setState(() {
+        for (var yy = b.top; yy < b.top + b.height; yy++) {
+          for (var xx = b.left; xx < b.left + b.width; xx++) {
+            _revealed.add('${xx}_$yy');
+          }
+        }
+      });
+    }
+  }
+
+  void _simulateV2Cine(double dt) {
+    for (final fb in _v2Fbs) {
+      fb.t += dt / fb.dur;
+      if (fb.t >= 1.0 && !fb.dead) {
+        fb.dead = true;
+        _v2Flashes.add((at: Offset(fb.tx, fb.ty), untilMs: _gameMs + 1400));
+      }
+    }
+    _v2Fbs.removeWhere((fb) => fb.dead);
+    _v2Flashes.removeWhere((f) => _gameMs >= f.untilMs);
+  }
+
+  Offset _v2CenterD(double x, double y) =>
+      Offset(x * _kV2Slot + _kV2Slot / 2, y * _kV2Slot + _kV2Slot / 2);
+
+  void _scrollToAvatarV2() {
+    if (!_v2HCtrl.hasClients || !_v2VCtrl.hasClients) return;
+    final vpW = _v2HCtrl.position.viewportDimension;
+    final vpH = _v2VCtrl.position.viewportDimension;
+    final tx = (_posV2.x * _kV2Slot + _kV2Slot / 2 - vpW / 2)
+        .clamp(0.0, _v2HCtrl.position.maxScrollExtent);
+    final ty = (_posV2.y * _kV2Slot + _kV2Slot / 2 - vpH / 2)
+        .clamp(0.0, _v2VCtrl.position.maxScrollExtent);
+    _v2HCtrl.animateTo(tx,
+        duration: const Duration(milliseconds: 180), curve: Curves.easeOut);
+    _v2VCtrl.animateTo(ty,
+        duration: const Duration(milliseconds: 180), curve: Curves.easeOut);
+  }
+
+  Widget _contentV2() {
+    final w = _wv2;
+    if (w == null) {
+      return const Center(child: CircularProgressIndicator(color: _kBlue));
+    }
+    return SingleChildScrollView(
+      controller: _v2VCtrl,
+      scrollDirection: Axis.vertical,
+      child: SingleChildScrollView(
+        controller: _v2HCtrl,
+        scrollDirection: Axis.horizontal,
+        child: SizedBox(
+          width: w.cols * _kV2Slot,
+          height: w.rows * _kV2Slot,
+          child: Stack(
+            children: [
+              // GRILLE CULLÉE : seules les cases VISIBLES sont construites
+              // (recalculé au scroll) → coût borné quel que soit le monde.
+              Positioned.fill(
+                child: AnimatedBuilder(
+                  animation: Listenable.merge([_v2HCtrl, _v2VCtrl]),
+                  builder: (_, __) => Stack(children: _visibleCellsV2(w)),
+                ),
+              ),
+              // Noms des lignes (routines/activités) à droite, comme dans la grotte.
+              ..._v2LaneLabels(w),
+              // Overlay cinématique : repeint SEUL (grille statique en dessous).
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: AnimatedBuilder(
+                    animation: _v2CineTick,
+                    builder: (_, __) => Stack(children: [
+                      for (final fb in _v2Fbs)
+                        ..._fbWidgets(fb, _kV2Slot, _v2CenterD),
+                      for (final f in _v2Flashes)
+                        if (_gameMs < f.untilMs)
+                          Positioned(
+                            left: f.at.dx * _kV2Slot,
+                            top: f.at.dy * _kV2Slot,
+                            width: _kV2Slot,
+                            height: _kV2Slot,
+                            child: Center(
+                                child: Text('💥',
+                                    style:
+                                        TextStyle(fontSize: _kV2Slot * 0.6))),
+                          ),
+                    ]),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Noms des lignes (routine/activité) à DROITE du calendrier (extérieur), teintés
+  // de la couleur du domaine — visibles seulement si le domaine est éclairé.
+  List<Widget> _v2LaneLabels(WorldLayout w) {
+    final out = <Widget>[];
+    for (final c in w.castles) {
+      final col = domainColor(c.domainId, logic.state.activeDomains) ?? _kGold;
+      for (final lane in c.lanes) {
+        if (!_revealed.contains('${lane.turretX}_${lane.y}') && !_showCoords) {
+          continue;
+        }
+        final name = _activityName(lane.id);
+        if (name.isEmpty) continue;
+        out.add(Positioned(
+          left: (c.dayX0 + 7) * _kV2Slot + 4,
+          top: lane.y * _kV2Slot,
+          height: _kV2Slot,
+          width: 6 * _kV2Slot,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    color: col,
+                    fontSize: _kV2Slot * 0.3,
+                    fontWeight: FontWeight.w800)),
+          ),
+        ));
+      }
+    }
+    return out;
+  }
+
+  // Cases visibles (fenêtre de scroll + marge) → Positioned.
+  List<Widget> _visibleCellsV2(WorldLayout w) {
+    const slot = _kV2Slot, margin = 2;
+    // Au 1ᵉʳ frame le viewport n'existe pas encore → on cadre une FENÊTRE autour de
+    // l'avatar (et pas TOUTES les cases, qui ferait une frame énorme au spawn).
+    final hasC = _v2HCtrl.hasClients && _v2VCtrl.hasClients;
+    final vpW = hasC ? _v2HCtrl.position.viewportDimension : 1000.0;
+    final vpH = hasC ? _v2VCtrl.position.viewportDimension : 800.0;
+    final offX = hasC ? _v2HCtrl.offset : (_posV2.x * slot - vpW / 2);
+    final offY = hasC ? _v2VCtrl.offset : (_posV2.y * slot - vpH / 2);
+    final x0 = ((offX / slot).floor() - margin).clamp(0, w.cols - 1);
+    final x1 = (((offX + vpW) / slot).ceil() + margin).clamp(0, w.cols - 1);
+    final y0 = ((offY / slot).floor() - margin).clamp(0, w.rows - 1);
+    final y1 = (((offY + vpH) / slot).ceil() + margin).clamp(0, w.rows - 1);
+    final cells = <Widget>[];
+    for (var y = y0; y <= y1; y++) {
+      for (var x = x0; x <= x1; x++) {
+        cells.add(Positioned(
+            left: x * slot,
+            top: y * slot,
+            width: slot,
+            height: slot,
+            child: _cellV2(x, y)));
+      }
+    }
+    return cells;
+  }
+
+  Widget _cellV2(int x, int y) {
+    final w = _wv2!;
+    final id = '${x}_$y';
+    final revealed = _revealed.contains(id) || _showCoords;
+    final isAvatar = _posV2.x == x && _posV2.y == y;
+    const slot = _kV2Slot, inner = slot - 3;
+    if (!revealed) {
+      return SizedBox(
+        width: slot,
+        height: slot,
+        child: GestureDetector(
+          onTap: () => _onTapV2(x, y),
+          child: Container(color: const Color(0xFF0A0A0A)),
+        ),
+      );
+    }
+    Color bg;
+    Widget? child;
+    final pest = _v2Pests[id];
+    final tile = w.at(x, y);
+    switch (tile) {
+      case WtTile.wall:
+        bg = const Color(0xFF2C2C2C);
+        break;
+      case WtTile.terrain:
+        // Extérieur SOMBRE, comme le fond sous les nuisibles → ils semblent
+        // surgir du noir (côté droit ouvert notamment).
+        bg = Colors.black.withOpacity(.28);
+        break;
+      case WtTile.garden:
+        bg = _kFarm.withOpacity(.22);
+        break;
+      case WtTile.village:
+        // Village teinté de la couleur du domaine (plus doux que le château).
+        bg = (_v2Tint[id] ?? const Color(0xFF3A2E1E)).withOpacity(.20);
+        break;
+      case WtTile.bridge:
+        bg = const Color(0xFF6B4A2A).withOpacity(.55); // pont en bois
+        break;
+      case WtTile.castle:
+        // Calendrier inline : séparateur, tourelle (défense), token‑jour, sinon mur.
+        final tColor = _v2Tint[id] ?? _kGold;
+        final tur = _v2Turret[id];
+        final tok = _v2DayTok[id];
+        final lbl = _v2DayLabel[id];
+        if (lbl != null) {
+          bg = tColor.withOpacity(.20);
+          child = Text(lbl,
+              style: TextStyle(
+                  fontSize: inner * 0.34,
+                  height: 1,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white.withOpacity(.85)));
+        } else if (_v2Sep.contains(id)) {
+          bg = tColor.withOpacity(.65); // ligne séparatrice (rempart)
+        } else if (tur != null) {
+          bg = tColor.withOpacity(.18);
+          child = _v2TurretWidget(tur.charger, tur.isRoutine, inner);
+        } else if (tok != null) {
+          bg = Colors.black.withOpacity(.28);
+          final cnt = _v2DayCount[id] ?? 0;
+          child = cnt > 0
+              ? Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(tok, style: TextStyle(fontSize: inner * 0.4)),
+                    Text('$cnt',
+                        style: TextStyle(
+                            fontSize: inner * 0.22,
+                            height: 1,
+                            color: const Color(0xFFE05858),
+                            fontWeight: FontWeight.w900)),
+                  ])
+              : Text(tok, style: TextStyle(fontSize: inner * 0.46));
+        } else {
+          bg = tColor.withOpacity(.10); // château vide
+        }
+        break;
+      case WtTile.chest:
+        bg = const Color(0xFF13211A);
+        child = Text('🎁', style: const TextStyle(fontSize: inner * 0.5));
+        break;
+    }
+    // Serpent du jardin : case remplie au % PV (couleur domaine) + 🐍.
+    if (pest != null && tile == WtTile.garden) {
+      final hp = logic.enemyHp(pest.type, pest.id);
+      final mx = logic.enemyMaxHp(pest.type, pest.id);
+      final frac = (hp / (mx <= 0 ? 1 : mx)).clamp(0.0, 1.0);
+      bg = pest.color.withOpacity(.15);
+      child = Stack(fit: StackFit.expand, children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: FractionallySizedBox(
+              heightFactor: frac,
+              child: Container(color: pest.color.withOpacity(.55)),
+            ),
+          ),
+        ),
+        Center(
+            child: Text(entityEmoji(pest.type),
+                style: const TextStyle(fontSize: inner * 0.5))),
+      ]);
+    }
+    // Toile d'invasion dans le jardin (marqueur : valide tes routines pour déloger).
+    if (_v2Toiles.containsKey(id)) {
+      child = Text('🕸️', style: TextStyle(fontSize: inner * 0.6));
+    }
+    // Araignée‑boss d'invasion (clic = combat si semaine propre).
+    if (_v2Araignee.containsKey(id)) {
+      bg = _kEnemy.withOpacity(.32);
+      child = Text('🕷️', style: TextStyle(fontSize: inner * 0.75));
+    }
+    if (isAvatar) {
+      bg = Colors.white.withOpacity(.18);
+      child = Text(logic.state.activeAvatar ?? '🧍',
+          style: const TextStyle(fontSize: inner * 0.6));
+    }
+    final cell = SizedBox(
+      width: slot,
+      height: slot,
+      child: GestureDetector(
+        onTap: () => _onTapV2(x, y),
+        child: Container(
+          margin: const EdgeInsets.all(1.5),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: Colors.white.withOpacity(.05)),
+          ),
+          alignment: Alignment.center,
+          child: child,
+        ),
+      ),
+    );
+    // Tooltips : serpent (titre + PV) / ligne de calendrier (nom).
+    String? tip;
+    if (pest != null && tile == WtTile.garden) {
+      tip = '${logic.enemyItemName(pest.type, pest.id)}\n'
+          'PV ${logic.enemyHp(pest.type, pest.id)}/${logic.enemyMaxHp(pest.type, pest.id)}';
+    } else if (_v2LaneName[id]?.isNotEmpty ?? false) {
+      tip = _v2LaneName[id];
+    }
+    if (tip != null) {
+      return Tooltip(
+        message: tip,
+        waitDuration: const Duration(milliseconds: 250),
+        child: cell,
+      );
+    }
+    return cell;
+  }
+
+  // Mini‑carte (coin haut‑droit) : monde entier à l'échelle + avatar + cadre du
+  // viewport (suit le scroll). Tap → recentre la caméra sur ce point.
+  Widget _miniMapV2() {
+    final w = _wv2;
+    if (w == null) return const SizedBox.shrink();
+    const maxSide = 160.0;
+    final cell = maxSide / max(w.cols, w.rows);
+    final mw = w.cols * cell, mh = w.rows * cell;
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xCC0A0A0A),
+        border: Border.all(color: Colors.white24),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      padding: const EdgeInsets.all(3),
+      child: GestureDetector(
+        onTapDown: (d) => _miniMapTap(d.localPosition, cell),
+        child: AnimatedBuilder(
+          animation: Listenable.merge([_v2HCtrl, _v2VCtrl]),
+          builder: (_, __) {
+            Rect? vp;
+            if (_v2HCtrl.hasClients &&
+                _v2VCtrl.hasClients &&
+                _v2HCtrl.position.hasViewportDimension) {
+              vp = Rect.fromLTWH(
+                _v2HCtrl.offset / _kV2Slot * cell,
+                _v2VCtrl.offset / _kV2Slot * cell,
+                _v2HCtrl.position.viewportDimension / _kV2Slot * cell,
+                _v2VCtrl.position.viewportDimension / _kV2Slot * cell,
+              );
+            }
+            return CustomPaint(
+              size: Size(mw, mh),
+              painter: _MiniMapPainter(w, _v2Tint, _posV2, cell, vp),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  // Tap mini‑carte → PAN la caméra vers ce point (regarder ailleurs sans bouger
+  // l'avatar) ; pas d'auto‑centrage.
+  void _miniMapTap(Offset local, double cell) {
+    final w = _wv2;
+    if (w == null || !_v2HCtrl.hasClients || !_v2VCtrl.hasClients) return;
+    final cx = (local.dx / cell).floor().clamp(0, w.cols - 1);
+    final cy = (local.dy / cell).floor().clamp(0, w.rows - 1);
+    final vpW = _v2HCtrl.position.viewportDimension;
+    final vpH = _v2VCtrl.position.viewportDimension;
+    final tx = (cx * _kV2Slot + _kV2Slot / 2 - vpW / 2)
+        .clamp(0.0, _v2HCtrl.position.maxScrollExtent);
+    final ty = (cy * _kV2Slot + _kV2Slot / 2 - vpH / 2)
+        .clamp(0.0, _v2VCtrl.position.maxScrollExtent);
+    _v2HCtrl.animateTo(tx,
+        duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
+    _v2VCtrl.animateTo(ty,
+        duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
+  }
+
+  Widget _v2TurretWidget(int charger, bool isRoutine, double inner) {
+    final col = isRoutine ? _kEnemy : const Color(0xFFFF8A3D);
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          for (var i = 0; i < 7; i++)
+            Container(
+              width: inner * 0.045,
+              height: inner * 0.08,
+              margin: EdgeInsets.symmetric(horizontal: inner * 0.006),
+              color: i < charger
+                  ? const Color(0xFF3CCB6E)
+                  : Colors.white24,
+            ),
+        ]),
+        SizedBox(height: inner * 0.04),
+        SvgPicture.asset('assets/icons/anti-aircraft-gun.svg',
+            width: inner * 0.58,
+            height: inner * 0.58,
+            colorFilter: ColorFilter.mode(col, BlendMode.srcIn)),
+      ],
+    );
+  }
+}
+
+/// Peintre de la mini‑carte du monde V2 (cases à l'échelle + avatar + viewport).
+class _MiniMapPainter extends CustomPainter {
+  final WorldLayout w;
+  final Map<String, Color> tint;
+  final Point<int> avatar;
+  final double cell;
+  final Rect? viewport;
+  _MiniMapPainter(this.w, this.tint, this.avatar, this.cell, this.viewport);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()..style = PaintingStyle.fill;
+    for (var y = 0; y < w.rows; y++) {
+      for (var x = 0; x < w.cols; x++) {
+        switch (w.at(x, y)) {
+          case WtTile.wall:
+            p.color = const Color(0xFF333333);
+            break;
+          case WtTile.terrain:
+            p.color = const Color(0xFF0F1A14);
+            break;
+          case WtTile.garden:
+            p.color = const Color(0xFF1E6B3A);
+            break;
+          case WtTile.village:
+            p.color = const Color(0xFF5A4630);
+            break;
+          case WtTile.bridge:
+            p.color = const Color(0xFF8A5E33);
+            break;
+          case WtTile.castle:
+            p.color = tint['${x}_$y'] ?? const Color(0xFFD4A017);
+            break;
+          case WtTile.chest:
+            p.color = const Color(0xFFE0B84A);
+            break;
+        }
+        canvas.drawRect(Rect.fromLTWH(x * cell, y * cell, cell, cell), p);
+      }
+    }
+    if (viewport != null) {
+      canvas.drawRect(
+          viewport!,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.2
+            ..color = Colors.white70);
+    }
+    canvas.drawCircle(
+        Offset((avatar.x + 0.5) * cell, (avatar.y + 0.5) * cell),
+        cell.clamp(1.6, 3.2),
+        Paint()..color = Colors.white);
+  }
+
+  @override
+  bool shouldRepaint(covariant _MiniMapPainter old) =>
+      old.avatar != avatar || old.viewport != viewport || old.cell != cell;
 }
 
 /// Flèche dessinée pointant vers +x (la droite) : hampe + pointe (réaliste, sans
@@ -5049,6 +6065,15 @@ class _Beam {
 
 // Boule de feu de SUPPORT : tirée par une tour vers une toile, en ARC (parabole),
 // lente, orientée dans le sens du vol. À l'impact (t≥1) → la toile (clé) détruite.
+/// Tourelle armée du monde V2 : tire sur sa case d'aujourd'hui à `nextMs`, puis
+/// se réarme à un nouvel instant aléatoire (5–15 s).
+class _V2Cannon {
+  final String domainId;
+  final int turretX, y, todayX;
+  int nextMs;
+  _V2Cannon(this.domainId, this.turretX, this.y, this.todayX, this.nextMs);
+}
+
 class _CineFb {
   double t = 0; // progression 0..1
   final double dur, fx, fy, tx, ty, arc;
@@ -5086,17 +6111,6 @@ class _Sbire {
   Offset? wp; // point de déviation aléatoire (avant d'aller à la porte)
   _Sbire(this.id, this.x, this.y, this.hp) : maxHp = hp;
   // Déphasage propre (chemin ondulant non synchronisé entre sbires).
-  double get phase => id * 1.7;
-}
-
-/// MON sbire d'attaque (Phase 1) : passe par un point de déviation puis fonce
-/// SUR L'ENVAHISSEUR (ne chasse jamais les sbires ennemis).
-class _Atk {
-  final int id;
-  final String type; // spider | scorpion | snake
-  double x, y;
-  Offset? wp; // point de déviation aléatoire (avant d'aller à l'envahisseur)
-  _Atk(this.id, this.type, this.x, this.y);
   double get phase => id * 1.7;
 }
 
