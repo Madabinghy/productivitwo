@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'dart:ui' as ui;
 import 'package:flutter/gestures.dart' show PointerScrollEvent;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -102,6 +103,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   WorldLayout? _wv2;
   Point<int> _posV2 = const Point(0, 0);
   final Map<String, Color> _v2Tint = {}; // "x_y" → couleur domaine (château)
+  final Map<String, Color> _v2WallTint = {}; // "x_y" → accent domaine (murs déco)
   // "x_y" → serpent (tâche en retard) à farmer dans le jardin du domaine.
   final Map<String, ({String type, String id, Color color})> _v2Pests = {};
   // Calendrier inline projeté (réutilise routineWeekTokens/activityTimeTokens).
@@ -135,6 +137,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   final ValueNotifier<int> _v2CineTick = ValueNotifier(0);
   final ScrollController _v2HCtrl = ScrollController();
   final ScrollController _v2VCtrl = ScrollController();
+  // PERF — cache de la grille V2 : la fenêtre de cases visibles ne change qu'au
+  // franchissement d'une case ; sans ça l'AnimatedBuilder de scroll reconstruirait
+  // des centaines de widgets à chaque sous‑pixel de drag/molette. Invalidé à chaque
+  // build() (un setState a pu changer l'état d'une case).
+  ({int x0, int y0, int x1, int y1})? _cellWindow;
+  List<Widget>? _cachedCells;
+  // PERF — calque statique de la mini‑carte (cases du monde) enregistré en Picture :
+  // ne se redessine qu'au (re)build du monde, pas à chaque frame de scroll (seuls
+  // l'avatar + le cadre viewport sont repeints par‑dessus). Versionné par _rebuildWv2.
+  int _wv2Version = 0;
+  ui.Picture? _miniBasePic; // calque cases mini‑carte (recordé une fois par monde)
+  int _miniBaseKey = -1; // = _wv2Version du calque enregistré
   bool _loading = true;
   bool _busy = false;
   bool _paused = false; // gelé pendant un combat (pas d'avance/résolution)
@@ -1773,6 +1787,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _v2HCtrl.dispose();
     _v2VCtrl.dispose();
     _v2CineTick.dispose();
+    _miniBasePic?.dispose();
     super.dispose();
   }
 
@@ -5394,7 +5409,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   void _rebuildWv2() {
     final layout = buildWorld(_domainSpecs());
     _wv2 = layout;
+    _wv2Version++; // structure/teintes changées → invalide le calque mini‑carte
+    _cellWindow = null; // et la grille cullée
+    _cachedCells = null;
     _v2Tint.clear();
+    _v2WallTint.clear();
     for (final c in layout.castles) {
       final col = domainColor(c.domainId, logic.state.activeDomains) ?? _kGold;
       // Château ET village teintés de la couleur du domaine.
@@ -5404,6 +5423,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             _v2Tint['${x}_$y'] = col;
           }
         }
+      }
+      // Murs intérieurs déco : accent de la couleur du domaine (halo discret).
+      for (final p in c.decoWalls) {
+        _v2WallTint['${p.x}_${p.y}'] = col;
       }
     }
     final firstSpawn = !_v2Spawned;
@@ -5446,7 +5469,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       final g = c.gardenRect;
       for (var y = g.top; y < g.top + g.height; y++) {
         for (var x = g.left; x < g.left + g.width; x++) {
+          if (w.at(x, y) != WtTile.garden) continue; // skip murs déco
           free.add('${x}_$y');
+        }
+      }
+      // Cases‑passage du mur partagé avec le domaine du dessus (mêmes colonnes que
+      // les portes percées dans buildWorld) : un serpent qui s'y pose BLOQUE le
+      // raccourci → le user doit faire le tour par le pont.
+      final pr = g.top - 1; // rangée du mur partagé
+      for (final dx in [g.width ~/ 3, (2 * g.width) ~/ 3]) {
+        final px = g.left + dx;
+        if (w.inBounds(px, pr) && w.at(px, pr) == WtTile.garden) {
+          free.add('${px}_$pr');
         }
       }
       // Dispersés sur TOUT le jardin (mélange déterministe) — pas tassés dans un coin.
@@ -5713,6 +5747,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       ]) {
         final nid = '${n.x}_${n.y}';
         if (prev.containsKey(nid) || !w.walkable(n.x, n.y)) continue;
+        // Un serpent bloque le passage (impossible d'enjamber) → l'avatar doit
+        // faire le tour. Exception : la case CIBLE, pour aller la combattre.
+        if (n != to && _v2Pests.containsKey(nid)) continue;
         prev[nid] = cur;
         q.add(n);
       }
@@ -5873,6 +5910,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     if (w == null) {
       return const Center(child: CircularProgressIndicator(color: _kBlue));
     }
+    // On arrive ici via build() → l'état a pu changer : on force un recalcul des
+    // cases au prochain frame, puis le cache reprend pendant le scroll pur.
+    _cachedCells = null;
     // Exploration : DEUX navigations cohabitent. Drag‑pan au DOIGT (un doigt) via
     // GestureDetector.onPanUpdate, ET scroll 2 doigts / molette via
     // Listener.onPointerSignal (déplace la carte en 2D). Les physics des scrolls
@@ -5912,10 +5952,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             children: [
               // GRILLE CULLÉE : seules les cases VISIBLES sont construites
               // (recalculé au scroll) → coût borné quel que soit le monde.
+              // RepaintBoundary : isole les repeints de la grille du reste du Stack.
               Positioned.fill(
-                child: AnimatedBuilder(
-                  animation: Listenable.merge([_v2HCtrl, _v2VCtrl]),
-                  builder: (_, __) => Stack(children: _visibleCellsV2(w)),
+                child: RepaintBoundary(
+                  child: AnimatedBuilder(
+                    animation: Listenable.merge([_v2HCtrl, _v2VCtrl]),
+                    builder: (_, __) => Stack(children: _visibleCellsV2(w)),
+                  ),
                 ),
               ),
               // Noms des lignes (routines/activités) à droite, comme dans la grotte.
@@ -6000,6 +6043,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     final x1 = (((offX + vpW) / slot).ceil() + margin).clamp(0, w.cols - 1);
     final y0 = ((offY / slot).floor() - margin).clamp(0, w.rows - 1);
     final y1 = (((offY + vpH) / slot).ceil() + margin).clamp(0, w.rows - 1);
+    // Tant que la FENÊTRE de tuiles ne change pas (scroll sous‑pixel), on réutilise
+    // les widgets déjà construits → zéro rebuild de case pendant un drag fluide.
+    final win = (x0: x0, y0: y0, x1: x1, y1: y1);
+    final cached = _cachedCells;
+    if (cached != null && _cellWindow == win) return cached;
     final cells = <Widget>[];
     for (var y = y0; y <= y1; y++) {
       for (var x = x0; x <= x1; x++) {
@@ -6011,7 +6059,29 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             child: _cellV2(x, y)));
       }
     }
-    return cells;
+    _cellWindow = win;
+    return _cachedCells = cells;
+  }
+
+  // Décor cosmétique (game-icon teintée, faible opacité) posé par world_layout.
+  Widget? _v2DecorWidget(String id, double inner) {
+    final d = _wv2?.decor[id];
+    if (d == null) return null;
+    final (String asset, Color color, double scale) = switch (d) {
+      WtDecor.rock => ('assets/icons/rock.svg', const Color(0xFF8A8A8A), 0.62),
+      WtDecor.tree =>
+        ('assets/icons/pine-tree.svg', const Color(0xFF4E7A48), 0.84),
+      WtDecor.bush =>
+        ('assets/icons/berry-bush.svg', const Color(0xFF5E8A4A), 0.66),
+      WtDecor.house =>
+        ('assets/icons/house.svg', const Color(0xFFB58C5A), 0.70),
+      WtDecor.torch =>
+        ('assets/icons/torch.svg', const Color(0xFFE8A33D), 0.55),
+    };
+    return SvgPicture.asset(asset,
+        width: inner * scale,
+        height: inner * scale,
+        colorFilter: ColorFilter.mode(color.withOpacity(.82), BlendMode.srcIn));
   }
 
   Widget _cellV2(int x, int y) {
@@ -6036,12 +6106,24 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     final tile = w.at(x, y);
     switch (tile) {
       case WtTile.wall:
-        bg = const Color(0xFF2C2C2C);
+        // Pierre (brique) partout = « vrai monde » ; les murs INTÉRIEURS d'un
+        // domaine reçoivent en plus un halo discret de la couleur du domaine.
+        final accent = _v2WallTint[id];
+        bg = accent != null
+            ? Color.alphaBlend(
+                accent.withOpacity(.16), const Color(0xFF3A3A3A))
+            : const Color(0xFF2C2C2C);
+        child = SvgPicture.asset('assets/icons/brick-wall.svg',
+            width: inner * 0.8,
+            height: inner * 0.8,
+            colorFilter: const ColorFilter.mode(
+                Color(0xFFB8B0A4), BlendMode.srcIn));
         break;
       case WtTile.terrain:
         // Extérieur SOMBRE, comme le fond sous les nuisibles → ils semblent
-        // surgir du noir (côté droit ouvert notamment).
+        // surgir du noir (côté droit ouvert notamment). Décor cosmétique éventuel.
         bg = Colors.black.withOpacity(.28);
+        child = _v2DecorWidget(id, inner);
         break;
       case WtTile.garden:
         bg = _kFarm.withOpacity(.22);
@@ -6049,6 +6131,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       case WtTile.village:
         // Village teinté de la couleur du domaine (plus doux que le château).
         bg = (_v2Tint[id] ?? const Color(0xFF3A2E1E)).withOpacity(.20);
+        child = _v2DecorWidget(id, inner);
         break;
       case WtTile.bridge:
         bg = const Color(0xFF6B4A2A).withOpacity(.55); // pont en bois
@@ -6207,6 +6290,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     const maxSide = 160.0;
     final cell = maxSide / max(w.cols, w.rows);
     final mw = w.cols * cell, mh = w.rows * cell;
+    // (Re)enregistre le calque de cases une seule fois par monde → les frames de
+    // scroll ne repeignent plus que l'avatar + le cadre viewport par‑dessus.
+    if (_miniBasePic == null || _miniBaseKey != _wv2Version) {
+      _miniBasePic?.dispose();
+      _miniBasePic = _recordMiniBase(w, cell);
+      _miniBaseKey = _wv2Version;
+    }
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xCC0A0A0A),
@@ -6216,28 +6306,67 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       padding: const EdgeInsets.all(3),
       child: GestureDetector(
         onTapDown: (d) => _miniMapTap(d.localPosition, cell),
-        child: AnimatedBuilder(
-          animation: Listenable.merge([_v2HCtrl, _v2VCtrl]),
-          builder: (_, __) {
-            Rect? vp;
-            if (_v2HCtrl.hasClients &&
-                _v2VCtrl.hasClients &&
-                _v2HCtrl.position.hasViewportDimension) {
-              vp = Rect.fromLTWH(
-                _v2HCtrl.offset / _kV2Slot * cell,
-                _v2VCtrl.offset / _kV2Slot * cell,
-                _v2HCtrl.position.viewportDimension / _kV2Slot * cell,
-                _v2VCtrl.position.viewportDimension / _kV2Slot * cell,
+        child: RepaintBoundary(
+          child: AnimatedBuilder(
+            animation: Listenable.merge([_v2HCtrl, _v2VCtrl]),
+            builder: (_, __) {
+              Rect? vp;
+              if (_v2HCtrl.hasClients &&
+                  _v2VCtrl.hasClients &&
+                  _v2HCtrl.position.hasViewportDimension) {
+                vp = Rect.fromLTWH(
+                  _v2HCtrl.offset / _kV2Slot * cell,
+                  _v2VCtrl.offset / _kV2Slot * cell,
+                  _v2HCtrl.position.viewportDimension / _kV2Slot * cell,
+                  _v2VCtrl.position.viewportDimension / _kV2Slot * cell,
+                );
+              }
+              return CustomPaint(
+                size: Size(mw, mh),
+                painter: _MiniMapPainter(_miniBasePic!, _posV2, cell, vp),
               );
-            }
-            return CustomPaint(
-              size: Size(mw, mh),
-              painter: _MiniMapPainter(w, _v2Tint, _posV2, cell, vp),
-            );
-          },
+            },
+          ),
         ),
       ),
     );
+  }
+
+  // Enregistre les cases du monde dans un Picture réutilisable (couleur par type
+  // de tuile ; château teinté du domaine). Recordé une fois par version de monde.
+  ui.Picture _recordMiniBase(WorldLayout w, double cell) {
+    final rec = ui.PictureRecorder();
+    final canvas = Canvas(rec);
+    final p = Paint()..style = PaintingStyle.fill;
+    for (var y = 0; y < w.rows; y++) {
+      for (var x = 0; x < w.cols; x++) {
+        switch (w.at(x, y)) {
+          case WtTile.wall:
+            p.color = const Color(0xFF333333);
+            break;
+          case WtTile.terrain:
+            p.color = const Color(0xFF0F1A14);
+            break;
+          case WtTile.garden:
+            p.color = const Color(0xFF1E6B3A);
+            break;
+          case WtTile.village:
+            p.color = const Color(0xFF5A4630);
+            break;
+          case WtTile.bridge:
+            p.color = const Color(0xFF8A5E33);
+            break;
+          case WtTile.castle:
+            p.color = _v2Tint['${x}_$y'] ?? const Color(0xFFD4A017);
+            break;
+          case WtTile.chest:
+            p.color = const Color(0xFFE0B84A);
+            break;
+        }
+        canvas.drawRect(Rect.fromLTWH(x * cell, y * cell, cell, cell), p);
+      }
+    }
+    return rec.endRecording();
   }
 
   // Tap mini‑carte → PAN la caméra vers ce point (regarder ailleurs sans bouger
@@ -6288,44 +6417,15 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
 
 /// Peintre de la mini‑carte du monde V2 (cases à l'échelle + avatar + viewport).
 class _MiniMapPainter extends CustomPainter {
-  final WorldLayout w;
-  final Map<String, Color> tint;
+  final ui.Picture base; // calque cases pré‑enregistré (cf. _recordMiniBase)
   final Point<int> avatar;
   final double cell;
   final Rect? viewport;
-  _MiniMapPainter(this.w, this.tint, this.avatar, this.cell, this.viewport);
+  _MiniMapPainter(this.base, this.avatar, this.cell, this.viewport);
 
   @override
   void paint(Canvas canvas, Size size) {
-    final p = Paint()..style = PaintingStyle.fill;
-    for (var y = 0; y < w.rows; y++) {
-      for (var x = 0; x < w.cols; x++) {
-        switch (w.at(x, y)) {
-          case WtTile.wall:
-            p.color = const Color(0xFF333333);
-            break;
-          case WtTile.terrain:
-            p.color = const Color(0xFF0F1A14);
-            break;
-          case WtTile.garden:
-            p.color = const Color(0xFF1E6B3A);
-            break;
-          case WtTile.village:
-            p.color = const Color(0xFF5A4630);
-            break;
-          case WtTile.bridge:
-            p.color = const Color(0xFF8A5E33);
-            break;
-          case WtTile.castle:
-            p.color = tint['${x}_$y'] ?? const Color(0xFFD4A017);
-            break;
-          case WtTile.chest:
-            p.color = const Color(0xFFE0B84A);
-            break;
-        }
-        canvas.drawRect(Rect.fromLTWH(x * cell, y * cell, cell, cell), p);
-      }
-    }
+    canvas.drawPicture(base);
     if (viewport != null) {
       canvas.drawRect(
           viewport!,
@@ -6342,7 +6442,10 @@ class _MiniMapPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _MiniMapPainter old) =>
-      old.avatar != avatar || old.viewport != viewport || old.cell != cell;
+      old.avatar != avatar ||
+      old.viewport != viewport ||
+      old.cell != cell ||
+      !identical(old.base, base);
 }
 
 /// Flèche dessinée pointant vers +x (la droite) : hampe + pointe (réaliste, sans
