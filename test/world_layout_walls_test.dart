@@ -64,6 +64,23 @@ void main() {
     }
   });
 
+  test('décor cosmétique : seulement terrain/village, déterministe', () {
+    final spec = [_dom('a', 3, 2), _dom('b', 0, 4), _dom('c', 5, 0)];
+    final w1 = buildWorld(spec);
+    final w2 = buildWorld(spec);
+    // Déterminisme : même monde → même décor.
+    expect(w1.decor.length, w2.decor.length);
+    expect(w1.decor.keys.toSet(), w2.decor.keys.toSet());
+    // Le décor ne tombe JAMAIS sur une case jouable (mur/jardin/château/coffre/pont).
+    for (final key in w1.decor.keys) {
+      final parts = key.split('_');
+      final x = int.parse(parts[0]), y = int.parse(parts[1]);
+      final t = w1.at(x, y);
+      expect(t == WtTile.terrain || t == WtTile.village, isTrue,
+          reason: 'décor sur tuile $t à $key (doit être terrain/village)');
+    }
+  });
+
   test('multi-domaines empilés : tous les châteaux joignables', () {
     final w = buildWorld([
       _dom('a', 3, 0),

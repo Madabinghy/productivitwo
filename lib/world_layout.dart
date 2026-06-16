@@ -15,6 +15,11 @@ import 'dart:math';
 
 enum WtTile { terrain, wall, castle, garden, chest, village, bridge }
 
+/// Décor PUREMENT VISUEL (overlay cosmétique, n'affecte jamais walkable) : posé
+/// de façon déterministe sur le terrain extérieur, les villages et les abords des
+/// murs pour donner vie à la carte.
+enum WtDecor { rock, tree, bush, house, torch }
+
 /// Entrée de construction : un domaine et ses lignes.
 class DomainSpec {
   final String domainId;
@@ -74,6 +79,7 @@ class WorldLayout {
   final List<CastleBlock> castles;
   final Map<String, CastleBlock> byDomain;
   final Set<String> chests;
+  final Map<String, WtDecor> decor; // "x_y" → décor cosmétique (overlay)
   final Point<int> start;
   WorldLayout({
     required this.cols,
@@ -82,6 +88,7 @@ class WorldLayout {
     required this.castles,
     required this.chests,
     required this.start,
+    this.decor = const {},
   }) : byDomain = {for (final c in castles) c.domainId: c};
 
   bool inBounds(int x, int y) => x >= 0 && x < cols && y >= 0 && y < rows;
@@ -315,13 +322,67 @@ WorldLayout buildWorld(List<DomainSpec> domains, {int seed = 0}) {
   final start = Point(last.villageRect.left,
       last.villageRect.top + last.villageRect.height - 1);
 
+  // Décor cosmétique en DERNIER (lit la grille finale, n'écrase rien de jouable).
+  final decor = _buildDecor(grid, castles, worldCols, worldRows, rng);
+
   return WorldLayout(
       cols: worldCols,
       rows: worldRows,
       grid: grid,
       castles: castles,
       chests: chests,
-      start: start);
+      start: start,
+      decor: decor);
+}
+
+/// Décor PUREMENT VISUEL, déterministe (même monde → même décor). Posé sur le
+/// terrain extérieur (rochers/arbres/buissons), les villages (maisons) et les
+/// abords des murs (torches). N'écrit JAMAIS dans `grid` → zéro impact walkable.
+Map<String, WtDecor> _buildDecor(List<List<WtTile>> grid,
+    List<CastleBlock> castles, int cols, int rows, Random rng) {
+  final decor = <String, WtDecor>{};
+  bool isWall(int x, int y) =>
+      x >= 0 && x < cols && y >= 0 && y < rows && grid[y][x] == WtTile.wall;
+  bool wallAdj(int x, int y) =>
+      isWall(x - 1, y) || isWall(x + 1, y) || isWall(x, y - 1) || isWall(x, y + 1);
+
+  // 1) Maisons dans les villages (~1 par 8 cases, ≥1 par village).
+  for (final c in castles) {
+    final v = c.villageRect;
+    final cells = <Point<int>>[];
+    for (var y = v.top; y < v.top + v.height; y++) {
+      for (var x = v.left; x < v.left + v.width; x++) {
+        if (grid[y][x] == WtTile.village) cells.add(Point(x, y));
+      }
+    }
+    cells.shuffle(rng);
+    final n = 1 + cells.length ~/ 8;
+    for (var i = 0; i < n && i < cells.length; i++) {
+      decor['${cells[i].x}_${cells[i].y}'] = WtDecor.house;
+    }
+  }
+
+  // 2) Terrain extérieur épars + torches le long des remparts.
+  const scatter = [WtDecor.rock, WtDecor.tree, WtDecor.bush];
+  for (var y = 0; y < rows; y++) {
+    for (var x = 0; x < cols; x++) {
+      final id = '${x}_$y';
+      if (decor.containsKey(id)) continue;
+      final t = grid[y][x];
+      if (t == WtTile.terrain) {
+        if (wallAdj(x, y) && rng.nextDouble() < 0.18) {
+          decor[id] = WtDecor.torch;
+        } else if (rng.nextDouble() < 0.10) {
+          decor[id] = scatter[rng.nextInt(scatter.length)];
+        }
+      } else if (t == WtTile.village &&
+          wallAdj(x, y) &&
+          rng.nextDouble() < 0.12) {
+        decor[id] = WtDecor.torch;
+      }
+    }
+  }
+  return decor;
 }
 
 CastleBlock _carveBlock(

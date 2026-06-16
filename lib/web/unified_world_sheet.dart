@@ -6034,6 +6034,27 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     return cells;
   }
 
+  // Décor cosmétique (game-icon teintée, faible opacité) posé par world_layout.
+  Widget? _v2DecorWidget(String id, double inner) {
+    final d = _wv2?.decor[id];
+    if (d == null) return null;
+    final (String asset, Color color, double scale) = switch (d) {
+      WtDecor.rock => ('assets/icons/rock.svg', const Color(0xFF8A8A8A), 0.62),
+      WtDecor.tree =>
+        ('assets/icons/pine-tree.svg', const Color(0xFF4E7A48), 0.84),
+      WtDecor.bush =>
+        ('assets/icons/berry-bush.svg', const Color(0xFF5E8A4A), 0.66),
+      WtDecor.house =>
+        ('assets/icons/house.svg', const Color(0xFFB58C5A), 0.70),
+      WtDecor.torch =>
+        ('assets/icons/torch.svg', const Color(0xFFE8A33D), 0.55),
+    };
+    return SvgPicture.asset(asset,
+        width: inner * scale,
+        height: inner * scale,
+        colorFilter: ColorFilter.mode(color.withOpacity(.82), BlendMode.srcIn));
+  }
+
   Widget _cellV2(int x, int y) {
     final w = _wv2!;
     final id = '${x}_$y';
@@ -6071,8 +6092,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         break;
       case WtTile.terrain:
         // Extérieur SOMBRE, comme le fond sous les nuisibles → ils semblent
-        // surgir du noir (côté droit ouvert notamment).
+        // surgir du noir (côté droit ouvert notamment). Décor cosmétique éventuel.
         bg = Colors.black.withOpacity(.28);
+        child = _v2DecorWidget(id, inner);
         break;
       case WtTile.garden:
         bg = _kFarm.withOpacity(.22);
@@ -6080,6 +6102,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       case WtTile.village:
         // Village teinté de la couleur du domaine (plus doux que le château).
         bg = (_v2Tint[id] ?? const Color(0xFF3A2E1E)).withOpacity(.20);
+        child = _v2DecorWidget(id, inner);
         break;
       case WtTile.bridge:
         bg = const Color(0xFF6B4A2A).withOpacity(.55); // pont en bois
