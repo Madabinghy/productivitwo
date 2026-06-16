@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter/services.dart'
@@ -106,6 +108,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   final Map<String, int> _v2DayCount = {}; // tileId → PV nuisible (compteur)
   // tileId tourelle → chargeur (0..7) + routine/activité (couleur 🕷️/🦂).
   final Map<String, ({int charger, bool isRoutine})> _v2Turret = {};
+  final Map<String, String> _v2TurretRoutineId = {}; // tileId tourelle → routineId (lanes routine)
   final Set<String> _v2Sep = {}; // tileIds de la ligne séparatrice routines/activités
   final Map<String, int> _v2DayTurretX = {}; // tileId jour → X de la tourelle de sa lane
   final Map<String, String> _v2DayLabel = {}; // tileId entête → lettre du jour
@@ -591,8 +594,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     final hadShots = _shots.isNotEmpty;
     _shots.removeWhere((s) => _gameMs - s.startMs > s.durMs);
     // Tourelles armées (map V2 seulement) : tir aléatoire 5–15 s. Suspendues
-    // pendant un combat / dans l'intérieur (sinon ça parasite l'assaut).
-    if (!_inInterior && !_combatBusy) {
+    // pendant un combat / dans l'intérieur / l'exploration auto (sinon ça parasite).
+    if (!_inInterior && !_combatBusy && !_v2AutoExploring) {
       // Recalcule les domaines visibles (≈ 2×/s) → on arme ce qui est à l'écran.
       if (_gameMs - _v2CannonRefreshMs > 500) {
         _v2CannonRefreshMs = _gameMs;
@@ -1673,6 +1676,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     final domainIds = logic.state.activeDomains.map((d) => d.id).toList();
     await sync.ensureTerritory('Toi', domainIds: domainIds);
     final me = sync.uid ?? '';
+    _loadAnimatedHits(); // persistance : hits déjà animés aujourd'hui (anti‑rejeu)
     _subscribeHits(); // temps réel : valider une routine → l'avatar voyage
     _subscribeSessions(); // temps réel : minuteur d'activité → assaut live
     // Projets Gantt → logic.currentProjects (sinon backlogEnemies() ne voit aucune
@@ -1758,6 +1762,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _projSub?.cancel();
     _hitSub?.cancel();
     _sessionSub?.cancel();
+    _v2PrimeTimer?.cancel();
+    _v2IdleTimer?.cancel();
     for (final t in _actFireTimers.values) {
       t.cancel();
     }
@@ -2107,35 +2113,225 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     return null;
   }
 
-  // ── TEMPS RÉEL (S4) : déclencher le voyage à chaque validation de routine ──
-  StreamSubscription<List<HabitHit>>? _hitSub;
-  final Set<String> _seenHits = {}; // ids déjà vus (dédup)
-  bool _hitsPrimed = false; // 1ʳᵉ salve Firestore = état initial (pas de voyage)
-  DateTime? _hitPrimeTime;
   // routines/activités à visiter, dans l'ordre. blank = 1ᵉʳ tir cinématique (sans PV).
   final List<({String id, bool blank})> _travelQueue = [];
+
+  // ── TEMPS RÉEL : hits de routine animés UNE seule fois (exploration semi‑auto) ──
+  // Chaque HabitHit du jour est animé exactement une fois (dédup par id, persisté).
+  // BACKLOG (à l'ouverture, hits faits hors‑web) → l'avatar voyage bas→haut pour les
+  // décharger. LIVE (web déjà ouvert) → la tour tire SUR PLACE.
+  StreamSubscription<List<HabitHit>>? _hitSub;
+  static const String _kAnimatedKey = 'v2_animated_hits';
+  final Set<String> _animatedHitIds = {}; // ids de HabitHit déjà animés aujourd'hui
+  bool _animatedLoaded = false;
+  String _animatedYmd = '';
+  List<HabitHit> _lastHits = const []; // dernière salve (réévaluée après chargement)
+  bool _hitStreamSeen = false; // 1ʳᵉ salve Firestore reçue (= snapshot d'ouverture)
+  bool _backlogProcessed = false; // backlog d'ouverture traité → tout hit suivant = LIVE
+  Timer? _v2PrimeTimer;
+  final Map<String, List<String>> _pendingByRoutine = {}; // routineId → ids à animer (flammes)
+  bool _v2AutoExploring = false;
+  bool _v2UserControl = false; // l'utilisateur a repris la main (stoppe l'auto)
+  Timer? _v2IdleTimer; // 1 min sans interaction → l'avatar reprend
+
+  Future<void> _loadAnimatedHits() async {
+    _animatedYmd = yyyymmdd(DateTime.now());
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_kAnimatedKey);
+      if (raw != null) {
+        final m = jsonDecode(raw) as Map<String, dynamic>;
+        if (m['ymd'] == _animatedYmd) {
+          _animatedHitIds.addAll((m['ids'] as List).cast<String>());
+        }
+      }
+    } catch (_) {}
+    _animatedLoaded = true;
+    _evaluateHits(_lastHits); // rejoue la dernière salve arrivée avant le chargement
+  }
+
+  Future<void> _persistAnimated() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kAnimatedKey,
+          jsonEncode({'ymd': _animatedYmd, 'ids': _animatedHitIds.toList()}));
+    } catch (_) {}
+  }
 
   void _subscribeHits() {
     if (widget.mobile) return; // mode spectateur = web
     _hitSub = sync.streamHabitHits().listen((hits) {
-      if (!_hitsPrimed) {
-        for (final h in hits) {
-          _seenHits.add(h.id);
-        }
-        _hitsPrimed = true;
-        _hitPrimeTime = DateTime.now();
-        return;
-      }
-      final since = _hitPrimeTime ?? DateTime.now();
-      for (final h in hits) {
-        if (_seenHits.contains(h.id)) continue;
-        _seenHits.add(h.id);
-        // Validation FRAÎCHE (après l'amorçage) → l'avatar va frapper sa tour.
-        if (h.ts.isAfter(since.subtract(const Duration(minutes: 2)))) {
-          _enqueueTravel(h.habitId);
-        }
-      }
+      _lastHits = hits;
+      _hitStreamSeen = true;
+      _evaluateHits(hits);
     });
+  }
+
+  // (CastleBlock, LaneRow) d'une routine/activité présente dans le monde V2, ou null.
+  (CastleBlock, LaneRow)? _v2LaneOf(String id) {
+    final w = _wv2;
+    if (w == null) return null;
+    String? dom;
+    for (final a in logic.state.activeActivities) {
+      if (a.id == id) {
+        dom = a.domainId;
+        break;
+      }
+    }
+    if (dom == null) return null;
+    final c = w.byDomain[dom];
+    if (c == null) return null;
+    for (final l in c.lanes) {
+      if (l.id == id) return (c, l);
+    }
+    return null;
+  }
+
+  bool _hasPending() => _pendingByRoutine.values.any((l) => l.isNotEmpty);
+
+  void _evaluateHits(List<HabitHit> hits) {
+    if (!_animatedLoaded || !_hitStreamSeen || widget.mobile) return;
+    final today = yyyymmdd(DateTime.now());
+    if (_animatedYmd != today) {
+      // Changement de jour → on repart à zéro (les tours ne tirent que le jour courant).
+      _animatedYmd = today;
+      _animatedHitIds.clear();
+      _pendingByRoutine.clear();
+      _backlogProcessed = false;
+    }
+    // Hits du jour pas encore animés ni déjà en file.
+    final fresh = <HabitHit>[];
+    for (final h in hits) {
+      if (yyyymmdd(h.ts) != today) continue;
+      if (_animatedHitIds.contains(h.id)) continue;
+      final q = _pendingByRoutine[h.habitId];
+      if (q != null && q.contains(h.id)) continue;
+      fresh.add(h);
+    }
+
+    if (!_backlogProcessed) {
+      // Snapshot d'OUVERTURE : on accumule le BACKLOG (fenêtre 800 ms pour coalescer
+      // un éventuel cache offline), puis on déclenche l'exploration auto.
+      var added = false;
+      for (final h in fresh) {
+        final lane = _v2LaneOf(h.habitId);
+        if (lane == null || !lane.$2.isRoutine) {
+          _animatedHitIds.add(h.id); // non animable → marqué pour ne pas y revenir
+          continue;
+        }
+        (_pendingByRoutine[h.habitId] ??= []).add(h.id);
+        added = true;
+      }
+      if (added) _persistAnimated();
+      if (added && mounted) setState(() {});
+      _v2PrimeTimer?.cancel();
+      _v2PrimeTimer = Timer(const Duration(milliseconds: 800), () {
+        _backlogProcessed = true;
+        if (_hasPending()) _v2DischargeBacklog();
+      });
+      return;
+    }
+
+    // LIVE (web ouvert) : tir SUR PLACE immédiat, une animation par hit.
+    var fired = false;
+    for (final h in fresh) {
+      final lane = _v2LaneOf(h.habitId);
+      _animatedHitIds.add(h.id);
+      if (lane != null && lane.$2.isRoutine) {
+        _v2OnRoutineValidated(h.habitId);
+        fired = true;
+      }
+    }
+    if (fired) _persistAnimated();
+  }
+
+  // Routine flammée la plus proche de _posV2.y dans la direction `dir`
+  // (-1 = vers le haut / y décroissant, +1 = vers le bas), ou null.
+  LaneRow? _nextPendingLane(int dir) {
+    final w = _wv2;
+    if (w == null) return null;
+    LaneRow? best;
+    var bestDist = 1 << 30;
+    final curY = _posV2.y;
+    for (final c in w.castles) {
+      for (final l in c.lanes) {
+        if (!l.isRoutine) continue;
+        final q = _pendingByRoutine[l.id];
+        if (q == null || q.isEmpty) continue;
+        final dy = l.y - curY;
+        if (dir < 0 && dy > 0) continue; // on monte : ignore ce qui est en dessous
+        if (dir > 0 && dy < 0) continue; // on descend : ignore ce qui est au‑dessus
+        final dist = dy.abs();
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = l;
+        }
+      }
+    }
+    return best;
+  }
+
+  // Centre la caméra sur la case `p` (suivi de l'avatar — AUTO uniquement).
+  void _v2CenterOn(Point<int> p) {
+    if (!_v2HCtrl.hasClients || !_v2VCtrl.hasClients) return;
+    const slot = _kV2Slot;
+    final tx = (p.x * slot + slot / 2 - _v2HCtrl.position.viewportDimension / 2)
+        .clamp(0.0, _v2HCtrl.position.maxScrollExtent);
+    final ty = (p.y * slot + slot / 2 - _v2VCtrl.position.viewportDimension / 2)
+        .clamp(0.0, _v2VCtrl.position.maxScrollExtent);
+    _v2HCtrl.animateTo(tx,
+        duration: const Duration(milliseconds: 120), curve: Curves.linear);
+    _v2VCtrl.animateTo(ty,
+        duration: const Duration(milliseconds: 120), curve: Curves.linear);
+  }
+
+  // Marche l'avatar jusqu'à `target` (BFS), révèle le brouillard et suit la caméra.
+  // Interruptible : sort tôt si l'utilisateur reprend la main (_v2UserControl).
+  Future<void> _v2WalkTo(Point<int> target) async {
+    final path = _bfsV2(_posV2, target);
+    for (final step in path) {
+      if (!mounted || _v2UserControl) return;
+      setState(() {
+        _posV2 = step;
+        _revealAroundV2(step);
+      });
+      _v2CheckDomainEntry();
+      _v2CenterOn(step);
+      await Future.delayed(const Duration(milliseconds: 75));
+    }
+  }
+
+  // EXPLORATION AUTO : décharge le backlog de flammes par balayage de proximité.
+  // Monte d'abord (bas→haut), inverse en bout, fini quand plus aucune flamme.
+  Future<void> _v2DischargeBacklog() async {
+    if (_v2AutoExploring || _combatBusy || _v2Walking || widget.mobile) return;
+    _v2AutoExploring = true;
+    _v2UserControl = false;
+    try {
+      var dir = -1; // vers le haut d'abord
+      var flips = 0;
+      while (mounted && !_v2UserControl && _hasPending()) {
+        final lane = _nextPendingLane(dir);
+        if (lane == null) {
+          if (++flips > 2) break; // plus rien d'atteignable dans les 2 sens
+          dir = -dir;
+          continue;
+        }
+        flips = 0;
+        await _v2WalkTo(Point(lane.turretX - 1, lane.y));
+        if (_v2UserControl || !mounted) break;
+        final ids = _pendingByRoutine[lane.id];
+        while (ids != null && ids.isNotEmpty && mounted && !_v2UserControl) {
+          _fireV2Bolt(lane.dayX0 + 6, lane.y, lane.turretX);
+          _animatedHitIds.add(ids.removeAt(0));
+          _persistAnimated();
+          if (mounted) setState(() {}); // met à jour les flammes
+          await Future.delayed(const Duration(milliseconds: 650));
+        }
+      }
+    } finally {
+      _v2AutoExploring = false;
+    }
   }
 
   // ── TEMPS RÉEL : minuteur d'activité (session ouverte) → assaut live ──
@@ -5275,6 +5471,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _v2DayTok.clear();
     _v2DayCount.clear();
     _v2Turret.clear();
+    _v2TurretRoutineId.clear();
     _v2Sep.clear();
     _v2DayTurretX.clear();
     _v2DayLabel.clear();
@@ -5300,6 +5497,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             toks.where((t) => t.type == 'leaf' || t.type == 'flame').length;
         _v2Turret['${lane.turretX}_${lane.y}'] =
             (charger: charger, isRoutine: lane.isRoutine);
+        if (lane.isRoutine) {
+          _v2TurretRoutineId['${lane.turretX}_${lane.y}'] = lane.id;
+        }
         _v2LaneName['${lane.turretX}_${lane.y}'] = name;
         for (var j = 0; j < 7 && j < toks.length; j++) {
           final id = '${lane.dayX0 + j}_${lane.y}';
@@ -5382,9 +5582,27 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // marche). Puis combat si serpent, ou coffre.
   // Clic sur la grande map = le ninja MARCHE jusqu'à la case (BFS, case par case,
   // révèle le brouillard en chemin). Case‑jour = cinématique. Arrivée = combat/coffre.
+  // L'utilisateur interagit → il reprend la main (stoppe l'auto) + (ré)arme le
+  // timer d'inactivité : 1 min sans interaction → l'avatar reprend son travail.
+  void _v2TakeControl() {
+    _v2UserControl = true;
+    _v2ArmIdle();
+  }
+
+  void _v2ArmIdle() {
+    _v2IdleTimer?.cancel();
+    _v2IdleTimer = Timer(const Duration(minutes: 1), () {
+      if (!mounted) return;
+      if (_hasPending() && !_combatBusy && !_v2AutoExploring) {
+        _v2DischargeBacklog();
+      }
+    });
+  }
+
   Future<void> _onTapV2(int x, int y) async {
     final w = _wv2;
     if (w == null || _v2Walking) return;
+    _v2TakeControl(); // clic = reprise de la main (interrompt l'exploration auto)
     final id = '${x}_$y';
     // Araignée‑boss : clic → shuriken → on change de map (combat dans l'intérieur).
     final araDom = _v2Araignee[id] ?? _v2Toiles[id];
@@ -5438,6 +5656,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       await _backlogCombat('${_posV2.x}_${_posV2.y}', pest.type, pest.id);
     } else if (w.at(_posV2.x, _posV2.y) == WtTile.chest) {
       _toast('🎁 Coffre ! (récompense à venir)', _kGold);
+    } else {
+      // Posé à GAUCHE d'une tour flammée → reprise immédiate de l'exploration auto
+      // depuis cette routine (monte, puis redescend pour les restes).
+      final rid = _v2TurretRoutineId['${_posV2.x + 1}_${_posV2.y}'];
+      if (rid != null && (_pendingByRoutine[rid]?.isNotEmpty ?? false)) {
+        _v2DischargeBacklog();
+      }
     }
   }
 
@@ -5642,6 +5867,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     // pilotés par le geste (physics désactivée) ; le tap sur une case marche
     // toujours l'avatar (un drag ≠ un tap).
     return GestureDetector(
+      onPanDown: (_) => _v2TakeControl(), // déplacer la carte = reprendre la main
       onPanUpdate: (d) {
         if (!_v2HCtrl.hasClients || !_v2VCtrl.hasClients) return;
         _v2HCtrl.jumpTo((_v2HCtrl.offset - d.delta.dx)
@@ -5822,7 +6048,38 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           bg = tColor.withOpacity(.65); // ligne séparatrice (rempart)
         } else if (tur != null) {
           bg = tColor.withOpacity(.18);
-          child = _v2TurretWidget(tur.charger, tur.isRoutine, inner);
+          // Flammes chargées = tirs dus (hits faits hors‑web) que l'avatar viendra
+          // décharger pendant l'exploration auto.
+          final rid = _v2TurretRoutineId[id];
+          final pending = rid == null ? 0 : (_pendingByRoutine[rid]?.length ?? 0);
+          final turret = _v2TurretWidget(tur.charger, tur.isRoutine, inner);
+          child = pending <= 0
+              ? turret
+              : Stack(
+                  clipBehavior: Clip.none,
+                  alignment: Alignment.center,
+                  children: [
+                    turret,
+                    Positioned(
+                      right: -1,
+                      top: -1,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 3, vertical: 0.5),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(.55),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text('🔥$pending',
+                            style: TextStyle(
+                                fontSize: inner * 0.26,
+                                height: 1,
+                                fontWeight: FontWeight.w900,
+                                color: const Color(0xFFFFC83D))),
+                      ),
+                    ),
+                  ],
+                );
         } else if (tok != null) {
           bg = Colors.black.withOpacity(.28);
           final cnt = _v2DayCount[id] ?? 0;

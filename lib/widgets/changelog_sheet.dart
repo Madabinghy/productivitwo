@@ -10,6 +10,12 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.18', '16 juin 2026', [
+    (Icons.explore_outlined, '« Le Monde » web : exploration semi-automatique — les routines validées sur mobile pendant que le web était fermé chargent des 🔥 sur les tours ; l\'avatar monte domaine par domaine, se place à gauche de chaque routine et décharge les tirs en révélant la carte'),
+    (Icons.touch_app_outlined, 'Tu reprends la main d\'un clic ; après 1 min d\'inactivité l\'avatar reprend son travail ; te poser à gauche d\'une tour en flammes relance l\'exploration'),
+    (Icons.check_circle_outline, 'Chaque validation de routine est animée une et une seule fois (mémorisée), et déclenche bien le tir sur le web en direct (corrigé pour les routines, pas que les activités-temps)'),
+    (Icons.local_fire_department_outlined, 'Mobile « Faire feu » : la tour se transforme en canon, vise, tire en courbe, 💥 2 s, puis redevient tour ; viseur posé par défaut sur la 1ʳᵉ routine ; sélecteur minuteur/chrono en bout de ligne (le feu lance le minuteur ou le chrono)'),
+  ]),
   _Entry('6.17', '16 juin 2026', [
     (Icons.local_fire_department_outlined, 'Carte de combat : la tourelle du calendrier tire une boule de feu sur le nuisible du jour avant chaque coup (mobile + web)'),
     (Icons.public, '« Le Monde » sur le web : une seule grande carte explorable au doigt (drag-pan) — village, jardin de serpents et calendrier de chaque domaine empilés'),

@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:productivitwo_v1/app_logic.dart';
@@ -298,21 +301,82 @@ class _DomainGameplayState extends State<_DomainGameplay>
   // ── « Faire feu » : la tour se transforme en canon et attaque le nuisible du
   //    jour (dernière colonne). Décrément persistant (💥 si l'araignée meurt). ──
   late final AnimationController _fireCtrl = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 1600))
+      vsync: this, duration: const Duration(milliseconds: 900))
     ..addListener(() => setState(() {}));
-  String? _firingId; // ligne en cours de tir
+  String? _firingId; // ligne en cours de tir (canon affiché)
+  String? _explodingId; // ligne en explosion (💥) pendant 2 s
+  Timer? _explosionTimer;
   String? _targetId; // ligne VISÉE (viseur) → cible de « Faire feu »
+  // Mode de tir par ligne : 'timer' (minuteur, défaut) ou 'chrono' (play).
+  final Map<String, String> _fireMode = {};
   final Map<String, int> _mobileDec = {}; // décréments du jour par itemId
 
   @override
+  void initState() {
+    super.initState();
+    // Viseur par défaut sur la 1ʳᵉ routine (1ʳᵉ ligne).
+    final items = _items();
+    if (items.isNotEmpty) _targetId = items.first.id;
+  }
+
+  @override
   void dispose() {
+    _explosionTimer?.cancel();
     _fireCtrl.dispose();
     super.dispose();
   }
 
+  String _modeOf(String id) => _fireMode[id] ?? 'timer';
+
+  // Lance le minuteur (mode 'timer') ou le chrono libre (mode 'chrono') de la
+  // cible, après la cinématique. Routine → activité liée (routineId = la routine) ;
+  // activité-temps → elle-même. Routine sans activité liée → simple +1.
+  void _launchForTarget(_Item it) {
+    final timer = _modeOf(it.id) == 'timer';
+    String? actId;
+    String? routineId;
+    Activity? act;
+    if (it.kind == 'scorpion') {
+      actId = it.id;
+    } else {
+      for (final a in logic.state.activities) {
+        if (a.id == it.id) {
+          final linked = (a.linkedActivityId ?? '').trim();
+          if (linked.isNotEmpty) {
+            actId = linked;
+            routineId = it.id;
+          }
+          break;
+        }
+      }
+    }
+    if (actId == null) {
+      // Routine sans activité liée : pas de minuteur possible → +1 sur place.
+      logic.incHabit(it.id, 1, DateTime.now());
+      logic.onChange();
+      setState(() {});
+      return;
+    }
+    for (final a in logic.state.activities) {
+      if (a.id == actId) {
+        act = a;
+        break;
+      }
+    }
+    logic.start(actId);
+    if (timer && logic.launchTimerHook != null && act != null) {
+      logic.launchTimerHook!(logic.challengeDurationFor(act), it.name,
+          routineId: routineId);
+    } else {
+      logic.onChange();
+    }
+    // Ferme la fiche du domaine pour voir le minuteur/chrono qui tourne.
+    if (mounted) Navigator.of(context).maybePop();
+  }
+
   // Lance le tir sur le nuisible du JOUR (dernière colonne) de la 1ʳᵉ ligne qui
   // en a un (sinon la 1ʳᵉ ligne). La tour se transforme (DCA) le temps du tir.
-  void _fire() {
+  Future<void> _fire() async {
     if (_firingId != null) return;
     final items = _items();
     _Item? target;
@@ -337,14 +401,26 @@ class _DomainGameplayState extends State<_DomainGameplay>
       target ??= items.isNotEmpty ? items.first : null;
     }
     if (target == null) return;
-    final id = target.id;
+    final it = target;
+    final id = it.id;
+    // Visée : tour → canon DCA.
+    _fireCtrl.reset();
     setState(() => _firingId = id);
-    _fireCtrl.forward(from: 0).then((_) {
+    await Future.delayed(const Duration(milliseconds: 280));
+    if (!mounted || _firingId != id) return;
+    // Vol (boule de feu en courbe) puis impact (💥 pendant 2 s).
+    await _fireCtrl.forward(from: 0);
+    if (!mounted) return;
+    setState(() => _explodingId = id);
+    _explosionTimer?.cancel();
+    _explosionTimer = Timer(const Duration(seconds: 2), () {
       if (!mounted) return;
       setState(() {
-        _mobileDec[id] = (_mobileDec[id] ?? 0) + 1; // -1 sur l'araignée du jour
+        _explodingId = null;
         _firingId = null;
       });
+      // Le « feu » lance le minuteur ou le chrono de la cible.
+      _launchForTarget(it);
     });
   }
 
@@ -734,6 +810,22 @@ class _DomainGameplayState extends State<_DomainGameplay>
                       fontWeight: FontWeight.w700,
                       fontSize: 13)),
             ),
+            // Sélecteur de mode de tir en bout de ligne : minuteur (défaut) ⇄ chrono.
+            // « Faire feu » lancera l'un ou l'autre sur cette activité.
+            GestureDetector(
+              onTap: () => setState(() => _fireMode[it.id] =
+                  _modeOf(it.id) == 'timer' ? 'chrono' : 'timer'),
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 6, top: 1, bottom: 1),
+                child: Icon(
+                    _modeOf(it.id) == 'timer'
+                        ? Icons.timer_outlined
+                        : Icons.play_circle_outline,
+                    size: 19,
+                    color: const Color(0xFFFF8A3D)),
+              ),
+            ),
           ]),
           const SizedBox(height: 2),
           // Lettres des jours, centrées sur chaque case (alignées après la tour).
@@ -754,9 +846,19 @@ class _DomainGameplayState extends State<_DomainGameplay>
           const SizedBox(height: 1),
           () {
             final firing = _firingId == it.id;
-            // Position du boulet : de la tour (x≈30) vers la case du JOUR.
+            // Boulet : de la tour (x≈30, y≈30) vers la case du JOUR, en COURBE
+            // (lobe vers le haut) — réplique l'arc du web (_CineFb).
             final todayX = 60.0 + (it.tokens.length - 1) * (cell + 2) + cell / 2;
-            final fx = 30 + (todayX - 30) * _fireCtrl.value;
+            const fy0 = 30.0, fx0 = 30.0;
+            const arc = 22.0;
+            final u = _fireCtrl.value;
+            final fx = fx0 + (todayX - fx0) * u;
+            final fy = fy0 - arc * sin(pi * u);
+            // Orientation : en montée vise le sommet, en descente vise la cible
+            // (la tête dense de fireball.svg pointe en +y → +pi/2).
+            final ax = u < 0.5 ? fx0 + (todayX - fx0) * 0.5 : todayX;
+            final ay = u < 0.5 ? fy0 - arc : fy0;
+            final fAngle = atan2(ay - fy, ax - fx) + pi / 2;
             return Stack(
               clipBehavior: Clip.none,
               children: [
@@ -806,16 +908,19 @@ class _DomainGameplayState extends State<_DomainGameplay>
                   for (var d = 0; d < it.tokens.length; d++)
                     _tokenCell(it, d, cell),
                 ]),
-                // Boulet de feu en vol (tour → jour) pendant le tir.
-                if (firing && _fireCtrl.value < 0.96)
+                // Boulet de feu en vol (tour → jour) en courbe, orienté.
+                if (firing && _explodingId != it.id && u < 0.98)
                   Positioned(
                     left: fx - 8,
-                    top: 22,
-                    child: SvgPicture.asset('assets/icons/fireball.svg',
-                        width: 16,
-                        height: 16,
-                        colorFilter: const ColorFilter.mode(
-                            Color(0xFFFF8A3D), BlendMode.srcIn)),
+                    top: fy - 8,
+                    child: Transform.rotate(
+                      angle: fAngle,
+                      child: SvgPicture.asset('assets/icons/fireball.svg',
+                          width: 16,
+                          height: 16,
+                          colorFilter: const ColorFilter.mode(
+                              Color(0xFFFF8A3D), BlendMode.srcIn)),
+                    ),
                   ),
               ],
             );
@@ -867,7 +972,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
     final dec = isToday ? (_mobileDec[it.id] ?? 0) : 0;
     final shownHp = tok.type == 'spider' ? tok.hp - dec : 0;
     final killed = tok.type == 'spider' && shownHp <= 0;
-    final impact = isToday && _firingId == it.id && _fireCtrl.value > 0.9;
+    final impact = isToday && _explodingId == it.id;
     final spider = tok.type == 'spider' && !killed;
     final emoji = (killed || impact)
         ? '💥'
