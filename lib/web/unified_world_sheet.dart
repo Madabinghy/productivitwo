@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'package:flutter/gestures.dart' show PointerScrollEvent;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
@@ -2303,6 +2304,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
 
   // EXPLORATION AUTO : décharge le backlog de flammes par balayage de proximité.
   // Monte d'abord (bas→haut), inverse en bout, fini quand plus aucune flamme.
+  // Durée du boulet de tir en exploration auto (cinématique ralentie ; l'avatar
+  // attend que le boulet ait atteint la routine avant d'enchaîner / de repartir).
+  static const double _kV2ExploreBoltDur = 3.6; // s
+
   Future<void> _v2DischargeBacklog() async {
     if (_v2AutoExploring || _combatBusy || _v2Walking || widget.mobile) return;
     _v2AutoExploring = true;
@@ -2322,11 +2327,15 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         if (_v2UserControl || !mounted) break;
         final ids = _pendingByRoutine[lane.id];
         while (ids != null && ids.isNotEmpty && mounted && !_v2UserControl) {
-          _fireV2Bolt(lane.dayX0 + 6, lane.y, lane.turretX);
+          _fireV2Bolt(lane.dayX0 + 6, lane.y, lane.turretX,
+              dur: _kV2ExploreBoltDur);
           _animatedHitIds.add(ids.removeAt(0));
           _persistAnimated();
           if (mounted) setState(() {}); // met à jour les flammes
-          await Future.delayed(const Duration(milliseconds: 650));
+          // Attend la fin de l'animation (boulet arrivé) avant le tir suivant
+          // ou de repartir vers la prochaine routine.
+          await Future.delayed(Duration(
+              milliseconds: (_kV2ExploreBoltDur * 1000).round() + 300));
         }
       }
     } finally {
@@ -5720,10 +5729,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
 
   // Cinématique du jour : la tourelle de la lane tire un boulet sur la case‑jour.
   // Un boulet tourelle → case (delay = échelonnement de la volée).
-  void _fireV2Bolt(int dayX, int dayY, int turretX, {double delay = 0}) {
+  void _fireV2Bolt(int dayX, int dayY, int turretX,
+      {double delay = 0, double dur = 2.2}) {
     final arc = ((dayX - turretX).abs() * 0.28).clamp(0.8, 3.0).toDouble();
-    // Durée 2,2 s = cinématique ralentie de moitié.
-    final fb = _CineFb(2.2, turretX + 0.5, dayY.toDouble(), dayX.toDouble(),
+    // Durée par défaut 2,2 s ; l'exploration auto passe une durée plus longue.
+    final fb = _CineFb(dur, turretX + 0.5, dayY.toDouble(), dayX.toDouble(),
         dayY.toDouble(), arc, 'v2');
     fb.t = -delay; // tir différé (volée)
     _v2Fbs.add(fb);
@@ -5863,10 +5873,22 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     if (w == null) {
       return const Center(child: CircularProgressIndicator(color: _kBlue));
     }
-    // Exploration : on déplace la carte au DOIGT (drag‑pan). Les scrolls sont
-    // pilotés par le geste (physics désactivée) ; le tap sur une case marche
+    // Exploration : DEUX navigations cohabitent. Drag‑pan au DOIGT (un doigt) via
+    // GestureDetector.onPanUpdate, ET scroll 2 doigts / molette via
+    // Listener.onPointerSignal (déplace la carte en 2D). Les physics des scrolls
+    // restent désactivées (on pilote tout à la main). Le tap sur une case marche
     // toujours l'avatar (un drag ≠ un tap).
-    return GestureDetector(
+    return Listener(
+      onPointerSignal: (e) {
+        if (e is! PointerScrollEvent) return;
+        if (!_v2HCtrl.hasClients || !_v2VCtrl.hasClients) return;
+        _v2TakeControl();
+        _v2HCtrl.jumpTo((_v2HCtrl.offset + e.scrollDelta.dx)
+            .clamp(0.0, _v2HCtrl.position.maxScrollExtent));
+        _v2VCtrl.jumpTo((_v2VCtrl.offset + e.scrollDelta.dy)
+            .clamp(0.0, _v2VCtrl.position.maxScrollExtent));
+      },
+      child: GestureDetector(
       onPanDown: (_) => _v2TakeControl(), // déplacer la carte = reprendre la main
       onPanUpdate: (d) {
         if (!_v2HCtrl.hasClients || !_v2VCtrl.hasClients) return;
@@ -5926,6 +5948,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           ),
         ),
         ),
+      ),
       ),
     );
   }
