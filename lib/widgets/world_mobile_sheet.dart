@@ -871,20 +871,9 @@ class _DomainGameplayState extends State<_DomainGameplay>
                           fontSize: 11)),
                 ),
               ),
-            SizedBox(
-              width: cell + 2,
-              child: Center(
-                child: Icon(Icons.gps_fixed,
-                    size: 13, color: Colors.white.withOpacity(.38)),
-              ),
-            ),
-            SizedBox(
-              width: cell + 2,
-              child: Center(
-                child: Icon(Icons.bolt,
-                    size: 14, color: Colors.white.withOpacity(.38)),
-              ),
-            ),
+            // Sélecteur de mode empilé AU-DESSUS du viseur (même colonne) :
+            // remplace l'ancien label, le viseur vient juste en dessous.
+            _modeCell(it, cell),
           ]),
           const SizedBox(height: 1),
           () {
@@ -950,10 +939,8 @@ class _DomainGameplayState extends State<_DomainGameplay>
                   ),
                   for (var d = 0; d < it.tokens.length; d++)
                     _tokenCell(it, d, cell),
-                  // Case VISEUR : tap → cette ligne devient la cible de « Faire feu ».
+                  // Case VISEUR, juste SOUS le sélecteur de mode (même colonne).
                   _viseurCell(it, cell),
-                  // Case « petit » (sélecteur de mode) : minuteur ⇄ chrono ⇄ coche.
-                  _modeCell(it, cell),
                 ]),
                 // Boulet de feu en vol (tour → jour) en courbe, orienté.
                 if (firing && _explodingId != it.id && u < 0.98)
