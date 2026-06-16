@@ -10,6 +10,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.20', '16 juin 2026', [
+    (Icons.local_fire_department_outlined, '« Le Monde » web : en exploration automatique, le tir est ralenti et l\'avatar attend que le boulet ait atteint la routine avant d\'enchaîner — la cinématique reste lisible'),
+    (Icons.mouse_outlined, 'Navigation desktop : tu peux déplacer la carte du Monde à la molette ou à deux doigts, en plus du glissé au doigt'),
+  ]),
   _Entry('6.19', '16 juin 2026', [
     (Icons.fact_check_outlined, 'Revue de la semaine — « À valider » accepte deux nouveaux types de propositions : ajouter une phase à un projet, et ajouter une action (sous-étape) à une tâche existante'),
     (Icons.alternate_email, 'L\'assistant peut désormais déposer des propositions à valider depuis une source externe (ex : tes mails) sans rien modifier sans ton accord'),
