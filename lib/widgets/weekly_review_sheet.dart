@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/widgets/proposals_sheet.dart';
 import 'package:productivitwo_v1/widgets/inbox_sheet.dart';
 
 /// Revue de la semaine (Phase 3) : « moment de mise au clair ». Agrège des flags
 /// déterministes calculés côté client (projets en sommeil, idées en attente,
-/// tâches à classer) avec actions directes, + lien vers la file « À valider ».
+/// tâches à classer) avec actions directes.
 Future<void> showWeeklyReviewSheet(BuildContext context, FirestoreSync sync) {
   return showModalBottomSheet(
     context: context,
@@ -116,15 +115,6 @@ class _WeeklyReviewSheetState extends State<_WeeklyReviewSheet> {
                       controller: scroll,
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                       children: [
-                        // À valider (propositions ORION)
-                        _ActionRow(
-                          icon: Icons.fact_check_outlined,
-                          label: 'Propositions à valider',
-                          color: cs.primary,
-                          onTap: () => showProposalsSheet(context, widget.sync),
-                        ),
-                        const SizedBox(height: 14),
-
                         // Projets en sommeil
                         _SectionHeader(
                             label: 'PROJETS EN SOMMEIL', count: inactive.length, cs: cs),
