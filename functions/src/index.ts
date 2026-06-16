@@ -17,6 +17,7 @@ import {
   LIST_PROJECTS_TOOL, GET_PROJECT_TOOL, PUSH_GANTT_MCP_TOOL,
   ARCHIVE_PROJECT_TOOL, DELETE_PROJECT_TOOL, UPDATE_ACTIVITY_GOAL_TOOL,
   SET_ACTIVITY_TARGETS_TOOL, COMPUTE_TIME_BUDGET_TOOL, SWEEP_INBOX_TOOL,
+  PROPOSE_CHANGE_TOOL,
   CREATE_ROUTINE_TOOL, DELETE_ROUTINE_TOOL,
   CREATE_ACTIVITY_TOOL, UPDATE_ACTIVITY_TOOL, UPDATE_TASK_STATUS_TOOL,
   UPDATE_PROJECT_TOOL, DELETE_ACTIVITY_TOOL,
@@ -45,6 +46,7 @@ import {
   executeLogRoutineHit, executeMarkBlockDone,
   executeGetDaySchedule, executeScheduleDay,
   executePlanDay, executePlanWeek, executeSyncCalendar,
+  executeProposeChange,
 } from "./execute";
 import type { PushGanttBody } from "./types";
 
@@ -397,6 +399,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             LIST_PROJECTS_TOOL, GET_PROJECT_TOOL, PUSH_GANTT_MCP_TOOL,
             ARCHIVE_PROJECT_TOOL, DELETE_PROJECT_TOOL, UPDATE_ACTIVITY_GOAL_TOOL,
             SET_ACTIVITY_TARGETS_TOOL, COMPUTE_TIME_BUDGET_TOOL, SWEEP_INBOX_TOOL,
+            PROPOSE_CHANGE_TOOL,
             CREATE_ROUTINE_TOOL, DELETE_ROUTINE_TOOL,
             CREATE_ACTIVITY_TOOL, UPDATE_ACTIVITY_TOOL, UPDATE_TASK_STATUS_TOOL,
             UPDATE_PROJECT_TOOL, DELETE_ACTIVITY_TOOL,
@@ -455,6 +458,8 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
           text = r
             ? `✅ Inbox balayée (uid ${uid}) : ${r.found} idée(s) trouvée(s) → ${r.created} projet(s) créé(s), ${r.appended} tâche(s) ajoutée(s), ${r.skipped} idée(s) laissée(s).`
             : "Routage indisponible (erreur LLM). Réessaie.";
+        } else if (toolName === "propose_change") {
+          text = await executeProposeChange(uid, args as Parameters<typeof executeProposeChange>[1]);
         } else if (toolName === "delete_activity") {
           text = await executeDeleteActivity(uid, args.activityId as string);
         } else if (toolName === "create_routine") {

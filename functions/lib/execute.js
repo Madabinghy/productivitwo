@@ -1254,7 +1254,7 @@ async function executeProcessInboxItem(uid, itemId, note) {
 // (executeGetInbox ne lit que status=="pending") et n'est pas re-proposée.
 async function executeProposeChange(uid, args) {
     var _a, _b, _c;
-    const valid = ["new_project", "attach_idea_as_task", "create_subproject", "archive_project"];
+    const valid = ["new_project", "attach_idea_as_task", "create_subproject", "archive_project", "add_phase", "attach_action_to_task"];
     if (!valid.includes(args.kind)) {
         return `❌ kind invalide : ${args.kind} (attendu : ${valid.join(", ")})`;
     }

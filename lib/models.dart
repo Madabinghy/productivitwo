@@ -1638,7 +1638,7 @@ class CaptureItem {
 /// côté client (déterministe, sans LLM). Voir `FirestoreSync.applyProposal`.
 class OrionProposal {
   String id;
-  String kind; // new_project | attach_idea_as_task | create_subproject | archive_project
+  String kind; // new_project | attach_idea_as_task | create_subproject | archive_project | add_phase | attach_action_to_task
   String title; // résumé humain
   String rationale; // justification
   String? sourceCaptureId;

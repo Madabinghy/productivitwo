@@ -835,6 +835,42 @@ class FirestoreSync {
           }
         }
         break;
+      case 'add_phase':
+        final projectId = payload['projectId']?.toString();
+        if (projectId != null) {
+          final target = await _loadProject(projectId);
+          if (target != null) {
+            final start =
+                DateTime.tryParse(payload['startDate']?.toString() ?? '') ??
+                    DateTime.now();
+            final end =
+                DateTime.tryParse(payload['endDate']?.toString() ?? '') ??
+                    start.add(const Duration(days: 14));
+            target.phases.add(ProjectPhase(
+              label: (payload['phaseLabel'] ?? p.title).toString(),
+              color: payload['color']?.toString(),
+              startDate: start,
+              endDate: end,
+            ));
+            await saveProject(target);
+          }
+        }
+        break;
+      case 'attach_action_to_task':
+        final projectId = payload['projectId']?.toString();
+        final taskId = payload['taskId']?.toString();
+        if (projectId != null && taskId != null) {
+          final target = await _loadProject(projectId);
+          if (target != null) {
+            final idx = target.tasks.indexWhere((t) => t.id == taskId);
+            if (idx >= 0) {
+              target.tasks[idx].actions.add(TaskAction(
+                  title: (payload['actionLabel'] ?? p.title).toString()));
+              await saveProjectTasks(projectId, target.tasks);
+            }
+          }
+        }
+        break;
     }
 
     await _setProposalStatus(p.id, 'accepted');

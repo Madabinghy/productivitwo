@@ -385,6 +385,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                         tools_1.LIST_PROJECTS_TOOL, tools_1.GET_PROJECT_TOOL, tools_1.PUSH_GANTT_MCP_TOOL,
                         tools_1.ARCHIVE_PROJECT_TOOL, tools_1.DELETE_PROJECT_TOOL, tools_1.UPDATE_ACTIVITY_GOAL_TOOL,
                         tools_1.SET_ACTIVITY_TARGETS_TOOL, tools_1.COMPUTE_TIME_BUDGET_TOOL, tools_1.SWEEP_INBOX_TOOL,
+                        tools_1.PROPOSE_CHANGE_TOOL,
                         tools_1.CREATE_ROUTINE_TOOL, tools_1.DELETE_ROUTINE_TOOL,
                         tools_1.CREATE_ACTIVITY_TOOL, tools_1.UPDATE_ACTIVITY_TOOL, tools_1.UPDATE_TASK_STATUS_TOOL,
                         tools_1.UPDATE_PROJECT_TOOL, tools_1.DELETE_ACTIVITY_TOOL,
@@ -457,6 +458,9 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                     text = r
                         ? `✅ Inbox balayée (uid ${uid}) : ${r.found} idée(s) trouvée(s) → ${r.created} projet(s) créé(s), ${r.appended} tâche(s) ajoutée(s), ${r.skipped} idée(s) laissée(s).`
                         : "Routage indisponible (erreur LLM). Réessaie.";
+                }
+                else if (toolName === "propose_change") {
+                    text = await (0, execute_1.executeProposeChange)(uid, args);
                 }
                 else if (toolName === "delete_activity") {
                     text = await (0, execute_1.executeDeleteActivity)(uid, args.activityId);

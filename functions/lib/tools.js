@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.SWEEP_INBOX_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
+exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.PROPOSE_CHANGE_TOOL = exports.SWEEP_INBOX_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
 const GET_USER_CONTEXT_TOOL = {
     name: "get_user_context",
     description: "APPELLE CET OUTIL EN PREMIER dans toute conversation liée à la productivité. " +
@@ -93,6 +93,58 @@ const SWEEP_INBOX_TOOL = {
     inputSchema: { type: "object", properties: {}, required: [] },
 };
 exports.SWEEP_INBOX_TOOL = SWEEP_INBOX_TOOL;
+const PROPOSE_CHANGE_TOOL = {
+    name: "propose_change",
+    description: "Au lieu de modifier directement les projets, ENREGISTRE une proposition que l'utilisateur " +
+        "validera dans la file « À valider » de la Revue de la semaine (accepter / refuser / rediriger). " +
+        "Tu NE crées PAS le projet/la tâche/la phase/l'action toi-même — l'app applique la mutation à " +
+        "l'acceptation. À utiliser pour TOUTE proposition issue d'une source externe (ex: mails) : créer " +
+        "un projet, rattacher une idée comme tâche, créer un sous-projet, ajouter une phase à un projet, " +
+        "ajouter une action à une tâche, ou archiver un projet inactif. Un appel = une proposition. " +
+        "Mets dans 'title' un résumé humain court et dans 'rationale' la justification en 1 phrase " +
+        "(cite l'objet/l'expéditeur du mail pour la traçabilité).",
+    inputSchema: {
+        type: "object",
+        required: ["kind", "title", "rationale"],
+        properties: {
+            kind: {
+                type: "string",
+                enum: ["new_project", "attach_idea_as_task", "create_subproject", "archive_project", "add_phase", "attach_action_to_task"],
+                description: "new_project = nouveau projet · attach_idea_as_task = ajouter une tâche à un projet existant · " +
+                    "create_subproject = sous-projet d'un projet existant · archive_project = archiver un projet inactif · " +
+                    "add_phase = ajouter une phase à un projet existant · attach_action_to_task = ajouter une action (sous-étape) à une tâche existante",
+            },
+            title: { type: "string", description: "Résumé humain court, ex: 'Créer le projet « Refonte site »'" },
+            rationale: { type: "string", description: "Pourquoi, en 1 phrase" },
+            sourceCaptureId: { type: "string", description: "Optionnel : id de l'idée inbox d'origine (la capture passera en 'proposed')" },
+            payload: {
+                type: "object",
+                description: "Données pour appliquer la mutation selon kind : " +
+                    "new_project={projectTitle, domainId?, description?} · " +
+                    "attach_idea_as_task={projectId, taskTitle, description?} · " +
+                    "create_subproject={parentProjectId, projectTitle, domainId?} · " +
+                    "archive_project={projectId} · " +
+                    "add_phase={projectId, phaseLabel, startDate?, endDate?, color?} · " +
+                    "attach_action_to_task={projectId, taskId, actionLabel}",
+                properties: {
+                    projectId: { type: "string" },
+                    parentProjectId: { type: "string" },
+                    taskId: { type: "string" },
+                    projectTitle: { type: "string" },
+                    taskTitle: { type: "string" },
+                    phaseLabel: { type: "string" },
+                    actionLabel: { type: "string" },
+                    domainId: { type: "string" },
+                    description: { type: "string" },
+                    startDate: { type: "string", description: "YYYY-MM-DD" },
+                    endDate: { type: "string", description: "YYYY-MM-DD" },
+                    color: { type: "string" },
+                },
+            },
+        },
+    },
+};
+exports.PROPOSE_CHANGE_TOOL = PROPOSE_CHANGE_TOOL;
 const CREATE_ROUTINE_TOOL = {
     name: "create_routine",
     description: "Crée une **routine** : habitude mesurable trackée avec compteur ou fréquence (ex: Méditation, Gainage, Eau). " +

@@ -95,6 +95,61 @@ const SWEEP_INBOX_TOOL = {
   inputSchema: { type: "object", properties: {}, required: [] },
 };
 
+const PROPOSE_CHANGE_TOOL = {
+  name: "propose_change",
+  description:
+    "Au lieu de modifier directement les projets, ENREGISTRE une proposition que l'utilisateur " +
+    "validera dans la file « À valider » de la Revue de la semaine (accepter / refuser / rediriger). " +
+    "Tu NE crées PAS le projet/la tâche/la phase/l'action toi-même — l'app applique la mutation à " +
+    "l'acceptation. À utiliser pour TOUTE proposition issue d'une source externe (ex: mails) : créer " +
+    "un projet, rattacher une idée comme tâche, créer un sous-projet, ajouter une phase à un projet, " +
+    "ajouter une action à une tâche, ou archiver un projet inactif. Un appel = une proposition. " +
+    "Mets dans 'title' un résumé humain court et dans 'rationale' la justification en 1 phrase " +
+    "(cite l'objet/l'expéditeur du mail pour la traçabilité).",
+  inputSchema: {
+    type: "object",
+    required: ["kind", "title", "rationale"],
+    properties: {
+      kind: {
+        type: "string",
+        enum: ["new_project", "attach_idea_as_task", "create_subproject", "archive_project", "add_phase", "attach_action_to_task"],
+        description:
+          "new_project = nouveau projet · attach_idea_as_task = ajouter une tâche à un projet existant · " +
+          "create_subproject = sous-projet d'un projet existant · archive_project = archiver un projet inactif · " +
+          "add_phase = ajouter une phase à un projet existant · attach_action_to_task = ajouter une action (sous-étape) à une tâche existante",
+      },
+      title: { type: "string", description: "Résumé humain court, ex: 'Créer le projet « Refonte site »'" },
+      rationale: { type: "string", description: "Pourquoi, en 1 phrase" },
+      sourceCaptureId: { type: "string", description: "Optionnel : id de l'idée inbox d'origine (la capture passera en 'proposed')" },
+      payload: {
+        type: "object",
+        description:
+          "Données pour appliquer la mutation selon kind : " +
+          "new_project={projectTitle, domainId?, description?} · " +
+          "attach_idea_as_task={projectId, taskTitle, description?} · " +
+          "create_subproject={parentProjectId, projectTitle, domainId?} · " +
+          "archive_project={projectId} · " +
+          "add_phase={projectId, phaseLabel, startDate?, endDate?, color?} · " +
+          "attach_action_to_task={projectId, taskId, actionLabel}",
+        properties: {
+          projectId: { type: "string" },
+          parentProjectId: { type: "string" },
+          taskId: { type: "string" },
+          projectTitle: { type: "string" },
+          taskTitle: { type: "string" },
+          phaseLabel: { type: "string" },
+          actionLabel: { type: "string" },
+          domainId: { type: "string" },
+          description: { type: "string" },
+          startDate: { type: "string", description: "YYYY-MM-DD" },
+          endDate: { type: "string", description: "YYYY-MM-DD" },
+          color: { type: "string" },
+        },
+      },
+    },
+  },
+};
+
 const CREATE_ROUTINE_TOOL = {
   name: "create_routine",
   description:
@@ -738,6 +793,7 @@ UPDATE_ACTIVITY_GOAL_TOOL,
 SET_ACTIVITY_TARGETS_TOOL,
 COMPUTE_TIME_BUDGET_TOOL,
 SWEEP_INBOX_TOOL,
+PROPOSE_CHANGE_TOOL,
 CREATE_ROUTINE_TOOL,
 CREATE_ACTIVITY_TOOL,
 CREATE_DOMAIN_TOOL,

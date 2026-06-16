@@ -106,6 +106,8 @@ class _ProposalCardState extends State<_ProposalCard> {
     'attach_idea_as_task': 'Tâche d\'un projet',
     'create_subproject': 'Sous-projet',
     'archive_project': 'Archiver',
+    'add_phase': 'Phase d\'un projet',
+    'attach_action_to_task': 'Action d\'une tâche',
   };
 
   OrionProposal get p => widget.proposal;
@@ -202,7 +204,13 @@ class _ProposalCardState extends State<_ProposalCard> {
     }
   }
 
-  bool get _canRedirect => p.kind != 'archive_project';
+  static const _redirectableKinds = {
+    'new_project',
+    'attach_idea_as_task',
+    'create_subproject',
+  };
+
+  bool get _canRedirect => _redirectableKinds.contains(p.kind);
 
   @override
   Widget build(BuildContext context) {
