@@ -78,13 +78,58 @@ Future<void> showUnifiedWorldSheet(
   ).whenComplete(() => assistantOverlaySuppressed.value = false);
 }
 
+/// Carte cinématique web rendue comme onglet embarqué du hub gamification —
+/// pas de Dialog. `embedded:true` neutralise les fermetures globales. Supprime
+/// l'overlay assistant tant que l'onglet est monté (comme showUnifiedWorldSheet).
+class UnifiedWorldScreen extends StatefulWidget {
+  final AppLogic logic;
+  final FirestoreSync sync;
+  const UnifiedWorldScreen({required this.logic, required this.sync, super.key});
+  @override
+  State<UnifiedWorldScreen> createState() => _UnifiedWorldScreenState();
+}
+
+class _UnifiedWorldScreenState extends State<UnifiedWorldScreen> {
+  late final bool _prevSuppressed;
+  @override
+  void initState() {
+    super.initState();
+    _prevSuppressed = assistantOverlaySuppressed.value;
+    assistantOverlaySuppressed.value = true;
+  }
+
+  @override
+  void dispose() {
+    assistantOverlaySuppressed.value = _prevSuppressed;
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: _kBg,
+        body: SafeArea(
+          child: _UnifiedWorldView(
+              logic: widget.logic,
+              sync: widget.sync,
+              mobile: true,
+              embedded: true),
+        ),
+      );
+}
+
 class _UnifiedWorldView extends StatefulWidget {
   final AppLogic logic;
   final FirestoreSync sync;
   // Mobile : pas de map principale, on affiche direct le calendrier par domaine.
   final bool mobile;
+  // Embarqué (onglet du hub) : pas de Dialog → neutralise les fermetures globales
+  // (croix X, pill « ✕ Fermer », pop après lancement de minuteur).
+  final bool embedded;
   const _UnifiedWorldView(
-      {required this.logic, required this.sync, this.mobile = false});
+      {required this.logic,
+      required this.sync,
+      this.mobile = false,
+      this.embedded = false});
 
   @override
   State<_UnifiedWorldView> createState() => _UnifiedWorldViewState();
@@ -2751,7 +2796,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       },
       onLaunchedTimer: () {
         // Minuteur lancé → on ferme l'encart et on quitte la map.
-        if (mounted) Navigator.pop(context);
+        // Embarqué (onglet du hub) : pas de pop (fermerait tout le bottom sheet).
+        if (!widget.embedded && mounted) Navigator.pop(context);
       },
       onClose: _closeCombat,
     );
@@ -3464,9 +3510,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     TextStyle(color: Colors.white.withOpacity(.4), fontSize: 11)),
             const Spacer(),
           ],
-          IconButton(
-              icon: const Icon(Icons.close, color: Colors.white54),
-              onPressed: () => Navigator.pop(context)),
+          // Embarqué (onglet) : pas de croix (rien à fermer dans un onglet).
+          if (!widget.embedded)
+            IconButton(
+                icon: const Icon(Icons.close, color: Colors.white54),
+                onPressed: () => Navigator.pop(context)),
         ]),
       ),
       Flexible(
@@ -3782,8 +3830,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           if (_inInterior && widget.mobile) ...[
             // MOBILE : juste le calendrier — changer de domaine + fermer.
             pill('🔄 Changer de domaine', _interiorColor, _quickEnter),
-            pill('✕ Fermer', Colors.white70,
-                () => Navigator.of(context).maybePop()),
+            // Embarqué (onglet) : pas de « ✕ Fermer » (fermerait le bottom sheet).
+            if (!widget.embedded)
+              pill('✕ Fermer', Colors.white70,
+                  () => Navigator.of(context).maybePop()),
           ],
           if (_inInterior && !widget.mobile) ...[
             if (!_tdMode && !_simDefense)

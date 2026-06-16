@@ -5,6 +5,7 @@ import 'package:productivitwo_v1/widgets/gold_sheet.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
 import 'package:productivitwo_v1/widgets/leaderboard_sheet.dart';
 import 'package:productivitwo_v1/widgets/scheduled_challenges_sheet.dart';
+import 'package:productivitwo_v1/web/unified_world_sheet.dart';
 
 /// Hub gamification : un seul point d'entrée regroupant Mon or · Score ·
 /// Classement · Défis. Réutilise les contenus embarquables des sheets existants ;
@@ -47,7 +48,7 @@ class _GamificationHub extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Column(
         children: [
           TabBar(
@@ -66,6 +67,7 @@ class _GamificationHub extends StatelessWidget {
                 ]),
               ),
               const Tab(text: '📊 Progrès'),
+              const Tab(text: '🌍 Monde'),
             ],
           ),
           Expanded(
@@ -87,6 +89,8 @@ class _GamificationHub extends StatelessWidget {
                     showCombatSection: false),
                 // 📊 Progrès : XP · Classement · Défis regroupés (peu visités)
                 _ProgressTab(logic: logic, sync: sync, scoreTab: scoreTab),
+                // 🌍 Monde : carte cinématique web (mode mobile embarqué)
+                UnifiedWorldScreen(logic: logic, sync: sync),
               ],
             ),
           ),
