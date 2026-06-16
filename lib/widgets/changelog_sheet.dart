@@ -10,6 +10,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.25', '16 juin 2026', [
+    (Icons.bug_report_outlined, '« Le Monde » web : des petites araignées apparaissent dans le monde pour chaque routine en retard sur la semaine dernière — autant d\'araignées que de complétions manquantes vs le même jour S-7. Elles se baladent librement (bloquées par les murs)'),
+    (Icons.gps_fixed, 'Quand tu réduis l\'écart entre deux passages, tu arrives avec des shurikens stockés : ton avatar abat automatiquement les araignées qui passent à portée, jusqu\'à refléter l\'écart réellement rattrapé'),
+  ]),
   _Entry('6.23', '16 juin 2026', [
     (Icons.speed_outlined, '« Le Monde » web : navigation plus fluide — la carte ne reconstruit plus ses cases à chaque pixel de scroll et la mini-carte ne se redessine qu\'à l\'essentiel. Le glissé et le défilement restent nets même sur un grand monde'),
   ]),
