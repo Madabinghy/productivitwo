@@ -52,6 +52,7 @@ class CastleBlock {
   final int sepY; // rangée séparatrice routines/activités (-1 si aucune)
   final int headerY; // rangée des libellés de jours (L M M J V S D)
   final int dayX0; // 1ʳᵉ des 7 colonnes‑jours (aujourd'hui = dayX0 + 6)
+  final Set<Point<int>> decoWalls; // murs intérieurs déco (cases absolues)
   const CastleBlock({
     required this.domainId,
     required this.colorValue,
@@ -63,6 +64,7 @@ class CastleBlock {
     required this.sepY,
     required this.headerY,
     required this.dayX0,
+    this.decoWalls = const {},
   });
 }
 
@@ -109,6 +111,137 @@ int _innerRows(DomainSpec d) {
 
 int _blockH(DomainSpec d) => _innerRows(d) + 2;
 int _blockW() => _kInnerW + 2;
+
+// ── Structures de murs intérieures (déterministes par nombre de lignes) ──────
+// Chaque domaine reçoit, dans son JARDIN, une « silhouette de forteresse » faite
+// de murs. La sélection est déterministe (même nb de lignes → même structure) et
+// le registre est EXTENSIBLE : on ajoute un template en l'appendant à la fin.
+
+/// Contexte passé à un template : dimensions du jardin + nb de lignes du domaine.
+class WallTemplateCtx {
+  final int width; // = gardenRect.width (12)
+  final int height; // = gardenRect.height (variable selon lines)
+  final int lines; // DomainSpec.lines (sémantique métier ≠ height)
+  const WallTemplateCtx(this.width, this.height, this.lines);
+}
+
+/// Renvoie les cases murs en coords RELATIVES au gardenRect (0,0 = haut‑gauche).
+/// INVARIANT que chaque template DOIT respecter : jamais x==0 ni x==width-1, jamais
+/// une colonne entière, jamais une ligne entière → la 1ʳᵉ et la dernière colonne du
+/// jardin restent libres = corridor d'entrée/sortie garanti. (Le stamping valide en
+/// plus la connectivité par flood‑fill, donc un template fautif est neutralisé.)
+typedef WallTemplate = Set<Point<int>> Function(WallTemplateCtx ctx);
+
+Set<Point<int>> _tplEmpty(WallTemplateCtx c) => const {};
+
+Set<Point<int>> _tplPillars(WallTemplateCtx c) {
+  final s = <Point<int>>{};
+  for (var y = 1; y <= c.height - 2; y += 2) {
+    for (var x = 2; x <= c.width - 3; x += 3) {
+      s.add(Point(x, y));
+    }
+  }
+  return s;
+}
+
+Set<Point<int>> _tplCentralDivider(WallTemplateCtx c) {
+  final s = <Point<int>>{};
+  final cx = c.width ~/ 2; // ∈ [1, width-2] car width=12
+  final gapY = c.height ~/ 2; // un passage garanti
+  for (var y = 1; y <= c.height - 2; y++) {
+    if (y == gapY) continue;
+    s.add(Point(cx, y));
+  }
+  return s;
+}
+
+Set<Point<int>> _tplCorners(WallTemplateCtx c) {
+  if (c.width < 3 || c.height < 3) return const {};
+  return {
+    const Point(1, 1),
+    Point(c.width - 2, 1),
+    Point(1, c.height - 2),
+    Point(c.width - 2, c.height - 2),
+  };
+}
+
+Set<Point<int>> _tplChevrons(WallTemplateCtx c) {
+  if (c.width < 5) return const {};
+  final s = <Point<int>>{};
+  for (var y = 1; y <= c.height - 2; y++) {
+    s.add(Point(2 + (y % (c.width - 4)), y)); // 1 mur/ligne → ligne jamais scellée
+  }
+  return s;
+}
+
+/// REGISTRE : ordre STABLE. Index 0 = template VIDE (fallback sûr). Ne JAMAIS
+/// réordonner (la sélection est déterministe par index). Ajouter = append en fin.
+const List<WallTemplate> kWallTemplates = <WallTemplate>[
+  _tplEmpty,
+  _tplPillars,
+  _tplCentralDivider,
+  _tplCorners,
+  _tplChevrons,
+];
+
+/// Sélection déterministe par nb de lignes (hash de Knuth borné, pas `% length`
+/// brut qui aurait une période courte). `lines<=1` → vide (petits domaines respirent).
+int wallTemplateIndexFor(int lines) {
+  if (lines <= 1) return 0;
+  return 1 + ((lines * 2654435761) >> 8) % (kWallTemplates.length - 1);
+}
+
+/// BFS 4‑dir bornée au gardenRect (walkable = WtTile.garden). True si la colonne
+/// gauche du jardin atteint sa colonne droite → village→jardin→château traversable.
+bool _gardenConnectedLR(List<List<WtTile>> grid, Rectangle<int> g) {
+  final left = g.left, right = g.left + g.width - 1;
+  final seen = <int>{};
+  final queue = <Point<int>>[];
+  for (var y = g.top; y < g.top + g.height; y++) {
+    if (grid[y][left] == WtTile.garden) {
+      seen.add(left * 100000 + y);
+      queue.add(Point(left, y));
+    }
+  }
+  var head = 0;
+  while (head < queue.length) {
+    final p = queue[head++];
+    if (p.x == right) return true;
+    for (final d in const [Point(1, 0), Point(-1, 0), Point(0, 1), Point(0, -1)]) {
+      final nx = p.x + d.x, ny = p.y + d.y;
+      if (nx < left || nx > right || ny < g.top || ny >= g.top + g.height) continue;
+      if (grid[ny][nx] != WtTile.garden) continue;
+      final key = nx * 100000 + ny;
+      if (seen.add(key)) queue.add(Point(nx, ny));
+    }
+  }
+  return false;
+}
+
+/// Choisit le template selon `lines`, l'applique (n'écrase QUE des cases garden),
+/// valide la connectivité ; si le jardin est scellé → revert + fallback vide.
+/// Retourne les cases murs ABSOLUES réellement posées (pour le rendu déco).
+Set<Point<int>> _stampGardenWalls(
+    List<List<WtTile>> grid, Rectangle<int> g, int lines) {
+  final tpl = kWallTemplates[wallTemplateIndexFor(lines)];
+  final rel = tpl(WallTemplateCtx(g.width, g.height, lines));
+  final placed = <Point<int>>{};
+  for (final p in rel) {
+    final x = g.left + p.x, y = g.top + p.y;
+    if (x < g.left || x >= g.left + g.width) continue; // clamp défensif
+    if (y < g.top || y >= g.top + g.height) continue;
+    if (grid[y][x] != WtTile.garden) continue; // n'écrase jamais autre chose
+    grid[y][x] = WtTile.wall;
+    placed.add(Point(x, y));
+  }
+  if (!_gardenConnectedLR(grid, g)) {
+    for (final p in placed) {
+      grid[p.y][p.x] = WtTile.garden; // revert → jardin garanti ouvert
+    }
+    return const {};
+  }
+  return placed;
+}
 
 WorldLayout buildWorld(List<DomainSpec> domains, {int seed = 0}) {
   if (domains.isEmpty) {
@@ -246,6 +379,10 @@ CastleBlock _carveBlock(
     grid[midY][x] = WtTile.bridge;
   }
 
+  // Structure de murs intérieure (déterministe par nb de lignes) — stampée APRÈS
+  // le remplissage du jardin et AVANT portes inter‑jardins/chests (cf. buildWorld).
+  final decoWalls = _stampGardenWalls(grid, gardenRect, d.lines);
+
   return CastleBlock(
     domainId: d.domainId,
     colorValue: d.colorValue,
@@ -257,5 +394,6 @@ CastleBlock _carveBlock(
     sepY: sepY,
     headerY: headerY,
     dayX0: dayX0,
+    decoWalls: decoWalls,
   );
 }

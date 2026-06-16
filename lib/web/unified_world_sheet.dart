@@ -102,6 +102,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   WorldLayout? _wv2;
   Point<int> _posV2 = const Point(0, 0);
   final Map<String, Color> _v2Tint = {}; // "x_y" → couleur domaine (château)
+  final Map<String, Color> _v2WallTint = {}; // "x_y" → accent domaine (murs déco)
   // "x_y" → serpent (tâche en retard) à farmer dans le jardin du domaine.
   final Map<String, ({String type, String id, Color color})> _v2Pests = {};
   // Calendrier inline projeté (réutilise routineWeekTokens/activityTimeTokens).
@@ -5395,6 +5396,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     final layout = buildWorld(_domainSpecs());
     _wv2 = layout;
     _v2Tint.clear();
+    _v2WallTint.clear();
     for (final c in layout.castles) {
       final col = domainColor(c.domainId, logic.state.activeDomains) ?? _kGold;
       // Château ET village teintés de la couleur du domaine.
@@ -5404,6 +5406,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             _v2Tint['${x}_$y'] = col;
           }
         }
+      }
+      // Murs intérieurs déco : accent de la couleur du domaine (halo discret).
+      for (final p in c.decoWalls) {
+        _v2WallTint['${p.x}_${p.y}'] = col;
       }
     }
     final firstSpawn = !_v2Spawned;
@@ -5446,7 +5452,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       final g = c.gardenRect;
       for (var y = g.top; y < g.top + g.height; y++) {
         for (var x = g.left; x < g.left + g.width; x++) {
+          if (w.at(x, y) != WtTile.garden) continue; // skip murs déco
           free.add('${x}_$y');
+        }
+      }
+      // Cases‑passage du mur partagé avec le domaine du dessus (mêmes colonnes que
+      // les portes percées dans buildWorld) : un serpent qui s'y pose BLOQUE le
+      // raccourci → le user doit faire le tour par le pont.
+      final pr = g.top - 1; // rangée du mur partagé
+      for (final dx in [g.width ~/ 3, (2 * g.width) ~/ 3]) {
+        final px = g.left + dx;
+        if (w.inBounds(px, pr) && w.at(px, pr) == WtTile.garden) {
+          free.add('${px}_$pr');
         }
       }
       // Dispersés sur TOUT le jardin (mélange déterministe) — pas tassés dans un coin.
@@ -5713,6 +5730,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       ]) {
         final nid = '${n.x}_${n.y}';
         if (prev.containsKey(nid) || !w.walkable(n.x, n.y)) continue;
+        // Un serpent bloque le passage (impossible d'enjamber) → l'avatar doit
+        // faire le tour. Exception : la case CIBLE, pour aller la combattre.
+        if (n != to && _v2Pests.containsKey(nid)) continue;
         prev[nid] = cur;
         q.add(n);
       }
@@ -6036,7 +6056,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     final tile = w.at(x, y);
     switch (tile) {
       case WtTile.wall:
-        bg = const Color(0xFF2C2C2C);
+        // Pierre (brique) partout = « vrai monde » ; les murs INTÉRIEURS d'un
+        // domaine reçoivent en plus un halo discret de la couleur du domaine.
+        final accent = _v2WallTint[id];
+        bg = accent != null
+            ? Color.alphaBlend(
+                accent.withOpacity(.16), const Color(0xFF3A3A3A))
+            : const Color(0xFF2C2C2C);
+        child = SvgPicture.asset('assets/icons/brick-wall.svg',
+            width: inner * 0.8,
+            height: inner * 0.8,
+            colorFilter: const ColorFilter.mode(
+                Color(0xFFB8B0A4), BlendMode.srcIn));
         break;
       case WtTile.terrain:
         // Extérieur SOMBRE, comme le fond sous les nuisibles → ils semblent

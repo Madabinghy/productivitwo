@@ -10,6 +10,11 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.21', '16 juin 2026', [
+    (Icons.castle_outlined, '« Le Monde » web : chaque domaine a désormais une structure de murs en pierre, déterministe selon sa taille (piliers, diviseur, bastions, chevrons) — une silhouette de forteresse différente par domaine, avec un accent de la couleur du domaine'),
+    (Icons.pest_control_outlined, 'Les serpents et les coffres ne se posent plus jamais sur un mur'),
+    (Icons.block_outlined, 'Un serpent posé sur un passage entre deux domaines le bloque (impossible de l\'enjamber) : l\'avatar doit faire le tour par le pont, ou affronter le serpent pour rouvrir la porte'),
+  ]),
   _Entry('6.20', '16 juin 2026', [
     (Icons.local_fire_department_outlined, '« Le Monde » web : en exploration automatique, le tir est ralenti et l\'avatar attend que le boulet ait atteint la routine avant d\'enchaîner — la cinématique reste lisible'),
     (Icons.mouse_outlined, 'Navigation desktop : tu peux déplacer la carte du Monde à la molette ou à deux doigts, en plus du glissé au doigt'),
