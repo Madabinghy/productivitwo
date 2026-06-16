@@ -9,7 +9,6 @@ import 'package:productivitwo_v1/widgets/backlog_combat.dart';
 import 'package:productivitwo_v1/widgets/expedition_map_game.dart';
 import 'package:productivitwo_v1/widgets/expedition_sheet.dart';
 import 'package:productivitwo_v1/widgets/collection_sheet.dart';
-import 'package:productivitwo_v1/widgets/world_mobile_sheet.dart';
 import 'package:productivitwo_v1/widgets/confetti.dart';
 import 'package:productivitwo_v1/widgets/gold_shop_sheet.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
@@ -399,22 +398,7 @@ class _GoldSheetBodyState extends State<GoldSheetBody> {
             label: const Text('Mes cartes'),
             onPressed: () => showCollectionSheet(context, logic, sync),
           ),
-          const SizedBox(height: 8),
-          // « Le Monde » unifié (farm + territoire + reconquête de grottes) —
-          // même sheet que le web, réutilisé tel quel sur mobile.
-          FilledButton.icon(
-            style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF1E8E7E),
-                foregroundColor: Colors.white,
-                minimumSize: const Size.fromHeight(44)),
-            icon: const Text('🌍', style: TextStyle(fontSize: 15)),
-            label: const Text('Le Monde',
-                style: TextStyle(fontWeight: FontWeight.w800)),
-            onPressed: () async {
-              await showWorldMobile(context, logic, sync);
-              if (context.mounted) setState(() {});
-            },
-          ),
+          // « Le Monde » est désormais l'onglet « 🌍 Monde » du hub (carte web).
           const SizedBox(height: 20),
 
           // ── Combats en cours ──────────────────────────────────────────────
