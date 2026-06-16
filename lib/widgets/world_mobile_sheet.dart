@@ -37,9 +37,7 @@ String _tokenEmoji(String type, {required bool scorpion}) => type == 'flame'
     ? '🔥'
     : type == 'spider'
         ? (scorpion ? '🦂' : '🕷️')
-        : type == 'leaf'
-            ? '🍃'
-            : '';
+        : ''; // 'leaf' (fait, 1er jour) → case vide, plus clean
 
 /// UI MOBILE native du « Monde » (reconstruite, pas le portage du sheet web).
 /// Étape 1 : la LISTE des domaines. Tap → gameplay mobile du domaine (étape 2).

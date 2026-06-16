@@ -4306,7 +4306,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                               ? '🔥'
                               : (tok.type == 'spider'
                                   ? (e.kind == 'scorpion' ? '🦂' : '🕷️')
-                                  : '🍃'));
+                                  : '')); // 'leaf' (fait) → case vide, plus clean
                       // Bataille : colonne déjà nettoyée → estompée (laisse voir
                       // la colonne suivante).
                       final battleFade =
@@ -5497,7 +5497,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   static String _tokEmoji(String type, bool isRoutine) {
     switch (type) {
       case 'leaf':
-        return '🍃';
+        return ''; // jour fait (1er jour) → case vide, plus clean
       case 'flame':
         return '🔥';
       case 'spider':
