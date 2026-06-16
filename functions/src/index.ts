@@ -459,6 +459,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             ? `✅ Inbox balayée (uid ${uid}) : ${r.found} idée(s) trouvée(s) → ${r.created} projet(s) créé(s), ${r.appended} tâche(s) ajoutée(s), ${r.skipped} idée(s) laissée(s).`
             : "Routage indisponible (erreur LLM). Réessaie.";
         } else if (toolName === "propose_change") {
+          // Exposé au connecteur MCP distant (routine mails → propositions à valider)
           text = await executeProposeChange(uid, args as Parameters<typeof executeProposeChange>[1]);
         } else if (toolName === "delete_activity") {
           text = await executeDeleteActivity(uid, args.activityId as string);

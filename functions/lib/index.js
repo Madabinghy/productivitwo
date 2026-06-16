@@ -460,6 +460,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                         : "Routage indisponible (erreur LLM). Réessaie.";
                 }
                 else if (toolName === "propose_change") {
+                    // Exposé au connecteur MCP distant (routine mails → propositions à valider)
                     text = await (0, execute_1.executeProposeChange)(uid, args);
                 }
                 else if (toolName === "delete_activity") {
