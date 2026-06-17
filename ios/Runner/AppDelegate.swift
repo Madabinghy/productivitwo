@@ -2,6 +2,7 @@ import UIKit
 import Flutter
 import WidgetKit
 import UserNotifications
+import AppIntents
 import alarm
 
 @main
@@ -49,6 +50,10 @@ import alarm
         else { result(nil) }
       case "reload":
         if #available(iOS 14.0, *) { WidgetCenter.shared.reloadAllTimelines() }
+        result(true)
+      case "updateSiriShortcuts":
+        // Rafraîchit les options des raccourcis Siri (ex : liste des routines).
+        if #available(iOS 16.0, *) { ProductivitwoShortcuts.updateAppShortcutParameters() }
         result(true)
       default:
         result(FlutterMethodNotImplemented)
