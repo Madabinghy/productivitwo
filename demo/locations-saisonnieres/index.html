@@ -85,8 +85,8 @@
   .empty-state { text-align: center; color: var(--muted); padding: 40px; }
   .occ-bar { height: 8px; background: var(--surface-2); border-radius: 4px; overflow: hidden; margin-top: 8px; }
   .occ-bar > div { height: 100%; border-radius: 4px; }
-  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px; overflow:auto; }
-  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 24px; width: 100%; max-width: 460px; }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: flex-start; justify-content: center; z-index: 100; padding: 20px; overflow-y: auto; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 24px; width: 100%; max-width: 460px; max-height: calc(100dvh - 40px); overflow-y: auto; margin: auto; }
   .modal h2 { margin-bottom: 20px; }
   .modal-actions { display: flex; gap: 12px; margin-top: 8px; }
   .modal-actions .btn { flex: 1; }
@@ -208,7 +208,7 @@
 </div>
 
 <!-- MODAL -->
-<div id="modal" class="modal-overlay hidden">
+<div id="modal" class="modal-overlay hidden" onclick="if(event.target===this)closeModal()">
   <div class="modal">
     <h2 id="modal-title">Nouvelle réservation</h2>
     <form id="booking-form" onsubmit="saveBooking(event)">
@@ -503,6 +503,7 @@ function openModal(b) {
   document.getElementById('modal').classList.remove('hidden');
 }
 function closeModal() { document.getElementById('modal').classList.add('hidden'); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 function editBooking(bid) { openModal(bookings.find(b => b.id === bid)); }
 function deleteBooking(bid) { if (confirm('Supprimer cette réservation ?')) { bookings = bookings.filter(b => b.id !== bid); save(bookings); renderBookings(); } }
 
