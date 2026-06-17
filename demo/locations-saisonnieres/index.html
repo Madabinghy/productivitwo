@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LocaDemo — Gestion locations saisonnières</title>
+<style>
+  :root {
+    --bg: #0f1419; --surface: #1a212b; --surface-2: #222b37; --border: #2d3744;
+    --text: #e8edf2; --muted: #8b97a5; --accent: #4f9cf9;
+    --apt1: #4f9cf9; --apt2: #f59e6b;
+    --green: #3ecf8e; --red: #f06d6d; --yellow: #f5c14b;
+    --airbnb: #ff5a5f; --booking: #1f6feb;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.5; padding-bottom: 60px;
+  }
+  header {
+    background: var(--surface); border-bottom: 1px solid var(--border); padding: 16px 24px;
+    display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10;
+  }
+  header h1 { font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  header .logo { font-size: 24px; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+  nav.tabs { display: flex; gap: 4px; background: var(--surface); border-radius: 12px; padding: 4px; margin-bottom: 24px; flex-wrap: wrap; }
+  nav.tabs button {
+    flex: 1; min-width: 110px; padding: 10px; border: none; background: transparent; color: var(--muted);
+    font-size: 14px; font-weight: 600; border-radius: 8px; cursor: pointer; transition: .15s;
+  }
+  nav.tabs button.active { background: var(--surface-2); color: var(--text); }
+  nav.tabs button:hover:not(.active) { color: var(--text); }
+  .grid { display: grid; gap: 16px; }
+  .grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+  .grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  .stat .label { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .stat .value { font-size: 28px; font-weight: 700; }
+  .stat .sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  h2 { font-size: 16px; margin-bottom: 14px; font-weight: 700; }
+  h3 { font-size: 13px; margin-bottom: 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .apt-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .apt1-bg { background: var(--apt1); } .apt2-bg { background: var(--apt2); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+  .badge.confirmed { background: rgba(62,207,142,.15); color: var(--green); }
+  .badge.pending { background: rgba(245,193,75,.15); color: var(--yellow); }
+  .badge.cancelled { background: rgba(240,109,109,.15); color: var(--red); }
+  .badge.paid { background: rgba(62,207,142,.15); color: var(--green); }
+  .badge.due { background: rgba(245,193,75,.15); color: var(--yellow); }
+  .pf { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; color: #fff; }
+  .pf.Airbnb { background: var(--airbnb); }
+  .pf.Booking\.com { background: var(--booking); }
+  .pf.Abritel { background: #5a4fcf; }
+  .pf.Direct { background: #4a5568; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 12px; color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--border); font-weight: 600; }
+  td { padding: 12px 10px; border-bottom: 1px solid var(--border); font-size: 14px; }
+  tr:last-child td { border-bottom: none; }
+  .btn { background: var(--accent); color: #fff; border: none; padding: 10px 16px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: .15s; }
+  .btn:hover { filter: brightness(1.1); }
+  .btn.ghost { background: var(--surface-2); color: var(--text); }
+  .btn.danger { background: transparent; color: var(--red); padding: 4px 8px; }
+  .btn.sm { padding: 6px 12px; font-size: 13px; }
+  input, select { width: 100%; padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; font-family: inherit; }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .field { margin-bottom: 14px; }
+  .row { display: flex; gap: 12px; }
+  .row .field { flex: 1; }
+  .hidden { display: none; }
+  .cal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .cal-header .month { font-size: 18px; font-weight: 700; min-width: 180px; text-align: center; text-transform: capitalize; }
+  .cal-nav { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); width: 36px; height: 36px; border-radius: 8px; cursor: pointer; font-size: 18px; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .cal-dow { text-align: center; font-size: 12px; color: var(--muted); padding: 6px 0; font-weight: 600; }
+  .cal-cell { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; min-height: 78px; padding: 6px; }
+  .cal-cell.empty { background: transparent; border: none; }
+  .cal-cell.today { border-color: var(--accent); }
+  .cal-cell .daynum { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .cal-cell.today .daynum { color: var(--accent); font-weight: 700; }
+  .cal-booking { font-size: 10px; padding: 2px 5px; border-radius: 4px; margin-bottom: 2px; color: #0f1419; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .legend { display: flex; gap: 16px; margin-top: 16px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+  .legend span { display: flex; align-items: center; }
+  .empty-state { text-align: center; color: var(--muted); padding: 40px; }
+  .occ-bar { height: 8px; background: var(--surface-2); border-radius: 4px; overflow: hidden; margin-top: 8px; }
+  .occ-bar > div { height: 100%; border-radius: 4px; }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px; overflow:auto; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 24px; width: 100%; max-width: 460px; }
+  .modal h2 { margin-bottom: 20px; }
+  .modal-actions { display: flex; gap: 12px; margin-top: 8px; }
+  .modal-actions .btn { flex: 1; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .note { background: var(--surface-2); border-left: 3px solid var(--accent); border-radius: 6px; padding: 12px 14px; font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+  .note strong { color: var(--text); }
+  .kv { display:flex; justify-content:space-between; padding:6px 0; font-size:14px; border-bottom:1px solid var(--border); }
+  .kv:last-child { border-bottom:none; }
+  @media (max-width: 720px) {
+    .grid.cols-3, .grid.cols-2 { grid-template-columns: 1fr; }
+    .cal-cell { min-height: 54px; }
+    .container { padding: 16px; }
+    .table-wrap { overflow-x: auto; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="logo">🏠</span> LocaDemo</h1>
+  <button class="btn" onclick="openModal()">+ Réservation</button>
+</header>
+
+<div class="container">
+  <nav class="tabs">
+    <button id="tab-dashboard" class="active" onclick="showTab('dashboard')">Tableau de bord</button>
+    <button id="tab-calendar" onclick="showTab('calendar')">Calendrier</button>
+    <button id="tab-bookings" onclick="showTab('bookings')">Réservations</button>
+    <button id="tab-payments" onclick="showTab('payments')">Paiements</button>
+    <button id="tab-recap" onclick="showTab('recap')">Récap mensuel</button>
+    <button id="tab-connect" onclick="showTab('connect')">Connexion</button>
+  </nav>
+
+  <!-- DASHBOARD -->
+  <section id="view-dashboard">
+    <div class="grid cols-3">
+      <div class="card stat"><div class="label">Revenu net (mois en cours)</div><div class="value" id="stat-revenue">—</div><div class="sub" id="stat-revenue-sub"></div></div>
+      <div class="card stat"><div class="label">Taux d'occupation</div><div class="value" id="stat-occupancy">—</div><div class="sub" id="stat-occupancy-sub"></div></div>
+      <div class="card stat"><div class="label">Paiements à venir</div><div class="value" id="stat-due">—</div><div class="sub" id="stat-due-sub"></div></div>
+    </div>
+    <div class="grid cols-2">
+      <div class="card"><h2>Prochaines arrivées</h2><div id="upcoming"></div></div>
+      <div class="card"><h2>Occupation par logement</h2><div id="apt-occupancy"></div></div>
+    </div>
+  </section>
+
+  <!-- CALENDAR -->
+  <section id="view-calendar" class="hidden">
+    <div class="card">
+      <div class="cal-header">
+        <button class="cal-nav" onclick="changeMonth(-1)">‹</button>
+        <div class="month" id="cal-month"></div>
+        <button class="cal-nav" onclick="changeMonth(1)">›</button>
+      </div>
+      <div class="cal-grid" id="cal-dows"></div>
+      <div class="cal-grid" id="cal-body" style="margin-top:4px"></div>
+      <div class="legend">
+        <span><span class="apt-dot apt1-bg"></span> <span id="legend-apt1"></span></span>
+        <span><span class="apt-dot apt2-bg"></span> <span id="legend-apt2"></span></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- BOOKINGS -->
+  <section id="view-bookings" class="hidden">
+    <div class="card">
+      <h2>Toutes les réservations</h2>
+      <div class="table-wrap" id="bookings-table"></div>
+    </div>
+  </section>
+
+  <!-- PAYMENTS -->
+  <section id="view-payments" class="hidden">
+    <div class="card">
+      <div class="note">
+        <strong>Montant à recevoir</strong> = prix total − commission plateforme.
+        Airbnb ≈ 3 %, Booking.com ≈ 15 % (modifiables par réservation). Booking encaisse souvent le voyageur :
+        le « net » est ce qui vous revient après commission.
+      </div>
+      <h2>Paiements à venir</h2>
+      <div class="table-wrap" id="payments-upcoming"></div>
+    </div>
+    <div class="card">
+      <h2>Paiements encaissés</h2>
+      <div class="table-wrap" id="payments-paid"></div>
+    </div>
+  </section>
+
+  <!-- RECAP -->
+  <section id="view-recap" class="hidden">
+    <div class="card">
+      <div class="cal-header">
+        <button class="cal-nav" onclick="changeRecapMonth(-1)">‹</button>
+        <div class="month" id="recap-month"></div>
+        <button class="cal-nav" onclick="changeRecapMonth(1)">›</button>
+      </div>
+      <div id="recap-content"></div>
+    </div>
+  </section>
+
+  <!-- CONNECT -->
+  <section id="view-connect" class="hidden">
+    <div class="card">
+      <h2>Connexion aux plateformes</h2>
+      <div class="note">
+        <strong>À savoir :</strong> Airbnb et Booking.com ne donnent pas d'API publique de réservations aux
+        hôtes particuliers (réservée aux channel managers agréés). Les deux moyens réalistes&nbsp;:
+        <br>• <strong>Synchronisation iCal</strong> — chaque plateforme fournit une URL <code>.ics</code>
+        (dates de séjour, parfois nom voyageur). <em>Ne contient pas les prix ni l'heure d'arrivée.</em>
+        <br>• <strong>Lecture des emails de réservation</strong> — pour récupérer prix, heure d'arrivée, montant net.
+      </div>
+      <h3>Importer un calendrier iCal</h3>
+      <div class="field"><label>Logement</label><select id="ical-apt"></select></div>
+      <div class="field"><label>URL iCal (Airbnb / Booking)</label><input type="text" id="ical-url" placeholder="https://www.airbnb.fr/calendar/ical/...ics"></div>
+      <button class="btn ghost" onclick="alert('Démo : l\'import iCal réel nécessite un petit service serveur (CORS). Voir la note ci-dessus — je peux te le brancher si tu veux passer en prod.')">Importer (démo)</button>
+      <h3 style="margin-top:24px">Données de démo</h3>
+      <button class="btn ghost" onclick="resetDemo()">Réinitialiser les données de démo</button>
+    </div>
+  </section>
+</div>
+
+<!-- MODAL -->
+<div id="modal" class="modal-overlay hidden">
+  <div class="modal">
+    <h2 id="modal-title">Nouvelle réservation</h2>
+    <form id="booking-form" onsubmit="saveBooking(event)">
+      <input type="hidden" id="f-id">
+      <div class="field"><label>Logement</label><select id="f-apt"></select></div>
+      <div class="field"><label>Nom du voyageur</label><input type="text" id="f-guest" required placeholder="Ex. Marie Dupont"></div>
+      <div class="row">
+        <div class="field"><label>Arrivée</label><input type="date" id="f-checkin" required></div>
+        <div class="field"><label>Départ</label><input type="date" id="f-checkout" required></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Heure d'arrivée</label><input type="time" id="f-arrival" value="16:00"></div>
+        <div class="field"><label>Voyageurs</label><input type="number" id="f-guests" min="1" value="2"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Prix total (€)</label><input type="number" id="f-price" required min="0" step="1" placeholder="450"></div>
+        <div class="field"><label>Commission (%)</label><input type="number" id="f-commission" min="0" max="100" step="0.5"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Plateforme</label><select id="f-platform" onchange="applyPlatformDefaults()">
+          <option>Airbnb</option><option>Booking.com</option><option>Abritel</option><option>Direct</option>
+        </select></div>
+        <div class="field"><label>Statut</label><select id="f-status">
+          <option value="confirmed">Confirmée</option><option value="pending">En attente</option><option value="cancelled">Annulée</option>
+        </select></div>
+      </div>
+      <div class="field"><label>Paiement</label><select id="f-paid">
+        <option value="due">À recevoir</option><option value="paid">Encaissé</option>
+      </select></div>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" onclick="closeModal()">Annuler</button>
+        <button type="submit" class="btn">Enregistrer</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+const APARTMENTS = [
+  { id: 'apt1', name: 'Studio Vieux-Port', cls: 'apt1-bg', color: 'var(--apt1)' },
+  { id: 'apt2', name: 'T2 Bord de mer', cls: 'apt2-bg', color: 'var(--apt2)' },
+];
+// Commission par défaut + délai d'encaissement (jours après l'arrivée)
+const PLATFORMS = {
+  'Airbnb':       { commission: 3,  payoutDelay: 1 },
+  'Booking.com':  { commission: 15, payoutDelay: 0 },
+  'Abritel':      { commission: 8,  payoutDelay: 0 },
+  'Direct':       { commission: 0,  payoutDelay: 0 },
+};
+const STORE_KEY = 'locademo_bookings_v2';
+
+function seed() {
+  const now = new Date(), y = now.getFullYear(), m = now.getMonth();
+  const d = (day, mon = m) => new Date(y, mon, day).toISOString().slice(0, 10);
+  const mk = (apt, guest, ci, co, price, platform, status, arrival, paid) => {
+    const p = PLATFORMS[platform];
+    return { id: id(), apt, guest, checkin: ci, checkout: co, price, platform, status,
+             commission: p.commission, arrival, guests: 2, paid };
+  };
+  return [
+    mk('apt1', 'Marie Dupont', d(3), d(7), 380, 'Airbnb', 'confirmed', '15:00', 'paid'),
+    mk('apt1', 'Thomas Leroy', d(12), d(16), 420, 'Booking.com', 'confirmed', '18:30', 'due'),
+    mk('apt1', 'Sophie Martin', d(22), d(25), 290, 'Direct', 'pending', '14:00', 'due'),
+    mk('apt2', 'Famille Bernard', d(1), d(8), 910, 'Abritel', 'confirmed', '17:00', 'paid'),
+    mk('apt2', 'Lucas Petit', d(14), d(18), 560, 'Airbnb', 'confirmed', '16:00', 'due'),
+    mk('apt2', 'Emma Roux', d(26), d(30), 640, 'Booking.com', 'pending', '20:00', 'due'),
+    mk('apt1', 'John Carter', d(5, m + 1), d(10, m + 1), 510, 'Booking.com', 'confirmed', '19:00', 'due'),
+    mk('apt2', 'Clara Nguyen', d(2, m + 1), d(6, m + 1), 470, 'Airbnb', 'confirmed', '16:30', 'due'),
+  ];
+}
+function id() { return Math.random().toString(36).slice(2, 10); }
+function load() {
+  const raw = localStorage.getItem(STORE_KEY);
+  if (!raw) { const s = seed(); save(s); return s; }
+  try { return JSON.parse(raw); } catch { return []; }
+}
+function save(b) { localStorage.setItem(STORE_KEY, JSON.stringify(b)); }
+function resetDemo() { if (confirm('Recharger les données de démo ?')) { bookings = seed(); save(bookings); showTab('dashboard'); } }
+
+let bookings = load();
+let calDate = new Date();
+let recapDate = new Date();
+
+// Helpers
+const apt = id => APARTMENTS.find(a => a.id === id) || {};
+function aptName(i) { return apt(i).name || i; }
+function aptCls(i) { return apt(i).cls || ''; }
+function nights(b) { return Math.max(0, Math.round((new Date(b.checkout) - new Date(b.checkin)) / 86400000)); }
+function netAmount(b) { return Math.round(Number(b.price) * (1 - (Number(b.commission) || 0) / 100)); }
+function payoutDate(b) {
+  const delay = (PLATFORMS[b.platform] || {}).payoutDelay || 0;
+  const dt = new Date(b.checkin + 'T00:00'); dt.setDate(dt.getDate() + delay);
+  return dt.toISOString().slice(0, 10);
+}
+function fmtDate(s) { return new Date(s + 'T00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }); }
+function fmtDateLong(s) { return new Date(s + 'T00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: 'short' }); }
+function fmtEur(n) { return Math.round(n).toLocaleString('fr-FR') + ' €'; }
+function daysInMonth(y, m) { return new Date(y, m + 1, 0).getDate(); }
+function overlaps(b, ds) { return ds >= b.checkin && ds < b.checkout; }
+function pfTag(p) { return `<span class="pf ${p.replace(/\./g,'\\.')}">${p}</span>`; }
+function today() { return new Date().toISOString().slice(0, 10); }
+
+function showTab(name) {
+  ['dashboard','calendar','bookings','payments','recap','connect'].forEach(t => {
+    document.getElementById('view-' + t).classList.toggle('hidden', t !== name);
+    document.getElementById('tab-' + t).classList.toggle('active', t === name);
+  });
+  ({ dashboard: renderDashboard, calendar: renderCalendar, bookings: renderBookings,
+     payments: renderPayments, recap: renderRecap, connect: renderConnect }[name])();
+}
+
+// Dashboard
+function renderDashboard() {
+  const now = new Date(), y = now.getFullYear(), m = now.getMonth(), dim = daysInMonth(y, m);
+  const mStart = new Date(y, m, 1).toISOString().slice(0, 10);
+  const mEnd = new Date(y, m + 1, 1).toISOString().slice(0, 10);
+  const active = bookings.filter(b => b.status !== 'cancelled');
+
+  let net = 0, totalNights = 0, arrivalsThisMonth = 0;
+  active.forEach(b => {
+    for (let day = 1; day <= dim; day++) {
+      const ds = new Date(y, m, day).toISOString().slice(0, 10);
+      if (overlaps(b, ds)) totalNights++;
+    }
+    if (b.checkin >= mStart && b.checkin < mEnd) { net += netAmount(b); arrivalsThisMonth++; }
+  });
+  const capacity = dim * APARTMENTS.length;
+  const occ = capacity ? Math.round(totalNights / capacity * 100) : 0;
+  const due = active.filter(b => b.paid === 'due' && b.checkout >= today());
+  const dueTotal = due.reduce((s, b) => s + netAmount(b), 0);
+
+  document.getElementById('stat-revenue').textContent = fmtEur(net);
+  document.getElementById('stat-revenue-sub').textContent = arrivalsThisMonth + ' arrivées · net après commission';
+  document.getElementById('stat-occupancy').textContent = occ + '%';
+  document.getElementById('stat-occupancy-sub').textContent = totalNights + ' / ' + capacity + ' nuitées';
+  document.getElementById('stat-due').textContent = fmtEur(dueTotal);
+  document.getElementById('stat-due-sub').textContent = due.length + ' paiement(s) à recevoir';
+
+  document.getElementById('apt-occupancy').innerHTML = APARTMENTS.map(a => {
+    let n = 0;
+    active.forEach(b => { if (b.apt === a.id) for (let day = 1; day <= dim; day++) { const ds = new Date(y, m, day).toISOString().slice(0,10); if (overlaps(b, ds)) n++; } });
+    const pct = Math.round(n / dim * 100);
+    return `<div style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;font-size:14px">
+      <span><span class="apt-dot ${a.cls}"></span>${a.name}</span><strong>${pct}%</strong></div>
+      <div class="occ-bar"><div style="width:${pct}%;background:${a.color}"></div></div></div>`;
+  }).join('');
+
+  const upcoming = active.filter(b => b.checkin >= today()).sort((a, b) => a.checkin.localeCompare(b.checkin)).slice(0, 6);
+  document.getElementById('upcoming').innerHTML = upcoming.length ? upcoming.map(b => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
+      <div><div style="font-weight:600"><span class="apt-dot ${aptCls(b.apt)}"></span>${b.guest}</div>
+      <div class="muted">${aptName(b.apt)} · ${nights(b)} nuits · arrivée ${b.arrival || '—'}</div></div>
+      <div style="text-align:right"><div style="font-weight:600">${fmtDate(b.checkin)}</div>${pfTag(b.platform)}</div>
+    </div>`).join('') : '<div class="empty-state">Aucune arrivée à venir</div>';
+}
+
+// Calendar
+function changeMonth(d) { calDate.setMonth(calDate.getMonth() + d); renderCalendar(); }
+function renderCalendar() {
+  const y = calDate.getFullYear(), m = calDate.getMonth();
+  document.getElementById('cal-month').textContent = calDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+  document.getElementById('legend-apt1').textContent = APARTMENTS[0].name;
+  document.getElementById('legend-apt2').textContent = APARTMENTS[1].name;
+  document.getElementById('cal-dows').innerHTML = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'].map(d => `<div class="cal-dow">${d}</div>`).join('');
+  const dim = daysInMonth(y, m);
+  let firstDow = (new Date(y, m, 1).getDay() + 6) % 7;
+  const active = bookings.filter(b => b.status !== 'cancelled');
+  let cells = '';
+  for (let i = 0; i < firstDow; i++) cells += '<div class="cal-cell empty"></div>';
+  for (let day = 1; day <= dim; day++) {
+    const ds = new Date(y, m, day).toISOString().slice(0, 10);
+    const tags = active.filter(b => overlaps(b, ds)).map(b => {
+      const bg = b.apt === 'apt1' ? 'var(--apt1)' : 'var(--apt2)';
+      return `<div class="cal-booking" style="background:${bg}" title="${b.guest} — ${aptName(b.apt)}">${b.checkin === ds ? '→ ' : ''}${b.guest.split(' ')[0]}</div>`;
+    }).join('');
+    cells += `<div class="cal-cell ${ds === today() ? 'today' : ''}"><div class="daynum">${day}</div>${tags}</div>`;
+  }
+  document.getElementById('cal-body').innerHTML = cells;
+}
+
+// Bookings
+function renderBookings() {
+  const sorted = [...bookings].sort((a, b) => b.checkin.localeCompare(a.checkin));
+  document.getElementById('bookings-table').innerHTML = sorted.length ? `<table><thead><tr>
+    <th>Logement</th><th>Voyageur</th><th>Séjour</th><th>Arrivée</th><th>Nuits</th><th>Plateforme</th><th>Statut</th><th>Net</th><th></th>
+    </tr></thead><tbody>${sorted.map(b => `<tr>
+      <td><span class="apt-dot ${aptCls(b.apt)}"></span>${aptName(b.apt)}</td>
+      <td>${b.guest}</td><td>${fmtDate(b.checkin)} → ${fmtDate(b.checkout)}</td>
+      <td>${b.arrival || '—'}</td><td>${nights(b)}</td><td>${pfTag(b.platform)}</td>
+      <td><span class="badge ${b.status}">${statusLabel(b.status)}</span></td>
+      <td><strong>${fmtEur(netAmount(b))}</strong></td>
+      <td style="white-space:nowrap"><button class="btn sm ghost" onclick="editBooking('${b.id}')">Modifier</button>
+      <button class="btn danger" onclick="deleteBooking('${b.id}')">Suppr.</button></td>
+    </tr>`).join('')}</tbody></table>` : '<div class="empty-state">Aucune réservation.</div>';
+}
+function statusLabel(s) { return { confirmed: 'Confirmée', pending: 'En attente', cancelled: 'Annulée' }[s] || s; }
+
+// Payments
+function renderPayments() {
+  const active = bookings.filter(b => b.status !== 'cancelled');
+  const due = active.filter(b => b.paid === 'due').sort((a, b) => payoutDate(a).localeCompare(payoutDate(b)));
+  const paid = active.filter(b => b.paid === 'paid').sort((a, b) => b.checkin.localeCompare(a.checkin));
+  const dueTotal = due.reduce((s, b) => s + netAmount(b), 0);
+
+  document.getElementById('payments-upcoming').innerHTML = due.length ? `<table><thead><tr>
+    <th>Échéance</th><th>Voyageur</th><th>Logement</th><th>Plateforme</th><th>Prix brut</th><th>Commission</th><th>À recevoir</th><th></th>
+    </tr></thead><tbody>${due.map(b => `<tr>
+      <td>${fmtDateLong(payoutDate(b))}</td><td>${b.guest}</td>
+      <td><span class="apt-dot ${aptCls(b.apt)}"></span>${aptName(b.apt)}</td>
+      <td>${pfTag(b.platform)}</td><td>${fmtEur(b.price)}</td>
+      <td class="muted">−${b.commission || 0}% (${fmtEur(b.price - netAmount(b))})</td>
+      <td><strong>${fmtEur(netAmount(b))}</strong></td>
+      <td><button class="btn sm ghost" onclick="markPaid('${b.id}')">Encaissé ✓</button></td>
+    </tr>`).join('')}</tbody>
+    <tfoot><tr><td colspan="6" style="text-align:right;font-weight:700;padding-top:14px">Total à recevoir</td>
+    <td colspan="2" style="font-weight:700;padding-top:14px">${fmtEur(dueTotal)}</td></tr></tfoot>
+    </table>` : '<div class="empty-state">Aucun paiement en attente.</div>';
+
+  document.getElementById('payments-paid').innerHTML = paid.length ? `<table><thead><tr>
+    <th>Date</th><th>Voyageur</th><th>Logement</th><th>Plateforme</th><th>Net encaissé</th>
+    </tr></thead><tbody>${paid.map(b => `<tr>
+      <td>${fmtDate(payoutDate(b))}</td><td>${b.guest}</td>
+      <td><span class="apt-dot ${aptCls(b.apt)}"></span>${aptName(b.apt)}</td>
+      <td>${pfTag(b.platform)}</td><td><strong>${fmtEur(netAmount(b))}</strong> <span class="badge paid">Encaissé</span></td>
+    </tr>`).join('')}</tbody></table>` : '<div class="empty-state">Aucun paiement encaissé.</div>';
+}
+function markPaid(bid) { const b = bookings.find(x => x.id === bid); if (b) { b.paid = 'paid'; save(bookings); renderPayments(); } }
+
+// Recap
+function changeRecapMonth(d) { recapDate.setMonth(recapDate.getMonth() + d); renderRecap(); }
+function renderRecap() {
+  const y = recapDate.getFullYear(), m = recapDate.getMonth(), dim = daysInMonth(y, m);
+  document.getElementById('recap-month').textContent = recapDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+  const mStart = new Date(y, m, 1).toISOString().slice(0, 10);
+  const mEnd = new Date(y, m + 1, 1).toISOString().slice(0, 10);
+  const active = bookings.filter(b => b.status !== 'cancelled');
+
+  let html = '<div class="grid cols-2">';
+  let totGross = 0, totNet = 0, totNights = 0, totBookings = 0;
+  APARTMENTS.forEach(a => {
+    const list = active.filter(b => b.apt === a.id && b.checkin >= mStart && b.checkin < mEnd);
+    let gross = 0, net = 0, nts = 0;
+    list.forEach(b => { gross += Number(b.price); net += netAmount(b); nts += nights(b); });
+    let occN = 0;
+    active.filter(b => b.apt === a.id).forEach(b => { for (let day = 1; day <= dim; day++) { const ds = new Date(y,m,day).toISOString().slice(0,10); if (overlaps(b, ds)) occN++; } });
+    const occ = Math.round(occN / dim * 100);
+    totGross += gross; totNet += net; totNights += nts; totBookings += list.length;
+    html += `<div class="card" style="margin:0"><h2><span class="apt-dot ${a.cls}"></span>${a.name}</h2>
+      <div class="kv"><span>Réservations</span><strong>${list.length}</strong></div>
+      <div class="kv"><span>Nuitées</span><strong>${nts}</strong></div>
+      <div class="kv"><span>Taux d'occupation</span><strong>${occ}%</strong></div>
+      <div class="kv"><span>Revenu brut</span><strong>${fmtEur(gross)}</strong></div>
+      <div class="kv"><span>Commissions</span><span class="muted">−${fmtEur(gross - net)}</span></div>
+      <div class="kv"><span>Revenu net</span><strong style="color:var(--green)">${fmtEur(net)}</strong></div>
+      <div class="kv"><span>Prix moyen / nuit</span><strong>${nts ? fmtEur(gross / nts) : '—'}</strong></div>
+    </div>`;
+  });
+  html += '</div>';
+  html += `<div class="card" style="margin-top:16px"><h2>Total du mois — tous logements</h2>
+    <div class="grid cols-3">
+      <div class="stat"><div class="label">Revenu net</div><div class="value" style="color:var(--green)">${fmtEur(totNet)}</div><div class="sub">brut ${fmtEur(totGross)}</div></div>
+      <div class="stat"><div class="label">Nuitées</div><div class="value">${totNights}</div><div class="sub">${totBookings} réservations</div></div>
+      <div class="stat"><div class="label">Occupation moyenne</div><div class="value">${Math.round(totNights / (dim * APARTMENTS.length) * 100)}%</div><div class="sub">sur ${dim * APARTMENTS.length} nuitées possibles</div></div>
+    </div></div>`;
+  document.getElementById('recap-content').innerHTML = html;
+}
+
+function renderConnect() {
+  document.getElementById('ical-apt').innerHTML = APARTMENTS.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+}
+
+// Modal
+function applyPlatformDefaults() {
+  const p = PLATFORMS[document.getElementById('f-platform').value];
+  if (p) document.getElementById('f-commission').value = p.commission;
+}
+function openModal(b) {
+  document.getElementById('f-apt').innerHTML = APARTMENTS.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+  document.getElementById('modal-title').textContent = b ? 'Modifier la réservation' : 'Nouvelle réservation';
+  document.getElementById('f-id').value = b ? b.id : '';
+  document.getElementById('f-apt').value = b ? b.apt : 'apt1';
+  document.getElementById('f-guest').value = b ? b.guest : '';
+  document.getElementById('f-checkin').value = b ? b.checkin : '';
+  document.getElementById('f-checkout').value = b ? b.checkout : '';
+  document.getElementById('f-arrival').value = b ? (b.arrival || '16:00') : '16:00';
+  document.getElementById('f-guests').value = b ? (b.guests || 2) : 2;
+  document.getElementById('f-price').value = b ? b.price : '';
+  document.getElementById('f-platform').value = b ? b.platform : 'Airbnb';
+  document.getElementById('f-commission').value = b ? b.commission : PLATFORMS['Airbnb'].commission;
+  document.getElementById('f-status').value = b ? b.status : 'confirmed';
+  document.getElementById('f-paid').value = b ? (b.paid || 'due') : 'due';
+  document.getElementById('modal').classList.remove('hidden');
+}
+function closeModal() { document.getElementById('modal').classList.add('hidden'); }
+function editBooking(bid) { openModal(bookings.find(b => b.id === bid)); }
+function deleteBooking(bid) { if (confirm('Supprimer cette réservation ?')) { bookings = bookings.filter(b => b.id !== bid); save(bookings); renderBookings(); } }
+
+function saveBooking(e) {
+  e.preventDefault();
+  const checkin = document.getElementById('f-checkin').value;
+  const checkout = document.getElementById('f-checkout').value;
+  if (checkout <= checkin) { alert('La date de départ doit être après l\'arrivée.'); return; }
+  const data = {
+    apt: document.getElementById('f-apt').value,
+    guest: document.getElementById('f-guest').value.trim(),
+    checkin, checkout,
+    arrival: document.getElementById('f-arrival').value,
+    guests: Number(document.getElementById('f-guests').value),
+    price: Number(document.getElementById('f-price').value),
+    commission: Number(document.getElementById('f-commission').value),
+    platform: document.getElementById('f-platform').value,
+    status: document.getElementById('f-status').value,
+    paid: document.getElementById('f-paid').value,
+  };
+  const eid = document.getElementById('f-id').value;
+  const conflict = bookings.find(b => b.id !== eid && b.apt === data.apt && b.status !== 'cancelled'
+    && data.checkin < b.checkout && data.checkout > b.checkin);
+  if (conflict && data.status !== 'cancelled' && !confirm(`⚠️ Conflit : ${aptName(data.apt)} est déjà réservé par ${conflict.guest} sur ces dates. Enregistrer quand même ?`)) return;
+  if (eid) { const i = bookings.findIndex(b => b.id === eid); bookings[i] = { ...bookings[i], ...data }; }
+  else bookings.push({ id: id(), ...data });
+  save(bookings);
+  closeModal();
+  showTab(document.querySelector('nav.tabs button.active').id.replace('tab-', ''));
+}
+
+renderDashboard();
+</script>
+</body>
+</html>
