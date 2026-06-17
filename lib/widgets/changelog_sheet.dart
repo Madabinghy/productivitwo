@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.24', '16 juin 2026', [
+    (Icons.local_fire_department_outlined, '« Le Monde » web : les tourelles ne tirent plus en boucle. Elles ne lancent que les boules de feu réellement provisionnées par tes complétions (faites hors-web ou en direct), chacune une seule fois — fini le feu d\'artifice permanent qui ne reflétait rien'),
+  ]),
   _Entry('6.23', '16 juin 2026', [
     (Icons.speed_outlined, '« Le Monde » web : navigation plus fluide — la carte ne reconstruit plus ses cases à chaque pixel de scroll et la mini-carte ne se redessine qu\'à l\'essentiel. Le glissé et le défilement restent nets même sur un grand monde'),
   ]),

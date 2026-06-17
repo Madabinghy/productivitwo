@@ -125,11 +125,6 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   final List<_CineFb> _v2Fbs = [];
   final List<({Offset at, int untilMs})> _v2Flashes = [];
   String? _v2ActiveDomain; // domaine où se trouve l'avatar (révélé à l'entrée)
-  // Tourelles ARMÉES du domaine actif : chacune tire à un délai aléatoire 5–15 s,
-  // puis se réarme (défense réaliste tant que l'avatar est dans le domaine).
-  final List<_V2Cannon> _v2Cannons = [];
-  final Set<String> _v2ArmedDomains = {}; // domaines actuellement armés (à l'écran)
-  int _v2CannonRefreshMs = 0; // throttle du recalcul des domaines visibles
   bool _v2Walking = false; // marche en cours (évite les clics concurrents)
   bool _v2Spawned = false; // 1ᵉʳ spawn posé (bas‑gauche)
   // Tick d'animation ISOLÉ : la cinématique repeint SEULEMENT son overlay
@@ -608,21 +603,6 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _lastSimMs = _gameMs;
     final hadShots = _shots.isNotEmpty;
     _shots.removeWhere((s) => _gameMs - s.startMs > s.durMs);
-    // Tourelles armées (map V2 seulement) : tir aléatoire 5–15 s. Suspendues
-    // pendant un combat / dans l'intérieur / l'exploration auto (sinon ça parasite).
-    if (!_inInterior && !_combatBusy && !_v2AutoExploring) {
-      // Recalcule les domaines visibles (≈ 2×/s) → on arme ce qui est à l'écran.
-      if (_gameMs - _v2CannonRefreshMs > 500) {
-        _v2CannonRefreshMs = _gameMs;
-        _v2RefreshCannons();
-      }
-      for (final c in _v2Cannons) {
-        if (_gameMs >= c.nextMs) {
-          _fireV2Bolt(c.todayX, c.y, c.turretX);
-          c.nextMs = _gameMs + _rand5to15ms();
-        }
-      }
-    }
     // Reprise des cinématiques mobiles mises en file après la fin d'un combat.
     if (!_combatBusy && !_traveling && _travelQueue.isNotEmpty) {
       _pumpTravelQueue();
@@ -5780,68 +5760,6 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   void _launchV2Cine(int dayX, int dayY, int turretX) =>
       _fireV2Bolt(dayX, dayY, turretX);
 
-  int _rand5to15ms() => 5000 + _rng.nextInt(10001); // 5–15 s
-
-  // Une routine/activité a‑t‑elle été LOGGUÉE aujourd'hui ? (≥ 1 validation pour une
-  // routine, ≥ 1 min loggée pour une activité). → sa tourelle peut défendre.
-  bool _loggedTodayV2(String id, bool isRoutine) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    if (isRoutine) return logic.habitValueOn(id, today) > 0;
-    for (final s in logic.state.sessions) {
-      if (s.activityId != id) continue;
-      if (s.startAt.year == today.year &&
-          s.startAt.month == today.month &&
-          s.startAt.day == today.day &&
-          s.duration.inMinutes > 0) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  // Arme/désarme les tourelles selon le VIEWPORT : tous les châteaux DÉCOUVERTS qui
-  // chevauchent l'écran combattent (coût borné par ce qui est affiché). Seules les
-  // tourelles dont la routine/activité a été logguée AUJOURD'HUI tirent (délai 5–15 s).
-  void _v2RefreshCannons() {
-    final w = _wv2;
-    if (w == null || !_v2HCtrl.hasClients || !_v2VCtrl.hasClients) return;
-    const slot = _kV2Slot;
-    final x0 = _v2HCtrl.offset / slot - 1;
-    final x1 = (_v2HCtrl.offset + _v2HCtrl.position.viewportDimension) / slot + 1;
-    final y0 = _v2VCtrl.offset / slot - 1;
-    final y1 = (_v2VCtrl.offset + _v2VCtrl.position.viewportDimension) / slot + 1;
-    final visible = <String>{};
-    for (final c in w.castles) {
-      if (c.lanes.isEmpty) continue;
-      final b = c.bounds;
-      final overlaps = b.left <= x1 &&
-          (b.left + b.width - 1) >= x0 &&
-          b.top <= y1 &&
-          (b.top + b.height - 1) >= y0;
-      // Découvert = l'avatar y est déjà passé (case tourelle révélée).
-      if (!overlaps ||
-          !(_revealed.contains('${c.castleRect.left}_${c.lanes.first.y}') ||
-              _showCoords)) {
-        continue;
-      }
-      visible.add(c.domainId);
-    }
-    _v2Cannons.removeWhere((cn) => !visible.contains(cn.domainId));
-    _v2ArmedDomains.removeWhere((d) => !visible.contains(d));
-    for (final c in w.castles) {
-      if (!visible.contains(c.domainId) ||
-          _v2ArmedDomains.contains(c.domainId)) continue;
-      _v2ArmedDomains.add(c.domainId);
-      final todayX = c.dayX0 + 6;
-      for (final lane in c.lanes) {
-        if (!_loggedTodayV2(lane.id, lane.isRoutine)) continue;
-        _v2Cannons.add(_V2Cannon(
-            c.domainId, lane.turretX, lane.y, todayX, _gameMs + _rand5to15ms()));
-      }
-    }
-  }
-
   // Détecte l'entrée dans un nouveau domaine (bande contenant l'avatar) → volée.
   void _v2CheckDomainEntry() {
     final w = _wv2;
@@ -5861,8 +5779,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _v2ActiveDomain = null;
       return;
     }
-    // Entrée dans un nouveau domaine → on l'ÉCLAIRE en entier (l'armement des
-    // tourelles est géré par le viewport, cf. _v2RefreshCannons).
+    // Entrée dans un nouveau domaine → on l'ÉCLAIRE en entier (le tir des tourelles
+    // n'est déclenché que par les boules réellement provisionnées, cf.
+    // _pendingByRoutine / _v2DischargeBacklog).
     if (here.domainId != _v2ActiveDomain) {
       _v2ActiveDomain = here.domainId;
       final b = here.bounds;
@@ -6488,15 +6407,6 @@ class _Beam {
 
 // Boule de feu de SUPPORT : tirée par une tour vers une toile, en ARC (parabole),
 // lente, orientée dans le sens du vol. À l'impact (t≥1) → la toile (clé) détruite.
-/// Tourelle armée du monde V2 : tire sur sa case d'aujourd'hui à `nextMs`, puis
-/// se réarme à un nouvel instant aléatoire (5–15 s).
-class _V2Cannon {
-  final String domainId;
-  final int turretX, y, todayX;
-  int nextMs;
-  _V2Cannon(this.domainId, this.turretX, this.y, this.todayX, this.nextMs);
-}
-
 class _CineFb {
   double t = 0; // progression 0..1
   final double dur, fx, fy, tx, ty, arc;
