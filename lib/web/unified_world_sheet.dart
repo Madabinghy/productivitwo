@@ -80,13 +80,58 @@ Future<void> showUnifiedWorldSheet(
   ).whenComplete(() => assistantOverlaySuppressed.value = false);
 }
 
+/// Carte cinématique web rendue comme onglet embarqué du hub gamification —
+/// pas de Dialog. `embedded:true` neutralise les fermetures globales. Supprime
+/// l'overlay assistant tant que l'onglet est monté (comme showUnifiedWorldSheet).
+class UnifiedWorldScreen extends StatefulWidget {
+  final AppLogic logic;
+  final FirestoreSync sync;
+  const UnifiedWorldScreen({required this.logic, required this.sync, super.key});
+  @override
+  State<UnifiedWorldScreen> createState() => _UnifiedWorldScreenState();
+}
+
+class _UnifiedWorldScreenState extends State<UnifiedWorldScreen> {
+  late final bool _prevSuppressed;
+  @override
+  void initState() {
+    super.initState();
+    _prevSuppressed = assistantOverlaySuppressed.value;
+    assistantOverlaySuppressed.value = true;
+  }
+
+  @override
+  void dispose() {
+    assistantOverlaySuppressed.value = _prevSuppressed;
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: _kBg,
+        body: SafeArea(
+          child: _UnifiedWorldView(
+              logic: widget.logic,
+              sync: widget.sync,
+              mobile: true,
+              embedded: true),
+        ),
+      );
+}
+
 class _UnifiedWorldView extends StatefulWidget {
   final AppLogic logic;
   final FirestoreSync sync;
   // Mobile : pas de map principale, on affiche direct le calendrier par domaine.
   final bool mobile;
+  // Embarqué (onglet du hub) : pas de Dialog → neutralise les fermetures globales
+  // (croix X, pill « ✕ Fermer », pop après lancement de minuteur).
+  final bool embedded;
   const _UnifiedWorldView(
-      {required this.logic, required this.sync, this.mobile = false});
+      {required this.logic,
+      required this.sync,
+      this.mobile = false,
+      this.embedded = false});
 
   @override
   State<_UnifiedWorldView> createState() => _UnifiedWorldViewState();
@@ -1583,18 +1628,26 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   }
 
   // Sortir de la grotte → restaure la map principale.
+  // Web : restaure l'overworld V1 sauvegardé (_savedW). Mobile V2 : pas
+  // d'overworld V1 → on revient simplement à la carte V2 (état _wv2/_posV2
+  // conservé pendant l'intérieur).
   void _exitInterior() {
     final saved = _savedW;
-    if (saved == null) return;
+    if (saved == null && !widget.mobile) return;
     setState(() {
-      _w = saved;
-      _pos = _savedPos ?? saved.start;
-      _revealed
-        ..clear()
-        ..addAll(_savedRevealed ?? const <String>{});
-      _farmPests
-        ..clear()
-        ..addAll(_savedFarmPests ?? const {});
+      if (saved != null) {
+        _w = saved;
+        _pos = _savedPos ?? saved.start;
+        _revealed
+          ..clear()
+          ..addAll(_savedRevealed ?? const <String>{});
+        _farmPests
+          ..clear()
+          ..addAll(_savedFarmPests ?? const {});
+      } else {
+        // Mobile V2 : on quitte l'intérieur sans restaurer d'overworld V1.
+        _w = null;
+      }
       _inInterior = false;
       _interiorCaveId = null;
       _interiorWalk.clear();
@@ -1755,15 +1808,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         _recomputeStreakTurrets(); // bâti = tourelles dérivées des streaks
         if (_kWorldV2) _rebuildWv2(); // domaines dispo (grottes) → (re)pose la map V2
       });
-      // MOBILE : pas de map principale → on entre direct dans le 1er domaine
-      // (calendrier). Une seule fois (puis _inInterior bloque la ré-entrée).
-      if (widget.mobile &&
-          !_inInterior &&
-          t != null &&
-          t.caves.isNotEmpty &&
-          mounted) {
-        _enterInterior(t.caves.first.id);
-      }
+      // MOBILE : on reste sur la carte V2 explorable (overworld). L'entrée dans
+      // l'intérieur d'un domaine se fait en jeu (clic du boss du domaine).
       // À la 1ʳᵉ map chargée : auto-trigger hebdo (1×/sem) si la semaine a décliné.
       if (!_autoThreatChecked && t != null && !widget.mobile) {
         _autoThreatChecked = true;
@@ -2877,7 +2923,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       },
       onLaunchedTimer: () {
         // Minuteur lancé → on ferme l'encart et on quitte la map.
-        if (mounted) Navigator.pop(context);
+        // Embarqué (onglet du hub) : pas de pop (fermerait tout le bottom sheet).
+        if (!widget.embedded && mounted) Navigator.pop(context);
       },
       onClose: _closeCombat,
     );
@@ -3562,7 +3609,15 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       Padding(
         padding: const EdgeInsets.fromLTRB(20, 16, 8, 0),
         child: Row(children: [
-          if (widget.mobile) ...[
+          if (widget.mobile && _inInterior) ...[
+            // Intérieur d'un domaine : bouton retour vers la carte + nom + changer.
+            IconButton(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              icon: const Icon(Icons.arrow_back, color: Colors.white70),
+              onPressed: _exitInterior,
+            ),
+            const SizedBox(width: 8),
             Text(
                 _interiorDomainId != null
                     ? '🏴 ${_domainName(_interiorDomainId!)}'
@@ -3578,6 +3633,19 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               label: const Text('Changer',
                   style: TextStyle(color: Colors.white70, fontSize: 13)),
             ),
+          ] else if (widget.mobile) ...[
+            // Carte explorable (overworld) : marche jusqu'au boss d'un domaine
+            // pour entrer dans son intérieur (calendrier).
+            const Text('🌍 Monde',
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white)),
+            const SizedBox(width: 8),
+            Text('explore · combats · domaines',
+                style:
+                    TextStyle(color: Colors.white.withOpacity(.4), fontSize: 11)),
+            const Spacer(),
           ] else ...[
             const Text('🗺️ Monde',
                 style: TextStyle(
@@ -3590,13 +3658,15 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     TextStyle(color: Colors.white.withOpacity(.4), fontSize: 11)),
             const Spacer(),
           ],
-          IconButton(
-              icon: const Icon(Icons.close, color: Colors.white54),
-              onPressed: () => Navigator.pop(context)),
+          // Embarqué (onglet) : pas de croix (rien à fermer dans un onglet).
+          if (!widget.embedded)
+            IconButton(
+                icon: const Icon(Icons.close, color: Colors.white54),
+                onPressed: () => Navigator.pop(context)),
         ]),
       ),
       Flexible(
-        child: (_kWorldV2 && !widget.mobile && !_inInterior)
+        child: (_kWorldV2 && !_inInterior)
             ? (_wv2 == null
                 ? const Center(
                     child: Padding(
@@ -3604,18 +3674,30 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         child: CircularProgressIndicator(color: _kBlue)))
                 : Stack(children: [
                     Positioned.fill(child: _contentV2()),
-                    Positioned(top: 10, right: 10, child: _miniMapV2()),
+                    Positioned(
+                        top: 10,
+                        right: 10,
+                        child: _miniMapV2(maxSide: widget.mobile ? 120 : 160)),
                     if (_combat != null)
-                      Positioned(
-                        top: 0,
-                        bottom: 0,
-                        right: 0,
-                        width: 340,
-                        child: Material(
-                          color: const Color(0xFF0E1714),
-                          child: _combatPanel(),
-                        ),
-                      ),
+                      // Écran étroit : le combat occupe tout l'écran (au lieu de
+                      // la colonne 340px qui masquerait la carte).
+                      widget.mobile
+                          ? Positioned.fill(
+                              child: Material(
+                                color: const Color(0xFF0E1714),
+                                child: SafeArea(child: _combatPanel()),
+                              ),
+                            )
+                          : Positioned(
+                              top: 0,
+                              bottom: 0,
+                              right: 0,
+                              width: 340,
+                              child: Material(
+                                color: const Color(0xFF0E1714),
+                                child: _combatPanel(),
+                              ),
+                            ),
                   ]))
             : ((_loading || t == null || w == null)
                 ? const Center(
@@ -3908,8 +3990,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           if (_inInterior && widget.mobile) ...[
             // MOBILE : juste le calendrier — changer de domaine + fermer.
             pill('🔄 Changer de domaine', _interiorColor, _quickEnter),
-            pill('✕ Fermer', Colors.white70,
-                () => Navigator.of(context).maybePop()),
+            // Embarqué (onglet) : pas de « ✕ Fermer » (fermerait le bottom sheet).
+            if (!widget.embedded)
+              pill('✕ Fermer', Colors.white70,
+                  () => Navigator.of(context).maybePop()),
           ],
           if (_inInterior && !widget.mobile) ...[
             if (!_tdMode && !_simDefense)
@@ -6447,10 +6531,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
 
   // Mini‑carte (coin haut‑droit) : monde entier à l'échelle + avatar + cadre du
   // viewport (suit le scroll). Tap → recentre la caméra sur ce point.
-  Widget _miniMapV2() {
+  Widget _miniMapV2({double maxSide = 160.0}) {
     final w = _wv2;
     if (w == null) return const SizedBox.shrink();
-    const maxSide = 160.0;
     final cell = maxSide / max(w.cols, w.rows);
     final mw = w.cols * cell, mh = w.rows * cell;
     // (Re)enregistre le calque de cases une seule fois par monde → les frames de
