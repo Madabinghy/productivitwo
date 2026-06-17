@@ -19,6 +19,8 @@
 	<string>Productivitwo</string>
 	<key>NSUserNotificationsUsageDescription</key>
 	<string>Productivitwo vous envoie des rappels pour vos blocs et routines de la journée.</string>
+	<key>NSSiriUsageDescription</key>
+	<string>Productivitwo utilise Siri pour cocher vos routines et lire votre programme du jour à la voix.</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>

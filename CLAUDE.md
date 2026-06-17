@@ -192,6 +192,23 @@ Tâches automatiques (JSON structuré) → Haiku. Conversations / génération r
 
 ---
 
+## Siri (App Intents, iOS 16+)
+
+Raccourcis vocaux dans `ios/Runner/SiriIntents.swift` (target Runner — un
+`AppShortcutsProvider` doit vivre dans le target app principal, pas le widget).
+Pas de ré-auth : réutilise `mcp_uid` + `mcp_token` de l'App Group (posés par
+`WidgetService.provisionAuth`). Lectures servies depuis l'App Group (hors-ligne) ;
+écritures via `mcpHandler` (même endpoint que les boutons de widget).
+
+- `TodayScheduleIntent` / `FocusTaskIntent` — lecture (programme, tâche du jour)
+- `LogRoutineSiriIntent` (+ `RoutineAppEntity`/`RoutineEntityQuery`) — coche une routine par nom
+- Bouton in-app : Paramètres → « Siri & Raccourcis » (`lib/siri_service.dart`)
+
+Les intents du widget (`MarkRoutineDoneIntent`…) restent séparés (boutons de widget).
+Détails et étapes Xcode : `docs/siri_integration.md`.
+
+---
+
 ## MCP local (`mcp-server/index.js`)
 
 Serveur stdio pour Claude Desktop. Variables d'env requises :

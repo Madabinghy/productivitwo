@@ -66,6 +66,7 @@ import 'package:productivitwo_v1/web/assistant_widget.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:productivitwo_v1/widget_service.dart';
+import 'package:productivitwo_v1/siri_service.dart';
 
 enum _Tab { dashboard, projets, maintenant, monde }
 
@@ -5469,6 +5470,55 @@ class _AppRootState extends State<AppRoot>
                   },
                 ),
               ),
+              // Siri & Raccourcis (iOS uniquement)
+              if (Platform.isIOS)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.mic_none_outlined),
+                  title: const Text('Siri & Raccourcis'),
+                  subtitle: const Text(
+                      'Cocher une routine et lire ton programme à la voix'),
+                  trailing: const Icon(Icons.chevron_right, size: 18),
+                  onTap: () async {
+                    await SiriService.refreshShortcuts();
+                    if (!sheetCtx.mounted) return;
+                    await showDialog<void>(
+                      context: sheetCtx,
+                      builder: (dctx) => AlertDialog(
+                        title: const Text('Siri & Raccourcis'),
+                        content: const Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Dis à Siri :'),
+                            SizedBox(height: 8),
+                            Text('• « Quel est mon programme dans Productivitwo »'),
+                            Text('• « Quelle est ma tâche du jour dans Productivitwo »'),
+                            Text('• « Coche ma routine dans Productivitwo »'),
+                            SizedBox(height: 12),
+                            Text(
+                              'Tu peux aussi créer tes propres raccourcis dans l\'app Raccourcis.',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                          ],
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(dctx),
+                            child: const Text('Fermer'),
+                          ),
+                          FilledButton(
+                            onPressed: () {
+                              Navigator.pop(dctx);
+                              launchUrl(Uri.parse('shortcuts://'));
+                            },
+                            child: const Text('Ouvrir Raccourcis'),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
               // Compte
               ListTile(
                 contentPadding: EdgeInsets.zero,
