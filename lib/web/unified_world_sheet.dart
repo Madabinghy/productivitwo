@@ -124,6 +124,20 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // Cinématique V2 : volée de boulets (tourelle → jour) + flashs d'impact.
   final List<_CineFb> _v2Fbs = [];
   final List<({Offset at, int untilMs})> _v2Flashes = [];
+  // ARAIGNÉES D'ÉCART HEBDO : petites entités MOBILES (position continue) qui errent
+  // dans le monde, bloquées par les murs, et passent d'un domaine à l'autre par les
+  // ouvertures. Nombre cible = Σ routines max(0, valeur(j‑7) − valeur(aujourd'hui)).
+  final List<_GardenSpider> _gardenSpiders = [];
+  // Shurikens STOCKÉS (gagnés en réduisant l'écart depuis le dernier passage) :
+  // l'avatar en tire un automatiquement sur l'araignée la plus proche À PORTÉE
+  // (_kNinjaRange, comme le combat de boss). 1 shuriken touché = 1 araignée tuée.
+  int _gardenShurikens = 0;
+  final List<_GardenShk> _gardenShk = []; // shurikens d'araignée en vol
+  int _lastGardenShkMs = 0; // cadence de tir (anti‑rafale)
+  static const String _kSpiderGapKey = 'v2_spider_gap';
+  String _spiderGapYmd = ''; // jour de référence de l'écart persisté
+  int _spiderGapSeen = 0; // écart total « réglé » au dernier passage (persisté)
+  bool _spiderGapLoaded = false;
   String? _v2ActiveDomain; // domaine où se trouve l'avatar (révélé à l'entrée)
   bool _v2Walking = false; // marche en cours (évite les clics concurrents)
   bool _v2Spawned = false; // 1ᵉʳ spawn posé (bas‑gauche)
@@ -609,6 +623,14 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     }
     if (_v2Fbs.isNotEmpty || _v2Flashes.isNotEmpty) {
       _simulateV2Cine(dt / 1000.0);
+      _v2CineTick.value++; // repeint l'overlay seul (pas la grille)
+    }
+    // Araignées d'écart hebdo : errance + tir auto des shurikens stockés. Suspendu
+    // en combat / à l'intérieur (elles vivent sur la grande map seulement).
+    if (!_inInterior &&
+        !_combatBusy &&
+        (_gardenSpiders.isNotEmpty || _gardenShk.isNotEmpty)) {
+      _simulateGardenSpiders(dt / 1000.0);
       _v2CineTick.value++; // repeint l'overlay seul (pas la grille)
     }
     if (_liveFiring) {
@@ -1672,6 +1694,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     await sync.ensureTerritory('Toi', domainIds: domainIds);
     final me = sync.uid ?? '';
     _loadAnimatedHits(); // persistance : hits déjà animés aujourd'hui (anti‑rejeu)
+    _loadSpiderGap(); // persistance : écart hebdo réglé au dernier passage
     _subscribeHits(); // temps réel : valider une routine → l'avatar voyage
     _subscribeSessions(); // temps réel : minuteur d'activité → assaut live
     // Projets Gantt → logic.currentProjects (sinon backlogEnemies() ne voit aucune
@@ -2152,6 +2175,105 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       await prefs.setString(_kAnimatedKey,
           jsonEncode({'ymd': _animatedYmd, 'ids': _animatedHitIds.toList()}));
     } catch (_) {}
+  }
+
+  // ── ARAIGNÉES D'ÉCART HEBDO ────────────────────────────────────────────────
+  Future<void> _loadSpiderGap() async {
+    _spiderGapYmd = yyyymmdd(DateTime.now());
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_kSpiderGapKey);
+      if (raw != null) {
+        final m = jsonDecode(raw) as Map<String, dynamic>;
+        if (m['ymd'] == _spiderGapYmd) _spiderGapSeen = (m['seen'] as int?) ?? 0;
+      }
+    } catch (_) {}
+    _spiderGapLoaded = true;
+    if (mounted && _wv2 != null) setState(_populateV2Spiders);
+  }
+
+  Future<void> _persistSpiderGap() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kSpiderGapKey,
+          jsonEncode({'ymd': _spiderGapYmd, 'seen': _spiderGapSeen}));
+    } catch (_) {}
+  }
+
+  // Écart hebdo d'une routine : max(0, valeur(même jour la semaine dernière) −
+  // valeur(aujourd'hui)). Combien de complétions il reste à faire pour égaler S‑7.
+  int _routineWeekGap(String routineId, DateTime today) {
+    final lastWeek = today.subtract(const Duration(days: 7));
+    final gap = logic.habitValueOn(routineId, lastWeek) -
+        logic.habitValueOn(routineId, today);
+    return gap > 0 ? gap : 0;
+  }
+
+  // Écart total = Σ sur toutes les routines actives du monde.
+  int _totalWeekGap() {
+    final w = _wv2;
+    if (w == null) return 0;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    var total = 0;
+    for (final c in w.castles) {
+      for (final lane in c.lanes) {
+        if (!lane.isRoutine) continue;
+        total += _routineWeekGap(lane.id, today);
+      }
+    }
+    return total;
+  }
+
+  // Pose / réconcilie les araignées d'écart. INVARIANT : araignées vivantes =
+  // écart courant + shurikens stockés (chaque shuriken touché décrémente LES DEUX,
+  // donc on converge vers `écart courant`). Les shurikens « gagnés » = la réduction
+  // de l'écart depuis le dernier passage (progrès fait hors‑map).
+  void _populateV2Spiders() {
+    final w = _wv2;
+    if (w == null || !_spiderGapLoaded || widget.mobile) return;
+    final today = yyyymmdd(DateTime.now());
+    if (_spiderGapYmd != today) {
+      // Nouveau jour → on repart de l'écart courant, sans shurikens ni rejeu.
+      _spiderGapYmd = today;
+      _spiderGapSeen = _totalWeekGap();
+      _gardenShurikens = 0;
+      _gardenSpiders.clear();
+      _gardenShk.clear();
+    }
+    final target = _totalWeekGap();
+    final earned = _spiderGapSeen - target; // ≥ 0 (l'écart ne fait que baisser le jour J)
+    if (earned > 0) _gardenShurikens += earned;
+    _spiderGapSeen = target;
+    _persistSpiderGap();
+    // Population voulue = écart courant + shurikens en attente.
+    final desired = target + _gardenShurikens;
+    while (_gardenSpiders.length > desired && _gardenSpiders.isNotEmpty) {
+      _gardenSpiders.removeLast();
+    }
+    while (_gardenSpiders.length < desired) {
+      final s = _spawnGardenSpider(w);
+      if (s == null) break;
+      _gardenSpiders.add(s);
+    }
+  }
+
+  // Fait apparaître une araignée sur une case PRATICABLE au hasard, de préférence
+  // dans la bande d'un domaine porteur de routines (errance libre ensuite).
+  _GardenSpider? _spawnGardenSpider(WorldLayout w) {
+    final bands = [for (final c in w.castles) if (c.lanes.isNotEmpty) c.bounds];
+    final rng = _rng;
+    for (var t = 0; t < 40; t++) {
+      final Rectangle<int> b =
+          bands.isEmpty ? Rectangle(0, 0, w.cols, w.rows) : bands[rng.nextInt(bands.length)];
+      final x = b.left + rng.nextInt(b.width);
+      final y = b.top + rng.nextInt(b.height);
+      if (w.walkable(x, y)) {
+        return _GardenSpider(
+            x + 0.5, y + 0.5, rng.nextDouble() * 2 * pi);
+      }
+    }
+    return null;
   }
 
   void _subscribeHits() {
@@ -5420,6 +5542,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _populateV2Gardens();
     _populateV2Calendar();
     _populateV2Araignees();
+    _populateV2Spiders(); // araignées d'écart hebdo (mobiles) + shurikens stockés
     _revealAroundV2(_posV2); // nuage de guerre : on révèle autour de l'avatar
     // Caméra cadrée sur le spawn UNE seule fois (plus d'auto‑centrage ensuite).
     if (firstSpawn) {
@@ -5807,6 +5930,92 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _v2Flashes.removeWhere((f) => _gameMs >= f.untilMs);
   }
 
+  // Vitesses des araignées / shurikens d'écart (en cases par seconde).
+  static const double _kSpiderSpeed = 1.6;
+  static const double _kSpiderShkSpeed = 11.0;
+  static const int _kSpiderShkCooldownMs = 220; // anti‑rafale entre deux tirs
+
+  // Errance des araignées (bloquées par les murs) + tir auto des shurikens stockés
+  // sur l'araignée la plus proche À PORTÉE de l'avatar, et collisions.
+  void _simulateGardenSpiders(double dt) {
+    final w = _wv2;
+    if (w == null) return;
+    // 1) Errance : cap aléatoire, rebond sur les murs et les bords.
+    for (final s in _gardenSpiders) {
+      // Coincée dans un mur (le layout a changé) → réapparaît sur une case libre.
+      if (!w.walkable(s.x.floor(), s.y.floor())) {
+        final fresh = _spawnGardenSpider(w);
+        if (fresh != null) {
+          s.x = fresh.x;
+          s.y = fresh.y;
+          s.dir = fresh.dir;
+        }
+        continue;
+      }
+      s.dir += (_rng.nextDouble() - 0.5) * 1.4 * dt; // dérive douce du cap
+      final nx = s.x + cos(s.dir) * _kSpiderSpeed * dt;
+      final ny = s.y + sin(s.dir) * _kSpiderSpeed * dt;
+      // Bloquée par un mur / hors limites → nouveau cap au hasard (rebond).
+      if (w.walkable(nx.floor(), ny.floor())) {
+        s.x = nx;
+        s.y = ny;
+      } else {
+        s.dir = _rng.nextDouble() * 2 * pi;
+      }
+    }
+    // 2) Tir auto : l'avatar lance un shuriken stocké sur l'araignée la plus proche
+    //    À PORTÉE (_kNinjaRange). En vol = on n'en tire pas plus que le stock.
+    if (_gardenShurikens > _gardenShk.length &&
+        _gameMs - _lastGardenShkMs >= _kSpiderShkCooldownMs) {
+      final ax = _posV2.x + 0.5, ay = _posV2.y + 0.5;
+      _GardenSpider? target;
+      var bestD = _kNinjaRange * _kNinjaRange;
+      for (final s in _gardenSpiders) {
+        if (s.dead) continue;
+        final d = (s.x - ax) * (s.x - ax) + (s.y - ay) * (s.y - ay);
+        if (d <= bestD) {
+          bestD = d;
+          target = s;
+        }
+      }
+      if (target != null) {
+        final ddx = target.x - ax, ddy = target.y - ay;
+        final dd = sqrt(ddx * ddx + ddy * ddy);
+        if (dd > 0.01) {
+          _gardenShk.add(_GardenShk(ax, ay, ddx / dd * _kSpiderShkSpeed,
+              ddy / dd * _kSpiderShkSpeed, _gameMs));
+          _lastGardenShkMs = _gameMs;
+        }
+      }
+    }
+    // 3) Avance les shurikens + collision (tue l'araignée, consomme un shuriken).
+    for (final shk in _gardenShk) {
+      shk.x += shk.vx * dt;
+      shk.y += shk.vy * dt;
+      // Hors map ou trop vieux (cible esquivée) → disparaît SANS consommer le stock.
+      if (shk.x < -1 ||
+          shk.x > w.cols + 1 ||
+          shk.y < -1 ||
+          shk.y > w.rows + 1 ||
+          _gameMs - shk.bornMs > 1500) {
+        shk.dead = true;
+        continue;
+      }
+      for (final s in _gardenSpiders) {
+        if (s.dead) continue;
+        if ((shk.x - s.x).abs() < 0.5 && (shk.y - s.y).abs() < 0.5) {
+          s.dead = true;
+          shk.dead = true;
+          if (_gardenShurikens > 0) _gardenShurikens--;
+          _v2Flashes.add((at: Offset(s.x - 0.5, s.y - 0.5), untilMs: _gameMs + 700));
+          break;
+        }
+      }
+    }
+    _gardenShk.removeWhere((shk) => shk.dead);
+    _gardenSpiders.removeWhere((s) => s.dead);
+  }
+
   Offset _v2CenterD(double x, double y) =>
       Offset(x * _kV2Slot + _kV2Slot / 2, y * _kV2Slot + _kV2Slot / 2);
 
@@ -5902,6 +6111,41 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                                     style:
                                         TextStyle(fontSize: _kV2Slot * 0.6))),
                           ),
+                      // Petites araignées d'écart hebdo (mobiles) — visibles dans le
+                      // brouillard découvert seulement.
+                      for (final s in _gardenSpiders)
+                        if (_revealed.contains('${s.x.floor()}_${s.y.floor()}') ||
+                            _showCoords)
+                          Positioned(
+                            left: (s.x - 0.5) * _kV2Slot,
+                            top: (s.y - 0.5) * _kV2Slot,
+                            width: _kV2Slot,
+                            height: _kV2Slot,
+                            child: Center(
+                                child: Text('🕷️',
+                                    style: TextStyle(
+                                        fontSize: _kV2Slot * 0.42))),
+                          ),
+                      // Shurikens d'araignée en vol (spin continu).
+                      for (final shk in _gardenShk)
+                        Positioned(
+                          left: (shk.x - 0.5) * _kV2Slot,
+                          top: (shk.y - 0.5) * _kV2Slot,
+                          width: _kV2Slot,
+                          height: _kV2Slot,
+                          child: Center(
+                            child: Transform.rotate(
+                              angle: _gameMs * 0.018,
+                              child: SvgPicture.asset(
+                                  'assets/icons/shuriken.svg',
+                                  width: _kV2Slot * 0.34,
+                                  height: _kV2Slot * 0.34,
+                                  colorFilter: ColorFilter.mode(
+                                      Colors.white.withOpacity(.92),
+                                      BlendMode.srcIn)),
+                            ),
+                          ),
+                        ),
                     ]),
                   ),
                 ),
@@ -6381,6 +6625,23 @@ class _CineShk {
   final bool arrow; // true = flèche d'arc (rendu différent, ne consomme pas le deck)
   bool dead = false;
   _CineShk(this.x, this.y, this.vx, this.vy, {this.arrow = false});
+}
+
+/// Petite araignée d'ÉCART HEBDO : position continue (coords de tuiles), errance
+/// libre dans le monde, bloquée par les murs. `dir` = cap courant (radians).
+class _GardenSpider {
+  double x, y, dir;
+  bool dead = false;
+  _GardenSpider(this.x, this.y, this.dir);
+}
+
+/// Shuriken d'araignée en vol : ligne droite, tué l'araignée à l'impact.
+class _GardenShk {
+  double x, y;
+  final double vx, vy;
+  final int bornMs;
+  bool dead = false;
+  _GardenShk(this.x, this.y, this.vx, this.vy, this.bornMs);
 }
 
 // Tour en mode support pendant l'attaque : tire 1/10 s (coûte 1 flamme), se
