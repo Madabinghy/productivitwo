@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
@@ -36,9 +37,7 @@ String _tokenEmoji(String type, {required bool scorpion}) => type == 'flame'
     ? '🔥'
     : type == 'spider'
         ? (scorpion ? '🦂' : '🕷️')
-        : type == 'leaf'
-            ? '🍃'
-            : '';
+        : ''; // 'leaf' (fait, 1er jour) → case vide, plus clean
 
 /// UI MOBILE native du « Monde » (reconstruite, pas le portage du sheet web).
 /// Étape 1 : la LISTE des domaines. Tap → gameplay mobile du domaine (étape 2).
@@ -307,16 +306,60 @@ class _DomainGameplayState extends State<_DomainGameplay>
   String? _explodingId; // ligne en explosion (💥) pendant 2 s
   Timer? _explosionTimer;
   String? _targetId; // ligne VISÉE (viseur) → cible de « Faire feu »
-  // Mode de tir par ligne : 'timer' (minuteur, défaut) ou 'chrono' (play).
+  // Mode de tir par ligne (case « petit » en bout de ligne) :
+  //   'timer'  → minuteur · 'chrono' → chrono libre · 'check' → marque faite (+1).
+  // Le mode 'check' n'est proposé que pour les routines (spider).
   final Map<String, String> _fireMode = {};
   final Map<String, int> _mobileDec = {}; // décréments du jour par itemId
+
+  // Clé de persistance du viseur, propre à ce domaine.
+  String get _targetPrefKey => 'combat_target_${widget.domain.id}';
 
   @override
   void initState() {
     super.initState();
-    // Viseur par défaut sur la 1ʳᵉ routine (1ʳᵉ ligne).
+    // Viseur par défaut sur la 1ʳᵉ routine (1ʳᵉ ligne), puis restaure le dernier
+    // viseur déplacé s'il a été persisté pour ce domaine.
     final items = _items();
     if (items.isNotEmpty) _targetId = items.first.id;
+    _loadTarget();
+  }
+
+  // Restaure le dernier viseur déplacé (s'il pointe encore sur un item existant).
+  Future<void> _loadTarget() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(_targetPrefKey);
+    if (saved == null) return;
+    if (_items().any((it) => it.id == saved) && mounted) {
+      setState(() => _targetId = saved);
+    }
+  }
+
+  // Persiste le viseur courant (ou l'efface si aucune cible).
+  Future<void> _saveTarget() async {
+    final prefs = await SharedPreferences.getInstance();
+    final id = _targetId;
+    if (id == null) {
+      await prefs.remove(_targetPrefKey);
+    } else {
+      await prefs.setString(_targetPrefKey, id);
+    }
+  }
+
+  // Tape le viseur d'une ligne : (dé)cible + persiste.
+  void _toggleTarget(_Item it) {
+    setState(() => _targetId = _targetId == it.id ? null : it.id);
+    _saveTarget();
+  }
+
+  // Mode suivant du sélecteur : routines = 3 états, activités-temps = 2 états.
+  String _nextMode(_Item it, String cur) {
+    if (it.kind == 'spider') {
+      return cur == 'timer'
+          ? 'chrono'
+          : (cur == 'chrono' ? 'check' : 'timer');
+    }
+    return cur == 'timer' ? 'chrono' : 'timer';
   }
 
   @override
@@ -332,7 +375,16 @@ class _DomainGameplayState extends State<_DomainGameplay>
   // cible, après la cinématique. Routine → activité liée (routineId = la routine) ;
   // activité-temps → elle-même. Routine sans activité liée → simple +1.
   void _launchForTarget(_Item it) {
-    final timer = _modeOf(it.id) == 'timer';
+    final mode = _modeOf(it.id);
+    // Mode « coche » : marque la routine faite du jour (+1), sans minuteur ni
+    // chrono. Réservé aux routines (le sélecteur ne propose pas 'check' ailleurs).
+    if (mode == 'check' && it.kind == 'spider') {
+      logic.incHabit(it.id, 1, DateTime.now());
+      logic.onChange();
+      if (mounted) setState(() {});
+      return;
+    }
+    final timer = mode == 'timer';
     String? actId;
     String? routineId;
     Activity? act;
@@ -786,51 +838,26 @@ class _DomainGameplayState extends State<_DomainGameplay>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Viseur : tap → cette ligne devient la cible de « Faire feu ».
-          Row(children: [
-            GestureDetector(
-              onTap: () => setState(
-                  () => _targetId = _targetId == it.id ? null : it.id),
-              behavior: HitTestBehavior.opaque,
-              child: Padding(
-                padding: const EdgeInsets.only(right: 6, top: 1, bottom: 1),
-                child: Icon(Icons.gps_fixed,
-                    size: 18,
-                    color: _targetId == it.id
-                        ? const Color(0xFFFF8A3D)
-                        : Colors.white24),
-              ),
-            ),
-            Expanded(
-              child: Text(it.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      color: c.withOpacity(.95),
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13)),
-            ),
-            // Sélecteur de mode de tir en bout de ligne : minuteur (défaut) ⇄ chrono.
-            // « Faire feu » lancera l'un ou l'autre sur cette activité.
-            GestureDetector(
-              onTap: () => setState(() => _fireMode[it.id] =
-                  _modeOf(it.id) == 'timer' ? 'chrono' : 'timer'),
-              behavior: HitTestBehavior.opaque,
-              child: Padding(
-                padding: const EdgeInsets.only(left: 6, top: 1, bottom: 1),
-                child: Icon(
-                    _modeOf(it.id) == 'timer'
-                        ? Icons.timer_outlined
-                        : Icons.play_circle_outline,
-                    size: 19,
-                    color: const Color(0xFFFF8A3D)),
-              ),
-            ),
-          ]),
+          // Nom de la routine/activité. Le viseur et le sélecteur de mode sont
+          // désormais en bout de ligne (2 cases après les 7 jours).
+          Text(it.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  color: c.withOpacity(.95),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13)),
           const SizedBox(height: 2),
-          // Lettres des jours, centrées sur chaque case (alignées après la tour).
-          Row(children: [
-            const SizedBox(width: 60),
+          // La grille (jours + colonnes de contrôle) défile horizontalement pour
+          // ne pas déborder sur les petits écrans (2 cases de plus qu'avant).
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Lettres des jours + en-têtes des colonnes de contrôle.
+                Row(children: [
+                  const SizedBox(width: 60),
             for (final l in days)
               SizedBox(
                 width: cell + 2,
@@ -842,6 +869,9 @@ class _DomainGameplayState extends State<_DomainGameplay>
                           fontSize: 11)),
                 ),
               ),
+            // Sélecteur de mode empilé AU-DESSUS du viseur (même colonne) :
+            // remplace l'ancien label, le viseur vient juste en dessous.
+            _modeCell(it, cell),
           ]),
           const SizedBox(height: 1),
           () {
@@ -907,6 +937,8 @@ class _DomainGameplayState extends State<_DomainGameplay>
                   ),
                   for (var d = 0; d < it.tokens.length; d++)
                     _tokenCell(it, d, cell),
+                  // Case VISEUR, juste SOUS le sélecteur de mode (même colonne).
+                  _viseurCell(it, cell),
                 ]),
                 // Boulet de feu en vol (tour → jour) en courbe, orienté.
                 if (firing && _explodingId != it.id && u < 0.98)
@@ -925,6 +957,9 @@ class _DomainGameplayState extends State<_DomainGameplay>
               ],
             );
           }(),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -1015,6 +1050,44 @@ class _DomainGameplayState extends State<_DomainGameplay>
                   ),
                 ),
               ),
+      ),
+    );
+  }
+
+  // Case VISEUR en bout de ligne : orange si cette ligne est visée, sinon grise.
+  Widget _viseurCell(_Item it, double cell) {
+    final on = _targetId == it.id;
+    return GestureDetector(
+      onTap: () => _toggleTarget(it),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: cell,
+        height: cell,
+        margin: const EdgeInsets.all(1),
+        alignment: Alignment.center,
+        child: Icon(Icons.gps_fixed,
+            size: 18,
+            color: on ? const Color(0xFFFF8A3D) : Colors.white24),
+      ),
+    );
+  }
+
+  // Case sélecteur de mode (« le petit ») : cycle minuteur → chrono → coche.
+  // « Faire feu » applique le mode courant à la ligne visée.
+  Widget _modeCell(_Item it, double cell) {
+    final mode = _modeOf(it.id);
+    final IconData icon = mode == 'chrono'
+        ? Icons.play_circle_outline
+        : (mode == 'check' ? Icons.check_box_outlined : Icons.timer_outlined);
+    return GestureDetector(
+      onTap: () => setState(() => _fireMode[it.id] = _nextMode(it, mode)),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: cell,
+        height: cell,
+        margin: const EdgeInsets.all(1),
+        alignment: Alignment.center,
+        child: Icon(icon, size: 19, color: const Color(0xFFFF8A3D)),
       ),
     );
   }

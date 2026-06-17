@@ -26,9 +26,7 @@ String _ctTokenEmoji(String t, {required bool scorpion}) => t == 'flame'
     ? '🔥'
     : t == 'spider'
         ? (scorpion ? '🦂' : '🕷️')
-        : t == 'leaf'
-            ? '🍃'
-            : '';
+        : ''; // 'leaf' (fait) → case vide, plus clean
 
 // Bleu (≥5/7) → jaune (≥3/7) → rouge : santé de la tour.
 Color _ctLifeColor(double f) => f >= 5 / 7
