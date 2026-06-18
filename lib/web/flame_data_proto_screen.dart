@@ -123,8 +123,10 @@ class _OverworldGame extends FlameGame with KeyboardEvents {
       paint: Paint()..color = Colors.white,
     );
     world.add(_avatar);
-    camera.follow(_avatar);
+    // Pas de camera.follow (1 frame de retard → tremblement). On colle la caméra à
+    // l'avatar MANUELLEMENT en fin d'update → zéro jitter.
     camera.viewfinder.zoom = 1.4;
+    camera.viewfinder.position = _avatar.position.clone();
   }
 
   Point<int> get _cur => Point(
@@ -162,18 +164,20 @@ class _OverworldGame extends FlameGame with KeyboardEvents {
       if (map.walkable((next.x / _tile).floor(), (next.y / _tile).floor())) {
         _avatar.position = next;
       }
-      return;
+    } else if (_path.isNotEmpty) {
+      final tgt =
+          Vector2((_path.first.x + .5) * _tile, (_path.first.y + .5) * _tile);
+      final to = tgt - _avatar.position;
+      final step = speed * dt;
+      if (to.length <= step) {
+        _avatar.position = tgt; // snap (évite l'oscillation par dépassement)
+        _path.removeAt(0);
+      } else {
+        _avatar.position += to.normalized() * step;
+      }
     }
-    if (_path.isEmpty) return;
-    final tgt =
-        Vector2((_path.first.x + .5) * _tile, (_path.first.y + .5) * _tile);
-    final to = tgt - _avatar.position;
-    if (to.length < 2) {
-      _avatar.position = tgt;
-      _path.removeAt(0);
-    } else {
-      _avatar.position += to.normalized() * speed * dt;
-    }
+    // Caméra collée à l'avatar (après le déplacement) → pas de tremblement.
+    camera.viewfinder.position = _avatar.position.clone();
   }
 }
 
