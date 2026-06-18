@@ -301,7 +301,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   ({String domainId, String mode})? _gardenPanel;
   Point<int>? _cannonSpinAt; // case rampe en cours de spin (null = repos)
   int _cannonSpinStartMs = 0;
-  final Set<String> _raisedTurrets = {}; // tileIds tourelles levées (anim de tir)
+  final Map<String, double> _cannonRaise = {}; // tileId tourelle → lever 0..1 (animé)
   final List<_Sbire> _sbires = []; // sbires lâchés (marchent vers la porte)
   final List<_Shot> _shots = [];
   static const double _gateHpMax = 120;
@@ -3155,6 +3155,19 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     }
   }
 
+  // Anime le lever du canon `id` de `from`→`to` (0..1) sur `ms` (~25 fps).
+  Future<void> _animateCannonRaise(
+      String id, double from, double to, int ms) async {
+    const fps = 25;
+    final steps = (ms * fps ~/ 1000).clamp(1, 1000);
+    for (var i = 0; i <= steps; i++) {
+      if (!mounted) return;
+      final t = i / steps;
+      setState(() => _cannonRaise[id] = from + (to - from) * t);
+      await Future.delayed(Duration(milliseconds: ms ~/ steps));
+    }
+  }
+
   // Séquence CANON en 3 phases (tap sur la rampe ☢️ en `x,y` ; canon en `x+1,y`) :
   //  1) l'avatar arrive 2 cases à GAUCHE du canon (= 1 case à gauche de la rampe),
   //     PAS dessus → la rampe tourne sur elle‑même et le canon se LÈVE (opérationnel).
@@ -3170,16 +3183,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       // — Phase 1 : arriver 2 cases à gauche du canon (1 à gauche de la rampe).
       await _v2StepTo(Point(x - 1, y));
       if (!mounted) return;
-      // la rampe tourne + le canon se lève (l'avatar reste à gauche).
+      // la rampe TOURNE et le canon se LÈVE progressivement, synchronisés (~2 s).
       setState(() {
         _cannonSpinAt = Point(x, y);
         _cannonSpinStartMs = _gameMs;
-        _raisedTurrets.add(turretId);
+        _cannonRaise[turretId] = 0;
       });
-      await Future.delayed(const Duration(milliseconds: 2000));
+      await _animateCannonRaise(turretId, 0.0, 1.0, 2000);
       if (!mounted) return;
       // La rotation de la rampe s'arrête, puis on laisse 0,5 s avant que l'avatar
-      // ne monte dessus.
+      // ne monte dessus (le canon reste relevé).
       setState(() => _cannonSpinAt = null);
       await Future.delayed(const Duration(milliseconds: 500));
       if (!mounted) return;
@@ -3203,9 +3216,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         await Future.delayed(const Duration(milliseconds: 900));
       }
       if (!mounted) return;
-      // — Fin : canon redescend + le jardin bascule en dashboard de la lane.
+      // — Fin : le canon redescend (animé) + le jardin bascule en dashboard.
+      await _animateCannonRaise(turretId, 1.0, 0.0, 450);
+      if (!mounted) return;
       setState(() {
-        _raisedTurrets.remove(turretId);
+        _cannonRaise.remove(turretId);
         if (dom != null) _gardenPanel = (domainId: dom, mode: 'routineDash');
       });
     } finally {
@@ -6779,9 +6794,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           final rid = _v2TurretRoutineId[id];
           final pending = rid == null ? 0 : (_pendingByRoutine[rid]?.length ?? 0);
           // Pieds DROITS (fixes) : seule la tête du canon se relève (cf. _v2TurretWidget).
-          final raised = _raisedTurrets.contains(id);
+          final raise = _cannonRaise[id] ?? 0.0;
           final turret = _v2TurretWidget(tur.charger, tur.isRoutine, inner,
-              raised: raised);
+              raise: raise);
           child = pending <= 0
               ? turret
               : Stack(
@@ -7012,8 +7027,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   }
 
   Widget _v2TurretWidget(int charger, bool isRoutine, double inner,
-      {bool raised = false}) {
+      {double raise = 0}) {
     final col = isRoutine ? _kEnemy : const Color(0xFFFF8A3D);
+    final r = raise.clamp(0.0, 1.0);
+    final gun = inner * 0.58;
+    // Tête baissée au repos (0.5 rad) → relevée (0 = opérationnel) avec le lever.
+    final headAngle = 0.5 * (1 - r);
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       mainAxisSize: MainAxisSize.min,
@@ -7031,25 +7050,43 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         ]),
         SizedBox(height: inner * 0.04),
         // DCA en 2 morceaux (comme la carte de combat) : BASE fixe = pieds droits ;
-        // seule la TÊTE (aa-head) pivote autour de la monture. Baissée au repos,
-        // relevée (angle 0 = opérationnel) quand la rampe est activée.
-        SizedBox(
-          width: inner * 0.58,
-          height: inner * 0.58,
-          child: Stack(children: [
-            SvgPicture.asset('assets/icons/aa-base.svg',
-                width: inner * 0.58,
-                height: inner * 0.58,
-                colorFilter: ColorFilter.mode(col, BlendMode.srcIn)),
-            Transform.rotate(
-              angle: raised ? 0.0 : 0.85, // 0 = opérationnel ; >0 = baissé
-              alignment: _kBarrelPivot,
-              child: SvgPicture.asset('assets/icons/aa-head.svg',
-                  width: inner * 0.58,
-                  height: inner * 0.58,
-                  colorFilter: ColorFilter.mode(col, BlendMode.srcIn)),
+        // seule la TÊTE (aa-head) pivote autour de la monture. + FLAMME au‑dessus
+        // pendant la charge (comme en mode combat).
+        Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.topCenter,
+          children: [
+            SizedBox(
+              width: gun,
+              height: gun,
+              child: Stack(children: [
+                SvgPicture.asset('assets/icons/aa-base.svg',
+                    width: gun,
+                    height: gun,
+                    colorFilter: ColorFilter.mode(col, BlendMode.srcIn)),
+                Transform.rotate(
+                  angle: headAngle,
+                  alignment: _kBarrelPivot,
+                  child: SvgPicture.asset('assets/icons/aa-head.svg',
+                      width: gun,
+                      height: gun,
+                      colorFilter: ColorFilter.mode(col, BlendMode.srcIn)),
+                ),
+              ]),
             ),
-          ]),
+            if (r > 0.25)
+              Positioned(
+                top: -gun * 0.34,
+                child: Opacity(
+                  opacity: r,
+                  child: SvgPicture.asset('assets/icons/fireball.svg',
+                      width: gun * 0.5,
+                      height: gun * 0.5,
+                      colorFilter: const ColorFilter.mode(
+                          Color(0xFFFFB23D), BlendMode.srcIn)),
+                ),
+              ),
+          ],
         ),
       ],
     );
