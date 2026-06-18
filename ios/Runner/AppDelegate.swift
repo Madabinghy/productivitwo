@@ -60,6 +60,34 @@ import alarm
       }
     }
 
+    // Method channel Live Activity (minuteur ActivityKit) — délégué au manager.
+    let laChannel = FlutterMethodChannel(
+      name: "productivitwo/live_activity", binaryMessenger: controller.binaryMessenger)
+    laChannel.setMethodCallHandler { (call, result) in
+      let args = call.arguments as? [String: Any] ?? [:]
+      switch call.method {
+      case "start":
+        if #available(iOS 16.1, *) {
+          let id = LiveActivityManager.shared.start(
+            name: args["name"] as? String ?? "Activité",
+            startAtMs: (args["startAtMs"] as? Int) ?? 0,
+            colorArgb: (args["colorArgb"] as? Int) ?? 0xFF4F8DF7)
+          result(id)
+        } else { result(nil) }
+      case "end":
+        if #available(iOS 16.1, *) {
+          LiveActivityManager.shared.end(id: args["id"] as? String)
+        }
+        result(nil)
+      case "pushToStartToken":
+        if #available(iOS 17.2, *) {
+          LiveActivityManager.shared.pushToStartToken { token in result(token) }
+        } else { result(nil) }
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 

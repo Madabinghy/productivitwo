@@ -41,6 +41,7 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/dev_logger.dart';
 import 'package:productivitwo_v1/pro_manager.dart';
 import 'package:productivitwo_v1/fcm_service.dart';
+import 'package:productivitwo_v1/live_activity_service.dart';
 import 'package:productivitwo_v1/widgets/paywall_sheet.dart';
 import 'package:productivitwo_v1/widgets/apple_sign_in_button.dart';
 import 'package:productivitwo_v1/widgets/email_sign_in_tile.dart';
@@ -1835,6 +1836,7 @@ class _AppRootState extends State<AppRoot>
   Uri? _pendingDeepLink;
   StreamSubscription<List<Domain>>? _domainsSub;
   StreamSubscription<List<Project>>? _projectsSub;
+  StreamSubscription<List<Session>>? _sessionsSub;
   StreamSubscription<List<CaptureItem>>? _inboxSub;
   int _inboxPendingCount = 0;
   List<Project> _dashboardProjects = [];
@@ -1941,6 +1943,7 @@ class _AppRootState extends State<AppRoot>
     _deepLinkSub?.cancel();
     _domainsSub?.cancel();
     _projectsSub?.cancel();
+    _sessionsSub?.cancel();
     _inboxSub?.cancel();
     _tick.dispose();
     _confettiController.dispose();
@@ -2238,6 +2241,24 @@ class _AppRootState extends State<AppRoot>
         _checkGanttBadges();
         WidgetService.update(logic); // widget Large : tâches Gantt fraîches
         _sync.pushProductivitySnapshot(logic.productivitySnapshot());
+      });
+      // Sessions en temps réel (source de vérité = Firestore, comme domains/projects)
+      // → reflète une session lancée depuis le WEB et pilote la Live Activity iOS.
+      _sessionsSub?.cancel();
+      _sessionsSub = _sync.streamSessions().listen((sessions) {
+        if (!mounted || _state == null) return;
+        _state!.sessions = sessions;
+        final running = sessions.where((s) => s.endAt == null).toList();
+        if (running.isNotEmpty) {
+          final s = running.last;
+          final a = _state!.activities
+              .firstWhereOrNull((x) => x.id == s.activityId);
+          LiveActivityService.instance
+              .start(activityName: a?.name ?? 'Activité', startAt: s.startAt);
+        } else {
+          LiveActivityService.instance.end();
+        }
+        setState(() {});
       });
     }
 
