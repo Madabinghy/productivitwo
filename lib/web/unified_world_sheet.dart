@@ -3131,15 +3131,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // ── Séquence CANON (clic sur rampe ☢️) ─────────────────────────────────────
   // marche sur la rampe → spin ☢️ 2 s + lève le canon → tire si flammes (sinon
   // monte/descend) → bascule le jardin en dashboard de la lane.
-  Future<void> _onCannonRamp(int x, int y) async {
-    final w = _wv2;
-    if (w == null || _v2Walking) return;
-    final dom = _domainAtTileV2(x, y);
-    // 1) marche jusqu'à la rampe.
-    final path = _bfsV2(_posV2, Point(x, y));
-    _v2Walking = true;
+  // Marche pas à pas vers `target` (sans bail sur le contrôle user — séquence pilotée).
+  Future<void> _v2StepTo(Point<int> target) async {
+    final path = _bfsV2(_posV2, target);
     for (final step in path) {
-      if (!mounted) break;
+      if (!mounted) return;
       setState(() {
         _posV2 = step;
         _revealAroundV2(step);
@@ -3147,31 +3143,60 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _v2CheckDomainEntry();
       await Future.delayed(const Duration(milliseconds: 75));
     }
-    _v2Walking = false;
-    if (!mounted) return;
-    // 2) spin ☢️ 2 s + lève le canon.
-    final turretId = '${x + 1}_$y';
-    setState(() {
-      _cannonSpinAt = Point(x, y);
-      _cannonSpinStartMs = _gameMs;
-      _raisedTurrets.add(turretId);
-    });
-    await Future.delayed(const Duration(milliseconds: 2000));
-    if (!mounted) return;
-    // 3) tir si flammes (charger > 0 OU backlog en attente).
-    final tur = _v2Turret[turretId];
-    final rid = _v2TurretRoutineId[turretId];
-    final hasFlames = (tur?.charger ?? 0) > 0 ||
-        (rid != null && (_pendingByRoutine[rid]?.isNotEmpty ?? false));
-    if (hasFlames) _fireV2Bolt(x + 8, y, x + 1); // tir vers la case du jour
-    await Future.delayed(const Duration(milliseconds: 500));
-    if (!mounted) return;
-    // 4) canon redescend + dashboard de la lane.
-    setState(() {
-      _cannonSpinAt = null;
-      _raisedTurrets.remove(turretId);
-      if (dom != null) _gardenPanel = (domainId: dom, mode: 'routineDash');
-    });
+  }
+
+  // Séquence CANON en 3 phases (tap sur la rampe ☢️ en `x,y` ; canon en `x+1,y`) :
+  //  1) l'avatar arrive 2 cases à GAUCHE du canon (= 1 case à gauche de la rampe),
+  //     PAS dessus → la rampe tourne sur elle‑même et le canon se LÈVE (opérationnel).
+  //  2) l'avatar MONTE sur la rampe.
+  //  3) la cinématique de chargement/tir se lance « comme en mode combat ».
+  Future<void> _onCannonRamp(int x, int y) async {
+    final w = _wv2;
+    if (w == null || _v2Walking) return;
+    _v2Walking = true;
+    try {
+      final dom = _domainAtTileV2(x, y);
+      final turretId = '${x + 1}_$y';
+      // — Phase 1 : arriver 2 cases à gauche du canon (1 à gauche de la rampe).
+      await _v2StepTo(Point(x - 1, y));
+      if (!mounted) return;
+      // la rampe tourne + le canon se lève (l'avatar reste à gauche).
+      setState(() {
+        _cannonSpinAt = Point(x, y);
+        _cannonSpinStartMs = _gameMs;
+        _raisedTurrets.add(turretId);
+      });
+      await Future.delayed(const Duration(milliseconds: 2000));
+      if (!mounted) return;
+      // — Phase 2 : l'avatar monte sur la rampe (la rotation de la rampe s'arrête).
+      setState(() => _cannonSpinAt = null);
+      await _v2StepTo(Point(x, y));
+      if (!mounted) return;
+      // — Phase 3 : chargement/visée puis tir « mode combat » (volée vers le jour).
+      final tur = _v2Turret[turretId];
+      final rid = _v2TurretRoutineId[turretId];
+      final flames = (tur?.charger ?? 0) > 0
+          ? (tur?.charger ?? 0)
+          : (rid != null ? (_pendingByRoutine[rid]?.length ?? 0) : 0);
+      if (flames > 0) {
+        await Future.delayed(const Duration(milliseconds: 600)); // charge/visée
+        final n = flames.clamp(1, 5);
+        for (var i = 0; i < n; i++) {
+          if (!mounted) return;
+          _fireV2Bolt(x + 8, y, x + 1, dur: 2.2); // boulet en arc + 💥 à l'impact
+          await Future.delayed(const Duration(milliseconds: 320));
+        }
+        await Future.delayed(const Duration(milliseconds: 900));
+      }
+      if (!mounted) return;
+      // — Fin : canon redescend + le jardin bascule en dashboard de la lane.
+      setState(() {
+        _raisedTurrets.remove(turretId);
+        if (dom != null) _gardenPanel = (domainId: dom, mode: 'routineDash');
+      });
+    } finally {
+      _v2Walking = false;
+    }
   }
 
   // Repère château au passage (les grottes, elles, déclenchent l'engagement).
@@ -6739,11 +6764,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           // décharger pendant l'exploration auto.
           final rid = _v2TurretRoutineId[id];
           final pending = rid == null ? 0 : (_pendingByRoutine[rid]?.length ?? 0);
-          // Canon LEVÉ pendant la séquence de tir (sinon au repos = position normale).
+          // Canon BAISSÉ au repos, LEVÉ + remonté pendant la séquence (opérationnel).
           final raised = _raisedTurrets.contains(id);
           final turret = Transform.translate(
-              offset: Offset(0, raised ? -inner * 0.18 : 0),
-              child: _v2TurretWidget(tur.charger, tur.isRoutine, inner));
+              offset: Offset(0, raised ? -inner * 0.12 : 0),
+              child: _v2TurretWidget(tur.charger, tur.isRoutine, inner,
+                  raised: raised));
           child = pending <= 0
               ? turret
               : Stack(
@@ -6973,7 +6999,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
   }
 
-  Widget _v2TurretWidget(int charger, bool isRoutine, double inner) {
+  Widget _v2TurretWidget(int charger, bool isRoutine, double inner,
+      {bool raised = false}) {
     final col = isRoutine ? _kEnemy : const Color(0xFFFF8A3D);
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -6991,10 +7018,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             ),
         ]),
         SizedBox(height: inner * 0.04),
-        SvgPicture.asset('assets/icons/anti-aircraft-gun.svg',
-            width: inner * 0.58,
-            height: inner * 0.58,
-            colorFilter: ColorFilter.mode(col, BlendMode.srcIn)),
+        // Canon BAISSÉ au repos (pointe vers le bas) → se LÈVE (opérationnel) quand
+        // la rampe est activée. Pivot autour de la base.
+        Transform.rotate(
+          angle: raised ? -0.12 : 0.72,
+          alignment: Alignment.bottomCenter,
+          child: SvgPicture.asset('assets/icons/anti-aircraft-gun.svg',
+              width: inner * 0.58,
+              height: inner * 0.58,
+              colorFilter: ColorFilter.mode(col, BlendMode.srcIn)),
+        ),
       ],
     );
   }

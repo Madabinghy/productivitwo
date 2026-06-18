@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.29', '18 juin 2026', [
+    (Icons.rocket_launch_outlined, '« Le Monde » web : le canon est baissé au repos et se redresse quand tu actives sa rampe. Séquence en 3 temps — l\'avatar arrive à gauche, la rampe tourne et le canon se lève, puis l\'avatar monte sur la rampe et la cinématique de tir se lance (volée vers le jour)'),
+  ]),
   _Entry('6.28', '18 juin 2026', [
     (Icons.dashboard_customize_outlined, '« Le Monde » web : le jardin devient une mini-app interactive — combat scorpion/araignée et dashboard des routines du domaine s\'affichent DANS la map (plus en colonne à droite) ; cliquer une case referme et réaffiche le jardin'),
     (Icons.rocket_launch_outlined, 'Clique sur une rampe de tir ☢️ : l\'avatar s\'y rend, la rampe tourne, le canon se lève et tire (s\'il a des flammes), puis le jardin ouvre le dashboard de la routine'),
