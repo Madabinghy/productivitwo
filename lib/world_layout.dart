@@ -104,7 +104,9 @@ const int _kTurretCols = 1; // tourelle (défense) + chargeur
 const int _kDayCols = 7; // 7 colonnes‑jours
 const int _kCastleCols = _kTurretCols + _kDayCols; // 8
 const int _kInnerW = _kVillageCols + _kGardenCols + _kCastleCols; // 25
-const int _kMinInnerRows = 4;
+// Hauteur intérieure MINIMALE d'un domaine : garantit un jardin assez grand pour
+// que la mini‑app dashboard (qui recouvre le jardin) soit lisible/utilisable.
+const int _kMinInnerRows = 10;
 const int _kMargin = 2;
 const int _kRightExt = 7; // extérieur à DROITE : d'où viennent les nuisibles + noms
 
@@ -456,6 +458,20 @@ CastleBlock _carveBlock(
   // Structure de murs intérieure (déterministe par nb de lignes) — stampée APRÈS
   // le remplissage du jardin et AVANT portes inter‑jardins/chests (cf. buildWorld).
   final decoWalls = _stampGardenWalls(grid, gardenRect, d.lines);
+
+  // PADDING (hauteur min) : les rangées du calendrier SANS routine/activité (au‑delà
+  // de `row`) deviennent de la PIERRE (mur), et un COFFRE (butin) est posé dans le
+  // jardin de cette zone — accessible par le jardin ouvert (« petit chemin »).
+  if (row < it + innerRows) {
+    for (var y = row; y < it + innerRows; y++) {
+      for (var x = castleLeft; x < il + _kInnerW; x++) {
+        grid[y][x] = WtTile.wall; // pierre dans le calendrier vide
+      }
+    }
+    final cy = (row + it + innerRows - 1) ~/ 2;
+    final cx = gardenRect.left + _kGardenCols ~/ 2;
+    if (grid[cy][cx] == WtTile.garden) grid[cy][cx] = WtTile.chest;
+  }
 
   return CastleBlock(
     domainId: d.domainId,
