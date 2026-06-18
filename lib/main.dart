@@ -757,6 +757,7 @@ void main() async {
     } catch (e) {
       devLog.error('Firebase.initializeApp FAIL on web', tag: 'MAIN', error: e);
     }
+    debugPrint('▶ PRODUCTIVITWO WEB — $kWebBuildTag');
     runApp(const WebApp());
     return;
   }
