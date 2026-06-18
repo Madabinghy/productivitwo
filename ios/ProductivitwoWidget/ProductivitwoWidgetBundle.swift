@@ -16,5 +16,9 @@ struct ProductivitwoWidgetBundle: WidgetBundle {
         RoutinesWidget()
         ProjectsWidget()
         FocusTaskWidget()
+        // Live Activity « minuteur » (iOS 16.1+).
+        if #available(iOS 16.1, *) {
+            TimerLiveActivity()
+        }
     }
 }
