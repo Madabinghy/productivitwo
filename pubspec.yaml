@@ -14,6 +14,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   flutter_svg: ^2.0.10
   flame: ^1.18.0 # prototype moteur de jeu (Le Monde) — évaluation
+  flame_svg: ^1.11.0 # rendu des SVG existants dans le prototype Flame
   path_provider: ^2.1.4
   shared_preferences: ^2.2.0
   share_plus: ^10.0.2
