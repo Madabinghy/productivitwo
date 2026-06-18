@@ -12,6 +12,9 @@ const _kGetCustomTokenUrl =
     'https://us-central1-productivitwo-app.cloudfunctions.net/getCustomToken';
 const _kDevUidKey = 'dev_auth_uid';
 const _kDevTokenKey = 'dev_auth_token';
+// uid par défaut (PAS un secret) — pré-rempli pour éviter de le retaper. Le token,
+// lui, n'est jamais en dur (saisi une fois, gardé en local).
+const _kDefaultDevUid = '8kcC1O8o2QSt4vJi1vNo1nBZaOG2';
 
 class DevAuthScreen extends StatefulWidget {
   final VoidCallback? onSignedIn;
@@ -35,7 +38,7 @@ class _DevAuthScreenState extends State<DevAuthScreen> {
 
   Future<void> _loadAndMaybeSignIn() async {
     final prefs = await SharedPreferences.getInstance();
-    _uidCtrl.text = prefs.getString(_kDevUidKey) ?? '';
+    _uidCtrl.text = prefs.getString(_kDevUidKey) ?? _kDefaultDevUid;
     _tokenCtrl.text = prefs.getString(_kDevTokenKey) ?? '';
     if (mounted) setState(() {});
     if (_uidCtrl.text.isNotEmpty && _tokenCtrl.text.isNotEmpty) {
