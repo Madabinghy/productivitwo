@@ -295,6 +295,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   bool _bowManned(Set<Point<int>> pads) => pads.contains(_pos);
   // Combat de nuisible affiché en ENCART à droite (carte visible derrière).
   ({String type, String id, String tileId})? _combat;
+  // Panneau JARDIN in‑place : le jardin (cases vertes) d'un domaine est remplacé par
+  // une mini‑app. `mode` ∈ {combat, routineDash}. null = jardin normal. Un tap sur
+  // une case de la map le referme.
+  ({String domainId, String mode})? _gardenPanel;
+  Point<int>? _cannonSpinAt; // case rampe en cours de spin (null = repos)
+  int _cannonSpinStartMs = 0;
+  final Set<String> _raisedTurrets = {}; // tileIds tourelles levées (anim de tir)
   final List<_Sbire> _sbires = []; // sbires lâchés (marchent vers la porte)
   final List<_Shot> _shots = [];
   static const double _gateHpMax = 120;
@@ -680,6 +687,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _simulateGardenSpiders(dt / 1000.0);
       _v2CineTick.value++; // repeint l'overlay seul (pas la grille)
     }
+    if (_cannonSpinAt != null) _v2CineTick.value++; // anim spin de la rampe ☢️
     if (_liveFiring) {
       _simulateLive(dt / 1000.0);
       if (mounted) setState(() {});
@@ -2899,7 +2907,29 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // carte de combat en ENCART À DROITE (carte visible derrière). FAIRE LE TRAVAIL
   // fait fondre l'ennemi ; PV 0 → il disparaît de la map.
   Future<void> _backlogCombat(String tileId, String type, String id) async {
-    setState(() => _combat = (type: type, id: id, tileId: tileId));
+    // MONDE V2 desktop : le combat s'affiche DANS le jardin du domaine (in‑place),
+    // plus en colonne à droite. Mobile garde l'écran plein (cf. rendu).
+    final p = tileId.split('_');
+    final dom = (_kWorldV2 && !widget.mobile && p.length == 2)
+        ? _domainAtTileV2(int.tryParse(p[0]) ?? -1, int.tryParse(p[1]) ?? -1)
+        : null;
+    setState(() {
+      _combat = (type: type, id: id, tileId: tileId);
+      if (dom != null) _gardenPanel = (domainId: dom, mode: 'combat');
+    });
+  }
+
+  // Domaine dont la bande contient la case (x,y), ou null.
+  String? _domainAtTileV2(int x, int y) {
+    final w = _wv2;
+    if (w == null) return null;
+    for (final c in w.castles) {
+      final b = c.bounds;
+      if (x >= b.left && x < b.left + b.width && y >= b.top && y < b.top + b.height) {
+        return c.domainId;
+      }
+    }
+    return null;
   }
 
   // Encart de combat (colonne droite) quand on attaque un nuisible.
@@ -2947,7 +2977,201 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     final c = _combat;
     if (c == null || !mounted) return;
     if (logic.enemyHp(c.type, c.id) <= 0) _farmPests.remove(c.tileId);
-    setState(() => _combat = null);
+    setState(() {
+      _combat = null;
+      if (_gardenPanel?.mode == 'combat') _gardenPanel = null;
+    });
+  }
+
+  // ── Panneau JARDIN in‑place ────────────────────────────────────────────────
+  // Recouvre la bande `gardenRect` du domaine de l'avatar : combat (BacklogCombatPanel)
+  // ou mini‑app dashboard des routines/activités du domaine.
+  Widget _gardenPanelV2(WorldLayout w) {
+    final gp = _gardenPanel!;
+    final c = w.byDomain[gp.domainId];
+    if (c == null) return const SizedBox.shrink();
+    final g = c.gardenRect;
+    final col = domainColor(gp.domainId, logic.state.activeDomains) ?? _kGold;
+    return Positioned(
+      left: g.left * _kV2Slot,
+      top: g.top * _kV2Slot,
+      width: g.width * _kV2Slot,
+      height: g.height * _kV2Slot,
+      child: Material(
+        color: const Color(0xFF0E1714),
+        elevation: 10,
+        borderRadius: BorderRadius.circular(8),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: (gp.mode == 'combat' && _combat != null)
+              ? _combatPanel()
+              : _routineDashV2(c, col),
+        ),
+      ),
+    );
+  }
+
+  Widget _routineDashV2(CastleBlock c, Color col) {
+    final acts = logic.activitiesOfDomain(c.domainId);
+    final shur = _gardenShurikensByDomain[c.domainId] ?? 0;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Container(
+        padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
+        color: col.withOpacity(.22),
+        child: Row(children: [
+          Expanded(
+            child: Text(_domainName(c.domainId),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 13)),
+          ),
+          if (shur > 0)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Text('🗡️ $shur',
+                  style: const TextStyle(
+                      color: Color(0xFFFFC83D),
+                      fontWeight: FontWeight.w900,
+                      fontSize: 12)),
+            ),
+          InkWell(
+            onTap: () => setState(() {
+              _gardenPanel = null;
+              _combat = null;
+            }),
+            child: const Padding(
+                padding: EdgeInsets.all(4),
+                child: Icon(Icons.close, color: Colors.white60, size: 18)),
+          ),
+        ]),
+      ),
+      Expanded(
+        child: acts.isEmpty
+            ? const Center(
+                child: Text('Aucune routine ici',
+                    style: TextStyle(color: Colors.white38, fontSize: 12)))
+            : ListView(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                children: [for (final a in acts) _dashRowV2(a, col)],
+              ),
+      ),
+    ]);
+  }
+
+  Widget _dashRowV2(Activity a, Color col) {
+    final isRoutine = a.isHabit;
+    final pc = logic.habitPeriod(a);
+    final streak = isRoutine ? logic.habitCurrentStreak(a.id) : 0;
+    return InkWell(
+      onTap: () async {
+        if (isRoutine) {
+          await showRoutineSheet(context,
+              logic: logic, habitId: a.id, day: DateTime.now());
+        } else {
+          await showActivitySheet(context, logic, a.id);
+        }
+        if (mounted) setState(() {});
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Row(children: [
+          Text(isRoutine ? '🕷️' : '🦂', style: const TextStyle(fontSize: 14)),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(a.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Colors.white, fontSize: 12.5)),
+                  Text(
+                      '${pc.done}/${pc.target}'
+                      '${isRoutine && streak > 0 ? '  ·  🔥$streak' : ''}',
+                      style: TextStyle(
+                          color: Colors.white.withOpacity(.55), fontSize: 11)),
+                ]),
+          ),
+          // CTA : routine → +1 (incHabit) ; activité‑temps → minuteur (start).
+          if (isRoutine)
+            _dashCta(Icons.add, col, () {
+              logic.incHabit(a.id, 1, DateTime.now());
+              if (mounted) setState(() {});
+            })
+          else
+            _dashCta(Icons.play_arrow_rounded, col, () {
+              logic.start(a.id);
+              _toast('⏱️ Minuteur lancé — ${a.name}', col);
+              if (mounted) setState(() {});
+            }),
+        ]),
+      ),
+    );
+  }
+
+  Widget _dashCta(IconData icon, Color col, VoidCallback onTap) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: col.withOpacity(.25),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: col.withOpacity(.6)),
+          ),
+          child: Icon(icon, color: Colors.white, size: 18),
+        ),
+      );
+
+  // ── Séquence CANON (clic sur rampe ☢️) ─────────────────────────────────────
+  // marche sur la rampe → spin ☢️ 2 s + lève le canon → tire si flammes (sinon
+  // monte/descend) → bascule le jardin en dashboard de la lane.
+  Future<void> _onCannonRamp(int x, int y) async {
+    final w = _wv2;
+    if (w == null || _v2Walking) return;
+    final dom = _domainAtTileV2(x, y);
+    // 1) marche jusqu'à la rampe.
+    final path = _bfsV2(_posV2, Point(x, y));
+    _v2Walking = true;
+    for (final step in path) {
+      if (!mounted) break;
+      setState(() {
+        _posV2 = step;
+        _revealAroundV2(step);
+      });
+      _v2CheckDomainEntry();
+      await Future.delayed(const Duration(milliseconds: 75));
+    }
+    _v2Walking = false;
+    if (!mounted) return;
+    // 2) spin ☢️ 2 s + lève le canon.
+    final turretId = '${x + 1}_$y';
+    setState(() {
+      _cannonSpinAt = Point(x, y);
+      _cannonSpinStartMs = _gameMs;
+      _raisedTurrets.add(turretId);
+    });
+    await Future.delayed(const Duration(milliseconds: 2000));
+    if (!mounted) return;
+    // 3) tir si flammes (charger > 0 OU backlog en attente).
+    final tur = _v2Turret[turretId];
+    final rid = _v2TurretRoutineId[turretId];
+    final hasFlames = (tur?.charger ?? 0) > 0 ||
+        (rid != null && (_pendingByRoutine[rid]?.isNotEmpty ?? false));
+    if (hasFlames) _fireV2Bolt(x + 8, y, x + 1); // tir vers la case du jour
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (!mounted) return;
+    // 4) canon redescend + dashboard de la lane.
+    setState(() {
+      _cannonSpinAt = null;
+      _raisedTurrets.remove(turretId);
+      if (dom != null) _gardenPanel = (domainId: dom, mode: 'routineDash');
+    });
   }
 
   // Repère château au passage (les grottes, elles, déclenchent l'engagement).
@@ -3691,8 +3915,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         right: 10,
                         child: _miniMapV2(maxSide: widget.mobile ? 120 : 160)),
                     if (_combat != null)
-                      // Écran étroit : le combat occupe tout l'écran (au lieu de
-                      // la colonne 340px qui masquerait la carte).
+                      // Écran étroit : le combat occupe tout l'écran. Desktop : il
+                      // s'affiche IN‑PLACE dans le jardin (cf. _contentV2) ; on ne
+                      // garde la colonne 340px qu'en repli (domaine introuvable).
                       widget.mobile
                           ? Positioned.fill(
                               child: Material(
@@ -3700,16 +3925,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                                 child: SafeArea(child: _combatPanel()),
                               ),
                             )
-                          : Positioned(
-                              top: 0,
-                              bottom: 0,
-                              right: 0,
-                              width: 340,
-                              child: Material(
-                                color: const Color(0xFF0E1714),
-                                child: _combatPanel(),
-                              ),
-                            ),
+                          : (_gardenPanel?.mode == 'combat'
+                              ? const SizedBox.shrink()
+                              : Positioned(
+                                  top: 0,
+                                  bottom: 0,
+                                  right: 0,
+                                  width: 340,
+                                  child: Material(
+                                    color: const Color(0xFF0E1714),
+                                    child: _combatPanel(),
+                                  ),
+                                )),
                   ]))
             : ((_loading || t == null || w == null)
                 ? const Center(
@@ -5648,59 +5875,55 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
 
   // Peuple les jardins, PAR DOMAINE, avec les nuisibles backlog du domaine :
   // 🐍 serpents (tâches en retard) + 🦂 scorpions (activités‑temps en retard).
-  // GARDIENS DE PASSAGE : sur les 2 portes du mur partagé au‑dessus du domaine, un
-  // SCORPION (porte gauche) et un SERPENT (porte droite) bloquent le raccourci
-  // direct — le plus petit en PV du jour ; le pont reste un contournement.
+  // GARDIENS DE PASSAGE : les 2 portes du mur partagé sont bouchées par les nuisibles
+  // du domaine au plus petit PV (peu importe le type → 2 serpents OU 2 scorpions
+  // possibles). AUCUN nuisible ne se pose sur une case interactive (rampe de tir).
   void _populateV2Gardens() {
     _v2Pests.clear();
     final w = _wv2;
     if (w == null) return;
-    final snakesByDom = <String, List<({String type, String id, int hp})>>{};
-    final scorpsByDom = <String, List<({String type, String id, int hp})>>{};
+    final byDom = <String, List<({String type, String id, int hp})>>{};
     for (final e in logic.backlogEnemies()) {
       if (e.type != 'snake' && e.type != 'scorpion') continue;
       final dom = logic.enemyDomainId(e.type, e.id);
       if (dom == null) continue;
-      (e.type == 'snake' ? snakesByDom : scorpsByDom).putIfAbsent(dom, () => []).add(e);
+      byDom.putIfAbsent(dom, () => []).add(e);
     }
     for (final c in w.castles) {
-      final snakes = [...?snakesByDom[c.domainId]];
-      final scorps = [...?scorpsByDom[c.domainId]];
-      if (snakes.isEmpty && scorps.isEmpty) continue;
+      final pests = [...?byDom[c.domainId]];
+      if (pests.isEmpty) continue;
       final color =
           domainColor(c.domainId, logic.state.activeDomains) ?? _kFarm;
       final g = c.gardenRect;
-      // Plus petit PV d'abord → c'est lui qu'on poste en gardien (le plus battable).
-      snakes.sort((a, b) => a.hp.compareTo(b.hp));
-      scorps.sort((a, b) => a.hp.compareTo(b.hp));
-      // GARDIENS : porte gauche = scorpion (accès dessus), porte droite = serpent.
-      final pr = g.top - 1; // rangée du mur partagé (porte percée dans buildWorld)
-      final scorpDoorX = g.left + g.width ~/ 3;
-      final snakeDoorX = g.left + (2 * g.width) ~/ 3;
-      if (scorps.isNotEmpty &&
-          w.inBounds(scorpDoorX, pr) &&
-          w.at(scorpDoorX, pr) == WtTile.garden) {
-        final e = scorps.removeAt(0);
-        _v2Pests['${scorpDoorX}_$pr'] = (type: e.type, id: e.id, color: color);
+      pests.sort((a, b) => a.hp.compareTo(b.hp)); // plus petit PV d'abord
+      // Cases INTERACTIVES (rampes de tir = dernière colonne du jardin, sur chaque
+      // lane) → jamais de nuisible dessus.
+      final interactive = <String>{
+        for (final lane in c.lanes) '${g.left + g.width - 1}_${lane.y}',
+      };
+      // GARDIENS : boucher les 2 portes praticables avec les plus petits PV dispos.
+      final pr = g.top - 1; // rangée du mur partagé (portes percées dans buildWorld)
+      for (final dx in [g.width ~/ 3, (2 * g.width) ~/ 3]) {
+        if (pests.isEmpty) break;
+        final px = g.left + dx;
+        if (w.inBounds(px, pr) && w.at(px, pr) == WtTile.garden) {
+          final e = pests.removeAt(0);
+          _v2Pests['${px}_$pr'] = (type: e.type, id: e.id, color: color);
+        }
       }
-      if (snakes.isNotEmpty &&
-          w.inBounds(snakeDoorX, pr) &&
-          w.at(snakeDoorX, pr) == WtTile.garden) {
-        final e = snakes.removeAt(0);
-        _v2Pests['${snakeDoorX}_$pr'] = (type: e.type, id: e.id, color: color);
-      }
-      // RESTE : dispersé dans le jardin (mélange déterministe, pas tassé).
+      // RESTE : dispersé dans le jardin (hors cases interactives, mélange déterministe).
       final free = <String>[];
       for (var y = g.top; y < g.top + g.height; y++) {
         for (var x = g.left; x < g.left + g.width; x++) {
+          final id = '${x}_$y';
           if (w.at(x, y) != WtTile.garden) continue; // skip murs déco
-          free.add('${x}_$y');
+          if (interactive.contains(id)) continue; // case interactive protégée
+          free.add(id);
         }
       }
       free.shuffle(Random(c.domainId.hashCode));
-      final rest = [...scorps, ...snakes];
-      for (var i = 0; i < rest.length && i < free.length; i++) {
-        _v2Pests[free[i]] = (type: rest[i].type, id: rest[i].id, color: color);
+      for (var i = 0; i < pests.length && i < free.length; i++) {
+        _v2Pests[free[i]] = (type: pests[i].type, id: pests[i].id, color: color);
       }
     }
   }
@@ -5864,6 +6087,20 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     if (w == null || _v2Walking) return;
     _v2TakeControl(); // clic = reprise de la main (interrompt l'exploration auto)
     final id = '${x}_$y';
+    // Un tap sur la map referme le dashboard jardin (le jardin réapparaît).
+    if (_gardenPanel != null) {
+      setState(() {
+        _gardenPanel = null;
+        _combat = null;
+      });
+      return;
+    }
+    // Rampe de tir ☢️ → séquence canon (marche, spin, lève, tire si flammes) puis
+    // dashboard de la lane.
+    if (_v2LaunchPads.contains(id)) {
+      await _onCannonRamp(x, y);
+      return;
+    }
     // Araignée‑boss : clic → shuriken → on change de map (combat dans l'intérieur).
     final araDom = _v2Araignee[id] ?? _v2Toiles[id];
     if (araDom != null) {
@@ -6219,6 +6456,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               ),
               // Noms des lignes (routines/activités) à droite, comme dans la grotte.
               ..._v2LaneLabels(w),
+              ..._v2ShurikenBadges(w),
               // Overlay cinématique : repeint SEUL (grille statique en dessous).
               Positioned.fill(
                 child: IgnorePointer(
@@ -6274,10 +6512,27 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                             ),
                           ),
                         ),
+                      // Rampe ☢️ : tour sur elle‑même (2 s) pendant la séquence canon.
+                      if (_cannonSpinAt != null)
+                        Positioned(
+                          left: _cannonSpinAt!.x * _kV2Slot,
+                          top: _cannonSpinAt!.y * _kV2Slot,
+                          width: _kV2Slot,
+                          height: _kV2Slot,
+                          child: Center(
+                            child: Transform.rotate(
+                              angle: (_gameMs - _cannonSpinStartMs) / 2000 * 2 * pi,
+                              child: Text('☢️',
+                                  style: TextStyle(fontSize: _kV2Slot * 0.5)),
+                            ),
+                          ),
+                        ),
                     ]),
                   ),
                 ),
               ),
+              // Panneau JARDIN in‑place (combat ou dashboard routines) — INTERACTIF.
+              if (_gardenPanel != null) _gardenPanelV2(w),
             ],
           ),
         ),
@@ -6316,6 +6571,35 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           ),
         ));
       }
+    }
+    return out;
+  }
+
+  // Badge « 🗡️ N » du stock de shurikens par domaine (coin haut‑gauche du jardin),
+  // visible si le domaine est découvert et a du stock.
+  List<Widget> _v2ShurikenBadges(WorldLayout w) {
+    final out = <Widget>[];
+    for (final c in w.castles) {
+      final n = _gardenShurikensByDomain[c.domainId] ?? 0;
+      if (n <= 0) continue;
+      final g = c.gardenRect;
+      if (!_revealed.contains('${g.left}_${g.top}') && !_showCoords) continue;
+      out.add(Positioned(
+        left: g.left * _kV2Slot + 2,
+        top: g.top * _kV2Slot + 2,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(.55),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text('🗡️ $n',
+              style: const TextStyle(
+                  color: Color(0xFFFFC83D),
+                  fontWeight: FontWeight.w900,
+                  fontSize: 11)),
+        ),
+      ));
     }
     return out;
   }
@@ -6455,7 +6739,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           // décharger pendant l'exploration auto.
           final rid = _v2TurretRoutineId[id];
           final pending = rid == null ? 0 : (_pendingByRoutine[rid]?.length ?? 0);
-          final turret = _v2TurretWidget(tur.charger, tur.isRoutine, inner);
+          // Canon LEVÉ pendant la séquence de tir (sinon au repos = position normale).
+          final raised = _raisedTurrets.contains(id);
+          final turret = Transform.translate(
+              offset: Offset(0, raised ? -inner * 0.18 : 0),
+              child: _v2TurretWidget(tur.charger, tur.isRoutine, inner));
           child = pending <= 0
               ? turret
               : Stack(
