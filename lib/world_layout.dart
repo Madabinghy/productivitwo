@@ -362,12 +362,25 @@ Map<String, WtDecor> _buildDecor(List<List<WtTile>> grid,
     }
   }
 
+  // Cases RÉSERVÉES aux libellés de lignes (noms routines/activités, rendus à
+  // droite des 7 colonnes‑jours) : JAMAIS de décor dessus, sinon il masque le
+  // texte et casse la lisibilité. La 1ʳᵉ colonne du nom = dayX0 + 7.
+  final protectedCells = <Point<int>>{};
+  for (final c in castles) {
+    for (final l in c.lanes) {
+      for (var x = l.dayX0 + 7; x < cols; x++) {
+        protectedCells.add(Point(x, l.y));
+      }
+    }
+  }
+
   // 2) Terrain extérieur épars + torches le long des remparts.
   const scatter = [WtDecor.rock, WtDecor.tree, WtDecor.bush];
   for (var y = 0; y < rows; y++) {
     for (var x = 0; x < cols; x++) {
       final id = '${x}_$y';
       if (decor.containsKey(id)) continue;
+      if (protectedCells.contains(Point(x, y))) continue; // zone des noms
       final t = grid[y][x];
       if (t == WtTile.terrain) {
         if (wallAdj(x, y) && rng.nextDouble() < 0.18) {

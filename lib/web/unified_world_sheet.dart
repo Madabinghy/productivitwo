@@ -171,18 +171,19 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   final List<_CineFb> _v2Fbs = [];
   final List<({Offset at, int untilMs})> _v2Flashes = [];
   // ARAIGNÉES D'ÉCART HEBDO : petites entités MOBILES (position continue) qui errent
-  // dans le monde, bloquées par les murs, et passent d'un domaine à l'autre par les
-  // ouvertures. Nombre cible = Σ routines max(0, valeur(j‑7) − valeur(aujourd'hui)).
+  // CONFINÉES au village+jardin de LEUR domaine (jamais les murs/passages).
+  // Nombre cible par domaine = Σ routines max(0, valeur(j‑7) − valeur(aujourd'hui)).
   final List<_GardenSpider> _gardenSpiders = [];
-  // Shurikens STOCKÉS (gagnés en réduisant l'écart depuis le dernier passage) :
-  // l'avatar en tire un automatiquement sur l'araignée la plus proche À PORTÉE
-  // (_kNinjaRange, comme le combat de boss). 1 shuriken touché = 1 araignée tuée.
-  int _gardenShurikens = 0;
+  // Shurikens STOCKÉS PAR DOMAINE (gagnés en réduisant l'écart depuis le dernier
+  // passage) : l'avatar en tire un sur l'araignée la plus proche À PORTÉE
+  // (_kNinjaRange) DONT le domaine a du stock. 1 shuriken touché = 1 araignée tuée.
+  // → « nettoyer » un domaine ne dépend que de SES propres complétions.
+  final Map<String, int> _gardenShurikensByDomain = {};
   final List<_GardenShk> _gardenShk = []; // shurikens d'araignée en vol
   int _lastGardenShkMs = 0; // cadence de tir (anti‑rafale)
   static const String _kSpiderGapKey = 'v2_spider_gap';
   String _spiderGapYmd = ''; // jour de référence de l'écart persisté
-  int _spiderGapSeen = 0; // écart total « réglé » au dernier passage (persisté)
+  final Map<String, int> _spiderGapSeenByDomain = {}; // écart « réglé » par domaine
   bool _spiderGapLoaded = false;
   String? _v2ActiveDomain; // domaine où se trouve l'avatar (révélé à l'entrée)
   bool _v2Walking = false; // marche en cours (évite les clics concurrents)
@@ -2224,7 +2225,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     } catch (_) {}
   }
 
-  // ── ARAIGNÉES D'ÉCART HEBDO ────────────────────────────────────────────────
+  // ── ARAIGNÉES D'ÉCART HEBDO (par domaine) ──────────────────────────────────
   Future<void> _loadSpiderGap() async {
     _spiderGapYmd = yyyymmdd(DateTime.now());
     try {
@@ -2232,7 +2233,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       final raw = prefs.getString(_kSpiderGapKey);
       if (raw != null) {
         final m = jsonDecode(raw) as Map<String, dynamic>;
-        if (m['ymd'] == _spiderGapYmd) _spiderGapSeen = (m['seen'] as int?) ?? 0;
+        if (m['ymd'] == _spiderGapYmd) {
+          final seen = (m['seen'] as Map<String, dynamic>?) ?? const {};
+          seen.forEach((k, v) => _spiderGapSeenByDomain[k] = (v as num).toInt());
+        }
       }
     } catch (_) {}
     _spiderGapLoaded = true;
@@ -2243,7 +2247,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kSpiderGapKey,
-          jsonEncode({'ymd': _spiderGapYmd, 'seen': _spiderGapSeen}));
+          jsonEncode({'ymd': _spiderGapYmd, 'seen': _spiderGapSeenByDomain}));
     } catch (_) {}
   }
 
@@ -2256,68 +2260,75 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     return gap > 0 ? gap : 0;
   }
 
-  // Écart total = Σ sur toutes les routines actives du monde.
-  int _totalWeekGap() {
-    final w = _wv2;
-    if (w == null) return 0;
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+  // Écart d'un domaine = Σ sur ses routines.
+  int _domainWeekGap(CastleBlock c, DateTime today) {
     var total = 0;
-    for (final c in w.castles) {
-      for (final lane in c.lanes) {
-        if (!lane.isRoutine) continue;
-        total += _routineWeekGap(lane.id, today);
-      }
+    for (final lane in c.lanes) {
+      if (!lane.isRoutine) continue;
+      total += _routineWeekGap(lane.id, today);
     }
     return total;
   }
 
-  // Pose / réconcilie les araignées d'écart. INVARIANT : araignées vivantes =
-  // écart courant + shurikens stockés (chaque shuriken touché décrémente LES DEUX,
-  // donc on converge vers `écart courant`). Les shurikens « gagnés » = la réduction
-  // de l'écart depuis le dernier passage (progrès fait hors‑map).
+  // Pose / réconcilie les araignées d'écart, PAR DOMAINE. INVARIANT par domaine :
+  // araignées vivantes(D) = écart(D) + shurikens(D). Chaque shuriken touché
+  // décrémente LES DEUX → on converge vers l'écart courant du domaine. Les shurikens
+  // « gagnés » = la réduction de l'écart de CE domaine depuis le dernier passage.
   void _populateV2Spiders() {
     final w = _wv2;
     if (w == null || !_spiderGapLoaded || widget.mobile) return;
     final today = yyyymmdd(DateTime.now());
+    final now = DateTime.now();
+    final todayD = DateTime(now.year, now.month, now.day);
     if (_spiderGapYmd != today) {
-      // Nouveau jour → on repart de l'écart courant, sans shurikens ni rejeu.
+      // Nouveau jour → reset complet (par domaine).
       _spiderGapYmd = today;
-      _spiderGapSeen = _totalWeekGap();
-      _gardenShurikens = 0;
+      _spiderGapSeenByDomain.clear();
+      _gardenShurikensByDomain.clear();
       _gardenSpiders.clear();
       _gardenShk.clear();
     }
-    final target = _totalWeekGap();
-    final earned = _spiderGapSeen - target; // ≥ 0 (l'écart ne fait que baisser le jour J)
-    if (earned > 0) _gardenShurikens += earned;
-    _spiderGapSeen = target;
+    for (final c in w.castles) {
+      final dom = c.domainId;
+      final gap = _domainWeekGap(c, todayD);
+      // 1er passage du jour pour ce domaine → seen = gap (aucun shuriken, on montre l'écart).
+      final seen = _spiderGapSeenByDomain[dom] ?? gap;
+      final earned = seen - gap; // ≥ 0 (l'écart ne fait que baisser le jour J)
+      if (earned > 0) {
+        _gardenShurikensByDomain[dom] = (_gardenShurikensByDomain[dom] ?? 0) + earned;
+      }
+      _spiderGapSeenByDomain[dom] = gap;
+      final shur = _gardenShurikensByDomain[dom] ?? 0;
+      final desired = gap + shur;
+      final mineCount = _gardenSpiders.where((s) => s.domainId == dom).length;
+      if (mineCount > desired) {
+        var toRemove = mineCount - desired;
+        _gardenSpiders.removeWhere((s) => s.domainId == dom && toRemove-- > 0);
+      } else {
+        for (var i = mineCount; i < desired; i++) {
+          final s = _spawnGardenSpider(w, c);
+          if (s == null) break;
+          _gardenSpiders.add(s);
+        }
+      }
+    }
     _persistSpiderGap();
-    // Population voulue = écart courant + shurikens en attente.
-    final desired = target + _gardenShurikens;
-    while (_gardenSpiders.length > desired && _gardenSpiders.isNotEmpty) {
-      _gardenSpiders.removeLast();
-    }
-    while (_gardenSpiders.length < desired) {
-      final s = _spawnGardenSpider(w);
-      if (s == null) break;
-      _gardenSpiders.add(s);
-    }
   }
 
-  // Fait apparaître une araignée sur une case PRATICABLE au hasard, de préférence
-  // dans la bande d'un domaine porteur de routines (errance libre ensuite).
-  _GardenSpider? _spawnGardenSpider(WorldLayout w) {
-    final bands = [for (final c in w.castles) if (c.lanes.isNotEmpty) c.bounds];
+  // Fait apparaître une araignée sur une case PRATICABLE au hasard, CONFINÉE au
+  // village+jardin de son domaine (château/calendrier exclu). Mémorise ses bornes.
+  _GardenSpider? _spawnGardenSpider(WorldLayout w, CastleBlock c) {
+    final bx0 = c.villageRect.left;
+    final by0 = c.villageRect.top;
+    final bx1 = c.gardenRect.left + c.gardenRect.width - 1;
+    final by1 = c.villageRect.top + c.villageRect.height - 1;
     final rng = _rng;
     for (var t = 0; t < 40; t++) {
-      final Rectangle<int> b =
-          bands.isEmpty ? Rectangle(0, 0, w.cols, w.rows) : bands[rng.nextInt(bands.length)];
-      final x = b.left + rng.nextInt(b.width);
-      final y = b.top + rng.nextInt(b.height);
+      final x = bx0 + rng.nextInt(bx1 - bx0 + 1);
+      final y = by0 + rng.nextInt(by1 - by0 + 1);
       if (w.walkable(x, y)) {
-        return _GardenSpider(
-            x + 0.5, y + 0.5, rng.nextDouble() * 2 * pi);
+        return _GardenSpider(x + 0.5, y + 0.5, rng.nextDouble() * 2 * pi,
+            c.domainId, bx0, by0, bx1, by1);
       }
     }
     return null;
@@ -5635,47 +5646,61 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     }
   }
 
-  // Peuple les jardins : SEULS les serpents (tâches en retard) de chaque domaine —
-  // routines/activités se défendent dans la grotte. 1 case = 1 serpent.
+  // Peuple les jardins, PAR DOMAINE, avec les nuisibles backlog du domaine :
+  // 🐍 serpents (tâches en retard) + 🦂 scorpions (activités‑temps en retard).
+  // GARDIENS DE PASSAGE : sur les 2 portes du mur partagé au‑dessus du domaine, un
+  // SCORPION (porte gauche) et un SERPENT (porte droite) bloquent le raccourci
+  // direct — le plus petit en PV du jour ; le pont reste un contournement.
   void _populateV2Gardens() {
     _v2Pests.clear();
     final w = _wv2;
     if (w == null) return;
-    final byDom = <String, List<({String type, String id, int hp})>>{};
+    final snakesByDom = <String, List<({String type, String id, int hp})>>{};
+    final scorpsByDom = <String, List<({String type, String id, int hp})>>{};
     for (final e in logic.backlogEnemies()) {
-      if (e.type != 'snake') continue;
+      if (e.type != 'snake' && e.type != 'scorpion') continue;
       final dom = logic.enemyDomainId(e.type, e.id);
       if (dom == null) continue;
-      (byDom[dom] ??= []).add(e);
+      (e.type == 'snake' ? snakesByDom : scorpsByDom).putIfAbsent(dom, () => []).add(e);
     }
     for (final c in w.castles) {
-      final snakes = byDom[c.domainId] ?? const [];
-      if (snakes.isEmpty) continue;
+      final snakes = [...?snakesByDom[c.domainId]];
+      final scorps = [...?scorpsByDom[c.domainId]];
+      if (snakes.isEmpty && scorps.isEmpty) continue;
       final color =
           domainColor(c.domainId, logic.state.activeDomains) ?? _kFarm;
-      final free = <String>[];
       final g = c.gardenRect;
+      // Plus petit PV d'abord → c'est lui qu'on poste en gardien (le plus battable).
+      snakes.sort((a, b) => a.hp.compareTo(b.hp));
+      scorps.sort((a, b) => a.hp.compareTo(b.hp));
+      // GARDIENS : porte gauche = scorpion (accès dessus), porte droite = serpent.
+      final pr = g.top - 1; // rangée du mur partagé (porte percée dans buildWorld)
+      final scorpDoorX = g.left + g.width ~/ 3;
+      final snakeDoorX = g.left + (2 * g.width) ~/ 3;
+      if (scorps.isNotEmpty &&
+          w.inBounds(scorpDoorX, pr) &&
+          w.at(scorpDoorX, pr) == WtTile.garden) {
+        final e = scorps.removeAt(0);
+        _v2Pests['${scorpDoorX}_$pr'] = (type: e.type, id: e.id, color: color);
+      }
+      if (snakes.isNotEmpty &&
+          w.inBounds(snakeDoorX, pr) &&
+          w.at(snakeDoorX, pr) == WtTile.garden) {
+        final e = snakes.removeAt(0);
+        _v2Pests['${snakeDoorX}_$pr'] = (type: e.type, id: e.id, color: color);
+      }
+      // RESTE : dispersé dans le jardin (mélange déterministe, pas tassé).
+      final free = <String>[];
       for (var y = g.top; y < g.top + g.height; y++) {
         for (var x = g.left; x < g.left + g.width; x++) {
           if (w.at(x, y) != WtTile.garden) continue; // skip murs déco
           free.add('${x}_$y');
         }
       }
-      // Cases‑passage du mur partagé avec le domaine du dessus (mêmes colonnes que
-      // les portes percées dans buildWorld) : un serpent qui s'y pose BLOQUE le
-      // raccourci → le user doit faire le tour par le pont.
-      final pr = g.top - 1; // rangée du mur partagé
-      for (final dx in [g.width ~/ 3, (2 * g.width) ~/ 3]) {
-        final px = g.left + dx;
-        if (w.inBounds(px, pr) && w.at(px, pr) == WtTile.garden) {
-          free.add('${px}_$pr');
-        }
-      }
-      // Dispersés sur TOUT le jardin (mélange déterministe) — pas tassés dans un coin.
       free.shuffle(Random(c.domainId.hashCode));
-      for (var i = 0; i < snakes.length && i < free.length; i++) {
-        _v2Pests[free[i]] =
-            (type: snakes[i].type, id: snakes[i].id, color: color);
+      final rest = [...scorps, ...snakes];
+      for (var i = 0; i < rest.length && i < free.length; i++) {
+        _v2Pests[free[i]] = (type: rest[i].type, id: rest[i].id, color: color);
       }
     }
   }
@@ -6024,43 +6049,55 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   static const double _kSpiderShkSpeed = 11.0;
   static const int _kSpiderShkCooldownMs = 220; // anti‑rafale entre deux tirs
 
-  // Errance des araignées (bloquées par les murs) + tir auto des shurikens stockés
-  // sur l'araignée la plus proche À PORTÉE de l'avatar, et collisions.
+  // Une case est‑elle dans les bornes de confinement d'une araignée ET praticable ?
+  bool _spiderCanStep(WorldLayout w, _GardenSpider s, int tx, int ty) =>
+      tx >= s.bx0 && tx <= s.bx1 && ty >= s.by0 && ty <= s.by1 && w.walkable(tx, ty);
+
+  // Errance des araignées CONFINÉES au village+jardin de leur domaine + tir auto des
+  // shurikens stockés (par domaine) sur l'araignée la plus proche À PORTÉE.
   void _simulateGardenSpiders(double dt) {
     final w = _wv2;
     if (w == null) return;
-    // 1) Errance : cap aléatoire, rebond sur les murs et les bords.
+    // 1) Errance bornée : rebond sur les murs ET la frontière du domaine.
     for (final s in _gardenSpiders) {
-      // Coincée dans un mur (le layout a changé) → réapparaît sur une case libre.
-      if (!w.walkable(s.x.floor(), s.y.floor())) {
-        final fresh = _spawnGardenSpider(w);
-        if (fresh != null) {
-          s.x = fresh.x;
-          s.y = fresh.y;
-          s.dir = fresh.dir;
+      // Hors de ses bornes ou dans un mur (layout changé) → relocalise chez elle.
+      if (!_spiderCanStep(w, s, s.x.floor(), s.y.floor())) {
+        for (var t = 0; t < 30; t++) {
+          final rx = s.bx0 + _rng.nextInt(s.bx1 - s.bx0 + 1);
+          final ry = s.by0 + _rng.nextInt(s.by1 - s.by0 + 1);
+          if (w.walkable(rx, ry)) {
+            s.x = rx + 0.5;
+            s.y = ry + 0.5;
+            s.dir = _rng.nextDouble() * 2 * pi;
+            break;
+          }
         }
         continue;
       }
       s.dir += (_rng.nextDouble() - 0.5) * 1.4 * dt; // dérive douce du cap
       final nx = s.x + cos(s.dir) * _kSpiderSpeed * dt;
       final ny = s.y + sin(s.dir) * _kSpiderSpeed * dt;
-      // Bloquée par un mur / hors limites → nouveau cap au hasard (rebond).
-      if (w.walkable(nx.floor(), ny.floor())) {
+      if (_spiderCanStep(w, s, nx.floor(), ny.floor())) {
         s.x = nx;
         s.y = ny;
       } else {
-        s.dir = _rng.nextDouble() * 2 * pi;
+        s.dir = _rng.nextDouble() * 2 * pi; // bloquée → nouveau cap
       }
     }
-    // 2) Tir auto : l'avatar lance un shuriken stocké sur l'araignée la plus proche
-    //    À PORTÉE (_kNinjaRange). En vol = on n'en tire pas plus que le stock.
-    if (_gardenShurikens > _gardenShk.length &&
-        _gameMs - _lastGardenShkMs >= _kSpiderShkCooldownMs) {
+    // 2) Tir auto PAR DOMAINE : l'avatar vise l'araignée la plus proche à portée DONT
+    //    le domaine a encore du stock (au‑delà des shurikens déjà en vol vers lui).
+    if (_gameMs - _lastGardenShkMs >= _kSpiderShkCooldownMs) {
       final ax = _posV2.x + 0.5, ay = _posV2.y + 0.5;
+      final inFlight = <String, int>{};
+      for (final k in _gardenShk) {
+        inFlight[k.domainId] = (inFlight[k.domainId] ?? 0) + 1;
+      }
       _GardenSpider? target;
       var bestD = _kNinjaRange * _kNinjaRange;
       for (final s in _gardenSpiders) {
         if (s.dead) continue;
+        final stock = _gardenShurikensByDomain[s.domainId] ?? 0;
+        if (stock - (inFlight[s.domainId] ?? 0) <= 0) continue; // plus de shuriken dispo
         final d = (s.x - ax) * (s.x - ax) + (s.y - ay) * (s.y - ay);
         if (d <= bestD) {
           bestD = d;
@@ -6072,12 +6109,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         final dd = sqrt(ddx * ddx + ddy * ddy);
         if (dd > 0.01) {
           _gardenShk.add(_GardenShk(ax, ay, ddx / dd * _kSpiderShkSpeed,
-              ddy / dd * _kSpiderShkSpeed, _gameMs));
+              ddy / dd * _kSpiderShkSpeed, _gameMs, target.domainId));
           _lastGardenShkMs = _gameMs;
         }
       }
     }
-    // 3) Avance les shurikens + collision (tue l'araignée, consomme un shuriken).
+    // 3) Avance les shurikens + collision (tue l'araignée, consomme un shuriken du
+    //    domaine de l'araignée TOUCHÉE → invariant per‑domaine préservé).
     for (final shk in _gardenShk) {
       shk.x += shk.vx * dt;
       shk.y += shk.vy * dt;
@@ -6095,7 +6133,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         if ((shk.x - s.x).abs() < 0.5 && (shk.y - s.y).abs() < 0.5) {
           s.dead = true;
           shk.dead = true;
-          if (_gardenShurikens > 0) _gardenShurikens--;
+          final st = _gardenShurikensByDomain[s.domainId] ?? 0;
+          if (st > 0) _gardenShurikensByDomain[s.domainId] = st - 1;
           _v2Flashes.add((at: Offset(s.x - 0.5, s.y - 0.5), untilMs: _gameMs + 700));
           break;
         }
@@ -6469,7 +6508,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         child = Text('🎁', style: const TextStyle(fontSize: inner * 0.5));
         break;
     }
-    // Serpent du jardin : case remplie au % PV (couleur domaine) + 🐍.
+    // Nuisible du jardin (🐍 serpent / 🦂 scorpion) : case remplie au % PV (couleur
+    // domaine) + emoji ; sur une case‑passage = gardien qui bloque le raccourci.
     if (pest != null && tile == WtTile.garden) {
       final hp = logic.enemyHp(pest.type, pest.id);
       final mx = logic.enemyMaxHp(pest.type, pest.id);
@@ -6721,21 +6761,27 @@ class _CineShk {
   _CineShk(this.x, this.y, this.vx, this.vy, {this.arrow = false});
 }
 
-/// Petite araignée d'ÉCART HEBDO : position continue (coords de tuiles), errance
-/// libre dans le monde, bloquée par les murs. `dir` = cap courant (radians).
+/// Petite araignée d'ÉCART HEBDO : position continue (coords de tuiles), CONFINÉE
+/// au village+jardin de son domaine (`bx0..bx1`, `by0..by1` inclusifs), bloquée par
+/// les murs. `dir` = cap courant (radians). `domainId` = stock de shurikens associé.
 class _GardenSpider {
   double x, y, dir;
+  final String domainId;
+  final int bx0, by0, bx1, by1;
   bool dead = false;
-  _GardenSpider(this.x, this.y, this.dir);
+  _GardenSpider(
+      this.x, this.y, this.dir, this.domainId, this.bx0, this.by0, this.bx1, this.by1);
 }
 
 /// Shuriken d'araignée en vol : ligne droite, tué l'araignée à l'impact.
+/// `domainId` = domaine visé (limite le tir au stock de ce domaine).
 class _GardenShk {
   double x, y;
   final double vx, vy;
   final int bornMs;
+  final String domainId;
   bool dead = false;
-  _GardenShk(this.x, this.y, this.vx, this.vy, this.bornMs);
+  _GardenShk(this.x, this.y, this.vx, this.vy, this.bornMs, this.domainId);
 }
 
 // Tour en mode support pendant l'attaque : tire 1/10 s (coûte 1 flamme), se

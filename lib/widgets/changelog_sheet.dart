@@ -10,6 +10,11 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.27', '18 juin 2026', [
+    (Icons.hub_outlined, '« Le Monde » web : les petites araignées d\'écart restent désormais dans le village + jardin de LEUR domaine et ne se mélangent plus. Réduire l\'écart d\'un domaine ne nettoie que SES araignées'),
+    (Icons.shield_moon_outlined, 'Gardiens de passage : un scorpion 🦂 (activité en retard) et un serpent 🐍 (tâche en retard) bloquent les raccourcis entre deux domaines — tu peux toujours contourner par le pont, ou les affronter'),
+    (Icons.visibility_outlined, 'Le décor ne se pose plus sous les noms de routines (lisibilité)'),
+  ]),
   _Entry('6.26', '18 juin 2026', [
     (Icons.bug_report_outlined, '« Le Monde » web : les petites araignées d\'écart se déplacent plus lentement (plus faciles à suivre)'),
     (Icons.warning_amber, 'Une rampe de lancement ☢️ marque la case de tir à gauche de chaque tourelle (là où l\'avatar se poste pour tirer)'),
