@@ -14,6 +14,8 @@ import 'package:productivitwo_v1/web/web_email_signin_screen.dart';
 import 'package:productivitwo_v1/web/web_magic_link_complete_screen.dart';
 import 'package:productivitwo_v1/web/flame_proto_screen.dart';
 import 'package:productivitwo_v1/web/flame_proto2_screen.dart';
+import 'package:productivitwo_v1/web/flame_data_proto_screen.dart';
+import 'package:productivitwo_v1/web/dev_auth_screen.dart';
 
 // ── Couleurs Productivitwo ────────────────────────────────────────────────────
 
@@ -121,9 +123,20 @@ class _AuthGateState extends State<_AuthGate> {
       final uri = Uri.base;
       final params = uri.queryParameters;
 
-      // Prototype moteur de jeu Flame (isolé, sans auth) — évaluation « Le Monde ».
+      // Prototypes moteur de jeu Flame (isolés, sans auth) — évaluation « Le Monde ».
       if (params['flame'] == '1') return const FlameProtoScreen();
       if (params['flame'] == '2') return const FlameProto2Screen();
+
+      // DEV-LOGIN LOCAL (localhost uniquement) : connexion sur TON compte via
+      // getCustomToken(uid + token API). Ne fait RIEN en prod (gardé par l'hôte).
+      // S'affiche tant qu'on n'est pas sur un VRAI compte (donc aussi en démo).
+      final isLocalHost = uri.host == 'localhost' || uri.host == '127.0.0.1';
+      User? cur;
+      try { cur = FirebaseAuth.instance.currentUser; } catch (_) {}
+      final isRealUser = cur != null && cur.uid != 'demo-productivitwo';
+      if (isLocalHost && params['devauth'] == '1' && !isRealUser) {
+        return DevAuthScreen(onSignedIn: () { if (mounted) setState(() {}); });
+      }
 
       // Mode démo : connexion sur compte partagé demo-productivitwo
       if (params['demo'] == 'true') {
@@ -192,6 +205,10 @@ class _AuthGateState extends State<_AuthGate> {
         if (kIsWeb &&
             Uri.base.queryParameters['worldtest'] == 'true') {
           return WorldTestScreen(sync: FirestoreSync());
+        }
+        // Proto Flame AVEC TES DONNÉES : rend ton vrai WorldLayout en Flame.
+        if (kIsWeb && Uri.base.queryParameters['flame'] == '3') {
+          return FlameDataProtoScreen(sync: FirestoreSync());
         }
         return WebHomeScreen(isDemo: isDemo);
       },
