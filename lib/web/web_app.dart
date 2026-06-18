@@ -17,6 +17,12 @@ import 'package:productivitwo_v1/web/flame_proto2_screen.dart';
 import 'package:productivitwo_v1/web/flame_data_proto_screen.dart';
 import 'package:productivitwo_v1/web/dev_auth_screen.dart';
 
+// ── Tampon de build ───────────────────────────────────────────────────────────
+// Affiché en bas de CHAQUE écran web + imprimé au démarrage (terminal flutter run
+// + console navigateur). Sert à vérifier d'un coup d'œil qu'on n'exécute pas un
+// vieux build en local. À bumper à chaque changement de routing/auth notable.
+const String kWebBuildTag = 'build 2026-06-18a · flame=3 + devauth';
+
 // ── Couleurs Productivitwo ────────────────────────────────────────────────────
 
 const _kPrimary   = Color(0xFF1D9E75);
@@ -68,8 +74,25 @@ class WebApp extends StatelessWidget {
       themeMode: ThemeMode.dark,
 
       // Overlay assistant au-dessus du Navigator → visible même par-dessus les
-      // sheets/modales (sinon caché).
-      builder: (context, child) => GlobalAssistantOverlay(child: child!),
+      // sheets/modales (sinon caché). + tampon de build (coin bas-gauche).
+      builder: (context, child) => GlobalAssistantOverlay(
+        child: Stack(children: [
+          child!,
+          Positioned(
+            left: 4,
+            bottom: 2,
+            child: IgnorePointer(
+              child: Text(
+                kWebBuildTag,
+                style: TextStyle(
+                    fontSize: 9,
+                    color: Colors.white.withOpacity(.35),
+                    decoration: TextDecoration.none),
+              ),
+            ),
+          ),
+        ]),
+      ),
       home: _AuthGate(),
     );
   }
