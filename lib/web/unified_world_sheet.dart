@@ -157,6 +157,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // tileId tourelle → chargeur (0..7) + routine/activité (couleur 🕷️/🦂).
   final Map<String, ({int charger, bool isRoutine})> _v2Turret = {};
   final Map<String, String> _v2TurretRoutineId = {}; // tileId tourelle → routineId (lanes routine)
+  final Set<String> _v2LaunchPads = {}; // tileIds de la case de tir (gauche de chaque tourelle)
   final Set<String> _v2Sep = {}; // tileIds de la ligne séparatrice routines/activités
   final Map<String, int> _v2DayTurretX = {}; // tileId jour → X de la tourelle de sa lane
   final Map<String, String> _v2DayLabel = {}; // tileId entête → lettre du jour
@@ -5702,6 +5703,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _v2DayCount.clear();
     _v2Turret.clear();
     _v2TurretRoutineId.clear();
+    _v2LaunchPads.clear();
     _v2Sep.clear();
     _v2DayTurretX.clear();
     _v2DayLabel.clear();
@@ -5730,6 +5732,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         if (lane.isRoutine) {
           _v2TurretRoutineId['${lane.turretX}_${lane.y}'] = lane.id;
         }
+        // Case de tir = juste à GAUCHE de la tourelle (dernière colonne du jardin) :
+        // marqueur « rampe de lancement » (là où l'avatar se poste pour tirer).
+        _v2LaunchPads.add('${lane.turretX - 1}_${lane.y}');
         _v2LaneName['${lane.turretX}_${lane.y}'] = name;
         for (var j = 0; j < 7 && j < toks.length; j++) {
           final id = '${lane.dayX0 + j}_${lane.y}';
@@ -6015,7 +6020,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   }
 
   // Vitesses des araignées / shurikens d'écart (en cases par seconde).
-  static const double _kSpiderSpeed = 1.6;
+  static const double _kSpiderSpeed = 0.7;
   static const double _kSpiderShkSpeed = 11.0;
   static const int _kSpiderShkCooldownMs = 220; // anti‑rafale entre deux tirs
 
@@ -6374,6 +6379,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         break;
       case WtTile.garden:
         bg = _kFarm.withOpacity(.22);
+        // Rampe de lancement (case de tir à gauche de la tourelle) : marqueur ☢️
+        // sur fond ambré (zone de tir / danger).
+        if (_v2LaunchPads.contains(id)) {
+          bg = const Color(0xFFE8C13D).withOpacity(.16);
+          child = Text('☢️', style: TextStyle(fontSize: inner * 0.5));
+        }
         break;
       case WtTile.village:
         // Village teinté de la couleur du domaine (plus doux que le château).

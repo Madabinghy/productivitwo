@@ -10,6 +10,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.26', '18 juin 2026', [
+    (Icons.bug_report_outlined, '« Le Monde » web : les petites araignées d\'écart se déplacent plus lentement (plus faciles à suivre)'),
+    (Icons.warning_amber, 'Une rampe de lancement ☢️ marque la case de tir à gauche de chaque tourelle (là où l\'avatar se poste pour tirer)'),
+  ]),
   _Entry('6.25', '16 juin 2026', [
     (Icons.bug_report_outlined, '« Le Monde » web : des petites araignées apparaissent dans le monde pour chaque routine en retard sur la semaine dernière — autant d\'araignées que de complétions manquantes vs le même jour S-7. Elles se baladent librement (bloquées par les murs)'),
     (Icons.gps_fixed, 'Quand tu réduis l\'écart entre deux passages, tu arrives avec des shurikens stockés : ton avatar abat automatiquement les araignées qui passent à portée, jusqu\'à refléter l\'écart réellement rattrapé'),
