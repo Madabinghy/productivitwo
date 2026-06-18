@@ -10,6 +10,11 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.28', '18 juin 2026', [
+    (Icons.dashboard_customize_outlined, '« Le Monde » web : le jardin devient une mini-app interactive — combat scorpion/araignée et dashboard des routines du domaine s\'affichent DANS la map (plus en colonne à droite) ; cliquer une case referme et réaffiche le jardin'),
+    (Icons.rocket_launch_outlined, 'Clique sur une rampe de tir ☢️ : l\'avatar s\'y rend, la rampe tourne, le canon se lève et tire (s\'il a des flammes), puis le jardin ouvre le dashboard de la routine'),
+    (Icons.inventory_2_outlined, 'Compteur de shurikens 🗡️ affiché par domaine ; aucun nuisible ne se pose sur une case interactive'),
+  ]),
   _Entry('6.27', '18 juin 2026', [
     (Icons.hub_outlined, '« Le Monde » web : les petites araignées d\'écart restent désormais dans le village + jardin de LEUR domaine et ne se mélangent plus. Réduire l\'écart d\'un domaine ne nettoie que SES araignées'),
     (Icons.shield_moon_outlined, 'Gardiens de passage : un scorpion 🦂 (activité en retard) et un serpent 🐍 (tâche en retard) bloquent les raccourcis entre deux domaines — tu peux toujours contourner par le pont, ou les affronter'),
