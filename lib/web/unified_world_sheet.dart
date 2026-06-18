@@ -3105,8 +3105,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             })
           else
             _dashCta(Icons.play_arrow_rounded, col, () {
+              // Le onChange du web ne pushe PAS → on persiste la session à la main
+              // dans Firestore pour que le téléphone la voie (→ Live Activity).
+              final openBefore =
+                  logic.state.sessions.where((s) => s.endAt == null).toList();
               logic.start(a.id);
-              _toast('⏱️ Minuteur lancé — ${a.name}', col);
+              for (final s in openBefore) {
+                sync.saveSession(s); // elles viennent de recevoir endAt
+              }
+              if (logic.state.sessions.isNotEmpty) {
+                sync.saveSession(logic.state.sessions.last); // nouvelle session ouverte
+              }
+              _toast('⏱️ Chrono lancé — ${a.name}', col);
               if (mounted) setState(() {});
             }),
         ]),

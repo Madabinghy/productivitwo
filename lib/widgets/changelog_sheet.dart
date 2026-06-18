@@ -10,6 +10,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.30', '18 juin 2026', [
+    (Icons.timer_outlined, 'Le bouton ▶ « chrono » du dashboard d\'un domaine démarre désormais vraiment la session côté serveur — elle est synchronisée sur le téléphone (Live Activity iOS si l\'app a été ouverte une fois)'),
+    (Icons.straighten, '« Le Monde » web : chaque domaine a une hauteur minimale (mini-app dashboard plus lisible). Les rangées vides du calendrier sont remplies de pierre, avec un coffre à butin dans le jardin'),
+  ]),
   _Entry('6.29', '18 juin 2026', [
     (Icons.rocket_launch_outlined, '« Le Monde » web : le canon est baissé au repos et se redresse quand tu actives sa rampe. Séquence en 3 temps — l\'avatar arrive à gauche, la rampe tourne et le canon se lève, puis l\'avatar monte sur la rampe et la cinématique de tir se lance (volée vers le jour)'),
   ]),
