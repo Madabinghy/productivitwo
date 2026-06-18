@@ -1,13 +1,19 @@
 import Foundation
+import Flutter
 
 #if canImport(ActivityKit)
 import ActivityKit
 
 // Gère la Live Activity « minuteur » (ActivityKit). Une seule active à la fois.
+// Observe aussi les tokens APNs (push‑to‑start + token d'activité) et les renvoie à
+// Dart (→ Firestore) pour le démarrage/fin distant app fermée (cf. Cloud Function APNs).
 @available(iOS 16.1, *)
 final class LiveActivityManager {
   static let shared = LiveActivityManager()
   private init() {}
+
+  weak var channel: FlutterMethodChannel?
+  private var startedObserver = false
 
   /// Démarre (en terminant l'éventuelle précédente) une Live Activity comptant
   /// au‑dessus depuis `startAtMs`. Retourne l'id, ou nil si indisponible.
@@ -23,10 +29,11 @@ final class LiveActivityManager {
         activity = try Activity.request(
           attributes: attributes,
           content: .init(state: state, staleDate: nil),
-          pushType: nil)
+          pushType: .token) // token → on peut la METTRE À JOUR / TERMINER à distance
       } else {
         activity = try Activity.request(attributes: attributes, contentState: state)
       }
+      observeActivityToken(activity)
       return activity.id
     } catch {
       return nil
@@ -46,15 +53,36 @@ final class LiveActivityManager {
     }
   }
 
-  // (Phase 2) Token push‑to‑start (iOS 17.2+) pour démarrage distant app fermée.
-  @available(iOS 17.2, *)
-  func pushToStartToken(_ completion: @escaping (String?) -> Void) {
+  // Token de mise à jour d'une activité donnée → Dart (pour pousser un « end » distant).
+  private func observeActivityToken(_ activity: Activity<TimerActivityAttributes>) {
     Task {
-      for await data in Activity<TimerActivityAttributes>.pushToStartTokenUpdates {
-        completion(data.map { String(format: "%02x", $0) }.joined())
-        return
+      for await tokenData in activity.pushTokenUpdates {
+        let token = tokenData.map { String(format: "%02x", $0) }.joined()
+        await MainActor.run {
+          self.channel?.invokeMethod("onActivityToken",
+                                     arguments: ["id": activity.id, "token": token])
+        }
       }
-      completion(nil)
+    }
+  }
+
+  /// (iOS 17.2+) Observe les tokens push‑to‑start (permet de DÉMARRER une Live
+  /// Activity à distance, app fermée) → renvoyés à Dart.
+  @available(iOS 17.2, *)
+  func registerPushToStart() {
+    guard !startedObserver else { return }
+    startedObserver = true
+    Task {
+      for await tokenData in Activity<TimerActivityAttributes>.pushToStartTokenUpdates {
+        let token = tokenData.map { String(format: "%02x", $0) }.joined()
+        await MainActor.run {
+          self.channel?.invokeMethod("onPushToStartToken", arguments: token)
+        }
+      }
+    }
+    // Récupère aussi le token des activités déjà actives (relancement de l'app).
+    for activity in Activity<TimerActivityAttributes>.activities {
+      observeActivityToken(activity)
     }
   }
 }

@@ -12,7 +12,9 @@ import 'package:flutter/services.dart';
 /// Côté natif : `MethodChannel('productivitwo/live_activity')` géré dans
 /// `ios/Runner/LiveActivityManager.swift` (enregistré par AppDelegate).
 class LiveActivityService {
-  LiveActivityService._();
+  LiveActivityService._() {
+    if (_supported) _ch.setMethodCallHandler(_handleNative);
+  }
   static final LiveActivityService instance = LiveActivityService._();
 
   static const MethodChannel _ch = MethodChannel('productivitwo/live_activity');
@@ -24,6 +26,33 @@ class LiveActivityService {
   String? _activityId;
 
   bool get isRunning => _activityId != null;
+
+  /// Appelé quand un token APNs arrive (push‑to‑start ou token d'activité). Posé
+  /// par `main.dart` pour persister dans Firestore. `type` ∈ {pushToStart, activity}.
+  void Function(String type, String token, {String? activityId})? onToken;
+
+  Future<dynamic> _handleNative(MethodCall call) async {
+    switch (call.method) {
+      case 'onPushToStartToken':
+        onToken?.call('pushToStart', call.arguments as String);
+        break;
+      case 'onActivityToken':
+        final m = (call.arguments as Map).cast<String, dynamic>();
+        onToken?.call('activity', m['token'] as String,
+            activityId: m['id'] as String?);
+        break;
+    }
+    return null;
+  }
+
+  /// (Phase 2) Démarre l'observation des tokens push‑to‑start ActivityKit (iOS
+  /// 17.2+) : à chaque token, `onToken` est rappelé → à stocker dans Firestore.
+  Future<void> registerForRemoteStart() async {
+    if (!_supported) return;
+    try {
+      await _ch.invokeMethod('registerPushToStart');
+    } catch (_) {}
+  }
 
   /// Démarre (ou met à jour) la Live Activity « minuteur » : compte AU‑DESSUS
   /// depuis `startAt` (session ouverte, sans durée fixe).

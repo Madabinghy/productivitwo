@@ -2260,6 +2260,13 @@ class _AppRootState extends State<AppRoot>
         }
         setState(() {});
       });
+      // Live Activity iOS : persiste les tokens APNs (push‑to‑start / activité) →
+      // permet le démarrage distant app fermée (cf. Cloud Function APNs).
+      LiveActivityService.instance.onToken = (type, token, {activityId}) {
+        unawaited(_sync.saveLiveActivityToken(
+            type: type, token: token, activityId: activityId));
+      };
+      unawaited(LiveActivityService.instance.registerForRemoteStart());
     }
 
     // Évaluation assistant ORION (non bloquant)

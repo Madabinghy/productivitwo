@@ -565,6 +565,24 @@ class FirestoreSync {
         (snap) => snap.docs.map((d) => Session.from(d.data() as Map)).toList());
   }
 
+  // LIVE ACTIVITY (iOS) : stocke les tokens APNs nécessaires au push‑to‑start
+  // (démarrage distant app fermée) et à la mise à jour/fin d'une Live Activity.
+  // Doc unique : users/{uid}/live_activity/main.
+  Future<void> saveLiveActivityToken(
+      {required String type, required String token, String? activityId}) async {
+    if (uid == null) return;
+    final data = <String, dynamic>{'updatedAt': FieldValue.serverTimestamp()};
+    if (type == 'pushToStart') {
+      data['pushToStartToken'] = token;
+    } else {
+      data['activityPushToken'] = token;
+      if (activityId != null) data['activityId'] = activityId;
+    }
+    await _db
+        .doc('users/$uid/live_activity/main')
+        .set(data, SetOptions(merge: true));
+  }
+
   Stream<List<Domain>> streamDomains() {
     if (uid == null) return const Stream.empty();
     return _col('domains').snapshots().map((snap) => snap.docs

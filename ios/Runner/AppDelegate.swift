@@ -63,6 +63,7 @@ import alarm
     // Method channel Live Activity (minuteur ActivityKit) — délégué au manager.
     let laChannel = FlutterMethodChannel(
       name: "productivitwo/live_activity", binaryMessenger: controller.binaryMessenger)
+    if #available(iOS 16.1, *) { LiveActivityManager.shared.channel = laChannel }
     laChannel.setMethodCallHandler { (call, result) in
       let args = call.arguments as? [String: Any] ?? [:]
       switch call.method {
@@ -79,10 +80,11 @@ import alarm
           LiveActivityManager.shared.end(id: args["id"] as? String)
         }
         result(nil)
-      case "pushToStartToken":
+      case "registerPushToStart":
         if #available(iOS 17.2, *) {
-          LiveActivityManager.shared.pushToStartToken { token in result(token) }
-        } else { result(nil) }
+          LiveActivityManager.shared.registerPushToStart()
+        }
+        result(nil)
       default:
         result(FlutterMethodNotImplemented)
       }
