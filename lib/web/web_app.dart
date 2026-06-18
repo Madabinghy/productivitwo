@@ -122,10 +122,12 @@ class _AuthGateState extends State<_AuthGate> {
 
       // DEV-LOGIN LOCAL (localhost uniquement) : connexion sur TON compte via
       // getCustomToken(uid + token API). Ne fait RIEN en prod (gardé par l'hôte).
+      // S'affiche tant qu'on n'est pas sur un VRAI compte (donc aussi en démo).
       final isLocalHost = uri.host == 'localhost' || uri.host == '127.0.0.1';
-      bool already = false;
-      try { already = FirebaseAuth.instance.currentUser != null; } catch (_) {}
-      if (isLocalHost && params['devauth'] == '1' && !already) {
+      User? cur;
+      try { cur = FirebaseAuth.instance.currentUser; } catch (_) {}
+      final isRealUser = cur != null && cur.uid != 'demo-productivitwo';
+      if (isLocalHost && params['devauth'] == '1' && !isRealUser) {
         return DevAuthScreen(onSignedIn: () { if (mounted) setState(() {}); });
       }
 
