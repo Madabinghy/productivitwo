@@ -3178,8 +3178,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       });
       await Future.delayed(const Duration(milliseconds: 2000));
       if (!mounted) return;
-      // — Phase 2 : l'avatar monte sur la rampe (la rotation de la rampe s'arrête).
+      // La rotation de la rampe s'arrête, puis on laisse 0,5 s avant que l'avatar
+      // ne monte dessus.
       setState(() => _cannonSpinAt = null);
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (!mounted) return;
+      // — Phase 2 : l'avatar monte sur la rampe.
       await _v2StepTo(Point(x, y));
       if (!mounted) return;
       // — Phase 3 : chargement/visée puis tir « mode combat » (volée vers le jour).
@@ -6774,12 +6778,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           // décharger pendant l'exploration auto.
           final rid = _v2TurretRoutineId[id];
           final pending = rid == null ? 0 : (_pendingByRoutine[rid]?.length ?? 0);
-          // Canon BAISSÉ au repos, LEVÉ + remonté pendant la séquence (opérationnel).
+          // Pieds DROITS (fixes) : seule la tête du canon se relève (cf. _v2TurretWidget).
           final raised = _raisedTurrets.contains(id);
-          final turret = Transform.translate(
-              offset: Offset(0, raised ? -inner * 0.12 : 0),
-              child: _v2TurretWidget(tur.charger, tur.isRoutine, inner,
-                  raised: raised));
+          final turret = _v2TurretWidget(tur.charger, tur.isRoutine, inner,
+              raised: raised);
           child = pending <= 0
               ? turret
               : Stack(
@@ -7028,15 +7030,26 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             ),
         ]),
         SizedBox(height: inner * 0.04),
-        // Canon BAISSÉ au repos (pointe vers le bas) → se LÈVE (opérationnel) quand
-        // la rampe est activée. Pivot autour de la base.
-        Transform.rotate(
-          angle: raised ? -0.12 : 0.72,
-          alignment: Alignment.bottomCenter,
-          child: SvgPicture.asset('assets/icons/anti-aircraft-gun.svg',
-              width: inner * 0.58,
-              height: inner * 0.58,
-              colorFilter: ColorFilter.mode(col, BlendMode.srcIn)),
+        // DCA en 2 morceaux (comme la carte de combat) : BASE fixe = pieds droits ;
+        // seule la TÊTE (aa-head) pivote autour de la monture. Baissée au repos,
+        // relevée (angle 0 = opérationnel) quand la rampe est activée.
+        SizedBox(
+          width: inner * 0.58,
+          height: inner * 0.58,
+          child: Stack(children: [
+            SvgPicture.asset('assets/icons/aa-base.svg',
+                width: inner * 0.58,
+                height: inner * 0.58,
+                colorFilter: ColorFilter.mode(col, BlendMode.srcIn)),
+            Transform.rotate(
+              angle: raised ? 0.0 : 0.85, // 0 = opérationnel ; >0 = baissé
+              alignment: _kBarrelPivot,
+              child: SvgPicture.asset('assets/icons/aa-head.svg',
+                  width: inner * 0.58,
+                  height: inner * 0.58,
+                  colorFilter: ColorFilter.mode(col, BlendMode.srcIn)),
+            ),
+          ]),
         ),
       ],
     );
