@@ -12,6 +12,7 @@ import 'package:productivitwo_v1/web/world_test_screen.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/web/web_email_signin_screen.dart';
 import 'package:productivitwo_v1/web/web_magic_link_complete_screen.dart';
+import 'package:productivitwo_v1/web/dev_auth_screen.dart';
 
 // ── Couleurs Productivitwo ────────────────────────────────────────────────────
 
@@ -118,6 +119,15 @@ class _AuthGateState extends State<_AuthGate> {
     if (kIsWeb) {
       final uri = Uri.base;
       final params = uri.queryParameters;
+
+      // DEV-LOGIN LOCAL (localhost uniquement) : connexion sur TON compte via
+      // getCustomToken(uid + token API). Ne fait RIEN en prod (gardé par l'hôte).
+      final isLocalHost = uri.host == 'localhost' || uri.host == '127.0.0.1';
+      bool already = false;
+      try { already = FirebaseAuth.instance.currentUser != null; } catch (_) {}
+      if (isLocalHost && params['devauth'] == '1' && !already) {
+        return DevAuthScreen(onSignedIn: () { if (mounted) setState(() {}); });
+      }
 
       // Mode démo : connexion sur compte partagé demo-productivitwo
       if (params['demo'] == 'true') {
