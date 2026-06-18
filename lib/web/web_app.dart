@@ -12,6 +12,7 @@ import 'package:productivitwo_v1/web/world_test_screen.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/web/web_email_signin_screen.dart';
 import 'package:productivitwo_v1/web/web_magic_link_complete_screen.dart';
+import 'package:productivitwo_v1/web/flame_proto_screen.dart';
 
 // ── Couleurs Productivitwo ────────────────────────────────────────────────────
 
@@ -118,6 +119,9 @@ class _AuthGateState extends State<_AuthGate> {
     if (kIsWeb) {
       final uri = Uri.base;
       final params = uri.queryParameters;
+
+      // Prototype moteur de jeu Flame (isolé, sans auth) — évaluation « Le Monde ».
+      if (params['flame'] == '1') return const FlameProtoScreen();
 
       // Mode démo : connexion sur compte partagé demo-productivitwo
       if (params['demo'] == 'true') {
