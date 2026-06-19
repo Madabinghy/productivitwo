@@ -307,6 +307,9 @@ class _DomainGameplayState extends State<_DomainGameplay>
   String? _explodingId; // ligne en explosion (💥) pendant 2 s
   Timer? _explosionTimer;
   String? _targetId; // ligne VISÉE (viseur) → cible de « Faire feu »
+  // Onglet ACTIONS : action VISÉE (viseur) + action en cours de tir (missile).
+  String? _actionTargetId;
+  String? _firingActionId;
   // Mode de tir par ligne (case « petit » en bout de ligne) :
   //   'timer'  → minuteur · 'chrono' → chrono libre · 'check' → marque faite (+1).
   // Le mode 'check' n'est proposé que pour les routines (spider).
@@ -774,6 +777,63 @@ class _DomainGameplayState extends State<_DomainGameplay>
     return cur == 'timer' ? 'chrono' : 'timer';
   }
 
+  // « Faire feu » (onglet Actions) : missile sur l'action VISÉE (sinon la 1ʳᵉ non
+  // faite) → cinématique courte, puis l'action est VALIDÉE (coche verte, persistée).
+  Future<void> _fireAction() async {
+    if (_firingActionId != null) return;
+    Project? proj;
+    TaskAction? act;
+    // 1) Action visée en priorité.
+    if (_actionTargetId != null) {
+      for (final p in _actionProjects()) {
+        for (final t in p.tasks) {
+          for (final a in t.actions) {
+            if (a.id == _actionTargetId && !a.done) {
+              proj = p;
+              act = a;
+            }
+          }
+        }
+      }
+    }
+    // 2) Sinon la 1ʳᵉ action non faite.
+    if (act == null) {
+      for (final p in _actionProjects()) {
+        for (final t in p.tasks) {
+          if (t.status == 'done' || t.status == 'skipped') continue;
+          for (final a in t.actions) {
+            if (!a.done) {
+              proj = p;
+              act = a;
+              break;
+            }
+          }
+          if (act != null) break;
+        }
+        if (act != null) break;
+      }
+    }
+    if (act == null || proj == null) return;
+    final id = act.id;
+    _fireCtrl.reset();
+    setState(() => _firingActionId = id);
+    await _fireCtrl.forward(from: 0);
+    if (!mounted) {
+      _firingActionId = null;
+      return;
+    }
+    act.done = true;
+    act.doneAt = DateTime.now();
+    await widget.sync.saveProjectTasks(proj.id, proj.tasks);
+    logic.onChange();
+    if (mounted) {
+      setState(() {
+        _firingActionId = null;
+        if (_actionTargetId == id) _actionTargetId = null;
+      });
+    }
+  }
+
   @override
   void dispose() {
     // Snapshot de l'état VU avant de quitter → la prochaine ouverture ne ré-anime que
@@ -994,6 +1054,24 @@ class _DomainGameplayState extends State<_DomainGameplay>
                   ),
                 ),
               ),
+            // FAIRE FEU (onglet Actions) : le missile valide l'action visée.
+            if (_tab == 1 && _actionProjects().isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFFFF8A3D).withOpacity(.22),
+                        foregroundColor: const Color(0xFFFF8A3D),
+                        minimumSize: const Size.fromHeight(46)),
+                    onPressed: _firingActionId == null ? _fireAction : null,
+                    icon: const Icon(Icons.gps_fixed),
+                    label: Text(
+                        _firingActionId == null ? 'Faire feu 🚀' : 'Tir en cours…'),
+                  ),
+                ),
+              ),
             // CTA de navigation jardin ↔ château (onglet Routines/Activités).
             if (_tab == 0)
               Padding(
@@ -1106,12 +1184,16 @@ class _DomainGameplayState extends State<_DomainGameplay>
   bool _sameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
 
-  Widget _actionsView() {
+  List<Project> _actionProjects() {
     final dom = widget.domain.id;
-    final projects = logic.currentProjects
+    return logic.currentProjects
         .where((p) =>
             p.domainId == dom && p.status != 'archived' && p.status != 'done')
         .toList();
+  }
+
+  Widget _actionsView() {
+    final projects = _actionProjects();
     if (projects.isEmpty) {
       return const Center(
         child: Padding(
@@ -1134,13 +1216,13 @@ class _DomainGameplayState extends State<_DomainGameplay>
                   .length),
           for (final t in p.tasks
               .where((t) => t.status != 'done' && t.status != 'skipped'))
-            _actionTaskRow(t, days),
+            _actionTaskRow(p, t, days),
         ],
       ],
     );
   }
 
-  Widget _actionTaskRow(ProjectTask t, List<String> days) {
+  Widget _actionTaskRow(Project p, ProjectTask t, List<String> days) {
     const cell = 34.0;
     final c = widget.color;
     final now = DateTime.now();
@@ -1153,7 +1235,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(t.title,
-              maxLines: 1,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                   color: c.withOpacity(.95),
@@ -1161,7 +1243,6 @@ class _DomainGameplayState extends State<_DomainGameplay>
                   fontSize: 13)),
           const SizedBox(height: 2),
           Row(children: [
-            const SizedBox(width: 60),
             for (final l in days)
               SizedBox(
                 width: cell + 2,
@@ -1173,19 +1254,11 @@ class _DomainGameplayState extends State<_DomainGameplay>
                           fontSize: 11)),
                 ),
               ),
+            const SizedBox(width: 60),
           ]),
           const SizedBox(height: 1),
-          // Lance‑missiles (à la place de la tourelle) + cases‑jours (validations).
+          // Cases‑jours (validations) + lance‑missiles À DROITE.
           Row(children: [
-            SizedBox(
-              width: 60,
-              child: Center(
-                child: SvgPicture.asset('assets/icons/missile-launcher.svg',
-                    width: 24,
-                    height: 24,
-                    colorFilter: ColorFilter.mode(c, BlendMode.srcIn)),
-              ),
-            ),
             for (var d = 0; d < 7; d++)
               () {
                 final done = validatedOn(today.subtract(Duration(days: 6 - d)));
@@ -1204,35 +1277,86 @@ class _DomainGameplayState extends State<_DomainGameplay>
                   ),
                 );
               }(),
+            SizedBox(
+              width: 60,
+              child: Center(
+                child: SvgPicture.asset('assets/icons/missile-launcher.svg',
+                    width: 24,
+                    height: 24,
+                    colorFilter: ColorFilter.mode(c, BlendMode.srcIn)),
+              ),
+            ),
           ]),
           const SizedBox(height: 4),
-          // Liste des ACTIONS — fusil devant chacune.
-          for (final a in t.actions)
-            Padding(
-              padding: const EdgeInsets.only(left: 8, top: 2, bottom: 2),
-              child: Row(children: [
-                SvgPicture.asset('assets/icons/rifle.svg',
-                    width: 15,
-                    height: 15,
-                    colorFilter: ColorFilter.mode(
-                        a.done ? c.withOpacity(.5) : Colors.white60,
-                        BlendMode.srcIn)),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(a.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          color: a.done ? Colors.white38 : Colors.white70,
-                          decoration:
-                              a.done ? TextDecoration.lineThrough : null,
-                          fontSize: 12)),
-                ),
-              ]),
-            ),
+          // Liste des ACTIONS — coche verte si faite, viseur 🎯 pour cibler (tap =
+          // cible) ; « Faire feu » valide la cible. Descriptions sur plusieurs lignes.
+          for (final a in t.actions) _actionLine(p, t, a, c),
         ],
       ),
     );
+  }
+
+  Widget _actionLine(Project p, ProjectTask t, TaskAction a, Color c) {
+    final aimed = _actionTargetId == a.id;
+    final firing = _firingActionId == a.id;
+    return InkWell(
+      onTap: a.done ? null : () => _aimAction(a.id),
+      child: Container(
+        decoration: BoxDecoration(
+          color: aimed ? c.withOpacity(.12) : null,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        padding: const EdgeInsets.fromLTRB(8, 4, 4, 4),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // Coche VERTE si faite, sinon fusil.
+          a.done
+              ? const Icon(Icons.check_circle,
+                  size: 16, color: Color(0xFF4CD787))
+              : SvgPicture.asset('assets/icons/rifle.svg',
+                  width: 15,
+                  height: 15,
+                  colorFilter:
+                      const ColorFilter.mode(Colors.white60, BlendMode.srcIn)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(a.title,
+                style: TextStyle(
+                    color: a.done ? Colors.white38 : Colors.white70,
+                    decoration: a.done ? TextDecoration.lineThrough : null,
+                    fontSize: 12,
+                    height: 1.3)),
+          ),
+          // Missile en vol (cinématique) sur la ligne ciblée.
+          if (firing)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: SvgPicture.asset('assets/icons/missile-launcher.svg',
+                  width: 14,
+                  height: 14,
+                  colorFilter:
+                      const ColorFilter.mode(Color(0xFFFF8A3D), BlendMode.srcIn)),
+            )
+          else if (!a.done)
+            // Viseur 🎯 : cible cette action pour « Faire feu ».
+            GestureDetector(
+              onTap: () => _aimAction(a.id),
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.all(2),
+                child: Icon(Icons.gps_fixed,
+                    size: 16,
+                    color: aimed
+                        ? const Color(0xFFFF8A3D)
+                        : Colors.white24),
+              ),
+            ),
+        ]),
+      ),
+    );
+  }
+
+  void _aimAction(String id) {
+    setState(() => _actionTargetId = _actionTargetId == id ? null : id);
   }
 
   Widget _gardenRow(_Item it, double cell, List<String> days) {
