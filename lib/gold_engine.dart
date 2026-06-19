@@ -861,6 +861,51 @@ extension GoldEngine on AppLogic {
     return n;
   }
 
+  // ── Compteur global de nuisibles (HUD du Monde web) ─────────────────────────
+
+  /// Totaux de nuisibles VIVANTS, tous domaines confondus :
+  /// 🕷️ spiders = jours-routine manqués (fenêtre 7j) · 🦂 scorpions = jours
+  /// d'activité-temps en retard sur la cible 7j · 🐍 snakes = tâches en retard.
+  ({int spiders, int scorpions, int snakes}) worldPestTotals() {
+    var spiders = 0, scorpions = 0, snakes = 0;
+    for (final a in state.activeActivities) {
+      if (a.isHabit) {
+        for (final t in routineWeekTokens(a.id)) {
+          if (t.type == 'spider') spiders++;
+        }
+      } else if (a.goalMin > 0) {
+        for (final t in activityTimeTokens(a.id)) {
+          if (t.type == 'spider') scorpions++;
+        }
+      }
+    }
+    for (final e in backlogEnemies()) {
+      if (e.type == 'snake') snakes++;
+    }
+    return (spiders: spiders, scorpions: scorpions, snakes: snakes);
+  }
+
+  /// Jours « tenus » sur la fenêtre de 7 jours finissant à `end` (inclus), tous
+  /// domaines : routineDays = (routine, jour) où le quota est atteint ;
+  /// activityDays = (activité-temps, jour) où la cible du jour est atteinte.
+  /// Sert au comparatif hebdo du HUD (cette semaine vs la précédente).
+  ({int routineDays, int activityDays}) worldWeekWins(DateTime end) {
+    final day0 = DateTime(end.year, end.month, end.day);
+    var routineDays = 0, activityDays = 0;
+    for (var i = 0; i < 7; i++) {
+      final date = day0.subtract(Duration(days: i));
+      for (final a in state.activeActivities) {
+        if (a.isHabit) {
+          final q = dayQuotaFor(a);
+          if (q > 0 && habitValueOn(a.id, date) >= q) routineDays++;
+        } else if (a.goalMin > 0 && _minutesOnDay(a.id, date) >= a.goalMin) {
+          activityDays++;
+        }
+      }
+    }
+    return (routineDays: routineDays, activityDays: activityDays);
+  }
+
   /// Jours (0-6, lun→dim) de CETTE semaine où la routine est MANQUÉE (jours passés
   /// ou aujourd'hui seulement) = les nuisibles de sa ligne dans le calendrier.
   List<int> routineMissedThisWeek(String routineId) {

@@ -4035,6 +4035,132 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     );
   }
 
+  // ── Compteur global de nuisibles (sous la minimap) ───────────────────────────
+  // Pastille : 🕷️ routines · 🦂 activités · 🐍 tâches (tous domaines). Tap → stats.
+  Widget _worldPestHud() {
+    final t = logic.worldPestTotals();
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _showPestStats,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0E1714).withOpacity(.92),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: _kEnemy.withOpacity(.55), width: 1.2),
+            boxShadow: const [
+              BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 2)),
+            ],
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            _pestChip('🕷️', t.spiders),
+            const SizedBox(width: 8),
+            _pestChip('🦂', t.scorpions),
+            const SizedBox(width: 8),
+            _pestChip('🐍', t.snakes),
+            const SizedBox(width: 5),
+            const Icon(Icons.bar_chart_rounded, size: 14, color: Colors.white38),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _pestChip(String emoji, int n) =>
+      Row(mainAxisSize: MainAxisSize.min, children: [
+        Text(emoji, style: const TextStyle(fontSize: 13)),
+        const SizedBox(width: 3),
+        Text('$n',
+            style: const TextStyle(
+                color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13)),
+      ]);
+
+  // Panneau de stats des nuisibles : total vivant par type + comparatif des jours
+  // « tenus » de cette semaine vs les 7 jours précédents (progression).
+  void _showPestStats() {
+    final totals = logic.worldPestTotals();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final thisWk = logic.worldWeekWins(today);
+    final lastWk = logic.worldWeekWins(today.subtract(const Duration(days: 7)));
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1410),
+        title: const Text('Nuisibles du monde',
+            style: TextStyle(color: Colors.white, fontSize: 16)),
+        content: SizedBox(
+          width: 330,
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _pestStatRow('🕷️', 'Routines', totals.spiders,
+                    thisWk.routineDays, thisWk.routineDays - lastWk.routineDays,
+                    'jours tenus'),
+                const Divider(color: Colors.white12, height: 18),
+                _pestStatRow('🦂', 'Activités-temps', totals.scorpions,
+                    thisWk.activityDays,
+                    thisWk.activityDays - lastWk.activityDays, 'jours sur cible'),
+                const Divider(color: Colors.white12, height: 18),
+                _pestStatRow('🐍', 'Tâches en retard', totals.snakes, null, null,
+                    null),
+                const SizedBox(height: 10),
+                const Text(
+                    'Comparatif : cette semaine (7 j) vs les 7 jours précédents.',
+                    style: TextStyle(color: Colors.white38, fontSize: 11)),
+              ]),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Fermer')),
+        ],
+      ),
+    );
+  }
+
+  Widget _pestStatRow(String emoji, String label, int alive, int? weekWins,
+      int? delta, String? winsLabel) {
+    final deltaStr = delta == null ? null : (delta >= 0 ? '+$delta' : '$delta');
+    final deltaColor = delta == null
+        ? Colors.white54
+        : (delta > 0 ? _kFarm : (delta < 0 ? _kEnemy : Colors.white54));
+    return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+      Text(emoji, style: const TextStyle(fontSize: 22)),
+      const SizedBox(width: 12),
+      Expanded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13)),
+          if (weekWins != null && winsLabel != null)
+            Text('$weekWins $winsLabel cette semaine',
+                style: const TextStyle(color: Colors.white54, fontSize: 11)),
+        ]),
+      ),
+      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        Text('$alive',
+            style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 20)),
+        const Text('vivants',
+            style: TextStyle(color: Colors.white38, fontSize: 9)),
+        if (deltaStr != null)
+          Text('$deltaStr vs sem. dern.',
+              style: TextStyle(
+                  color: deltaColor,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 11)),
+      ]),
+    ]);
+  }
+
   // Appel à l'action « temps » du dashboard : chrono EN COURS (temps + arrêt) si une
   // session tourne déjà pour l'activité, sinon le bouton pour la lancer.
   // Contrôle de lancement d'une activité-temps : chrono libre OU minuteur (décompte).
@@ -5801,6 +5927,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         top: 10,
                         right: 10,
                         child: _miniMapV2(maxSide: widget.mobile ? 120 : 160)),
+                    // Compteur global de nuisibles, sous la minimap (cliquable → stats).
+                    Positioned(
+                        top: 10 + (widget.mobile ? 120 : 160) + 8,
+                        right: 10,
+                        child: _worldPestHud()),
                     // Chrono en cours : épinglé en bas, visible quel que soit le panneau.
                     Positioned(
                         left: 0,
