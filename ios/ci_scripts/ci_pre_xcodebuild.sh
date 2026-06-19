@@ -2,19 +2,35 @@
 
 set -e
 
+# Retry réseau : Xcode Cloud a parfois des coupures DNS transitoires pendant le
+# téléchargement du Dart SDK / des artefacts (curl: Could not resolve host
+# storage.googleapis.com — cf. build 330 échoué). On retente avant d'abandonner.
+retry() {
+  n=0
+  until "$@"; do
+    n=$((n + 1))
+    if [ "$n" -ge 6 ]; then
+      echo "❌ Échec après 6 tentatives : $*"
+      return 1
+    fi
+    echo "⚠️ Échec réseau (tentative $n/6) — nouvel essai dans 15 s : $*"
+    sleep 15
+  done
+}
+
 echo "=== Installing Flutter ==="
-git clone https://github.com/flutter/flutter.git --depth 1 -b 3.35.6 "$HOME/flutter"
+retry sh -c 'rm -rf "$HOME/flutter" && git clone https://github.com/flutter/flutter.git --depth 1 -b 3.35.6 "$HOME/flutter"'
 export PATH="$PATH:$HOME/flutter/bin"
 
-echo "=== Flutter version ==="
-flutter --version
+echo "=== Flutter version (télécharge le Dart SDK — avec retry) ==="
+retry flutter --version
 
 echo "=== Installing Flutter dependencies ==="
 cd "$CI_PRIMARY_REPOSITORY_PATH"
-flutter pub get
+retry flutter pub get
 
-echo "=== Precaching Flutter iOS artifacts ==="
-flutter precache --ios
+echo "=== Precaching Flutter iOS artifacts (avec retry) ==="
+retry flutter precache --ios
 
 echo "=== Configuring git for CocoaPods ==="
 git config --global --unset http.proxy || true
