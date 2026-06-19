@@ -479,7 +479,10 @@ class _DomainGameplayState extends State<_DomainGameplay>
         }
       }
       if (a == null || _minuteurEnd.containsKey(a.id)) continue;
-      final mins = logic.challengeDurationFor(a);
+      // Durée : timerMin défini, sinon estimation (jamais de dialog au chargement).
+      final mins = (a.timerMin != null && a.timerMin! > 0)
+          ? a.timerMin!
+          : logic.challengeDurationFor(a);
       _minuteurEnd[a.id] =
           s.startAt.add(Duration(minutes: mins < 1 ? 1 : mins));
       _minuteurShots[a.id] = DateTime.now().difference(s.startAt).inMinutes ~/ 5;
@@ -504,7 +507,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
 
   // Lance le décompte d'une ligne (mode minuteur) : démarre la session et arme le
   // ticker. Le tir viendra à zéro (cf. _minuteurFire). UN seul minuteur à la fois.
-  void _startMinuteur(_Item it) {
+  Future<void> _startMinuteur(_Item it) async {
     final actId = _activityIdFor(it);
     if (actId == null) {
       logic.incHabit(it.id, 1, DateTime.now()); // routine sans activité liée → +1
@@ -512,25 +515,78 @@ class _DomainGameplayState extends State<_DomainGameplay>
       if (mounted) setState(() {});
       return;
     }
-    Activity? act;
+    // Durée = celle DÉFINIE sur la routine/activité (timerMin) ; sinon on la demande.
+    Activity? self;
     for (final a in logic.state.activities) {
-      if (a.id == actId) {
-        act = a;
+      if (a.id == it.id) {
+        self = a;
         break;
       }
     }
+    int? mins =
+        (self?.timerMin != null && self!.timerMin! > 0) ? self.timerMin : null;
+    mins ??= await _askDuration(it.name);
+    if (mins == null || mins < 1 || !mounted) return; // annulé
+    final d = mins;
     logic.start(actId); // ferme toute session ouverte + en démarre une (temps loggé)
-    final mins = act != null ? logic.challengeDurationFor(act) : 25;
     setState(() {
       _minuteurEnd
         ..clear()
-        ..[it.id] = DateTime.now().add(Duration(minutes: mins < 1 ? 1 : mins));
+        ..[it.id] = DateTime.now().add(Duration(minutes: d));
       _minuteurShots
         ..clear()
         ..[it.id] = 0;
     });
     _saveMinuteurs();
     _ensureMinuteurTicker();
+  }
+
+  // Demande une durée (min) quand la routine/activité n'en définit pas (timerMin vide).
+  Future<int?> _askDuration(String name) async {
+    final ctrl = TextEditingController();
+    final res = await showDialog<int>(
+      context: context,
+      builder: (ctx) {
+        Widget quick(int m) => OutlinedButton(
+            onPressed: () => Navigator.pop(ctx, m), child: Text('$m min'));
+        return AlertDialog(
+          backgroundColor: const Color(0xFF14130F),
+          title: const Text('Durée du minuteur',
+              style: TextStyle(color: Colors.white, fontSize: 16)),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text('« $name » n\'a pas de durée définie. Combien de minutes ?',
+                style: const TextStyle(color: Colors.white70, fontSize: 13)),
+            const SizedBox(height: 14),
+            Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.center,
+                children: [for (final m in [15, 25, 45, 60]) quick(m)]),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctrl,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                  hintText: 'Autre (minutes)…',
+                  hintStyle: TextStyle(color: Colors.white38)),
+              onSubmitted: (v) => Navigator.pop(ctx, int.tryParse(v)),
+            ),
+          ]),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Annuler')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, int.tryParse(ctrl.text)),
+                child: const Text('Lancer')),
+          ],
+        );
+      },
+    );
+    ctrl.dispose();
+    return (res != null && res > 0) ? res : null;
   }
 
   // Décompte fini → cinématique de tir, puis validation + fermeture de la session.
@@ -716,7 +772,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
     // MODE MINUTEUR (avec activité) : on ne tire PAS de suite ni ne quitte le
     // domaine — on lance le DÉCOMPTE ; le tir viendra à zéro (cf. _minuteurFire).
     if (_modeOf(it.id) == 'timer' && _activityIdFor(it) != null) {
-      _startMinuteur(it);
+      await _startMinuteur(it);
       return;
     }
     // Chrono / coche : cinématique immédiate puis lancement (comportement existant).
