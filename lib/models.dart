@@ -194,6 +194,11 @@ class Activity {
   /// Durée minuteur préférée en minutes (null = chrono libre).
   int? timerMin;
 
+  /// Actions « propres » de l'activité : des TaskAction qui appartiennent
+  /// directement à l'activité (sans tâche/projet). Le chrono ciblé fonctionne
+  /// via Session.actionId. Persisté dans la collection `activities`.
+  List<TaskAction> ownActions;
+
   Activity({
     String? id,
     required this.domainId,
@@ -215,7 +220,9 @@ class Activity {
     this.deleted = false,
     this.todayFlag = false,
     this.timerMin,
+    List<TaskAction>? ownActions,
   })  : id = id ?? _uuid.v4(), // <-- sans const ici
+        ownActions = ownActions ?? <TaskAction>[],
         createdAt = createdAt ?? DateTime.now();
 
   // -------- Helpers --------
@@ -250,6 +257,7 @@ class Activity {
         'deleted': deleted,
         'todayFlag': todayFlag,
         'timerMin': timerMin,
+        'ownActions': ownActions.map((e) => e.toJson()).toList(),
       };
 
   /// Migration douce :
@@ -296,6 +304,9 @@ class Activity {
       deleted: j['deleted'] as bool? ?? false,
       todayFlag: j['todayFlag'] as bool? ?? false,
       timerMin: (j['timerMin'] as num?)?.toInt(),
+      ownActions: (j['ownActions'] as List?)
+          ?.map((e) => TaskAction.from(e as Map))
+          .toList(),
     );
   }
 
