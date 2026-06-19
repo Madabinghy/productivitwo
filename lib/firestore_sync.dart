@@ -299,6 +299,16 @@ class FirestoreSync {
         reviewNotifHour: meta['reviewNotifHour'] ?? 21,
         reviewNotifMinute: meta['reviewNotifMinute'] ?? 0,
         reviewNotifEnabled: meta['reviewNotifEnabled'] ?? true,
+        habitChecklistByHabitId: (meta['habitChecklistByHabitId'] as Map?)?.map(
+            (k, v) => MapEntry(k.toString(),
+                (v as List?)?.map((e) => e.toString()).toList() ?? <String>[])),
+        habitChecklistDone: (meta['habitChecklistDone'] as Map?)?.map(
+            (k, v) => MapEntry(
+                k.toString(),
+                (v as Map?)?.map((pk, pv) => MapEntry(pk.toString(),
+                        (pv as List?)?.map((e) => (e as num).toInt()).toList() ??
+                            <int>[])) ??
+                    <String, List<int>>{})),
       );
     } catch (e, stack) {
       devLog.error('pull() exception: $e\n${stack.toString().split('\n').take(5).join('\n')}', tag: 'FIREBASE');
@@ -433,6 +443,38 @@ class FirestoreSync {
       todayItems:            local.todayItems,
       focusTodayIds:         local.focusTodayIds,
       snoozedUntil:          local.snoozedUntil,
+      // Checklist routines : union pour ne rien perdre entre appareils.
+      // Template (habitId -> items) : on garde la liste la plus longue par habitId.
+      habitChecklistByHabitId: () {
+        final out = <String, List<String>>{};
+        for (final k in {
+          ...local.habitChecklistByHabitId.keys,
+          ...remote.habitChecklistByHabitId.keys
+        }) {
+          final l = local.habitChecklistByHabitId[k] ?? const <String>[];
+          final r = remote.habitChecklistByHabitId[k] ?? const <String>[];
+          out[k] = l.length >= r.length ? l : r;
+        }
+        return out;
+      }(),
+      // Coches (habitId -> periodKey -> indices) : union des indices par période.
+      habitChecklistDone: () {
+        final out = <String, Map<String, List<int>>>{};
+        for (final hid in {
+          ...local.habitChecklistDone.keys,
+          ...remote.habitChecklistDone.keys
+        }) {
+          final lp = local.habitChecklistDone[hid] ?? const <String, List<int>>{};
+          final rp = remote.habitChecklistDone[hid] ?? const <String, List<int>>{};
+          final periods = <String, List<int>>{};
+          for (final pk in {...lp.keys, ...rp.keys}) {
+            final s = <int>{...(lp[pk] ?? const []), ...(rp[pk] ?? const [])};
+            periods[pk] = s.toList()..sort();
+          }
+          out[hid] = periods;
+        }
+        return out;
+      }(),
     );
   }
 
@@ -470,6 +512,10 @@ class FirestoreSync {
   Map<String, dynamic> _encodeMeta(AppState st) => {
         'onboardingDone': st.onboardingDone,
         'snoozedUntil': st.snoozedUntil, // activités désactivées jusqu'à une date
+        // Checklist des routines : template (habitId -> items) + coches (habitId ->
+        // periodKey -> indices). Synchronisé pour que le dashboard web la voie.
+        'habitChecklistByHabitId': st.habitChecklistByHabitId,
+        'habitChecklistDone': st.habitChecklistDone,
         'challengesDone': st.challengesDone,
         'challengeStreak': st.challengeStreak,
         'lastChallengeYmd': st.lastChallengeYmd,
@@ -611,6 +657,17 @@ class FirestoreSync {
   Future<void> saveSnoozedUntil(Map<String, String> snoozedUntil) async {
     if (uid == null) return;
     await _meta().set({'snoozedUntil': snoozedUntil}, SetOptions(merge: true));
+  }
+
+  // Persistance CIBLÉE de la checklist des routines (le web ne pushe pas via onChange).
+  Future<void> saveHabitChecklist(
+      Map<String, List<String>> template,
+      Map<String, Map<String, List<int>>> done) async {
+    if (uid == null) return;
+    await _meta().set({
+      'habitChecklistByHabitId': template,
+      'habitChecklistDone': done,
+    }, SetOptions(merge: true));
   }
 
   Future<void> saveProject(Project project) async {

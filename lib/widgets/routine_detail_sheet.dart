@@ -154,6 +154,36 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
     _applySetting();
   }
 
+  // Saisie d'une étape de checklist (ajout / renommage).
+  Future<String?> _promptChecklistText(String title, String initial) async {
+    final ctrl = TextEditingController(text: initial);
+    ctrl.selection =
+        TextSelection(baseOffset: 0, extentOffset: initial.length);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(hintText: 'Décris l\'étape…'),
+          onSubmitted: (_) => Navigator.pop(ctx, ctrl.text.trim()),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: const Text('OK')),
+        ],
+      ),
+    );
+    final v = result?.trim();
+    return (v == null || v.isEmpty) ? null : v;
+  }
+
   @override
   Widget build(BuildContext context) {
     final today = DateTime(widget.day.year, widget.day.month, widget.day.day);
@@ -520,23 +550,23 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
             ],
 
             // ── Checklist ────────────────────────────────────────────────────
-            if (checkItems.isNotEmpty) ...[
-              const SizedBox(height: 14),
-              Container(
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerHighest.withOpacity(.35),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-                      child: Row(
-                        children: [
-                          Text('Checklist',
-                              style: theme.textTheme.titleSmall
-                                  ?.copyWith(fontWeight: FontWeight.w700)),
-                          const Spacer(),
+            const SizedBox(height: 14),
+            Container(
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest.withOpacity(.35),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 8, 6, 4),
+                    child: Row(
+                      children: [
+                        Text('Checklist',
+                            style: theme.textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w700)),
+                        const Spacer(),
+                        if (checkItems.isNotEmpty)
                           Text(
                             '${doneSet.length} / ${checkItems.length}',
                             style: TextStyle(
@@ -545,9 +575,36 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                               fontWeight: FontWeight.w600,
                             ),
                           ),
-                        ],
-                      ),
+                        IconButton(
+                          icon: const Icon(Icons.add, size: 20),
+                          tooltip: 'Ajouter une étape',
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () async {
+                            final label = await _promptChecklistText(
+                                'Nouvelle étape', '');
+                            if (label == null) return;
+                            logic.addChecklistItem(habitId, label);
+                            logic.onChange();
+                            setState(() {});
+                          },
+                        ),
+                      ],
                     ),
+                  ),
+                  if (checkItems.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Aucune étape — touche + pour en ajouter une.',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: cs.onSurface.withOpacity(.45)),
+                        ),
+                      ),
+                    )
+                  else
                     for (int i = 0; i < checkItems.length; i++) ...[
                       if (i > 0)
                         Divider(height: 1, indent: 14,
@@ -555,9 +612,44 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                       CheckboxListTile(
                         dense: true,
                         contentPadding:
-                            const EdgeInsets.symmetric(horizontal: 14),
+                            const EdgeInsets.only(left: 14, right: 4),
                         value: doneSet.contains(i),
-                        title: Text(checkItems[i]),
+                        title: Text(
+                          checkItems[i],
+                          style: TextStyle(
+                            decoration: doneSet.contains(i)
+                                ? TextDecoration.lineThrough
+                                : null,
+                            color: doneSet.contains(i)
+                                ? cs.onSurface.withOpacity(.45)
+                                : null,
+                          ),
+                        ),
+                        secondary: PopupMenuButton<String>(
+                          icon: Icon(Icons.more_vert,
+                              size: 18, color: cs.onSurface.withOpacity(.5)),
+                          onSelected: (v) async {
+                            if (v == 'rename') {
+                              final label = await _promptChecklistText(
+                                  'Renommer l\'étape', checkItems[i]);
+                              if (label == null) return;
+                              logic.renameChecklistItem(habitId, i, label);
+                              logic.onChange();
+                              setState(() {});
+                            } else if (v == 'delete') {
+                              logic.removeChecklistItemAndFixDone(
+                                  habitId, today, i);
+                              logic.onChange();
+                              setState(() {});
+                            }
+                          },
+                          itemBuilder: (_) => const [
+                            PopupMenuItem(
+                                value: 'rename', child: Text('Renommer')),
+                            PopupMenuItem(
+                                value: 'delete', child: Text('Supprimer')),
+                          ],
+                        ),
                         onChanged: (_) {
                           logic.toggleChecklistItem(habitId, today, i);
                           logic.onChange();
@@ -565,11 +657,10 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                         },
                       ),
                     ],
-                    const SizedBox(height: 4),
-                  ],
-                ),
+                  const SizedBox(height: 4),
+                ],
               ),
-            ],
+            ),
 
             // ── Réglages ─────────────────────────────────────────────────────
             const SizedBox(height: 18),

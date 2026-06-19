@@ -3270,6 +3270,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               _laneTimerCta(a, col),
             const SizedBox(height: 8),
             _laneSnoozeButton(a, col),
+            // Routine : checklist d'étapes (CRUD + coches du jour).
+            if (isRoutine) ..._laneChecklistSection(a, col),
             // Activité-temps : actions de projet liées (chrono ciblé sur l'action).
             if (!isRoutine) ..._laneLinkedActionsSection(a, col),
           ]),
@@ -3308,6 +3310,109 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       else
         for (final e in linked) _laneLinkedActionRow(a, e.project, e.action, col),
     ];
+  }
+
+  // Persiste la checklist (template + coches) — le web ne pushe pas via onChange.
+  void _persistChecklist() {
+    sync.saveHabitChecklist(
+        logic.state.habitChecklistByHabitId, logic.state.habitChecklistDone);
+  }
+
+  // Section « Checklist » d'une routine : étapes cochables + ajout/renommage/suppression.
+  List<Widget> _laneChecklistSection(Activity a, Color col) {
+    final items = logic.checklistForHabit(a.id);
+    final done = logic.checklistDoneSet(a.id, DateTime.now());
+    return [
+      const Divider(color: Colors.white12, height: 20),
+      Row(children: [
+        Expanded(
+          child: Text('✓ Checklist  ${done.length}/${items.length}',
+              style: TextStyle(
+                  color: col, fontWeight: FontWeight.w900, fontSize: 12)),
+        ),
+        InkWell(
+          onTap: () => _addChecklistItem(a),
+          borderRadius: BorderRadius.circular(6),
+          child: Padding(
+            padding: const EdgeInsets.all(4),
+            child: Icon(Icons.add, size: 18, color: col),
+          ),
+        ),
+      ]),
+      if (items.isEmpty)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 6),
+          child: Text('Aucune étape — touche + pour en ajouter une.',
+              style: TextStyle(color: Colors.white38, fontSize: 11)),
+        )
+      else
+        for (var i = 0; i < items.length; i++)
+          _laneChecklistRow(a, i, items[i], done.contains(i), col),
+    ];
+  }
+
+  Widget _laneChecklistRow(
+      Activity a, int index, String label, bool isDone, Color col) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(children: [
+        InkWell(
+          onTap: () {
+            logic.toggleChecklistItem(a.id, DateTime.now(), index);
+            _persistChecklist();
+            if (mounted) setState(() {});
+          },
+          child: Icon(
+              isDone ? Icons.check_circle : Icons.radio_button_unchecked,
+              size: 16,
+              color: isDone ? const Color(0xFF4CD787) : Colors.white30),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: InkWell(
+            onTap: () => _renameChecklistItem(a, index, label),
+            child: Text(label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    color: isDone ? Colors.white38 : Colors.white,
+                    fontSize: 11.5,
+                    decoration:
+                        isDone ? TextDecoration.lineThrough : null)),
+          ),
+        ),
+        InkWell(
+          onTap: () => _deleteChecklistItem(a, index),
+          child: const Padding(
+            padding: EdgeInsets.all(2),
+            child: Icon(Icons.close, size: 14, color: Colors.white24),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Future<void> _addChecklistItem(Activity a) async {
+    final label = await _promptActionTitle('Nouvelle étape', '');
+    if (label == null) return;
+    logic.addChecklistItem(a.id, label);
+    _persistChecklist();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _renameChecklistItem(
+      Activity a, int index, String current) async {
+    final label = await _promptActionTitle('Renommer l\'étape', current);
+    if (label == null) return;
+    logic.renameChecklistItem(a.id, index, label);
+    _persistChecklist();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _deleteChecklistItem(Activity a, int index) async {
+    logic.removeChecklistItemAndFixDone(a.id, DateTime.now(), index);
+    _persistChecklist();
+    if (mounted) setState(() {});
   }
 
   Widget _laneLinkedActionRow(
