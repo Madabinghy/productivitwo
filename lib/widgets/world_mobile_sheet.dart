@@ -311,7 +311,6 @@ class _DomainGameplayState extends State<_DomainGameplay>
   //   'timer'  → minuteur · 'chrono' → chrono libre · 'check' → marque faite (+1).
   // Le mode 'check' n'est proposé que pour les routines (spider).
   final Map<String, String> _fireMode = {};
-  final Map<String, int> _mobileDec = {}; // décréments du jour par itemId
   // MODE MINUTEUR (étape A) : « Faire feu » ne quitte plus le domaine ; le viseur
   // devient un décompte ⏱, et à zéro la tourelle fait feu. Un seul minuteur à la fois
   // (une session active). Persisté → survit à la réouverture.
@@ -321,6 +320,15 @@ class _DomainGameplayState extends State<_DomainGameplay>
   final Map<String, int> _minuteurShots = {};
   Timer? _minuteurTicker;
   String get _minuteurPrefKey => 'combat_minuteur_${widget.domain.id}';
+  // (étape C) RATTRAPAGE des complétions faites HORS-APP : à l'ouverture, l'écart
+  // entre le PV du jour vu au dernier passage et le PV actuel = des flammes à tirer.
+  // La queue décharge ces flammes une à une (cinématique → le PV affiché rattrape) ;
+  // si trop de flammes, un seul tir agrège. Pendant l'animation, le PV affiché de
+  // l'araignée du jour = PV réel + flammes restantes.
+  final Map<String, int> _catchupFlames = {}; // itemId → flammes de rattrapage
+  final Map<String, int> _lastSeenHp = {}; // itemId → PV du jour vu au dernier passage
+  bool _catchupRunning = false;
+  String get _lastSeenPrefKey => 'combat_lastseen_${widget.domain.id}';
 
   // Clé de persistance du viseur, propre à ce domaine.
   String get _targetPrefKey => 'combat_target_${widget.domain.id}';
@@ -341,6 +349,8 @@ class _DomainGameplayState extends State<_DomainGameplay>
     _loadMinuteurs().then((_) {
       if (mounted) _adoptOpenSessions();
     });
+    // Rattrapage des complétions faites hors-app (queue de cinématiques).
+    _loadLastSeen();
   }
 
   // Restaure les modes de tir persistés (par routine) pour ce domaine.
@@ -639,6 +649,94 @@ class _DomainGameplayState extends State<_DomainGameplay>
     });
   }
 
+  // Version "attendue" de la cinématique (pour enchaîner la queue de rattrapage).
+  Future<void> _playFireCineAwait(String id) async {
+    final c = Completer<void>();
+    await _playFireCine(id, () {
+      if (!c.isCompleted) c.complete();
+    });
+    if (_firingId == null && !c.isCompleted) return; // cine annulée → on n'attend pas
+    await c.future;
+  }
+
+  // ── ÉTAPE C — RATTRAPAGE des complétions hors-app ─────────────────────────
+  int _todayHpOf(_Item it) {
+    if (it.tokens.isEmpty) return 0;
+    final t = it.tokens.last;
+    return t.type == 'spider' ? t.hp : 0;
+  }
+
+  Future<void> _loadLastSeen() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_lastSeenPrefKey);
+    if (raw != null) {
+      try {
+        (jsonDecode(raw) as Map).forEach((k, v) {
+          final n = int.tryParse('$v');
+          if (n != null) _lastSeenHp['$k'] = n;
+        });
+      } catch (_) {}
+    }
+    if (mounted) _computeCatchup();
+  }
+
+  Future<void> _saveLastSeen() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_lastSeenPrefKey, jsonEncode(_lastSeenHp));
+  }
+
+  // Snapshot de l'état VU (PV du jour) — appelé après le rattrapage et à la fermeture.
+  void _snapshotLastSeen() {
+    for (final it in _items()) {
+      _lastSeenHp[it.id] = _todayHpOf(it);
+    }
+    _saveLastSeen();
+  }
+
+  // À l'ouverture : écart PV vu → PV actuel = flammes à rattraper (validations hors-app).
+  void _computeCatchup() {
+    var any = false;
+    for (final it in _items()) {
+      final cur = _todayHpOf(it);
+      final seen = _lastSeenHp[it.id];
+      if (seen != null && seen > cur) {
+        _catchupFlames[it.id] = seen - cur; // baisse de PV non encore animée
+        any = true;
+      }
+    }
+    if (any) {
+      setState(() {});
+      _runCatchupQueue();
+    } else {
+      _snapshotLastSeen(); // rien à rattraper → on aligne le snapshot
+    }
+  }
+
+  // Décharge la queue : pour chaque routine en retard, le canon tire une à une les
+  // flammes (PV affiché rattrape). Trop de flammes (>3) → UN seul tir agrège tout.
+  Future<void> _runCatchupQueue() async {
+    if (_catchupRunning) return;
+    _catchupRunning = true;
+    try {
+      for (final it in _items()) {
+        var pend = _catchupFlames[it.id] ?? 0;
+        if (pend <= 0) continue;
+        while (pend > 0 && mounted) {
+          final per = pend > 3 ? pend : 1; // agrégation si trop de flammes
+          await _playFireCineAwait(it.id);
+          if (!mounted) break;
+          pend -= per;
+          setState(() => _catchupFlames[it.id] = pend < 0 ? 0 : pend);
+          await Future.delayed(const Duration(milliseconds: 150));
+        }
+        _catchupFlames.remove(it.id);
+      }
+    } finally {
+      _catchupRunning = false;
+      if (mounted) _snapshotLastSeen();
+    }
+  }
+
   // Restaure le dernier viseur déplacé (s'il pointe encore sur un item existant).
   Future<void> _loadTarget() async {
     final prefs = await SharedPreferences.getInstance();
@@ -678,6 +776,9 @@ class _DomainGameplayState extends State<_DomainGameplay>
 
   @override
   void dispose() {
+    // Snapshot de l'état VU avant de quitter → la prochaine ouverture ne ré-anime que
+    // les complétions faites HORS de l'app entre-temps.
+    _snapshotLastSeen();
     _explosionTimer?.cancel();
     _minuteurTicker?.cancel();
     _fireCtrl.dispose();
@@ -1321,8 +1422,10 @@ class _DomainGameplayState extends State<_DomainGameplay>
     final tok = it.tokens[d];
     // Le tir d'arrivée décrémente le nuisible du JOUR (dernière colonne).
     final isToday = d == it.tokens.length - 1;
-    final dec = isToday ? (_mobileDec[it.id] ?? 0) : 0;
-    final shownHp = tok.type == 'spider' ? tok.hp - dec : 0;
+    // (étape C) PV affiché gonflé des flammes encore à rattraper → la queue le fait
+    // redescendre tir par tir jusqu'au PV réel.
+    final pend = isToday ? (_catchupFlames[it.id] ?? 0) : 0;
+    final shownHp = tok.type == 'spider' ? tok.hp + pend : 0;
     final killed = tok.type == 'spider' && shownHp <= 0;
     final impact = isToday && _explodingId == it.id;
     final spider = tok.type == 'spider' && !killed;
