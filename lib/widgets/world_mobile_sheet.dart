@@ -316,6 +316,9 @@ class _DomainGameplayState extends State<_DomainGameplay>
   // devient un décompte ⏱, et à zéro la tourelle fait feu. Un seul minuteur à la fois
   // (une session active). Persisté → survit à la réouverture.
   final Map<String, DateTime> _minuteurEnd = {}; // itemId → fin du décompte
+  // (étape B) tirs intermédiaires déjà joués (1 / palier de 5 min) pour les
+  // activités-temps : toutes les 5 min, un tir anime la baisse de PV du scorpion.
+  final Map<String, int> _minuteurShots = {};
   Timer? _minuteurTicker;
   String get _minuteurPrefKey => 'combat_minuteur_${widget.domain.id}';
 
@@ -333,7 +336,11 @@ class _DomainGameplayState extends State<_DomainGameplay>
     if (items.isNotEmpty) _targetId = items.first.id;
     _loadTarget();
     _loadModes();
-    _loadMinuteurs();
+    // Charge les minuteurs persistés PUIS adopte une éventuelle session d'activité
+    // déjà ouverte (lancée depuis le web) comme un minuteur en cours.
+    _loadMinuteurs().then((_) {
+      if (mounted) _adoptOpenSessions();
+    });
   }
 
   // Restaure les modes de tir persistés (par routine) pour ce domaine.
@@ -390,9 +397,9 @@ class _DomainGameplayState extends State<_DomainGameplay>
       _minuteurTicker = null;
       return;
     }
-    // Un décompte à zéro → la tourelle fait feu (si aucune cine n'est déjà en cours).
     if (_firingId == null) {
       final now = DateTime.now();
+      // 1) Décompte à zéro → tir FINAL (valide la routine / ferme la session).
       String? readyId;
       for (final e in _minuteurEnd.entries) {
         if (!now.isBefore(e.value)) {
@@ -412,11 +419,75 @@ class _DomainGameplayState extends State<_DomainGameplay>
           _minuteurFire(it);
         } else {
           _minuteurEnd.remove(readyId);
+          _minuteurShots.remove(readyId);
           _saveMinuteurs();
         }
+      } else {
+        // 2) (étape B) Activité-temps en cours : un tir intermédiaire par palier de
+        //    5 min de temps loggué → anime la baisse de PV du scorpion.
+        _maybeIntermediateShot(now);
       }
     }
     setState(() {}); // rafraîchit l'affichage du décompte
+  }
+
+  // Joue UN tir intermédiaire si un nouveau palier de 5 min a été franchi sur une
+  // activité-temps dont le minuteur tourne (le PV réel baisse déjà via le temps loggué).
+  void _maybeIntermediateShot(DateTime now) {
+    for (final id in _minuteurEnd.keys) {
+      _Item? it;
+      for (final x in _items()) {
+        if (x.id == id) {
+          it = x;
+          break;
+        }
+      }
+      if (it == null || it.kind != 'scorpion') continue; // tirs périodiques = temps
+      Session? sess;
+      for (final s in logic.state.sessions) {
+        if (s.endAt == null && s.activityId == it.id) {
+          sess = s;
+          break;
+        }
+      }
+      if (sess == null) continue;
+      final paliers = now.difference(sess.startAt).inMinutes ~/ 5;
+      final shot = _minuteurShots[id] ?? 0;
+      if (paliers > shot) {
+        _minuteurShots[id] = shot + 1; // un seul palier par tick
+        _playFireCine(id, () {
+          logic.onChange(); // le token PV se recalcule depuis le temps loggué
+          if (mounted) setState(() {});
+        });
+        return;
+      }
+    }
+  }
+
+  // COHÉRENCE WEB/MOBILE : adopte une session d'activité-temps déjà OUVERTE (ex.
+  // lancée depuis le web → partagée via Firestore) comme un minuteur en cours, sans
+  // rejouer les tirs des paliers déjà franchis.
+  void _adoptOpenSessions() {
+    final dom = widget.domain.id;
+    for (final s in logic.state.sessions) {
+      if (s.endAt != null) continue;
+      Activity? a;
+      for (final x in logic.state.activeActivities) {
+        if (x.id == s.activityId && x.domainId == dom && !x.isHabit) {
+          a = x;
+          break;
+        }
+      }
+      if (a == null || _minuteurEnd.containsKey(a.id)) continue;
+      final mins = logic.challengeDurationFor(a);
+      _minuteurEnd[a.id] =
+          s.startAt.add(Duration(minutes: mins < 1 ? 1 : mins));
+      _minuteurShots[a.id] = DateTime.now().difference(s.startAt).inMinutes ~/ 5;
+    }
+    if (_minuteurEnd.isNotEmpty && mounted) {
+      setState(() {});
+      _ensureMinuteurTicker();
+    }
   }
 
   // Activité-temps cible d'un item : elle-même (scorpion) ou l'activité liée (routine).
@@ -454,6 +525,9 @@ class _DomainGameplayState extends State<_DomainGameplay>
       _minuteurEnd
         ..clear()
         ..[it.id] = DateTime.now().add(Duration(minutes: mins < 1 ? 1 : mins));
+      _minuteurShots
+        ..clear()
+        ..[it.id] = 0;
     });
     _saveMinuteurs();
     _ensureMinuteurTicker();
@@ -467,7 +541,12 @@ class _DomainGameplayState extends State<_DomainGameplay>
       }
       logic.stopActive(); // ferme la session (temps loggé → PV du scorpion)
       logic.onChange();
-      if (mounted) setState(() => _minuteurEnd.remove(it.id));
+      if (mounted) {
+        setState(() {
+          _minuteurEnd.remove(it.id);
+          _minuteurShots.remove(it.id);
+        });
+      }
       _saveMinuteurs();
     });
   }
@@ -476,7 +555,10 @@ class _DomainGameplayState extends State<_DomainGameplay>
   void _cancelMinuteur(_Item it) {
     logic.stopActive();
     logic.onChange();
-    setState(() => _minuteurEnd.remove(it.id));
+    setState(() {
+      _minuteurEnd.remove(it.id);
+      _minuteurShots.remove(it.id);
+    });
     _saveMinuteurs();
   }
 
