@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -311,9 +312,17 @@ class _DomainGameplayState extends State<_DomainGameplay>
   // Le mode 'check' n'est proposé que pour les routines (spider).
   final Map<String, String> _fireMode = {};
   final Map<String, int> _mobileDec = {}; // décréments du jour par itemId
+  // MODE MINUTEUR (étape A) : « Faire feu » ne quitte plus le domaine ; le viseur
+  // devient un décompte ⏱, et à zéro la tourelle fait feu. Un seul minuteur à la fois
+  // (une session active). Persisté → survit à la réouverture.
+  final Map<String, DateTime> _minuteurEnd = {}; // itemId → fin du décompte
+  Timer? _minuteurTicker;
+  String get _minuteurPrefKey => 'combat_minuteur_${widget.domain.id}';
 
   // Clé de persistance du viseur, propre à ce domaine.
   String get _targetPrefKey => 'combat_target_${widget.domain.id}';
+  // Clé de persistance des modes de tir (minuteur/chrono/coche) par routine.
+  String get _modePrefKey => 'combat_firemode_${widget.domain.id}';
 
   @override
   void initState() {
@@ -323,6 +332,173 @@ class _DomainGameplayState extends State<_DomainGameplay>
     final items = _items();
     if (items.isNotEmpty) _targetId = items.first.id;
     _loadTarget();
+    _loadModes();
+    _loadMinuteurs();
+  }
+
+  // Restaure les modes de tir persistés (par routine) pour ce domaine.
+  Future<void> _loadModes() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_modePrefKey);
+    if (raw == null || !mounted) return;
+    try {
+      final m = (jsonDecode(raw) as Map).map((k, v) => MapEntry('$k', '$v'));
+      setState(() => _fireMode.addAll(m));
+    } catch (_) {}
+  }
+
+  Future<void> _saveModes() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_modePrefKey, jsonEncode(_fireMode));
+  }
+
+  // ── MODE MINUTEUR (étape A) ───────────────────────────────────────────────
+  Future<void> _loadMinuteurs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_minuteurPrefKey);
+    if (raw == null || !mounted) return;
+    try {
+      (jsonDecode(raw) as Map).forEach((k, v) {
+        final end = DateTime.tryParse('$v');
+        if (end != null) _minuteurEnd['$k'] = end;
+      });
+      if (_minuteurEnd.isNotEmpty) {
+        setState(() {});
+        _ensureMinuteurTicker();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveMinuteurs() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+        _minuteurPrefKey,
+        jsonEncode(
+            _minuteurEnd.map((k, v) => MapEntry(k, v.toIso8601String()))));
+  }
+
+  void _ensureMinuteurTicker() {
+    if (_minuteurTicker != null || _minuteurEnd.isEmpty) return;
+    _minuteurTicker =
+        Timer.periodic(const Duration(seconds: 1), (_) => _tickMinuteurs());
+  }
+
+  void _tickMinuteurs() {
+    if (!mounted) return;
+    if (_minuteurEnd.isEmpty) {
+      _minuteurTicker?.cancel();
+      _minuteurTicker = null;
+      return;
+    }
+    // Un décompte à zéro → la tourelle fait feu (si aucune cine n'est déjà en cours).
+    if (_firingId == null) {
+      final now = DateTime.now();
+      String? readyId;
+      for (final e in _minuteurEnd.entries) {
+        if (!now.isBefore(e.value)) {
+          readyId = e.key;
+          break;
+        }
+      }
+      if (readyId != null) {
+        _Item? it;
+        for (final x in _items()) {
+          if (x.id == readyId) {
+            it = x;
+            break;
+          }
+        }
+        if (it != null) {
+          _minuteurFire(it);
+        } else {
+          _minuteurEnd.remove(readyId);
+          _saveMinuteurs();
+        }
+      }
+    }
+    setState(() {}); // rafraîchit l'affichage du décompte
+  }
+
+  // Activité-temps cible d'un item : elle-même (scorpion) ou l'activité liée (routine).
+  String? _activityIdFor(_Item it) {
+    if (it.kind == 'scorpion') return it.id;
+    for (final a in logic.state.activities) {
+      if (a.id == it.id) {
+        final linked = (a.linkedActivityId ?? '').trim();
+        return linked.isEmpty ? null : linked;
+      }
+    }
+    return null;
+  }
+
+  // Lance le décompte d'une ligne (mode minuteur) : démarre la session et arme le
+  // ticker. Le tir viendra à zéro (cf. _minuteurFire). UN seul minuteur à la fois.
+  void _startMinuteur(_Item it) {
+    final actId = _activityIdFor(it);
+    if (actId == null) {
+      logic.incHabit(it.id, 1, DateTime.now()); // routine sans activité liée → +1
+      logic.onChange();
+      if (mounted) setState(() {});
+      return;
+    }
+    Activity? act;
+    for (final a in logic.state.activities) {
+      if (a.id == actId) {
+        act = a;
+        break;
+      }
+    }
+    logic.start(actId); // ferme toute session ouverte + en démarre une (temps loggé)
+    final mins = act != null ? logic.challengeDurationFor(act) : 25;
+    setState(() {
+      _minuteurEnd
+        ..clear()
+        ..[it.id] = DateTime.now().add(Duration(minutes: mins < 1 ? 1 : mins));
+    });
+    _saveMinuteurs();
+    _ensureMinuteurTicker();
+  }
+
+  // Décompte fini → cinématique de tir, puis validation + fermeture de la session.
+  void _minuteurFire(_Item it) {
+    _playFireCine(it.id, () {
+      if (it.kind == 'spider') {
+        logic.incHabit(it.id, 1, DateTime.now()); // routine validée
+      }
+      logic.stopActive(); // ferme la session (temps loggé → PV du scorpion)
+      logic.onChange();
+      if (mounted) setState(() => _minuteurEnd.remove(it.id));
+      _saveMinuteurs();
+    });
+  }
+
+  // Tap sur le décompte = annuler le minuteur (sans valider).
+  void _cancelMinuteur(_Item it) {
+    logic.stopActive();
+    logic.onChange();
+    setState(() => _minuteurEnd.remove(it.id));
+    _saveMinuteurs();
+  }
+
+  // Joue la cinématique de tir d'une ligne (tour → canon → boulet → 💥) puis `onDone`.
+  Future<void> _playFireCine(String id, void Function() onDone) async {
+    if (_firingId != null) return;
+    _fireCtrl.reset();
+    setState(() => _firingId = id);
+    await Future.delayed(const Duration(milliseconds: 280));
+    if (!mounted || _firingId != id) return;
+    await _fireCtrl.forward(from: 0);
+    if (!mounted) return;
+    setState(() => _explodingId = id);
+    _explosionTimer?.cancel();
+    _explosionTimer = Timer(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      setState(() {
+        _explodingId = null;
+        _firingId = null;
+      });
+      onDone();
+    });
   }
 
   // Restaure le dernier viseur déplacé (s'il pointe encore sur un item existant).
@@ -365,6 +541,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
   @override
   void dispose() {
     _explosionTimer?.cancel();
+    _minuteurTicker?.cancel();
     _fireCtrl.dispose();
     super.dispose();
   }
@@ -454,26 +631,14 @@ class _DomainGameplayState extends State<_DomainGameplay>
     }
     if (target == null) return;
     final it = target;
-    final id = it.id;
-    // Visée : tour → canon DCA.
-    _fireCtrl.reset();
-    setState(() => _firingId = id);
-    await Future.delayed(const Duration(milliseconds: 280));
-    if (!mounted || _firingId != id) return;
-    // Vol (boule de feu en courbe) puis impact (💥 pendant 2 s).
-    await _fireCtrl.forward(from: 0);
-    if (!mounted) return;
-    setState(() => _explodingId = id);
-    _explosionTimer?.cancel();
-    _explosionTimer = Timer(const Duration(seconds: 2), () {
-      if (!mounted) return;
-      setState(() {
-        _explodingId = null;
-        _firingId = null;
-      });
-      // Le « feu » lance le minuteur ou le chrono de la cible.
-      _launchForTarget(it);
-    });
+    // MODE MINUTEUR (avec activité) : on ne tire PAS de suite ni ne quitte le
+    // domaine — on lance le DÉCOMPTE ; le tir viendra à zéro (cf. _minuteurFire).
+    if (_modeOf(it.id) == 'timer' && _activityIdFor(it) != null) {
+      _startMinuteur(it);
+      return;
+    }
+    // Chrono / coche : cinématique immédiate puis lancement (comportement existant).
+    _playFireCine(it.id, () => _launchForTarget(it));
   }
 
   List<_Item> _items() {
@@ -833,21 +998,35 @@ class _DomainGameplayState extends State<_DomainGameplay>
 
   Widget _gardenRow(_Item it, double cell, List<String> days) {
     final c = widget.color;
+    // Espacement ASYMÉTRIQUE : large au‑dessus du nom (le sépare de la routine
+    // précédente), serré en dessous (le nom reste rattaché à SA tourelle) → on ne
+    // confond plus le nom avec la tourelle du dessus.
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
+      padding: const EdgeInsets.only(top: 18, bottom: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Nom de la routine/activité. Le viseur et le sélecteur de mode sont
-          // désormais en bout de ligne (2 cases après les 7 jours).
-          Text(it.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  color: c.withOpacity(.95),
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13)),
-          const SizedBox(height: 2),
+          // Nom de la routine/activité, rattaché à sa propre grille juste en dessous.
+          Row(children: [
+            Container(
+              width: 3,
+              height: 14,
+              margin: const EdgeInsets.only(right: 6),
+              decoration: BoxDecoration(
+                  color: c.withOpacity(.9),
+                  borderRadius: BorderRadius.circular(2)),
+            ),
+            Flexible(
+              child: Text(it.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      color: c.withOpacity(.95),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13)),
+            ),
+          ]),
+          const SizedBox(height: 3),
           // La grille (jours + colonnes de contrôle) défile horizontalement pour
           // ne pas déborder sur les petits écrans (2 cases de plus qu'avant).
           SingleChildScrollView(
@@ -1056,6 +1235,29 @@ class _DomainGameplayState extends State<_DomainGameplay>
 
   // Case VISEUR en bout de ligne : orange si cette ligne est visée, sinon grise.
   Widget _viseurCell(_Item it, double cell) {
+    // Minuteur en cours sur cette ligne → le viseur devient un DÉCOMPTE (tap = annuler).
+    final end = _minuteurEnd[it.id];
+    if (end != null) {
+      final rem = end.difference(DateTime.now());
+      final s = rem.isNegative ? Duration.zero : rem;
+      final mm = s.inMinutes.toString().padLeft(2, '0');
+      final ss = (s.inSeconds % 60).toString().padLeft(2, '0');
+      return GestureDetector(
+        onTap: () => _cancelMinuteur(it),
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          width: cell,
+          height: cell,
+          margin: const EdgeInsets.all(1),
+          alignment: Alignment.center,
+          child: Text('$mm:$ss',
+              style: const TextStyle(
+                  color: Color(0xFFFF8A3D),
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w900)),
+        ),
+      );
+    }
     final on = _targetId == it.id;
     return GestureDetector(
       onTap: () => _toggleTarget(it),
@@ -1080,7 +1282,10 @@ class _DomainGameplayState extends State<_DomainGameplay>
         ? Icons.play_circle_outline
         : (mode == 'check' ? Icons.check_box_outlined : Icons.timer_outlined);
     return GestureDetector(
-      onTap: () => setState(() => _fireMode[it.id] = _nextMode(it, mode)),
+      onTap: () {
+        setState(() => _fireMode[it.id] = _nextMode(it, mode));
+        _saveModes(); // le type de lancement choisi est mémorisé
+      },
       behavior: HitTestBehavior.opaque,
       child: Container(
         width: cell,

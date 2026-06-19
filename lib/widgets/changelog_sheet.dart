@@ -10,6 +10,11 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.36', '19 juin 2026', [
+    (Icons.timer_outlined, 'Combattre (mobile) : en mode minuteur, « Faire feu » ne quitte plus le domaine — le viseur de la ligne devient un décompte, et à zéro la tourelle fait feu (routine validée / temps loggé). Un seul minuteur à la fois, mémorisé même si tu fermes l\'écran'),
+    (Icons.tune, 'Combattre (mobile) : le type de lancement de chaque routine (minuteur / chrono / coche) est désormais mémorisé'),
+    (Icons.format_align_left, 'Combattre (mobile) : le nom d\'une routine est clairement rattaché à sa propre tourelle (espacement + repère couleur) — fini la confusion avec la tourelle du dessus'),
+  ]),
   _Entry('6.35', '19 juin 2026', [
     (Icons.edit_note, '« Le Monde » web : gère les actions d\'une tâche directement depuis le dashboard du serpent (ajouter, renommer, cocher, supprimer)'),
     (Icons.timer_outlined, 'Dashboard d\'un serpent : lance le chrono d\'une activité du domaine, lié à la tâche — le téléphone voit l\'activité en cours en parallèle'),
