@@ -10,6 +10,12 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.38', '19 juin 2026', [
+    (Icons.link, 'Lier une action de projet à une activité-temps : depuis la fiche d\'une tâche, « Lier une activité » rattache une action à un scorpion — le chrono lancé depuis l\'action est ciblé (la session pointe sur l\'action) et l\'activité affiche ses actions liées'),
+    (Icons.checklist, 'Checklist des routines éditable depuis le dashboard (web « Le Monde » + fiche routine mobile) : ajoute, renomme, coche et supprime tes étapes — synchronisées entre le téléphone et le web'),
+    (Icons.timer, '« Le Monde » : un chrono en cours reste visible (pastille ⏱️ avec le nom de l\'activité, le temps qui défile et un bouton Arrêter) même quand tu explores la carte — plus seulement dans l\'arène'),
+    (Icons.tune, 'Dashboard d\'une routine (web) enrichi : lie une activité-temps, lance son chrono directement depuis le dashboard, et choisis un minuteur par défaut (5/10/15/25 min) — comme sur la fiche routine mobile'),
+  ]),
   _Entry('6.37', '19 juin 2026', [
     (Icons.timelapse, 'Combattre (mobile) : minuteur d\'activité-temps → un tir toutes les 5 min anime la baisse de PV ; une activité lancée depuis le web est reprise sur mobile (décompte synchronisé)'),
     (Icons.replay, 'Combattre (mobile) : les routines complétées hors de l\'app (widget, web) sont rattrapées à l\'ouverture — les canons tirent une à une les flammes en attente (un seul tir si trop nombreuses)'),

@@ -452,6 +452,7 @@ class _GoalsViewState extends State<GoalsView> {
                     project: project,
                     domains: domains,
                     targetTaskId: task.id,
+                    activities: widget.activities,
                   ),
                   onReorderActions: (oldIdx, newIdx) async {
                     final action = task.actions.removeAt(oldIdx);
@@ -501,7 +502,7 @@ class _GoalsViewState extends State<GoalsView> {
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () => showProjectSheet(context,
-            project: project, domains: domains),
+            project: project, domains: domains, activities: widget.activities),
         child: Container(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
           decoration: BoxDecoration(
@@ -600,7 +601,8 @@ class _GoalsViewState extends State<GoalsView> {
 
               return InkWell(
                 borderRadius: BorderRadius.circular(12),
-                onTap: () => showProjectSheet(context, project: p, domains: domains),
+                onTap: () => showProjectSheet(context,
+                    project: p, domains: domains, activities: widget.activities),
                 child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 child: Container(

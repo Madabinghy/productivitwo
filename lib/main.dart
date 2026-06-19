@@ -2661,7 +2661,8 @@ class _AppRootState extends State<AppRoot>
         showProjectSheet(context,
             project: project,
             domains: _state?.domains ?? [],
-            targetTaskId: block.taskId);
+            targetTaskId: block.taskId,
+            activities: _state?.activities ?? const []);
         return;
       }
     }
@@ -2983,6 +2984,7 @@ class _AppRootState extends State<AppRoot>
               project: project,
               domains: _state?.domains ?? [],
               targetTaskId: task.id,
+              activities: _state?.activities ?? const [],
             ),
           ),
           WorldMobileScreen(
@@ -3034,6 +3036,7 @@ class _AppRootState extends State<AppRoot>
       project: project,
       domains: _state!.domains,
       targetTaskId: targetTaskId,
+      activities: _state?.activities ?? const [],
     );
   }
 
