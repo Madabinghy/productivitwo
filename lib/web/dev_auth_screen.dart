@@ -38,11 +38,18 @@ class _DevAuthScreenState extends State<DevAuthScreen> {
 
   Future<void> _loadAndMaybeSignIn() async {
     final prefs = await SharedPreferences.getInstance();
-    _uidCtrl.text = prefs.getString(_kDevUidKey) ?? _kDefaultDevUid;
-    _tokenCtrl.text = prefs.getString(_kDevTokenKey) ?? '';
+    _uidCtrl.text =
+        Uri.base.queryParameters['uid'] ?? prefs.getString(_kDevUidKey) ?? _kDefaultDevUid;
+    // RACCOURCI : token passé dans l'URL (?devauth=1&token=XXX) → 0 saisie. Il est
+    // mémorisé localement, donc ensuite `?devauth=1` seul suffit. Le token n'est
+    // JAMAIS dans le repo (il vit dans ton URL/bookmark + le localStorage).
+    final urlToken = Uri.base.queryParameters['token'];
+    _tokenCtrl.text = (urlToken != null && urlToken.isNotEmpty)
+        ? urlToken
+        : (prefs.getString(_kDevTokenKey) ?? '');
     if (mounted) setState(() {});
     if (_uidCtrl.text.isNotEmpty && _tokenCtrl.text.isNotEmpty) {
-      _signIn(); // auto : déjà renseigné une fois
+      _signIn(); // auto : token fourni (URL) ou déjà renseigné
     }
   }
 

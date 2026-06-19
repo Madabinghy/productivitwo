@@ -154,12 +154,17 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // Calendrier inline projeté (réutilise routineWeekTokens/activityTimeTokens).
   final Map<String, String> _v2DayTok = {}; // tileId → emoji du jour
   final Map<String, int> _v2DayCount = {}; // tileId → PV nuisible (compteur)
+  final Map<String, double> _v2DayPv = {}; // tileId → ratio PV (1=plein→noir, 0=nettoyé)
   // tileId tourelle → chargeur (0..7) + routine/activité (couleur 🕷️/🦂).
   final Map<String, ({int charger, bool isRoutine})> _v2Turret = {};
+  final Map<String, bool> _v2TurretMirror = {}; // tileId tourelle → domaine en miroir ?
   final Map<String, String> _v2TurretRoutineId = {}; // tileId tourelle → routineId (lanes routine)
   final Set<String> _v2LaunchPads = {}; // tileIds de la case de tir (gauche de chaque tourelle)
   final Set<String> _v2Sep = {}; // tileIds de la ligne séparatrice routines/activités
   final Map<String, int> _v2DayTurretX = {}; // tileId jour → X de la tourelle de sa lane
+  // Cases du CALENDRIER (7 jours de chaque lane) : BLOQUANTES pour l'avatar — on
+  // force le passage par le centre de la map (cour/jardin), pas derrière les routines.
+  final Set<String> _v2DayCells = {};
   final Map<String, String> _v2DayLabel = {}; // tileId entête → lettre du jour
   // INVASION : case araignée‑boss (≥ 10 araignées accumulées) → clic = combat.
   final Map<String, String> _v2Araignee = {}; // tileId → domainId en invasion
@@ -1758,6 +1763,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     final me = sync.uid ?? '';
     _loadAnimatedHits(); // persistance : hits déjà animés aujourd'hui (anti‑rejeu)
     _loadSpiderGap(); // persistance : écart hebdo réglé au dernier passage
+    _loadFogV2(); // persistance : brouillard de guerre déjà révélé (grande map V2)
     _subscribeHits(); // temps réel : valider une routine → l'avatar voyage
     _subscribeSessions(); // temps réel : minuteur d'activité → assaut live
     // Projets Gantt → logic.currentProjects (sinon backlogEnemies() ne voit aucune
@@ -2422,7 +2428,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       final lane = _v2LaneOf(h.habitId);
       _animatedHitIds.add(h.id);
       if (lane != null && lane.$2.isRoutine) {
-        _v2OnRoutineValidated(h.habitId);
+        _enqueueTravel(h.habitId); // file → séquence canon complète, sérialisée
         fired = true;
       }
     }
@@ -2483,6 +2489,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _v2CenterOn(step);
       await Future.delayed(const Duration(milliseconds: 75));
     }
+    _persistFogV2(); // brouillard révélé pendant la marche → sauvegardé
   }
 
   // EXPLORATION AUTO : décharge le backlog de flammes par balayage de proximité.
@@ -2506,11 +2513,14 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           continue;
         }
         flips = 0;
-        await _v2WalkTo(Point(lane.turretX - 1, lane.y));
+        // Case de tir : côté jardin de la tourelle (droite en miroir, gauche sinon).
+        final padDx =
+            (_v2TurretMirror['${lane.turretX}_${lane.y}'] ?? false) ? 1 : -1;
+        await _v2WalkTo(Point(lane.turretX + padDx, lane.y));
         if (_v2UserControl || !mounted) break;
         final ids = _pendingByRoutine[lane.id];
         while (ids != null && ids.isNotEmpty && mounted && !_v2UserControl) {
-          _fireV2Bolt(lane.dayX0 + 6, lane.y, lane.turretX,
+          _fireV2Bolt(_v2TodayCol(lane), lane.y, lane.turretX,
               dur: _kV2ExploreBoltDur);
           _animatedHitIds.add(ids.removeAt(0));
           _persistAnimated();
@@ -2596,7 +2606,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       // Cinématique mobile sur la NOUVELLE map V2 (l'ancienne sert d'arène).
       _traveling = true;
       while (_travelQueue.isNotEmpty && mounted && !_combatBusy) {
-        _v2OnRoutineValidated(_travelQueue.removeAt(0).id);
+        await _v2OnRoutineValidated(_travelQueue.removeAt(0).id);
         await Future.delayed(const Duration(milliseconds: 450));
       }
       _traveling = false;
@@ -2608,9 +2618,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     }
   }
 
+  // Colonne « aujourd'hui » d'une lane (cible du tir) : dernière colonne‑jour en
+  // disposition normale, PREMIÈRE en miroir (l'ordre des jours y est inversé).
+  int _v2TodayCol(LaneRow lane) {
+    final mirror = _v2TurretMirror['${lane.turretX}_${lane.y}'] ?? false;
+    return mirror ? lane.dayX0 : lane.dayX0 + 6;
+  }
+
   // Action mobile (routine validée / minuteur) → tir célébratoire de SA tourelle
-  // sur la map V2 : on révèle le domaine et le canon de la ligne fait feu.
-  void _v2OnRoutineValidated(String id) {
+  // sur la map V2 : l'avatar marche jusqu'à la rampe de la lane, joue la cinématique
+  // (rampe qui tourne + canon qui se lève), tire vers le jour courant, puis le
+  // nuisible perd un PV. = même séquence que le clic manuel, mais sans dashboard.
+  Future<void> _v2OnRoutineValidated(String id) async {
     final w = _wv2;
     if (w == null) return;
     String? dom;
@@ -2631,16 +2650,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       }
     }
     if (lane == null) return;
-    // Révèle le domaine (pour voir le tir) sans bouger la caméra.
-    final b = c.bounds;
-    setState(() {
-      for (var yy = b.top; yy < b.top + b.height; yy++) {
-        for (var xx = b.left; xx < b.left + b.width; xx++) {
-          _revealed.add('${xx}_$yy');
-        }
-      }
-    });
-    _fireV2Bolt(lane.dayX0 + 6, lane.y, lane.turretX);
+    // Rampe de la lane : côté jardin de la tourelle (droite en miroir, gauche sinon).
+    final rampX = c.mirror ? lane.turretX + 1 : lane.turretX - 1;
+    await _onCannonRamp(rampX, lane.y, openDash: false, forceShots: 1);
   }
 
   // ── CINÉMATIQUE D'ARRIVÉE (S3) : la tour charge 1 flamme, vise, tire, −1 ──
@@ -2853,6 +2865,45 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       ..clear()
       ..addAll(_revealed);
     sync.setUnifiedWorldState(pos, _revealed.toList());
+  }
+
+  // État perso de la grande map V2 (brouillard + position de l'avatar) : persisté en
+  // LOCAL (localStorage), distinct du fog/pos Firestore `unifiedRevealed`/`unifiedPos`
+  // (ancienne map / mobile, coordonnées différentes) — pas de pollution croisée.
+  static const String _kV2FogKey = 'v2_fog_revealed';
+  static const String _kV2PosKey = 'v2_avatar_pos';
+  Point<int>? _v2SavedPos; // position rechargée (appliquée au spawn ou dès le load)
+
+  Future<void> _persistFogV2() async {
+    if (_inInterior) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kV2FogKey, jsonEncode(_revealed.toList()));
+      await prefs.setString(_kV2PosKey, '${_posV2.x}_${_posV2.y}');
+    } catch (_) {}
+  }
+
+  Future<void> _loadFogV2() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_kV2FogKey);
+      final posRaw = prefs.getString(_kV2PosKey);
+      if (posRaw != null && posRaw.contains('_')) {
+        final s = posRaw.split('_');
+        final px = int.tryParse(s[0]), py = int.tryParse(s[1]);
+        if (px != null && py != null) _v2SavedPos = Point(px, py);
+      }
+      if (!mounted) return;
+      setState(() {
+        if (raw != null) {
+          _revealed.addAll((jsonDecode(raw) as List).cast<String>());
+        }
+        // Si la map V2 est déjà construite et a déjà spawné l'avatar au centre, on
+        // le téléporte sur la position rechargée (sinon le spawn s'en chargera).
+        final sp = _v2SavedPos, w = _wv2;
+        if (sp != null && w != null && w.walkable(sp.x, sp.y)) _posV2 = sp;
+      });
+    } catch (_) {}
   }
 
   // Peuple la zone farm avec tes VRAIS ennemis backlog (routines/activités/tâches
@@ -3153,6 +3204,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _v2CheckDomainEntry();
       await Future.delayed(const Duration(milliseconds: 75));
     }
+    _persistFogV2(); // brouillard révélé pendant la séquence → sauvegardé
   }
 
   // Anime le lever du canon `id` de `from`→`to` (0..1) sur `ms` (~25 fps).
@@ -3173,15 +3225,22 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   //     PAS dessus → la rampe tourne sur elle‑même et le canon se LÈVE (opérationnel).
   //  2) l'avatar MONTE sur la rampe.
   //  3) la cinématique de chargement/tir se lance « comme en mode combat ».
-  Future<void> _onCannonRamp(int x, int y) async {
+  Future<void> _onCannonRamp(int x, int y,
+      {bool openDash = true, int? forceShots}) async {
     final w = _wv2;
     if (w == null || _v2Walking) return;
     _v2Walking = true;
     try {
       final dom = _domainAtTileV2(x, y);
-      final turretId = '${x + 1}_$y';
-      // — Phase 1 : arriver 2 cases à gauche du canon (1 à gauche de la rampe).
-      await _v2StepTo(Point(x - 1, y));
+      // Rampe à GAUCHE de la tourelle (normal) ou à DROITE (miroir) : on détecte de
+      // quel côté est la tourelle pour inverser toute la séquence.
+      final mirror = _v2Turret.containsKey('${x - 1}_$y');
+      final turX = mirror ? x - 1 : x + 1;
+      final turretId = '${turX}_$y';
+      final outsideX = mirror ? x + 1 : x - 1; // côté extérieur : l'avatar attend là
+      final dayTargetX = mirror ? x - 8 : x + 8; // « aujourd'hui » visé
+      // — Phase 1 : arriver sur la case côté extérieur (avant de monter sur la rampe).
+      await _v2StepTo(Point(outsideX, y));
       if (!mounted) return;
       // la rampe TOURNE et le canon se LÈVE progressivement, synchronisés (~2 s).
       setState(() {
@@ -3202,26 +3261,33 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       // — Phase 3 : chargement/visée puis tir « mode combat » (volée vers le jour).
       final tur = _v2Turret[turretId];
       final rid = _v2TurretRoutineId[turretId];
-      final flames = (tur?.charger ?? 0) > 0
-          ? (tur?.charger ?? 0)
-          : (rid != null ? (_pendingByRoutine[rid]?.length ?? 0) : 0);
+      final flames = forceShots ??
+          ((tur?.charger ?? 0) > 0
+              ? (tur?.charger ?? 0)
+              : (rid != null ? (_pendingByRoutine[rid]?.length ?? 0) : 0));
       if (flames > 0) {
         await Future.delayed(const Duration(milliseconds: 600)); // charge/visée
         final n = flames.clamp(1, 5);
         for (var i = 0; i < n; i++) {
           if (!mounted) return;
-          _fireV2Bolt(x + 8, y, x + 1, dur: 2.2); // boulet en arc + 💥 à l'impact
+          _fireV2Bolt(dayTargetX, y, turX, dur: 2.2); // boulet en arc + 💥 impact
           await Future.delayed(const Duration(milliseconds: 320));
         }
         await Future.delayed(const Duration(milliseconds: 900));
       }
       if (!mounted) return;
-      // — Fin : le canon redescend (animé) + le jardin bascule en dashboard.
+      // — Fin : le canon redescend (animé). Le nuisible a encaissé le(s) tir(s) →
+      // on re-projette calendrier + jardins pour refléter sa perte de PV.
       await _animateCannonRaise(turretId, 1.0, 0.0, 450);
       if (!mounted) return;
       setState(() {
         _cannonRaise.remove(turretId);
-        if (dom != null) _gardenPanel = (domainId: dom, mode: 'routineDash');
+        _populateV2Calendar(); // PV des cases‑jour rafraîchis (dégâts visibles)
+        _populateV2Gardens(); // scorpions/serpents du jardin aussi
+        // Dashboard de la lane (clic manuel uniquement ; pas en spectateur temps réel).
+        if (openDash && dom != null) {
+          _gardenPanel = (domainId: dom, mode: 'routineDash');
+        }
       });
     } finally {
       _v2Walking = false;
@@ -5910,7 +5976,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     }
     final firstSpawn = !_v2Spawned;
     if (!_v2Spawned) {
-      _posV2 = layout.start; // 1ᵉʳ spawn = bas‑gauche (dernier domaine)
+      // Position rechargée (localStorage) si valide, sinon spawn au centre.
+      final sp = _v2SavedPos;
+      _posV2 = (sp != null && layout.inBounds(sp.x, sp.y) && layout.walkable(sp.x, sp.y))
+          ? sp
+          : layout.start;
       _v2Spawned = true;
     } else if (!layout.inBounds(_posV2.x, _posV2.y) ||
         !layout.walkable(_posV2.x, _posV2.y)) {
@@ -5950,11 +6020,22 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           domainColor(c.domainId, logic.state.activeDomains) ?? _kFarm;
       final g = c.gardenRect;
       pests.sort((a, b) => a.hp.compareTo(b.hp)); // plus petit PV d'abord
-      // Cases INTERACTIVES (rampes de tir = dernière colonne du jardin, sur chaque
-      // lane) → jamais de nuisible dessus.
-      final interactive = <String>{
-        for (final lane in c.lanes) '${g.left + g.width - 1}_${lane.y}',
-      };
+      // Cases INTERACTIVES = rampe de tir (côté jardin de la tourelle : droite en
+      // miroir, gauche sinon) + sa ZONE TAMPON adjacente → jamais de nuisible dessus
+      // (l'avatar doit pouvoir s'y poster pour la séquence canon).
+      final interactive = <String>{};
+      for (final lane in c.lanes) {
+        final rampX = c.mirror ? lane.turretX + 1 : lane.turretX - 1;
+        final beyond = c.mirror ? rampX + 1 : rampX - 1; // case jardin au‑delà
+        for (final p in [
+          Point(rampX, lane.y),
+          Point(rampX, lane.y - 1),
+          Point(rampX, lane.y + 1),
+          Point(beyond, lane.y),
+        ]) {
+          interactive.add('${p.x}_${p.y}');
+        }
+      }
       // GARDIENS : boucher les 2 portes praticables avec les plus petits PV dispos.
       final pr = g.top - 1; // rangée du mur partagé (portes percées dans buildWorld)
       for (final dx in [g.width ~/ 3, (2 * g.width) ~/ 3]) {
@@ -6003,11 +6084,14 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   void _populateV2Calendar() {
     _v2DayTok.clear();
     _v2DayCount.clear();
+    _v2DayPv.clear();
     _v2Turret.clear();
+    _v2TurretMirror.clear();
     _v2TurretRoutineId.clear();
     _v2LaunchPads.clear();
     _v2Sep.clear();
     _v2DayTurretX.clear();
+    _v2DayCells.clear();
     _v2DayLabel.clear();
     _v2LaneName.clear();
     final w = _wv2;
@@ -6018,7 +6102,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     for (final c in w.castles) {
       for (var j = 0; j < 7; j++) {
         final d = today.subtract(Duration(days: 6 - j));
-        _v2DayLabel['${c.dayX0 + j}_${c.headerY}'] = wd[d.weekday - 1];
+        // Miroir : ordre inversé (les nuisibles avancent de gauche → droite).
+        final col = c.mirror ? c.dayX0 + (6 - j) : c.dayX0 + j;
+        _v2DayLabel['${col}_${c.headerY}'] = wd[d.weekday - 1];
       }
     }
     for (final c in w.castles) {
@@ -6031,20 +6117,43 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             toks.where((t) => t.type == 'leaf' || t.type == 'flame').length;
         _v2Turret['${lane.turretX}_${lane.y}'] =
             (charger: charger, isRoutine: lane.isRoutine);
+        _v2TurretMirror['${lane.turretX}_${lane.y}'] = c.mirror;
         if (lane.isRoutine) {
           _v2TurretRoutineId['${lane.turretX}_${lane.y}'] = lane.id;
         }
-        // Case de tir = juste à GAUCHE de la tourelle (dernière colonne du jardin) :
-        // marqueur « rampe de lancement » (là où l'avatar se poste pour tirer).
-        _v2LaunchPads.add('${lane.turretX - 1}_${lane.y}');
+        // Case de tir (rampe) où le perso attend = côté JARDIN (intérieur) de la
+        // tourelle : à GAUCHE en normal, à DROITE en miroir.
+        _v2LaunchPads
+            .add('${c.mirror ? lane.turretX + 1 : lane.turretX - 1}_${lane.y}');
         _v2LaneName['${lane.turretX}_${lane.y}'] = name;
         for (var j = 0; j < 7 && j < toks.length; j++) {
-          final id = '${lane.dayX0 + j}_${lane.y}';
+          // Miroir : ordre inversé (les nuisibles avancent de gauche → droite).
+          final col = c.mirror ? lane.dayX0 + (6 - j) : lane.dayX0 + j;
+          final id = '${col}_${lane.y}';
           final t = toks[j];
           final e = _tokEmoji(t.type, lane.isRoutine);
           if (e.isNotEmpty) _v2DayTok[id] = e;
-          if (t.type == 'spider' && t.hp > 0) _v2DayCount[id] = t.hp;
+          if (t.type == 'spider' && t.hp > 0) {
+            _v2DayCount[id] = t.hp;
+            // Ratio PV (1 = plein → fond noir ; 0 = nettoyé → couleur du domaine).
+            int pvMax;
+            if (lane.isRoutine) {
+              var quota = t.hp;
+              for (final x in logic.state.activeActivities) {
+                if (x.id == lane.id) {
+                  quota = logic.dayQuotaFor(x);
+                  break;
+                }
+              }
+              pvMax = quota;
+            } else {
+              final tgt = logic.timeSliding(lane.id, 7).targetMin;
+              pvMax = tgt > 0 ? tgt : t.hp;
+            }
+            _v2DayPv[id] = pvMax > 0 ? (t.hp / pvMax).clamp(0.0, 1.0) : 1.0;
+          }
           _v2DayTurretX[id] = lane.turretX;
+          _v2DayCells.add(id); // case calendrier = bloquante (passage central forcé)
           _v2LaneName[id] = name;
         }
       }
@@ -6097,7 +6206,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           : (c.lanes.isNotEmpty
               ? c.lanes[c.lanes.length ~/ 2].y
               : c.castleRect.top);
-      _v2Araignee['${c.castleRect.left}_$y'] = c.domainId;
+      // Côté JARDIN du château (intérieur) : gauche en normal, droite en miroir.
+      final araX = c.mirror ? c.castleRect.right - 1 : c.castleRect.left;
+      _v2Araignee['${araX}_$y'] = c.domainId;
       // Une toile dans le jardin (marqueur : valide tes routines pour la déloger).
       final g = c.gardenRect;
       _v2Toiles['${g.left + g.width ~/ 2}_${g.top + g.height ~/ 2}'] = c.domainId;
@@ -6201,6 +6312,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       await Future.delayed(const Duration(milliseconds: 75));
     }
     _v2Walking = false;
+    _persistFogV2(); // brouillard révélé pendant la marche (tap) → sauvegardé
     if (!mounted) return;
     final pest = _v2Pests['${_posV2.x}_${_posV2.y}'];
     if (pest != null) {
@@ -6255,6 +6367,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       ]) {
         final nid = '${n.x}_${n.y}';
         if (prev.containsKey(nid) || !w.walkable(n.x, n.y)) continue;
+        // Cases du calendrier = murs infranchissables (jamais, même comme cible) :
+        // on force l'avatar à passer par le centre de la map, pas derrière les routines.
+        if (_v2DayCells.contains(nid)) continue;
         // Un serpent bloque le passage (impossible d'enjamber) → l'avatar doit
         // faire le tour. Exception : la case CIBLE, pour aller la combattre.
         if (n != to && _v2Pests.containsKey(nid)) continue;
@@ -6277,8 +6392,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   void _fireV2Bolt(int dayX, int dayY, int turretX,
       {double delay = 0, double dur = 2.2}) {
     final arc = ((dayX - turretX).abs() * 0.28).clamp(0.8, 3.0).toDouble();
+    // Le boulet sort du BOUT du canon, côté cible (droite en normal, gauche en miroir).
+    final muzzle = turretX + (dayX >= turretX ? 0.5 : -0.5);
     // Durée par défaut 2,2 s ; l'exploration auto passe une durée plus longue.
-    final fb = _CineFb(dur, turretX + 0.5, dayY.toDouble(), dayX.toDouble(),
+    final fb = _CineFb(dur, muzzle, dayY.toDouble(), dayX.toDouble(),
         dayY.toDouble(), arc, 'v2');
     fb.t = -delay; // tir différé (volée)
     _v2Fbs.add(fb);
@@ -6609,12 +6726,15 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         final name = _activityName(lane.id);
         if (name.isEmpty) continue;
         out.add(Positioned(
-          left: (c.dayX0 + 7) * _kV2Slot + 4,
+          // Miroir : nom à GAUCHE des jours (aligné à droite, finit avant le calendrier).
+          left: c.mirror
+              ? (c.dayX0 - 6) * _kV2Slot
+              : (c.dayX0 + 7) * _kV2Slot + 4,
           top: lane.y * _kV2Slot,
           height: _kV2Slot,
           width: 6 * _kV2Slot,
           child: Align(
-            alignment: Alignment.centerLeft,
+            alignment: c.mirror ? Alignment.centerRight : Alignment.centerLeft,
             child: Text(name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -6749,9 +6869,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 Color(0xFFB8B0A4), BlendMode.srcIn));
         break;
       case WtTile.terrain:
-        // Extérieur SOMBRE, comme le fond sous les nuisibles → ils semblent
-        // surgir du noir (côté droit ouvert notamment). Décor cosmétique éventuel.
-        bg = Colors.black.withOpacity(.28);
+        // COUR centrale = petit gazon vert ; ailleurs, extérieur SOMBRE (les
+        // nuisibles semblent surgir du noir côté ouvert). Décor cosmétique éventuel.
+        bg = w.isCourtyard(x, y)
+            ? const Color(0xFF2E5A34).withOpacity(.55)
+            : Colors.black.withOpacity(.28);
         child = _v2DecorWidget(id, inner);
         break;
       case WtTile.garden:
@@ -6795,8 +6917,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           final pending = rid == null ? 0 : (_pendingByRoutine[rid]?.length ?? 0);
           // Pieds DROITS (fixes) : seule la tête du canon se relève (cf. _v2TurretWidget).
           final raise = _cannonRaise[id] ?? 0.0;
-          final turret = _v2TurretWidget(tur.charger, tur.isRoutine, inner,
+          // Miroir : le canon est RETOURNÉ pour viser vers la gauche (les nuisibles
+          // arrivent de l'extérieur gauche).
+          final turretW = _v2TurretWidget(tur.charger, tur.isRoutine, inner,
               raise: raise);
+          final turret = (_v2TurretMirror[id] ?? false)
+              ? Transform.flip(flipX: true, child: turretW)
+              : turretW;
           child = pending <= 0
               ? turret
               : Stack(
@@ -6825,21 +6952,32 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                   ],
                 );
         } else if (tok != null) {
-          bg = Colors.black.withOpacity(.28);
-          final cnt = _v2DayCount[id] ?? 0;
-          child = cnt > 0
-              ? Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(tok, style: TextStyle(fontSize: inner * 0.4)),
-                    Text('$cnt',
-                        style: TextStyle(
-                            fontSize: inner * 0.22,
-                            height: 1,
-                            color: const Color(0xFFE05858),
-                            fontWeight: FontWeight.w900)),
-                  ])
-              : Text(tok, style: TextStyle(fontSize: inner * 0.46));
+          // Couleur de base = couleur « case par défaut/rien » (un peu plus foncée que
+          // la case tourelle), identique pour 🍃 / 🔥 / nuisible. Le nuisible la
+          // recouvre de NOIR selon ses PV : full PV → case noire ; en le blessant, le
+          // noir RECULE VERS LE BAS et découvre la couleur du domaine par le haut.
+          bg = tColor.withOpacity(.10);
+          final pv = _v2DayPv[id] ?? (_v2DayCount.containsKey(id) ? 1.0 : 0.0);
+          child = Stack(
+            fit: StackFit.expand,
+            children: [
+              if (pv > 0)
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: FractionallySizedBox(
+                    heightFactor: pv.clamp(0.0, 1.0),
+                    widthFactor: 1,
+                    child: Container(color: Colors.black),
+                  ),
+                ),
+              Center(child: Text(tok, style: TextStyle(fontSize: inner * 0.42))),
+            ],
+          );
+        } else if (_v2DayCells.contains(id)) {
+          // Case du calendrier SANS nuisible vaincu (source d'où arrivent les
+          // nuisibles) = NOIRE par défaut ; la couleur du domaine ne se révèle qu'en
+          // nettoyant un nuisible.
+          bg = Colors.black;
         } else {
           bg = tColor.withOpacity(.10); // château vide
         }

@@ -10,6 +10,13 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.32', '18 juin 2026', [
+    (Icons.view_column_outlined, '« Le Monde » web en 2 colonnes : les domaines s\'organisent autour d\'une cour centrale (gazon), un domaine sur deux passant en miroir à gauche — carte plus compacte, moins de trajet. En miroir, les nuisibles arrivent de la gauche et la tourelle, à l\'intérieur, vise vers la gauche'),
+    (Icons.water_drop_outlined, 'PV des nuisibles lisibles à la couleur : une case pleine est noire, et plus tu blesses le nuisible, plus la couleur du domaine remonte par le bas'),
+    (Icons.bolt_outlined, 'Valider une routine (page web ouverte) joue toute la cinématique sur la grande carte : l\'avatar marche jusqu\'à la rampe, la rampe tourne, le canon se lève, tire vers le jour, et le nuisible perd un PV'),
+    (Icons.save_outlined, 'Le brouillard de guerre déjà exploré et la position de ton avatar sont mémorisés d\'une session à l\'autre'),
+    (Icons.fort_outlined, 'Les cases du calendrier sont infranchissables (tu passes par le centre, plus derrière les routines) et plus rien ne se pose au contact des rampes de tir'),
+  ]),
   _Entry('6.31', '18 juin 2026', [
     (Icons.rocket_launch_outlined, '« Le Monde » web : le canon garde ses pieds droits (comme en combat de boss) et seule sa tête se relève quand tu actives la rampe. Petite pause après la rotation de la rampe avant que l\'avatar y monte'),
   ]),
