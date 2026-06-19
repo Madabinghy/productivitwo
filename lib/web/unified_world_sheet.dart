@@ -227,6 +227,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   StreamSubscription<List<Project>>? _projSub;
   Timer? _timer;
 
+  // Minuteur (décompte) lancé depuis un dashboard : fin du décompte par activité +
+  // timer one-shot qui arrête la session (et valide la routine) à zéro. Le chrono
+  // « libre » n'a pas d'entrée ici.
+  final Map<String, DateTime> _dashMinuteurEnd = {};
+  final Map<String, Timer> _dashMinuteurTimers = {};
+
   // État de marche LOCAL (éphémère en T0).
   late Point<int> _pos;
   final Set<String> _revealed = {};
@@ -1862,6 +1868,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     for (final t in _actFireTimers.values) {
       t.cancel();
     }
+    for (final t in _dashMinuteurTimers.values) {
+      t.cancel();
+    }
     _timer?.cancel();
     _gameTicker?.dispose();
     _v2HCtrl.dispose();
@@ -3267,7 +3276,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               _laneBigCta(Icons.check_rounded, 'Valider aujourd\'hui', col,
                   () => _dashValidateRoutine(a))
             else
-              _laneTimerCta(a, col),
+              _laneTimerControls(a, col),
             // Routine : activité liée (chrono ciblé) + minuteur par défaut.
             if (isRoutine) ..._laneRoutineLinkSection(a, col),
             const SizedBox(height: 8),
@@ -3360,31 +3369,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         )
       else ...[
         const SizedBox(height: 8),
-        Builder(builder: (_) {
-          final open = _openSessionFor(linkedAct!.id);
-          if (open != null) {
-            return Column(children: [
-              StreamBuilder<int>(
-                stream: Stream.periodic(const Duration(seconds: 1), (i) => i),
-                builder: (_, __) => Text(
-                  _fmtChrono(DateTime.now().difference(open.startAt)),
-                  style: TextStyle(
-                      color: col, fontWeight: FontWeight.w900, fontSize: 26),
-                ),
-              ),
-              Text('⏱️ ${linkedAct.name} en cours',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white54, fontSize: 11)),
-              const SizedBox(height: 8),
-              _laneBigCta(
-                  Icons.stop_rounded, 'Arrêter', col, () => _dashStopTimer()),
-            ]);
-          }
-          return _laneBigCta(Icons.play_arrow_rounded,
-              'Lancer le chrono · ${linkedAct.name}', col,
-              () => _dashStartTimer(linkedAct!, col));
-        }),
+        // Chrono libre OU minuteur sur l'activité liée — le minuteur valide la
+        // routine à zéro (comme le mode minuteur du combat mobile).
+        _laneTimerControls(linkedAct, col,
+            onMinuteurDone: () => _dashValidateRoutine(routine)),
         const SizedBox(height: 10),
         Text('MINUTEUR PAR DÉFAUT',
             style: TextStyle(
@@ -3792,7 +3780,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     }
   }
 
-  void _dashStartTimer(Activity a, Color col, {String? taskId, String? actionId}) {
+  void _dashStartTimer(Activity a, Color col,
+      {String? taskId, String? actionId, String? toastLabel}) {
     // Le onChange du web ne pushe PAS → on persiste la session à la main dans
     // Firestore pour que le téléphone la voie (→ Live Activity). taskId/actionId =
     // tâche Gantt / action travaillée en parallèle (chrono lancé depuis un dashboard).
@@ -3805,8 +3794,60 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     if (logic.state.sessions.isNotEmpty) {
       sync.saveSession(logic.state.sessions.last); // nouvelle session ouverte
     }
-    _toast('⏱️ Chrono lancé — ${a.name}', col);
+    _toast(toastLabel ?? '⏱️ Chrono lancé — ${a.name}', col);
     if (mounted) setState(() {});
+  }
+
+  // Lance un MINUTEUR (décompte) sur une activité-temps : démarre la session
+  // (comme le chrono) + arme un timer one-shot qui l'arrête à zéro. onDone est
+  // appelé à zéro (ex. valider une routine liée). Durée : timerMin sinon picker.
+  Future<void> _dashStartMinuteur(Activity a, Color col,
+      {String? taskId, String? actionId, VoidCallback? onDone}) async {
+    int? minutes = a.timerMin;
+    if (minutes == null || minutes <= 0) {
+      minutes = await _pickMinuteurDuration();
+      if (minutes == null) return;
+    }
+    _dashStartTimer(a, col,
+        taskId: taskId,
+        actionId: actionId,
+        toastLabel: '⏳ Minuteur $minutes min — ${a.name}');
+    _dashMinuteurEnd[a.id] = DateTime.now().add(Duration(minutes: minutes));
+    _dashMinuteurTimers[a.id]?.cancel();
+    _dashMinuteurTimers[a.id] =
+        Timer(Duration(minutes: minutes), () => _dashMinuteurFinish(a.id, onDone));
+    if (mounted) setState(() {});
+  }
+
+  void _dashMinuteurFinish(String activityId, VoidCallback? onDone) {
+    _dashMinuteurEnd.remove(activityId);
+    _dashMinuteurTimers.remove(activityId);
+    final ended = logic.stopActive();
+    if (ended != null) sync.saveSession(ended);
+    if (onDone != null) onDone();
+    _toast('✅ Minuteur terminé', const Color(0xFF4CD787));
+    if (mounted) setState(() {});
+  }
+
+  Future<int?> _pickMinuteurDuration() {
+    return showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1410),
+        title: const Text('Durée du minuteur',
+            style: TextStyle(color: Colors.white, fontSize: 16)),
+        content: Wrap(spacing: 8, runSpacing: 8, children: [
+          for (final m in const [5, 10, 15, 25, 45, 60])
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, m), child: Text('$m min')),
+        ]),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
+        ],
+      ),
+    );
   }
 
   // Session de temps OUVERTE (chrono en cours) pour cette activité, ou null.
@@ -3900,29 +3941,58 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
 
   // Appel à l'action « temps » du dashboard : chrono EN COURS (temps + arrêt) si une
   // session tourne déjà pour l'activité, sinon le bouton pour la lancer.
-  Widget _laneTimerCta(Activity a, Color col) {
-    final open = _openSessionFor(a.id);
+  // Contrôle de lancement d'une activité-temps : chrono libre OU minuteur (décompte).
+  // Si une session tourne, affiche le temps (compte ou décompte) + « Arrêter ».
+  // onMinuteurDone : exécuté quand le décompte atteint zéro (ex. valider une routine).
+  Widget _laneTimerControls(Activity timeAct, Color col,
+      {String? taskId, String? actionId, VoidCallback? onMinuteurDone}) {
+    final open = _openSessionFor(timeAct.id);
     if (open == null) {
-      return _laneBigCta(Icons.play_arrow_rounded, 'Lancer le minuteur', col,
-          () => _dashStartTimer(a, col));
+      return Column(children: [
+        _laneBigCta(Icons.play_arrow_rounded, 'Lancer le chrono', col,
+            () => _dashStartTimer(timeAct, col, taskId: taskId, actionId: actionId)),
+        const SizedBox(height: 6),
+        _laneBigCta(Icons.hourglass_bottom_rounded, 'Lancer le minuteur', col,
+            () => _dashStartMinuteur(timeAct, col,
+                taskId: taskId, actionId: actionId, onDone: onMinuteurDone)),
+      ]);
     }
+    final end = _dashMinuteurEnd[timeAct.id];
     return Column(children: [
       StreamBuilder<int>(
         stream: Stream.periodic(const Duration(seconds: 1), (i) => i),
-        builder: (_, __) => Text(
-          _fmtChrono(DateTime.now().difference(open.startAt)),
-          style: TextStyle(
-              color: col, fontWeight: FontWeight.w900, fontSize: 30),
-        ),
+        builder: (_, __) {
+          if (end != null) {
+            final left = end.difference(DateTime.now());
+            final shown = left.isNegative ? Duration.zero : left;
+            return Column(children: [
+              Text(_fmtChrono(shown),
+                  style: TextStyle(
+                      color: col, fontWeight: FontWeight.w900, fontSize: 30)),
+              const Text('⏳ minuteur en cours',
+                  style: TextStyle(color: Colors.white54, fontSize: 11)),
+            ]);
+          }
+          return Column(children: [
+            Text(_fmtChrono(DateTime.now().difference(open.startAt)),
+                style: TextStyle(
+                    color: col, fontWeight: FontWeight.w900, fontSize: 30)),
+            const Text('⏱️ chrono en cours',
+                style: TextStyle(color: Colors.white54, fontSize: 11)),
+          ]);
+        },
       ),
-      const Text('⏱️ en cours',
-          style: TextStyle(color: Colors.white54, fontSize: 11)),
       const SizedBox(height: 12),
       _laneBigCta(Icons.stop_rounded, 'Arrêter', col, () => _dashStopTimer()),
     ]);
   }
 
   void _dashStopTimer() {
+    for (final t in _dashMinuteurTimers.values) {
+      t.cancel();
+    }
+    _dashMinuteurTimers.clear();
+    _dashMinuteurEnd.clear();
     final ended = logic.stopActive();
     if (ended != null) sync.saveSession(ended);
     if (mounted) setState(() {});
