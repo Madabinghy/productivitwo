@@ -3275,8 +3275,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             if (isRoutine)
               _laneBigCta(Icons.check_rounded, 'Valider aujourd\'hui', col,
                   () => _dashValidateRoutine(a))
-            else
+            else ...[
               _laneTimerControls(a, col),
+              const SizedBox(height: 10),
+              ..._laneTimerDefaultChips(a, col),
+            ],
             // Routine : activité liée (chrono ciblé) + minuteur par défaut.
             if (isRoutine) ..._laneRoutineLinkSection(a, col),
             const SizedBox(height: 8),
@@ -3494,6 +3497,24 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           ),
         ),
       ],
+    ];
+  }
+
+  // Sélecteur de durée du minuteur par défaut (timerMin) d'une activité-temps —
+  // même UI que le dashboard des routines.
+  List<Widget> _laneTimerDefaultChips(Activity a, Color col) {
+    return [
+      Text('MINUTEUR PAR DÉFAUT',
+          style: TextStyle(
+              color: Colors.white38,
+              fontSize: 9,
+              letterSpacing: 1.1,
+              fontWeight: FontWeight.w700)),
+      const SizedBox(height: 6),
+      Wrap(spacing: 6, runSpacing: 6, children: [
+        for (final m in const [0, 5, 10, 15, 25])
+          _laneTimerChip(a, m, (a.timerMin ?? 0) == m, col),
+      ]),
     ];
   }
 
