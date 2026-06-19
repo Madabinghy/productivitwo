@@ -3270,10 +3270,169 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               _laneTimerCta(a, col),
             const SizedBox(height: 8),
             _laneSnoozeButton(a, col),
+            // Activité-temps : actions de projet liées (chrono ciblé sur l'action).
+            if (!isRoutine) ..._laneLinkedActionsSection(a, col),
           ]),
         ),
       ),
     ]);
+  }
+
+  // Section « Actions liées » d'une activité-temps : chrono ciblé par action + ajout
+  // /retrait de lien (TaskAction.linkedActivityId).
+  List<Widget> _laneLinkedActionsSection(Activity a, Color col) {
+    final linked = logic.actionsLinkedTo(a.id);
+    return [
+      const Divider(color: Colors.white12, height: 20),
+      Row(children: [
+        Expanded(
+          child: Text('🔗 Actions liées',
+              style: TextStyle(
+                  color: col, fontWeight: FontWeight.w900, fontSize: 12)),
+        ),
+        InkWell(
+          onTap: () => _linkActionPick(a, col),
+          borderRadius: BorderRadius.circular(6),
+          child: Padding(
+            padding: const EdgeInsets.all(4),
+            child: Icon(Icons.add_link, size: 18, color: col),
+          ),
+        ),
+      ]),
+      if (linked.isEmpty)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 6),
+          child: Text('Aucune action liée — touche ⨁ pour en lier une.',
+              style: TextStyle(color: Colors.white38, fontSize: 11)),
+        )
+      else
+        for (final e in linked) _laneLinkedActionRow(a, e.project, e.action, col),
+    ];
+  }
+
+  Widget _laneLinkedActionRow(
+      Activity a, Project p, TaskAction act, Color col) {
+    final open = _openSessionFor(a.id);
+    final running = open != null && open.actionId == act.id;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(children: [
+        Icon(act.done ? Icons.check_circle : Icons.radio_button_unchecked,
+            size: 15, color: act.done ? const Color(0xFF4CD787) : Colors.white30),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(act.title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  color: act.done ? Colors.white38 : Colors.white,
+                  fontSize: 11.5,
+                  decoration: act.done ? TextDecoration.lineThrough : null)),
+        ),
+        if (running) ...[
+          StreamBuilder<int>(
+            stream: Stream.periodic(const Duration(seconds: 1), (i) => i),
+            builder: (_, __) => Text(
+              _fmtChrono(DateTime.now().difference(open.startAt)),
+              style: TextStyle(
+                  color: col, fontWeight: FontWeight.w800, fontSize: 11),
+            ),
+          ),
+          const SizedBox(width: 4),
+          InkWell(
+            onTap: _dashStopTimer,
+            child: Icon(Icons.stop_circle, color: col, size: 20),
+          ),
+        ] else if (!act.done)
+          InkWell(
+            onTap: () =>
+                _dashStartTimer(a, col, taskId: _taskIdOfAction(p, act.id),
+                    actionId: act.id),
+            child: Icon(Icons.play_circle_fill,
+                color: col.withOpacity(.85), size: 20),
+          ),
+        const SizedBox(width: 2),
+        InkWell(
+          onTap: () => _unlinkAction(p, act),
+          child: const Padding(
+            padding: EdgeInsets.all(2),
+            child: Icon(Icons.link_off, size: 14, color: Colors.white24),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  String? _taskIdOfAction(Project p, String actionId) {
+    for (final t in p.tasks) {
+      if (t.actions.any((x) => x.id == actionId)) return t.id;
+    }
+    return null;
+  }
+
+  Future<void> _unlinkAction(Project p, TaskAction act) async {
+    setState(() => act.linkedActivityId = null);
+    await sync.saveProjectTasks(p.id, p.tasks);
+    if (mounted) setState(() {});
+  }
+
+  // Picker des actions NON liées du domaine de l'activité → pose le lien.
+  Future<void> _linkActionPick(Activity a, Color col) async {
+    final candidates =
+        <({Project project, ProjectTask task, TaskAction action})>[];
+    for (final p in logic.currentProjects) {
+      if (p.domainId != a.domainId || p.status == 'archived') continue;
+      for (final t in p.tasks) {
+        if (t.status == 'done' || t.status == 'skipped') continue;
+        for (final act in t.actions) {
+          if (!act.done && (act.linkedActivityId ?? '').isEmpty) {
+            candidates.add((project: p, task: t, action: act));
+          }
+        }
+      }
+    }
+    if (candidates.isEmpty) {
+      _toast('Aucune action disponible à lier dans ce domaine.', Colors.white54);
+      return;
+    }
+    final picked = await showDialog<({Project project, TaskAction action})>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1410),
+        title: Text('Lier une action à « ${a.name} »',
+            style: const TextStyle(color: Colors.white, fontSize: 15)),
+        content: SizedBox(
+          width: 320,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              for (final e in candidates)
+                ListTile(
+                  dense: true,
+                  title: Text(e.action.title,
+                      style: const TextStyle(color: Colors.white, fontSize: 13)),
+                  subtitle: Text('${e.project.title} · ${e.task.title}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          const TextStyle(color: Colors.white38, fontSize: 11)),
+                  onTap: () =>
+                      Navigator.pop(ctx, (project: e.project, action: e.action)),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
+        ],
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => picked.action.linkedActivityId = a.id);
+    await sync.saveProjectTasks(picked.project.id, picked.project.tasks);
+    if (mounted) setState(() {});
   }
 
   Widget _laneStat(String value, String label, Color col) => Column(
@@ -3353,13 +3512,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     }
   }
 
-  void _dashStartTimer(Activity a, Color col, {String? taskId}) {
+  void _dashStartTimer(Activity a, Color col, {String? taskId, String? actionId}) {
     // Le onChange du web ne pushe PAS → on persiste la session à la main dans
-    // Firestore pour que le téléphone la voie (→ Live Activity). taskId = tâche Gantt
-    // travaillée en parallèle (chrono lancé depuis le dashboard d'un serpent).
+    // Firestore pour que le téléphone la voie (→ Live Activity). taskId/actionId =
+    // tâche Gantt / action travaillée en parallèle (chrono lancé depuis un dashboard).
     final openBefore =
         logic.state.sessions.where((s) => s.endAt == null).toList();
-    logic.start(a.id, taskId: taskId);
+    logic.start(a.id, taskId: taskId, actionId: actionId);
     for (final s in openBefore) {
       sync.saveSession(s); // elles viennent de recevoir endAt
     }

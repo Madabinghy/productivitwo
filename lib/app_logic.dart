@@ -807,7 +807,7 @@ class AppLogic {
   }
 
   // ---------- TEMPS (type=time) ----------
-  void start(String activityId, {String? taskId}) {
+  void start(String activityId, {String? taskId, String? actionId}) {
     // ✅ si l’utilisateur démarre l’activité, on casse le snooze
     clearSnooze(activityId);
 
@@ -816,11 +816,32 @@ class AppLogic {
       s.endAt = DateTime.now();
     }
 
-    // 2) nouvelle session (liée à une tâche Gantt si fournie)
-    state.sessions.add(
-        Session(activityId: activityId, startAt: DateTime.now(), taskId: taskId));
+    // 2) nouvelle session (liée à une tâche Gantt / action si fournies)
+    state.sessions.add(Session(
+        activityId: activityId,
+        startAt: DateTime.now(),
+        taskId: taskId,
+        actionId: actionId));
 
     onChange();
+  }
+
+  // Actions de projet LIÉES à une activité (chrono ciblé) — remonte (projet, tâche,
+  // action) pour chaque action dont linkedActivityId == activityId.
+  List<({Project project, ProjectTask task, TaskAction action})> actionsLinkedTo(
+      String activityId) {
+    final out = <({Project project, ProjectTask task, TaskAction action})>[];
+    for (final p in currentProjects) {
+      if (p.status == 'archived') continue;
+      for (final t in p.tasks) {
+        for (final a in t.actions) {
+          if (a.linkedActivityId == activityId) {
+            out.add((project: p, task: t, action: a));
+          }
+        }
+      }
+    }
+    return out;
   }
 
   List<String> checklistForHabit(String habitId) {
