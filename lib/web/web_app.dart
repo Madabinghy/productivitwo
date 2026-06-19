@@ -216,6 +216,23 @@ class _AuthGateState extends State<_AuthGate> {
           );
         }
         if (snapshot.hasError || snapshot.data == null) {
+          // En localhost, les pages de DÉV (worldtest / mobilepreview / flame=3)
+          // exigent une vraie session → on bascule direct sur le dev-login (token
+          // pré‑rempli depuis l'URL ou le localStorage) plutôt que l'auth publique.
+          final p = Uri.base.queryParameters;
+          final localhost =
+              Uri.base.host == 'localhost' || Uri.base.host == '127.0.0.1';
+          if (kIsWeb &&
+              localhost &&
+              (p['worldtest'] == 'true' ||
+                  p['mobilepreview'] == 'true' ||
+                  p['flame'] == '3' ||
+                  p['devauth'] == '1')) {
+            return DevAuthScreen(
+                onSignedIn: () {
+                  if (mounted) setState(() {});
+                });
+          }
           return const WebAuthScreen();
         }
         // Page de DÉV : prévisu mobile native dans un cadre téléphone.

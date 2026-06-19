@@ -10,6 +10,13 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.33', '19 juin 2026', [
+    (Icons.videocam_outlined, '« Le Monde » web : la caméra suit l\'avatar pendant ses déplacements automatiques et les cinématiques, et cadre la trajectoire du tir'),
+    (Icons.dashboard_customize_outlined, 'Monter sur une rampe ou cliquer un nuisible ouvre un mini-dashboard ciblé DANS le jardin (stats + appel à l\'action), sans ouvrir de fiche par-dessus : routine → « Valider », activité → minuteur (chrono en cours + « Arrêter » si une session tourne), tâche/serpent → ses actions cochables'),
+    (Icons.local_fire_department_outlined, 'Règle des canons : un canon ne tire que s\'il a des flammes en réserve (routines validées / temps loggé). Sans flamme, il reste muet'),
+    (Icons.palette_outlined, 'Une case du calendrier n\'est noire que si elle porte un nuisible ; les jours tenus et les activités déjà atteintes prennent la couleur du domaine'),
+    (Icons.save_outlined, 'Brouillard de guerre et position de l\'avatar mémorisés d\'une session à l\'autre'),
+  ]),
   _Entry('6.32', '18 juin 2026', [
     (Icons.view_column_outlined, '« Le Monde » web en 2 colonnes : les domaines s\'organisent autour d\'une cour centrale (gazon), un domaine sur deux passant en miroir à gauche — carte plus compacte, moins de trajet. En miroir, les nuisibles arrivent de la gauche et la tourelle, à l\'intérieur, vise vers la gauche'),
     (Icons.water_drop_outlined, 'PV des nuisibles lisibles à la couleur : une case pleine est noire, et plus tu blesses le nuisible, plus la couleur du domaine remonte par le bas'),

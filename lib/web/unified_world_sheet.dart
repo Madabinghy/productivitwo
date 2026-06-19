@@ -302,8 +302,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   ({String type, String id, String tileId})? _combat;
   // Panneau JARDIN in‑place : le jardin (cases vertes) d'un domaine est remplacé par
   // une mini‑app. `mode` ∈ {combat, routineDash}. null = jardin normal. Un tap sur
-  // une case de la map le referme.
-  ({String domainId, String mode})? _gardenPanel;
+  // une case de la map le referme. `laneId` non‑null = dashboard CIBLÉ sur une seule
+  // routine/activité (rampe sur laquelle l'avatar a grimpé) ; null = liste du domaine.
+  ({String domainId, String mode, String? laneId, String? pestType})?
+      _gardenPanel;
   Point<int>? _cannonSpinAt; // case rampe en cours de spin (null = repos)
   int _cannonSpinStartMs = 0;
   final Map<String, double> _cannonRaise = {}; // tileId tourelle → lever 0..1 (animé)
@@ -2961,12 +2963,34 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     // MONDE V2 desktop : le combat s'affiche DANS le jardin du domaine (in‑place),
     // plus en colonne à droite. Mobile garde l'écran plein (cf. rendu).
     final p = tileId.split('_');
+    // Domaine du NUISIBLE (pas la case géométrique) : un gardien posé sur la rangée‑
+    // frontière appartient au domaine du dessous, alors que `_domainAtTileV2` y
+    // renverrait le domaine du dessus → on privilégie `enemyDomainId`.
     final dom = (_kWorldV2 && !widget.mobile && p.length == 2)
-        ? _domainAtTileV2(int.tryParse(p[0]) ?? -1, int.tryParse(p[1]) ?? -1)
+        ? (logic.enemyDomainId(type, id) ??
+            _domainAtTileV2(int.tryParse(p[0]) ?? -1, int.tryParse(p[1]) ?? -1))
         : null;
+    // Jardin V2 (extérieur) : dashboard ciblé du nuisible (stats + CTA), SANS combat
+    // plein écran (sinon l'overlay `_combat` se superpose → écran noir). En intérieur
+    // de grotte, on garde la carte de combat plein écran.
+    if (dom != null && !_inInterior) {
+      setState(() {
+        _combat = null;
+        _gardenPanel = (
+          domainId: dom,
+          mode: 'pestDash',
+          laneId: id,
+          pestType: type,
+        );
+      });
+      return;
+    }
     setState(() {
       _combat = (type: type, id: id, tileId: tileId);
-      if (dom != null) _gardenPanel = (domainId: dom, mode: 'combat');
+      if (dom != null) {
+        _gardenPanel =
+            (domainId: dom, mode: 'combat', laneId: null, pestType: null);
+      }
     });
   }
 
@@ -3056,13 +3080,24 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           borderRadius: BorderRadius.circular(8),
           child: (gp.mode == 'combat' && _combat != null)
               ? _combatPanel()
-              : _routineDashV2(c, col),
+              : (gp.mode == 'pestDash' &&
+                      gp.pestType != null &&
+                      gp.laneId != null)
+                  ? _pestDashV2(gp.pestType!, gp.laneId!, col)
+                  : _routineDashV2(c, col),
         ),
       ),
     );
   }
 
   Widget _routineDashV2(CastleBlock c, Color col) {
+    // Dashboard CIBLÉ : une seule routine/activité (rampe sur laquelle on a grimpé).
+    final laneId = _gardenPanel?.laneId;
+    if (laneId != null) {
+      for (final x in logic.activitiesOfDomain(c.domainId)) {
+        if (x.id == laneId) return _laneDashV2(x, col);
+      }
+    }
     final acts = logic.activitiesOfDomain(c.domainId);
     final shur = _gardenShurikensByDomain[c.domainId] ?? 0;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -3112,6 +3147,335 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     ]);
   }
 
+  // Dashboard CIBLÉ sur UNE routine/activité, rendu IN‑PLACE dans le jardin (pas de
+  // sheet) : entête, stats, semaine glissante, et le bon appel à l'action.
+  Widget _laneDashV2(Activity a, Color col) {
+    final isRoutine = a.isHabit;
+    final pc = logic.habitPeriod(a);
+    final streak = isRoutine ? logic.habitCurrentStreak(a.id) : 0;
+    final toks = isRoutine
+        ? logic.routineWeekTokens(a.id)
+        : logic.activityTimeTokens(a.id);
+    final kept = toks.where((t) => t.type != 'spider').length;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Container(
+        padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
+        color: col.withOpacity(.22),
+        child: Row(children: [
+          Text(isRoutine ? '🕷️' : '🦂', style: const TextStyle(fontSize: 14)),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(a.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 13)),
+          ),
+          InkWell(
+            onTap: () => setState(() {
+              _gardenPanel = null;
+              _combat = null;
+            }),
+            child: const Padding(
+                padding: EdgeInsets.all(4),
+                child: Icon(Icons.close, color: Colors.white60, size: 18)),
+          ),
+        ]),
+      ),
+      Expanded(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+              _laneStat('${pc.done}/${pc.target}',
+                  isRoutine ? 'cette période' : 'min · semaine', col),
+              _laneStat(isRoutine ? '🔥 $streak' : '$kept/7',
+                  isRoutine ? 'série' : 'jours tenus', col),
+            ]),
+            const SizedBox(height: 12),
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              for (var i = 0; i < 7 && i < toks.length; i++)
+                _laneWeekDot(toks[i].type, isRoutine, col),
+            ]),
+            const SizedBox(height: 14),
+            if (isRoutine)
+              _laneBigCta(Icons.check_rounded, 'Valider aujourd\'hui', col,
+                  () => _dashValidateRoutine(a))
+            else
+              _laneTimerCta(a, col),
+          ]),
+        ),
+      ),
+    ]);
+  }
+
+  Widget _laneStat(String value, String label, Color col) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(value,
+              style: TextStyle(
+                  color: col, fontWeight: FontWeight.w900, fontSize: 18)),
+          Text(label,
+              style: const TextStyle(color: Colors.white54, fontSize: 10)),
+        ],
+      );
+
+  Widget _laneWeekDot(String type, bool isRoutine, Color col) {
+    final emoji = type == 'flame'
+        ? '🔥'
+        : type == 'spider'
+            ? (isRoutine ? '🕷️' : '🦂')
+            : type == 'leaf'
+                ? '🍃'
+                : '';
+    return Container(
+      width: 22,
+      height: 22,
+      margin: const EdgeInsets.symmetric(horizontal: 2),
+      decoration: BoxDecoration(
+        color: type == 'spider' ? Colors.black : col.withOpacity(.30),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      alignment: Alignment.center,
+      child: Text(emoji, style: const TextStyle(fontSize: 12)),
+    );
+  }
+
+  Widget _laneBigCta(
+          IconData icon, String label, Color col, VoidCallback onTap) =>
+      InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 11),
+          decoration: BoxDecoration(
+            color: col.withOpacity(.30),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: col.withOpacity(.6)),
+          ),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(icon, color: Colors.white, size: 18),
+            const SizedBox(width: 6),
+            Text(label,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13)),
+          ]),
+        ),
+      );
+
+  // Actions du dashboard (partagées par la liste de domaine et le dashboard ciblé).
+  void _dashValidateRoutine(Activity a) {
+    logic.incHabit(a.id, 1, DateTime.now());
+    if (mounted) setState(() {});
+  }
+
+  void _dashStartTimer(Activity a, Color col) {
+    // Le onChange du web ne pushe PAS → on persiste la session à la main dans
+    // Firestore pour que le téléphone la voie (→ Live Activity).
+    final openBefore =
+        logic.state.sessions.where((s) => s.endAt == null).toList();
+    logic.start(a.id);
+    for (final s in openBefore) {
+      sync.saveSession(s); // elles viennent de recevoir endAt
+    }
+    if (logic.state.sessions.isNotEmpty) {
+      sync.saveSession(logic.state.sessions.last); // nouvelle session ouverte
+    }
+    _toast('⏱️ Chrono lancé — ${a.name}', col);
+    if (mounted) setState(() {});
+  }
+
+  // Session de temps OUVERTE (chrono en cours) pour cette activité, ou null.
+  Session? _openSessionFor(String activityId) {
+    for (final s in logic.state.sessions) {
+      if (s.endAt == null && s.activityId == activityId) return s;
+    }
+    return null;
+  }
+
+  String _fmtChrono(Duration d) {
+    final mm = (d.inMinutes % 60).toString().padLeft(2, '0');
+    final ss = (d.inSeconds % 60).toString().padLeft(2, '0');
+    return d.inHours > 0 ? '${d.inHours}:$mm:$ss' : '$mm:$ss';
+  }
+
+  // Appel à l'action « temps » du dashboard : chrono EN COURS (temps + arrêt) si une
+  // session tourne déjà pour l'activité, sinon le bouton pour la lancer.
+  Widget _laneTimerCta(Activity a, Color col) {
+    final open = _openSessionFor(a.id);
+    if (open == null) {
+      return _laneBigCta(Icons.play_arrow_rounded, 'Lancer le minuteur', col,
+          () => _dashStartTimer(a, col));
+    }
+    return Column(children: [
+      StreamBuilder<int>(
+        stream: Stream.periodic(const Duration(seconds: 1), (i) => i),
+        builder: (_, __) => Text(
+          _fmtChrono(DateTime.now().difference(open.startAt)),
+          style: TextStyle(
+              color: col, fontWeight: FontWeight.w900, fontSize: 30),
+        ),
+      ),
+      const Text('⏱️ en cours',
+          style: TextStyle(color: Colors.white54, fontSize: 11)),
+      const SizedBox(height: 12),
+      _laneBigCta(Icons.stop_rounded, 'Arrêter', col, () => _dashStopTimer()),
+    ]);
+  }
+
+  void _dashStopTimer() {
+    final ended = logic.stopActive();
+    if (ended != null) sync.saveSession(ended);
+    if (mounted) setState(() {});
+  }
+
+  // ── Dashboard d'un NUISIBLE du jardin (clic sur 🦂 / 🐍) : stats + CTA ciblés ──
+  // Scorpion = activité‑temps en retard → réutilise le dashboard de la lane (minuteur).
+  // Serpent = tâche en retard → ses actions, cochables une à une (chaque coche = −1 PV).
+  Widget _pestDashV2(String type, String id, Color col) {
+    if (type == 'scorpion') {
+      for (final a in logic.state.activeActivities) {
+        if (a.id == id) return _laneDashV2(a, col);
+      }
+    } else if (type == 'snake') {
+      for (final p in logic.currentProjects) {
+        for (final t in p.tasks) {
+          if (t.id == id) return _taskDashV2(p, t, col);
+        }
+      }
+    }
+    return Center(
+      child: Text('Nuisible introuvable',
+          style: TextStyle(color: Colors.white.withOpacity(.38), fontSize: 12)),
+    );
+  }
+
+  Widget _taskDashV2(Project p, ProjectTask t, Color col) {
+    final total = t.actions.length;
+    final done = t.stepsDone;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Container(
+        padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
+        color: col.withOpacity(.22),
+        child: Row(children: [
+          const Text('🐍', style: TextStyle(fontSize: 14)),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(t.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 13)),
+                  Text(p.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          color: Colors.white.withOpacity(.55), fontSize: 10)),
+                ]),
+          ),
+          InkWell(
+            onTap: () => setState(() {
+              _gardenPanel = null;
+              _combat = null;
+            }),
+            child: const Padding(
+                padding: EdgeInsets.all(4),
+                child: Icon(Icons.close, color: Colors.white60, size: 18)),
+          ),
+        ]),
+      ),
+      Expanded(
+        child: total == 0
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: _laneBigCta(Icons.check_rounded, 'Marquer la tâche faite',
+                      col, () => _completeTask(p, t)),
+                ),
+              )
+            : ListView(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
+                    child: Text('$done/$total actions faites',
+                        style: TextStyle(
+                            color: col,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 12)),
+                  ),
+                  for (final a in t.actions) _taskActionRow(p, t, a, col),
+                ],
+              ),
+      ),
+    ]);
+  }
+
+  Widget _taskActionRow(Project p, ProjectTask t, TaskAction a, Color col) =>
+      InkWell(
+        onTap: () => _toggleTaskAction(p, t, a),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          child: Row(children: [
+            Icon(a.done ? Icons.check_circle : Icons.radio_button_unchecked,
+                color: a.done ? col : Colors.white38, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(a.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      color: a.done ? Colors.white38 : Colors.white,
+                      fontSize: 12,
+                      decoration:
+                          a.done ? TextDecoration.lineThrough : null)),
+            ),
+          ]),
+        ),
+      );
+
+  Future<void> _toggleTaskAction(Project p, ProjectTask t, TaskAction a) async {
+    setState(() {
+      a.done = !a.done;
+      a.doneAt = a.done ? DateTime.now() : null;
+    });
+    await sync.saveProjectTasks(p.id, p.tasks);
+    _afterPestProgress('snake', t.id);
+  }
+
+  Future<void> _completeTask(Project p, ProjectTask t) async {
+    setState(() => t.status = 'done');
+    await sync.saveProjectTasks(p.id, p.tasks);
+    _afterPestProgress('snake', t.id);
+  }
+
+  // Recalcule les PV du nuisible après une action ; s'il tombe à 0 on le retire du
+  // jardin et on referme le dashboard.
+  void _afterPestProgress(String type, String id) {
+    if (!mounted) return;
+    if (logic.enemyHp(type, id) <= 0) {
+      _v2Pests.removeWhere((_, v) => v.type == type && v.id == id);
+      _populateV2Calendar();
+      _populateV2Gardens();
+      setState(() {
+        _gardenPanel = null;
+        _combat = null;
+      });
+    } else {
+      setState(() {});
+    }
+  }
+
   Widget _dashRowV2(Activity a, Color col) {
     final isRoutine = a.isHabit;
     final pc = logic.habitPeriod(a);
@@ -3150,26 +3514,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           ),
           // CTA : routine → +1 (incHabit) ; activité‑temps → minuteur (start).
           if (isRoutine)
-            _dashCta(Icons.add, col, () {
-              logic.incHabit(a.id, 1, DateTime.now());
-              if (mounted) setState(() {});
-            })
+            _dashCta(Icons.add, col, () => _dashValidateRoutine(a))
           else
-            _dashCta(Icons.play_arrow_rounded, col, () {
-              // Le onChange du web ne pushe PAS → on persiste la session à la main
-              // dans Firestore pour que le téléphone la voie (→ Live Activity).
-              final openBefore =
-                  logic.state.sessions.where((s) => s.endAt == null).toList();
-              logic.start(a.id);
-              for (final s in openBefore) {
-                sync.saveSession(s); // elles viennent de recevoir endAt
-              }
-              if (logic.state.sessions.isNotEmpty) {
-                sync.saveSession(logic.state.sessions.last); // nouvelle session ouverte
-              }
-              _toast('⏱️ Chrono lancé — ${a.name}', col);
-              if (mounted) setState(() {});
-            }),
+            _dashCta(
+                Icons.play_arrow_rounded, col, () => _dashStartTimer(a, col)),
         ]),
       ),
     );
@@ -3202,6 +3550,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         _revealAroundV2(step);
       });
       _v2CheckDomainEntry();
+      _v2CenterOn(step); // suivi caméra (déplacement auto / cinématique)
       await Future.delayed(const Duration(milliseconds: 75));
     }
     _persistFogV2(); // brouillard révélé pendant la séquence → sauvegardé
@@ -3220,11 +3569,35 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     }
   }
 
+  // RÉSERVE de flammes d'une lane = nombre de jours TENUS de la semaine glissante
+  // (routine validée OU période de temps loggée → jeton 🍃/🔥). Calculée À FRAIS
+  // depuis `logic` pour refléter une validation qui vient d'arriver. RÈGLE GÉNÉRALE :
+  // un canon sans flamme en réserve NE TIRE PAS.
+  int _laneFlameReserve(String laneId, bool isRoutine) {
+    final toks = isRoutine
+        ? logic.routineWeekTokens(laneId)
+        : logic.activityTimeTokens(laneId);
+    return toks.where((t) => t.type == 'leaf' || t.type == 'flame').length;
+  }
+
+  // Lane (id + routine ?) servie par la tourelle en `turX,y`, ou null.
+  ({String id, bool isRoutine})? _laneAtTurret(String? dom, int turX, int y) {
+    final cb = dom != null ? _wv2?.byDomain[dom] : null;
+    if (cb == null) return null;
+    for (final l in cb.lanes) {
+      if (l.turretX == turX && l.y == y) {
+        return (id: l.id, isRoutine: l.isRoutine);
+      }
+    }
+    return null;
+  }
+
   // Séquence CANON en 3 phases (tap sur la rampe ☢️ en `x,y` ; canon en `x+1,y`) :
   //  1) l'avatar arrive 2 cases à GAUCHE du canon (= 1 case à gauche de la rampe),
   //     PAS dessus → la rampe tourne sur elle‑même et le canon se LÈVE (opérationnel).
   //  2) l'avatar MONTE sur la rampe.
-  //  3) la cinématique de chargement/tir se lance « comme en mode combat ».
+  //  3) la cinématique de chargement/tir se lance « comme en mode combat » — SAUF
+  //     si la lane n'a aucune flamme en réserve (alors le canon ne tire pas).
   Future<void> _onCannonRamp(int x, int y,
       {bool openDash = true, int? forceShots}) async {
     final w = _wv2;
@@ -3239,6 +3612,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       final turretId = '${turX}_$y';
       final outsideX = mirror ? x + 1 : x - 1; // côté extérieur : l'avatar attend là
       final dayTargetX = mirror ? x - 8 : x + 8; // « aujourd'hui » visé
+      // Lane servie + sa réserve de flammes (RÈGLE : pas de flamme → pas de tir).
+      final lane = _laneAtTurret(dom, turX, y);
+      final reserve = lane != null ? _laneFlameReserve(lane.id, lane.isRoutine) : 0;
       // — Phase 1 : arriver sur la case côté extérieur (avant de monter sur la rampe).
       await _v2StepTo(Point(outsideX, y));
       if (!mounted) return;
@@ -3259,13 +3635,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       await _v2StepTo(Point(x, y));
       if (!mounted) return;
       // — Phase 3 : chargement/visée puis tir « mode combat » (volée vers le jour).
-      final tur = _v2Turret[turretId];
-      final rid = _v2TurretRoutineId[turretId];
-      final flames = forceShots ??
-          ((tur?.charger ?? 0) > 0
-              ? (tur?.charger ?? 0)
-              : (rid != null ? (_pendingByRoutine[rid]?.length ?? 0) : 0));
+      // forceShots = une flamme vient D'ARRIVER (temps réel) → on la tire. Sinon (clic
+      // manuel) on tire la RÉSERVE permanente — nulle = canon muet (règle générale).
+      final flames = forceShots ?? reserve;
       if (flames > 0) {
+        // Cadre la trajectoire tourelle → jour pour voir le boulet voler en entier.
+        _v2CenterOn(Point((turX + dayTargetX) ~/ 2, y));
         await Future.delayed(const Duration(milliseconds: 600)); // charge/visée
         final n = flames.clamp(1, 5);
         for (var i = 0; i < n; i++) {
@@ -3284,9 +3659,15 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         _cannonRaise.remove(turretId);
         _populateV2Calendar(); // PV des cases‑jour rafraîchis (dégâts visibles)
         _populateV2Gardens(); // scorpions/serpents du jardin aussi
-        // Dashboard de la lane (clic manuel uniquement ; pas en spectateur temps réel).
+        // Dashboard CIBLÉ sur la routine/activité de cette rampe (clic manuel
+        // uniquement ; pas en spectateur temps réel).
         if (openDash && dom != null) {
-          _gardenPanel = (domainId: dom, mode: 'routineDash');
+          _gardenPanel = (
+            domainId: dom,
+            mode: 'routineDash',
+            laneId: lane?.id,
+            pestType: null,
+          );
         }
       });
     } finally {
@@ -6973,13 +7354,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               Center(child: Text(tok, style: TextStyle(fontSize: inner * 0.42))),
             ],
           );
-        } else if (_v2DayCells.contains(id)) {
-          // Case du calendrier SANS nuisible vaincu (source d'où arrivent les
-          // nuisibles) = NOIRE par défaut ; la couleur du domaine ne se révèle qu'en
-          // nettoyant un nuisible.
-          bg = Colors.black;
         } else {
-          bg = tColor.withOpacity(.10); // château vide
+          // Case du calendrier SANS nuisible (jour tenu / activité déjà atteinte) ou
+          // château vide = couleur du domaine. Le noir est réservé aux cases qui
+          // portent un nuisible (cas `tok` ci‑dessus, où le noir recule selon les PV).
+          bg = tColor.withOpacity(.10);
         }
         break;
       case WtTile.chest:
