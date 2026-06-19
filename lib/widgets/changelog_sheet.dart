@@ -10,6 +10,12 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.37', '19 juin 2026', [
+    (Icons.timelapse, 'Combattre (mobile) : minuteur d\'activité-temps → un tir toutes les 5 min anime la baisse de PV ; une activité lancée depuis le web est reprise sur mobile (décompte synchronisé)'),
+    (Icons.replay, 'Combattre (mobile) : les routines complétées hors de l\'app (widget, web) sont rattrapées à l\'ouverture — les canons tirent une à une les flammes en attente (un seul tir si trop nombreuses)'),
+    (Icons.rocket_launch_outlined, 'Combattre (mobile) — onglet Actions : vise une action (🎯) et « Faire feu 🚀 » la valide ; coche verte sur les actions faites ; descriptions sur plusieurs lignes'),
+    (Icons.format_align_left, 'Combattre (mobile) : le nom d\'une routine est désormais SOUS sa tourelle (plus de confusion avec la routine suivante) ; durée du minuteur prise sur la routine, sinon demandée'),
+  ]),
   _Entry('6.36', '19 juin 2026', [
     (Icons.timer_outlined, 'Combattre (mobile) : en mode minuteur, « Faire feu » ne quitte plus le domaine — le viseur de la ligne devient un décompte, et à zéro la tourelle fait feu (routine validée / temps loggé). Un seul minuteur à la fois, mémorisé même si tu fermes l\'écran'),
     (Icons.tune, 'Combattre (mobile) : le type de lancement de chaque routine (minuteur / chrono / coche) est désormais mémorisé'),
