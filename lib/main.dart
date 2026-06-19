@@ -2720,7 +2720,8 @@ class _AppRootState extends State<AppRoot>
             return;
           }
         }
-        logic.start(block.activityId!);
+        // Bloc ciblant une action propre de l'activité → chrono ciblé (actionId).
+        logic.start(block.activityId!, actionId: block.actionId);
         setState(() {
           _focusProject = null;
           _focusTask = null;
@@ -2786,7 +2787,8 @@ class _AppRootState extends State<AppRoot>
       }
       return;
     }
-    logic.start(activity.id);
+    // Chrono ciblé sur la sous-action si le bloc en désigne une (actionId).
+    logic.start(activity.id, taskId: block.taskId, actionId: block.actionId);
     final focusActId = activity.id;
     setState(() {
       _focusProject = project;

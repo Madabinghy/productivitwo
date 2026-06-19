@@ -753,6 +753,42 @@ const MARK_ACTION_DONE_TOOL = {
   },
 };
 
+const LINK_ACTION_TO_ACTIVITY_TOOL = {
+  name: "link_action_to_activity",
+  description:
+    "Associe une sous-action d'une tâche Gantt à une activité-temps (pose linkedActivityId). " +
+    "Le chrono lancé depuis cette action sera alors ciblé (le temps est loggué sur l'activité). " +
+    "À PROPOSER quand une action n'est PAS déjà liée à une activité et qu'une activité-temps du même " +
+    "domaine existe (vois activities + leur domainId via get_user_context). Ne ré-associe pas une action déjà liée.",
+  inputSchema: {
+    type: "object",
+    required: ["projectId", "taskId", "actionId", "activityId"],
+    properties: {
+      projectId:  { type: "string", description: "id du projet (list_projects)" },
+      taskId:     { type: "string", description: "id de la tâche (get_project)" },
+      actionId:   { type: "string", description: "id de la sous-action à lier (get_project)" },
+      activityId: { type: "string", description: "id de l'activité-temps cible (get_user_context, même domaine de préférence)" },
+    },
+  },
+};
+
+const ADD_ACTIVITY_ACTION_TOOL = {
+  name: "add_activity_action",
+  description:
+    "Crée une action PROPRE sur une activité-temps : une sous-action qui appartient directement à " +
+    "l'activité (sans tâche/projet). Utile pour matérialiser une action récurrente ou ponctuelle liée " +
+    "à une activité, puis la PROGRAMMER via schedule_day (activityId + actionId retourné). " +
+    "N'utilise PAS cet outil pour une action qui relève d'un projet Gantt (utilise add_task/update_task).",
+  inputSchema: {
+    type: "object",
+    required: ["activityId", "title"],
+    properties: {
+      activityId: { type: "string", description: "id de l'activité-temps propriétaire (get_user_context)" },
+      title:      { type: "string", description: "intitulé court et actionnable de l'action" },
+    },
+  },
+};
+
 const LOG_ROUTINE_HIT_TOOL = {
   name: "log_routine_hit",
   description:
@@ -819,6 +855,8 @@ PUSH_GANTT_MCP_TOOL,
 ADD_TASK_TOOL,
 UPDATE_TASK_TOOL,
 MARK_ACTION_DONE_TOOL,
+LINK_ACTION_TO_ACTIVITY_TOOL,
+ADD_ACTIVITY_ACTION_TOOL,
 LOG_ROUTINE_HIT_TOOL,
 MARK_BLOCK_DONE_TOOL,
 };
@@ -926,7 +964,8 @@ export const SCHEDULE_DAY_TOOL = {
             },
             projectId:   { type: "string", description: "id du projet Gantt lié (si category=project, obtenu via list_projects)" },
             taskId:      { type: "string", description: "id de la tâche Gantt liée (obtenu via get_project)" },
-            activityId:  { type: "string", description: "id de l'activité liée (si category=routine, obtenu via get_user_context)" },
+            activityId:  { type: "string", description: "id de l'activité liée (si category=routine, ou activité-temps d'une action propre)" },
+            actionId:    { type: "string", description: "id de l'action ciblée — action PROPRE d'une activité (avec son activityId) OU sous-action d'une tâche de projet (avec projectId+taskId). Le chrono lancé depuis ce bloc pointera sur cette action." },
           },
         },
       },
