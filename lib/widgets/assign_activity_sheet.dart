@@ -263,3 +263,28 @@ class _DomainAccordion extends StatelessWidget {
     );
   }
 }
+
+/// Ouvre le picker d'activité-temps et renvoie le choix via [onPick] (l'appelant
+/// gère la persistance). Réutilisé pour lier une action de projet à une activité.
+Future<void> showActivityPicker(
+  BuildContext context,
+  AppState st,
+  void Function(Activity act) onPick, {
+  String? domainId,
+}) async {
+  await showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (sheetCtx) => AssignActivitySheet(
+      st: st,
+      allowedDomainIds: domainId != null ? {domainId} : null,
+      initiallyExpandedDomainIds: domainId != null ? {domainId} : null,
+      onKeepInbox: () => Navigator.pop(sheetCtx),
+      onPick: (act) {
+        Navigator.pop(sheetCtx);
+        onPick(act);
+      },
+    ),
+  );
+}

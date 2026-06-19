@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
@@ -313,11 +314,152 @@ Future<void> showActivitySheet(
                     ),
                   );
                 }),
+                // Actions de projet liées à CETTE activité (chrono ciblé).
+                if (!a.isHabit) ...[
+                  const SizedBox(height: 18),
+                  StatefulBuilder(builder: (ctx2, setLocal) {
+                    final linked = logic.actionsLinkedTo(a.id);
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(children: [
+                          Expanded(
+                            child: Text('🔗 Actions liées',
+                                style: TextStyle(
+                                    color: color,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 13)),
+                          ),
+                          TextButton.icon(
+                            onPressed: () async {
+                              final picked = await _pickUnlinkedAction(
+                                  ctx2, logic, a.domainId);
+                              if (picked == null) return;
+                              picked.action.linkedActivityId = a.id;
+                              logic.onChange();
+                              await FirestoreSync().saveProjectTasks(
+                                  picked.project.id, picked.project.tasks);
+                              setLocal(() {});
+                            },
+                            icon: const Icon(Icons.add_link, size: 16),
+                            label: const Text('Lier'),
+                          ),
+                        ]),
+                        if (linked.isEmpty)
+                          Text('Aucune action liée.',
+                              style: TextStyle(
+                                  color: cs.onSurface.withOpacity(.4),
+                                  fontSize: 12))
+                        else
+                          for (final e in linked)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2),
+                              child: Row(children: [
+                                Icon(
+                                    e.action.done
+                                        ? Icons.check_circle
+                                        : Icons.radio_button_unchecked,
+                                    size: 15,
+                                    color: e.action.done
+                                        ? const Color(0xFF4CD787)
+                                        : cs.onSurface.withOpacity(.3)),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(e.action.title,
+                                      style: TextStyle(
+                                          fontSize: 12.5,
+                                          decoration: e.action.done
+                                              ? TextDecoration.lineThrough
+                                              : null,
+                                          color: e.action.done
+                                              ? cs.onSurface.withOpacity(.4)
+                                              : cs.onSurface)),
+                                ),
+                                if (!e.action.done)
+                                  IconButton(
+                                    visualDensity: VisualDensity.compact,
+                                    icon: Icon(Icons.play_circle_fill,
+                                        color: color, size: 22),
+                                    tooltip: 'Lancer le chrono',
+                                    onPressed: () {
+                                      logic.start(a.id,
+                                          taskId: e.task.id,
+                                          actionId: e.action.id);
+                                      Navigator.pop(ctx);
+                                    },
+                                  ),
+                                IconButton(
+                                  visualDensity: VisualDensity.compact,
+                                  icon: Icon(Icons.link_off,
+                                      size: 16,
+                                      color: cs.onSurface.withOpacity(.3)),
+                                  tooltip: 'Délier',
+                                  onPressed: () async {
+                                    e.action.linkedActivityId = null;
+                                    logic.onChange();
+                                    await FirestoreSync().saveProjectTasks(
+                                        e.project.id, e.project.tasks);
+                                    setLocal(() {});
+                                  },
+                                ),
+                              ]),
+                            ),
+                      ],
+                    );
+                  }),
+                ],
               ],
             ),
           ),
         ),
       );
     },
+  );
+}
+
+// Picker des actions NON liées du domaine → pour lier à une activité depuis sa fiche.
+Future<({Project project, TaskAction action})?> _pickUnlinkedAction(
+    BuildContext context, AppLogic logic, String domainId) async {
+  final candidates = <({Project project, TaskAction action})>[];
+  for (final p in logic.currentProjects) {
+    if (p.domainId != domainId || p.status == 'archived') continue;
+    for (final t in p.tasks) {
+      if (t.status == 'done' || t.status == 'skipped') continue;
+      for (final act in t.actions) {
+        if (!act.done && (act.linkedActivityId ?? '').isEmpty) {
+          candidates.add((project: p, action: act));
+        }
+      }
+    }
+  }
+  if (candidates.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Aucune action disponible à lier dans ce domaine.')));
+    return null;
+  }
+  return showModalBottomSheet<({Project project, TaskAction action})>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (sheetCtx) => SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+            child: Text('Lier une action',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          ),
+          for (final e in candidates)
+            ListTile(
+              dense: true,
+              title: Text(e.action.title),
+              subtitle: Text(e.project.title,
+                  maxLines: 1, overflow: TextOverflow.ellipsis),
+              onTap: () => Navigator.pop(sheetCtx, e),
+            ),
+        ],
+      ),
+    ),
   );
 }

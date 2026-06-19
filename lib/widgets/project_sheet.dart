@@ -15,6 +15,7 @@ Future<void> showProjectSheet(
   required Project project,
   required List<Domain> domains,
   String? targetTaskId,
+  List<Activity> activities = const [], // pour lier une action à une activité-temps
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -24,6 +25,7 @@ Future<void> showProjectSheet(
       project: project,
       domains: domains,
       targetTaskId: targetTaskId,
+      activities: activities,
     ),
   );
 }
@@ -34,11 +36,13 @@ class _ProjectSheet extends StatefulWidget {
   final Project project;
   final List<Domain> domains;
   final String? targetTaskId;
+  final List<Activity> activities;
 
   const _ProjectSheet({
     required this.project,
     required this.domains,
     this.targetTaskId,
+    this.activities = const [],
   });
 
   @override
@@ -790,6 +794,7 @@ class _ProjectSheetState extends State<_ProjectSheet> {
         project: _project,
         sync: _sync,
         onChanged: () => setState(() {}),
+        activities: widget.activities,
       ),
     );
     setState(() {});
@@ -918,12 +923,14 @@ class _TaskDetailSheet extends StatefulWidget {
   final Project project;
   final FirestoreSync sync;
   final VoidCallback onChanged;
+  final List<Activity> activities; // pour lier une action à une activité-temps
 
   const _TaskDetailSheet({
     required this.task,
     required this.project,
     required this.sync,
     required this.onChanged,
+    this.activities = const [],
   });
 
   @override
@@ -1106,6 +1113,55 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
     Navigator.pop(context); // la tâche a quitté ce projet
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Tâche déplacée vers « ${target.title} ».')));
+  }
+
+  // Lier une action à une activité-temps (chrono ciblé). Picker simple sur
+  // widget.activities (filtrées par domaine du projet).
+  Future<void> _linkActionToActivity(TaskAction a) async {
+    final dom = widget.project.domainId;
+    final acts = widget.activities
+        .where((x) => !x.isHabit && !x.deleted && x.domainId == dom)
+        .toList()
+      ..sort((x, y) => x.name.compareTo(y.name));
+    final list = acts.isNotEmpty
+        ? acts
+        : (widget.activities.where((x) => !x.isHabit && !x.deleted).toList()
+          ..sort((x, y) => x.name.compareTo(y.name)));
+    if (list.isEmpty) return;
+    final picked = await showModalBottomSheet<Activity>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: Text('Activité liée',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ),
+            for (final x in list)
+              ListTile(
+                leading: const Icon(Icons.timer_outlined),
+                title: Text(x.name),
+                trailing:
+                    a.linkedActivityId == x.id ? const Icon(Icons.check) : null,
+                onTap: () => Navigator.pop(ctx, x),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null) return;
+    setState(() => a.linkedActivityId = picked.id);
+    await widget.sync.saveProjectTasks(widget.project.id, widget.project.tasks);
+    widget.onChanged();
+  }
+
+  Future<void> _unlinkActionActivity(TaskAction a) async {
+    setState(() => a.linkedActivityId = null);
+    await widget.sync.saveProjectTasks(widget.project.id, widget.project.tasks);
+    widget.onChanged();
   }
 
   Future<void> _moveActionToAnotherTask(TaskAction a) async {
@@ -1801,14 +1857,33 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                                                 _moveActionToAnotherTask(a);
                                               if (v == 'promote')
                                                 _promoteActionToSubproject(a);
+                                              if (v == 'link')
+                                                _linkActionToActivity(a);
+                                              if (v == 'unlink')
+                                                _unlinkActionActivity(a);
                                             },
-                                            itemBuilder: (_) => const [
-                                              PopupMenuItem(
+                                            itemBuilder: (_) => [
+                                              if (widget.activities.isNotEmpty &&
+                                                  (a.linkedActivityId ?? '')
+                                                      .isEmpty)
+                                                const PopupMenuItem(
+                                                  value: 'link',
+                                                  child: Text(
+                                                      'Lier à une activité'),
+                                                ),
+                                              if ((a.linkedActivityId ?? '')
+                                                  .isNotEmpty)
+                                                const PopupMenuItem(
+                                                  value: 'unlink',
+                                                  child:
+                                                      Text('Délier l\'activité'),
+                                                ),
+                                              const PopupMenuItem(
                                                 value: 'move',
                                                 child: Text(
                                                     'Déplacer vers une autre tâche'),
                                               ),
-                                              PopupMenuItem(
+                                              const PopupMenuItem(
                                                 value: 'promote',
                                                 child: Text(
                                                     'Promouvoir en sous-projet'),

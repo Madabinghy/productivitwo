@@ -9,6 +9,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/widgets/assign_activity_sheet.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/widgets/backlog_combat.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
@@ -1326,6 +1327,22 @@ class _DomainGameplayState extends State<_DomainGameplay>
                     fontSize: 12,
                     height: 1.3)),
           ),
+          // Lien à une activité (chrono ciblé) — coloré si lié.
+          if (!a.done)
+            GestureDetector(
+              onTap: () => _linkActionToActivity(p, a),
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.all(2),
+                child: Icon(
+                    (a.linkedActivityId ?? '').isEmpty
+                        ? Icons.add_link
+                        : Icons.link,
+                    size: 15,
+                    color:
+                        (a.linkedActivityId ?? '').isEmpty ? Colors.white24 : c),
+              ),
+            ),
           // Missile en vol (cinématique) sur la ligne ciblée.
           if (firing)
             Padding(
@@ -1357,6 +1374,22 @@ class _DomainGameplayState extends State<_DomainGameplay>
 
   void _aimAction(String id) {
     setState(() => _actionTargetId = _actionTargetId == id ? null : id);
+  }
+
+  // Lie/délie une action à une activité-temps (chrono ciblé). Lié → tap = délier.
+  Future<void> _linkActionToActivity(Project p, TaskAction a) async {
+    if ((a.linkedActivityId ?? '').isNotEmpty) {
+      setState(() => a.linkedActivityId = null);
+      await widget.sync.saveProjectTasks(p.id, p.tasks);
+      logic.onChange();
+      return;
+    }
+    await showActivityPicker(context, logic.state, (act) async {
+      a.linkedActivityId = act.id;
+      logic.onChange();
+      await widget.sync.saveProjectTasks(p.id, p.tasks);
+      if (mounted) setState(() {});
+    }, domainId: widget.domain.id);
   }
 
   Widget _gardenRow(_Item it, double cell, List<String> days) {
