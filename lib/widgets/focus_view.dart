@@ -327,6 +327,29 @@ class _FocusViewState extends State<FocusView> {
                   )),
             ],
 
+            // Actions PROPRES de l'activité en cours (cochables pendant le chrono).
+            if (logic.ownActionsOf(running.id).isNotEmpty) ...[
+              const SizedBox(height: 24),
+              Text(
+                'ACTIONS DE L\'ACTIVITÉ',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 2,
+                  color: cs.onSurface.withOpacity(.4),
+                ),
+              ),
+              const SizedBox(height: 8),
+              ...logic.ownActionsOf(running.id).map((a) => _ActionCheckTile(
+                    action: a,
+                    color: color,
+                    onToggle: (value) {
+                      logic.toggleOwnAction(running.id, a.id, value);
+                      setState(() {});
+                    },
+                  )),
+            ],
+
             if (task == null) ...[
               const SizedBox(height: 24),
               Center(
