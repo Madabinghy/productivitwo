@@ -4,14 +4,15 @@ workflows:
   ios-testflight:
     name: iOS → TestFlight
     max_build_duration: 60
-    # Build sur tag v* uniquement (ex. release "v5.46" créée dans GitHub) — JAMAIS sur merge.
-    # → contrôle des coûts : un build mobile seulement quand on pose un tag.
-    triggering:
-      events:
-        - tag
-      tag_patterns:
-        - pattern: "v*"
-          include: true
+    # ⚠️ CODEMAGIC DÉSACTIVÉ (coûts) — on build iOS sur Xcode Cloud (auto au push).
+    # Plus aucun déclenchement automatique : ni push, ni tag. Ce workflow ne peut
+    # plus partir que manuellement depuis le dashboard Codemagic (à éviter).
+    # triggering:
+    #   events:
+    #     - tag
+    #   tag_patterns:
+    #     - pattern: "v*"
+    #       include: true
     environment:
       flutter: stable
       groups:
