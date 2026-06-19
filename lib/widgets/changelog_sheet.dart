@@ -10,6 +10,12 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.35', '19 juin 2026', [
+    (Icons.edit_note, '« Le Monde » web : gère les actions d\'une tâche directement depuis le dashboard du serpent (ajouter, renommer, cocher, supprimer)'),
+    (Icons.timer_outlined, 'Dashboard d\'un serpent : lance le chrono d\'une activité du domaine, lié à la tâche — le téléphone voit l\'activité en cours en parallèle'),
+    (Icons.touch_app_outlined, 'Un clic prend la priorité : l\'avatar change de cap aussitôt au lieu de finir son trajet ; pendant une cinématique, un clic te rend la main (un clone fantôme finit la routine) et l\'avatar reprend l\'enchaînement après 10 s d\'inactivité'),
+    (Icons.center_focus_strong, 'En entrant dans un domaine, la carte le centre (repère stable) ; les petites araignées se déplacent beaucoup plus lentement ; le canon vise d\'autant plus bas qu\'il y a de nuisibles (haut = prêt, bas = débordé)'),
+  ]),
   _Entry('6.34', '19 juin 2026', [
     (Icons.menu_book_outlined, '« Le Monde » web : un parchemin 📜 par domaine (au-dessus de la 1ʳᵉ tourelle) ouvre un grand tableau de bord projets — liste avec avancement à gauche, document de pilotage interactif à droite (coche tes tâches depuis le jeu, bindé au Gantt ; cocher une tâche fait disparaître son serpent)'),
     (Icons.check_circle_outline, 'Terminer un projet depuis l\'arène ou la fiche projet ; supprimer un projet depuis l\'arène (avec confirmation) — un projet terminé/supprimé sort de la liste et retire ses nuisibles'),

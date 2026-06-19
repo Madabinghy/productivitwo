@@ -158,6 +158,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // tileId tourelle → chargeur (0..7) + routine/activité (couleur 🕷️/🦂).
   final Map<String, ({int charger, bool isRoutine})> _v2Turret = {};
   final Map<String, bool> _v2TurretMirror = {}; // tileId tourelle → domaine en miroir ?
+  final Map<String, int> _v2TurretPests = {}; // tileId tourelle → nb nuisibles (angle repos)
   final Map<String, String> _v2TurretRoutineId = {}; // tileId tourelle → routineId (lanes routine)
   final Set<String> _v2LaunchPads = {}; // tileIds de la case de tir (gauche de chaque tourelle)
   final Set<String> _v2Sep = {}; // tileIds de la ligne séparatrice routines/activités
@@ -195,6 +196,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   bool _spiderGapLoaded = false;
   String? _v2ActiveDomain; // domaine où se trouve l'avatar (révélé à l'entrée)
   bool _v2Walking = false; // marche en cours (évite les clics concurrents)
+  int _v2WalkGen = 0; // génération de marche : un nouveau clic annule la précédente
   // CINÉMATIQUE CANON détachable : un clic du user reprend la main, un clone fantôme
   // (transparent) termine le spin/tir tout seul puis disparaît.
   bool _canonCine = false; // une séquence canon est en cours
@@ -2662,15 +2664,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   }
 
   Future<void> _pumpTravelQueue() async {
-    // Panneau ouvert ou cine en cours → la file attend (priorité aux actions user).
-    if (_traveling || _combatBusy || _v2PanelOpen || _canonCine) return;
+    // Panneau ouvert / cine / reprise de main → la file attend (priorité au user).
+    if (_traveling || _combatBusy || _v2PanelOpen || _canonCine || _v2UserControl) {
+      return;
+    }
     if (_kWorldV2) {
       // Cinématique mobile sur la NOUVELLE map V2 (l'ancienne sert d'arène).
       _traveling = true;
       while (_travelQueue.isNotEmpty &&
           mounted &&
           !_combatBusy &&
-          !_v2PanelOpen) {
+          !_v2PanelOpen &&
+          !_v2UserControl) {
         await _v2OnRoutineValidated(_travelQueue.removeAt(0).id);
         await Future.delayed(const Duration(milliseconds: 450));
       }
@@ -3348,12 +3353,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     }
   }
 
-  void _dashStartTimer(Activity a, Color col) {
+  void _dashStartTimer(Activity a, Color col, {String? taskId}) {
     // Le onChange du web ne pushe PAS → on persiste la session à la main dans
-    // Firestore pour que le téléphone la voie (→ Live Activity).
+    // Firestore pour que le téléphone la voie (→ Live Activity). taskId = tâche Gantt
+    // travaillée en parallèle (chrono lancé depuis le dashboard d'un serpent).
     final openBefore =
         logic.state.sessions.where((s) => s.endAt == null).toList();
-    logic.start(a.id);
+    logic.start(a.id, taskId: taskId);
     for (final s in openBefore) {
       sync.saveSession(s); // elles viennent de recevoir endAt
     }
@@ -3522,54 +3528,209 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         ]),
       ),
       Expanded(
-        child: total == 0
-            ? Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: _laneBigCta(Icons.check_rounded, 'Marquer la tâche faite',
-                      col, () => _completeTask(p, t)),
-                ),
-              )
-            : ListView(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
-                    child: Text('$done/$total actions faites',
-                        style: TextStyle(
-                            color: col,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 12)),
-                  ),
-                  for (final a in t.actions) _taskActionRow(p, t, a, col),
-                ],
+        child: ListView(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          children: [
+            if (total > 0)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
+                child: Text('$done/$total actions faites',
+                    style: TextStyle(
+                        color: col,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 12)),
               ),
+            for (final a in t.actions) _taskActionRow(p, t, a, col),
+            // CRUD : ajouter une action.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(6, 2, 12, 4),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => _addTaskAction(p, t),
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Ajouter une action',
+                      style: TextStyle(fontSize: 11)),
+                  style: TextButton.styleFrom(
+                    foregroundColor: col,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    minimumSize: const Size(0, 0),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+              ),
+            ),
+            if (total == 0)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
+                child: _laneBigCta(Icons.check_rounded, 'Marquer la tâche faite',
+                    col, () => _completeTask(p, t)),
+              ),
+            ..._taskChronoSection(p, t, col),
+          ],
+        ),
       ),
     ]);
   }
 
-  Widget _taskActionRow(Project p, ProjectTask t, TaskAction a, Color col) =>
-      InkWell(
-        onTap: () => _toggleTaskAction(p, t, a),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-          child: Row(children: [
-            Icon(a.done ? Icons.check_circle : Icons.radio_button_unchecked,
-                color: a.done ? col : Colors.white38, size: 18),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(a.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      color: a.done ? Colors.white38 : Colors.white,
-                      fontSize: 12,
-                      decoration:
-                          a.done ? TextDecoration.lineThrough : null)),
-            ),
-          ]),
+  // Chrono PAR ACTIVITÉ : lancer une session d'activité‑temps du domaine, liée à CETTE
+  // tâche. Persisté → le mobile voit l'activité en cours en parallèle.
+  List<Widget> _taskChronoSection(Project p, ProjectTask t, Color col) {
+    final dom = p.domainId;
+    if (dom == null) return const [];
+    final acts =
+        logic.activitiesOfDomain(dom).where((a) => !a.isHabit).toList();
+    if (acts.isEmpty) return const [];
+    return [
+      const Divider(color: Colors.white12, height: 18, indent: 12, endIndent: 12),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+        child: Text('⏱️ Travailler avec un chrono',
+            style: TextStyle(
+                color: col, fontWeight: FontWeight.w900, fontSize: 12)),
+      ),
+      for (final act in acts) _taskChronoRow(p, t, act, col),
+    ];
+  }
+
+  Widget _taskChronoRow(Project p, ProjectTask t, Activity act, Color col) {
+    final open = _openSessionFor(act.id);
+    final linked = open != null && open.taskId == t.id;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      child: Row(children: [
+        Expanded(
+          child: Text(act.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  color: open != null ? Colors.white : Colors.white70,
+                  fontSize: 12)),
         ),
+        if (open != null) ...[
+          StreamBuilder<int>(
+            stream: Stream.periodic(const Duration(seconds: 1), (i) => i),
+            builder: (_, __) => Text(
+              _fmtChrono(DateTime.now().difference(open.startAt)),
+              style: TextStyle(
+                  color: linked ? col : Colors.white54,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12),
+            ),
+          ),
+          const SizedBox(width: 6),
+          InkWell(
+            onTap: _dashStopTimer,
+            child: Icon(Icons.stop_circle, color: col, size: 22),
+          ),
+        ] else
+          InkWell(
+            onTap: () => _dashStartTimer(act, col, taskId: t.id),
+            child: Icon(Icons.play_circle_fill,
+                color: col.withOpacity(.85), size: 22),
+          ),
+      ]),
+    );
+  }
+
+  Widget _taskActionRow(Project p, ProjectTask t, TaskAction a, Color col) =>
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        child: Row(children: [
+          InkWell(
+            onTap: () => _toggleTaskAction(p, t, a),
+            customBorder: const CircleBorder(),
+            child: Padding(
+              padding: const EdgeInsets.all(2),
+              child: Icon(
+                  a.done ? Icons.check_circle : Icons.radio_button_unchecked,
+                  color: a.done ? col : Colors.white38,
+                  size: 18),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: InkWell(
+              onTap: () => _editTaskAction(p, t, a), // tap titre = renommer
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Text(a.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        color: a.done ? Colors.white38 : Colors.white,
+                        fontSize: 12,
+                        decoration:
+                            a.done ? TextDecoration.lineThrough : null)),
+              ),
+            ),
+          ),
+          InkWell(
+            onTap: () => _deleteTaskAction(p, t, a),
+            customBorder: const CircleBorder(),
+            child: const Padding(
+              padding: EdgeInsets.all(4),
+              child: Icon(Icons.delete_outline, color: Colors.white30, size: 16),
+            ),
+          ),
+        ]),
       );
+
+  // ── CRUD des actions d'une tâche depuis l'arène ──────────────────────────────
+  Future<String?> _promptActionTitle(String titleLabel, String initial) async {
+    final ctrl = TextEditingController(text: initial);
+    final res = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1410),
+        title: Text(titleLabel,
+            style: const TextStyle(color: Colors.white, fontSize: 16)),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          maxLines: null,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+              hintText: 'Décris l\'action…',
+              hintStyle: TextStyle(color: Colors.white38)),
+          onSubmitted: (v) => Navigator.pop(ctx, v),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text),
+              child: const Text('Valider')),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    final v = res?.trim();
+    return (v == null || v.isEmpty) ? null : v;
+  }
+
+  Future<void> _addTaskAction(Project p, ProjectTask t) async {
+    final title = await _promptActionTitle('Nouvelle action', '');
+    if (title == null || !mounted) return;
+    setState(() => t.actions.add(TaskAction(title: title)));
+    await sync.saveProjectTasks(p.id, p.tasks);
+    if (mounted) setState(() => _populateV2Gardens()); // PV du serpent change
+  }
+
+  Future<void> _editTaskAction(Project p, ProjectTask t, TaskAction a) async {
+    final title = await _promptActionTitle('Renommer l\'action', a.title);
+    if (title == null || !mounted) return;
+    setState(() => a.title = title);
+    await sync.saveProjectTasks(p.id, p.tasks);
+  }
+
+  Future<void> _deleteTaskAction(Project p, ProjectTask t, TaskAction a) async {
+    setState(() => t.actions.removeWhere((x) => x.id == a.id));
+    await sync.saveProjectTasks(p.id, p.tasks);
+    if (mounted) setState(() => _populateV2Gardens());
+  }
 
   Future<void> _toggleTaskAction(Project p, ProjectTask t, TaskAction a) async {
     setState(() {
@@ -7012,6 +7173,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _v2DayCount.clear();
     _v2DayPv.clear();
     _v2Turret.clear();
+    _v2TurretPests.clear();
     _v2TurretMirror.clear();
     _v2TurretRoutineId.clear();
     _v2LaunchPads.clear();
@@ -7049,6 +7211,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             toks.where((t) => t.type == 'leaf' || t.type == 'flame').length;
         _v2Turret['${lane.turretX}_${lane.y}'] =
             (charger: charger, isRoutine: lane.isRoutine);
+        // Nb de nuisibles de la lane → angle de repos du canon (bas = soumis).
+        _v2TurretPests['${lane.turretX}_${lane.y}'] =
+            toks.where((t) => t.type == 'spider').length;
         _v2TurretMirror['${lane.turretX}_${lane.y}'] = c.mirror;
         if (lane.isRoutine) {
           _v2TurretRoutineId['${lane.turretX}_${lane.y}'] = lane.id;
@@ -7171,11 +7336,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
 
   void _v2ArmIdle() {
     _v2IdleTimer?.cancel();
-    _v2IdleTimer = Timer(const Duration(minutes: 1), () {
-      if (!mounted) return;
-      if (_hasPending() && !_combatBusy && !_v2AutoExploring) {
-        _v2DischargeBacklog();
-      }
+    // 10 s sans interaction → l'avatar REPREND la main et enchaîne les routines
+    // restantes (le fantôme, lui, n'a fini QUE la routine commencée).
+    _v2IdleTimer = Timer(const Duration(seconds: 10), () {
+      if (!mounted || _v2PanelOpen || _combatBusy || _canonCine) return;
+      _v2UserControl = false; // l'avatar reprend l'enchaînement
+      if (_travelQueue.isNotEmpty) _pumpTravelQueue();
+      if (_hasPending() && !_v2AutoExploring) _v2DischargeBacklog();
     });
   }
 
@@ -7190,7 +7357,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         _v2Ghost = _posV2; // le fantôme reste là où l'avatar opérait
       });
     }
-    if (_v2Walking) return;
+    // Nouveau clic = PRIORITÉ : il annule la marche en cours (l'avatar change de cap
+    // au lieu de finir d'aller où il se rendait).
+    _v2WalkGen++;
+    _v2Walking = false;
     _v2TakeControl(); // clic = reprise de la main (interrompt l'exploration auto)
     final id = '${x}_$y';
     // Un tap sur la map referme le dashboard jardin / le parchemin (+ décharge).
@@ -7244,9 +7414,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     }
     final path = _bfsV2(_posV2, Point(x, y));
     if (path.isEmpty) return;
+    final myGen = _v2WalkGen; // marche annulée si un nouveau clic survient
     _v2Walking = true;
     for (final step in path) {
-      if (!mounted) break;
+      if (!mounted || _v2WalkGen != myGen) return; // re-routé → on abandonne
       setState(() {
         _posV2 = step;
         _revealAroundV2(step);
@@ -7254,6 +7425,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _v2CheckDomainEntry();
       await Future.delayed(const Duration(milliseconds: 75));
     }
+    if (_v2WalkGen != myGen) return;
     _v2Walking = false;
     _persistFogV2(); // brouillard révélé pendant la marche (tap) → sauvegardé
     if (!mounted) return;
@@ -7380,6 +7552,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           }
         }
       });
+      // Entrée dans un domaine → on le CENTRE (repère stable ; l'écran ne « saute »
+      // plus à chaque animation pour suivre l'avatar).
+      _v2CenterOn(Point(b.left + b.width ~/ 2, b.top + b.height ~/ 2));
     }
   }
 
@@ -7396,7 +7571,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   }
 
   // Vitesses des araignées / shurikens d'écart (en cases par seconde).
-  static const double _kSpiderSpeed = 0.7;
+  static const double _kSpiderSpeed = 1.0 / 30; // ≈ 30 s pour traverser une case
   static const double _kSpiderShkSpeed = 11.0;
   static const int _kSpiderShkCooldownMs = 220; // anti‑rafale entre deux tirs
 
@@ -7867,8 +8042,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           // décharger pendant l'exploration auto.
           final rid = _v2TurretRoutineId[id];
           final pending = rid == null ? 0 : (_pendingByRoutine[rid]?.length ?? 0);
+          // ANGLE DE REPOS selon le moral : peu de nuisibles → canon HAUT (prêt, fier),
+          // beaucoup → canon BAS (soumis). Pendant la cinématique, _cannonRaise prime.
           // Pieds DROITS (fixes) : seule la tête du canon se relève (cf. _v2TurretWidget).
-          final raise = _cannonRaise[id] ?? 0.0;
+          final restRaise =
+              (1.0 - (_v2TurretPests[id] ?? 0) / 7.0).clamp(0.0, 1.0);
+          final raise = _cannonRaise[id] ?? restRaise;
           // Miroir : le canon est RETOURNÉ pour viser vers la gauche (les nuisibles
           // arrivent de l'extérieur gauche).
           final turretW = _v2TurretWidget(tur.charger, tur.isRoutine, inner,

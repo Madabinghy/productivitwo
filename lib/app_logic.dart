@@ -807,7 +807,7 @@ class AppLogic {
   }
 
   // ---------- TEMPS (type=time) ----------
-  void start(String activityId) {
+  void start(String activityId, {String? taskId}) {
     // ✅ si l’utilisateur démarre l’activité, on casse le snooze
     clearSnooze(activityId);
 
@@ -816,9 +816,9 @@ class AppLogic {
       s.endAt = DateTime.now();
     }
 
-    // 2) nouvelle session
-    state.sessions
-        .add(Session(activityId: activityId, startAt: DateTime.now()));
+    // 2) nouvelle session (liée à une tâche Gantt si fournie)
+    state.sessions.add(
+        Session(activityId: activityId, startAt: DateTime.now(), taskId: taskId));
 
     onChange();
   }
