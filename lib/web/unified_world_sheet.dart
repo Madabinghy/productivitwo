@@ -3648,6 +3648,81 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     return d.inHours > 0 ? '${d.inHours}:$mm:$ss' : '$mm:$ss';
   }
 
+  // Première session ouverte (chrono en cours), tous domaines confondus.
+  Session? _anyOpenSession() {
+    for (final s in logic.state.sessions) {
+      if (s.endAt == null) return s;
+    }
+    return null;
+  }
+
+  // Indicateur persistant du chrono en cours, épinglé sur la carte (l'onglet
+  // arène n'est plus le seul à le montrer). Vide si aucune session ne tourne.
+  Widget _runningChronoHud() {
+    final open = _anyOpenSession();
+    if (open == null) return const SizedBox.shrink();
+    Activity? act;
+    for (final a in logic.state.activities) {
+      if (a.id == open.activityId) {
+        act = a;
+        break;
+      }
+    }
+    final col = (act != null
+            ? domainColor(act.domainId, logic.state.activeDomains)
+            : null) ??
+        _kBlue;
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0E1714).withOpacity(.92),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: col.withOpacity(.7), width: 1.5),
+          boxShadow: const [
+            BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 2)),
+          ],
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          const Text('⏱️', style: TextStyle(fontSize: 14)),
+          const SizedBox(width: 6),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 130),
+            child: Text(act?.name ?? 'En cours',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700)),
+          ),
+          const SizedBox(width: 8),
+          StreamBuilder<int>(
+            stream: Stream.periodic(const Duration(seconds: 1), (i) => i),
+            builder: (_, __) => Text(
+              _fmtChrono(DateTime.now().difference(open.startAt)),
+              style: TextStyle(
+                  color: col,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 14,
+                  fontFeatures: const [FontFeature.tabularFigures()]),
+            ),
+          ),
+          const SizedBox(width: 4),
+          InkWell(
+            onTap: _dashStopTimer,
+            borderRadius: BorderRadius.circular(20),
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: Icon(Icons.stop_circle, color: col, size: 22),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
   // Appel à l'action « temps » du dashboard : chrono EN COURS (temps + arrêt) si une
   // session tourne déjà pour l'activité, sinon le bouton pour la lancer.
   Widget _laneTimerCta(Activity a, Color col) {
@@ -5385,6 +5460,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         top: 10,
                         right: 10,
                         child: _miniMapV2(maxSide: widget.mobile ? 120 : 160)),
+                    // Chrono en cours : épinglé en bas, visible quel que soit le panneau.
+                    Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 14,
+                        child: Center(child: _runningChronoHud())),
                     if (_combat != null)
                       // Écran étroit : le combat occupe tout l'écran. Desktop : il
                       // s'affiche IN‑PLACE dans le jardin (cf. _contentV2) ; on ne
