@@ -3268,6 +3268,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                   () => _dashValidateRoutine(a))
             else
               _laneTimerCta(a, col),
+            // Routine : activité liée (chrono ciblé) + minuteur par défaut.
+            if (isRoutine) ..._laneRoutineLinkSection(a, col),
             const SizedBox(height: 8),
             _laneSnoozeButton(a, col),
             // Routine : checklist d'étapes (CRUD + coches du jour).
@@ -3316,6 +3318,179 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   void _persistChecklist() {
     sync.saveHabitChecklist(
         logic.state.habitChecklistByHabitId, logic.state.habitChecklistDone);
+  }
+
+  // Section « Activité liée » d'une routine : chrono ciblé sur une activité-temps +
+  // minuteur par défaut (timerMin). Règle : timerMin>0 ⇒ linkedActivityId valide.
+  List<Widget> _laneRoutineLinkSection(Activity routine, Color col) {
+    final linkedId = (routine.linkedActivityId ?? '').trim();
+    Activity? linkedAct;
+    for (final a in logic.state.activities) {
+      if (a.id == linkedId && !a.deleted) {
+        linkedAct = a;
+        break;
+      }
+    }
+    final hasLinked = linkedAct != null;
+    return [
+      const Divider(color: Colors.white12, height: 20),
+      Row(children: [
+        Expanded(
+          child: Text('🔗 Activité liée',
+              style: TextStyle(
+                  color: col, fontWeight: FontWeight.w900, fontSize: 12)),
+        ),
+        InkWell(
+          onTap: () => _pickRoutineLinkedActivity(routine, col),
+          borderRadius: BorderRadius.circular(6),
+          child: Padding(
+            padding: const EdgeInsets.all(4),
+            child: Icon(hasLinked ? Icons.swap_horiz : Icons.add_link,
+                size: 18, color: col),
+          ),
+        ),
+      ]),
+      if (!hasLinked)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 6),
+          child: Text(
+              'Lie une activité-temps pour chronométrer cette routine (le temps '
+              'sera loggué dessus).',
+              style: TextStyle(color: Colors.white38, fontSize: 11)),
+        )
+      else ...[
+        const SizedBox(height: 8),
+        Builder(builder: (_) {
+          final open = _openSessionFor(linkedAct!.id);
+          if (open != null) {
+            return Column(children: [
+              StreamBuilder<int>(
+                stream: Stream.periodic(const Duration(seconds: 1), (i) => i),
+                builder: (_, __) => Text(
+                  _fmtChrono(DateTime.now().difference(open.startAt)),
+                  style: TextStyle(
+                      color: col, fontWeight: FontWeight.w900, fontSize: 26),
+                ),
+              ),
+              Text('⏱️ ${linkedAct.name} en cours',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white54, fontSize: 11)),
+              const SizedBox(height: 8),
+              _laneBigCta(
+                  Icons.stop_rounded, 'Arrêter', col, () => _dashStopTimer()),
+            ]);
+          }
+          return _laneBigCta(Icons.play_arrow_rounded,
+              'Lancer le chrono · ${linkedAct.name}', col,
+              () => _dashStartTimer(linkedAct!, col));
+        }),
+        const SizedBox(height: 10),
+        Text('MINUTEUR PAR DÉFAUT',
+            style: TextStyle(
+                color: Colors.white38,
+                fontSize: 9,
+                letterSpacing: 1.1,
+                fontWeight: FontWeight.w700)),
+        const SizedBox(height: 6),
+        Wrap(spacing: 6, runSpacing: 6, children: [
+          for (final m in const [0, 5, 10, 15, 25])
+            _laneTimerChip(routine, m, (routine.timerMin ?? 0) == m, col),
+        ]),
+        const SizedBox(height: 6),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () => _unlinkRoutineActivity(routine),
+            icon: const Icon(Icons.link_off, size: 14),
+            label: const Text('Délier', style: TextStyle(fontSize: 11)),
+            style: TextButton.styleFrom(
+                foregroundColor: Colors.white54,
+                visualDensity: VisualDensity.compact),
+          ),
+        ),
+      ],
+    ];
+  }
+
+  Widget _laneTimerChip(Activity routine, int minutes, bool selected, Color col) {
+    return InkWell(
+      onTap: () {
+        routine.timerMin = minutes == 0 ? null : minutes;
+        sync.saveActivity(routine);
+        if (mounted) setState(() {});
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? col.withOpacity(.30) : Colors.white10,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+              color: selected ? col.withOpacity(.7) : Colors.white12),
+        ),
+        child: Text(minutes == 0 ? 'Aucun' : '$minutes min',
+            style: TextStyle(
+                color: selected ? Colors.white : Colors.white60,
+                fontSize: 11,
+                fontWeight: FontWeight.w700)),
+      ),
+    );
+  }
+
+  // Picker des activités-temps du domaine de la routine → pose linkedActivityId.
+  Future<void> _pickRoutineLinkedActivity(Activity routine, Color col) async {
+    final candidates = <Activity>[];
+    for (final a in logic.state.activities) {
+      if (a.deleted || a.isHabit) continue;
+      if (a.domainId != routine.domainId) continue;
+      if (a.id == routine.linkedActivityId) continue;
+      candidates.add(a);
+    }
+    if (candidates.isEmpty) {
+      _toast('Aucune activité-temps à lier dans ce domaine.', Colors.white54);
+      return;
+    }
+    final picked = await showDialog<Activity>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1410),
+        title: const Text('Lier une activité-temps',
+            style: TextStyle(color: Colors.white, fontSize: 16)),
+        content: SizedBox(
+          width: 320,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              for (final a in candidates)
+                ListTile(
+                  dense: true,
+                  title: Text(a.name,
+                      style: const TextStyle(color: Colors.white)),
+                  onTap: () => Navigator.pop(ctx, a),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
+        ],
+      ),
+    );
+    if (picked == null) return;
+    routine.linkedActivityId = picked.id;
+    sync.saveActivity(routine);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _unlinkRoutineActivity(Activity routine) async {
+    // Règle : timerMin>0 ⇒ linkedActivityId valide → on retire aussi le minuteur.
+    routine.linkedActivityId = null;
+    routine.timerMin = null;
+    await sync.saveActivity(routine);
+    if (mounted) setState(() {});
   }
 
   // Section « Checklist » d'une routine : étapes cochables + ajout/renommage/suppression.
