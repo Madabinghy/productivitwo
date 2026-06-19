@@ -10,6 +10,13 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.34', '19 juin 2026', [
+    (Icons.menu_book_outlined, '« Le Monde » web : un parchemin 📜 par domaine (au-dessus de la 1ʳᵉ tourelle) ouvre un grand tableau de bord projets — liste avec avancement à gauche, document de pilotage interactif à droite (coche tes tâches depuis le jeu, bindé au Gantt ; cocher une tâche fait disparaître son serpent)'),
+    (Icons.check_circle_outline, 'Terminer un projet depuis l\'arène ou la fiche projet ; supprimer un projet depuis l\'arène (avec confirmation) — un projet terminé/supprimé sort de la liste et retire ses nuisibles'),
+    (Icons.snooze, 'Désactiver une action jusqu\'à une date (arène + fiche activité mobile) : plus de scorpion tant que la date n\'est pas atteinte (ex : « plus d\'intervention cette semaine »)'),
+    (Icons.pan_tool_outlined, 'Un clic reprend la main pendant une cinématique (un clone fantôme finit le tir tout seul) ; tant qu\'un tableau de bord est ouvert, les cinématiques auto se mettent en attente (flammes provisionnées, déchargées à la fermeture)'),
+    (Icons.bug_report_outlined, 'Corrections : le scroll dans un tableau de bord ne déplace plus la carte ; valider une routine depuis l\'arène s\'incrémente bien sur le mobile'),
+  ]),
   _Entry('6.33', '19 juin 2026', [
     (Icons.videocam_outlined, '« Le Monde » web : la caméra suit l\'avatar pendant ses déplacements automatiques et les cinématiques, et cadre la trajectoire du tir'),
     (Icons.dashboard_customize_outlined, 'Monter sur une rampe ou cliquer un nuisible ouvre un mini-dashboard ciblé DANS le jardin (stats + appel à l\'action), sans ouvrir de fiche par-dessus : routine → « Valider », activité → minuteur (chrono en cours + « Arrêter » si une session tourne), tâche/serpent → ses actions cochables'),

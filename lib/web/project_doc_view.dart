@@ -375,7 +375,34 @@ class _ProjectDocViewState extends State<ProjectDocView> {
             const SizedBox(height: 8),
             Text('$d / $t fait', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: _accent)),
           ],
+          const SizedBox(height: 16),
+          _finishProjectButton(cs),
         ],
+      ),
+    );
+  }
+
+  // Terminer / rouvrir le projet (status 'done'). Synchronisé partout (Gantt, arène,
+  // backlog) : un projet terminé sort des nuisibles.
+  Widget _finishProjectButton(ColorScheme cs) {
+    final isDone = widget.project.status == 'done';
+    final accent = isDone ? const Color(0xFF4CD787) : _accent;
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: OutlinedButton.icon(
+        onPressed: () async {
+          setState(() => widget.project.status = isDone ? 'active' : 'done');
+          await widget.sync.saveProject(widget.project);
+          widget.onProjectChanged?.call();
+        },
+        icon: Icon(
+            isDone ? Icons.replay_rounded : Icons.check_circle_outline,
+            size: 18),
+        label: Text(isDone ? 'Projet terminé — rouvrir' : 'Terminer le projet'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: accent,
+          side: BorderSide(color: accent.withOpacity(.6)),
+        ),
       ),
     );
   }

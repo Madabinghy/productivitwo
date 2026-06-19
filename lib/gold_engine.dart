@@ -469,7 +469,10 @@ extension GoldEngine on AppLogic {
   /// (les plus nécessiteux d'abord). [(type, id, hp)].
   List<({String type, String id, int hp})> backlogEnemies() {
     final out = <({String type, String id, int hp})>[];
+    final nowSnooze = DateTime.now();
     for (final a in state.activeActivities) {
+      // Activité DÉSACTIVÉE jusqu'à une date (snooze) → aucun nuisible.
+      if (isActivitySnoozed(a.id, nowSnooze)) continue;
       if (a.isHabit) {
         // Routine déjà planifiée dans les 30 j à venir → pas d'ennemi (elle a
         // déjà sa place dans le programme du jour).

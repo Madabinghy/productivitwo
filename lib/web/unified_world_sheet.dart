@@ -165,6 +165,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // Cases du CALENDRIER (7 jours de chaque lane) : BLOQUANTES pour l'avatar — on
   // force le passage par le centre de la map (cour/jardin), pas derrière les routines.
   final Set<String> _v2DayCells = {};
+  // PARCHEMIN 📜 par domaine (1 case du village) : monter dessus ouvre le grand
+  // dashboard projets (avancement à gauche, document Gantt à droite).
+  final Map<String, String> _v2Parchemins = {}; // tileId → domainId
   final Map<String, String> _v2DayLabel = {}; // tileId entête → lettre du jour
   // INVASION : case araignée‑boss (≥ 10 araignées accumulées) → clic = combat.
   final Map<String, String> _v2Araignee = {}; // tileId → domainId en invasion
@@ -192,6 +195,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   bool _spiderGapLoaded = false;
   String? _v2ActiveDomain; // domaine où se trouve l'avatar (révélé à l'entrée)
   bool _v2Walking = false; // marche en cours (évite les clics concurrents)
+  // CINÉMATIQUE CANON détachable : un clic du user reprend la main, un clone fantôme
+  // (transparent) termine le spin/tir tout seul puis disparaît.
+  bool _canonCine = false; // une séquence canon est en cours
+  bool _canonDetached = false; // le user a repris la main → la cine tourne en fantôme
+  Point<int>? _v2Ghost; // position du clone fantôme (null = aucun)
   bool _v2Spawned = false; // 1ᵉʳ spawn posé (bas‑gauche)
   // Tick d'animation ISOLÉ : la cinématique repeint SEULEMENT son overlay
   // (via AnimatedBuilder), pas toute la grille de cases → pas de surcharge.
@@ -306,6 +314,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // routine/activité (rampe sur laquelle l'avatar a grimpé) ; null = liste du domaine.
   ({String domainId, String mode, String? laneId, String? pestType})?
       _gardenPanel;
+  // Grand dashboard PROJETS (parchemin) : recouvre village + jardin du domaine.
+  // `projectId` = projet affiché à droite (document Gantt). Un tap sur la map referme.
+  ({String domainId, String? projectId})? _parchemin;
   Point<int>? _cannonSpinAt; // case rampe en cours de spin (null = repos)
   int _cannonSpinStartMs = 0;
   final Map<String, double> _cannonRaise = {}; // tileId tourelle → lever 0..1 (animé)
@@ -2424,13 +2435,20 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       return;
     }
 
-    // LIVE (web ouvert) : tir SUR PLACE immédiat, une animation par hit.
+    // LIVE (web ouvert) : tir SUR PLACE immédiat, une animation par hit. SAUF si une
+    // action user est en cours (panneau ouvert / cine) → on PROVISIONNE la flamme sur
+    // le canon (🔥) ; l'avatar la déchargera quand il sera dispo.
     var fired = false;
+    final busy = _v2PanelOpen || _canonCine;
     for (final h in fresh) {
       final lane = _v2LaneOf(h.habitId);
       _animatedHitIds.add(h.id);
       if (lane != null && lane.$2.isRoutine) {
-        _enqueueTravel(h.habitId); // file → séquence canon complète, sérialisée
+        if (busy) {
+          (_pendingByRoutine[h.habitId] ??= []).add(h.id); // flamme en réserve
+        } else {
+          _enqueueTravel(h.habitId); // file → séquence canon complète, sérialisée
+        }
         fired = true;
       }
     }
@@ -2477,6 +2495,24 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         duration: const Duration(milliseconds: 120), curve: Curves.linear);
   }
 
+  // Recentre la caméra sur la zone d'un dashboard de domaine (jardin, + village
+  // pour le parchemin) — appelé à l'ouverture pour bien cadrer le panneau.
+  void _v2CenterOnDomainZone(String dom, {bool withVillage = false}) {
+    final c = _wv2?.byDomain[dom];
+    if (c == null) return;
+    final g = c.gardenRect;
+    var left = g.left, right = g.left + g.width;
+    var top = g.top, bottom = g.top + g.height;
+    if (withVillage) {
+      final v = c.villageRect;
+      if (v.left < left) left = v.left;
+      if (v.left + v.width > right) right = v.left + v.width;
+      if (v.top < top) top = v.top;
+      if (v.top + v.height > bottom) bottom = v.top + v.height;
+    }
+    _v2CenterOn(Point((left + right) ~/ 2, (top + bottom) ~/ 2));
+  }
+
   // Marche l'avatar jusqu'à `target` (BFS), révèle le brouillard et suit la caméra.
   // Interruptible : sort tôt si l'utilisateur reprend la main (_v2UserControl).
   Future<void> _v2WalkTo(Point<int> target) async {
@@ -2501,7 +2537,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   static const double _kV2ExploreBoltDur = 3.6; // s
 
   Future<void> _v2DischargeBacklog() async {
-    if (_v2AutoExploring || _combatBusy || _v2Walking || widget.mobile) return;
+    if (_v2AutoExploring ||
+        _combatBusy ||
+        _v2Walking ||
+        _canonCine ||
+        _v2PanelOpen ||
+        widget.mobile) return;
     _v2AutoExploring = true;
     _v2UserControl = false;
     try {
@@ -2602,12 +2643,34 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   bool get _combatBusy =>
       _cineActive || _battleActive || _liveFiring || _simDefense;
 
+  // Un dashboard (jardin / parchemin) ouvert = action user en cours → on NE déclenche
+  // PAS les cinématiques auto ; les flammes sont provisionnées sur les canons et
+  // déchargées à la fermeture.
+  bool get _v2PanelOpen => _gardenPanel != null || _parchemin != null;
+
+  // Ferme les panneaux V2 et, l'avatar redevenant dispo, décharge les flammes en
+  // attente (priorité aux actions user, puis rattrapage).
+  void _closeV2Panel() {
+    setState(() {
+      _gardenPanel = null;
+      _combat = null;
+      _parchemin = null;
+    });
+    if (widget.mobile) return;
+    if (_travelQueue.isNotEmpty) _pumpTravelQueue();
+    if (_hasPending()) _v2DischargeBacklog();
+  }
+
   Future<void> _pumpTravelQueue() async {
-    if (_traveling || _combatBusy) return; // combat en cours → la file attend
+    // Panneau ouvert ou cine en cours → la file attend (priorité aux actions user).
+    if (_traveling || _combatBusy || _v2PanelOpen || _canonCine) return;
     if (_kWorldV2) {
       // Cinématique mobile sur la NOUVELLE map V2 (l'ancienne sert d'arène).
       _traveling = true;
-      while (_travelQueue.isNotEmpty && mounted && !_combatBusy) {
+      while (_travelQueue.isNotEmpty &&
+          mounted &&
+          !_combatBusy &&
+          !_v2PanelOpen) {
         await _v2OnRoutineValidated(_travelQueue.removeAt(0).id);
         await Future.delayed(const Duration(milliseconds: 450));
       }
@@ -2983,6 +3046,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           pestType: type,
         );
       });
+      _v2CenterOnDomainZone(dom); // cadre le jardin où s'ouvre le dashboard
       return;
     }
     setState(() {
@@ -3124,10 +3188,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                       fontSize: 12)),
             ),
           InkWell(
-            onTap: () => setState(() {
-              _gardenPanel = null;
-              _combat = null;
-            }),
+            onTap: _closeV2Panel,
             child: const Padding(
                 padding: EdgeInsets.all(4),
                 child: Icon(Icons.close, color: Colors.white60, size: 18)),
@@ -3174,10 +3235,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     fontSize: 13)),
           ),
           InkWell(
-            onTap: () => setState(() {
-              _gardenPanel = null;
-              _combat = null;
-            }),
+            onTap: _closeV2Panel,
             child: const Padding(
                 padding: EdgeInsets.all(4),
                 child: Icon(Icons.close, color: Colors.white60, size: 18)),
@@ -3205,6 +3263,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                   () => _dashValidateRoutine(a))
             else
               _laneTimerCta(a, col),
+            const SizedBox(height: 8),
+            _laneSnoozeButton(a, col),
           ]),
         ),
       ),
@@ -3268,9 +3328,24 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       );
 
   // Actions du dashboard (partagées par la liste de domaine et le dashboard ciblé).
-  void _dashValidateRoutine(Activity a) {
-    logic.incHabit(a.id, 1, DateTime.now());
+  Future<void> _dashValidateRoutine(Activity a) async {
+    final now = DateTime.now();
+    logic.incHabit(a.id, 1, now);
     if (mounted) setState(() {});
+    // Le onChange du web ne pushe PAS → on persiste le hit + le compteur du jour à la
+    // main dans Firestore pour que le téléphone voie l'incrément.
+    final key = yyyymmdd(now);
+    HabitHit? hit;
+    for (final h in logic.state.habitHits) {
+      if (h.habitId == a.id) hit = h; // dernier hit de cette routine
+    }
+    if (hit != null) await sync.saveHabitHit(hit);
+    for (final hp in logic.state.habitProgress) {
+      if (hp.activityId == a.id && hp.yyyymmdd == key) {
+        await sync.saveHabitProgress(hp);
+        break;
+      }
+    }
   }
 
   void _dashStartTimer(Activity a, Color col) {
@@ -3333,6 +3408,61 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     if (mounted) setState(() {});
   }
 
+  // Désactiver une action jusqu'à une date (snooze) : plus de nuisible tant que la
+  // date n'est pas atteinte. Ex : « plus d'intervention cette semaine ».
+  Widget _laneSnoozeButton(Activity a, Color col) {
+    final until = logic.snoozedUntilOf(a.id);
+    final snoozed = until != null && until.isAfter(DateTime.now());
+    if (snoozed) {
+      return TextButton.icon(
+        onPressed: () => _unsnoozeActivity(a),
+        icon: const Icon(Icons.alarm_on, size: 15),
+        label: Text('Réactiver (off → ${_fmtShortDate(until)})',
+            style: const TextStyle(fontSize: 11)),
+        style: TextButton.styleFrom(
+            foregroundColor: const Color(0xFF4CD787)),
+      );
+    }
+    return TextButton.icon(
+      onPressed: () => _snoozeActivityPick(a),
+      icon: const Icon(Icons.snooze, size: 15),
+      label: const Text('Désactiver jusqu\'à…', style: TextStyle(fontSize: 11)),
+      style: TextButton.styleFrom(foregroundColor: Colors.white60),
+    );
+  }
+
+  String _fmtShortDate(DateTime d) => '${d.day}/${d.month}';
+
+  Future<void> _snoozeActivityPick(Activity a) async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: now.add(const Duration(days: 7)),
+      firstDate: now.add(const Duration(days: 1)),
+      lastDate: DateTime(now.year + 2),
+      helpText: 'Désactiver « ${a.name} » jusqu\'au',
+    );
+    if (picked == null || !mounted) return;
+    logic.snoozeActivityUntil(a.id, picked);
+    await sync.saveSnoozedUntil(logic.state.snoozedUntil);
+    if (!mounted) return;
+    setState(() {
+      _populateV2Gardens();
+      _populateV2Calendar();
+    });
+    _closeV2Panel();
+  }
+
+  Future<void> _unsnoozeActivity(Activity a) async {
+    logic.clearSnooze(a.id);
+    await sync.saveSnoozedUntil(logic.state.snoozedUntil);
+    if (!mounted) return;
+    setState(() {
+      _populateV2Gardens();
+      _populateV2Calendar();
+    });
+  }
+
   // ── Dashboard d'un NUISIBLE du jardin (clic sur 🦂 / 🐍) : stats + CTA ciblés ──
   // Scorpion = activité‑temps en retard → réutilise le dashboard de la lane (minuteur).
   // Serpent = tâche en retard → ses actions, cochables une à une (chaque coche = −1 PV).
@@ -3384,10 +3514,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 ]),
           ),
           InkWell(
-            onTap: () => setState(() {
-              _gardenPanel = null;
-              _combat = null;
-            }),
+            onTap: _closeV2Panel,
             child: const Padding(
                 padding: EdgeInsets.all(4),
                 child: Icon(Icons.close, color: Colors.white60, size: 18)),
@@ -3467,13 +3594,410 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _v2Pests.removeWhere((_, v) => v.type == type && v.id == id);
       _populateV2Calendar();
       _populateV2Gardens();
-      setState(() {
-        _gardenPanel = null;
-        _combat = null;
-      });
+      _closeV2Panel(); // nuisible vaincu → on referme + décharge éventuelle
     } else {
       setState(() {});
     }
+  }
+
+  // ── PARCHEMIN 📜 : grand dashboard PROJETS du domaine (avancement | document) ──
+  Future<void> _onParchemin(int x, int y) async {
+    if (_v2Walking || _canonCine) return; // pas pendant une cine canon (fantôme)
+    _v2Walking = true;
+    try {
+      await _v2StepTo(Point(x, y)); // l'avatar monte sur le parchemin
+      if (!mounted) return;
+      final dom = _v2Parchemins['${x}_$y'];
+      if (dom == null) return;
+      final projs = _projectsOfDomain(dom);
+      setState(() => _parchemin = (
+            domainId: dom,
+            projectId: projs.isNotEmpty ? projs.first.id : null,
+          ));
+      _v2CenterOnDomainZone(dom, withVillage: true); // cadre le grand panneau
+    } finally {
+      _v2Walking = false;
+    }
+  }
+
+  List<Project> _projectsOfDomain(String dom) {
+    // Projets ACTIFS du domaine : ni archivés, ni terminés (un projet terminé
+    // disparaît de l'arène ; on le rouvre depuis l'onglet projet si besoin).
+    final out = logic.currentProjects
+        .where((p) =>
+            p.domainId == dom && p.status != 'archived' && p.status != 'done')
+        .toList();
+    // Racines d'abord, puis sous‑projets, par titre.
+    out.sort((a, b) {
+      final ar = a.parentProjectId == null ? 0 : 1;
+      final br = b.parentProjectId == null ? 0 : 1;
+      return ar != br ? ar - br : a.title.compareTo(b.title);
+    });
+    return out;
+  }
+
+  double _projectProgress(Project p) {
+    if (p.tasks.isEmpty) return 0.0;
+    return p.tasks.where((t) => t.status == 'done').length / p.tasks.length;
+  }
+
+  Widget _parcheminPanelV2(WorldLayout w) {
+    final pa = _parchemin!;
+    final c = w.byDomain[pa.domainId];
+    if (c == null) return const SizedBox.shrink();
+    final v = c.villageRect, g = c.gardenRect;
+    final left = v.left < g.left ? v.left : g.left;
+    final right = (v.left + v.width) > (g.left + g.width)
+        ? (v.left + v.width)
+        : (g.left + g.width);
+    final top = v.top < g.top ? v.top : g.top;
+    final bottom = (v.top + v.height) > (g.top + g.height)
+        ? (v.top + v.height)
+        : (g.top + g.height);
+    final col = domainColor(pa.domainId, logic.state.activeDomains) ?? _kGold;
+    final projs = _projectsOfDomain(pa.domainId);
+    Project? sel;
+    for (final p in projs) {
+      if (p.id == pa.projectId) sel = p;
+    }
+    sel ??= projs.isNotEmpty ? projs.first : null;
+    return Positioned(
+      left: left * _kV2Slot,
+      top: top * _kV2Slot,
+      width: (right - left) * _kV2Slot,
+      height: (bottom - top) * _kV2Slot,
+      child: Material(
+        color: const Color(0xFF161008),
+        elevation: 12,
+        borderRadius: BorderRadius.circular(8),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Column(children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
+              color: col.withOpacity(.22),
+              child: Row(children: [
+                const Text('📜', style: TextStyle(fontSize: 15)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text('${_domainName(pa.domainId)} — Projets',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 13)),
+                ),
+                InkWell(
+                  onTap: _closeV2Panel,
+                  child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child:
+                          Icon(Icons.close, color: Colors.white60, size: 18)),
+                ),
+              ]),
+            ),
+            Expanded(
+              child: projs.isEmpty
+                  ? const Center(
+                      child: Text('Aucun projet dans ce domaine',
+                          style:
+                              TextStyle(color: Colors.white38, fontSize: 12)))
+                  : Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      Expanded(
+                        flex: 4,
+                        child: ListView(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          children: [
+                            for (final p in projs)
+                              _parcheminProjectRow(p, p.id == sel?.id, col),
+                          ],
+                        ),
+                      ),
+                      const VerticalDivider(width: 1, color: Colors.white12),
+                      Expanded(
+                        flex: 6,
+                        child: sel == null
+                            ? const SizedBox.shrink()
+                            : _parcheminProjectDoc(sel, col),
+                      ),
+                    ]),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _parcheminProjectRow(Project p, bool selected, Color col) {
+    final prog = _projectProgress(p);
+    final indent = p.parentProjectId != null ? 12.0 : 0.0;
+    return InkWell(
+      onTap: () => setState(() =>
+          _parchemin = (domainId: _parchemin!.domainId, projectId: p.id)),
+      child: Container(
+        color: selected ? col.withOpacity(.16) : null,
+        padding: EdgeInsets.fromLTRB(8 + indent, 7, 8, 7),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(
+              child: Text(p.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      color: selected ? Colors.white : Colors.white70,
+                      fontWeight:
+                          selected ? FontWeight.w800 : FontWeight.w500,
+                      fontSize: 12)),
+            ),
+            Text('${(prog * 100).round()}%',
+                style: TextStyle(
+                    color: col, fontWeight: FontWeight.w900, fontSize: 11)),
+          ]),
+          const SizedBox(height: 4),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+                value: prog,
+                minHeight: 5,
+                backgroundColor: Colors.white12,
+                valueColor: AlwaysStoppedAnimation(col)),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _parcheminProjectDoc(Project p, Color col) {
+    final noPhase = p.tasks.where((t) => t.phaseId == null).toList();
+    final done = p.tasks.where((t) => t.status == 'done').length;
+    final total = p.tasks.length;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      // Entête : titre + barre d'avancement globale (= « Document de pilotage »).
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(p.title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 14)),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+                value: total == 0 ? 0 : done / total,
+                minHeight: 6,
+                backgroundColor: Colors.white12,
+                valueColor: AlwaysStoppedAnimation(col)),
+          ),
+          const SizedBox(height: 3),
+          Text('$done / $total fait',
+              style: TextStyle(
+                  color: col, fontWeight: FontWeight.w900, fontSize: 11)),
+          const SizedBox(height: 8),
+          _parcheminFinishButton(p, col),
+          const SizedBox(height: 2),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => _deleteProjectFromArena(p),
+              icon: const Icon(Icons.delete_outline, size: 15),
+              label: const Text('Supprimer', style: TextStyle(fontSize: 11)),
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFFE0857A),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                minimumSize: const Size(0, 0),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+          ),
+        ]),
+      ),
+      Expanded(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          children: [
+            for (final ph in p.phases) ..._parcheminPhaseBlock(p, ph, col),
+            if (noPhase.isNotEmpty)
+              ..._parcheminTaskBlock(
+                  p, p.phases.isEmpty ? 'Tâches' : 'Sans phase', noPhase, col),
+          ],
+        ),
+      ),
+    ]);
+  }
+
+  List<Widget> _parcheminPhaseBlock(Project p, ProjectPhase ph, Color col) {
+    final tasks = p.tasks.where((t) => t.phaseId == ph.id).toList();
+    final done = tasks.where((t) => t.status == 'done').length;
+    return [
+      Padding(
+        padding: const EdgeInsets.only(top: 12, bottom: 4),
+        child: Row(children: [
+          Expanded(
+            child: Text(ph.label,
+                style: TextStyle(
+                    color: col,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 12.5)),
+          ),
+          Text('$done/${tasks.length}',
+              style: const TextStyle(color: Colors.white38, fontSize: 11)),
+        ]),
+      ),
+      for (final t in tasks) _parcheminTaskRow(p, t, col),
+    ];
+  }
+
+  List<Widget> _parcheminTaskBlock(
+          Project p, String label, List<ProjectTask> tasks, Color col) =>
+      [
+        Padding(
+          padding: const EdgeInsets.only(top: 12, bottom: 4),
+          child: Text(label,
+              style: TextStyle(
+                  color: col, fontWeight: FontWeight.w900, fontSize: 12.5)),
+        ),
+        for (final t in tasks) _parcheminTaskRow(p, t, col),
+      ];
+
+  // Tâche cochable bindée au Gantt : cocher la marque 'done' (la sort du backlog →
+  // son serpent disparaît du jardin) ; re-cliquer la repasse 'pending'.
+  Widget _parcheminTaskRow(Project p, ProjectTask t, Color col) {
+    final isDone = t.status == 'done';
+    final total = t.actions.length;
+    final done = t.stepsDone;
+    return InkWell(
+      onTap: () => _toggleProjectTask(p, t),
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+        child: Row(children: [
+          Icon(isDone ? Icons.check_circle : Icons.radio_button_unchecked,
+              size: 16, color: isDone ? col : Colors.white30),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(t.title,
+                      style: TextStyle(
+                          color: isDone ? Colors.white38 : Colors.white,
+                          fontSize: 12,
+                          decoration: isDone
+                              ? TextDecoration.lineThrough
+                              : null)),
+                  if (total > 0)
+                    Text('$done/$total actions',
+                        style: TextStyle(
+                            color: Colors.white.withOpacity(.4),
+                            fontSize: 10)),
+                ]),
+          ),
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+            decoration: BoxDecoration(
+              color: isDone ? col.withOpacity(.22) : Colors.white10,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(isDone ? 'fait' : 'à faire',
+                style: TextStyle(
+                    color: isDone ? col : Colors.white54,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700)),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _toggleProjectTask(Project p, ProjectTask t) async {
+    setState(() => t.status = t.status == 'done' ? 'pending' : 'done');
+    await sync.saveProjectTasks(p.id, p.tasks);
+    if (!mounted) return;
+    // (Dé)cocher change le backlog → on rafraîchit les serpents du jardin.
+    setState(() => _populateV2Gardens());
+  }
+
+  // Terminer / rouvrir un projet (status 'done'). Un projet terminé sort du backlog,
+  // donc tous ses serpents disparaissent du jardin.
+  Widget _parcheminFinishButton(Project p, Color col) {
+    final isDone = p.status == 'done';
+    final accent = isDone ? const Color(0xFF4CD787) : col;
+    return InkWell(
+      onTap: () => _toggleProjectDone(p),
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: accent.withOpacity(.20),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: accent.withOpacity(.6)),
+        ),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(isDone ? Icons.replay_rounded : Icons.check_circle_outline,
+              size: 16, color: isDone ? accent : Colors.white),
+          const SizedBox(width: 6),
+          Text(isDone ? 'Projet terminé — rouvrir' : 'Terminer le projet',
+              style: TextStyle(
+                  color: isDone ? accent : Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12)),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _toggleProjectDone(Project p) async {
+    setState(() => p.status = p.status == 'done' ? 'active' : 'done');
+    await sync.saveProject(p);
+    if (!mounted) return;
+    setState(() => _populateV2Gardens());
+  }
+
+  Future<void> _deleteProjectFromArena(Project p) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1410),
+        title: const Text('Supprimer le projet ?',
+            style: TextStyle(color: Colors.white, fontSize: 16)),
+        content: Text(
+            '« ${p.title} » sera définitivement supprimé. Cette action est irréversible.',
+            style: const TextStyle(color: Colors.white70, fontSize: 13)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annuler')),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFE05858)),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    await sync.deleteProject(p.id);
+    logic.currentProjects.removeWhere((x) => x.id == p.id);
+    if (!mounted) return;
+    final dom = _parchemin?.domainId;
+    final remaining = dom != null ? _projectsOfDomain(dom) : <Project>[];
+    setState(() {
+      if (dom != null) {
+        _parchemin = (
+          domainId: dom,
+          projectId: remaining.isNotEmpty ? remaining.first.id : null,
+        );
+      }
+      _populateV2Gardens(); // les serpents du projet supprimé disparaissent
+    });
   }
 
   Widget _dashRowV2(Activity a, Color col) {
@@ -3541,19 +4065,31 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // marche sur la rampe → spin ☢️ 2 s + lève le canon → tire si flammes (sinon
   // monte/descend) → bascule le jardin en dashboard de la lane.
   // Marche pas à pas vers `target` (sans bail sur le contrôle user — séquence pilotée).
-  Future<void> _v2StepTo(Point<int> target) async {
-    final path = _bfsV2(_posV2, target);
-    for (final step in path) {
-      if (!mounted) return;
+  // Un pas de la cinématique : bouge l'avatar RÉEL (suivi caméra + fog), ou le clone
+  // FANTÔME si le user a repris la main.
+  void _cineStep(Point<int> p) {
+    if (_canonDetached) {
+      setState(() => _v2Ghost = p);
+    } else {
       setState(() {
-        _posV2 = step;
-        _revealAroundV2(step);
+        _posV2 = p;
+        _revealAroundV2(p);
       });
       _v2CheckDomainEntry();
-      _v2CenterOn(step); // suivi caméra (déplacement auto / cinématique)
+      _v2CenterOn(p); // suivi caméra (déplacement auto / cinématique)
+    }
+  }
+
+  Future<void> _v2StepTo(Point<int> target) async {
+    // Source = position de la cinématique (fantôme si détachée, sinon l'avatar).
+    final from = _canonDetached ? (_v2Ghost ?? _posV2) : _posV2;
+    final path = _bfsV2(from, target);
+    for (final step in path) {
+      if (!mounted) return;
+      _cineStep(step);
       await Future.delayed(const Duration(milliseconds: 75));
     }
-    _persistFogV2(); // brouillard révélé pendant la séquence → sauvegardé
+    if (!_canonDetached) _persistFogV2(); // brouillard sauvegardé (avatar réel)
   }
 
   // Anime le lever du canon `id` de `from`→`to` (0..1) sur `ms` (~25 fps).
@@ -3601,8 +4137,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   Future<void> _onCannonRamp(int x, int y,
       {bool openDash = true, int? forceShots}) async {
     final w = _wv2;
-    if (w == null || _v2Walking) return;
-    _v2Walking = true;
+    if (w == null || _canonCine) return;
+    _canonCine = true;
+    _canonDetached = false;
+    _v2Ghost = null;
+    _v2CenterOn(Point(x, y)); // cadre la rampe dès le clic (même si l'avatar est près)
     try {
       final dom = _domainAtTileV2(x, y);
       // Rampe à GAUCHE de la tourelle (normal) ou à DROITE (miroir) : on détecte de
@@ -3639,8 +4178,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       // manuel) on tire la RÉSERVE permanente — nulle = canon muet (règle générale).
       final flames = forceShots ?? reserve;
       if (flames > 0) {
-        // Cadre la trajectoire tourelle → jour pour voir le boulet voler en entier.
-        _v2CenterOn(Point((turX + dayTargetX) ~/ 2, y));
+        // Cadre la trajectoire tourelle → jour (sauf si le user a repris la main).
+        if (!_canonDetached) _v2CenterOn(Point((turX + dayTargetX) ~/ 2, y));
         await Future.delayed(const Duration(milliseconds: 600)); // charge/visée
         final n = flames.clamp(1, 5);
         for (var i = 0; i < n; i++) {
@@ -3655,13 +4194,14 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       // on re-projette calendrier + jardins pour refléter sa perte de PV.
       await _animateCannonRaise(turretId, 1.0, 0.0, 450);
       if (!mounted) return;
+      // Le user a repris la main pendant la cine (fantôme) → on n'ouvre PAS le
+      // dashboard et on ne touche pas sa caméra.
+      final showDash = openDash && dom != null && !_canonDetached;
       setState(() {
         _cannonRaise.remove(turretId);
         _populateV2Calendar(); // PV des cases‑jour rafraîchis (dégâts visibles)
         _populateV2Gardens(); // scorpions/serpents du jardin aussi
-        // Dashboard CIBLÉ sur la routine/activité de cette rampe (clic manuel
-        // uniquement ; pas en spectateur temps réel).
-        if (openDash && dom != null) {
+        if (showDash) {
           _gardenPanel = (
             domainId: dom,
             mode: 'routineDash',
@@ -3670,8 +4210,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           );
         }
       });
+      if (showDash) {
+        _v2CenterOnDomainZone(dom); // cadre le jardin où s'ouvre le dashboard
+      }
     } finally {
-      _v2Walking = false;
+      _canonCine = false;
+      _canonDetached = false;
+      _v2Ghost = null;
     }
   }
 
@@ -6475,12 +7020,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _v2DayCells.clear();
     _v2DayLabel.clear();
     _v2LaneName.clear();
+    _v2Parchemins.clear();
     final w = _wv2;
     if (w == null) return;
     const wd = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     for (final c in w.castles) {
+      // Parchemin 📜 : case AU-DESSUS de la première tourelle (rangée des libellés
+      // de jours, près du « S »).
+      if (c.lanes.isNotEmpty) {
+        _v2Parchemins['${c.lanes.first.turretX}_${c.headerY}'] = c.domainId;
+      }
       for (var j = 0; j < 7; j++) {
         final d = today.subtract(Duration(days: 6 - j));
         // Miroir : ordre inversé (les nuisibles avancent de gauche → droite).
@@ -6630,15 +7181,26 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
 
   Future<void> _onTapV2(int x, int y) async {
     final w = _wv2;
-    if (w == null || _v2Walking) return;
+    if (w == null) return;
+    // Cinématique canon en cours → le clic REPREND LA MAIN : on détache l'avatar et
+    // un clone fantôme termine le spin/tir tout seul (la rampe tourne, le tir part).
+    if (_canonCine && !_canonDetached) {
+      setState(() {
+        _canonDetached = true;
+        _v2Ghost = _posV2; // le fantôme reste là où l'avatar opérait
+      });
+    }
+    if (_v2Walking) return;
     _v2TakeControl(); // clic = reprise de la main (interrompt l'exploration auto)
     final id = '${x}_$y';
-    // Un tap sur la map referme le dashboard jardin (le jardin réapparaît).
-    if (_gardenPanel != null) {
-      setState(() {
-        _gardenPanel = null;
-        _combat = null;
-      });
+    // Un tap sur la map referme le dashboard jardin / le parchemin (+ décharge).
+    if (_gardenPanel != null || _parchemin != null) {
+      _closeV2Panel();
+      return;
+    }
+    // Parchemin 📜 → l'avatar monte dessus et le grand dashboard projets s'ouvre.
+    if (_v2Parchemins.containsKey(id)) {
+      await _onParchemin(x, y);
       return;
     }
     // Rampe de tir ☢️ → séquence canon (marche, spin, lève, tire si flammes) puis
@@ -6963,9 +7525,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     // Listener.onPointerSignal (déplace la carte en 2D). Les physics des scrolls
     // restent désactivées (on pilote tout à la main). Le tap sur une case marche
     // toujours l'avatar (un drag ≠ un tap).
+    // Un panneau (jardin / parchemin) ouvert = PRIORITÉ au scroll interne du panneau :
+    // on neutralise le pan/molette de la carte pour ne pas le lui voler.
+    final panelOpen = _gardenPanel != null || _parchemin != null;
     return Listener(
       onPointerSignal: (e) {
         if (e is! PointerScrollEvent) return;
+        if (panelOpen) return; // le ListView du panneau gère la molette
         if (!_v2HCtrl.hasClients || !_v2VCtrl.hasClients) return;
         _v2TakeControl();
         _v2HCtrl.jumpTo((_v2HCtrl.offset + e.scrollDelta.dx)
@@ -6974,14 +7540,17 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             .clamp(0.0, _v2VCtrl.position.maxScrollExtent));
       },
       child: GestureDetector(
-      onPanDown: (_) => _v2TakeControl(), // déplacer la carte = reprendre la main
-      onPanUpdate: (d) {
-        if (!_v2HCtrl.hasClients || !_v2VCtrl.hasClients) return;
-        _v2HCtrl.jumpTo((_v2HCtrl.offset - d.delta.dx)
-            .clamp(0.0, _v2HCtrl.position.maxScrollExtent));
-        _v2VCtrl.jumpTo((_v2VCtrl.offset - d.delta.dy)
-            .clamp(0.0, _v2VCtrl.position.maxScrollExtent));
-      },
+      onPanDown:
+          panelOpen ? null : (_) => _v2TakeControl(), // pan carte = reprise de main
+      onPanUpdate: panelOpen
+          ? null
+          : (d) {
+              if (!_v2HCtrl.hasClients || !_v2VCtrl.hasClients) return;
+              _v2HCtrl.jumpTo((_v2HCtrl.offset - d.delta.dx)
+                  .clamp(0.0, _v2HCtrl.position.maxScrollExtent));
+              _v2VCtrl.jumpTo((_v2VCtrl.offset - d.delta.dy)
+                  .clamp(0.0, _v2VCtrl.position.maxScrollExtent));
+            },
       child: SingleChildScrollView(
         controller: _v2VCtrl,
         scrollDirection: Axis.vertical,
@@ -7085,6 +7654,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               ),
               // Panneau JARDIN in‑place (combat ou dashboard routines) — INTERACTIF.
               if (_gardenPanel != null) _gardenPanelV2(w),
+              // Grand dashboard PROJETS (parchemin) : village + jardin du domaine.
+              if (_parchemin != null) _parcheminPanelV2(w),
             ],
           ),
         ),
@@ -7397,6 +7968,21 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     if (_v2Araignee.containsKey(id)) {
       bg = _kEnemy.withOpacity(.32);
       child = Text('🕷️', style: TextStyle(fontSize: inner * 0.75));
+    }
+    // Parchemin 📜 (au-dessus de la 1ʳᵉ tourelle) : ouvre le grand dashboard projets.
+    if (_v2Parchemins.containsKey(id)) {
+      child = Text('📜', style: TextStyle(fontSize: inner * 0.62));
+    }
+    // Clone FANTÔME (transparent) : termine la cinématique canon après la reprise de
+    // main du user. Masqué sous l'avatar réel s'ils tombent sur la même case.
+    final isGhost = _v2Ghost != null && _v2Ghost!.x == x && _v2Ghost!.y == y;
+    if (isGhost && !isAvatar) {
+      bg = Colors.white.withOpacity(.06);
+      child = Opacity(
+        opacity: .4,
+        child: Text(logic.state.activeAvatar ?? '🧍',
+            style: const TextStyle(fontSize: inner * 0.6)),
+      );
     }
     if (isAvatar) {
       bg = Colors.white.withOpacity(.18);

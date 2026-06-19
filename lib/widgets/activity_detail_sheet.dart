@@ -271,6 +271,48 @@ Future<void> showActivitySheet(
                     ],
                   ),
                 ],
+                const SizedBox(height: 18),
+                // Désactiver l'action jusqu'à une date (snooze) : plus de nuisible
+                // tant que la date n'est pas atteinte.
+                Builder(builder: (_) {
+                  final until = logic.snoozedUntilOf(a.id);
+                  final snoozed =
+                      until != null && until.isAfter(DateTime.now());
+                  if (snoozed) {
+                    return SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          logic.clearSnooze(a.id);
+                          Navigator.pop(ctx);
+                        },
+                        icon: const Icon(Icons.alarm_on, size: 18),
+                        label: Text(
+                            'Réactiver (off → ${until.day}/${until.month})'),
+                      ),
+                    );
+                  }
+                  return SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        final n = DateTime.now();
+                        final picked = await showDatePicker(
+                          context: ctx,
+                          initialDate: n.add(const Duration(days: 7)),
+                          firstDate: n.add(const Duration(days: 1)),
+                          lastDate: DateTime(n.year + 2),
+                          helpText: 'Désactiver « ${a.name} » jusqu\'au',
+                        );
+                        if (picked == null) return;
+                        logic.snoozeActivityUntil(a.id, picked);
+                        if (ctx.mounted) Navigator.pop(ctx);
+                      },
+                      icon: const Icon(Icons.snooze, size: 18),
+                      label: const Text('Désactiver jusqu\'à…'),
+                    ),
+                  );
+                }),
               ],
             ),
           ),

@@ -250,6 +250,8 @@ class FirestoreSync {
         unifiedRevealed:
             (meta['unifiedRevealed'] as List?)?.cast<String>(),
         unifiedPos: meta['unifiedPos'] as String?,
+        snoozedUntil: (meta['snoozedUntil'] as Map?)
+            ?.map((k, v) => MapEntry(k.toString(), v.toString())),
         expeditionPicked:
             (meta['expeditionPicked'] as List?)?.cast<String>(),
         expeditionEntities:
@@ -467,6 +469,7 @@ class FirestoreSync {
 
   Map<String, dynamic> _encodeMeta(AppState st) => {
         'onboardingDone': st.onboardingDone,
+        'snoozedUntil': st.snoozedUntil, // activités désactivées jusqu'à une date
         'challengesDone': st.challengesDone,
         'challengeStreak': st.challengeStreak,
         'lastChallengeYmd': st.lastChallengeYmd,
@@ -591,6 +594,23 @@ class FirestoreSync {
   Future<void> saveSession(Session s) async {
     if (uid == null) return;
     await _col('sessions').doc(s.id).set(s.toJson());
+  }
+
+  // Persistance CIBLÉE d'une validation de routine (le web ne pushe pas via onChange).
+  Future<void> saveHabitHit(HabitHit h) async {
+    if (uid == null) return;
+    await _col('habitHits').doc(h.id).set(h.toJson());
+  }
+
+  Future<void> saveHabitProgress(HabitProgress hp) async {
+    if (uid == null) return;
+    await _col('habitProgress').doc(hp.id).set(hp.toJson());
+  }
+
+  // Persistance CIBLÉE du snooze (activités désactivées jusqu'à une date).
+  Future<void> saveSnoozedUntil(Map<String, String> snoozedUntil) async {
+    if (uid == null) return;
+    await _meta().set({'snoozedUntil': snoozedUntil}, SetOptions(merge: true));
   }
 
   Future<void> saveProject(Project project) async {
