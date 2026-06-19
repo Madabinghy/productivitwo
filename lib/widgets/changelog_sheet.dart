@@ -10,6 +10,9 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.38', '19 juin 2026', [
+    (Icons.link, 'Lier une action de projet à une activité-temps : depuis la fiche d\'une tâche, « Lier une activité » rattache une action à un scorpion — le chrono lancé depuis l\'action est ciblé (la session pointe sur l\'action) et l\'activité affiche ses actions liées'),
+  ]),
   _Entry('6.37', '19 juin 2026', [
     (Icons.timelapse, 'Combattre (mobile) : minuteur d\'activité-temps → un tir toutes les 5 min anime la baisse de PV ; une activité lancée depuis le web est reprise sur mobile (décompte synchronisé)'),
     (Icons.replay, 'Combattre (mobile) : les routines complétées hors de l\'app (widget, web) sont rattrapées à l\'ouverture — les canons tirent une à une les flammes en attente (un seul tir si trop nombreuses)'),
