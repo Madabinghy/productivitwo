@@ -1237,35 +1237,14 @@ class _DomainGameplayState extends State<_DomainGameplay>
 
   Widget _gardenRow(_Item it, double cell, List<String> days) {
     final c = widget.color;
-    // Espacement ASYMÉTRIQUE : large au‑dessus du nom (le sépare de la routine
-    // précédente), serré en dessous (le nom reste rattaché à SA tourelle) → on ne
-    // confond plus le nom avec la tourelle du dessus.
+    // Le NOM est rendu SOUS la tourelle (cf. fin du Column) : ainsi il est clairement
+    // rattaché à SA grille et n'est plus confondu avec le titre de la routine suivante.
+    // Gros espace EN HAUT (sépare de la routine précédente), petit en bas.
     return Padding(
-      padding: const EdgeInsets.only(top: 18, bottom: 4),
+      padding: const EdgeInsets.only(top: 16, bottom: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Nom de la routine/activité, rattaché à sa propre grille juste en dessous.
-          Row(children: [
-            Container(
-              width: 3,
-              height: 14,
-              margin: const EdgeInsets.only(right: 6),
-              decoration: BoxDecoration(
-                  color: c.withOpacity(.9),
-                  borderRadius: BorderRadius.circular(2)),
-            ),
-            Flexible(
-              child: Text(it.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      color: c.withOpacity(.95),
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13)),
-            ),
-          ]),
-          const SizedBox(height: 3),
           // La grille (jours + colonnes de contrôle) défile horizontalement pour
           // ne pas déborder sur les petits écrans (2 cases de plus qu'avant).
           SingleChildScrollView(
@@ -1378,6 +1357,27 @@ class _DomainGameplayState extends State<_DomainGameplay>
               ],
             ),
           ),
+          const SizedBox(height: 5),
+          // NOM de la routine/activité, SOUS sa tourelle (rattaché à SA grille).
+          Row(children: [
+            Container(
+              width: 3,
+              height: 14,
+              margin: const EdgeInsets.only(right: 6),
+              decoration: BoxDecoration(
+                  color: c.withOpacity(.9),
+                  borderRadius: BorderRadius.circular(2)),
+            ),
+            Flexible(
+              child: Text(it.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      color: c.withOpacity(.95),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13)),
+            ),
+          ]),
         ],
       ),
     );
