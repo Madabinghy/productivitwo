@@ -1243,6 +1243,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
                   fontSize: 13)),
           const SizedBox(height: 2),
           Row(children: [
+            const SizedBox(width: 60),
             for (final l in days)
               SizedBox(
                 width: cell + 2,
@@ -1254,11 +1255,19 @@ class _DomainGameplayState extends State<_DomainGameplay>
                           fontSize: 11)),
                 ),
               ),
-            const SizedBox(width: 60),
           ]),
           const SizedBox(height: 1),
-          // Cases‑jours (validations) + lance‑missiles À DROITE.
+          // Lance‑missiles à GAUCHE + cases‑jours (validations).
           Row(children: [
+            SizedBox(
+              width: 60,
+              child: Center(
+                child: SvgPicture.asset('assets/icons/missile-launcher.svg',
+                    width: 24,
+                    height: 24,
+                    colorFilter: ColorFilter.mode(c, BlendMode.srcIn)),
+              ),
+            ),
             for (var d = 0; d < 7; d++)
               () {
                 final done = validatedOn(today.subtract(Duration(days: 6 - d)));
@@ -1277,15 +1286,6 @@ class _DomainGameplayState extends State<_DomainGameplay>
                   ),
                 );
               }(),
-            SizedBox(
-              width: 60,
-              child: Center(
-                child: SvgPicture.asset('assets/icons/missile-launcher.svg',
-                    width: 24,
-                    height: 24,
-                    colorFilter: ColorFilter.mode(c, BlendMode.srcIn)),
-              ),
-            ),
           ]),
           const SizedBox(height: 4),
           // Liste des ACTIONS — coche verte si faite, viseur 🎯 pour cibler (tap =
