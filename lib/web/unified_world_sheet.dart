@@ -3291,18 +3291,21 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     ]);
   }
 
-  // Section « Actions liées » d'une activité-temps : chrono ciblé par action + ajout
-  // /retrait de lien (TaskAction.linkedActivityId).
+  // Section « Actions » d'une activité-temps : actions PROPRES (créées sur place,
+  // sans tâche) + actions de PROJET liées (TaskAction.linkedActivityId). Chrono ciblé
+  // par action dans les deux cas.
   List<Widget> _laneLinkedActionsSection(Activity a, Color col) {
+    final own = logic.ownActionsOf(a.id);
     final linked = logic.actionsLinkedTo(a.id);
     return [
       const Divider(color: Colors.white12, height: 20),
       Row(children: [
         Expanded(
-          child: Text('🔗 Actions liées',
+          child: Text('✅ Actions',
               style: TextStyle(
                   color: col, fontWeight: FontWeight.w900, fontSize: 12)),
         ),
+        // Lier une action de projet existante.
         InkWell(
           onTap: () => _linkActionPick(a, col),
           borderRadius: BorderRadius.circular(6),
@@ -3311,16 +3314,109 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             child: Icon(Icons.add_link, size: 18, color: col),
           ),
         ),
+        // Créer une action propre à l'activité.
+        InkWell(
+          onTap: () => _addOwnAction(a),
+          borderRadius: BorderRadius.circular(6),
+          child: Padding(
+            padding: const EdgeInsets.all(4),
+            child: Icon(Icons.add, size: 18, color: col),
+          ),
+        ),
       ]),
-      if (linked.isEmpty)
+      if (own.isEmpty && linked.isEmpty)
         const Padding(
           padding: EdgeInsets.symmetric(vertical: 6),
-          child: Text('Aucune action liée — touche ⨁ pour en lier une.',
+          child: Text('Aucune action — ＋ pour en créer une, 🔗 pour en lier une.',
               style: TextStyle(color: Colors.white38, fontSize: 11)),
-        )
-      else
-        for (final e in linked) _laneLinkedActionRow(a, e.project, e.action, col),
+        ),
+      for (final act in own) _laneOwnActionRow(a, act, col),
+      for (final e in linked) _laneLinkedActionRow(a, e.project, e.action, col),
     ];
+  }
+
+  // Ligne d'une action PROPRE : coche, renommage, chrono ciblé, suppression.
+  Widget _laneOwnActionRow(Activity a, TaskAction act, Color col) {
+    final open = _openSessionFor(a.id);
+    final running = open != null && open.actionId == act.id;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(children: [
+        InkWell(
+          onTap: () {
+            logic.toggleOwnAction(a.id, act.id);
+            sync.saveActivity(a);
+            if (mounted) setState(() {});
+          },
+          child: Icon(
+              act.done ? Icons.check_circle : Icons.radio_button_unchecked,
+              size: 16,
+              color: act.done ? const Color(0xFF4CD787) : Colors.white30),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: InkWell(
+            onTap: () => _renameOwnAction(a, act),
+            child: Text(act.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    color: act.done ? Colors.white38 : Colors.white,
+                    fontSize: 11.5,
+                    decoration:
+                        act.done ? TextDecoration.lineThrough : null)),
+          ),
+        ),
+        if (running) ...[
+          StreamBuilder<int>(
+            stream: Stream.periodic(const Duration(seconds: 1), (i) => i),
+            builder: (_, __) => Text(
+              _fmtChrono(DateTime.now().difference(open.startAt)),
+              style: TextStyle(
+                  color: col, fontWeight: FontWeight.w800, fontSize: 11),
+            ),
+          ),
+          const SizedBox(width: 4),
+          InkWell(
+            onTap: _dashStopTimer,
+            child: Icon(Icons.stop_circle, color: col, size: 20),
+          ),
+        ] else if (!act.done)
+          InkWell(
+            onTap: () => _dashStartTimer(a, col, actionId: act.id),
+            child: Icon(Icons.play_circle_fill,
+                color: col.withOpacity(.85), size: 20),
+          ),
+        const SizedBox(width: 2),
+        InkWell(
+          onTap: () {
+            logic.removeOwnAction(a.id, act.id);
+            sync.saveActivity(a);
+            if (mounted) setState(() {});
+          },
+          child: const Padding(
+            padding: EdgeInsets.all(2),
+            child: Icon(Icons.close, size: 14, color: Colors.white24),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Future<void> _addOwnAction(Activity a) async {
+    final title = await _promptActionTitle('Nouvelle action', '');
+    if (title == null) return;
+    logic.addOwnAction(a.id, title);
+    sync.saveActivity(a);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _renameOwnAction(Activity a, TaskAction act) async {
+    final title = await _promptActionTitle('Renommer l\'action', act.title);
+    if (title == null) return;
+    logic.renameOwnAction(a.id, act.id, title);
+    sync.saveActivity(a);
+    if (mounted) setState(() {});
   }
 
   // Persiste la checklist (template + coches) — le web ne pushe pas via onChange.
