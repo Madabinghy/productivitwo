@@ -1158,6 +1158,26 @@ extension GoldEngine on AppLogic {
     return n;
   }
 
+  /// Index de la PREMIÈRE araignée (jour manqué le plus ANCIEN) de la fenêtre 7j,
+  /// ou -1 si aucune. (index 0 = il y a 6 jours … 6 = aujourd'hui.)
+  int firstSpiderIndex(String routineId) {
+    final toks = routineWeekTokens(routineId);
+    for (var j = 0; j < toks.length; j++) {
+      if (toks[j].type == 'spider') return j;
+    }
+    return -1;
+  }
+
+  /// Jour à créditer quand on « tue » la première araignée d'une routine en combat :
+  /// le jour manqué le plus ANCIEN de la fenêtre 7j (rattrapage), ou aujourd'hui si
+  /// aucune araignée. Tuer la 1ʳᵉ fait avancer la vague (le suivant devient la cible).
+  DateTime routineCatchUpDay(String routineId) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final j = firstSpiderIndex(routineId);
+    return j < 0 ? today : today.subtract(Duration(days: 6 - j));
+  }
+
   /// Tokens du tapis roulant pour les 7 DERNIERS jours (index 0 = il y a 6 jours,
   /// 6 = AUJOURD'HUI à droite ; tourne tout seul chaque jour, pas de bouton).
   /// Chaque jour : `type` = 'spider' (manqué) · 'leaf' (fait, 1er jour repris) ·

@@ -2574,7 +2574,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         if (_v2UserControl || !mounted) break;
         final ids = _pendingByRoutine[lane.id];
         while (ids != null && ids.isNotEmpty && mounted && !_v2UserControl) {
-          _fireV2Bolt(_v2TodayCol(lane), lane.y, lane.turretX,
+          _fireV2Bolt(_v2FirstSpiderCol(lane), lane.y, lane.turretX,
               dur: _kV2ExploreBoltDur);
           _animatedHitIds.add(ids.removeAt(0));
           _persistAnimated();
@@ -2702,6 +2702,22 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   int _v2TodayCol(LaneRow lane) {
     final mirror = _v2TurretMirror['${lane.turretX}_${lane.y}'] ?? false;
     return mirror ? lane.dayX0 : lane.dayX0 + 6;
+  }
+
+  // Colonne de la PREMIÈRE araignée/scorpion (jour manqué le plus ANCIEN) d'une lane
+  // — la cible du canon. Respecte le miroir (ordre des jours inversé). Aucune
+  // araignée → on retombe sur la colonne d'aujourd'hui.
+  int _v2FirstSpiderCol(LaneRow lane) {
+    final mirror = _v2TurretMirror['${lane.turretX}_${lane.y}'] ?? false;
+    final toks = lane.isRoutine
+        ? logic.routineWeekTokens(lane.id)
+        : logic.activityTimeTokens(lane.id);
+    for (var j = 0; j < toks.length; j++) {
+      if (toks[j].type == 'spider') {
+        return mirror ? lane.dayX0 + (6 - j) : lane.dayX0 + j;
+      }
+    }
+    return _v2TodayCol(lane);
   }
 
   // Action mobile (routine validée / minuteur) → tir célébratoire de SA tourelle
@@ -3878,12 +3894,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
 
   // Actions du dashboard (partagées par la liste de domaine et le dashboard ciblé).
   Future<void> _dashValidateRoutine(Activity a) async {
-    final now = DateTime.now();
-    logic.incHabit(a.id, 1, now);
+    // Rattrapage : on crédite le jour manqué le plus ANCIEN (tue la 1ʳᵉ araignée).
+    final day = logic.routineCatchUpDay(a.id);
+    logic.incHabit(a.id, 1, day);
     if (mounted) setState(() {});
     // Le onChange du web ne pushe PAS → on persiste le hit + le compteur du jour à la
     // main dans Firestore pour que le téléphone voie l'incrément.
-    final key = yyyymmdd(now);
+    final key = yyyymmdd(day);
     HabitHit? hit;
     for (final h in logic.state.habitHits) {
       if (h.habitId == a.id) hit = h; // dernier hit de cette routine
@@ -5138,9 +5155,23 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       final turX = mirror ? x - 1 : x + 1;
       final turretId = '${turX}_$y';
       final outsideX = mirror ? x + 1 : x - 1; // côté extérieur : l'avatar attend là
-      final dayTargetX = mirror ? x - 8 : x + 8; // « aujourd'hui » visé
       // Lane servie + sa réserve de flammes (RÈGLE : pas de flamme → pas de tir).
       final lane = _laneAtTurret(dom, turX, y);
+      // Cible = PREMIÈRE araignée de la lane (jour manqué le plus ANCIEN) ; sinon
+      // repli sur « aujourd'hui ». Repère local : tour à turX, jours étalés vers
+      // l'extérieur (normal x+2..x+8 ; miroir x-2..x-8, aujourd'hui = la plus loin).
+      var dayTargetX = mirror ? x - 8 : x + 8;
+      if (lane != null) {
+        final toks = lane.isRoutine
+            ? logic.routineWeekTokens(lane.id)
+            : logic.activityTimeTokens(lane.id);
+        for (var j = 0; j < toks.length; j++) {
+          if (toks[j].type == 'spider') {
+            dayTargetX = mirror ? x - 2 - j : x + 2 + j;
+            break;
+          }
+        }
+      }
       final reserve = lane != null ? _laneFlameReserve(lane.id, lane.isRoutine) : 0;
       // — Phase 1 : arriver sur la case côté extérieur (avant de monter sur la rampe).
       await _v2StepTo(Point(outsideX, y));
@@ -8023,20 +8054,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _v2Parchemins.clear();
     final w = _wv2;
     if (w == null) return;
-    const wd = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
     for (final c in w.castles) {
-      // Parchemin 📜 : case AU-DESSUS de la première tourelle (rangée des libellés
-      // de jours, près du « S »).
+      // Parchemin 📜 : case AU-DESSUS de la première tourelle.
+      // (Libellés de jours retirés — on combat la vague d'araignées, pas un jour.)
       if (c.lanes.isNotEmpty) {
         _v2Parchemins['${c.lanes.first.turretX}_${c.headerY}'] = c.domainId;
-      }
-      for (var j = 0; j < 7; j++) {
-        final d = today.subtract(Duration(days: 6 - j));
-        // Miroir : ordre inversé (les nuisibles avancent de gauche → droite).
-        final col = c.mirror ? c.dayX0 + (6 - j) : c.dayX0 + j;
-        _v2DayLabel['${col}_${c.headerY}'] = wd[d.weekday - 1];
       }
     }
     for (final c in w.castles) {
