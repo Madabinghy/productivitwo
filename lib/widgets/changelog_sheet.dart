@@ -10,6 +10,10 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.40', '19 juin 2026', [
+    (Icons.pest_control, 'Compteur global de nuisibles (🕷️ routines · 🦂 activités · 🐍 tâches en retard, tous domaines) : sur la carte web « Le Monde » sous la minimap, ET en tête du tableau de bord mobile — pour voir où tu en es d\'un coup d\'œil'),
+    (Icons.insights, 'Au clic : un panneau de stats avec le total par type + le comparatif des « jours tenus » de cette semaine vs les 7 jours précédents (ex. routines +5)'),
+  ]),
   _Entry('6.39', '19 juin 2026', [
     (Icons.playlist_add_check, 'Une activité-temps peut avoir ses PROPRES actions (sans tâche/projet) : crée-les depuis son dashboard (web « Le Monde » + fiche activité mobile), coche-les, lance un chrono ciblé dessus, supprime-les'),
     (Icons.visibility, 'Ces actions propres apparaissent aussi pendant un chrono (onglet Maintenant) et dans l\'onglet Actions du combat (vise 🎯 + « Faire feu » pour les valider)'),
