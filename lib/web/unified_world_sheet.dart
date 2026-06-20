@@ -3264,7 +3264,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             ]),
             const SizedBox(height: 14),
             if (isRoutine)
-              _laneBigCta(Icons.check_rounded, 'Valider aujourd\'hui', col,
+              _laneBigCta(Icons.check_rounded, 'Valider une routine', col,
                   () => _dashValidateRoutine(a))
             else
               _laneTimerCta(a, col),
