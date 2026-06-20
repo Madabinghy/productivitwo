@@ -178,6 +178,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   final Map<String, int> _v2TurretPests = {}; // tileId tourelle → nb nuisibles (angle repos)
   final Map<String, String> _v2TurretRoutineId = {}; // tileId tourelle → routineId (lanes routine)
   final Set<String> _v2LaunchPads = {}; // tileIds de la case de tir (gauche de chaque tourelle)
+  final Map<String, String> _v2LaunchPadRoutineId = {}; // tileId rampe → routineId
   final Set<String> _v2Sep = {}; // tileIds de la ligne séparatrice routines/activités
   final Map<String, int> _v2DayTurretX = {}; // tileId jour → X de la tourelle de sa lane
   // Cases du CALENDRIER (7 jours de chaque lane) : BLOQUANTES pour l'avatar — on
@@ -2607,36 +2608,20 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         }
         flips = 0;
         final mirror = _v2TurretMirror['${lane.turretX}_${lane.y}'] ?? false;
-        // Case de tir : côté jardin de la tourelle (droite en miroir, gauche sinon).
+        // Rampe = côté jardin de la tourelle ; l'avatar s'arrête sur la case SUIVANTE
+        // (à côté de la rampe) pour laisser les deux badges chargeur/réserve visibles.
         final padDx = mirror ? 1 : -1;
-        await _v2WalkTo(Point(lane.turretX + padDx, lane.y));
+        await _v2WalkTo(Point(lane.turretX + 2 * padDx, lane.y));
         if (_v2UserControl || !mounted) break;
         final now = DateTime.now();
         final today = DateTime(now.year, now.month, now.day);
-        var embers = _availableEmbers(lane.id);
-        while (embers > 0 && mounted && !_v2UserControl) {
-          final target = logic.routineCatchUpDay(lane.id); // plus vieux jour en dette
-          if (yyyymmdd(target) == yyyymmdd(today)) break; // plus de retard → stop
-          // 1 braise dépensée = 1 crédit de reconquête (1 PV) sur ce jour.
-          final r = Redemption(
-            activityId: lane.id,
-            type: 'habit',
-            targetDate: yyyymmdd(target),
-            amount: 1,
-            sourceDate: yyyymmdd(today),
-          );
-          logic.state.redemptions.add(r); // optimiste → routineCatchUpDay suivant
-          sync.saveRedemption(r);
-          embers--;
-          // Colonne AFFICHÉE du jour visé → boulet + décrément de PV à l'écran.
-          final daysAgo = today.difference(target).inDays;
-          final j = 6 - daysAgo;
-          final col = mirror ? lane.dayX0 + (6 - j) : lane.dayX0 + j;
-          _fireV2Bolt(col, lane.y, lane.turretX,
-              dur: _kV2ExploreBoltDur, cellId: '${col}_${lane.y}');
-          if (mounted) setState(() {});
-          await Future.delayed(Duration(
-              milliseconds: (_kV2ExploreBoltDur * 1000).round() + 300));
+        final ammo = _turretAmmo(lane.id);
+        // Étage 1 : le CHARGEUR (effort du jour) part en premier.
+        await _fireBacklogStage(lane, mirror, today, ammo.charger);
+        // Étage 2 : la RÉSERVE de streak tire ensuite (petite transition entre salves).
+        if (ammo.reserve > 0 && mounted && !_v2UserControl) {
+          await Future.delayed(const Duration(milliseconds: 500));
+          await _fireBacklogStage(lane, mirror, today, ammo.reserve);
         }
         done.add(lane.id);
       }
@@ -2644,6 +2629,36 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _v2AutoExploring = false;
       // Resync AFFICHAGE ↔ DONNÉES en fin de séquence (refresh sans écart).
       if (mounted) setState(_populateV2Calendar);
+    }
+  }
+
+  // Tire jusqu'à `count` boulets sur la lane, plus vieux jour d'abord : chaque tir =
+  // 1 crédit de reconquête (−1 PV, plus de gaspillage : stop s'il n'y a plus de retard
+  // ou si l'utilisateur reprend la main).
+  Future<void> _fireBacklogStage(
+      LaneRow lane, bool mirror, DateTime today, int count) async {
+    var n = count;
+    while (n > 0 && mounted && !_v2UserControl) {
+      final target = logic.routineCatchUpDay(lane.id);
+      if (yyyymmdd(target) == yyyymmdd(today)) break; // plus de retard
+      final r = Redemption(
+        activityId: lane.id,
+        type: 'habit',
+        targetDate: yyyymmdd(target),
+        amount: 1,
+        sourceDate: yyyymmdd(today),
+      );
+      logic.state.redemptions.add(r); // optimiste → routineCatchUpDay suivant
+      sync.saveRedemption(r);
+      n--;
+      final daysAgo = today.difference(target).inDays;
+      final j = 6 - daysAgo;
+      final col = mirror ? lane.dayX0 + (6 - j) : lane.dayX0 + j;
+      _fireV2Bolt(col, lane.y, lane.turretX,
+          dur: _kV2ExploreBoltDur, cellId: '${col}_${lane.y}');
+      if (mounted) setState(() {});
+      await Future.delayed(
+          Duration(milliseconds: (_kV2ExploreBoltDur * 1000).round() + 300));
     }
   }
 
@@ -6005,14 +6020,14 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         duration: const Duration(milliseconds: 1400)));
   }
 
-  // ── MODÈLE SALVE : le STREAK est la puissance de tir. Défendre tire UNE salve de
-  // `streak` tirs (5 streaks → 5 tirs d'affilée), 1 tir = 1 PV reconquis sur le
-  // plus vieux jour. UNE salve par jour. Une araignée = quota du jour en PV (rattraper
-  // un jour à 10 verres demande donc 10 tirs / 2 jours de streak 5…). Tenir la routine
-  // fait grandir la salve (6 demain) ; casser le streak la remet à 0 (le retard avance).
-  // Tirs encore dispo AUJOURD'HUI = streak − tirs déjà dépensés aujourd'hui.
-  int _availableEmbers(String routineId) {
-    final streak = logic.habitCurrentStreak(routineId);
+  // ── MODÈLE 2 ÉTAGES (sur la rampe) : le canon tire D'ABORD le CHARGEUR (effort du
+  // jour : chaque hit réel = 1 flamme), PUIS la RÉSERVE de streak (régularité). 1 tir =
+  // 1 PV reconquis sur le plus vieux jour. Une araignée = quota du jour en PV. Le
+  // « dépensé aujourd'hui » (crédits sourceDate=jour) s'impute au chargeur d'abord,
+  // puis à la réserve → les deux badges se vident dans le bon ordre.
+  ({int charger, int reserve}) _turretAmmo(String routineId) {
+    final charger0 = logic.habitValueOn(routineId, DateTime.now()); // hits réels du jour
+    final streak0 = logic.habitCurrentStreak(routineId);
     final todayKey = yyyymmdd(DateTime.now());
     var spent = 0;
     for (final r in logic.state.redemptions) {
@@ -6023,8 +6038,34 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         spent += r.amount;
       }
     }
-    final e = streak - spent;
-    return e < 0 ? 0 : e;
+    final charger = (charger0 - spent) < 0 ? 0 : (charger0 - spent);
+    final onStreak = (spent - charger0) < 0 ? 0 : (spent - charger0);
+    final reserve = (streak0 - onStreak) < 0 ? 0 : (streak0 - onStreak);
+    return (charger: charger, reserve: reserve);
+  }
+
+  // Total des tirs encore dispo aujourd'hui (chargeur + réserve) pour une routine.
+  int _availableEmbers(String routineId) {
+    final a = _turretAmmo(routineId);
+    return a.charger + a.reserve;
+  }
+
+  // Petit badge numéroté (emoji + nombre) posé sur la rampe : chargeur / réserve.
+  Widget _rampBadge(String emoji, int n, Color color, double inner) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 2.5, vertical: 0.5),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(.55),
+        borderRadius: BorderRadius.circular(5),
+        border: Border.all(color: color.withOpacity(.7), width: 0.8),
+      ),
+      child: Text('$emoji$n',
+          style: TextStyle(
+              fontSize: inner * 0.26,
+              height: 1,
+              fontWeight: FontWeight.w900,
+              color: color)),
+    );
   }
 
   // Total des braises dépensables (routines en retard) → libellé + visibilité bouton.
@@ -8236,6 +8277,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _v2TurretMirror.clear();
     _v2TurretRoutineId.clear();
     _v2LaunchPads.clear();
+    _v2LaunchPadRoutineId.clear();
     _v2Sep.clear();
     _v2DayTurretX.clear();
     _v2DayCells.clear();
@@ -8270,8 +8312,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         }
         // Case de tir (rampe) où le perso attend = côté JARDIN (intérieur) de la
         // tourelle : à GAUCHE en normal, à DROITE en miroir.
-        _v2LaunchPads
-            .add('${c.mirror ? lane.turretX + 1 : lane.turretX - 1}_${lane.y}');
+        final rampId =
+            '${c.mirror ? lane.turretX + 1 : lane.turretX - 1}_${lane.y}';
+        _v2LaunchPads.add(rampId);
+        if (lane.isRoutine) _v2LaunchPadRoutineId[rampId] = lane.id;
         _v2LaneName['${lane.turretX}_${lane.y}'] = name;
         for (var j = 0; j < 7 && j < toks.length; j++) {
           // Miroir : ordre inversé (les nuisibles avancent de gauche → droite).
@@ -9121,7 +9165,36 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         // sur fond ambré (zone de tir / danger).
         if (_v2LaunchPads.contains(id)) {
           bg = const Color(0xFFE8C13D).withOpacity(.16);
-          child = Text('☢️', style: TextStyle(fontSize: inner * 0.5));
+          final rid = _v2LaunchPadRoutineId[id];
+          if (rid != null) {
+            // Deux flammes numérotées sur la rampe : CHARGEUR (effort du jour) puis
+            // RÉSERVE (streak). Survol souris → description (Tooltip).
+            final ammo = _turretAmmo(rid);
+            final streak = logic.habitCurrentStreak(rid);
+            child = FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Tooltip(
+                    message: 'Chargeur : ${ammo.charger} tir(s)\n'
+                        'Ton effort d\'aujourd\'hui — chaque validation arme une flamme.',
+                    child: _rampBadge(
+                        '🔥', ammo.charger, const Color(0xFFFF8A3D), inner),
+                  ),
+                  SizedBox(height: inner * 0.08),
+                  Tooltip(
+                    message: 'Réserve de streak : ${ammo.reserve} tir(s)\n'
+                        'Ta régularité ($streak jour(s) d\'affilée). Tirée APRÈS le chargeur.',
+                    child: _rampBadge(
+                        '✨', ammo.reserve, const Color(0xFFFFC83D), inner),
+                  ),
+                ],
+              ),
+            );
+          } else {
+            child = Text('☢️', style: TextStyle(fontSize: inner * 0.5));
+          }
         }
         break;
       case WtTile.village:
@@ -9152,10 +9225,6 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           bg = tColor.withOpacity(.18);
           // Flammes chargées = tirs dus (hits faits hors‑web) que l'avatar viendra
           // décharger pendant l'exploration auto.
-          final rid = _v2TurretRoutineId[id];
-          // Badge tourelle = STREAK = taille de la salve (puissance de tir). Visible
-          // en permanence pour que le user comprenne sa force de reconquête.
-          final streak = rid == null ? 0 : logic.habitCurrentStreak(rid);
           // ANGLE DE REPOS selon le moral : peu de nuisibles → canon HAUT (prêt, fier),
           // beaucoup → canon BAS (soumis). Pendant la cinématique, _cannonRaise prime.
           // Pieds DROITS (fixes) : seule la tête du canon se relève (cf. _v2TurretWidget).
@@ -9169,33 +9238,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           final turret = (_v2TurretMirror[id] ?? false)
               ? Transform.flip(flipX: true, child: turretW)
               : turretW;
-          child = streak <= 0
-              ? turret
-              : Stack(
-                  clipBehavior: Clip.none,
-                  alignment: Alignment.center,
-                  children: [
-                    turret,
-                    Positioned(
-                      right: -1,
-                      top: -1,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 3, vertical: 0.5),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(.55),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text('🔥$streak',
-                            style: TextStyle(
-                                fontSize: inner * 0.26,
-                                height: 1,
-                                fontWeight: FontWeight.w900,
-                                color: const Color(0xFFFFC83D))),
-                      ),
-                    ),
-                  ],
-                );
+          child = turret; // les nombres (chargeur/réserve) sont sur la rampe
         } else if (tok != null) {
           // Couleur de base = couleur « case par défaut/rien » (un peu plus foncée que
           // la case tourelle), identique pour 🍃 / 🔥 / nuisible. Le nuisible la
