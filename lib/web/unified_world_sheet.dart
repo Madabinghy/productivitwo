@@ -2329,6 +2329,23 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     return total;
   }
 
+  // Écart hebdo COURANT d'un domaine (par id) → mission / pastille / tooltip.
+  int _domainMissionGap(String dom) {
+    final c = _wv2?.byDomain[dom];
+    if (c == null) return 0;
+    final now = DateTime.now();
+    return _domainWeekGap(c, DateTime(now.year, now.month, now.day));
+  }
+
+  // Texte du tooltip d'une araignée d'écart hebdo (au survol souris).
+  String _spiderTooltip(String dom) {
+    final gap = _domainMissionGap(dom);
+    return '🕷️ Araignée d\'écart hebdo — ${_domainName(dom)}\n'
+        'Tu es à $gap validation(s) du même jour la semaine dernière (S‑7). '
+        'Valide tes routines en retard pour les chasser '
+        '(chaque rattrapage = 1 shuriken). Détail dans le parchemin 📜.';
+  }
+
   // Pose / réconcilie les araignées d'écart, PAR DOMAINE. INVARIANT par domaine :
   // araignées vivantes(D) = écart(D) + shurikens(D). Chaque shuriken touché
   // décrémente LES DEUX → on converge vers l'écart courant du domaine. Les shurikens
@@ -3378,6 +3395,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               _laneBigCta(Icons.check_rounded, 'Valider une routine', col,
                   () => _dashValidateRoutine(a))
             else ...[
+              _timeWeekGraph(a, col),
+              const SizedBox(height: 12),
+              _timeTargetEditor(a, col),
+              const Divider(color: Colors.white12, height: 22),
               _laneTimerControls(a, col),
               const SizedBox(height: 10),
               ..._laneTimerDefaultChips(a, col),
@@ -3394,6 +3415,100 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         ),
       ),
     ]);
+  }
+
+  // Graphe de la SEMAINE (7 derniers jours) d'une activité-temps : minutes logguées
+  // /jour (barres), barre pleine si l'objectif du jour est atteint.
+  Widget _timeWeekGraph(Activity a, Color col) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    const wd = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+    final goal = a.goalMin;
+    final bars = <({String lbl, int min})>[];
+    var maxMin = goal > 0 ? goal : 1;
+    for (var i = 6; i >= 0; i--) {
+      final d = today.subtract(Duration(days: i));
+      final m = logic
+          .totalForRangeByActivity(a.id, d, d.add(const Duration(days: 1)))
+          .inMinutes;
+      bars.add((lbl: wd[(d.weekday - 1) % 7], min: m));
+      if (m > maxMin) maxMin = m;
+    }
+    const h = 64.0;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Text('📈 Cette semaine — objectif ${_fmtHM(goal)}/jour',
+          style:
+              TextStyle(color: col, fontWeight: FontWeight.w900, fontSize: 12)),
+      const SizedBox(height: 8),
+      SizedBox(
+        height: h + 20,
+        child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          for (final b in bars)
+            Expanded(
+              child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                Text(b.min > 0 ? _fmtHM(b.min) : '',
+                    maxLines: 1,
+                    style:
+                        const TextStyle(color: Colors.white54, fontSize: 7.5)),
+                const SizedBox(height: 2),
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  height: (h * (b.min / maxMin)).clamp(2.0, h).toDouble(),
+                  decoration: BoxDecoration(
+                    color: goal > 0 && b.min >= goal ? col : col.withOpacity(.4),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(b.lbl,
+                    style: const TextStyle(color: Colors.white38, fontSize: 9)),
+              ]),
+            ),
+        ]),
+      ),
+    ]);
+  }
+
+  // Éditeur d'objectif/jour (goalMin) directement sur le web (pas besoin du mobile).
+  Widget _timeTargetEditor(Activity a, Color col) {
+    Widget btn(IconData ic, VoidCallback onTap) => InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            padding: const EdgeInsets.all(6),
+            decoration:
+                BoxDecoration(color: col.withOpacity(.18), shape: BoxShape.circle),
+            child: Icon(ic, size: 18, color: Colors.white),
+          ),
+        );
+    return Row(children: [
+      const Text('🎯 Objectif/jour',
+          style: TextStyle(
+              color: Colors.white70,
+              fontSize: 12,
+              fontWeight: FontWeight.w700)),
+      const Spacer(),
+      btn(Icons.remove_rounded, () => _setGoalMin(a, a.goalMin - 15)),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Text(_fmtHM(a.goalMin),
+            style: TextStyle(
+                color: col, fontWeight: FontWeight.w900, fontSize: 15)),
+      ),
+      btn(Icons.add_rounded, () => _setGoalMin(a, a.goalMin + 15)),
+    ]);
+  }
+
+  // Change l'objectif/jour par pas de 15 min, persiste, et rafraîchit le monde
+  // (les scorpions/PV dépendent de la cible).
+  void _setGoalMin(Activity a, int v) {
+    final nv = v < 0 ? 0 : (v > 24 * 60 ? 24 * 60 : v);
+    if (nv == a.goalMin) return;
+    a.goalMin = nv;
+    sync.saveActivity(a);
+    _populateV2Calendar();
+    _populateV2Gardens();
+    if (mounted) setState(() {});
   }
 
   // Section « Actions » d'une activité-temps : actions PROPRES (créées sur place,
@@ -4791,6 +4906,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 ),
               ]),
             ),
+            _parcheminMissionBanner(pa.domainId),
             Expanded(
               child: projs.isEmpty
                   ? const Center(
@@ -4820,6 +4936,39 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           ]),
         ),
       ),
+    );
+  }
+
+  // Bande MISSION en tête du parchemin : l'écart hebdo du domaine (= les petites
+  // araignées mobiles). Dynamique : baisse au fil des validations.
+  Widget _parcheminMissionBanner(String dom) {
+    final gap = _domainMissionGap(dom);
+    if (gap <= 0) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        color: const Color(0xFF14241A),
+        child: const Text(
+            '✅ Aucune mission — tu tiens ton rythme de la semaine dernière.',
+            style: TextStyle(color: Color(0xFF8FD9B6), fontSize: 11.5)),
+      );
+    }
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      color: _kEnemy.withOpacity(.16),
+      child: Row(children: [
+        const Text('🎯', style: TextStyle(fontSize: 15)),
+        const SizedBox(width: 7),
+        Expanded(
+          child: Text(
+              'Mission — rattrape ton écart hebdo : $gap validation(s) de retard sur '
+              'le même jour la semaine dernière. Valide tes routines en retard pour '
+              'chasser les araignées (chaque rattrapage = 1 shuriken).',
+              style: const TextStyle(
+                  color: Colors.white, fontSize: 11.5, height: 1.25)),
+        ),
+      ]),
     );
   }
 
@@ -6049,16 +6198,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     return a.charger + a.reserve;
   }
 
-  // Solde de temps signé en h/min : +90 → « +1h30 », -50 → « -50min », +120 → « +2h ».
-  static String _fmtDelta(int min) {
-    final sign = min >= 0 ? '+' : '-';
-    final m = min.abs();
-    if (m >= 60) {
-      final h = m ~/ 60, mm = m % 60;
-      return mm == 0 ? '$sign${h}h' : '$sign${h}h${mm.toString().padLeft(2, '0')}';
+  // Durée en h/min : 90 → « 1h30 », 50 → « 50min », 120 → « 2h ».
+  static String _fmtHM(int min) {
+    if (min >= 60) {
+      final h = min ~/ 60, mm = min % 60;
+      return mm == 0 ? '${h}h' : '${h}h${mm.toString().padLeft(2, '0')}';
     }
-    return '$sign${m}min';
+    return '${min}min';
   }
+
+  // Solde de temps signé : +90 → « +1h30 », -50 → « -50min ».
+  static String _fmtDelta(int min) =>
+      (min >= 0 ? '+' : '-') + _fmtHM(min.abs());
 
   // Pastille de SOLDE de temps (activité‑temps) : vert si en avance, rouge si en retard.
   Widget _soldeBadge(int deltaMin, double inner) {
@@ -6072,9 +6223,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         borderRadius: BorderRadius.circular(5),
         border: Border.all(color: color.withOpacity(.7), width: 0.8),
       ),
-      child: Text('⏱${_fmtDelta(deltaMin)}',
+      child: Text(_fmtDelta(deltaMin),
           style: TextStyle(
-              fontSize: inner * 0.22,
+              fontSize: inner * 0.34, // plus gros (horloge retirée)
               height: 1,
               fontWeight: FontWeight.w900,
               color: color)),
@@ -8508,6 +8659,24 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       await _onParchemin(x, y);
       return;
     }
+    // Pastille de SOLDE de temps (case munitions d'une activité-temps) → dashboard
+    // direct (graphe semaine + édition de la cible), comme la rampe : sans marcher
+    // dessus.
+    final solAid = _v2LaunchPadActivityId[id];
+    if (solAid != null) {
+      final dom = _domainAtTileV2(x, y);
+      if (dom != null) {
+        setState(() {
+          _gardenPanel = (
+            domainId: dom,
+            mode: 'routineDash',
+            laneId: solAid,
+            pestType: null,
+          );
+        });
+      }
+      return;
+    }
     // Rampe de tir ☢️ → séquence canon (marche, spin, lève, tire si flammes) puis
     // dashboard de la lane.
     if (_v2LaunchPads.contains(id)) {
@@ -8988,9 +9157,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                             width: _kV2Slot,
                             height: _kV2Slot,
                             child: Center(
-                                child: Text('🕷️',
-                                    style: TextStyle(
-                                        fontSize: _kV2Slot * 0.42))),
+                                child: Tooltip(
+                                  message: _spiderTooltip(s.domainId),
+                                  child: Text('🕷️',
+                                      style: TextStyle(
+                                          fontSize: _kV2Slot * 0.42)),
+                                )),
                           ),
                       // Shurikens d'araignée en vol (spin continu).
                       for (final shk in _gardenShk)
@@ -9366,8 +9538,37 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       child = Text('🕷️', style: TextStyle(fontSize: inner * 0.75));
     }
     // Parchemin 📜 (au-dessus de la 1ʳᵉ tourelle) : ouvre le grand dashboard projets.
+    // Pastille 🎯N si le domaine a des MISSIONS (écart hebdo > 0) → « va voir ».
     if (_v2Parchemins.containsKey(id)) {
-      child = Text('📜', style: TextStyle(fontSize: inner * 0.62));
+      final missGap = _domainMissionGap(_v2Parchemins[id]!);
+      final scroll = Text('📜', style: TextStyle(fontSize: inner * 0.62));
+      child = missGap <= 0
+          ? scroll
+          : Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                scroll,
+                Positioned(
+                  right: -3,
+                  top: -3,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 3, vertical: 0.5),
+                    decoration: BoxDecoration(
+                      color: _kEnemy,
+                      borderRadius: BorderRadius.circular(7),
+                    ),
+                    child: Text('🎯$missGap',
+                        style: TextStyle(
+                            fontSize: inner * 0.2,
+                            height: 1,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white)),
+                  ),
+                ),
+              ],
+            );
     }
     // Clone FANTÔME (transparent) : termine la cinématique canon après la reprise de
     // main du user. Masqué sous l'avatar réel s'ils tombent sur la même case.
