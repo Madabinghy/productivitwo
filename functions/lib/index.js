@@ -396,6 +396,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                         tools_1.GET_DAY_SCHEDULE_TOOL, tools_1.SCHEDULE_DAY_TOOL,
                         tools_1.PLAN_DAY_TOOL, tools_1.PLAN_WEEK_TOOL, tools_1.SYNC_CALENDAR_TOOL,
                         tools_1.ADD_TASK_TOOL, tools_1.UPDATE_TASK_TOOL, tools_1.MARK_ACTION_DONE_TOOL,
+                        tools_1.LINK_ACTION_TO_ACTIVITY_TOOL, tools_1.ADD_ACTIVITY_ACTION_TOOL,
                         tools_1.LOG_ROUTINE_HIT_TOOL, tools_1.MARK_BLOCK_DONE_TOOL,
                     ],
                 },
@@ -537,6 +538,12 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                 }
                 else if (toolName === "mark_action_done") {
                     text = await (0, execute_1.executeMarkActionDone)(uid, args.projectId, args.taskId, args.actionId, args.done);
+                }
+                else if (toolName === "link_action_to_activity") {
+                    text = await (0, execute_1.executeLinkActionToActivity)(uid, args.projectId, args.taskId, args.actionId, args.activityId);
+                }
+                else if (toolName === "add_activity_action") {
+                    text = await (0, execute_1.executeAddActivityAction)(uid, args.activityId, args.title);
                 }
                 else if (toolName === "log_routine_hit") {
                     text = await (0, execute_1.executeLogRoutineHit)(uid, args.activityId, args.delta === undefined ? 1 : args.delta);

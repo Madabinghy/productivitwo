@@ -318,13 +318,14 @@ Future<void> showActivitySheet(
                 if (!a.isHabit) ...[
                   const SizedBox(height: 18),
                   StatefulBuilder(builder: (ctx2, setLocal) {
+                    final own = logic.ownActionsOf(a.id);
                     final linked = logic.actionsLinkedTo(a.id);
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(children: [
                           Expanded(
-                            child: Text('🔗 Actions liées',
+                            child: Text('✅ Actions',
                                 style: TextStyle(
                                     color: color,
                                     fontWeight: FontWeight.w800,
@@ -344,14 +345,90 @@ Future<void> showActivitySheet(
                             icon: const Icon(Icons.add_link, size: 16),
                             label: const Text('Lier'),
                           ),
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            icon: Icon(Icons.add, size: 20, color: color),
+                            tooltip: 'Créer une action',
+                            onPressed: () async {
+                              final title = await _promptActionTitle(
+                                  ctx2, 'Nouvelle action', '');
+                              if (title == null) return;
+                              logic.addOwnAction(a.id, title);
+                              setLocal(() {});
+                            },
+                          ),
                         ]),
-                        if (linked.isEmpty)
-                          Text('Aucune action liée.',
+                        if (own.isEmpty && linked.isEmpty)
+                          Text('Aucune action — ＋ pour en créer, 🔗 pour en lier.',
                               style: TextStyle(
                                   color: cs.onSurface.withOpacity(.4),
-                                  fontSize: 12))
-                        else
-                          for (final e in linked)
+                                  fontSize: 12)),
+                        // Actions PROPRES de l'activité (créées sur place, sans tâche).
+                        for (final act in own)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 2),
+                            child: Row(children: [
+                              InkWell(
+                                onTap: () {
+                                  logic.toggleOwnAction(a.id, act.id);
+                                  setLocal(() {});
+                                },
+                                child: Icon(
+                                    act.done
+                                        ? Icons.check_circle
+                                        : Icons.radio_button_unchecked,
+                                    size: 15,
+                                    color: act.done
+                                        ? const Color(0xFF4CD787)
+                                        : cs.onSurface.withOpacity(.3)),
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: InkWell(
+                                  onTap: () async {
+                                    final title = await _promptActionTitle(
+                                        ctx2, 'Renommer l\'action', act.title);
+                                    if (title == null) return;
+                                    logic.renameOwnAction(a.id, act.id, title);
+                                    setLocal(() {});
+                                  },
+                                  child: Text(act.title,
+                                      style: TextStyle(
+                                          fontSize: 12.5,
+                                          decoration: act.done
+                                              ? TextDecoration.lineThrough
+                                              : null,
+                                          color: act.done
+                                              ? cs.onSurface.withOpacity(.4)
+                                              : cs.onSurface)),
+                                ),
+                              ),
+                              if (!act.done)
+                                IconButton(
+                                  visualDensity: VisualDensity.compact,
+                                  icon: Icon(Icons.play_circle_fill,
+                                      color: color, size: 22),
+                                  tooltip: 'Lancer le chrono',
+                                  onPressed: () {
+                                    logic.start(a.id, actionId: act.id);
+                                    Navigator.pop(ctx);
+                                  },
+                                ),
+                              IconButton(
+                                visualDensity: VisualDensity.compact,
+                                icon: Icon(Icons.close,
+                                    size: 16,
+                                    color: cs.onSurface.withOpacity(.3)),
+                                tooltip: 'Supprimer',
+                                onPressed: () {
+                                  logic.removeOwnAction(a.id, act.id);
+                                  setLocal(() {});
+                                },
+                              ),
+                            ]),
+                          ),
+                        // Actions de projet LIÉES (TaskAction.linkedActivityId).
+                        for (final e in linked)
                             Padding(
                               padding: const EdgeInsets.symmetric(vertical: 2),
                               child: Row(children: [
@@ -462,4 +539,35 @@ Future<({Project project, TaskAction action})?> _pickUnlinkedAction(
       ),
     ),
   );
+}
+
+// Saisie du titre d'une action propre (création / renommage).
+Future<String?> _promptActionTitle(
+    BuildContext context, String title, String initial) async {
+  final ctrl = TextEditingController(text: initial);
+  ctrl.selection =
+      TextSelection(baseOffset: 0, extentOffset: initial.length);
+  final res = await showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(title),
+      content: TextField(
+        controller: ctrl,
+        autofocus: true,
+        maxLines: null,
+        textCapitalization: TextCapitalization.sentences,
+        decoration: const InputDecoration(hintText: 'Décris l\'action…'),
+        onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+        FilledButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            child: const Text('OK')),
+      ],
+    ),
+  );
+  final v = res?.trim();
+  return (v == null || v.isEmpty) ? null : v;
 }

@@ -42,7 +42,7 @@ lib/
 | Classe | Collection Firestore | Notes |
 |--------|----------------------|-------|
 | `Domain` | `domains` | Domaine de vie (Santé, Travail…) |
-| `Activity` | `activities` | Tracking temps (`type: time`) ou fréquence (`type: habit`) |
+| `Activity` | `activities` | Tracking temps (`type: time`) ou fréquence (`type: habit`) ; `ownActions: TaskAction[]` = actions propres (sans tâche/projet), chrono ciblé via `Session.actionId` |
 | `DayBlock` | `blocks` | Blocs de journée (Matin, Midi, Soir…) |
 | `Session` | `sessions` | Session de temps loggué |
 | `HabitHit` | `habitHits` | Incrément de routine |
@@ -80,11 +80,15 @@ DailySchedule {
 ScheduleBlock {
   id, startTime ("HH:mm"), durationMin,
   title, category ("project"|"routine"|"personal"|"break"),
-  projectId?, taskId?, activityId?,   ← liens vers les objets existants
+  projectId?, taskId?, activityId?, actionId?,   ← liens vers les objets existants
   status: "pending" | "done" | "skipped" | "deleted",
   doneAt?
 }
 ```
+
+`actionId?` = action ciblée par le bloc (action PROPRE d'une activité avec son `activityId`, OU
+sous-action d'une tâche avec `projectId`+`taskId`). Lancer le bloc (▶) démarre un chrono **ciblé**
+(`logic.start(activityId, taskId:, actionId:)` → `Session.actionId`).
 
 **Soft-delete des blocs** : swipe dans l'app → `status: "deleted"` (jamais retiré du tableau).
 `get_day_schedule` affiche les blocs supprimés avec `❌ [supprimé — ne pas recréer]` pour que
@@ -92,7 +96,9 @@ Claude ne les recrée pas lors d'une régénération.
 
 **Outils MCP** :
 - `get_day_schedule(date)` — lit le programme du jour
-- `schedule_day(date, blocks[])` — crée ou remplace le programme entier
+- `schedule_day(date, blocks[])` — crée ou remplace le programme entier (un bloc peut porter `actionId` → chrono ciblé)
+- `add_activity_action(activityId, title)` — crée une **action propre** (`Activity.ownActions`) sur une activité-temps, programmable ensuite via `schedule_day` (`activityId`+`actionId`)
+- `link_action_to_activity(projectId, taskId, actionId, activityId)` — associe une sous-action de tâche à une activité-temps (`TaskAction.linkedActivityId`) → chrono ciblé. L'IA le **propose** quand une action n'est pas déjà liée et qu'une activité-temps du même domaine existe
 - `plan_day(date?, startHour?, endHour?, syncToCalendar?)` — agrège user context + schedule existant + projets actifs en un appel ; retourne le contexte consolidé + workflow pour générer le programme et le syncer dans Google Calendar
 - `plan_week(startDate?, syncToCalendar?)` — idem sur 5 jours ouvrés (défaut : lundi prochain)
 - `sync_calendar(date?)` — lit le programme existant et retourne les instructions GCal précises (delete + create_event avec colorId et tag `source: productivitwo`)

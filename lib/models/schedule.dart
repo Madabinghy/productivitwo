@@ -39,6 +39,7 @@ class ScheduleBlock {
   String? projectId;
   String? taskId;
   String? activityId;
+  String? actionId; // action ciblée (TaskAction propre OU action de projet)
   String status;      // pending | done | skipped
   DateTime? doneAt;
   bool challenge;     // bloc né d'un « Challenge me » programmé (badge 🔥 + streak)
@@ -53,6 +54,7 @@ class ScheduleBlock {
     this.projectId,
     this.taskId,
     this.activityId,
+    this.actionId,
     this.status = 'pending',
     this.doneAt,
     this.challenge = false,
@@ -69,6 +71,7 @@ class ScheduleBlock {
         'projectId': projectId,
         'taskId': taskId,
         'activityId': activityId,
+        'actionId': actionId,
         'status': status,
         'doneAt': doneAt?.toIso8601String(),
         'challenge': challenge,
@@ -84,6 +87,7 @@ class ScheduleBlock {
         projectId: j['projectId'],
         taskId: j['taskId'],
         activityId: j['activityId'],
+        actionId: j['actionId'],
         status: j['status'] ?? 'pending',
         doneAt: _parseDateOrNull(j['doneAt']),
         challenge: j['challenge'] == true,

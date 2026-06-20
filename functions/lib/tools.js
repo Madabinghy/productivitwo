@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.PROPOSE_CHANGE_TOOL = exports.SWEEP_INBOX_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
+exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ADD_ACTIVITY_ACTION_TOOL = exports.LINK_ACTION_TO_ACTIVITY_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.PROPOSE_CHANGE_TOOL = exports.SWEEP_INBOX_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
 const GET_USER_CONTEXT_TOOL = {
     name: "get_user_context",
     description: "APPELLE CET OUTIL EN PREMIER dans toute conversation liée à la productivité. " +
@@ -714,6 +714,40 @@ const MARK_ACTION_DONE_TOOL = {
     },
 };
 exports.MARK_ACTION_DONE_TOOL = MARK_ACTION_DONE_TOOL;
+const LINK_ACTION_TO_ACTIVITY_TOOL = {
+    name: "link_action_to_activity",
+    description: "Associe une sous-action d'une tâche Gantt à une activité-temps (pose linkedActivityId). " +
+        "Le chrono lancé depuis cette action sera alors ciblé (le temps est loggué sur l'activité). " +
+        "À PROPOSER quand une action n'est PAS déjà liée à une activité et qu'une activité-temps du même " +
+        "domaine existe (vois activities + leur domainId via get_user_context). Ne ré-associe pas une action déjà liée.",
+    inputSchema: {
+        type: "object",
+        required: ["projectId", "taskId", "actionId", "activityId"],
+        properties: {
+            projectId: { type: "string", description: "id du projet (list_projects)" },
+            taskId: { type: "string", description: "id de la tâche (get_project)" },
+            actionId: { type: "string", description: "id de la sous-action à lier (get_project)" },
+            activityId: { type: "string", description: "id de l'activité-temps cible (get_user_context, même domaine de préférence)" },
+        },
+    },
+};
+exports.LINK_ACTION_TO_ACTIVITY_TOOL = LINK_ACTION_TO_ACTIVITY_TOOL;
+const ADD_ACTIVITY_ACTION_TOOL = {
+    name: "add_activity_action",
+    description: "Crée une action PROPRE sur une activité-temps : une sous-action qui appartient directement à " +
+        "l'activité (sans tâche/projet). Utile pour matérialiser une action récurrente ou ponctuelle liée " +
+        "à une activité, puis la PROGRAMMER via schedule_day (activityId + actionId retourné). " +
+        "N'utilise PAS cet outil pour une action qui relève d'un projet Gantt (utilise add_task/update_task).",
+    inputSchema: {
+        type: "object",
+        required: ["activityId", "title"],
+        properties: {
+            activityId: { type: "string", description: "id de l'activité-temps propriétaire (get_user_context)" },
+            title: { type: "string", description: "intitulé court et actionnable de l'action" },
+        },
+    },
+};
+exports.ADD_ACTIVITY_ACTION_TOOL = ADD_ACTIVITY_ACTION_TOOL;
 const LOG_ROUTINE_HIT_TOOL = {
     name: "log_routine_hit",
     description: "Incrémente (ou décrémente) d'une unité une routine (habit) pour aujourd'hui : ajoute ou " +
@@ -840,7 +874,8 @@ exports.SCHEDULE_DAY_TOOL = {
                         },
                         projectId: { type: "string", description: "id du projet Gantt lié (si category=project, obtenu via list_projects)" },
                         taskId: { type: "string", description: "id de la tâche Gantt liée (obtenu via get_project)" },
-                        activityId: { type: "string", description: "id de l'activité liée (si category=routine, obtenu via get_user_context)" },
+                        activityId: { type: "string", description: "id de l'activité liée (si category=routine, ou activité-temps d'une action propre)" },
+                        actionId: { type: "string", description: "id de l'action ciblée — action PROPRE d'une activité (avec son activityId) OU sous-action d'une tâche de projet (avec projectId+taskId). Le chrono lancé depuis ce bloc pointera sur cette action." },
                     },
                 },
             },

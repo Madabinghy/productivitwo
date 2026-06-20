@@ -30,6 +30,8 @@ exports.executePushGantt = executePushGantt;
 exports.executeAddTask = executeAddTask;
 exports.executeUpdateTask = executeUpdateTask;
 exports.executeMarkActionDone = executeMarkActionDone;
+exports.executeLinkActionToActivity = executeLinkActionToActivity;
+exports.executeAddActivityAction = executeAddActivityAction;
 exports.executeLogRoutineHit = executeLogRoutineHit;
 exports.executeMarkBlockDone = executeMarkBlockDone;
 exports.executeGetAssistantMessages = executeGetAssistantMessages;
@@ -282,15 +284,13 @@ async function executeGetUserContext(uid) {
         .map((d) => d.data())
         .filter((v) => !v.deleted)
         .map((v) => {
-        return {
-            id: v.id,
-            name: v.name,
-            type: v.type,
-            domainId: v.domainId,
-            goalMin: v.goalMin,
-            habitFreq: v.habitFreq,
-            habitTarget: v.habitTarget,
-        };
+        // Actions PROPRES de l'activité (TaskAction sans tâche/projet) — non faites.
+        const ownActions = Array.isArray(v.ownActions)
+            ? v.ownActions
+                .filter((a) => !(a === null || a === void 0 ? void 0 : a.done))
+                .map((a) => ({ id: a.id, title: a.title }))
+            : [];
+        return Object.assign({ id: v.id, name: v.name, type: v.type, domainId: v.domainId, goalMin: v.goalMin, habitFreq: v.habitFreq, habitTarget: v.habitTarget }, (ownActions.length > 0 ? { ownActions } : {}));
     });
     // ── Réalisé des 7 derniers jours ──────────────────────────────────────────
     // Taux de complétion des habitudes/routines (habitHits groupés par habitId)
@@ -385,6 +385,8 @@ async function executeGetUserContext(uid) {
             "CONVENTION CALENDRIER : quand tu crées un événement Google Calendar dans le cadre d'une session Productivitwo, ajoute ' - Productivitwo' à la fin du titre (ex: 'Séance musculation - Productivitwo'). Cela te permet d'identifier les events que tu peux modifier librement lors d'une réorganisation. Les events sans ' - Productivitwo' ont été créés par l'utilisateur ou hors contexte Productivitwo : ne les modifie pas sans demander confirmation explicite.",
             "FICHIERS DE TÂCHE : quand tu crées ou sauvegardes un document avec save_document, associe-le toujours à la tâche Gantt concernée via taskId (obtenu depuis get_project → tasks[].id). Choisis la category appropriée : 'programme' pour un plan structuré, 'brief' pour un cahier des charges, 'recherche' pour une analyse/veille, 'livrable' pour un output final, 'notes' pour des notes de travail. Avant de créer un nouveau document, vérifie via get_documents(taskId) si un document de même category existe déjà pour éviter les doublons — si oui, mets-le à jour via documentId.",
             "PRIORITÉ ABSOLUE : réponds d'abord à la demande de l'utilisateur. Ne fais jamais d'actions non demandées (schedule_day, push_assistant_message, modification Gantt…) avant d'avoir répondu. Les actions proactives viennent APRÈS la réponse, jamais à la place.",
+            "ACTIONS D'ACTIVITÉ : une activité-temps peut avoir ses propres actions (champ ownActions de chaque activité dans ce contexte) — des sous-actions sans tâche/projet. Tu peux en créer via add_activity_action(activityId, title) puis les PROGRAMMER dans schedule_day en passant activityId + actionId (le chrono du bloc sera ciblé sur l'action). Quand tu programmes une action concrète qui correspond à une activité-temps existante, préfère la rattacher (action propre) plutôt qu'un bloc vague.",
+            "LIER UNE ACTION À UNE ACTIVITÉ : quand tu vois une sous-action de tâche Gantt qui n'est PAS déjà liée à une activité (pas de linkedActivityId) et qu'une activité-temps du même domaine existe, PROPOSE à l'utilisateur de l'y associer via link_action_to_activity(projectId, taskId, actionId, activityId) — ainsi le temps passé dessus sera chronométré sur la bonne activité. Propose, n'impose pas ; ne touche pas à une action déjà liée.",
             "PROPOSITIONS DE FIN DE SESSION : après avoir terminé une action significative (programme créé, Gantt mis à jour, bilan fait, messages ORION programmés…), propose toujours 2 à 3 suites logiques sous forme de liste numérotée courte. " +
                 "Adapte les options à ce qui vient d'être fait. Exemples pertinents selon le contexte : " +
                 "• 'Programme ton plan du jour' (si pas encore fait aujourd'hui) " +
@@ -1024,6 +1026,69 @@ async function executeMarkActionDone(uid, projectId, taskId, actionId, done) {
     await ref.update({ tasks, updatedAt: db_1.FieldValue.serverTimestamp() });
     return `✅ Sous-action "${actionTitle}" ${done ? "marquée faite" : "démarquée"}.`;
 }
+// Associe une sous-action de tâche (TaskAction) à une activité-temps : pose
+// linkedActivityId → le chrono lancé depuis cette action est ciblé (la session
+// pointe dessus). À proposer quand une action n'est pas déjà liée et qu'une
+// activité-temps du même domaine existe.
+async function executeLinkActionToActivity(uid, projectId, taskId, actionId, activityId) {
+    var _a, _b, _c, _d;
+    const actSnap = await db_1.db.collection(`users/${uid}/activities`).doc(activityId).get();
+    if (!actSnap.exists)
+        return `Activité introuvable : ${activityId}`;
+    const actData = actSnap.data();
+    if (actData.deleted === true)
+        return `Activité supprimée : ${activityId}`;
+    if (actData.type !== "time")
+        return `L'activité "${(_a = actData.name) !== null && _a !== void 0 ? _a : activityId}" n'est pas une activité-temps — impossible de chronométrer une action dessus.`;
+    const ref = db_1.db.collection(`users/${uid}/projects`).doc(projectId);
+    const snap = await ref.get();
+    if (!snap.exists)
+        return `Projet introuvable : ${projectId}`;
+    const data = snap.data();
+    const rawTasks = (data.tasks || []);
+    const tasks = rawTasks.map((t) => JSON.parse(JSON.stringify(t, (_k, v) => v && typeof v === "object" && typeof v.toDate === "function" ? v.toDate().toISOString() : v)));
+    const taskIdx = tasks.findIndex((t) => t.id === taskId);
+    if (taskIdx === -1)
+        return `Tâche introuvable : ${taskId}`;
+    const actions = ((_b = tasks[taskIdx].actions) !== null && _b !== void 0 ? _b : []).slice();
+    const actionIdx = actions.findIndex((a) => a.id === actionId);
+    if (actionIdx === -1)
+        return `Sous-action introuvable : ${actionId}`;
+    actions[actionIdx] = Object.assign(Object.assign({}, actions[actionIdx]), { linkedActivityId: activityId });
+    tasks[taskIdx] = Object.assign(Object.assign({}, tasks[taskIdx]), { actions });
+    await ref.update({ tasks, updatedAt: db_1.FieldValue.serverTimestamp() });
+    const actionTitle = (_c = actions[actionIdx].title) !== null && _c !== void 0 ? _c : actionId;
+    return `🔗 Action "${actionTitle}" liée à l'activité "${(_d = actData.name) !== null && _d !== void 0 ? _d : activityId}" — le chrono lancé dessus sera ciblé.`;
+}
+// Crée une action PROPRE sur une activité (Activity.ownActions) : une TaskAction
+// qui appartient directement à l'activité, sans tâche/projet. Réutilisable ensuite
+// dans schedule_day (activityId + actionId) pour la programmer.
+async function executeAddActivityAction(uid, activityId, title) {
+    var _a;
+    if (!(title === null || title === void 0 ? void 0 : title.trim()))
+        return "Titre de l'action requis.";
+    const ref = db_1.db.collection(`users/${uid}/activities`).doc(activityId);
+    const snap = await ref.get();
+    if (!snap.exists)
+        return `Activité introuvable : ${activityId}`;
+    const data = snap.data();
+    if (data.deleted === true)
+        return `Activité supprimée : ${activityId}`;
+    const own = Array.isArray(data.ownActions)
+        ? data.ownActions.slice()
+        : [];
+    const action = {
+        id: (0, uuid_1.v4)(),
+        title: title.trim(),
+        done: false,
+        doneAt: null,
+        createdAt: new Date().toISOString(),
+        linkedActivityId: activityId,
+    };
+    own.push(action);
+    await ref.update({ ownActions: own });
+    return `✅ Action propre "${action.title}" créée sur "${(_a = data.name) !== null && _a !== void 0 ? _a : activityId}" (id: ${action.id}). Tu peux la programmer via schedule_day (activityId: ${activityId}, actionId: ${action.id}).`;
+}
 async function executeLogRoutineHit(uid, activityId, delta = 1) {
     var _a;
     if (!activityId)
@@ -1458,7 +1523,7 @@ async function executeScheduleDay(uid, date, blocks) {
     if (!(blocks === null || blocks === void 0 ? void 0 : blocks.length))
         return `Aucun bloc fourni — le programme n'a pas été enregistré.`;
     const normalizedBlocks = blocks.map((b) => {
-        var _a, _b, _c;
+        var _a, _b, _c, _d;
         return ({
             id: (0, uuid_1.v4)(),
             startTime: b.startTime,
@@ -1468,6 +1533,7 @@ async function executeScheduleDay(uid, date, blocks) {
             projectId: (_a = b.projectId) !== null && _a !== void 0 ? _a : null,
             taskId: (_b = b.taskId) !== null && _b !== void 0 ? _b : null,
             activityId: (_c = b.activityId) !== null && _c !== void 0 ? _c : null,
+            actionId: (_d = b.actionId) !== null && _d !== void 0 ? _d : null, // action ciblée (propre à une activité OU action de projet)
             status: "pending",
             doneAt: null,
         });

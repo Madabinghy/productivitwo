@@ -28,6 +28,7 @@ import {
   GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL,
   PLAN_DAY_TOOL, PLAN_WEEK_TOOL, SYNC_CALENDAR_TOOL,
   ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL,
+  LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL,
   LOG_ROUTINE_HIT_TOOL, MARK_BLOCK_DONE_TOOL,
 } from "./tools";
 import {
@@ -43,6 +44,7 @@ import {
   executeDeleteRoutine,
   executeArchiveProject, executeDeleteProject, executeListProjects, executeGetProject,
   executePushGantt, executeAddTask, executeUpdateTask, executeMarkActionDone,
+  executeLinkActionToActivity, executeAddActivityAction,
   executeLogRoutineHit, executeMarkBlockDone,
   executeGetDaySchedule, executeScheduleDay,
   executePlanDay, executePlanWeek, executeSyncCalendar,
@@ -410,6 +412,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL,
             PLAN_DAY_TOOL, PLAN_WEEK_TOOL, SYNC_CALENDAR_TOOL,
             ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL,
+            LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL,
             LOG_ROUTINE_HIT_TOOL, MARK_BLOCK_DONE_TOOL,
           ],
         },
@@ -518,6 +521,20 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             args.taskId as string,
             args.actionId as string,
             args.done as boolean,
+          );
+        } else if (toolName === "link_action_to_activity") {
+          text = await executeLinkActionToActivity(
+            uid,
+            args.projectId as string,
+            args.taskId as string,
+            args.actionId as string,
+            args.activityId as string,
+          );
+        } else if (toolName === "add_activity_action") {
+          text = await executeAddActivityAction(
+            uid,
+            args.activityId as string,
+            args.title as string,
           );
         } else if (toolName === "log_routine_hit") {
           text = await executeLogRoutineHit(

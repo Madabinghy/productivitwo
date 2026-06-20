@@ -844,6 +844,74 @@ class AppLogic {
     return out;
   }
 
+  // ---------- Actions « propres » d'une activité (sans tâche/projet) ----------
+
+  Activity? _activityById(String activityId) {
+    for (final a in state.activities) {
+      if (a.id == activityId) return a;
+    }
+    return null;
+  }
+
+  /// Actions propres (non supprimées) d'une activité, dans l'ordre de création.
+  List<TaskAction> ownActionsOf(String activityId) {
+    final a = _activityById(activityId);
+    if (a == null) return const [];
+    return List<TaskAction>.from(a.ownActions);
+  }
+
+  /// Retrouve (activité, action) pour une action propre par son id, partout.
+  ({Activity activity, TaskAction action})? ownActionById(String actionId) {
+    for (final a in state.activities) {
+      for (final act in a.ownActions) {
+        if (act.id == actionId) return (activity: a, action: act);
+      }
+    }
+    return null;
+  }
+
+  TaskAction? addOwnAction(String activityId, String title) {
+    final a = _activityById(activityId);
+    if (a == null) return null;
+    final action = TaskAction(title: title, linkedActivityId: activityId);
+    a.ownActions.add(action);
+    onChange();
+    return action;
+  }
+
+  void renameOwnAction(String activityId, String actionId, String newTitle) {
+    final a = _activityById(activityId);
+    if (a == null) return;
+    for (final act in a.ownActions) {
+      if (act.id == actionId) {
+        act.title = newTitle;
+        onChange();
+        return;
+      }
+    }
+  }
+
+  void toggleOwnAction(String activityId, String actionId, [bool? value]) {
+    final a = _activityById(activityId);
+    if (a == null) return;
+    for (final act in a.ownActions) {
+      if (act.id == actionId) {
+        final next = value ?? !act.done;
+        act.done = next;
+        act.doneAt = next ? DateTime.now() : null;
+        onChange();
+        return;
+      }
+    }
+  }
+
+  void removeOwnAction(String activityId, String actionId) {
+    final a = _activityById(activityId);
+    if (a == null) return;
+    a.ownActions.removeWhere((act) => act.id == actionId);
+    onChange();
+  }
+
   List<String> checklistForHabit(String habitId) {
     return List<String>.from(
         state.habitChecklistByHabitId[habitId] ?? const <String>[]);

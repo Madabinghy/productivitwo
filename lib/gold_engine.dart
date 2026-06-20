@@ -861,6 +861,52 @@ extension GoldEngine on AppLogic {
     return n;
   }
 
+  // ── Compteur global de nuisibles (HUD du Monde web) ─────────────────────────
+
+  /// Totaux de nuisibles VIVANTS, tous domaines confondus :
+  /// 🕷️ spiders = jours-routine manqués (fenêtre 7j) · 🦂 scorpions = jours
+  /// d'activité-temps en retard sur la cible 7j · 🐍 snakes = tâches en retard.
+  ({int spiders, int scorpions, int snakes}) worldPestTotals() {
+    var spiders = 0, scorpions = 0, snakes = 0;
+    for (final a in state.activeActivities) {
+      if (a.isHabit) {
+        // Post-pardon de série (cohérent avec le combat).
+        for (final t in routineWaveTokens(a.id)) {
+          if (t.type == 'spider') spiders++;
+        }
+      } else if (a.goalMin > 0) {
+        for (final t in activityTimeTokens(a.id)) {
+          if (t.type == 'spider') scorpions++;
+        }
+      }
+    }
+    for (final e in backlogEnemies()) {
+      if (e.type == 'snake') snakes++;
+    }
+    return (spiders: spiders, scorpions: scorpions, snakes: snakes);
+  }
+
+  /// Jours « tenus » sur la fenêtre de 7 jours finissant à `end` (inclus), tous
+  /// domaines : routineDays = (routine, jour) où le quota est atteint ;
+  /// activityDays = (activité-temps, jour) où la cible du jour est atteinte.
+  /// Sert au comparatif hebdo du HUD (cette semaine vs la précédente).
+  ({int routineDays, int activityDays}) worldWeekWins(DateTime end) {
+    final day0 = DateTime(end.year, end.month, end.day);
+    var routineDays = 0, activityDays = 0;
+    for (var i = 0; i < 7; i++) {
+      final date = day0.subtract(Duration(days: i));
+      for (final a in state.activeActivities) {
+        if (a.isHabit) {
+          final q = dayQuotaFor(a);
+          if (q > 0 && habitValueOn(a.id, date) >= q) routineDays++;
+        } else if (a.goalMin > 0 && _minutesOnDay(a.id, date) >= a.goalMin) {
+          activityDays++;
+        }
+      }
+    }
+    return (routineDays: routineDays, activityDays: activityDays);
+  }
+
   /// Jours (0-6, lun→dim) de CETTE semaine où la routine est MANQUÉE (jours passés
   /// ou aujourd'hui seulement) = les nuisibles de sa ligne dans le calendrier.
   List<int> routineMissedThisWeek(String routineId) {
@@ -1111,6 +1157,43 @@ extension GoldEngine on AppLogic {
       if (habitValueOn(a.id, today.subtract(Duration(days: k))) >= quota) n++;
     }
     return n;
+  }
+
+  /// Tokens du COMBAT après « pardon de série » : une série de N élimine les N plus
+  /// vieilles araignées (converties en 🍃) — récompense de régularité. N'affecte PAS
+  /// l'économie de gold (routineWeekTokens reste la vérité brute) : sert à l'affichage
+  /// du combat, au ciblage du canon, au rattrapage et au compteur de nuisibles.
+  List<({String type, int hp})> routineWaveTokens(String routineId) {
+    final toks = List<({String type, int hp})>.from(routineWeekTokens(routineId));
+    var forgive = habitCurrentStreak(routineId);
+    if (forgive <= 0) return toks;
+    for (var j = 0; j < toks.length && forgive > 0; j++) {
+      if (toks[j].type == 'spider') {
+        toks[j] = (type: 'leaf', hp: 0);
+        forgive--;
+      }
+    }
+    return toks;
+  }
+
+  /// Index de la PREMIÈRE araignée (jour manqué le plus ANCIEN) restant APRÈS le
+  /// pardon de série, ou -1 si aucune. (index 0 = il y a 6 jours … 6 = aujourd'hui.)
+  int firstSpiderIndex(String routineId) {
+    final toks = routineWaveTokens(routineId);
+    for (var j = 0; j < toks.length; j++) {
+      if (toks[j].type == 'spider') return j;
+    }
+    return -1;
+  }
+
+  /// Jour à créditer quand on « tue » la première araignée d'une routine en combat :
+  /// le jour manqué le plus ANCIEN de la fenêtre 7j (rattrapage), ou aujourd'hui si
+  /// aucune araignée. Tuer la 1ʳᵉ fait avancer la vague (le suivant devient la cible).
+  DateTime routineCatchUpDay(String routineId) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final j = firstSpiderIndex(routineId);
+    return j < 0 ? today : today.subtract(Duration(days: 6 - j));
   }
 
   /// Tokens du tapis roulant pour les 7 DERNIERS jours (index 0 = il y a 6 jours,

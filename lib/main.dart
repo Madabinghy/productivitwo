@@ -18,6 +18,7 @@ import 'package:productivitwo_v1/widgets/habit_tile_full.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/widgets/goals_view.dart';
 import 'package:productivitwo_v1/widgets/new_routine_sheet.dart';
+import 'package:productivitwo_v1/widgets/pest_counter.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
 import 'package:productivitwo_v1/widgets/day_review_sheet.dart';
 import 'package:productivitwo_v1/widgets/productivity_stats_card.dart';
@@ -2720,7 +2721,8 @@ class _AppRootState extends State<AppRoot>
             return;
           }
         }
-        logic.start(block.activityId!);
+        // Bloc ciblant une action propre de l'activité → chrono ciblé (actionId).
+        logic.start(block.activityId!, actionId: block.actionId);
         setState(() {
           _focusProject = null;
           _focusTask = null;
@@ -2786,7 +2788,8 @@ class _AppRootState extends State<AppRoot>
       }
       return;
     }
-    logic.start(activity.id);
+    // Chrono ciblé sur la sous-action si le bloc en désigne une (actionId).
+    logic.start(activity.id, taskId: block.taskId, actionId: block.actionId);
     final focusActId = activity.id;
     setState(() {
       _focusProject = project;
@@ -6418,6 +6421,8 @@ class _AppRootState extends State<AppRoot>
 
         return ListView(
           children: [
+        // Compteur global de nuisibles (transposé du HUD web « Le Monde »).
+        PestCounterCard(logic: logic),
         SectionCard(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
           child: Builder(

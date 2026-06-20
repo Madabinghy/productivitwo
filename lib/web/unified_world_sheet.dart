@@ -227,6 +227,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   StreamSubscription<List<Project>>? _projSub;
   Timer? _timer;
 
+  // Minuteur (décompte) lancé depuis un dashboard : fin du décompte par activité +
+  // timer one-shot qui arrête la session (et valide la routine) à zéro. Le chrono
+  // « libre » n'a pas d'entrée ici.
+  final Map<String, DateTime> _dashMinuteurEnd = {};
+  final Map<String, Timer> _dashMinuteurTimers = {};
+
   // État de marche LOCAL (éphémère en T0).
   late Point<int> _pos;
   final Set<String> _revealed = {};
@@ -1862,6 +1868,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     for (final t in _actFireTimers.values) {
       t.cancel();
     }
+    for (final t in _dashMinuteurTimers.values) {
+      t.cancel();
+    }
     _timer?.cancel();
     _gameTicker?.dispose();
     _v2HCtrl.dispose();
@@ -2565,7 +2574,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         if (_v2UserControl || !mounted) break;
         final ids = _pendingByRoutine[lane.id];
         while (ids != null && ids.isNotEmpty && mounted && !_v2UserControl) {
-          _fireV2Bolt(_v2TodayCol(lane), lane.y, lane.turretX,
+          _fireV2Bolt(_v2FirstSpiderCol(lane), lane.y, lane.turretX,
               dur: _kV2ExploreBoltDur);
           _animatedHitIds.add(ids.removeAt(0));
           _persistAnimated();
@@ -2693,6 +2702,22 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   int _v2TodayCol(LaneRow lane) {
     final mirror = _v2TurretMirror['${lane.turretX}_${lane.y}'] ?? false;
     return mirror ? lane.dayX0 : lane.dayX0 + 6;
+  }
+
+  // Colonne de la PREMIÈRE araignée/scorpion (jour manqué le plus ANCIEN) d'une lane
+  // — la cible du canon. Respecte le miroir (ordre des jours inversé). Aucune
+  // araignée → on retombe sur la colonne d'aujourd'hui.
+  int _v2FirstSpiderCol(LaneRow lane) {
+    final mirror = _v2TurretMirror['${lane.turretX}_${lane.y}'] ?? false;
+    final toks = lane.isRoutine
+        ? logic.routineWaveTokens(lane.id) // post-pardon de série
+        : logic.activityTimeTokens(lane.id);
+    for (var j = 0; j < toks.length; j++) {
+      if (toks[j].type == 'spider') {
+        return mirror ? lane.dayX0 + (6 - j) : lane.dayX0 + j;
+      }
+    }
+    return _v2TodayCol(lane);
   }
 
   // Action mobile (routine validée / minuteur) → tir célébratoire de SA tourelle
@@ -3272,8 +3297,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             if (isRoutine)
               _laneBigCta(Icons.check_rounded, 'Valider une routine', col,
                   () => _dashValidateRoutine(a))
-            else
-              _laneTimerCta(a, col),
+            else ...[
+              _laneTimerControls(a, col),
+              const SizedBox(height: 10),
+              ..._laneTimerDefaultChips(a, col),
+            ],
             // Routine : activité liée (chrono ciblé) + minuteur par défaut.
             if (isRoutine) ..._laneRoutineLinkSection(a, col),
             const SizedBox(height: 8),
@@ -3288,18 +3316,21 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     ]);
   }
 
-  // Section « Actions liées » d'une activité-temps : chrono ciblé par action + ajout
-  // /retrait de lien (TaskAction.linkedActivityId).
+  // Section « Actions » d'une activité-temps : actions PROPRES (créées sur place,
+  // sans tâche) + actions de PROJET liées (TaskAction.linkedActivityId). Chrono ciblé
+  // par action dans les deux cas.
   List<Widget> _laneLinkedActionsSection(Activity a, Color col) {
+    final own = logic.ownActionsOf(a.id);
     final linked = logic.actionsLinkedTo(a.id);
     return [
       const Divider(color: Colors.white12, height: 20),
       Row(children: [
         Expanded(
-          child: Text('🔗 Actions liées',
+          child: Text('✅ Actions',
               style: TextStyle(
                   color: col, fontWeight: FontWeight.w900, fontSize: 12)),
         ),
+        // Lier une action de projet existante.
         InkWell(
           onTap: () => _linkActionPick(a, col),
           borderRadius: BorderRadius.circular(6),
@@ -3308,16 +3339,109 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             child: Icon(Icons.add_link, size: 18, color: col),
           ),
         ),
+        // Créer une action propre à l'activité.
+        InkWell(
+          onTap: () => _addOwnAction(a),
+          borderRadius: BorderRadius.circular(6),
+          child: Padding(
+            padding: const EdgeInsets.all(4),
+            child: Icon(Icons.add, size: 18, color: col),
+          ),
+        ),
       ]),
-      if (linked.isEmpty)
+      if (own.isEmpty && linked.isEmpty)
         const Padding(
           padding: EdgeInsets.symmetric(vertical: 6),
-          child: Text('Aucune action liée — touche ⨁ pour en lier une.',
+          child: Text('Aucune action — ＋ pour en créer une, 🔗 pour en lier une.',
               style: TextStyle(color: Colors.white38, fontSize: 11)),
-        )
-      else
-        for (final e in linked) _laneLinkedActionRow(a, e.project, e.action, col),
+        ),
+      for (final act in own) _laneOwnActionRow(a, act, col),
+      for (final e in linked) _laneLinkedActionRow(a, e.project, e.action, col),
     ];
+  }
+
+  // Ligne d'une action PROPRE : coche, renommage, chrono ciblé, suppression.
+  Widget _laneOwnActionRow(Activity a, TaskAction act, Color col) {
+    final open = _openSessionFor(a.id);
+    final running = open != null && open.actionId == act.id;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(children: [
+        InkWell(
+          onTap: () {
+            logic.toggleOwnAction(a.id, act.id);
+            sync.saveActivity(a);
+            if (mounted) setState(() {});
+          },
+          child: Icon(
+              act.done ? Icons.check_circle : Icons.radio_button_unchecked,
+              size: 16,
+              color: act.done ? const Color(0xFF4CD787) : Colors.white30),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: InkWell(
+            onTap: () => _renameOwnAction(a, act),
+            child: Text(act.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    color: act.done ? Colors.white38 : Colors.white,
+                    fontSize: 11.5,
+                    decoration:
+                        act.done ? TextDecoration.lineThrough : null)),
+          ),
+        ),
+        if (running) ...[
+          StreamBuilder<int>(
+            stream: Stream.periodic(const Duration(seconds: 1), (i) => i),
+            builder: (_, __) => Text(
+              _fmtChrono(DateTime.now().difference(open.startAt)),
+              style: TextStyle(
+                  color: col, fontWeight: FontWeight.w800, fontSize: 11),
+            ),
+          ),
+          const SizedBox(width: 4),
+          InkWell(
+            onTap: _dashStopTimer,
+            child: Icon(Icons.stop_circle, color: col, size: 20),
+          ),
+        ] else if (!act.done)
+          InkWell(
+            onTap: () => _dashStartTimer(a, col, actionId: act.id),
+            child: Icon(Icons.play_circle_fill,
+                color: col.withOpacity(.85), size: 20),
+          ),
+        const SizedBox(width: 2),
+        InkWell(
+          onTap: () {
+            logic.removeOwnAction(a.id, act.id);
+            sync.saveActivity(a);
+            if (mounted) setState(() {});
+          },
+          child: const Padding(
+            padding: EdgeInsets.all(2),
+            child: Icon(Icons.close, size: 14, color: Colors.white24),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Future<void> _addOwnAction(Activity a) async {
+    final title = await _promptActionTitle('Nouvelle action', '');
+    if (title == null) return;
+    logic.addOwnAction(a.id, title);
+    sync.saveActivity(a);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _renameOwnAction(Activity a, TaskAction act) async {
+    final title = await _promptActionTitle('Renommer l\'action', act.title);
+    if (title == null) return;
+    logic.renameOwnAction(a.id, act.id, title);
+    sync.saveActivity(a);
+    if (mounted) setState(() {});
   }
 
   // Persiste la checklist (template + coches) — le web ne pushe pas via onChange.
@@ -3366,31 +3490,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         )
       else ...[
         const SizedBox(height: 8),
-        Builder(builder: (_) {
-          final open = _openSessionFor(linkedAct!.id);
-          if (open != null) {
-            return Column(children: [
-              StreamBuilder<int>(
-                stream: Stream.periodic(const Duration(seconds: 1), (i) => i),
-                builder: (_, __) => Text(
-                  _fmtChrono(DateTime.now().difference(open.startAt)),
-                  style: TextStyle(
-                      color: col, fontWeight: FontWeight.w900, fontSize: 26),
-                ),
-              ),
-              Text('⏱️ ${linkedAct.name} en cours',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white54, fontSize: 11)),
-              const SizedBox(height: 8),
-              _laneBigCta(
-                  Icons.stop_rounded, 'Arrêter', col, () => _dashStopTimer()),
-            ]);
-          }
-          return _laneBigCta(Icons.play_arrow_rounded,
-              'Lancer le chrono · ${linkedAct.name}', col,
-              () => _dashStartTimer(linkedAct!, col));
-        }),
+        // Chrono libre OU minuteur sur l'activité liée — le minuteur valide la
+        // routine à zéro (comme le mode minuteur du combat mobile).
+        _laneTimerControls(linkedAct, col,
+            onMinuteurDone: () => _dashValidateRoutine(routine)),
         const SizedBox(height: 10),
         Text('MINUTEUR PAR DÉFAUT',
             style: TextStyle(
@@ -3416,6 +3519,24 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           ),
         ),
       ],
+    ];
+  }
+
+  // Sélecteur de durée du minuteur par défaut (timerMin) d'une activité-temps —
+  // même UI que le dashboard des routines.
+  List<Widget> _laneTimerDefaultChips(Activity a, Color col) {
+    return [
+      Text('MINUTEUR PAR DÉFAUT',
+          style: TextStyle(
+              color: Colors.white38,
+              fontSize: 9,
+              letterSpacing: 1.1,
+              fontWeight: FontWeight.w700)),
+      const SizedBox(height: 6),
+      Wrap(spacing: 6, runSpacing: 6, children: [
+        for (final m in const [0, 5, 10, 15, 25])
+          _laneTimerChip(a, m, (a.timerMin ?? 0) == m, col),
+      ]),
     ];
   }
 
@@ -3779,12 +3900,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
 
   // Actions du dashboard (partagées par la liste de domaine et le dashboard ciblé).
   Future<void> _dashValidateRoutine(Activity a) async {
-    final now = DateTime.now();
-    logic.incHabit(a.id, 1, now);
+    // Rattrapage : on crédite le jour manqué le plus ANCIEN (tue la 1ʳᵉ araignée).
+    final day = logic.routineCatchUpDay(a.id);
+    logic.incHabit(a.id, 1, day);
     if (mounted) setState(() {});
     // Le onChange du web ne pushe PAS → on persiste le hit + le compteur du jour à la
     // main dans Firestore pour que le téléphone voie l'incrément.
-    final key = yyyymmdd(now);
+    final key = yyyymmdd(day);
     HabitHit? hit;
     for (final h in logic.state.habitHits) {
       if (h.habitId == a.id) hit = h; // dernier hit de cette routine
@@ -3798,7 +3920,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     }
   }
 
-  void _dashStartTimer(Activity a, Color col, {String? taskId, String? actionId}) {
+  void _dashStartTimer(Activity a, Color col,
+      {String? taskId, String? actionId, String? toastLabel}) {
     // Le onChange du web ne pushe PAS → on persiste la session à la main dans
     // Firestore pour que le téléphone la voie (→ Live Activity). taskId/actionId =
     // tâche Gantt / action travaillée en parallèle (chrono lancé depuis un dashboard).
@@ -3811,8 +3934,60 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     if (logic.state.sessions.isNotEmpty) {
       sync.saveSession(logic.state.sessions.last); // nouvelle session ouverte
     }
-    _toast('⏱️ Chrono lancé — ${a.name}', col);
+    _toast(toastLabel ?? '⏱️ Chrono lancé — ${a.name}', col);
     if (mounted) setState(() {});
+  }
+
+  // Lance un MINUTEUR (décompte) sur une activité-temps : démarre la session
+  // (comme le chrono) + arme un timer one-shot qui l'arrête à zéro. onDone est
+  // appelé à zéro (ex. valider une routine liée). Durée : timerMin sinon picker.
+  Future<void> _dashStartMinuteur(Activity a, Color col,
+      {String? taskId, String? actionId, VoidCallback? onDone}) async {
+    int? minutes = a.timerMin;
+    if (minutes == null || minutes <= 0) {
+      minutes = await _pickMinuteurDuration();
+      if (minutes == null) return;
+    }
+    _dashStartTimer(a, col,
+        taskId: taskId,
+        actionId: actionId,
+        toastLabel: '⏳ Minuteur $minutes min — ${a.name}');
+    _dashMinuteurEnd[a.id] = DateTime.now().add(Duration(minutes: minutes));
+    _dashMinuteurTimers[a.id]?.cancel();
+    _dashMinuteurTimers[a.id] =
+        Timer(Duration(minutes: minutes), () => _dashMinuteurFinish(a.id, onDone));
+    if (mounted) setState(() {});
+  }
+
+  void _dashMinuteurFinish(String activityId, VoidCallback? onDone) {
+    _dashMinuteurEnd.remove(activityId);
+    _dashMinuteurTimers.remove(activityId);
+    final ended = logic.stopActive();
+    if (ended != null) sync.saveSession(ended);
+    if (onDone != null) onDone();
+    _toast('✅ Minuteur terminé', const Color(0xFF4CD787));
+    if (mounted) setState(() {});
+  }
+
+  Future<int?> _pickMinuteurDuration() {
+    return showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1410),
+        title: const Text('Durée du minuteur',
+            style: TextStyle(color: Colors.white, fontSize: 16)),
+        content: Wrap(spacing: 8, runSpacing: 8, children: [
+          for (final m in const [5, 10, 15, 25, 45, 60])
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, m), child: Text('$m min')),
+        ]),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
+        ],
+      ),
+    );
   }
 
   // Session de temps OUVERTE (chrono en cours) pour cette activité, ou null.
@@ -3904,31 +4079,186 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     );
   }
 
+  // ── Compteur global de nuisibles (sous la minimap) ───────────────────────────
+  // Pastille : 🕷️ routines · 🦂 activités · 🐍 tâches (tous domaines). Tap → stats.
+  Widget _worldPestHud() {
+    final t = logic.worldPestTotals();
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _showPestStats,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0E1714).withOpacity(.92),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: _kEnemy.withOpacity(.55), width: 1.2),
+            boxShadow: const [
+              BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 2)),
+            ],
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            _pestChip('🕷️', t.spiders),
+            const SizedBox(width: 8),
+            _pestChip('🦂', t.scorpions),
+            const SizedBox(width: 8),
+            _pestChip('🐍', t.snakes),
+            const SizedBox(width: 5),
+            const Icon(Icons.bar_chart_rounded, size: 14, color: Colors.white38),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _pestChip(String emoji, int n) =>
+      Row(mainAxisSize: MainAxisSize.min, children: [
+        Text(emoji, style: const TextStyle(fontSize: 13)),
+        const SizedBox(width: 3),
+        Text('$n',
+            style: const TextStyle(
+                color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13)),
+      ]);
+
+  // Panneau de stats des nuisibles : total vivant par type + comparatif des jours
+  // « tenus » de cette semaine vs les 7 jours précédents (progression).
+  void _showPestStats() {
+    final totals = logic.worldPestTotals();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final thisWk = logic.worldWeekWins(today);
+    final lastWk = logic.worldWeekWins(today.subtract(const Duration(days: 7)));
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1410),
+        title: const Text('Nuisibles du monde',
+            style: TextStyle(color: Colors.white, fontSize: 16)),
+        content: SizedBox(
+          width: 330,
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _pestStatRow('🕷️', 'Routines', totals.spiders,
+                    thisWk.routineDays, thisWk.routineDays - lastWk.routineDays,
+                    'jours tenus'),
+                const Divider(color: Colors.white12, height: 18),
+                _pestStatRow('🦂', 'Activités-temps', totals.scorpions,
+                    thisWk.activityDays,
+                    thisWk.activityDays - lastWk.activityDays, 'jours sur cible'),
+                const Divider(color: Colors.white12, height: 18),
+                _pestStatRow('🐍', 'Tâches en retard', totals.snakes, null, null,
+                    null),
+                const SizedBox(height: 10),
+                const Text(
+                    'Comparatif : cette semaine (7 j) vs les 7 jours précédents.',
+                    style: TextStyle(color: Colors.white38, fontSize: 11)),
+              ]),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Fermer')),
+        ],
+      ),
+    );
+  }
+
+  Widget _pestStatRow(String emoji, String label, int alive, int? weekWins,
+      int? delta, String? winsLabel) {
+    final deltaStr = delta == null ? null : (delta >= 0 ? '+$delta' : '$delta');
+    final deltaColor = delta == null
+        ? Colors.white54
+        : (delta > 0 ? _kFarm : (delta < 0 ? _kEnemy : Colors.white54));
+    return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+      Text(emoji, style: const TextStyle(fontSize: 22)),
+      const SizedBox(width: 12),
+      Expanded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13)),
+          if (weekWins != null && winsLabel != null)
+            Text('$weekWins $winsLabel cette semaine',
+                style: const TextStyle(color: Colors.white54, fontSize: 11)),
+        ]),
+      ),
+      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        Text('$alive',
+            style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 20)),
+        const Text('vivants',
+            style: TextStyle(color: Colors.white38, fontSize: 9)),
+        if (deltaStr != null)
+          Text('$deltaStr vs sem. dern.',
+              style: TextStyle(
+                  color: deltaColor,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 11)),
+      ]),
+    ]);
+  }
+
   // Appel à l'action « temps » du dashboard : chrono EN COURS (temps + arrêt) si une
   // session tourne déjà pour l'activité, sinon le bouton pour la lancer.
-  Widget _laneTimerCta(Activity a, Color col) {
-    final open = _openSessionFor(a.id);
+  // Contrôle de lancement d'une activité-temps : chrono libre OU minuteur (décompte).
+  // Si une session tourne, affiche le temps (compte ou décompte) + « Arrêter ».
+  // onMinuteurDone : exécuté quand le décompte atteint zéro (ex. valider une routine).
+  Widget _laneTimerControls(Activity timeAct, Color col,
+      {String? taskId, String? actionId, VoidCallback? onMinuteurDone}) {
+    final open = _openSessionFor(timeAct.id);
     if (open == null) {
-      return _laneBigCta(Icons.play_arrow_rounded, 'Lancer le minuteur', col,
-          () => _dashStartTimer(a, col));
+      return Column(children: [
+        _laneBigCta(Icons.play_arrow_rounded, 'Lancer le chrono', col,
+            () => _dashStartTimer(timeAct, col, taskId: taskId, actionId: actionId)),
+        const SizedBox(height: 6),
+        _laneBigCta(Icons.hourglass_bottom_rounded, 'Lancer le minuteur', col,
+            () => _dashStartMinuteur(timeAct, col,
+                taskId: taskId, actionId: actionId, onDone: onMinuteurDone)),
+      ]);
     }
+    final end = _dashMinuteurEnd[timeAct.id];
     return Column(children: [
       StreamBuilder<int>(
         stream: Stream.periodic(const Duration(seconds: 1), (i) => i),
-        builder: (_, __) => Text(
-          _fmtChrono(DateTime.now().difference(open.startAt)),
-          style: TextStyle(
-              color: col, fontWeight: FontWeight.w900, fontSize: 30),
-        ),
+        builder: (_, __) {
+          if (end != null) {
+            final left = end.difference(DateTime.now());
+            final shown = left.isNegative ? Duration.zero : left;
+            return Column(children: [
+              Text(_fmtChrono(shown),
+                  style: TextStyle(
+                      color: col, fontWeight: FontWeight.w900, fontSize: 30)),
+              const Text('⏳ minuteur en cours',
+                  style: TextStyle(color: Colors.white54, fontSize: 11)),
+            ]);
+          }
+          return Column(children: [
+            Text(_fmtChrono(DateTime.now().difference(open.startAt)),
+                style: TextStyle(
+                    color: col, fontWeight: FontWeight.w900, fontSize: 30)),
+            const Text('⏱️ chrono en cours',
+                style: TextStyle(color: Colors.white54, fontSize: 11)),
+          ]);
+        },
       ),
-      const Text('⏱️ en cours',
-          style: TextStyle(color: Colors.white54, fontSize: 11)),
       const SizedBox(height: 12),
       _laneBigCta(Icons.stop_rounded, 'Arrêter', col, () => _dashStopTimer()),
     ]);
   }
 
   void _dashStopTimer() {
+    for (final t in _dashMinuteurTimers.values) {
+      t.cancel();
+    }
+    _dashMinuteurTimers.clear();
+    _dashMinuteurEnd.clear();
     final ended = logic.stopActive();
     if (ended != null) sync.saveSession(ended);
     if (mounted) setState(() {});
@@ -4831,9 +5161,23 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       final turX = mirror ? x - 1 : x + 1;
       final turretId = '${turX}_$y';
       final outsideX = mirror ? x + 1 : x - 1; // côté extérieur : l'avatar attend là
-      final dayTargetX = mirror ? x - 8 : x + 8; // « aujourd'hui » visé
       // Lane servie + sa réserve de flammes (RÈGLE : pas de flamme → pas de tir).
       final lane = _laneAtTurret(dom, turX, y);
+      // Cible = PREMIÈRE araignée de la lane (jour manqué le plus ANCIEN) ; sinon
+      // repli sur « aujourd'hui ». Repère local : tour à turX, jours étalés vers
+      // l'extérieur (normal x+2..x+8 ; miroir x-2..x-8, aujourd'hui = la plus loin).
+      var dayTargetX = mirror ? x - 8 : x + 8;
+      if (lane != null) {
+        final toks = lane.isRoutine
+            ? logic.routineWaveTokens(lane.id) // post-pardon de série
+            : logic.activityTimeTokens(lane.id);
+        for (var j = 0; j < toks.length; j++) {
+          if (toks[j].type == 'spider') {
+            dayTargetX = mirror ? x - 2 - j : x + 2 + j;
+            break;
+          }
+        }
+      }
       final reserve = lane != null ? _laneFlameReserve(lane.id, lane.isRoutine) : 0;
       // — Phase 1 : arriver sur la case côté extérieur (avant de monter sur la rampe).
       await _v2StepTo(Point(outsideX, y));
@@ -5641,6 +5985,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         top: 10,
                         right: 10,
                         child: _miniMapV2(maxSide: widget.mobile ? 120 : 160)),
+                    // Compteur global de nuisibles, sous la minimap (cliquable → stats).
+                    Positioned(
+                        top: 10 + (widget.mobile ? 120 : 160) + 8,
+                        right: 10,
+                        child: _worldPestHud()),
                     // Chrono en cours : épinglé en bas, visible quel que soit le panneau.
                     Positioned(
                         left: 0,
@@ -7711,27 +8060,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _v2Parchemins.clear();
     final w = _wv2;
     if (w == null) return;
-    const wd = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
     for (final c in w.castles) {
-      // Parchemin 📜 : case AU-DESSUS de la première tourelle (rangée des libellés
-      // de jours, près du « S »).
+      // Parchemin 📜 : case AU-DESSUS de la première tourelle.
+      // (Libellés de jours retirés — on combat la vague d'araignées, pas un jour.)
       if (c.lanes.isNotEmpty) {
         _v2Parchemins['${c.lanes.first.turretX}_${c.headerY}'] = c.domainId;
-      }
-      for (var j = 0; j < 7; j++) {
-        final d = today.subtract(Duration(days: 6 - j));
-        // Miroir : ordre inversé (les nuisibles avancent de gauche → droite).
-        final col = c.mirror ? c.dayX0 + (6 - j) : c.dayX0 + j;
-        _v2DayLabel['${col}_${c.headerY}'] = wd[d.weekday - 1];
       }
     }
     for (final c in w.castles) {
       for (final lane in c.lanes) {
         final name = _activityName(lane.id);
         final toks = lane.isRoutine
-            ? logic.routineWeekTokens(lane.id)
+            ? logic.routineWaveTokens(lane.id) // post-pardon de série
             : logic.activityTimeTokens(lane.id);
         final charger =
             toks.where((t) => t.type == 'leaf' || t.type == 'flame').length;
