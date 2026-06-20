@@ -8594,6 +8594,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         // Cases du calendrier = murs infranchissables (jamais, même comme cible) :
         // on force l'avatar à passer par le centre de la map, pas derrière les routines.
         if (_v2DayCells.contains(nid)) continue;
+        // Tourelle = infranchissable elle aussi (jamais de raccourci derrière le mur
+        // du château / derrière le calendrier) → passage par la cour obligatoire.
+        if (_v2Turret.containsKey(nid)) continue;
+        // Parchemin = bloquant en traversée, MAIS franchissable comme CIBLE (l'avatar
+        // monte dessus pour le lire).
+        if (n != to && _v2Parchemins.containsKey(nid)) continue;
         // Un serpent bloque le passage (impossible d'enjamber) → l'avatar doit
         // faire le tour. Exception : la case CIBLE, pour aller la combattre.
         if (n != to && _v2Pests.containsKey(nid)) continue;
