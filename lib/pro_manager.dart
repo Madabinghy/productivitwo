@@ -26,7 +26,15 @@ class ProManager {
   // proUntil > maintenant — accordé depuis l'admin, ex. beta-testeurs).
   static bool _rcPro = false;
   static bool _grantPro = false;
-  static void _recompute() => notifier.value = _rcPro || _grantPro;
+  // Démo : la prévisu mobile web (?mobilepreview=true) force le Pro pour montrer
+  // toute l'UI Pro, sans dépendre d'un vrai abonnement/grant.
+  static bool _forcePro = false;
+  static void setForcePro(bool v) {
+    _forcePro = v;
+    _recompute();
+  }
+
+  static void _recompute() => notifier.value = _forcePro || _rcPro || _grantPro;
 
   static Future<void> init() async {
     if (kIsWeb) {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/main.dart' show ProductivitwoApp;
+import 'package:productivitwo_v1/pro_manager.dart';
 
 /// Page de DÉV : la vraie UI mobile native du « Monde » rendue dans un cadre
 /// format téléphone, sur le web. Accès via `?mobilepreview=true`.
@@ -21,6 +22,7 @@ class _MobilePreviewScreenState extends State<MobilePreviewScreen> {
   @override
   void initState() {
     super.initState();
+    ProManager.setForcePro(true); // démo : tout le contenu Pro débloqué
     _load();
   }
 
