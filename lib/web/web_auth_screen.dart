@@ -39,10 +39,16 @@ class _WebAuthScreenState extends State<WebAuthScreen> {
     }
     setState(() { _loading = true; _error = null; });
     try {
+      // Préserve le mode prévisu mobile à travers l'aller-retour du magic link :
+      // le lien doit ramener sur ?mobilepreview=true, sinon on retombe sur l'app web.
+      final inPreview = Uri.base.queryParameters['mobilepreview'] == 'true';
+      final continueUrl = inPreview
+          ? '${_kWebContinuationUrl}?mobilepreview=true'
+          : _kWebContinuationUrl;
       final res = await http.post(
         Uri.parse(_kSendMagicLinkUrl),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': email, 'continueUrl': _kWebContinuationUrl}),
+        body: jsonEncode({'email': email, 'continueUrl': continueUrl}),
       );
       if (res.statusCode != 200) {
         final body = jsonDecode(res.body) as Map<String, dynamic>;

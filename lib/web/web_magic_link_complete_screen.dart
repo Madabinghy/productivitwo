@@ -83,7 +83,10 @@ class _WebMagicLinkCompleteScreenState
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(kWebEmailPendingKey);
     // Retire mode/oobCode de l'URL pour qu'un refresh ne re-déclenche pas la complétion.
-    html.window.history.replaceState(null, '', '/');
+    // MAIS on préserve ?mobilepreview=true (sinon on retombe sur l'app web normale).
+    final keepPreview = Uri.base.queryParameters['mobilepreview'] == 'true';
+    html.window.history
+        .replaceState(null, '', keepPreview ? '/?mobilepreview=true' : '/');
     // Notifie _AuthGate pour qu'il se reconstruise et bascule vers WebHomeScreen.
     widget.onSignedIn?.call();
   }
