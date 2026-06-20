@@ -175,12 +175,12 @@ extension GoldEngineTime on AppLogic {
   /// célébration côté UI). [persist] persiste le crédit (ex. `sync.saveRedemption`) ;
   /// sur mobile le push de state s'en charge aussi.
   int? validateRoutineCombat(String routineId,
-      {void Function(Redemption)? persist}) {
+      {void Function(Redemption)? persist, bool reconquer = true}) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final target = routineCatchUpDay(routineId);
     incHabit(routineId, 1, today); // effort réel du jour (appelle onChange)
-    if (yyyymmdd(target) != yyyymmdd(today)) {
+    if (reconquer && yyyymmdd(target) != yyyymmdd(today)) {
       final r = Redemption(
         activityId: routineId,
         type: 'habit',

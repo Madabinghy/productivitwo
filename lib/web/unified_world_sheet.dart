@@ -2555,6 +2555,36 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     return null;
   }
 
+  // Lane-routine DÉFENDABLE la plus proche (braises dispo + araignée affichée) dans
+  // la direction `dir`, hors lanes déjà traitées ce tour.
+  LaneRow? _nextDefendableLane(int dir, Set<String> done) {
+    final w = _wv2;
+    if (w == null) return null;
+    LaneRow? best;
+    var bestDist = 1 << 30;
+    final curY = _posV2.y;
+    for (final c in w.castles) {
+      for (final l in c.lanes) {
+        if (!l.isRoutine || done.contains(l.id)) continue;
+        if (_availableEmbers(l.id) <= 0) continue;
+        if (_firstDisplayedSpiderCol(l) == null) continue;
+        final dy = l.y - curY;
+        if (dir < 0 && dy > 0) continue;
+        if (dir > 0 && dy < 0) continue;
+        final dist = dy.abs();
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = l;
+        }
+      }
+    }
+    return best;
+  }
+
+  // « Défendre le château » : DÉPENSE les braises (puissance de streak) sur le
+  // retard, plus ancien d'abord — 1 braise = 1 PV reconquis (crédit Redemption).
+  // Plafonné par _availableEmbers ET par le retard réel (pas de gaspillage).
+  // Interruptible : un clic ailleurs (_v2UserControl) stoppe et rend la main.
   Future<void> _v2DischargeBacklog() async {
     if (_v2AutoExploring ||
         _combatBusy ||
@@ -2564,49 +2594,55 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         widget.mobile) return;
     _v2AutoExploring = true;
     _v2UserControl = false;
+    final done = <String>{};
     try {
       var dir = -1; // vers le haut d'abord
       var flips = 0;
-      while (mounted && !_v2UserControl && _hasPending()) {
-        final lane = _nextPendingLane(dir);
+      while (mounted && !_v2UserControl) {
+        final lane = _nextDefendableLane(dir, done);
         if (lane == null) {
-          if (++flips > 2) break; // plus rien d'atteignable dans les 2 sens
+          if (++flips > 2) break; // plus rien de défendable dans les 2 sens
           dir = -dir;
           continue;
         }
         flips = 0;
+        final mirror = _v2TurretMirror['${lane.turretX}_${lane.y}'] ?? false;
         // Case de tir : côté jardin de la tourelle (droite en miroir, gauche sinon).
-        final padDx =
-            (_v2TurretMirror['${lane.turretX}_${lane.y}'] ?? false) ? 1 : -1;
+        final padDx = mirror ? 1 : -1;
         await _v2WalkTo(Point(lane.turretX + padDx, lane.y));
         if (_v2UserControl || !mounted) break;
-        final ids = _pendingByRoutine[lane.id];
-        while (ids != null && ids.isNotEmpty && mounted && !_v2UserControl) {
-          final col = _firstDisplayedSpiderCol(lane);
-          if (col == null) {
-            // Plus d'araignée affichée → on ne TIRE PAS dans le vide (pas de
-            // gaspillage). Les flammes restantes sont acquittées sans animation
-            // (le hit était réel, déjà reflété dans les données).
-            _animatedHitIds.addAll(ids);
-            ids.clear();
-            _persistAnimated();
-            break;
-          }
+        final now = DateTime.now();
+        final today = DateTime(now.year, now.month, now.day);
+        var embers = _availableEmbers(lane.id);
+        while (embers > 0 && mounted && !_v2UserControl) {
+          final target = logic.routineCatchUpDay(lane.id); // plus vieux jour en dette
+          if (yyyymmdd(target) == yyyymmdd(today)) break; // plus de retard → stop
+          // 1 braise dépensée = 1 crédit de reconquête (1 PV) sur ce jour.
+          final r = Redemption(
+            activityId: lane.id,
+            type: 'habit',
+            targetDate: yyyymmdd(target),
+            amount: 1,
+            sourceDate: yyyymmdd(today),
+          );
+          logic.state.redemptions.add(r); // optimiste → routineCatchUpDay suivant
+          sync.saveRedemption(r);
+          embers--;
+          // Colonne AFFICHÉE du jour visé → boulet + décrément de PV à l'écran.
+          final daysAgo = today.difference(target).inDays;
+          final j = 6 - daysAgo;
+          final col = mirror ? lane.dayX0 + (6 - j) : lane.dayX0 + j;
           _fireV2Bolt(col, lane.y, lane.turretX,
               dur: _kV2ExploreBoltDur, cellId: '${col}_${lane.y}');
-          _animatedHitIds.add(ids.removeAt(0));
-          _persistAnimated();
-          if (mounted) setState(() {}); // met à jour les flammes
-          // Attend la fin de l'animation (boulet arrivé) avant le tir suivant
-          // ou de repartir vers la prochaine routine.
+          if (mounted) setState(() {});
           await Future.delayed(Duration(
               milliseconds: (_kV2ExploreBoltDur * 1000).round() + 300));
         }
+        done.add(lane.id);
       }
     } finally {
       _v2AutoExploring = false;
-      // Resync AFFICHAGE ↔ DONNÉES : la fin de séquence reflète l'état réel (le
-      // refresh ne révélera plus d'écart).
+      // Resync AFFICHAGE ↔ DONNÉES en fin de séquence (refresh sans écart).
       if (mounted) setState(_populateV2Calendar);
     }
   }
@@ -3928,10 +3964,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
 
   // Actions du dashboard (partagées par la liste de domaine et le dashboard ciblé).
   Future<void> _dashValidateRoutine(Activity a) async {
-    // Modèle « plus ancien d'abord, propre » : vrai hit AUJOURD'HUI (relevé
-    // honnête) ; si une araignée plus ANCIENNE existe, crédit de RECONQUÊTE sur
-    // ce jour (jeu seul, pas d'or, sans falsifier) au lieu de l'ancien faux hit.
-    final lvl = logic.validateRoutineCombat(a.id, persist: sync.saveRedemption);
+    // Modèle BRAISES : la validation TIENT AUJOURD'HUI uniquement (vrai hit). La
+    // reconquête du passé n'est plus auto : elle se DÉPENSE au bouton « Défendre le
+    // château » (puissance = streak, cf. _availableEmbers).
+    final lvl = logic.validateRoutineCombat(a.id, reconquer: false);
     if (lvl != null && mounted) {
       _toast('⬆️ Standard monté à $lvl ! Tu défends plus haut ✨', _kBlue);
     }
@@ -5969,6 +6005,40 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         duration: const Duration(milliseconds: 1400)));
   }
 
+  // ── MODÈLE SALVE : le STREAK est la puissance de tir. Défendre tire UNE salve de
+  // `streak` tirs (5 streaks → 5 tirs d'affilée), 1 tir = 1 PV reconquis sur le
+  // plus vieux jour. UNE salve par jour. Une araignée = quota du jour en PV (rattraper
+  // un jour à 10 verres demande donc 10 tirs / 2 jours de streak 5…). Tenir la routine
+  // fait grandir la salve (6 demain) ; casser le streak la remet à 0 (le retard avance).
+  // Tirs encore dispo AUJOURD'HUI = streak − tirs déjà dépensés aujourd'hui.
+  int _availableEmbers(String routineId) {
+    final streak = logic.habitCurrentStreak(routineId);
+    final todayKey = yyyymmdd(DateTime.now());
+    var spent = 0;
+    for (final r in logic.state.redemptions) {
+      if (r.active &&
+          r.type == 'habit' &&
+          r.activityId == routineId &&
+          r.sourceDate == todayKey) {
+        spent += r.amount;
+      }
+    }
+    final e = streak - spent;
+    return e < 0 ? 0 : e;
+  }
+
+  // Total des braises dépensables (routines en retard) → libellé + visibilité bouton.
+  int _totalDefendEmbers() {
+    final today = yyyymmdd(DateTime.now());
+    var n = 0;
+    for (final a in logic.state.activeActivities) {
+      if (!a.isHabit) continue;
+      if (yyyymmdd(logic.routineCatchUpDay(a.id)) == today) continue; // pas de retard
+      n += _availableEmbers(a.id);
+    }
+    return n;
+  }
+
   // Bouton « Défendre le château 🔥 » : lance la séquence qui VIDE les chargeurs
   // (l'avatar marche de canon en canon et tire les flammes accumulées par l'effort).
   // Cliquer ailleurs pendant la séquence l'interrompt (_onTapV2 → _v2TakeControl).
@@ -5976,7 +6046,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     if (widget.mobile || _v2AutoExploring || _v2PanelOpen) {
       return const SizedBox.shrink();
     }
-    final n = _pendingByRoutine.values.fold<int>(0, (s, l) => s + l.length);
+    final n = _totalDefendEmbers();
     if (n <= 0) return const SizedBox.shrink();
     return Material(
       color: Colors.transparent,
@@ -9083,7 +9153,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           // Flammes chargées = tirs dus (hits faits hors‑web) que l'avatar viendra
           // décharger pendant l'exploration auto.
           final rid = _v2TurretRoutineId[id];
-          final pending = rid == null ? 0 : (_pendingByRoutine[rid]?.length ?? 0);
+          // Badge tourelle = STREAK = taille de la salve (puissance de tir). Visible
+          // en permanence pour que le user comprenne sa force de reconquête.
+          final streak = rid == null ? 0 : logic.habitCurrentStreak(rid);
           // ANGLE DE REPOS selon le moral : peu de nuisibles → canon HAUT (prêt, fier),
           // beaucoup → canon BAS (soumis). Pendant la cinématique, _cannonRaise prime.
           // Pieds DROITS (fixes) : seule la tête du canon se relève (cf. _v2TurretWidget).
@@ -9097,7 +9169,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           final turret = (_v2TurretMirror[id] ?? false)
               ? Transform.flip(flipX: true, child: turretW)
               : turretW;
-          child = pending <= 0
+          child = streak <= 0
               ? turret
               : Stack(
                   clipBehavior: Clip.none,
@@ -9114,7 +9186,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                           color: Colors.black.withOpacity(.55),
                           borderRadius: BorderRadius.circular(6),
                         ),
-                        child: Text('🔥$pending',
+                        child: Text('🔥$streak',
                             style: TextStyle(
                                 fontSize: inner * 0.26,
                                 height: 1,
