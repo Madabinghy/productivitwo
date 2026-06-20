@@ -1510,16 +1510,9 @@ class _DomainGameplayState extends State<_DomainGameplay>
               children: [
           () {
             final firing = _firingId == it.id;
-            // Boulet : de la tour (x≈30, y≈30) vers la PREMIÈRE araignée/scorpion
-            // (jour manqué le plus ancien) ; sinon la case d'aujourd'hui. En COURBE.
-            var tgtIdx = it.tokens.length - 1;
-            for (var i = 0; i < it.tokens.length; i++) {
-              if (it.tokens[i].type == 'spider') {
-                tgtIdx = i;
-                break;
-              }
-            }
-            final targetX = 60.0 + tgtIdx * (cell + 2) + cell / 2;
+            // SIMPLE : on ne combat QUE le nuisible du JOUR → le boulet vise l'unique
+            // case (aujourd'hui), collée à la tour. En COURBE.
+            final targetX = 60.0 + cell / 2;
             const fy0 = 30.0, fx0 = 30.0;
             const arc = 36.0; // hauteur du lobe (plus haut = trajectoire plus courbée)
             final u = _fireCtrl.value;
@@ -1577,8 +1570,9 @@ class _DomainGameplayState extends State<_DomainGameplay>
                       ),
                     ),
                   ),
-                  for (var d = 0; d < it.tokens.length; d++)
-                    _tokenCell(it, d, cell),
+                  // SIMPLE : seulement le nuisible du JOUR (dernier token = aujourd'hui).
+                  _tokenCell(it, it.tokens.length - 1, cell),
+                  const SizedBox(width: 24), // espace libéré (les 6 autres jours retirés)
                   // VISEUR puis sélecteur de MODE de tir, inline sur la même ligne.
                   _viseurCell(it, cell),
                   _modeCell(it, cell),
