@@ -155,6 +155,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   final Map<String, String> _v2DayTok = {}; // tileId → emoji du jour
   final Map<String, int> _v2DayCount = {}; // tileId → PV nuisible (compteur)
   final Map<String, double> _v2DayPv = {}; // tileId → ratio PV (1=plein→noir, 0=nettoyé)
+  final Map<String, int> _v2DayPvMax = {}; // tileId → PV max (pour recalcul du ratio à l'impact)
+  _CineFb? _v2ReloadFlame; // flamme de streak qui vole recharger le canon (avant le tir)
   // tileId tourelle → chargeur (0..7) + routine/activité (couleur 🕷️/🦂).
   final Map<String, ({int charger, bool isRoutine})> _v2Turret = {};
   final Map<String, bool> _v2TurretMirror = {}; // tileId tourelle → domaine en miroir ?
@@ -701,7 +703,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     if (!_combatBusy && !_traveling && _travelQueue.isNotEmpty) {
       _pumpTravelQueue();
     }
-    if (_v2Fbs.isNotEmpty || _v2Flashes.isNotEmpty) {
+    if (_v2Fbs.isNotEmpty || _v2Flashes.isNotEmpty || _v2ReloadFlame != null) {
       _simulateV2Cine(dt / 1000.0);
       _v2CineTick.value++; // repeint l'overlay seul (pas la grille)
     }
@@ -5185,14 +5187,20 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       // Cible = PREMIÈRE araignée de la lane (jour manqué le plus ANCIEN) ; sinon
       // repli sur « aujourd'hui ». Repère local : tour à turX, jours étalés vers
       // l'extérieur (normal x+2..x+8 ; miroir x-2..x-8, aujourd'hui = la plus loin).
-      var dayTargetX = mirror ? x - 8 : x + 8;
+      // On indexe par lane.dayX0 (repère EXACT des cases‑jour rendues) pour que le
+      // boulet tombe PILE sur la case et que le décrément de PV vise la bonne case.
+      var dayTargetX = lane != null ? _v2TodayCol(lane) : (mirror ? x - 8 : x + 8);
+      String? targetCellId = lane != null ? '${dayTargetX}_$y' : null;
+      int flameJ = -1; // 1ʳᵉ flamme de streak de la lane (munition de recharge — B)
       if (lane != null) {
         final toks = lane.isRoutine
             ? logic.routineWaveTokens(lane.id) // post-pardon de série
             : logic.activityTimeTokens(lane.id);
         for (var j = 0; j < toks.length; j++) {
+          if (flameJ < 0 && toks[j].type == 'flame') flameJ = j;
           if (toks[j].type == 'spider') {
-            dayTargetX = mirror ? x - 2 - j : x + 2 + j;
+            dayTargetX = mirror ? lane.dayX0 + (6 - j) : lane.dayX0 + j;
+            targetCellId = '${dayTargetX}_$y';
             break;
           }
         }
@@ -5224,11 +5232,22 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       if (flames > 0) {
         // Cadre la trajectoire tourelle → jour (sauf si le user a repris la main).
         if (!_canonDetached) _v2CenterOn(Point((turX + dayTargetX) ~/ 2, y));
+        // B — la FLAMME de streak part de sa case et vole RECHARGER le canon, puis
+        // c'est ce boulet qui frappe la 1ʳᵉ araignée (mise en scène « combat boss »).
+        if (flameJ >= 0 && lane != null) {
+          final flameX = mirror ? lane.dayX0 + (6 - flameJ) : lane.dayX0 + flameJ;
+          final muzzle = turX + (flameX >= turX ? 0.5 : -0.5);
+          _startReloadFlame(
+              flameX.toDouble(), y.toDouble(), muzzle.toDouble(), y.toDouble());
+          await Future.delayed(const Duration(milliseconds: 750));
+          if (!mounted) return;
+        }
         await Future.delayed(const Duration(milliseconds: 600)); // charge/visée
         final n = flames.clamp(1, 5);
         for (var i = 0; i < n; i++) {
           if (!mounted) return;
-          _fireV2Bolt(dayTargetX, y, turX, dur: 2.2); // boulet en arc + 💥 impact
+          // A — le boulet retire 1 PV À L'IMPACT sur la case ciblée (cellId).
+          _fireV2Bolt(dayTargetX, y, turX, dur: 2.2, cellId: targetCellId);
           await Future.delayed(const Duration(milliseconds: 320));
         }
         await Future.delayed(const Duration(milliseconds: 900));
@@ -8066,6 +8085,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _v2DayTok.clear();
     _v2DayCount.clear();
     _v2DayPv.clear();
+    _v2DayPvMax.clear();
     _v2Turret.clear();
     _v2TurretPests.clear();
     _v2TurretMirror.clear();
@@ -8133,6 +8153,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               pvMax = tgt > 0 ? tgt : t.hp;
             }
             _v2DayPv[id] = pvMax > 0 ? (t.hp / pvMax).clamp(0.0, 1.0) : 1.0;
+            _v2DayPvMax[id] = pvMax > 0 ? pvMax : t.hp;
           }
           _v2DayTurretX[id] = lane.turretX;
           _v2DayCells.add(id); // case calendrier = bloquante (passage central forcé)
@@ -8390,13 +8411,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // Cinématique du jour : la tourelle de la lane tire un boulet sur la case‑jour.
   // Un boulet tourelle → case (delay = échelonnement de la volée).
   void _fireV2Bolt(int dayX, int dayY, int turretX,
-      {double delay = 0, double dur = 2.2}) {
+      {double delay = 0, double dur = 2.2, String? cellId}) {
     final arc = ((dayX - turretX).abs() * 0.28).clamp(0.8, 3.0).toDouble();
     // Le boulet sort du BOUT du canon, côté cible (droite en normal, gauche en miroir).
     final muzzle = turretX + (dayX >= turretX ? 0.5 : -0.5);
     // Durée par défaut 2,2 s ; l'exploration auto passe une durée plus longue.
     final fb = _CineFb(dur, muzzle, dayY.toDouble(), dayX.toDouble(),
-        dayY.toDouble(), arc, 'v2');
+        dayY.toDouble(), arc, 'v2', cellId: cellId);
     fb.t = -delay; // tir différé (volée)
     _v2Fbs.add(fb);
     _v2CineTick.value++;
@@ -8443,16 +8464,48 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     }
   }
 
+  // B — lance la flamme de streak d'une case‑jour vers le BOUT du canon (recharge).
+  // Elle s'anime seule dans _simulateV2Cine ; l'appelant attend juste sa durée.
+  static const double _kReloadFlameDur = 0.7;
+  void _startReloadFlame(double fx, double fy, double tx, double ty) {
+    final arc = ((tx - fx).abs() * 0.3).clamp(0.6, 2.0).toDouble();
+    setState(() {
+      _v2ReloadFlame = _CineFb(
+          _kReloadFlameDur, fx, fy - 0.25, tx, ty - 0.25, arc, 'reload');
+    });
+  }
+
   void _simulateV2Cine(double dt) {
+    // B — la flamme de recharge progresse vers le canon ; à l'arrivée, étincelle.
+    final rf = _v2ReloadFlame;
+    if (rf != null) {
+      rf.t += dt / rf.dur;
+      if (rf.t >= 1.0) {
+        _v2Flashes.add((at: Offset(rf.tx, rf.ty), untilMs: _gameMs + 700));
+        _v2ReloadFlame = null;
+      }
+    }
+    var hitGrid = false;
     for (final fb in _v2Fbs) {
       fb.t += dt / fb.dur;
       if (fb.t >= 1.0 && !fb.dead) {
         fb.dead = true;
         _v2Flashes.add((at: Offset(fb.tx, fb.ty), untilMs: _gameMs + 1400));
+        // A — décrément LIVE du PV de la case ciblée : le noir RECULE, 💥 si mort.
+        final cid = fb.cellId;
+        if (cid != null && _v2DayCount.containsKey(cid)) {
+          final left = ((_v2DayCount[cid] ?? 0) - 1).clamp(0, 1 << 30).toInt();
+          _v2DayCount[cid] = left;
+          final mx = _v2DayPvMax[cid] ?? 1;
+          _v2DayPv[cid] = mx > 0 ? (left / mx).clamp(0.0, 1.0) : 0.0;
+          if (left <= 0) _v2DayTok[cid] = '💥';
+          hitGrid = true;
+        }
       }
     }
     _v2Fbs.removeWhere((fb) => fb.dead);
     _v2Flashes.removeWhere((f) => _gameMs >= f.untilMs);
+    if (hitGrid && mounted) setState(() {}); // repeint la grille (case touchée)
   }
 
   // Vitesses des araignées / shurikens d'écart (en cases par seconde).
@@ -8646,6 +8699,22 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     builder: (_, __) => Stack(children: [
                       for (final fb in _v2Fbs)
                         ..._fbWidgets(fb, _kV2Slot, _v2CenterD),
+                      // B — flamme de streak qui vole recharger le canon.
+                      if (_v2ReloadFlame != null)
+                        () {
+                          final ct = _v2CenterD(
+                              _v2ReloadFlame!.x, _v2ReloadFlame!.y);
+                          return Positioned(
+                            left: ct.dx - _kV2Slot / 2,
+                            top: ct.dy - _kV2Slot / 2,
+                            width: _kV2Slot,
+                            height: _kV2Slot,
+                            child: Center(
+                                child: Text('🔥',
+                                    style:
+                                        TextStyle(fontSize: _kV2Slot * 0.6))),
+                          );
+                        }(),
                       for (final f in _v2Flashes)
                         if (_gameMs < f.untilMs)
                           Positioned(
@@ -9360,8 +9429,10 @@ class _CineFb {
   double t = 0; // progression 0..1
   final double dur, fx, fy, tx, ty, arc;
   final String key;
+  final String? cellId; // case‑jour visée (V2) → décrément de PV à l'impact
   bool dead = false;
-  _CineFb(this.dur, this.fx, this.fy, this.tx, this.ty, this.arc, this.key);
+  _CineFb(this.dur, this.fx, this.fy, this.tx, this.ty, this.arc, this.key,
+      {this.cellId});
   // Position à un temps donné (lobe vers le HAUT = -y).
   double xAt(double u) => fx + (tx - fx) * u;
   double yAt(double u) => fy + (ty - fy) * u - arc * sin(pi * u);
