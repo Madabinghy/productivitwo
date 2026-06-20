@@ -2562,24 +2562,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // attend que le boulet ait atteint la routine avant d'enchaîner / de repartir).
   static const double _kV2ExploreBoltDur = 3.6; // s
 
-  // Colonne de la 1ʳᵉ araignée ENCORE AFFICHÉE (PV > 0) d'une lane — repère sur
-  // l'AFFICHAGE (_v2DayCount), pas les données : garantit que le boulet tombe sur
-  // ce que le user VOIT (les données peuvent déjà être en avance). Respecte le
-  // miroir. null = plus aucune araignée affichée dans la lane.
-  int? _firstDisplayedSpiderCol(LaneRow lane) {
-    final mirror = _v2TurretMirror['${lane.turretX}_${lane.y}'] ?? false;
-    for (var j = 0; j < 7; j++) {
-      final col = mirror ? lane.dayX0 + (6 - j) : lane.dayX0 + j;
-      if ((_v2DayCount['${col}_${lane.y}'] ?? 0) > 0) return col;
-    }
-    return null;
-  }
-
-  // Lane-routine DÉFENDABLE la plus proche (braises dispo + araignée affichée) dans
-  // la direction `dir`, hors lanes déjà traitées ce tour.
+  // Lane-routine DÉFENDABLE la plus proche (réserve dispo + backlog PASSÉ) dans la
+  // direction `dir`, hors lanes déjà traitées ce tour.
   LaneRow? _nextDefendableLane(int dir, Set<String> done) {
     final w = _wv2;
     if (w == null) return null;
+    final today = yyyymmdd(DateTime.now());
     LaneRow? best;
     var bestDist = 1 << 30;
     final curY = _posV2.y;
@@ -2587,7 +2575,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       for (final l in c.lanes) {
         if (!l.isRoutine || done.contains(l.id)) continue;
         if (_availableEmbers(l.id) <= 0) continue;
-        if (_firstDisplayedSpiderCol(l) == null) continue;
+        // RÈGLE : on ne défend QUE le PASSÉ. Une lane dont la seule araignée est
+        // AUJOURD'HUI n'est pas défendable — le streak ne sert QU'À la reconquête ;
+        // aujourd'hui se règle en FAISANT la routine (sinon le streak casse).
+        if (yyyymmdd(logic.routineCatchUpDay(l.id)) == today) continue;
         final dy = l.y - curY;
         if (dir < 0 && dy > 0) continue;
         if (dir > 0 && dy < 0) continue;
@@ -2660,7 +2651,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     var n = count;
     while (n > 0 && mounted && !_v2UserControl) {
       final target = logic.routineCatchUpDay(lane.id);
-      if (yyyymmdd(target) == yyyymmdd(today)) break; // plus de retard
+      // JAMAIS aujourd'hui : le streak ne reconquiert QUE le passé. Aujourd'hui se
+      // règle en FAISANT la routine (sinon le streak casse) — invariant clé.
+      if (yyyymmdd(target) == yyyymmdd(today)) break;
       final r = Redemption(
         activityId: lane.id,
         type: 'habit',
