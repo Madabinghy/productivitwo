@@ -10,6 +10,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter/services.dart'
     show KeyEvent, KeyDownEvent, KeyRepeatEvent, LogicalKeyboardKey;
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/build_info.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/territory.dart';
@@ -110,11 +111,25 @@ class _UnifiedWorldScreenState extends State<UnifiedWorldScreen> {
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: _kBg,
         body: SafeArea(
-          child: _UnifiedWorldView(
-              logic: widget.logic,
-              sync: widget.sync,
-              mobile: true,
-              embedded: true),
+          child: Stack(
+            children: [
+              _UnifiedWorldView(
+                  logic: widget.logic,
+                  sync: widget.sync,
+                  mobile: true,
+                  embedded: true),
+              // Badge de version (vérifier quelle build tourne en prod).
+              Positioned(
+                right: 6,
+                bottom: 4,
+                child: IgnorePointer(
+                  child: Text(kBuildLabel,
+                      style: const TextStyle(
+                          fontSize: 9, color: Color(0x55FFFFFF))),
+                ),
+              ),
+            ],
+          ),
         ),
       );
 }
@@ -2427,47 +2442,23 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       fresh.add(h);
     }
 
-    if (!_backlogProcessed) {
-      // Snapshot d'OUVERTURE : on accumule le BACKLOG (fenêtre 800 ms pour coalescer
-      // un éventuel cache offline), puis on déclenche l'exploration auto.
-      var added = false;
-      for (final h in fresh) {
-        final lane = _v2LaneOf(h.habitId);
-        if (lane == null || !lane.$2.isRoutine) {
-          _animatedHitIds.add(h.id); // non animable → marqué pour ne pas y revenir
-          continue;
-        }
-        (_pendingByRoutine[h.habitId] ??= []).add(h.id);
-        added = true;
-      }
-      if (added) _persistAnimated();
-      if (added && mounted) setState(() {});
-      _v2PrimeTimer?.cancel();
-      _v2PrimeTimer = Timer(const Duration(milliseconds: 800), () {
-        _backlogProcessed = true;
-        if (_hasPending()) _v2DischargeBacklog();
-      });
-      return;
-    }
-
-    // LIVE (web ouvert) : tir SUR PLACE immédiat, une animation par hit. SAUF si une
-    // action user est en cours (panneau ouvert / cine) → on PROVISIONNE la flamme sur
-    // le canon (🔥) ; l'avatar la déchargera quand il sera dispo.
-    var fired = false;
-    final busy = _v2PanelOpen || _canonCine;
+    // Tout hit du jour CHARGE le canon (flamme en réserve) — AUCUNE cinématique
+    // auto, ni à l'ouverture ni en live. L'avatar ne tire QUE sur le bouton
+    // « Défendre le château 🔥 » (cf. _v2DischargeBacklog).
+    var added = false;
     for (final h in fresh) {
       final lane = _v2LaneOf(h.habitId);
-      _animatedHitIds.add(h.id);
-      if (lane != null && lane.$2.isRoutine) {
-        if (busy) {
-          (_pendingByRoutine[h.habitId] ??= []).add(h.id); // flamme en réserve
-        } else {
-          _enqueueTravel(h.habitId); // file → séquence canon complète, sérialisée
-        }
-        fired = true;
+      if (lane == null || !lane.$2.isRoutine) {
+        _animatedHitIds.add(h.id); // non animable → marqué pour ne pas y revenir
+        continue;
       }
+      (_pendingByRoutine[h.habitId] ??= []).add(h.id); // charge le canon
+      added = true;
     }
-    if (fired) _persistAnimated();
+    if (added) {
+      _persistAnimated();
+      if (mounted) setState(() {});
+    }
   }
 
   // Routine flammée la plus proche de _posV2.y dans la direction `dir`
@@ -2647,13 +2638,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   }
 
   void _onTimerStart(String activityId) {
-    // 1ᵉʳ tir = cinématique (n'enlève rien), puis -1 PV toutes les 5 min.
-    _enqueueTravel(activityId, blank: true);
+    // Plus AUCUNE cinématique au lancement/pendant un minuteur : l'effort se
+    // contente de jouer ; le tir se fait au bouton « Défendre le château ».
     _actFireTimers[activityId]?.cancel();
-    _actFireTimers[activityId] = Timer.periodic(_kActFireEvery, (_) {
-      if (!mounted || !_runningActs.contains(activityId)) return;
-      _enqueueTravel(activityId, blank: false); // tir -1 PV
-    });
   }
 
   void _onTimerStop(String activityId) {
@@ -2683,9 +2670,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _combat = null;
       _parchemin = null;
     });
-    if (widget.mobile) return;
-    if (_travelQueue.isNotEmpty) _pumpTravelQueue();
-    if (_hasPending()) _v2DischargeBacklog();
+    // Plus de décharge auto à la fermeture d'un panneau : les flammes restent
+    // chargées sur les canons (le tir se fait au bouton « Défendre le château »).
   }
 
   Future<void> _pumpTravelQueue() async {
@@ -5215,7 +5201,6 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           }
         }
       }
-      final reserve = lane != null ? _laneFlameReserve(lane.id, lane.isRoutine) : 0;
       // — Phase 1 : arriver sur la case côté extérieur (avant de monter sur la rampe).
       await _v2StepTo(Point(outsideX, y));
       if (!mounted) return;
@@ -5238,18 +5223,21 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       // — Phase 3 : chargement/visée puis tir « mode combat » (volée vers le jour).
       // forceShots = une flamme vient D'ARRIVER (temps réel) → on la tire. Sinon (clic
       // manuel) on tire la RÉSERVE permanente — nulle = canon muet (règle générale).
-      final flames = forceShots ?? reserve;
+      // Tir SEULEMENT sur validation (forceShots != null). Monter sur la rampe ne
+      // fait que VISER (rampe qui tourne + canon levé, déjà joués ci-dessus) — plus
+      // de décharge de la réserve au simple passage sur la rampe.
+      final flames = forceShots ?? 0;
       if (flames > 0) {
         // Cadre la trajectoire tourelle → jour (sauf si le user a repris la main).
         if (!_canonDetached) _v2CenterOn(Point((turX + dayTargetX) ~/ 2, y));
-        // B — la FLAMME de streak part de sa case et vole RECHARGER le canon, puis
-        // c'est ce boulet qui frappe la 1ʳᵉ araignée (mise en scène « combat boss »).
+        // B — la FLAMME de streak QUITTE sa case (consommée) et vole RECHARGER le
+        // canon, puis c'est ce boulet qui frappe la 1ʳᵉ araignée (« combat boss »).
         if (flameJ >= 0 && laneRow != null) {
           final flameX =
               mirror ? laneRow.dayX0 + (6 - flameJ) : laneRow.dayX0 + flameJ;
           final muzzle = turX + (flameX >= turX ? 0.5 : -0.5);
-          _startReloadFlame(
-              flameX.toDouble(), y.toDouble(), muzzle.toDouble(), y.toDouble());
+          _startReloadFlame(flameX.toDouble(), y.toDouble(), muzzle.toDouble(),
+              y.toDouble(), '${flameX}_$y');
           await Future.delayed(const Duration(milliseconds: 750));
           if (!mounted) return;
         }
@@ -5955,6 +5943,50 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         duration: const Duration(milliseconds: 1400)));
   }
 
+  // Bouton « Défendre le château 🔥 » : lance la séquence qui VIDE les chargeurs
+  // (l'avatar marche de canon en canon et tire les flammes accumulées par l'effort).
+  // Cliquer ailleurs pendant la séquence l'interrompt (_onTapV2 → _v2TakeControl).
+  Widget _defendCastleButton() {
+    if (widget.mobile || _v2AutoExploring || _v2PanelOpen) {
+      return const SizedBox.shrink();
+    }
+    final n = _pendingByRoutine.values.fold<int>(0, (s, l) => s + l.length);
+    if (n <= 0) return const SizedBox.shrink();
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: _v2DischargeBacklog,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1C140A).withOpacity(.92),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: const Color(0xFFFFC83D), width: 1.5),
+            boxShadow: const [
+              BoxShadow(
+                  color: Color(0x66000000),
+                  blurRadius: 10,
+                  offset: Offset(0, 3)),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('🔥', style: TextStyle(fontSize: 18)),
+              const SizedBox(width: 8),
+              Text('Défendre le château · $n',
+                  style: const TextStyle(
+                      color: Color(0xFFFFC83D),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = _t, w = _w;
@@ -6045,6 +6077,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         right: 0,
                         bottom: 14,
                         child: Center(child: _runningChronoHud())),
+                    // Bouton « Défendre le château 🔥 » : vide les chargeurs (tir manuel).
+                    Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 58,
+                        child: Center(child: _defendCastleButton())),
                     if (_combat != null)
                       // Écran étroit : le combat occupe tout l'écran. Desktop : il
                       // s'affiche IN‑PLACE dans le jardin (cf. _contentV2) ; on ne
@@ -8253,13 +8291,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
 
   void _v2ArmIdle() {
     _v2IdleTimer?.cancel();
-    // 10 s sans interaction → l'avatar REPREND la main et enchaîne les routines
-    // restantes (le fantôme, lui, n'a fini QUE la routine commencée).
+    // Plus de reprise AUTO après inactivité : le tir ne part qu'au bouton
+    // « Défendre le château ». On relâche juste le verrou de contrôle.
     _v2IdleTimer = Timer(const Duration(seconds: 10), () {
-      if (!mounted || _v2PanelOpen || _combatBusy || _canonCine) return;
-      _v2UserControl = false; // l'avatar reprend l'enchaînement
-      if (_travelQueue.isNotEmpty) _pumpTravelQueue();
-      if (_hasPending() && !_v2AutoExploring) _v2DischargeBacklog();
+      if (!mounted) return;
+      _v2UserControl = false;
     });
   }
 
@@ -8293,7 +8329,23 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     // Rampe de tir ☢️ → séquence canon (marche, spin, lève, tire si flammes) puis
     // dashboard de la lane.
     if (_v2LaunchPads.contains(id)) {
-      await _onCannonRamp(x, y);
+      // Mode BOULOT : clic sur une rampe → dashboard de la lane IMMÉDIATEMENT, sans
+      // cinématique ni visée. Le tir se fait en mode DÉFENSE (bouton « Défendre le
+      // château »). « On est là pour bosser, pas pour jouer. »
+      final dom = _domainAtTileV2(x, y);
+      if (dom != null) {
+        final mirror = _v2Turret.containsKey('${x - 1}_$y');
+        final turX = mirror ? x - 1 : x + 1;
+        final lane = _laneAtTurret(dom, turX, y);
+        setState(() {
+          _gardenPanel = (
+            domainId: dom,
+            mode: 'routineDash',
+            laneId: lane?.id,
+            pestType: null,
+          );
+        });
+      }
       return;
     }
     // Araignée‑boss : clic → shuriken → on change de map (combat dans l'intérieur).
@@ -8351,14 +8403,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       await _backlogCombat('${_posV2.x}_${_posV2.y}', pest.type, pest.id);
     } else if (w.at(_posV2.x, _posV2.y) == WtTile.chest) {
       _toast('🎁 Coffre ! (récompense à venir)', _kGold);
-    } else {
-      // Posé à GAUCHE d'une tour flammée → reprise immédiate de l'exploration auto
-      // depuis cette routine (monte, puis redescend pour les restes).
-      final rid = _v2TurretRoutineId['${_posV2.x + 1}_${_posV2.y}'];
-      if (rid != null && (_pendingByRoutine[rid]?.isNotEmpty ?? false)) {
-        _v2DischargeBacklog();
-      }
     }
+    // Plus de reprise AUTO de la décharge en fin de marche : le tir ne part qu'au
+    // bouton « Défendre le château ».
   }
 
   // Entre dans l'intérieur EXISTANT d'un domaine (la « map de combat ») → la
@@ -8478,9 +8525,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // B — lance la flamme de streak d'une case‑jour vers le BOUT du canon (recharge).
   // Elle s'anime seule dans _simulateV2Cine ; l'appelant attend juste sa durée.
   static const double _kReloadFlameDur = 0.7;
-  void _startReloadFlame(double fx, double fy, double tx, double ty) {
+  void _startReloadFlame(
+      double fx, double fy, double tx, double ty, String srcCellId) {
     final arc = ((tx - fx).abs() * 0.3).clamp(0.6, 2.0).toDouble();
     setState(() {
+      // La flamme QUITTE sa case (consommée) : on retire son 🔥 du calendrier le
+      // temps du vol. _populateV2Calendar (fin de cinématique) le rétablira.
+      _v2DayTok.remove(srcCellId);
       _v2ReloadFlame = _CineFb(
           _kReloadFlameDur, fx, fy - 0.25, tx, ty - 0.25, arc, 'reload');
     });

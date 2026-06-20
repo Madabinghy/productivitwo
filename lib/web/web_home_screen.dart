@@ -8,6 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:productivitwo_v1/build_info.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/gold_economy.dart';
@@ -154,6 +155,10 @@ class _WebHomeScreenState extends State<WebHomeScreen>
             const SizedBox(width: 10),
             const Text('Productivitwo — Projects',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            const SizedBox(width: 8),
+            Text(kBuildLabel,
+                style: TextStyle(
+                    fontSize: 11, color: cs.onSurface.withOpacity(0.4))),
           ],
         ),
         actions: [

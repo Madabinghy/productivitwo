@@ -134,25 +134,16 @@ extension GoldEngineTime on AppLogic {
     return n;
   }
 
-  /// Tokens du COMBAT après « pardon de série » : une série de N élimine les N plus
-  /// vieilles araignées (converties en 🍃) — récompense de régularité. N'affecte PAS
-  /// l'économie de gold (routineWeekTokens reste la vérité brute) : sert à l'affichage
-  /// du combat, au ciblage du canon, au rattrapage et au compteur de nuisibles.
-  List<({String type, int hp})> routineWaveTokens(String routineId) {
-    final toks = List<({String type, int hp})>.from(routineWeekTokens(routineId));
-    var forgive = habitCurrentStreak(routineId);
-    if (forgive <= 0) return toks;
-    for (var j = 0; j < toks.length && forgive > 0; j++) {
-      if (toks[j].type == 'spider') {
-        toks[j] = (type: 'leaf', hp: 0);
-        forgive--;
-      }
-    }
-    return toks;
-  }
+  /// Tokens du COMBAT. Le « pardon de série » (une série effaçait les N plus vieilles
+  /// araignées) a été RETIRÉ : il contredisait la reconquête (qui fait regagner chaque
+  /// jour délibérément) et faisait disparaître des araignées non touchées. Désormais
+  /// les jours manqués RESTENT des araignées jusqu'à reconquête → vérité brute partout
+  /// (affichage combat, ciblage du canon, rattrapage, compteur de nuisibles).
+  List<({String type, int hp})> routineWaveTokens(String routineId) =>
+      routineWeekTokens(routineId);
 
-  /// Index de la PREMIÈRE araignée (jour manqué le plus ANCIEN) restant APRÈS le
-  /// pardon de série, ou -1 si aucune. (index 0 = il y a 6 jours … 6 = aujourd'hui.)
+  /// Index de la PREMIÈRE araignée (jour manqué le plus ANCIEN), ou -1 si aucune.
+  /// (index 0 = il y a 6 jours … 6 = aujourd'hui.)
   int firstSpiderIndex(String routineId) {
     final toks = routineWaveTokens(routineId);
     for (var j = 0; j < toks.length; j++) {
