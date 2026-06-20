@@ -16,3 +16,4 @@ part 'gold_engine/engagement_world.dart';
 part 'gold_engine/pests_counter.dart';
 part 'gold_engine/time_activities.dart';
 part 'gold_engine/donjon_quests.dart';
+part 'gold_engine/standard_level.dart';
