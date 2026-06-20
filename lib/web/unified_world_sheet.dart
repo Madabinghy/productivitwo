@@ -2542,6 +2542,19 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // attend que le boulet ait atteint la routine avant d'enchaîner / de repartir).
   static const double _kV2ExploreBoltDur = 3.6; // s
 
+  // Colonne de la 1ʳᵉ araignée ENCORE AFFICHÉE (PV > 0) d'une lane — repère sur
+  // l'AFFICHAGE (_v2DayCount), pas les données : garantit que le boulet tombe sur
+  // ce que le user VOIT (les données peuvent déjà être en avance). Respecte le
+  // miroir. null = plus aucune araignée affichée dans la lane.
+  int? _firstDisplayedSpiderCol(LaneRow lane) {
+    final mirror = _v2TurretMirror['${lane.turretX}_${lane.y}'] ?? false;
+    for (var j = 0; j < 7; j++) {
+      final col = mirror ? lane.dayX0 + (6 - j) : lane.dayX0 + j;
+      if ((_v2DayCount['${col}_${lane.y}'] ?? 0) > 0) return col;
+    }
+    return null;
+  }
+
   Future<void> _v2DischargeBacklog() async {
     if (_v2AutoExploring ||
         _combatBusy ||
@@ -2569,8 +2582,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         if (_v2UserControl || !mounted) break;
         final ids = _pendingByRoutine[lane.id];
         while (ids != null && ids.isNotEmpty && mounted && !_v2UserControl) {
-          _fireV2Bolt(_v2FirstSpiderCol(lane), lane.y, lane.turretX,
-              dur: _kV2ExploreBoltDur);
+          final col = _firstDisplayedSpiderCol(lane);
+          if (col == null) {
+            // Plus d'araignée affichée → on ne TIRE PAS dans le vide (pas de
+            // gaspillage). Les flammes restantes sont acquittées sans animation
+            // (le hit était réel, déjà reflété dans les données).
+            _animatedHitIds.addAll(ids);
+            ids.clear();
+            _persistAnimated();
+            break;
+          }
+          _fireV2Bolt(col, lane.y, lane.turretX,
+              dur: _kV2ExploreBoltDur, cellId: '${col}_${lane.y}');
           _animatedHitIds.add(ids.removeAt(0));
           _persistAnimated();
           if (mounted) setState(() {}); // met à jour les flammes
@@ -2582,6 +2605,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       }
     } finally {
       _v2AutoExploring = false;
+      // Resync AFFICHAGE ↔ DONNÉES : la fin de séquence reflète l'état réel (le
+      // refresh ne révélera plus d'écart).
+      if (mounted) setState(_populateV2Calendar);
     }
   }
 
