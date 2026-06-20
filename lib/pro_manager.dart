@@ -29,6 +29,10 @@ class ProManager {
   static void _recompute() => notifier.value = _rcPro || _grantPro;
 
   static Future<void> init() async {
+    if (kIsWeb) {
+      await refreshGrant(); // web : pas de RevenueCat, mais le grant Firestore reste lu
+      return;
+    }
     await Purchases.setLogLevel(LogLevel.warn);
     await Purchases.configure(PurchasesConfiguration(kRevenueCatApiKey));
     await _syncStatus();
@@ -80,12 +84,14 @@ class ProManager {
   }
 
   static Future<CustomerInfo?> purchase(Package package) async {
+    if (kIsWeb) return null; // achats indisponibles sur web
     final info = await Purchases.purchasePackage(package);
     _setActive(info);
     return info;
   }
 
   static Future<CustomerInfo?> restore() async {
+    if (kIsWeb) return null; // restauration indisponible sur web
     final info = await Purchases.restorePurchases();
     _setActive(info);
     return info;
@@ -99,6 +105,10 @@ class ProManager {
 
   // Appeler après Sign in with Apple pour lier les achats au compte
   static Future<void> loginUser(String uid) async {
+    if (kIsWeb) {
+      await refreshGrant(uid); // web : pas de RevenueCat, on lit juste le grant
+      return;
+    }
     try {
       final info = await Purchases.logIn(uid);
       _rcPro = info.customerInfo.entitlements.active.containsKey(kEntitlementPro);
@@ -109,6 +119,12 @@ class ProManager {
 
   // Appeler après déconnexion
   static Future<void> logoutUser() async {
+    if (kIsWeb) {
+      _rcPro = false;
+      _recompute();
+      await refreshGrant(null);
+      return;
+    }
     try {
       await Purchases.logOut();
     } catch (_) {}

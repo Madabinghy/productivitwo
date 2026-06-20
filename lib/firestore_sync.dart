@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:collection/collection.dart';
 import 'package:http/http.dart' as http;
 import 'package:crypto/crypto.dart';
@@ -2284,7 +2285,9 @@ class FirestoreSync {
     _col('orion_subscription').doc('main').set(
       {
         'enabled': true,
-        'platform': Platform.isIOS ? 'ios' : Platform.isAndroid ? 'android' : 'other',
+        'platform': kIsWeb
+            ? 'web'
+            : (Platform.isIOS ? 'ios' : Platform.isAndroid ? 'android' : 'other'),
         'updatedAt': FieldValue.serverTimestamp(),
       },
       SetOptions(merge: true),

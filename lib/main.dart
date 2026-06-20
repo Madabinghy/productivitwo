@@ -1876,7 +1876,7 @@ class _AppRootState extends State<AppRoot>
     _startConnectivityListener();
     _initDeepLinks();
     // Sonnerie du minuteur : déclenchée par le package `alarm` (même app en arrière-plan).
-    _alarmRingSub = Alarm.ringStream.stream.listen(_onAlarmRing);
+    if (!kIsWeb) _alarmRingSub = Alarm.ringStream.stream.listen(_onAlarmRing);
     // Timeout global 15s sur _init() — l'app s'ouvre toujours en local si ça bloque
     _init().timeout(
       const Duration(seconds: 15),
@@ -2102,7 +2102,9 @@ class _AppRootState extends State<AppRoot>
       try { await _sync.signInAnonymously(); } catch (_) {}
     }
 
-    final firestoreEnabled = onMobile && _sync.uid != null;
+    // Web inclus : le clone web (auth déjà faite par le gate) lit/écrit Firestore
+    // comme le mobile. Les services NATIFS (widgets, alarme, FCM) restent gardés ailleurs.
+    final firestoreEnabled = (onMobile || kIsWeb) && _sync.uid != null;
 
     AppState? remote;
     if (firestoreEnabled) {
@@ -2481,7 +2483,7 @@ class _AppRootState extends State<AppRoot>
     _countdownExpeditionBonus = expeditionBonus;
 
     final ringtone = ringtoneByKey(logic.state.alarmSound);
-    Alarm.set(
+    if (!kIsWeb) Alarm.set(
       alarmSettings: AlarmSettings(
         id: _timerAlarmId,
         dateTime: endsAt,
@@ -2635,6 +2637,7 @@ class _AppRootState extends State<AppRoot>
   /// retomber en chrono). Ne restaure que si l'alarme est encore à venir ET
   /// qu'une activité tourne.
   Future<void> _restoreCountdownFromAlarm() async {
+    if (kIsWeb) return; // pas d'alarme native sur web
     try {
       final a = await Alarm.getAlarm(_timerAlarmId);
       final now = DateTime.now();
@@ -2802,7 +2805,7 @@ class _AppRootState extends State<AppRoot>
   void _cancelCountdown() {
     _countdownTimer?.cancel();
     _countdownTimer = null;
-    Alarm.stop(_timerAlarmId);
+    if (!kIsWeb) Alarm.stop(_timerAlarmId);
     NotificationService.cancelTimerEnd();
     _countdownActivityName = null;
     _countdownTotalSec = null;
@@ -5499,7 +5502,7 @@ class _AppRootState extends State<AppRoot>
                 ),
               ),
               // Siri & Raccourcis (iOS uniquement)
-              if (Platform.isIOS)
+              if (!kIsWeb && Platform.isIOS)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.mic_none_outlined),

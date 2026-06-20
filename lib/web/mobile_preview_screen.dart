@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
-import 'package:productivitwo_v1/widgets/world_mobile_sheet.dart';
+import 'package:productivitwo_v1/main.dart' show ProductivitwoApp;
 
 /// Page de DÉV : la vraie UI mobile native du « Monde » rendue dans un cadre
 /// format téléphone, sur le web. Accès via `?mobilepreview=true`.
@@ -119,12 +119,10 @@ class _MobilePreviewScreenState extends State<MobilePreviewScreen> {
                         )
                       : _logic == null
                           ? const Center(child: CircularProgressIndicator())
-                          : Navigator(
-                              onGenerateRoute: (_) => MaterialPageRoute(
-                                builder: (_) => WorldMobileScreen(
-                                    logic: _logic!, sync: sync),
-                              ),
-                            ),
+                          // CLONE COMPLET : toute l'app mobile (tous les onglets) dans
+                          // le cadre téléphone. Elle se ré-initialise seule (son propre
+                          // FirestoreSync sur la session web déjà connectée).
+                          : const ProductivitwoApp(),
                 ),
               ),
             ),
