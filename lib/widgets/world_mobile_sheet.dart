@@ -25,16 +25,6 @@ const _kLifeHigh = Color(0xFF4FA3FF); // bleu — bonne santé
 Color _lifeColor(double frac) =>
     frac >= 5 / 7 ? _kLifeHigh : (frac >= 3 / 7 ? _kLife : _kEnemy);
 
-const _weekdayLetters = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
-List<String> _last7DayLabels() {
-  final n = DateTime.now();
-  final today = DateTime(n.year, n.month, n.day);
-  return [
-    for (var i = 0; i < 7; i++)
-      _weekdayLetters[today.subtract(Duration(days: 6 - i)).weekday - 1]
-  ];
-}
-
 String _tokenEmoji(String type, {required bool scorpion}) => type == 'flame'
     ? '🔥'
     : type == 'spider'
@@ -524,7 +514,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
   Future<void> _startMinuteur(_Item it) async {
     final actId = _activityIdFor(it);
     if (actId == null) {
-      logic.incHabit(it.id, 1, DateTime.now()); // routine sans activité liée → +1
+      logic.incHabit(it.id, 1, logic.routineCatchUpDay(it.id)); // rattrape la plus vieille araignée
       logic.onChange();
       if (mounted) setState(() {});
       return;
@@ -607,7 +597,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
   void _minuteurFire(_Item it) {
     _playFireCine(it.id, () {
       if (it.kind == 'spider') {
-        logic.incHabit(it.id, 1, DateTime.now()); // routine validée
+        logic.incHabit(it.id, 1, logic.routineCatchUpDay(it.id)); // routine validée (plus vieille araignée)
       }
       logic.stopActive(); // ferme la session (temps loggé → PV du scorpion)
       logic.onChange();
@@ -878,7 +868,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
     // Mode « coche » : marque la routine faite du jour (+1), sans minuteur ni
     // chrono. Réservé aux routines (le sélecteur ne propose pas 'check' ailleurs).
     if (mode == 'check' && it.kind == 'spider') {
-      logic.incHabit(it.id, 1, DateTime.now());
+      logic.incHabit(it.id, 1, logic.routineCatchUpDay(it.id)); // plus vieille araignée
       logic.onChange();
       if (mounted) setState(() {});
       return;
@@ -903,7 +893,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
     }
     if (actId == null) {
       // Routine sans activité liée : pas de minuteur possible → +1 sur place.
-      logic.incHabit(it.id, 1, DateTime.now());
+      logic.incHabit(it.id, 1, logic.routineCatchUpDay(it.id)); // plus vieille araignée
       logic.onChange();
       setState(() {});
       return;
@@ -925,8 +915,8 @@ class _DomainGameplayState extends State<_DomainGameplay>
     if (mounted) Navigator.of(context).maybePop();
   }
 
-  // Lance le tir sur le nuisible du JOUR (dernière colonne) de la 1ʳᵉ ligne qui
-  // en a un (sinon la 1ʳᵉ ligne). La tour se transforme (DCA) le temps du tir.
+  // Lance le tir sur la PREMIÈRE araignée (jour manqué le plus ancien) de la 1ʳᵉ
+  // ligne qui en a une (sinon la 1ʳᵉ ligne). La tour se transforme (DCA) le temps du tir.
   Future<void> _fire() async {
     if (_firingId != null) return;
     final items = _items();
@@ -940,11 +930,11 @@ class _DomainGameplayState extends State<_DomainGameplay>
         }
       }
     }
-    // Sinon : 1ʳᵉ ligne avec un nuisible du jour, sinon la 1ʳᵉ.
+    // Sinon : 1ʳᵉ ligne avec une araignée (peu importe le jour — on rattrape la
+    // plus ancienne), sinon la 1ʳᵉ ligne.
     if (target == null) {
       for (final it in items) {
-        final n = it.tokens.length;
-        if (n > 0 && it.tokens[n - 1].type == 'spider') {
+        if (it.tokens.any((t) => t.type == 'spider')) {
           target = it;
           break;
         }
@@ -970,7 +960,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
     for (final a in logic.state.activeActivities) {
       if (a.domainId != dom) continue;
       if (a.isHabit) {
-        final tok = logic.routineWeekTokens(a.id);
+        final tok = logic.routineWaveTokens(a.id); // post-pardon de série
         if (tok.isEmpty) continue;
         routines.add((
           id: a.id,
@@ -1137,7 +1127,6 @@ class _DomainGameplayState extends State<_DomainGameplay>
 
   // ── JARDIN : en-tête des jours + une ligne par routine/activité ─────────────
   Widget _gardenView(List<_Item> items) {
-    final days = _last7DayLabels();
     const cell = 34.0;
     final routines = items.where((i) => i.kind == 'spider').toList();
     final times = items.where((i) => i.kind == 'scorpion').toList();
@@ -1146,12 +1135,12 @@ class _DomainGameplayState extends State<_DomainGameplay>
       children: [
         if (routines.isNotEmpty) ...[
           _sectionHeader('🕷️ Routines', routines.length),
-          for (final it in routines) _gardenRow(it, cell, days),
+          for (final it in routines) _gardenRow(it, cell),
         ],
         if (times.isNotEmpty) ...[
           const SizedBox(height: 8),
           _sectionHeader('🦂 Activités-temps', times.length),
-          for (final it in times) _gardenRow(it, cell, days),
+          for (final it in times) _gardenRow(it, cell),
         ],
       ],
     );
@@ -1241,7 +1230,6 @@ class _DomainGameplayState extends State<_DomainGameplay>
         ),
       );
     }
-    final days = _last7DayLabels();
     // Regroupe les actions propres par activité propriétaire.
     final ownByActivity = <Activity, List<TaskAction>>{};
     for (final e in own) {
@@ -1258,7 +1246,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
                   .length),
           for (final t in p.tasks
               .where((t) => t.status != 'done' && t.status != 'skipped'))
-            _actionTaskRow(p, t, days),
+            _actionTaskRow(p, t),
         ],
         // Actions propres aux activités du domaine (sans tâche).
         for (final entry in ownByActivity.entries) ...[
@@ -1327,7 +1315,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
     );
   }
 
-  Widget _actionTaskRow(Project p, ProjectTask t, List<String> days) {
+  Widget _actionTaskRow(Project p, ProjectTask t) {
     const cell = 34.0;
     final c = widget.color;
     final now = DateTime.now();
@@ -1346,22 +1334,8 @@ class _DomainGameplayState extends State<_DomainGameplay>
                   color: c.withOpacity(.95),
                   fontWeight: FontWeight.w700,
                   fontSize: 13)),
-          const SizedBox(height: 2),
-          Row(children: [
-            const SizedBox(width: 60),
-            for (final l in days)
-              SizedBox(
-                width: cell + 2,
-                child: Center(
-                  child: Text(l,
-                      style: TextStyle(
-                          color: Colors.white.withOpacity(.4),
-                          fontWeight: FontWeight.w900,
-                          fontSize: 11)),
-                ),
-              ),
-          ]),
-          const SizedBox(height: 1),
+          const SizedBox(height: 3),
+          // Libellés de jours retirés.
           // Lance‑missiles à GAUCHE + cases‑jours (validations).
           Row(children: [
             SizedBox(
@@ -1496,7 +1470,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
     }, domainId: widget.domain.id);
   }
 
-  Widget _gardenRow(_Item it, double cell, List<String> days) {
+  Widget _gardenRow(_Item it, double cell) {
     final c = widget.color;
     // Le NOM est rendu SOUS la tourelle (cf. fin du Column) : ainsi il est clairement
     // rattaché à SA grille et n'est plus confondu avec le titre de la routine suivante.
@@ -1513,39 +1487,37 @@ class _DomainGameplayState extends State<_DomainGameplay>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Lettres des jours + en-têtes des colonnes de contrôle.
+                // Libellés de jours retirés (on combat la vague d'araignées, pas un
+                // jour précis) — on garde l'espace pour aligner le sélecteur de mode
+                // au-dessus du viseur.
                 Row(children: [
                   const SizedBox(width: 60),
-            for (final l in days)
-              SizedBox(
-                width: cell + 2,
-                child: Center(
-                  child: Text(l,
-                      style: TextStyle(
-                          color: Colors.white.withOpacity(.4),
-                          fontWeight: FontWeight.w900,
-                          fontSize: 11)),
-                ),
-              ),
-            // Sélecteur de mode empilé AU-DESSUS du viseur (même colonne) :
-            // remplace l'ancien label, le viseur vient juste en dessous.
-            _modeCell(it, cell),
-          ]),
+                  SizedBox(width: it.tokens.length * (cell + 2)),
+                  // Sélecteur de mode empilé AU-DESSUS du viseur (même colonne).
+                  _modeCell(it, cell),
+                ]),
           const SizedBox(height: 1),
           () {
             final firing = _firingId == it.id;
-            // Boulet : de la tour (x≈30, y≈30) vers la case du JOUR, en COURBE
-            // (lobe vers le haut) — réplique l'arc du web (_CineFb).
-            final todayX = 60.0 + (it.tokens.length - 1) * (cell + 2) + cell / 2;
+            // Boulet : de la tour (x≈30, y≈30) vers la PREMIÈRE araignée/scorpion
+            // (jour manqué le plus ancien) ; sinon la case d'aujourd'hui. En COURBE.
+            var tgtIdx = it.tokens.length - 1;
+            for (var i = 0; i < it.tokens.length; i++) {
+              if (it.tokens[i].type == 'spider') {
+                tgtIdx = i;
+                break;
+              }
+            }
+            final targetX = 60.0 + tgtIdx * (cell + 2) + cell / 2;
             const fy0 = 30.0, fx0 = 30.0;
             const arc = 36.0; // hauteur du lobe (plus haut = trajectoire plus courbée)
             final u = _fireCtrl.value;
-            final fx = fx0 + (todayX - fx0) * u;
+            final fx = fx0 + (targetX - fx0) * u;
             final fy = fy0 - arc * sin(pi * u);
             // Orientation : tangente RÉELLE de la parabole (continue) → la boule
             // reste tête en avant sur tout l'arc (montée ET descente), sans saut au
             // sommet. vx/vy = dérivées de fx/fy selon u ; +pi/2 = offset du sprite.
-            final vx = todayX - fx0;
+            final vx = targetX - fx0;
             final vy = -arc * pi * cos(pi * u);
             final fAngle = atan2(vy, vx) + pi / 2;
             return Stack(

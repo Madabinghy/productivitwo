@@ -10,6 +10,11 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.41', '19 juin 2026', [
+    (Icons.bug_report, 'Combat (web + mobile) : on ne tape plus un jour précis du calendrier — les libellés de jours sont retirés et le canon vise la PREMIÈRE araignée (le jour manqué le plus ancien). Tirer la tue et fait avancer la vague'),
+    (Icons.cleaning_services, 'Rattrapage : valider une routine rattrape le jour manqué le plus ancien, et tu peux enchaîner pour nettoyer toute la ligne par l\'effort (même mécanique pour les scorpions des activités). Le bandeau de pastilles reste comme repère de régularité'),
+    (Icons.local_fire_department, 'Récompense de régularité : une série de N élimine automatiquement les N plus vieilles araignées — plus ta série est longue, moins le retard pèse (reflété aussi dans le compteur de nuisibles)'),
+  ]),
   _Entry('6.40', '19 juin 2026', [
     (Icons.pest_control, 'Compteur global de nuisibles (🕷️ routines · 🦂 activités · 🐍 tâches en retard, tous domaines) : sur la carte web « Le Monde » sous la minimap, ET en tête du tableau de bord mobile — pour voir où tu en es d\'un coup d\'œil'),
     (Icons.insights, 'Au clic : un panneau de stats avec le total par type + le comparatif des « jours tenus » de cette semaine vs les 7 jours précédents (ex. routines +5)'),
