@@ -2329,6 +2329,23 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     return total;
   }
 
+  // Écart hebdo COURANT d'un domaine (par id) → mission / pastille / tooltip.
+  int _domainMissionGap(String dom) {
+    final c = _wv2?.byDomain[dom];
+    if (c == null) return 0;
+    final now = DateTime.now();
+    return _domainWeekGap(c, DateTime(now.year, now.month, now.day));
+  }
+
+  // Texte du tooltip d'une araignée d'écart hebdo (au survol souris).
+  String _spiderTooltip(String dom) {
+    final gap = _domainMissionGap(dom);
+    return '🕷️ Araignée d\'écart hebdo — ${_domainName(dom)}\n'
+        'Tu es à $gap validation(s) du même jour la semaine dernière (S‑7). '
+        'Valide tes routines en retard pour les chasser '
+        '(chaque rattrapage = 1 shuriken). Détail dans le parchemin 📜.';
+  }
+
   // Pose / réconcilie les araignées d'écart, PAR DOMAINE. INVARIANT par domaine :
   // araignées vivantes(D) = écart(D) + shurikens(D). Chaque shuriken touché
   // décrémente LES DEUX → on converge vers l'écart courant du domaine. Les shurikens
@@ -4791,6 +4808,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 ),
               ]),
             ),
+            _parcheminMissionBanner(pa.domainId),
             Expanded(
               child: projs.isEmpty
                   ? const Center(
@@ -4820,6 +4838,39 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           ]),
         ),
       ),
+    );
+  }
+
+  // Bande MISSION en tête du parchemin : l'écart hebdo du domaine (= les petites
+  // araignées mobiles). Dynamique : baisse au fil des validations.
+  Widget _parcheminMissionBanner(String dom) {
+    final gap = _domainMissionGap(dom);
+    if (gap <= 0) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        color: const Color(0xFF14241A),
+        child: const Text(
+            '✅ Aucune mission — tu tiens ton rythme de la semaine dernière.',
+            style: TextStyle(color: Color(0xFF8FD9B6), fontSize: 11.5)),
+      );
+    }
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      color: _kEnemy.withOpacity(.16),
+      child: Row(children: [
+        const Text('🎯', style: TextStyle(fontSize: 15)),
+        const SizedBox(width: 7),
+        Expanded(
+          child: Text(
+              'Mission — rattrape ton écart hebdo : $gap validation(s) de retard sur '
+              'le même jour la semaine dernière. Valide tes routines en retard pour '
+              'chasser les araignées (chaque rattrapage = 1 shuriken).',
+              style: const TextStyle(
+                  color: Colors.white, fontSize: 11.5, height: 1.25)),
+        ),
+      ]),
     );
   }
 
@@ -8988,9 +9039,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                             width: _kV2Slot,
                             height: _kV2Slot,
                             child: Center(
-                                child: Text('🕷️',
-                                    style: TextStyle(
-                                        fontSize: _kV2Slot * 0.42))),
+                                child: Tooltip(
+                                  message: _spiderTooltip(s.domainId),
+                                  child: Text('🕷️',
+                                      style: TextStyle(
+                                          fontSize: _kV2Slot * 0.42)),
+                                )),
                           ),
                       // Shurikens d'araignée en vol (spin continu).
                       for (final shk in _gardenShk)
@@ -9366,8 +9420,37 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       child = Text('🕷️', style: TextStyle(fontSize: inner * 0.75));
     }
     // Parchemin 📜 (au-dessus de la 1ʳᵉ tourelle) : ouvre le grand dashboard projets.
+    // Pastille 🎯N si le domaine a des MISSIONS (écart hebdo > 0) → « va voir ».
     if (_v2Parchemins.containsKey(id)) {
-      child = Text('📜', style: TextStyle(fontSize: inner * 0.62));
+      final missGap = _domainMissionGap(_v2Parchemins[id]!);
+      final scroll = Text('📜', style: TextStyle(fontSize: inner * 0.62));
+      child = missGap <= 0
+          ? scroll
+          : Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                scroll,
+                Positioned(
+                  right: -3,
+                  top: -3,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 3, vertical: 0.5),
+                    decoration: BoxDecoration(
+                      color: _kEnemy,
+                      borderRadius: BorderRadius.circular(7),
+                    ),
+                    child: Text('🎯$missGap',
+                        style: TextStyle(
+                            fontSize: inner * 0.2,
+                            height: 1,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white)),
+                  ),
+                ),
+              ],
+            );
     }
     // Clone FANTÔME (transparent) : termine la cinématique canon après la reprise de
     // main du user. Masqué sous l'avatar réel s'ils tombent sur la même case.
