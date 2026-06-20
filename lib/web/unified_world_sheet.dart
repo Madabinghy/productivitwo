@@ -1787,6 +1787,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _loadFogV2(); // persistance : brouillard de guerre déjà révélé (grande map V2)
     _subscribeHits(); // temps réel : valider une routine → l'avatar voyage
     _subscribeSessions(); // temps réel : minuteur d'activité → assaut live
+    _subscribeRedemptions(); // temps réel : crédits de reconquête → PV à jour
     // Projets Gantt → logic.currentProjects (sinon backlogEnemies() ne voit aucune
     // tâche → aucun serpent dans le jardin). Le web_home ne le faisait pas pour la map.
     _projSub = sync.streamProjects().listen((projects) {
@@ -1863,6 +1864,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _projSub?.cancel();
     _hitSub?.cancel();
     _sessionSub?.cancel();
+    _redemptionSub?.cancel();
     _v2PrimeTimer?.cancel();
     _v2IdleTimer?.cancel();
     for (final t in _actFireTimers.values) {
@@ -2592,6 +2594,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
 
   // ── TEMPS RÉEL : minuteur d'activité (session ouverte) → assaut live ──
   StreamSubscription<List<Session>>? _sessionSub;
+  StreamSubscription<List<Redemption>>? _redemptionSub;
   bool _sessionsPrimed = false;
   final Set<String> _runningActs = {}; // activités dont le minuteur tourne
   // Tir périodique pendant qu'un minuteur tourne : -1 PV / 5 min (1 PV = 5 min de
@@ -2627,6 +2630,17 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _runningActs
         ..clear()
         ..addAll(running);
+    });
+  }
+
+  // Temps réel : crédits de RECONQUÊTE. On peuple `logic.state.redemptions` puis
+  // on reconstruit — les PV (enemyHp) et le tapis (tokens) relisent ces crédits.
+  void _subscribeRedemptions() {
+    if (widget.mobile) return;
+    _redemptionSub = sync.streamRedemptions().listen((redemptions) {
+      if (!mounted) return;
+      logic.state.redemptions = redemptions;
+      setState(() {});
     });
   }
 
