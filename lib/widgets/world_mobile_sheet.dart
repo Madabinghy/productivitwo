@@ -514,7 +514,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
   Future<void> _startMinuteur(_Item it) async {
     final actId = _activityIdFor(it);
     if (actId == null) {
-      logic.incHabit(it.id, 1, logic.routineCatchUpDay(it.id)); // rattrape la plus vieille araignée
+      logic.validateRoutineCombat(it.id, persist: widget.sync.saveRedemption); // vrai hit aujourd'hui + crédit reconquête sur la plus vieille araignée
       logic.onChange();
       if (mounted) setState(() {});
       return;
@@ -597,7 +597,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
   void _minuteurFire(_Item it) {
     _playFireCine(it.id, () {
       if (it.kind == 'spider') {
-        logic.incHabit(it.id, 1, logic.routineCatchUpDay(it.id)); // routine validée (plus vieille araignée)
+        logic.validateRoutineCombat(it.id, persist: widget.sync.saveRedemption); // routine validée (plus vieille araignée)
       }
       logic.stopActive(); // ferme la session (temps loggé → PV du scorpion)
       logic.onChange();
@@ -868,7 +868,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
     // Mode « coche » : marque la routine faite du jour (+1), sans minuteur ni
     // chrono. Réservé aux routines (le sélecteur ne propose pas 'check' ailleurs).
     if (mode == 'check' && it.kind == 'spider') {
-      logic.incHabit(it.id, 1, logic.routineCatchUpDay(it.id)); // plus vieille araignée
+      logic.validateRoutineCombat(it.id, persist: widget.sync.saveRedemption); // plus vieille araignée
       logic.onChange();
       if (mounted) setState(() {});
       return;
@@ -893,7 +893,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
     }
     if (actId == null) {
       // Routine sans activité liée : pas de minuteur possible → +1 sur place.
-      logic.incHabit(it.id, 1, logic.routineCatchUpDay(it.id)); // plus vieille araignée
+      logic.validateRoutineCombat(it.id, persist: widget.sync.saveRedemption); // plus vieille araignée
       logic.onChange();
       setState(() {});
       return;

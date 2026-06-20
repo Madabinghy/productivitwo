@@ -171,6 +171,37 @@ extension GoldEngineTime on AppLogic {
     return j < 0 ? today : today.subtract(Duration(days: 6 - j));
   }
 
+  /// Valide une routine en COMBAT — modèle « plus ancien d'abord, propre ».
+  ///
+  /// Le canon vise toujours la plus vieille araignée ([routineCatchUpDay]). On
+  /// loggue TOUJOURS un vrai hit AUJOURD'HUI (relevé honnête, compte pour l'or du
+  /// jour). Si la cible est un jour PASSÉ, on pose EN PLUS un crédit de RECONQUÊTE
+  /// sur ce jour (couche jeu : nettoie l'araignée, mais PAS d'or et SANS falsifier
+  /// le relevé de ce jour-là) au lieu de l'ancien `incHabit(jourPassé)`.
+  ///
+  /// Renvoie le jour visé (pour la cinématique). [persist] persiste le crédit
+  /// (ex. `sync.saveRedemption`) ; sur mobile le push de state s'en charge aussi.
+  DateTime validateRoutineCombat(String routineId,
+      {void Function(Redemption)? persist}) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final target = routineCatchUpDay(routineId);
+    incHabit(routineId, 1, today); // effort réel du jour (appelle onChange)
+    if (yyyymmdd(target) != yyyymmdd(today)) {
+      final r = Redemption(
+        activityId: routineId,
+        type: 'habit',
+        targetDate: yyyymmdd(target),
+        amount: 1,
+        sourceDate: yyyymmdd(today),
+      );
+      state.redemptions.add(r); // optimiste local → jardin à jour
+      persist?.call(r);
+      onChange();
+    }
+    return target;
+  }
+
   /// Tokens du tapis roulant pour les 7 DERNIERS jours (index 0 = il y a 6 jours,
   /// 6 = AUJOURD'HUI à droite ; tourne tout seul chaque jour, pas de bouton).
   /// Chaque jour : `type` = 'spider' (manqué) · 'leaf' (fait, 1er jour repris) ·
