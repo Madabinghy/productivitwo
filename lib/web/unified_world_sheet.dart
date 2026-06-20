@@ -3914,13 +3914,15 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
 
   // Actions du dashboard (partagées par la liste de domaine et le dashboard ciblé).
   Future<void> _dashValidateRoutine(Activity a) async {
-    // Rattrapage : on crédite le jour manqué le plus ANCIEN (tue la 1ʳᵉ araignée).
-    final day = logic.routineCatchUpDay(a.id);
-    logic.incHabit(a.id, 1, day);
+    // Modèle « plus ancien d'abord, propre » : vrai hit AUJOURD'HUI (relevé
+    // honnête) ; si une araignée plus ANCIENNE existe, crédit de RECONQUÊTE sur
+    // ce jour (jeu seul, pas d'or, sans falsifier) au lieu de l'ancien faux hit.
+    logic.validateRoutineCombat(a.id, persist: sync.saveRedemption);
     if (mounted) setState(() {});
-    // Le onChange du web ne pushe PAS → on persiste le hit + le compteur du jour à la
-    // main dans Firestore pour que le téléphone voie l'incrément.
-    final key = yyyymmdd(day);
+    // Le onChange du web ne pushe PAS → on persiste le hit + le compteur d'AUJOURD'HUI
+    // à la main dans Firestore pour que le téléphone voie l'incrément.
+    final now = DateTime.now();
+    final key = yyyymmdd(DateTime(now.year, now.month, now.day));
     HabitHit? hit;
     for (final h in logic.state.habitHits) {
       if (h.habitId == a.id) hit = h; // dernier hit de cette routine
