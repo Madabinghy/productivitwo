@@ -3223,6 +3223,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         ? logic.routineWeekTokens(a.id)
         : logic.activityTimeTokens(a.id);
     final kept = toks.where((t) => t.type != 'spider').length;
+    final ts = isRoutine ? null : logic.timeSliding(a.id, 7);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Container(
         padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
@@ -3252,7 +3253,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
-              _laneStat('${pc.done}/${pc.target}',
+              _laneStat(
+                  isRoutine
+                      ? '${pc.done}/${pc.target}'
+                      : '${ts!.doneMin}/${ts!.targetMin}',
                   isRoutine ? 'cette période' : 'min · semaine', col),
               _laneStat(isRoutine ? '🔥 $streak' : '$kept/7',
                   isRoutine ? 'série' : 'jours tenus', col),
