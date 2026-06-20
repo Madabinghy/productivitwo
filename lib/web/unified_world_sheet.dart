@@ -3933,13 +3933,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       );
 
   Widget _laneWeekDot(String type, bool isRoutine, Color col) {
-    final emoji = type == 'flame'
-        ? '🔥'
-        : type == 'spider'
-            ? (isRoutine ? '🕷️' : '🦂')
-            : type == 'leaf'
-                ? '🍃'
-                : '';
+    final emoji = type == 'spider'
+        ? (isRoutine ? '🕷️' : '🦂')
+        : (type == 'leaf' || type == 'flame')
+            ? '🍃' // jour tenu (feuille/série) — plus de 🔥 (redondant avec le streak)
+            : '';
     return Container(
       width: 22,
       height: 22,
@@ -8258,7 +8256,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       case 'leaf':
         return ''; // jour fait (1er jour) → case vide, plus clean
       case 'flame':
-        return '🔥';
+        return ''; // jour tenu (série) → case vide aussi : la série vit sur la rampe
+        // (streak), plus de 🔥 au calendrier (doublon + brouille la vue du nettoyage)
       case 'spider':
         return isRoutine ? '🕷️' : '🦂';
       default:
