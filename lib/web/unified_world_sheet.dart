@@ -3401,6 +3401,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               _timeTargetEditor(a, col),
               const Divider(color: Colors.white12, height: 22),
               _laneTimerControls(a, col),
+              const SizedBox(height: 12),
+              _laneTimerGrid(a, col),
               const SizedBox(height: 10),
               ..._laneTimerDefaultChips(a, col),
             ],
@@ -3734,6 +3736,48 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           _laneTimerChip(a, m, (a.timerMin ?? 0) == m, col),
       ]),
     ];
+  }
+
+  // Grille de minuteurs RAPIDES (5 min → 1 h, pas de 5) : un clic lance directement
+  // le minuteur de cette durée. Masquée si un chrono/minuteur tourne déjà.
+  Widget _laneTimerGrid(Activity a, Color col,
+      {String? taskId, String? actionId, VoidCallback? onDone}) {
+    if (_openSessionFor(a.id) != null) return const SizedBox.shrink();
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const Text('MINUTEUR RAPIDE',
+          style: TextStyle(
+              color: Colors.white38,
+              fontSize: 9,
+              letterSpacing: 1.1,
+              fontWeight: FontWeight.w700)),
+      const SizedBox(height: 6),
+      Wrap(spacing: 6, runSpacing: 6, children: [
+        for (var m = 5; m <= 60; m += 5)
+          InkWell(
+            onTap: () => _dashStartMinuteur(a, col,
+                minutesOverride: m,
+                taskId: taskId,
+                actionId: actionId,
+                onDone: onDone),
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              width: 52,
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: col.withOpacity(.16),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: col.withOpacity(.5)),
+              ),
+              child: Text(m == 60 ? '1h' : '${m}min',
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800)),
+            ),
+          ),
+      ]),
+    ]);
   }
 
   Widget _laneTimerChip(Activity routine, int minutes, bool selected, Color col) {
@@ -4141,8 +4185,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // (comme le chrono) + arme un timer one-shot qui l'arrête à zéro. onDone est
   // appelé à zéro (ex. valider une routine liée). Durée : timerMin sinon picker.
   Future<void> _dashStartMinuteur(Activity a, Color col,
-      {String? taskId, String? actionId, VoidCallback? onDone}) async {
-    int? minutes = a.timerMin;
+      {String? taskId,
+      String? actionId,
+      VoidCallback? onDone,
+      int? minutesOverride}) async {
+    int? minutes = minutesOverride ?? a.timerMin;
     if (minutes == null || minutes <= 0) {
       minutes = await _pickMinuteurDuration();
       if (minutes == null) return;
