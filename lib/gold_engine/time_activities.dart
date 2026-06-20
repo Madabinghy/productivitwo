@@ -179,9 +179,11 @@ extension GoldEngineTime on AppLogic {
   /// sur ce jour (couche jeu : nettoie l'araignée, mais PAS d'or et SANS falsifier
   /// le relevé de ce jour-là) au lieu de l'ancien `incHabit(jourPassé)`.
   ///
-  /// Renvoie le jour visé (pour la cinématique). [persist] persiste le crédit
-  /// (ex. `sync.saveRedemption`) ; sur mobile le push de state s'en charge aussi.
-  DateTime validateRoutineCombat(String routineId,
+  /// Après l'effort, tente la MONTÉE de palier (« 7 cases propres → +1 ») et
+  /// renvoie le nouveau palier si le standard a monté, sinon `null` (pour la
+  /// célébration côté UI). [persist] persiste le crédit (ex. `sync.saveRedemption`) ;
+  /// sur mobile le push de state s'en charge aussi.
+  int? validateRoutineCombat(String routineId,
       {void Function(Redemption)? persist}) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -199,7 +201,7 @@ extension GoldEngineTime on AppLogic {
       persist?.call(r);
       onChange();
     }
-    return target;
+    return maybeLevelUpStandard(routineId);
   }
 
   /// Tokens du tapis roulant pour les 7 DERNIERS jours (index 0 = il y a 6 jours,

@@ -3917,7 +3917,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     // Modèle « plus ancien d'abord, propre » : vrai hit AUJOURD'HUI (relevé
     // honnête) ; si une araignée plus ANCIENNE existe, crédit de RECONQUÊTE sur
     // ce jour (jeu seul, pas d'or, sans falsifier) au lieu de l'ancien faux hit.
-    logic.validateRoutineCombat(a.id, persist: sync.saveRedemption);
+    final lvl = logic.validateRoutineCombat(a.id, persist: sync.saveRedemption);
+    if (lvl != null && mounted) {
+      _toast('⬆️ Standard monté à $lvl ! Tu défends plus haut ✨', _kBlue);
+    }
     if (mounted) setState(() {});
     // Le onChange du web ne pushe PAS → on persiste le hit + le compteur d'AUJOURD'HUI
     // à la main dans Firestore pour que le téléphone voie l'incrément.

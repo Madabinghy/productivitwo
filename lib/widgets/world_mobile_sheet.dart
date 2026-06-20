@@ -514,7 +514,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
   Future<void> _startMinuteur(_Item it) async {
     final actId = _activityIdFor(it);
     if (actId == null) {
-      logic.validateRoutineCombat(it.id, persist: widget.sync.saveRedemption); // vrai hit aujourd'hui + crédit reconquête sur la plus vieille araignée
+      _celebrateLevelUp(logic.validateRoutineCombat(it.id, persist: widget.sync.saveRedemption)); // vrai hit aujourd'hui + crédit reconquête sur la plus vieille araignée
       logic.onChange();
       if (mounted) setState(() {});
       return;
@@ -593,11 +593,24 @@ class _DomainGameplayState extends State<_DomainGameplay>
     return (res != null && res > 0) ? res : null;
   }
 
+  // Célèbre une montée de palier (« 7 cases propres → +1 ») : le standard de la
+  // routine vient de grimper. SnackBar (le combat mobile n'a pas de _toast).
+  void _celebrateLevelUp(int? palier) {
+    if (palier == null || !mounted) return;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(
+        content: Text('⬆️ Standard monté à $palier ! Tu défends plus haut. ✨'),
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   // Décompte fini → cinématique de tir, puis validation + fermeture de la session.
   void _minuteurFire(_Item it) {
     _playFireCine(it.id, () {
       if (it.kind == 'spider') {
-        logic.validateRoutineCombat(it.id, persist: widget.sync.saveRedemption); // routine validée (plus vieille araignée)
+        _celebrateLevelUp(logic.validateRoutineCombat(it.id, persist: widget.sync.saveRedemption)); // routine validée (plus vieille araignée)
       }
       logic.stopActive(); // ferme la session (temps loggé → PV du scorpion)
       logic.onChange();
@@ -868,7 +881,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
     // Mode « coche » : marque la routine faite du jour (+1), sans minuteur ni
     // chrono. Réservé aux routines (le sélecteur ne propose pas 'check' ailleurs).
     if (mode == 'check' && it.kind == 'spider') {
-      logic.validateRoutineCombat(it.id, persist: widget.sync.saveRedemption); // plus vieille araignée
+      _celebrateLevelUp(logic.validateRoutineCombat(it.id, persist: widget.sync.saveRedemption)); // plus vieille araignée
       logic.onChange();
       if (mounted) setState(() {});
       return;
@@ -893,7 +906,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
     }
     if (actId == null) {
       // Routine sans activité liée : pas de minuteur possible → +1 sur place.
-      logic.validateRoutineCombat(it.id, persist: widget.sync.saveRedemption); // plus vieille araignée
+      _celebrateLevelUp(logic.validateRoutineCombat(it.id, persist: widget.sync.saveRedemption)); // plus vieille araignée
       logic.onChange();
       setState(() {});
       return;
