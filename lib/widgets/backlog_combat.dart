@@ -242,7 +242,7 @@ class _BacklogCombatPanelState extends State<BacklogCombatPanel>
     final todayCx = turretColW + (dayCount - 1) * cellW + cellW / 2;
     final t = _fireCtrl.value;
     final fx = turretCx + (todayCx - turretCx) * t;
-    final dy = -sin(t * pi) * 14.0;
+    final dy = -sin(t * pi) * 24.0; // lobe plus haut → trajectoire plus courbée
     return Center(
       child: Stack(
         clipBehavior: Clip.none,

@@ -1538,15 +1538,16 @@ class _DomainGameplayState extends State<_DomainGameplay>
             // (lobe vers le haut) — réplique l'arc du web (_CineFb).
             final todayX = 60.0 + (it.tokens.length - 1) * (cell + 2) + cell / 2;
             const fy0 = 30.0, fx0 = 30.0;
-            const arc = 22.0;
+            const arc = 36.0; // hauteur du lobe (plus haut = trajectoire plus courbée)
             final u = _fireCtrl.value;
             final fx = fx0 + (todayX - fx0) * u;
             final fy = fy0 - arc * sin(pi * u);
-            // Orientation : en montée vise le sommet, en descente vise la cible
-            // (la tête dense de fireball.svg pointe en +y → +pi/2).
-            final ax = u < 0.5 ? fx0 + (todayX - fx0) * 0.5 : todayX;
-            final ay = u < 0.5 ? fy0 - arc : fy0;
-            final fAngle = atan2(ay - fy, ax - fx) + pi / 2;
+            // Orientation : tangente RÉELLE de la parabole (continue) → la boule
+            // reste tête en avant sur tout l'arc (montée ET descente), sans saut au
+            // sommet. vx/vy = dérivées de fx/fy selon u ; +pi/2 = offset du sprite.
+            final vx = todayX - fx0;
+            final vy = -arc * pi * cos(pi * u);
+            final fAngle = atan2(vy, vx) + pi / 2;
             return Stack(
               clipBehavior: Clip.none,
               children: [
