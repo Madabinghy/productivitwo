@@ -5185,21 +5185,31 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       // Lane servie + sa réserve de flammes (RÈGLE : pas de flamme → pas de tir).
       final lane = _laneAtTurret(dom, turX, y);
       // Cible = PREMIÈRE araignée de la lane (jour manqué le plus ANCIEN) ; sinon
-      // repli sur « aujourd'hui ». Repère local : tour à turX, jours étalés vers
-      // l'extérieur (normal x+2..x+8 ; miroir x-2..x-8, aujourd'hui = la plus loin).
-      // On indexe par lane.dayX0 (repère EXACT des cases‑jour rendues) pour que le
-      // boulet tombe PILE sur la case et que le décrément de PV vise la bonne case.
-      var dayTargetX = lane != null ? _v2TodayCol(lane) : (mirror ? x - 8 : x + 8);
-      String? targetCellId = lane != null ? '${dayTargetX}_$y' : null;
+      // aujourd'hui. On récupère la VRAIE LaneRow (via byDomain) pour indexer par
+      // lane.dayX0 (repère EXACT des cases rendues) → le boulet tombe PILE dessus
+      // et le décrément de PV vise la bonne case.
+      LaneRow? laneRow;
+      final cb = dom != null ? w.byDomain[dom] : null;
+      if (cb != null) {
+        for (final l in cb.lanes) {
+          if (l.turretX == turX && l.y == y) {
+            laneRow = l;
+            break;
+          }
+        }
+      }
+      var dayTargetX =
+          laneRow != null ? _v2TodayCol(laneRow) : (mirror ? x - 8 : x + 8);
+      String? targetCellId = laneRow != null ? '${dayTargetX}_$y' : null;
       int flameJ = -1; // 1ʳᵉ flamme de streak de la lane (munition de recharge — B)
-      if (lane != null) {
-        final toks = lane.isRoutine
-            ? logic.routineWaveTokens(lane.id) // post-pardon de série
-            : logic.activityTimeTokens(lane.id);
+      if (laneRow != null) {
+        final toks = laneRow.isRoutine
+            ? logic.routineWaveTokens(laneRow.id) // post-pardon de série
+            : logic.activityTimeTokens(laneRow.id);
         for (var j = 0; j < toks.length; j++) {
           if (flameJ < 0 && toks[j].type == 'flame') flameJ = j;
           if (toks[j].type == 'spider') {
-            dayTargetX = mirror ? lane.dayX0 + (6 - j) : lane.dayX0 + j;
+            dayTargetX = mirror ? laneRow.dayX0 + (6 - j) : laneRow.dayX0 + j;
             targetCellId = '${dayTargetX}_$y';
             break;
           }
@@ -5234,8 +5244,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         if (!_canonDetached) _v2CenterOn(Point((turX + dayTargetX) ~/ 2, y));
         // B — la FLAMME de streak part de sa case et vole RECHARGER le canon, puis
         // c'est ce boulet qui frappe la 1ʳᵉ araignée (mise en scène « combat boss »).
-        if (flameJ >= 0 && lane != null) {
-          final flameX = mirror ? lane.dayX0 + (6 - flameJ) : lane.dayX0 + flameJ;
+        if (flameJ >= 0 && laneRow != null) {
+          final flameX =
+              mirror ? laneRow.dayX0 + (6 - flameJ) : laneRow.dayX0 + flameJ;
           final muzzle = turX + (flameX >= turX ? 0.5 : -0.5);
           _startReloadFlame(
               flameX.toDouble(), y.toDouble(), muzzle.toDouble(), y.toDouble());
