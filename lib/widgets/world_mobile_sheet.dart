@@ -956,6 +956,14 @@ class _DomainGameplayState extends State<_DomainGameplay>
     }
     if (target == null) return;
     final it = target;
+    // CONFIRMATION : on demande ce que le user veut faire (mode de tir), défaut =
+    // le mode inline de la ligne. Annuler = on ne tire pas.
+    final chosen = await _confirmFireMode(it);
+    if (chosen == null || !mounted) return;
+    if (chosen != _modeOf(it.id)) {
+      setState(() => _fireMode[it.id] = chosen);
+      _saveModes();
+    }
     // MODE MINUTEUR (avec activité) : on ne tire PAS de suite ni ne quitte le
     // domaine — on lance le DÉCOMPTE ; le tir viendra à zéro (cf. _minuteurFire).
     if (_modeOf(it.id) == 'timer' && _activityIdFor(it) != null) {
@@ -1500,16 +1508,6 @@ class _DomainGameplayState extends State<_DomainGameplay>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Libellés de jours retirés (on combat la vague d'araignées, pas un
-                // jour précis) — on garde l'espace pour aligner le sélecteur de mode
-                // au-dessus du viseur.
-                Row(children: [
-                  const SizedBox(width: 60),
-                  SizedBox(width: it.tokens.length * (cell + 2)),
-                  // Sélecteur de mode empilé AU-DESSUS du viseur (même colonne).
-                  _modeCell(it, cell),
-                ]),
-          const SizedBox(height: 1),
           () {
             final firing = _firingId == it.id;
             // Boulet : de la tour (x≈30, y≈30) vers la PREMIÈRE araignée/scorpion
@@ -1581,8 +1579,9 @@ class _DomainGameplayState extends State<_DomainGameplay>
                   ),
                   for (var d = 0; d < it.tokens.length; d++)
                     _tokenCell(it, d, cell),
-                  // Case VISEUR, juste SOUS le sélecteur de mode (même colonne).
+                  // VISEUR puis sélecteur de MODE de tir, inline sur la même ligne.
                   _viseurCell(it, cell),
+                  _modeCell(it, cell),
                 ]),
                 // Boulet de feu en vol (tour → jour) en courbe, orienté.
                 if (firing && _explodingId != it.id && u < 0.98)
@@ -1759,6 +1758,65 @@ class _DomainGameplayState extends State<_DomainGameplay>
             size: 18,
             color: on ? const Color(0xFFFF8A3D) : Colors.white24),
       ),
+    );
+  }
+
+  // Confirmation au tir : feuille demandant CE QUE le user veut faire (mode de tir).
+  // Défaut = le mode inline de la ligne (pré-surligné). Retourne le mode choisi ou
+  // null (annulé → pas de tir).
+  Future<String?> _confirmFireMode(_Item it) {
+    final current = _modeOf(it.id);
+    return showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: const Color(0xFF14110F),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) {
+        Widget opt(String mode, IconData icon, String label, String sub) {
+          final sel = mode == current;
+          return ListTile(
+            leading: Icon(icon,
+                color: sel ? const Color(0xFFFF8A3D) : Colors.white60),
+            title: Text(label,
+                style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: sel ? FontWeight.w800 : FontWeight.w500)),
+            subtitle: Text(sub,
+                style: const TextStyle(color: Colors.white38, fontSize: 12)),
+            trailing: sel
+                ? const Icon(Icons.check, color: Color(0xFFFF8A3D), size: 18)
+                : null,
+            onTap: () => Navigator.pop(ctx, mode),
+          );
+        }
+
+        return SafeArea(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+              child: Row(children: [
+                const Text('🔥 ', style: TextStyle(fontSize: 16)),
+                Expanded(
+                  child: Text('Faire feu sur ${it.name}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 15)),
+                ),
+              ]),
+            ),
+            opt('check', Icons.check_box_outlined, 'Cocher',
+                'Valider directement (1 coup)'),
+            opt('chrono', Icons.play_circle_outline, 'Chrono',
+                'Lancer un chrono libre'),
+            opt('timer', Icons.timer_outlined, 'Minuteur',
+                'Lancer un décompte'),
+            const SizedBox(height: 6),
+          ]),
+        );
+      },
     );
   }
 
