@@ -142,11 +142,16 @@ extension GoldEngineWeapons on AppLogic {
         final hp = full - done;
         return hp < 0 ? 0 : hp;
       }
-      final hp = activeHabitTarget(a) - habitValueOn(a.id, today);
+      final hp = activeHabitTarget(a) -
+          habitValueOn(a.id, today) -
+          redemptionCreditsOn(a.id, yyyymmdd(today), 'habit');
       return hp < 0 ? 0 : hp;
     }
-    // scorpion : retard de temps du jour / 5 min (arrondi haut).
-    final retard = a.goalMin - _activityLoggedMinutes(a.id, yyyymmdd(today));
+    // scorpion : retard de temps du jour / 5 min (arrondi haut). La reconquête
+    // (crédits du jour, en minutes) réduit le retard sans toucher au relevé réel.
+    final retard = a.goalMin -
+        _activityLoggedMinutes(a.id, yyyymmdd(today)) -
+        redemptionCreditsOn(a.id, yyyymmdd(today), 'time');
     return retard <= 0 ? 0 : (retard / 5).ceil();
   }
 

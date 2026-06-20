@@ -6,6 +6,7 @@ import 'package:productivitwo_v1/expedition.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/gold_economy.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/redemption_engine.dart';
 
 export 'package:productivitwo_v1/gold_economy.dart';
 
