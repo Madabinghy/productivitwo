@@ -1,0 +1,38 @@
+name: PR Build (web)
+
+# Filet de validation des PR : compile le Flutter web (SANS déployer) dès que le
+# code Dart change. Échoue sur une vraie erreur de compilation, pas sur un warning.
+# Sert notamment à valider les refactors mécaniques (split de god-files) avant merge.
+#
+# Coût minutes maîtrisé :
+#  - ne tourne QUE si lib/ ou le pubspec changent (paths)
+#  - concurrency annule les runs obsolètes d'une même PR (push successifs)
+on:
+  pull_request:
+    paths:
+      - "lib/**"
+      - "pubspec.yaml"
+      - "pubspec.lock"
+      - ".github/workflows/pr-build.yml"
+
+concurrency:
+  group: pr-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.35.6"
+          channel: stable
+          cache: true
+
+      - name: flutter pub get
+        run: flutter pub get
+
+      - name: Build web (compile only, no deploy)
+        run: flutter build web --release --no-tree-shake-icons

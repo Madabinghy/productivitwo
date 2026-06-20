@@ -3247,7 +3247,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     final toks = isRoutine
         ? logic.routineWeekTokens(a.id)
         : logic.activityTimeTokens(a.id);
-    final kept = toks.where((t) => t.type != 'spider').length;
+    // Activité-temps : combat QUOTIDIEN (1 PV = 5 min du jour, cf. enemyHp).
+    final ts = isRoutine ? null : logic.timeSliding(a.id, 1);
+    final scorpHp = isRoutine ? 0 : logic.enemyHp('scorpion', a.id);
+    final scorpMaxHp = isRoutine ? 0 : logic.enemyMaxHp('scorpion', a.id);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Container(
         padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
@@ -3277,10 +3280,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
-              _laneStat('${pc.done}/${pc.target}',
-                  isRoutine ? 'cette période' : 'min · semaine', col),
-              _laneStat(isRoutine ? '🔥 $streak' : '$kept/7',
-                  isRoutine ? 'série' : 'jours tenus', col),
+              _laneStat(
+                  isRoutine
+                      ? '${pc.done}/${pc.target}'
+                      : '${ts!.doneMin}/${ts!.targetMin}',
+                  isRoutine ? 'cette période' : 'min · aujourd\'hui', col),
+              _laneStat(isRoutine ? '🔥 $streak' : '🦂 $scorpHp/$scorpMaxHp',
+                  isRoutine ? 'série' : 'PV restants', col),
             ]),
             const SizedBox(height: 12),
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
