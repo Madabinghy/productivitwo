@@ -2370,8 +2370,15 @@ class _AppRootState extends State<AppRoot>
     _saving = true;
     try {
       await store.save(_state!);
-      // Sync Firestore pour tous les users (anonymes inclus)
-      if (_sync.uid != null && !kIsWeb && !Platform.isMacOS && !Platform.isWindows && !Platform.isLinux) {
+      // Sync Firestore pour tous les users (anonymes inclus). Inclut le WEB : le
+      // clone mobile (?mobilepreview=true) doit ÉCRIRE dans Firestore comme un vrai
+      // device (sinon ses changements — chrono lancé, routine validée… — ne se
+      // synchronisent pas vers le web/les autres appareils).
+      if (_sync.uid != null &&
+          (kIsWeb ||
+              (!Platform.isMacOS &&
+                  !Platform.isWindows &&
+                  !Platform.isLinux))) {
         _sync.pushDeltas(_state!).catchError((_) {});
       }
     } catch (e) {

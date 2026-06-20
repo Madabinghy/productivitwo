@@ -2688,6 +2688,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   void _subscribeSessions() {
     if (widget.mobile) return; // mode spectateur = web
     _sessionSub = sync.streamSessions().listen((sessions) {
+      // Reflète l'état RÉEL des sessions (y compris une session lancée depuis un
+      // AUTRE appareil : téléphone, autre onglet…) → le HUD « chrono en cours »
+      // (_anyOpenSession lit logic.state.sessions) s'affiche aussi pour le distant.
+      if (mounted) setState(() => logic.state.sessions = sessions);
       final running = <String>{
         for (final s in sessions)
           if (s.endAt == null) s.activityId
