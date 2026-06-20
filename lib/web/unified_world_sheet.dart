@@ -180,6 +180,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   final Set<String> _v2LaunchPads = {}; // tileIds de la case de tir (gauche de chaque tourelle)
   final Map<String, String> _v2LaunchPadRoutineId = {}; // tileId munitions → routineId
   final Map<String, String> _v2LaunchPadActivityId = {}; // tileId munitions → activité‑temps
+  final Map<String, String> _v2LaunchPadLaneId = {}; // tileId rampe → lane.id (routine|activité)
   final Set<String> _v2Sep = {}; // tileIds de la ligne séparatrice routines/activités
   final Map<String, int> _v2DayTurretX = {}; // tileId jour → X de la tourelle de sa lane
   // Cases du CALENDRIER (7 jours de chaque lane) : BLOQUANTES pour l'avatar — on
@@ -3392,10 +3393,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 _laneWeekDot(toks[i].type, isRoutine, col),
             ]),
             const SizedBox(height: 14),
-            if (isRoutine)
+            if (isRoutine) ...[
+              _laneHabitTargetEditor(a, col),
+              const SizedBox(height: 12),
               _laneBigCta(Icons.check_rounded, 'Valider une routine', col,
-                  () => _dashValidateRoutine(a))
-            else ...[
+                  () => _dashValidateRoutine(a)),
+            ] else ...[
               _timeWeekGraph(a, col),
               const SizedBox(height: 12),
               _timeTargetEditor(a, col),
@@ -3508,6 +3511,47 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     final nv = v < 0 ? 0 : (v > 24 * 60 ? 24 * 60 : v);
     if (nv == a.goalMin) return;
     a.goalMin = nv;
+    sync.saveActivity(a);
+    _populateV2Calendar();
+    _populateV2Gardens();
+    if (mounted) setState(() {});
+  }
+
+  // Éditeur de cible d'une ROUTINE (habitTarget, ex : 10 verres/jour) sur le web.
+  Widget _laneHabitTargetEditor(Activity a, Color col) {
+    final t = a.habitTarget ?? 1;
+    Widget btn(IconData ic, VoidCallback onTap) => InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+                color: col.withOpacity(.18), shape: BoxShape.circle),
+            child: Icon(ic, size: 18, color: Colors.white),
+          ),
+        );
+    return Row(children: [
+      const Text('🎯 Objectif/jour',
+          style: TextStyle(
+              color: Colors.white70,
+              fontSize: 12,
+              fontWeight: FontWeight.w700)),
+      const Spacer(),
+      btn(Icons.remove_rounded, () => _setHabitTarget(a, t - 1)),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Text('$t',
+            style: TextStyle(
+                color: col, fontWeight: FontWeight.w900, fontSize: 15)),
+      ),
+      btn(Icons.add_rounded, () => _setHabitTarget(a, t + 1)),
+    ]);
+  }
+
+  void _setHabitTarget(Activity a, int v) {
+    final nv = v < 1 ? 1 : (v > 999 ? 999 : v);
+    if (nv == (a.habitTarget ?? 1)) return;
+    a.habitTarget = nv;
     sync.saveActivity(a);
     _populateV2Calendar();
     _populateV2Gardens();
@@ -3692,6 +3736,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         // routine à zéro (comme le mode minuteur du combat mobile).
         _laneTimerControls(linkedAct, col,
             onMinuteurDone: () => _dashValidateRoutine(routine)),
+        const SizedBox(height: 12),
+        _laneTimerGrid(linkedAct, col,
+            onDone: () => _dashValidateRoutine(routine)),
         const SizedBox(height: 10),
         Text('MINUTEUR PAR DÉFAUT',
             style: TextStyle(
@@ -8512,6 +8559,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _v2LaunchPads.clear();
     _v2LaunchPadRoutineId.clear();
     _v2LaunchPadActivityId.clear();
+    _v2LaunchPadLaneId.clear();
     _v2Sep.clear();
     _v2DayTurretX.clear();
     _v2DayCells.clear();
@@ -8552,6 +8600,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         final munId = '${lane.turretX + padDx}_${lane.y}';
         final rampId = '${lane.turretX + 2 * padDx}_${lane.y}';
         _v2LaunchPads.add(rampId);
+        _v2LaunchPadLaneId[rampId] = lane.id; // rampe → dashboard ciblé de la lane
         if (lane.isRoutine) {
           _v2LaunchPadRoutineId[munId] = lane.id;
         } else {
@@ -8748,14 +8797,14 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       // château »). « On est là pour bosser, pas pour jouer. »
       final dom = _domainAtTileV2(x, y);
       if (dom != null) {
-        final mirror = _v2Turret.containsKey('${x - 1}_$y');
-        final turX = mirror ? x - 1 : x + 1;
-        final lane = _laneAtTurret(dom, turX, y);
+        // Dashboard CIBLÉ de la lane (routine OU activité) — même panneau que le clic
+        // sur la pastille de solde. lane.id via la map rampe→lane (robuste au décalage
+        // de la rampe).
         setState(() {
           _gardenPanel = (
             domainId: dom,
             mode: 'routineDash',
-            laneId: lane?.id,
+            laneId: _v2LaunchPadLaneId[id],
             pestType: null,
           );
         });
