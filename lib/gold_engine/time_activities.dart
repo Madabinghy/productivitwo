@@ -8,6 +8,20 @@ extension GoldEngineTime on AppLogic {
         .inMinutes;
   }
 
+  /// Minutes du jour + crédits de RECONQUÊTE (minutes virtuelles imputées à ce
+  /// jour). Réservé aux consommateurs JARDIN (tapis, château) — l'économie d'or
+  /// lit `_minutesOnDay` brut : la reconquête ne génère JAMAIS d'or ni ne touche
+  /// le rapport temps factuel.
+  int _minutesOnDayGarden(String activityId, DateTime date) =>
+      _minutesOnDay(activityId, date) +
+      redemptionCreditsOn(activityId, yyyymmdd(date), 'time');
+
+  /// Hits du jour + crédits de RECONQUÊTE (hits virtuels). Même règle que
+  /// [_minutesOnDayGarden] : jardin oui, or non.
+  int _habitValueOnGarden(String activityId, DateTime date) =>
+      habitValueOn(activityId, date) +
+      redemptionCreditsOn(activityId, yyyymmdd(date), 'habit');
+
   /// Tokens du tapis pour une activité TEMPS : par jour, minutes vs `goalMin`.
   /// 'flame' (≥2j à l'objectif) · 'leaf' (objectif atteint) · 'spider' (PV =
   /// minutes restantes pour l'objectif).
@@ -33,11 +47,11 @@ extension GoldEngineTime on AppLogic {
     final out = <({String type, int hp})>[];
     for (var i = 0; i < 7; i++) {
       final date = today.subtract(Duration(days: 6 - i));
-      final mins = _minutesOnDay(a.id, date);
+      final mins = _minutesOnDayGarden(a.id, date);
       if (mins >= goal) {
         var run = 0;
         var d = date;
-        while (_minutesOnDay(a.id, d) >= goal) {
+        while (_minutesOnDayGarden(a.id, d) >= goal) {
           run++;
           if (run >= 2) break;
           d = d.subtract(const Duration(days: 1));
@@ -48,7 +62,7 @@ extension GoldEngineTime on AppLogic {
       // Pas (assez) travaillé ce jour → en retard sur la fenêtre 7j glissante ?
       var trailing7 = 0;
       for (var k = 0; k < 7; k++) {
-        trailing7 += _minutesOnDay(a.id, date.subtract(Duration(days: k)));
+        trailing7 += _minutesOnDayGarden(a.id, date.subtract(Duration(days: k)));
       }
       if (trailing7 < target7) {
         out.add((type: 'spider', hp: (target7 - trailing7).clamp(1, 1 << 30)));
@@ -75,7 +89,7 @@ extension GoldEngineTime on AppLogic {
     final today = DateTime(now.year, now.month, now.day);
     var misses = 0, dones = 0;
     for (var k = 7; k < 28; k++) {
-      if (_minutesOnDay(a.id, today.subtract(Duration(days: k))) >= goal) {
+      if (_minutesOnDayGarden(a.id, today.subtract(Duration(days: k))) >= goal) {
         dones++;
       } else {
         misses++;
@@ -186,13 +200,13 @@ extension GoldEngineTime on AppLogic {
       final out = <({String type, int hp})>[];
       for (var i = 0; i < 7; i++) {
         final date = today.subtract(Duration(days: 6 - i));
-        if (habitValueOn(a.id, date) >= quota) {
+        if (_habitValueOnGarden(a.id, date) >= quota) {
           out.add((type: 'leaf', hp: 0));
           continue;
         }
         var doneInPeriod = false;
         for (var k = 0; k < period; k++) {
-          if (habitValueOn(a.id, date.subtract(Duration(days: k))) >= quota) {
+          if (_habitValueOnGarden(a.id, date.subtract(Duration(days: k))) >= quota) {
             doneInPeriod = true;
             break;
           }
@@ -206,14 +220,14 @@ extension GoldEngineTime on AppLogic {
     final out = <({String type, int hp})>[];
     for (var i = 0; i < 7; i++) {
       final date = today.subtract(Duration(days: 6 - i));
-      final value = habitValueOn(a.id, date);
+      final value = _habitValueOnGarden(a.id, date);
       if (value < quota) {
         out.add((type: 'spider', hp: quota - value)); // PV restants
         continue;
       }
       var run = 0;
       var d = date;
-      while (habitValueOn(a.id, d) >= quota) {
+      while (_habitValueOnGarden(a.id, d) >= quota) {
         run++;
         if (run >= 2) break;
         d = d.subtract(const Duration(days: 1));

@@ -95,7 +95,7 @@ extension GoldEnginePests on AppLogic {
     var misses = 0, dones = 0;
     for (var k = 7; k < 28; k++) {
       final date = today.subtract(Duration(days: k));
-      if (habitValueOn(a.id, date) >= quota) {
+      if (_habitValueOnGarden(a.id, date) >= quota) {
         dones++;
         continue;
       }
@@ -107,7 +107,7 @@ extension GoldEnginePests on AppLogic {
       // période (grâce). Sinon ni toile ni rien.
       var doneInPeriod = false;
       for (var p = 0; p < period; p++) {
-        if (habitValueOn(a.id, date.subtract(Duration(days: p))) >= quota) {
+        if (_habitValueOnGarden(a.id, date.subtract(Duration(days: p))) >= quota) {
           doneInPeriod = true;
           break;
         }
