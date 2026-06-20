@@ -3395,6 +3395,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               _laneBigCta(Icons.check_rounded, 'Valider une routine', col,
                   () => _dashValidateRoutine(a))
             else ...[
+              _timeWeekGraph(a, col),
+              const SizedBox(height: 12),
+              _timeTargetEditor(a, col),
+              const Divider(color: Colors.white12, height: 22),
               _laneTimerControls(a, col),
               const SizedBox(height: 10),
               ..._laneTimerDefaultChips(a, col),
@@ -3411,6 +3415,100 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         ),
       ),
     ]);
+  }
+
+  // Graphe de la SEMAINE (7 derniers jours) d'une activité-temps : minutes logguées
+  // /jour (barres), barre pleine si l'objectif du jour est atteint.
+  Widget _timeWeekGraph(Activity a, Color col) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    const wd = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+    final goal = a.goalMin;
+    final bars = <({String lbl, int min})>[];
+    var maxMin = goal > 0 ? goal : 1;
+    for (var i = 6; i >= 0; i--) {
+      final d = today.subtract(Duration(days: i));
+      final m = logic
+          .totalForRangeByActivity(a.id, d, d.add(const Duration(days: 1)))
+          .inMinutes;
+      bars.add((lbl: wd[(d.weekday - 1) % 7], min: m));
+      if (m > maxMin) maxMin = m;
+    }
+    const h = 64.0;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Text('📈 Cette semaine — objectif ${_fmtHM(goal)}/jour',
+          style:
+              TextStyle(color: col, fontWeight: FontWeight.w900, fontSize: 12)),
+      const SizedBox(height: 8),
+      SizedBox(
+        height: h + 20,
+        child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          for (final b in bars)
+            Expanded(
+              child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                Text(b.min > 0 ? _fmtHM(b.min) : '',
+                    maxLines: 1,
+                    style:
+                        const TextStyle(color: Colors.white54, fontSize: 7.5)),
+                const SizedBox(height: 2),
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  height: (h * (b.min / maxMin)).clamp(2.0, h).toDouble(),
+                  decoration: BoxDecoration(
+                    color: goal > 0 && b.min >= goal ? col : col.withOpacity(.4),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(b.lbl,
+                    style: const TextStyle(color: Colors.white38, fontSize: 9)),
+              ]),
+            ),
+        ]),
+      ),
+    ]);
+  }
+
+  // Éditeur d'objectif/jour (goalMin) directement sur le web (pas besoin du mobile).
+  Widget _timeTargetEditor(Activity a, Color col) {
+    Widget btn(IconData ic, VoidCallback onTap) => InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            padding: const EdgeInsets.all(6),
+            decoration:
+                BoxDecoration(color: col.withOpacity(.18), shape: BoxShape.circle),
+            child: Icon(ic, size: 18, color: Colors.white),
+          ),
+        );
+    return Row(children: [
+      const Text('🎯 Objectif/jour',
+          style: TextStyle(
+              color: Colors.white70,
+              fontSize: 12,
+              fontWeight: FontWeight.w700)),
+      const Spacer(),
+      btn(Icons.remove_rounded, () => _setGoalMin(a, a.goalMin - 15)),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Text(_fmtHM(a.goalMin),
+            style: TextStyle(
+                color: col, fontWeight: FontWeight.w900, fontSize: 15)),
+      ),
+      btn(Icons.add_rounded, () => _setGoalMin(a, a.goalMin + 15)),
+    ]);
+  }
+
+  // Change l'objectif/jour par pas de 15 min, persiste, et rafraîchit le monde
+  // (les scorpions/PV dépendent de la cible).
+  void _setGoalMin(Activity a, int v) {
+    final nv = v < 0 ? 0 : (v > 24 * 60 ? 24 * 60 : v);
+    if (nv == a.goalMin) return;
+    a.goalMin = nv;
+    sync.saveActivity(a);
+    _populateV2Calendar();
+    _populateV2Gardens();
+    if (mounted) setState(() {});
   }
 
   // Section « Actions » d'une activité-temps : actions PROPRES (créées sur place,
@@ -6100,16 +6198,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     return a.charger + a.reserve;
   }
 
-  // Solde de temps signé en h/min : +90 → « +1h30 », -50 → « -50min », +120 → « +2h ».
-  static String _fmtDelta(int min) {
-    final sign = min >= 0 ? '+' : '-';
-    final m = min.abs();
-    if (m >= 60) {
-      final h = m ~/ 60, mm = m % 60;
-      return mm == 0 ? '$sign${h}h' : '$sign${h}h${mm.toString().padLeft(2, '0')}';
+  // Durée en h/min : 90 → « 1h30 », 50 → « 50min », 120 → « 2h ».
+  static String _fmtHM(int min) {
+    if (min >= 60) {
+      final h = min ~/ 60, mm = min % 60;
+      return mm == 0 ? '${h}h' : '${h}h${mm.toString().padLeft(2, '0')}';
     }
-    return '$sign${m}min';
+    return '${min}min';
   }
+
+  // Solde de temps signé : +90 → « +1h30 », -50 → « -50min ».
+  static String _fmtDelta(int min) =>
+      (min >= 0 ? '+' : '-') + _fmtHM(min.abs());
 
   // Pastille de SOLDE de temps (activité‑temps) : vert si en avance, rouge si en retard.
   Widget _soldeBadge(int deltaMin, double inner) {
@@ -6123,9 +6223,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         borderRadius: BorderRadius.circular(5),
         border: Border.all(color: color.withOpacity(.7), width: 0.8),
       ),
-      child: Text('⏱${_fmtDelta(deltaMin)}',
+      child: Text(_fmtDelta(deltaMin),
           style: TextStyle(
-              fontSize: inner * 0.22,
+              fontSize: inner * 0.34, // plus gros (horloge retirée)
               height: 1,
               fontWeight: FontWeight.w900,
               color: color)),
@@ -8557,6 +8657,24 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     // Parchemin 📜 → l'avatar monte dessus et le grand dashboard projets s'ouvre.
     if (_v2Parchemins.containsKey(id)) {
       await _onParchemin(x, y);
+      return;
+    }
+    // Pastille de SOLDE de temps (case munitions d'une activité-temps) → dashboard
+    // direct (graphe semaine + édition de la cible), comme la rampe : sans marcher
+    // dessus.
+    final solAid = _v2LaunchPadActivityId[id];
+    if (solAid != null) {
+      final dom = _domainAtTileV2(x, y);
+      if (dom != null) {
+        setState(() {
+          _gardenPanel = (
+            domainId: dom,
+            mode: 'routineDash',
+            laneId: solAid,
+            pestType: null,
+          );
+        });
+      }
       return;
     }
     // Rampe de tir ☢️ → séquence canon (marche, spin, lève, tire si flammes) puis
