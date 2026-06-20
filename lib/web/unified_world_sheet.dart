@@ -3933,13 +3933,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       );
 
   Widget _laneWeekDot(String type, bool isRoutine, Color col) {
-    final emoji = type == 'flame'
-        ? '🔥'
-        : type == 'spider'
-            ? (isRoutine ? '🕷️' : '🦂')
-            : type == 'leaf'
-                ? '🍃'
-                : '';
+    final emoji = type == 'spider'
+        ? (isRoutine ? '🕷️' : '🦂')
+        : (type == 'leaf' || type == 'flame')
+            ? '🍃' // jour tenu (feuille/série) — plus de 🔥 (redondant avec le streak)
+            : '';
     return Container(
       width: 22,
       height: 22,
@@ -8258,7 +8256,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       case 'leaf':
         return ''; // jour fait (1er jour) → case vide, plus clean
       case 'flame':
-        return '🔥';
+        return ''; // jour tenu (série) → case vide aussi : la série vit sur la rampe
+        // (streak), plus de 🔥 au calendrier (doublon + brouille la vue du nettoyage)
       case 'spider':
         return isRoutine ? '🕷️' : '🦂';
       default:
@@ -8594,6 +8593,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         // Cases du calendrier = murs infranchissables (jamais, même comme cible) :
         // on force l'avatar à passer par le centre de la map, pas derrière les routines.
         if (_v2DayCells.contains(nid)) continue;
+        // Tourelle = infranchissable elle aussi (jamais de raccourci derrière le mur
+        // du château / derrière le calendrier) → passage par la cour obligatoire.
+        if (_v2Turret.containsKey(nid)) continue;
+        // Parchemin = bloquant en traversée, MAIS franchissable comme CIBLE (l'avatar
+        // monte dessus pour le lire).
+        if (n != to && _v2Parchemins.containsKey(nid)) continue;
         // Un serpent bloque le passage (impossible d'enjamber) → l'avatar doit
         // faire le tour. Exception : la case CIBLE, pour aller la combattre.
         if (n != to && _v2Pests.containsKey(nid)) continue;
