@@ -307,6 +307,12 @@ async function executeGetUserContext(uid: string): Promise<string> {
     .map((d) => d.data())
     .filter((v) => !v.deleted)
     .map((v) => {
+    // Actions PROPRES de l'activité (TaskAction sans tâche/projet) — non faites.
+    const ownActions = Array.isArray(v.ownActions)
+      ? v.ownActions
+          .filter((a: { done?: boolean }) => !a?.done)
+          .map((a: { id: string; title: string }) => ({ id: a.id, title: a.title }))
+      : [];
     return {
       id: v.id,
       name: v.name,
@@ -315,6 +321,7 @@ async function executeGetUserContext(uid: string): Promise<string> {
       goalMin: v.goalMin,
       habitFreq: v.habitFreq,
       habitTarget: v.habitTarget,
+      ...(ownActions.length > 0 ? { ownActions } : {}),
     };
   });
 
@@ -423,6 +430,8 @@ async function executeGetUserContext(uid: string): Promise<string> {
       "CONVENTION CALENDRIER : quand tu crées un événement Google Calendar dans le cadre d'une session Productivitwo, ajoute ' - Productivitwo' à la fin du titre (ex: 'Séance musculation - Productivitwo'). Cela te permet d'identifier les events que tu peux modifier librement lors d'une réorganisation. Les events sans ' - Productivitwo' ont été créés par l'utilisateur ou hors contexte Productivitwo : ne les modifie pas sans demander confirmation explicite.",
       "FICHIERS DE TÂCHE : quand tu crées ou sauvegardes un document avec save_document, associe-le toujours à la tâche Gantt concernée via taskId (obtenu depuis get_project → tasks[].id). Choisis la category appropriée : 'programme' pour un plan structuré, 'brief' pour un cahier des charges, 'recherche' pour une analyse/veille, 'livrable' pour un output final, 'notes' pour des notes de travail. Avant de créer un nouveau document, vérifie via get_documents(taskId) si un document de même category existe déjà pour éviter les doublons — si oui, mets-le à jour via documentId.",
       "PRIORITÉ ABSOLUE : réponds d'abord à la demande de l'utilisateur. Ne fais jamais d'actions non demandées (schedule_day, push_assistant_message, modification Gantt…) avant d'avoir répondu. Les actions proactives viennent APRÈS la réponse, jamais à la place.",
+      "ACTIONS D'ACTIVITÉ : une activité-temps peut avoir ses propres actions (champ ownActions de chaque activité dans ce contexte) — des sous-actions sans tâche/projet. Tu peux en créer via add_activity_action(activityId, title) puis les PROGRAMMER dans schedule_day en passant activityId + actionId (le chrono du bloc sera ciblé sur l'action). Quand tu programmes une action concrète qui correspond à une activité-temps existante, préfère la rattacher (action propre) plutôt qu'un bloc vague.",
+      "LIER UNE ACTION À UNE ACTIVITÉ : quand tu vois une sous-action de tâche Gantt qui n'est PAS déjà liée à une activité (pas de linkedActivityId) et qu'une activité-temps du même domaine existe, PROPOSE à l'utilisateur de l'y associer via link_action_to_activity(projectId, taskId, actionId, activityId) — ainsi le temps passé dessus sera chronométré sur la bonne activité. Propose, n'impose pas ; ne touche pas à une action déjà liée.",
       "PROPOSITIONS DE FIN DE SESSION : après avoir terminé une action significative (programme créé, Gantt mis à jour, bilan fait, messages ORION programmés…), propose toujours 2 à 3 suites logiques sous forme de liste numérotée courte. " +
       "Adapte les options à ce qui vient d'être fait. Exemples pertinents selon le contexte : " +
       "• 'Programme ton plan du jour' (si pas encore fait aujourd'hui) " +
@@ -1181,6 +1190,78 @@ async function executeMarkActionDone(
   return `✅ Sous-action "${actionTitle}" ${done ? "marquée faite" : "démarquée"}.`;
 }
 
+// Associe une sous-action de tâche (TaskAction) à une activité-temps : pose
+// linkedActivityId → le chrono lancé depuis cette action est ciblé (la session
+// pointe dessus). À proposer quand une action n'est pas déjà liée et qu'une
+// activité-temps du même domaine existe.
+async function executeLinkActionToActivity(
+  uid: string,
+  projectId: string,
+  taskId: string,
+  actionId: string,
+  activityId: string
+): Promise<string> {
+  const actSnap = await db.collection(`users/${uid}/activities`).doc(activityId).get();
+  if (!actSnap.exists) return `Activité introuvable : ${activityId}`;
+  const actData = actSnap.data() as Record<string, unknown>;
+  if (actData.deleted === true) return `Activité supprimée : ${activityId}`;
+  if (actData.type !== "time") return `L'activité "${actData.name ?? activityId}" n'est pas une activité-temps — impossible de chronométrer une action dessus.`;
+
+  const ref = db.collection(`users/${uid}/projects`).doc(projectId);
+  const snap = await ref.get();
+  if (!snap.exists) return `Projet introuvable : ${projectId}`;
+  const data = snap.data() as Record<string, unknown>;
+  const rawTasks = (data.tasks || []) as Array<Record<string, unknown>>;
+  const tasks = rawTasks.map((t) => JSON.parse(JSON.stringify(t, (_k, v) =>
+    v && typeof v === "object" && typeof v.toDate === "function" ? v.toDate().toISOString() : v
+  )));
+
+  const taskIdx = tasks.findIndex((t) => t.id === taskId);
+  if (taskIdx === -1) return `Tâche introuvable : ${taskId}`;
+  const actions = ((tasks[taskIdx].actions as Array<Record<string, unknown>>) ?? []).slice();
+  const actionIdx = actions.findIndex((a) => a.id === actionId);
+  if (actionIdx === -1) return `Sous-action introuvable : ${actionId}`;
+
+  actions[actionIdx] = { ...actions[actionIdx], linkedActivityId: activityId };
+  tasks[taskIdx] = { ...tasks[taskIdx], actions };
+  await ref.update({ tasks, updatedAt: FieldValue.serverTimestamp() });
+
+  const actionTitle = (actions[actionIdx].title as string) ?? actionId;
+  return `🔗 Action "${actionTitle}" liée à l'activité "${actData.name ?? activityId}" — le chrono lancé dessus sera ciblé.`;
+}
+
+// Crée une action PROPRE sur une activité (Activity.ownActions) : une TaskAction
+// qui appartient directement à l'activité, sans tâche/projet. Réutilisable ensuite
+// dans schedule_day (activityId + actionId) pour la programmer.
+async function executeAddActivityAction(
+  uid: string,
+  activityId: string,
+  title: string
+): Promise<string> {
+  if (!title?.trim()) return "Titre de l'action requis.";
+  const ref = db.collection(`users/${uid}/activities`).doc(activityId);
+  const snap = await ref.get();
+  if (!snap.exists) return `Activité introuvable : ${activityId}`;
+  const data = snap.data() as Record<string, unknown>;
+  if (data.deleted === true) return `Activité supprimée : ${activityId}`;
+
+  const own = Array.isArray(data.ownActions)
+    ? (data.ownActions as Array<Record<string, unknown>>).slice()
+    : [];
+  const action = {
+    id: uuidv4(),
+    title: title.trim(),
+    done: false,
+    doneAt: null,
+    createdAt: new Date().toISOString(),
+    linkedActivityId: activityId,
+  };
+  own.push(action);
+  await ref.update({ ownActions: own });
+
+  return `✅ Action propre "${action.title}" créée sur "${data.name ?? activityId}" (id: ${action.id}). Tu peux la programmer via schedule_day (activityId: ${activityId}, actionId: ${action.id}).`;
+}
+
 async function executeLogRoutineHit(uid: string, activityId: string, delta = 1): Promise<string> {
   if (!activityId) return "activityId requis.";
   const dec = delta < 0;
@@ -1658,6 +1739,7 @@ async function executeScheduleDay(
     projectId?: string;
     taskId?: string;
     activityId?: string;
+    actionId?: string;
   }>
 ): Promise<string> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return `Date invalide : ${date}. Format attendu : YYYY-MM-DD`;
@@ -1672,6 +1754,7 @@ async function executeScheduleDay(
     projectId: b.projectId ?? null,
     taskId: b.taskId ?? null,
     activityId: b.activityId ?? null,
+    actionId: b.actionId ?? null, // action ciblée (propre à une activité OU action de projet)
     status: "pending",
     doneAt: null,
   }));
@@ -1847,6 +1930,8 @@ export {
   executeAddTask,
   executeUpdateTask,
   executeMarkActionDone,
+  executeLinkActionToActivity,
+  executeAddActivityAction,
   executeLogRoutineHit,
   executeMarkBlockDone,
   executeGetAssistantMessages,
