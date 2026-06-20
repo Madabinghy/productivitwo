@@ -784,7 +784,8 @@ class _DomainGameplayState extends State<_DomainGameplay>
     if (_firingActionId != null) return;
     Project? proj;
     TaskAction? act;
-    // 1) Action visée en priorité.
+    Activity? ownOwner; // activité propriétaire si l'action est PROPRE
+    // 1) Action visée en priorité (projet OU action propre).
     if (_actionTargetId != null) {
       for (final p in _actionProjects()) {
         for (final t in p.tasks) {
@@ -796,8 +797,16 @@ class _DomainGameplayState extends State<_DomainGameplay>
           }
         }
       }
+      if (act == null) {
+        for (final e in _domainOwnActions()) {
+          if (e.action.id == _actionTargetId && !e.action.done) {
+            ownOwner = e.activity;
+            act = e.action;
+          }
+        }
+      }
     }
-    // 2) Sinon la 1ʳᵉ action non faite.
+    // 2) Sinon la 1ʳᵉ action non faite (projets puis actions propres).
     if (act == null) {
       for (final p in _actionProjects()) {
         for (final t in p.tasks) {
@@ -814,7 +823,16 @@ class _DomainGameplayState extends State<_DomainGameplay>
         if (act != null) break;
       }
     }
-    if (act == null || proj == null) return;
+    if (act == null) {
+      for (final e in _domainOwnActions()) {
+        if (!e.action.done) {
+          ownOwner = e.activity;
+          act = e.action;
+          break;
+        }
+      }
+    }
+    if (act == null || (proj == null && ownOwner == null)) return;
     final id = act.id;
     _fireCtrl.reset();
     setState(() => _firingActionId = id);
@@ -823,10 +841,14 @@ class _DomainGameplayState extends State<_DomainGameplay>
       _firingActionId = null;
       return;
     }
-    act.done = true;
-    act.doneAt = DateTime.now();
-    await widget.sync.saveProjectTasks(proj.id, proj.tasks);
-    logic.onChange();
+    if (ownOwner != null) {
+      logic.toggleOwnAction(ownOwner.id, id, true); // persiste via onChange→pushDeltas
+    } else {
+      act.done = true;
+      act.doneAt = DateTime.now();
+      await widget.sync.saveProjectTasks(proj!.id, proj.tasks);
+      logic.onChange();
+    }
     if (mounted) {
       setState(() {
         _firingActionId = null;
@@ -1193,19 +1215,38 @@ class _DomainGameplayState extends State<_DomainGameplay>
         .toList();
   }
 
+  // Actions PROPRES (Activity.ownActions) des activités-temps de ce domaine.
+  List<({Activity activity, TaskAction action})> _domainOwnActions() {
+    final dom = widget.domain.id;
+    final out = <({Activity activity, TaskAction action})>[];
+    for (final a in logic.state.activeActivities) {
+      if (a.domainId != dom || a.deleted || a.isHabit) continue;
+      for (final act in a.ownActions) {
+        out.add((activity: a, action: act));
+      }
+    }
+    return out;
+  }
+
   Widget _actionsView() {
     final projects = _actionProjects();
-    if (projects.isEmpty) {
+    final own = _domainOwnActions();
+    if (projects.isEmpty && own.isEmpty) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(24),
-          child: Text('Aucun projet dans ce domaine.',
+          child: Text('Aucune action dans ce domaine.',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.white38)),
         ),
       );
     }
     final days = _last7DayLabels();
+    // Regroupe les actions propres par activité propriétaire.
+    final ownByActivity = <Activity, List<TaskAction>>{};
+    for (final e in own) {
+      ownByActivity.putIfAbsent(e.activity, () => []).add(e.action);
+    }
     return ListView(
       padding: const EdgeInsets.fromLTRB(10, 4, 10, 8),
       children: [
@@ -1219,7 +1260,70 @@ class _DomainGameplayState extends State<_DomainGameplay>
               .where((t) => t.status != 'done' && t.status != 'skipped'))
             _actionTaskRow(p, t, days),
         ],
+        // Actions propres aux activités du domaine (sans tâche).
+        for (final entry in ownByActivity.entries) ...[
+          _sectionHeader('⏱️ ${entry.key.name}', entry.value.length),
+          for (final a in entry.value)
+            _ownActionLine(entry.key, a, widget.color),
+        ],
       ],
+    );
+  }
+
+  // Ligne d'une action PROPRE dans l'onglet Actions du combat : viseur 🎯 pour
+  // cibler, « Faire feu » la valide (comme une action de projet).
+  Widget _ownActionLine(Activity owner, TaskAction a, Color c) {
+    final aimed = _actionTargetId == a.id;
+    final firing = _firingActionId == a.id;
+    return InkWell(
+      onTap: a.done ? null : () => _aimAction(a.id),
+      child: Container(
+        decoration: BoxDecoration(
+          color: aimed ? c.withOpacity(.12) : null,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        padding: const EdgeInsets.fromLTRB(8, 4, 4, 4),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          a.done
+              ? const Icon(Icons.check_circle,
+                  size: 16, color: Color(0xFF4CD787))
+              : SvgPicture.asset('assets/icons/rifle.svg',
+                  width: 15,
+                  height: 15,
+                  colorFilter:
+                      const ColorFilter.mode(Colors.white60, BlendMode.srcIn)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(a.title,
+                style: TextStyle(
+                    color: a.done ? Colors.white38 : Colors.white70,
+                    decoration: a.done ? TextDecoration.lineThrough : null,
+                    fontSize: 12,
+                    height: 1.3)),
+          ),
+          if (firing)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: SvgPicture.asset('assets/icons/missile-launcher.svg',
+                  width: 14,
+                  height: 14,
+                  colorFilter:
+                      const ColorFilter.mode(Color(0xFFFF8A3D), BlendMode.srcIn)),
+            )
+          else if (!a.done)
+            GestureDetector(
+              onTap: () => _aimAction(a.id),
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.all(2),
+                child: Icon(Icons.gps_fixed,
+                    size: 16,
+                    color:
+                        aimed ? const Color(0xFFFF8A3D) : Colors.white24),
+              ),
+            ),
+        ]),
+      ),
     );
   }
 

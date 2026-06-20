@@ -10,6 +10,12 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.39', '19 juin 2026', [
+    (Icons.playlist_add_check, 'Une activité-temps peut avoir ses PROPRES actions (sans tâche/projet) : crée-les depuis son dashboard (web « Le Monde » + fiche activité mobile), coche-les, lance un chrono ciblé dessus, supprime-les'),
+    (Icons.visibility, 'Ces actions propres apparaissent aussi pendant un chrono (onglet Maintenant) et dans l\'onglet Actions du combat (vise 🎯 + « Faire feu » pour les valider)'),
+    (Icons.timer_outlined, 'Dashboards : « Lancer le chrono » (compte) ET « Lancer le minuteur » (décompte, s\'arrête tout seul à zéro) sont désormais deux boutons distincts — fini le « minuteur » qui lançait en fait un chrono'),
+    (Icons.hourglass_bottom, 'Sélecteur de durée du minuteur par défaut (0/5/10/15/25 min) ajouté au dashboard des activités, comme celui des routines'),
+  ]),
   _Entry('6.38', '19 juin 2026', [
     (Icons.link, 'Lier une action de projet à une activité-temps : depuis la fiche d\'une tâche, « Lier une activité » rattache une action à un scorpion — le chrono lancé depuis l\'action est ciblé (la session pointe sur l\'action) et l\'activité affiche ses actions liées'),
     (Icons.checklist, 'Checklist des routines éditable depuis le dashboard (web « Le Monde » + fiche routine mobile) : ajoute, renomme, coche et supprime tes étapes — synchronisées entre le téléphone et le web'),
