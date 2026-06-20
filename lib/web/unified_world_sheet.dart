@@ -2710,7 +2710,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   int _v2FirstSpiderCol(LaneRow lane) {
     final mirror = _v2TurretMirror['${lane.turretX}_${lane.y}'] ?? false;
     final toks = lane.isRoutine
-        ? logic.routineWeekTokens(lane.id)
+        ? logic.routineWaveTokens(lane.id) // post-pardon de série
         : logic.activityTimeTokens(lane.id);
     for (var j = 0; j < toks.length; j++) {
       if (toks[j].type == 'spider') {
@@ -5163,7 +5163,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       var dayTargetX = mirror ? x - 8 : x + 8;
       if (lane != null) {
         final toks = lane.isRoutine
-            ? logic.routineWeekTokens(lane.id)
+            ? logic.routineWaveTokens(lane.id) // post-pardon de série
             : logic.activityTimeTokens(lane.id);
         for (var j = 0; j < toks.length; j++) {
           if (toks[j].type == 'spider') {
@@ -8065,7 +8065,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       for (final lane in c.lanes) {
         final name = _activityName(lane.id);
         final toks = lane.isRoutine
-            ? logic.routineWeekTokens(lane.id)
+            ? logic.routineWaveTokens(lane.id) // post-pardon de série
             : logic.activityTimeTokens(lane.id);
         final charger =
             toks.where((t) => t.type == 'leaf' || t.type == 'flame').length;

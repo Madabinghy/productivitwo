@@ -870,7 +870,8 @@ extension GoldEngine on AppLogic {
     var spiders = 0, scorpions = 0, snakes = 0;
     for (final a in state.activeActivities) {
       if (a.isHabit) {
-        for (final t in routineWeekTokens(a.id)) {
+        // Post-pardon de série (cohérent avec le combat).
+        for (final t in routineWaveTokens(a.id)) {
           if (t.type == 'spider') spiders++;
         }
       } else if (a.goalMin > 0) {
@@ -1158,10 +1159,27 @@ extension GoldEngine on AppLogic {
     return n;
   }
 
-  /// Index de la PREMIÈRE araignée (jour manqué le plus ANCIEN) de la fenêtre 7j,
-  /// ou -1 si aucune. (index 0 = il y a 6 jours … 6 = aujourd'hui.)
+  /// Tokens du COMBAT après « pardon de série » : une série de N élimine les N plus
+  /// vieilles araignées (converties en 🍃) — récompense de régularité. N'affecte PAS
+  /// l'économie de gold (routineWeekTokens reste la vérité brute) : sert à l'affichage
+  /// du combat, au ciblage du canon, au rattrapage et au compteur de nuisibles.
+  List<({String type, int hp})> routineWaveTokens(String routineId) {
+    final toks = List<({String type, int hp})>.from(routineWeekTokens(routineId));
+    var forgive = habitCurrentStreak(routineId);
+    if (forgive <= 0) return toks;
+    for (var j = 0; j < toks.length && forgive > 0; j++) {
+      if (toks[j].type == 'spider') {
+        toks[j] = (type: 'leaf', hp: 0);
+        forgive--;
+      }
+    }
+    return toks;
+  }
+
+  /// Index de la PREMIÈRE araignée (jour manqué le plus ANCIEN) restant APRÈS le
+  /// pardon de série, ou -1 si aucune. (index 0 = il y a 6 jours … 6 = aujourd'hui.)
   int firstSpiderIndex(String routineId) {
-    final toks = routineWeekTokens(routineId);
+    final toks = routineWaveTokens(routineId);
     for (var j = 0; j < toks.length; j++) {
       if (toks[j].type == 'spider') return j;
     }

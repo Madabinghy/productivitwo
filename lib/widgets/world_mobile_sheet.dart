@@ -960,7 +960,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
     for (final a in logic.state.activeActivities) {
       if (a.domainId != dom) continue;
       if (a.isHabit) {
-        final tok = logic.routineWeekTokens(a.id);
+        final tok = logic.routineWaveTokens(a.id); // post-pardon de série
         if (tok.isEmpty) continue;
         routines.add((
           id: a.id,
