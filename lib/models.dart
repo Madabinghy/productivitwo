@@ -9,6 +9,7 @@ part 'models/projects.dart';
 part 'models/integrations.dart';
 part 'models/schedule.dart';
 part 'models/world.dart';
+part 'models/redemption.dart';
 
 const _uuid = Uuid();
 const int kMinDailyGoalMin = 1;

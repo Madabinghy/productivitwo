@@ -43,10 +43,18 @@ entrent jamais**.
 Chaque routine / activité porte un `standard` courant (en minutes/jour).
 
 - **Départ bas** : 1 min / 1 hit. Barrière quasi nulle → on commence, point.
-- **Montée auto** : si sur les 7 derniers jours le standard a été tenu sur ~6/7
-  jours (ou nettement dépassé), il **monte d'un palier**. Moment célébré.
-- **Descente douce** : si on passe sous le standard trop souvent (<3/7), il
-  **redescend d'un cran** — jamais brutalement, jamais sous le plancher.
+- **Montée auto = les 7 cases propres** : si **toutes** les cases de la fenêtre
+  glissante (7 j) sont propres (effort du jour **≥ standard courant**, reconquête
+  comprise), le standard **monte d'un palier**. Règle binaire et visuelle — pas
+  de seuil en % caché. La reconquête du passé devient ainsi le **moteur** de la
+  montée (compléter la semaine = souvent reconquérir les vieux jours).
+- **Conséquence assumée** : à la montée, le plancher s'élève d'un cran → des
+  jours propres au palier précédent repassent **sous** le nouveau standard, donc
+  de **petits ennemis réapparaissent** (sinon montée en boucle). Garde-fous :
+  paliers petits (écarts faibles, vite ré-nettoyés) + célébration/marque de crue
+  (on gagne un niveau, on ne « recule » pas). Visuel = logique.
+- **Descente douce** : si on passe sous le standard trop souvent, il **redescend
+  d'un cran** — jamais brutalement, jamais sous le plancher.
 - **Marque de crue** : le niveau max atteint reste affiché (« max 5 — tu défends
   à 4 »). On ne perd pas le record, juste le buff actif.
 

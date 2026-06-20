@@ -24,6 +24,7 @@ class AppState {
 
   // ✅ Habits context (associations)
   List<HabitHit> habitHits;
+  List<Redemption> redemptions; // crédits de reconquête (jeu, ≠ relevé factuel)
   Map<String, String> habitPinnedActivity;
   Map<String, List<String>> nowSkippedByYmd;
   Map<String, List<String>> nowDoneByYmd; // ids "pas aujourd'hui / ok"
@@ -183,6 +184,7 @@ class AppState {
     this.lastCarryYmd,
     this.lastPrepYmd,
     List<HabitHit>? habitHits,
+    List<Redemption>? redemptions,
     Map<String, String>? habitPinnedActivity,
     Map<String, List<String>>? habitChecklistByHabitId,
     List<DayBlock>? blocks,
@@ -276,6 +278,7 @@ class AppState {
         inbox = inbox ?? <InboxItem>[],
         focusTodayIds = focusTodayIds ?? <String>[],
         habitHits = habitHits ?? <HabitHit>[],
+        redemptions = redemptions ?? <Redemption>[],
         habitPinnedActivity = habitPinnedActivity ?? <String, String>{},
         habitChecklistByHabitId =
             habitChecklistByHabitId ?? <String, List<String>>{},
@@ -337,6 +340,7 @@ class AppState {
 
         // ✅ persist
         'habitHits': habitHits.map((e) => e.toJson()).toList(),
+        'redemptions': redemptions.map((e) => e.toJson()).toList(),
         'habitPinnedActivity': habitPinnedActivity,
 
         // ✅ NOW TAB
@@ -482,6 +486,7 @@ class AppState {
       showTodayPriorities: (j['showTodayPriorities'] as bool?) ?? false,
       onboardingDone: (j['onboardingDone'] as bool?) ?? false,
       habitHits: _list(j['habitHits'], (e) => HabitHit.from(e)),
+      redemptions: _list(j['redemptions'], (e) => Redemption.from(e)),
       habitPinnedActivity: _mapSS(j['habitPinnedActivity']),
       nowSkippedByYmd: _mapSL(j['nowSkippedByYmd']),
       nowDoneByYmd: _mapSL(j['nowDoneByYmd']),
