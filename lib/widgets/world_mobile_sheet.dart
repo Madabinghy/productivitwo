@@ -787,6 +787,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
     if (_firingActionId != null) return;
     Project? proj;
     TaskAction? act;
+    ProjectTask? ptask; // tâche de l'action projet (pour le chrono ciblé)
     Activity? ownOwner; // activité propriétaire si l'action est PROPRE
     // 1) Action visée en priorité (projet OU action propre).
     if (_actionTargetId != null) {
@@ -796,6 +797,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
             if (a.id == _actionTargetId && !a.done) {
               proj = p;
               act = a;
+              ptask = t;
             }
           }
         }
@@ -818,6 +820,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
             if (!a.done) {
               proj = p;
               act = a;
+              ptask = t;
               break;
             }
           }
@@ -837,6 +840,32 @@ class _DomainGameplayState extends State<_DomainGameplay>
     }
     if (act == null || (proj == null && ownOwner == null)) return;
     final id = act.id;
+    // Onglet Actions : proposer CHRONO ou VALIDATION (au lieu de valider direct).
+    final choice = await _confirmActionFire(act);
+    if (choice == null || !mounted) return;
+    if (choice == 'chrono') {
+      // Chrono ciblé : action propre → activité propriétaire ; action de projet →
+      // activité-temps liée (sinon impossible de chronométrer).
+      String? activityId;
+      String? taskId;
+      if (ownOwner != null) {
+        activityId = ownOwner.id;
+      } else if ((act.linkedActivityId ?? '').trim().isNotEmpty) {
+        activityId = act.linkedActivityId!.trim();
+        taskId = ptask?.id;
+      }
+      if (activityId == null) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
+            content: Text(
+                'Lie une activité-temps à cette action pour la chronométrer.')));
+        return;
+      }
+      logic.start(activityId, taskId: taskId, actionId: id);
+      logic.onChange();
+      if (mounted) Navigator.of(context).maybePop(); // voir le chrono qui tourne
+      return;
+    }
+    // choice == 'validate' : cinématique de tir puis validation (existant).
     _fireCtrl.reset();
     setState(() => _firingActionId = id);
     await _fireCtrl.forward(from: 0);
@@ -1501,18 +1530,13 @@ class _DomainGameplayState extends State<_DomainGameplay>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // La grille (jours + colonnes de contrôle) défile horizontalement pour
-          // ne pas déborder sur les petits écrans (2 cases de plus qu'avant).
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-          () {
+          LayoutBuilder(builder: (context, cons) {
+            final w = cons.maxWidth;
             final firing = _firingId == it.id;
-            // SIMPLE : on ne combat QUE le nuisible du JOUR → le boulet vise l'unique
-            // case (aujourd'hui), collée à la tour. En COURBE.
-            final targetX = 60.0 + cell / 2;
+            // Nuisible + viseur ancrés À DROITE → le boulet traverse l'écran depuis la
+            // tour (gauche). Le sélecteur de mode reste COLLÉ à la tourelle.
+            final cellW = cell + 2; // cellule + marges
+            final targetX = w - 1.5 * cellW; // centre du nuisible (1er du groupe droit)
             const fy0 = 30.0, fx0 = 30.0;
             const arc = 36.0; // hauteur du lobe (plus haut = trajectoire plus courbée)
             final u = _fireCtrl.value;
@@ -1527,7 +1551,9 @@ class _DomainGameplayState extends State<_DomainGameplay>
             return Stack(
               clipBehavior: Clip.none,
               children: [
-                Row(children: [
+                SizedBox(
+                  width: w,
+                  child: Row(children: [
                   // Tour (barres + icône) : tap → ouvre le sheet. Pendant le tir,
                   // l'icône se TRANSFORME en canon DCA (+ lueur orange).
                   GestureDetector(
@@ -1570,14 +1596,14 @@ class _DomainGameplayState extends State<_DomainGameplay>
                       ),
                     ),
                   ),
-                  // SIMPLE : seulement le nuisible du JOUR (dernier token = aujourd'hui).
-                  _tokenCell(it, it.tokens.length - 1, cell),
-                  const SizedBox(width: 24), // espace libéré (les 6 autres jours retirés)
-                  // VISEUR puis sélecteur de MODE de tir, inline sur la même ligne.
-                  _viseurCell(it, cell),
+                  // Sélecteur de MODE de tir COLLÉ à la tourelle.
                   _modeCell(it, cell),
-                ]),
-                // Boulet de feu en vol (tour → jour) en courbe, orienté.
+                  const Spacer(), // pousse nuisible + viseur À DROITE
+                  // Nuisible du JOUR (dernier token) + viseur, ancrés à droite.
+                  _tokenCell(it, it.tokens.length - 1, cell),
+                  _viseurCell(it, cell),
+                ])),
+                // Boulet de feu en vol (tour → nuisible) en courbe, orienté.
                 if (firing && _explodingId != it.id && u < 0.98)
                   Positioned(
                     left: fx - 8,
@@ -1593,10 +1619,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
                   ),
               ],
             );
-          }(),
-              ],
-            ),
-          ),
+          }),
           const SizedBox(height: 5),
           // NOM de la routine/activité, SOUS sa tourelle (rattaché à SA grille).
           Row(children: [
@@ -1751,6 +1774,54 @@ class _DomainGameplayState extends State<_DomainGameplay>
         child: Icon(Icons.gps_fixed,
             size: 18,
             color: on ? const Color(0xFFFF8A3D) : Colors.white24),
+      ),
+    );
+  }
+
+  // Onglet Actions : feuille de choix au tir — CHRONO ou VALIDER. null = annulé.
+  Future<String?> _confirmActionFire(TaskAction act) {
+    return showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: const Color(0xFF14110F),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+            child: Row(children: [
+              const Text('🔥 ', style: TextStyle(fontSize: 16)),
+              Expanded(
+                child: Text('Faire feu sur ${act.title}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15)),
+              ),
+            ]),
+          ),
+          ListTile(
+            leading: const Icon(Icons.play_circle_outline,
+                color: Color(0xFFFF8A3D)),
+            title: const Text('Lancer un chrono',
+                style: TextStyle(color: Colors.white)),
+            subtitle: const Text('Chronométrer cette action',
+                style: TextStyle(color: Colors.white38, fontSize: 12)),
+            onTap: () => Navigator.pop(ctx, 'chrono'),
+          ),
+          ListTile(
+            leading:
+                const Icon(Icons.check_box_outlined, color: Color(0xFF4FC26B)),
+            title: const Text('Valider l\'action',
+                style: TextStyle(color: Colors.white)),
+            subtitle: const Text('Marquer faite directement',
+                style: TextStyle(color: Colors.white38, fontSize: 12)),
+            onTap: () => Navigator.pop(ctx, 'validate'),
+          ),
+          const SizedBox(height: 6),
+        ]),
       ),
     );
   }
