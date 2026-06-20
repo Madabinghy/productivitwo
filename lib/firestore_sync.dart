@@ -149,6 +149,7 @@ class FirestoreSync {
         _pushCollection(st.sessions.map((e) => e.toJson()).toList(), 'sessions'),
         _pushCollection(st.habitProgress.map((e) => e.toJson()).toList(), 'habitProgress'),
         _pushCollection(st.habitHits.map((e) => e.toJson()).toList(), 'habitHits'),
+        _pushCollection(st.redemptions.map((e) => e.toJson()).toList(), 'redemptions'),
         _pushCollection(st.blocks.map((e) => e.toJson()).toList(), 'blocks'),
         _pushCollection(st.earnedBadges.map((e) => e.toJson()).toList(), 'badges'),
         _meta().set(_encodeMeta(st), SetOptions(merge: true)),
@@ -193,6 +194,7 @@ class FirestoreSync {
         _col('habitHits').get(),
         _col('blocks').get(),
         _col('badges').get(),
+        _col('redemptions').get(),
       ]);
 
       final metaDoc = results[0] as DocumentSnapshot;
@@ -219,6 +221,7 @@ class FirestoreSync {
             .map(EarnedBadge.tryFrom)
             .whereType<EarnedBadge>()
             .toList(),
+        redemptions: docs(8).map(Redemption.from).toList(),
         onboardingDone: meta['onboardingDone'] ?? false,
         challengesDone: meta['challengesDone'] ?? 0,
         challengeStreak: meta['challengeStreak'] ?? 0,
@@ -371,6 +374,7 @@ class FirestoreSync {
       }(),
       sessions:      union(local.sessions,      remote.sessions,      (s) => s.id),
       habitHits:     union(local.habitHits,     remote.habitHits,     (h) => h.id),
+      redemptions:   union(local.redemptions,   remote.redemptions,   (r) => r.id),
       blocks:        union(local.blocks,        remote.blocks,        (b) => b.id),
       earnedBadges:  union(local.earnedBadges,  remote.earnedBadges,  (b) => '${b.id.name}_${b.habitId ?? ""}'),
       habitProgress: mergedHp.values.toList(),
@@ -485,7 +489,7 @@ class FirestoreSync {
     if (uid != null) {
       for (final col in [
         'domains', 'activities', 'sessions', 'habitProgress',
-        'habitHits', 'dayPlan', 'goals', 'blocks', 'badges',
+        'habitHits', 'redemptions', 'dayPlan', 'goals', 'blocks', 'badges',
         'projects', 'strategic_objectives', 'documents', 'api_tokens',
         'captures', 'assistant_messages',
       ]) {
@@ -646,6 +650,19 @@ class FirestoreSync {
   Future<void> saveHabitHit(HabitHit h) async {
     if (uid == null) return;
     await _col('habitHits').doc(h.id).set(h.toJson());
+  }
+
+  // Reconquête : persiste un crédit (registre découplé du relevé factuel).
+  Future<void> saveRedemption(Redemption r) async {
+    if (uid == null) return;
+    await _col('redemptions').doc(r.id).set(r.toJson());
+  }
+
+  // Temps réel : crédits de reconquête (le web s'en sert pour rafraîchir les PV).
+  Stream<List<Redemption>> streamRedemptions() {
+    if (uid == null) return const Stream.empty();
+    return _col('redemptions').snapshots().map((snap) =>
+        snap.docs.map((d) => Redemption.from(d.data() as Map)).toList());
   }
 
   Future<void> saveHabitProgress(HabitProgress hp) async {
