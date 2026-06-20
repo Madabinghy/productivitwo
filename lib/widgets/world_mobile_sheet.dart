@@ -1538,7 +1538,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
             // (lobe vers le haut) — réplique l'arc du web (_CineFb).
             final todayX = 60.0 + (it.tokens.length - 1) * (cell + 2) + cell / 2;
             const fy0 = 30.0, fx0 = 30.0;
-            const arc = 22.0;
+            const arc = 36.0; // hauteur du lobe (plus haut = trajectoire plus courbée)
             final u = _fireCtrl.value;
             final fx = fx0 + (todayX - fx0) * u;
             final fy = fy0 - arc * sin(pi * u);
