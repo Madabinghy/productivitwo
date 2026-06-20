@@ -8689,6 +8689,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             pestType: null,
           );
         });
+        _v2CenterOnDomainZone(dom); // centre la fenêtre sur le dashboard ouvert
       }
       return;
     }
@@ -8711,6 +8712,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             pestType: null,
           );
         });
+        _v2CenterOnDomainZone(dom); // centre la fenêtre sur le dashboard ouvert
       }
       return;
     }
