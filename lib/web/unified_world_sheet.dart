@@ -2645,6 +2645,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       }
     } finally {
       _v2AutoExploring = false;
+      _clearV2Projectiles(); // pas de boulet résiduel si interrompu
       // Resync AFFICHAGE ↔ DONNÉES en fin de séquence (refresh sans écart).
       if (mounted) setState(_populateV2Calendar);
     }
@@ -8619,7 +8620,21 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // timer d'inactivité : 1 min sans interaction → l'avatar reprend son travail.
   void _v2TakeControl() {
     _v2UserControl = true;
+    _clearV2Projectiles();
     _v2ArmIdle();
+  }
+
+  // Nettoie tout projectile cinématique restant (boulets en vol, flamme de recharge,
+  // flashs). Évite qu'une boule de feu reste FIGÉE derrière le canon quand une
+  // cinématique est interrompue (reprise de contrôle, ticker mis en pause par une
+  // route qui couvre la map, etc.). Sûr : la donnée (crédits/PV) est déjà appliquée,
+  // les projectiles ne sont que cosmétiques ; un repaint suit.
+  void _clearV2Projectiles() {
+    if (_v2Fbs.isEmpty && _v2ReloadFlame == null && _v2Flashes.isEmpty) return;
+    _v2Fbs.clear();
+    _v2ReloadFlame = null;
+    _v2Flashes.clear();
+    _v2CineTick.value++;
   }
 
   void _v2ArmIdle() {
