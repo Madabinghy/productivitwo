@@ -9,6 +9,7 @@ import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:productivitwo_v1/app_logic.dart';
@@ -57,6 +58,7 @@ class WidgetService {
   /// widgets actionnables puissent appeler mcpHandler. Sans secret brut local
   /// (réinstall / nouvel appareil), on n'écrit rien — le widget reste lecture seule.
   static Future<void> provisionAuth(FirestoreSync sync) async {
+    if (kIsWeb) return; // web : pas de widgets natifs (Platform.* crasherait)
     if (_authProvisioned) return;
     if (!Platform.isIOS && !Platform.isAndroid) return;
     try {
@@ -82,6 +84,7 @@ class WidgetService {
   /// Pousse l'état courant vers tous les widgets home screen.
   /// Appelé depuis _saveAndRefresh(), au chargement initial, et sur le stream projets.
   static Future<void> update(AppLogic logic) async {
+    if (kIsWeb) return; // web : pas de widgets natifs (Platform.* crasherait)
     if (!Platform.isIOS && !Platform.isAndroid) return;
 
     try {
