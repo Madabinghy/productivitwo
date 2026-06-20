@@ -10,6 +10,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter/services.dart'
     show KeyEvent, KeyDownEvent, KeyRepeatEvent, LogicalKeyboardKey;
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/build_info.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/territory.dart';
@@ -110,11 +111,25 @@ class _UnifiedWorldScreenState extends State<UnifiedWorldScreen> {
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: _kBg,
         body: SafeArea(
-          child: _UnifiedWorldView(
-              logic: widget.logic,
-              sync: widget.sync,
-              mobile: true,
-              embedded: true),
+          child: Stack(
+            children: [
+              _UnifiedWorldView(
+                  logic: widget.logic,
+                  sync: widget.sync,
+                  mobile: true,
+                  embedded: true),
+              // Badge de version (vérifier quelle build tourne en prod).
+              Positioned(
+                right: 6,
+                bottom: 4,
+                child: IgnorePointer(
+                  child: Text(kBuildLabel,
+                      style: const TextStyle(
+                          fontSize: 9, color: Color(0x55FFFFFF))),
+                ),
+              ),
+            ],
+          ),
         ),
       );
 }
