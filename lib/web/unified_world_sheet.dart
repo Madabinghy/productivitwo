@@ -178,7 +178,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   final Map<String, int> _v2TurretPests = {}; // tileId tourelle → nb nuisibles (angle repos)
   final Map<String, String> _v2TurretRoutineId = {}; // tileId tourelle → routineId (lanes routine)
   final Set<String> _v2LaunchPads = {}; // tileIds de la case de tir (gauche de chaque tourelle)
-  final Map<String, String> _v2LaunchPadRoutineId = {}; // tileId rampe → routineId
+  final Map<String, String> _v2LaunchPadRoutineId = {}; // tileId munitions → routineId
+  final Map<String, String> _v2LaunchPadActivityId = {}; // tileId munitions → activité‑temps
   final Set<String> _v2Sep = {}; // tileIds de la ligne séparatrice routines/activités
   final Map<String, int> _v2DayTurretX = {}; // tileId jour → X de la tourelle de sa lane
   // Cases du CALENDRIER (7 jours de chaque lane) : BLOQUANTES pour l'avatar — on
@@ -6048,6 +6049,38 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     return a.charger + a.reserve;
   }
 
+  // Solde de temps signé en h/min : +90 → « +1h30 », -50 → « -50min », +120 → « +2h ».
+  static String _fmtDelta(int min) {
+    final sign = min >= 0 ? '+' : '-';
+    final m = min.abs();
+    if (m >= 60) {
+      final h = m ~/ 60, mm = m % 60;
+      return mm == 0 ? '$sign${h}h' : '$sign${h}h${mm.toString().padLeft(2, '0')}';
+    }
+    return '$sign${m}min';
+  }
+
+  // Pastille de SOLDE de temps (activité‑temps) : vert si en avance, rouge si en retard.
+  Widget _soldeBadge(int deltaMin, double inner) {
+    final color = deltaMin >= 0
+        ? const Color(0xFF6BE08A) // en avance
+        : const Color(0xFFFF7A6B); // en retard
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 0.5),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(.55),
+        borderRadius: BorderRadius.circular(5),
+        border: Border.all(color: color.withOpacity(.7), width: 0.8),
+      ),
+      child: Text('⏱${_fmtDelta(deltaMin)}',
+          style: TextStyle(
+              fontSize: inner * 0.22,
+              height: 1,
+              fontWeight: FontWeight.w900,
+              color: color)),
+    );
+  }
+
   // Petit badge numéroté (emoji + nombre) posé sur la rampe : chargeur / réserve.
   Widget _rampBadge(String emoji, int n, Color color, double inner) {
     return Container(
@@ -8279,6 +8312,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _v2TurretRoutineId.clear();
     _v2LaunchPads.clear();
     _v2LaunchPadRoutineId.clear();
+    _v2LaunchPadActivityId.clear();
     _v2Sep.clear();
     _v2DayTurretX.clear();
     _v2DayCells.clear();
@@ -8319,7 +8353,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         final munId = '${lane.turretX + padDx}_${lane.y}';
         final rampId = '${lane.turretX + 2 * padDx}_${lane.y}';
         _v2LaunchPads.add(rampId);
-        if (lane.isRoutine) _v2LaunchPadRoutineId[munId] = lane.id;
+        if (lane.isRoutine) {
+          _v2LaunchPadRoutineId[munId] = lane.id;
+        } else {
+          _v2LaunchPadActivityId[munId] = lane.id; // activité‑temps → pastille de solde
+        }
         _v2LaneName['${lane.turretX}_${lane.y}'] = name;
         for (var j = 0; j < 7 && j < toks.length; j++) {
           // Miroir : ordre inversé (les nuisibles avancent de gauche → droite).
@@ -9197,6 +9235,20 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                       '✨', ammo.reserve, const Color(0xFFFFC83D), inner),
                 ),
               ],
+            ),
+          );
+        } else if (_v2LaunchPadActivityId[id] != null) {
+          // Activité‑temps : pastille de SOLDE (temps loggué − objectif sur 7 j).
+          bg = const Color(0xFFE8C13D).withOpacity(.16);
+          final aid = _v2LaunchPadActivityId[id]!;
+          final s = logic.timeSliding(aid, 7);
+          final delta = s.doneMin - s.targetMin;
+          child = FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Tooltip(
+              message: 'Solde de temps (7 j) : ${_fmtDelta(delta)}\n'
+                  'Temps loggué vs objectif sur la fenêtre glissante 7 jours.',
+              child: _soldeBadge(delta, inner),
             ),
           );
         } else if (_v2LaunchPads.contains(id)) {
