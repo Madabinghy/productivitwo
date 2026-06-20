@@ -5230,7 +5230,6 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           }
         }
       }
-      final reserve = lane != null ? _laneFlameReserve(lane.id, lane.isRoutine) : 0;
       // — Phase 1 : arriver sur la case côté extérieur (avant de monter sur la rampe).
       await _v2StepTo(Point(outsideX, y));
       if (!mounted) return;
@@ -5253,18 +5252,21 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       // — Phase 3 : chargement/visée puis tir « mode combat » (volée vers le jour).
       // forceShots = une flamme vient D'ARRIVER (temps réel) → on la tire. Sinon (clic
       // manuel) on tire la RÉSERVE permanente — nulle = canon muet (règle générale).
-      final flames = forceShots ?? reserve;
+      // Tir SEULEMENT sur validation (forceShots != null). Monter sur la rampe ne
+      // fait que VISER (rampe qui tourne + canon levé, déjà joués ci-dessus) — plus
+      // de décharge de la réserve au simple passage sur la rampe.
+      final flames = forceShots ?? 0;
       if (flames > 0) {
         // Cadre la trajectoire tourelle → jour (sauf si le user a repris la main).
         if (!_canonDetached) _v2CenterOn(Point((turX + dayTargetX) ~/ 2, y));
-        // B — la FLAMME de streak part de sa case et vole RECHARGER le canon, puis
-        // c'est ce boulet qui frappe la 1ʳᵉ araignée (mise en scène « combat boss »).
+        // B — la FLAMME de streak QUITTE sa case (consommée) et vole RECHARGER le
+        // canon, puis c'est ce boulet qui frappe la 1ʳᵉ araignée (« combat boss »).
         if (flameJ >= 0 && laneRow != null) {
           final flameX =
               mirror ? laneRow.dayX0 + (6 - flameJ) : laneRow.dayX0 + flameJ;
           final muzzle = turX + (flameX >= turX ? 0.5 : -0.5);
-          _startReloadFlame(
-              flameX.toDouble(), y.toDouble(), muzzle.toDouble(), y.toDouble());
+          _startReloadFlame(flameX.toDouble(), y.toDouble(), muzzle.toDouble(),
+              y.toDouble(), '${flameX}_$y');
           await Future.delayed(const Duration(milliseconds: 750));
           if (!mounted) return;
         }
@@ -8493,9 +8495,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // B — lance la flamme de streak d'une case‑jour vers le BOUT du canon (recharge).
   // Elle s'anime seule dans _simulateV2Cine ; l'appelant attend juste sa durée.
   static const double _kReloadFlameDur = 0.7;
-  void _startReloadFlame(double fx, double fy, double tx, double ty) {
+  void _startReloadFlame(
+      double fx, double fy, double tx, double ty, String srcCellId) {
     final arc = ((tx - fx).abs() * 0.3).clamp(0.6, 2.0).toDouble();
     setState(() {
+      // La flamme QUITTE sa case (consommée) : on retire son 🔥 du calendrier le
+      // temps du vol. _populateV2Calendar (fin de cinématique) le rétablira.
+      _v2DayTok.remove(srcCellId);
       _v2ReloadFlame = _CineFb(
           _kReloadFlameDur, fx, fy - 0.25, tx, ty - 0.25, arc, 'reload');
     });
