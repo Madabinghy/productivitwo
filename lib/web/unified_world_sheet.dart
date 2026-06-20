@@ -2608,10 +2608,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         }
         flips = 0;
         final mirror = _v2TurretMirror['${lane.turretX}_${lane.y}'] ?? false;
-        // Rampe = côté jardin de la tourelle ; l'avatar s'arrête sur la case SUIVANTE
-        // (à côté de la rampe) pour laisser les deux badges chargeur/réserve visibles.
+        // Ordre côté jardin : tourelle · MUNITIONS · RAMPE · avatar. Il se poste donc
+        // 3 cases après la tourelle (à côté de la rampe) — badges + rampe visibles.
         final padDx = mirror ? 1 : -1;
-        await _v2WalkTo(Point(lane.turretX + 2 * padDx, lane.y));
+        await _v2WalkTo(Point(lane.turretX + 3 * padDx, lane.y));
         if (_v2UserControl || !mounted) break;
         final now = DateTime.now();
         final today = DateTime(now.year, now.month, now.day);
@@ -6203,23 +6203,25 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         top: 10,
                         right: 10,
                         child: _miniMapV2(maxSide: widget.mobile ? 120 : 160)),
-                    // Compteur global de nuisibles, sous la minimap (cliquable → stats).
+                    // Compteur global de nuisibles, sous la minimap (cliquable → stats),
+                    // avec le bouton « Défendre le château 🔥 » JUSTE EN DESSOUS.
                     Positioned(
                         top: 10 + (widget.mobile ? 120 : 160) + 8,
                         right: 10,
-                        child: _worldPestHud()),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            _worldPestHud(),
+                            const SizedBox(height: 8),
+                            _defendCastleButton(),
+                          ],
+                        )),
                     // Chrono en cours : épinglé en bas, visible quel que soit le panneau.
                     Positioned(
                         left: 0,
                         right: 0,
                         bottom: 14,
                         child: Center(child: _runningChronoHud())),
-                    // Bouton « Défendre le château 🔥 » : vide les chargeurs (tir manuel).
-                    Positioned(
-                        left: 0,
-                        right: 0,
-                        bottom: 58,
-                        child: Center(child: _defendCastleButton())),
                     if (_combat != null)
                       // Écran étroit : le combat occupe tout l'écran. Desktop : il
                       // s'affiche IN‑PLACE dans le jardin (cf. _contentV2) ; on ne
@@ -8312,10 +8314,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         }
         // Case de tir (rampe) où le perso attend = côté JARDIN (intérieur) de la
         // tourelle : à GAUCHE en normal, à DROITE en miroir.
-        final rampId =
-            '${c.mirror ? lane.turretX + 1 : lane.turretX - 1}_${lane.y}';
+        // Colonne MUNITIONS collée à la tourelle (badges chargeur/réserve) ; RAMPE
+        // de lancement (☢️) un cran plus loin dans le jardin.
+        final padDx = c.mirror ? 1 : -1;
+        final munId = '${lane.turretX + padDx}_${lane.y}';
+        final rampId = '${lane.turretX + 2 * padDx}_${lane.y}';
         _v2LaunchPads.add(rampId);
-        if (lane.isRoutine) _v2LaunchPadRoutineId[rampId] = lane.id;
+        if (lane.isRoutine) _v2LaunchPadRoutineId[munId] = lane.id;
         _v2LaneName['${lane.turretX}_${lane.y}'] = name;
         for (var j = 0; j < 7 && j < toks.length; j++) {
           // Miroir : ordre inversé (les nuisibles avancent de gauche → droite).
@@ -9161,40 +9166,38 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         break;
       case WtTile.garden:
         bg = _kFarm.withOpacity(.22);
-        // Rampe de lancement (case de tir à gauche de la tourelle) : marqueur ☢️
-        // sur fond ambré (zone de tir / danger).
-        if (_v2LaunchPads.contains(id)) {
+        // Colonne MUNITIONS (collée à la tourelle) : deux flammes numérotées —
+        // CHARGEUR (effort du jour) puis RÉSERVE (streak). Survol souris → Tooltip.
+        final munRid = _v2LaunchPadRoutineId[id];
+        if (munRid != null) {
           bg = const Color(0xFFE8C13D).withOpacity(.16);
-          final rid = _v2LaunchPadRoutineId[id];
-          if (rid != null) {
-            // Deux flammes numérotées sur la rampe : CHARGEUR (effort du jour) puis
-            // RÉSERVE (streak). Survol souris → description (Tooltip).
-            final ammo = _turretAmmo(rid);
-            final streak = logic.habitCurrentStreak(rid);
-            child = FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Tooltip(
-                    message: 'Chargeur : ${ammo.charger} tir(s)\n'
-                        'Ton effort d\'aujourd\'hui — chaque validation arme une flamme.',
-                    child: _rampBadge(
-                        '🔥', ammo.charger, const Color(0xFFFF8A3D), inner),
-                  ),
-                  SizedBox(height: inner * 0.08),
-                  Tooltip(
-                    message: 'Réserve de streak : ${ammo.reserve} tir(s)\n'
-                        'Ta régularité ($streak jour(s) d\'affilée). Tirée APRÈS le chargeur.',
-                    child: _rampBadge(
-                        '✨', ammo.reserve, const Color(0xFFFFC83D), inner),
-                  ),
-                ],
-              ),
-            );
-          } else {
-            child = Text('☢️', style: TextStyle(fontSize: inner * 0.5));
-          }
+          final ammo = _turretAmmo(munRid);
+          final streak = logic.habitCurrentStreak(munRid);
+          child = FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Tooltip(
+                  message: 'Chargeur : ${ammo.charger} tir(s)\n'
+                      'Ton effort d\'aujourd\'hui — chaque validation arme une flamme.',
+                  child: _rampBadge(
+                      '🔥', ammo.charger, const Color(0xFFFF8A3D), inner),
+                ),
+                SizedBox(height: inner * 0.08),
+                Tooltip(
+                  message: 'Réserve de streak : ${ammo.reserve} tir(s)\n'
+                      'Ta régularité ($streak jour(s) d\'affilée). Tirée APRÈS le chargeur.',
+                  child: _rampBadge(
+                      '✨', ammo.reserve, const Color(0xFFFFC83D), inner),
+                ),
+              ],
+            ),
+          );
+        } else if (_v2LaunchPads.contains(id)) {
+          // Rampe de lancement (☢️) : un cran plus loin dans le jardin.
+          bg = const Color(0xFFE8C13D).withOpacity(.16);
+          child = Text('☢️', style: TextStyle(fontSize: inner * 0.5));
         }
         break;
       case WtTile.village:

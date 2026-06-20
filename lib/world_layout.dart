@@ -525,15 +525,15 @@ CastleBlock _carveBlock(
 
   final decoWalls = _stampGardenWalls(grid, gardenRect, d.lines);
 
-  // ZONE TAMPON autour de chaque RAMPE de lancement (case‑jardin collée à la
-  // tourelle) : rien de bloquant ne doit y spawn (mur déco compris) — l'avatar
-  // doit pouvoir se poster sur les cases adjacentes pour la séquence canon. On
-  // force donc le garden sur la rampe + ses voisins situés DANS le jardin.
+  // ZONE TAMPON le long de la tourelle (côté jardin) : rien de bloquant ne doit y
+  // spawn (mur déco compris). 3 colonnes réservées en partant de la tourelle :
+  // MUNITIONS (collée à la tourelle) · RAMPE de lancement · case où l'avatar se
+  // poste pour tirer. On force donc le garden sur ces cases + au‑dessus/dessous.
   final padDx = mirror ? 1 : -1; // côté jardin de la tourelle
   for (final lane in lanes) {
-    final rx = turretX + padDx; // colonne de la rampe
+    final rx = turretX + padDx; // 1ʳᵉ colonne réservée (munitions)
     for (final dy in const [-1, 0, 1]) {
-      for (final dx in const [0, 1]) {
+      for (final dx in const [0, 1, 2]) {
         final gx = rx + dx * padDx, gy = lane.y + dy;
         final inGarden = gx >= gardenRect.left &&
             gx < gardenRect.left + _kGardenCols &&
