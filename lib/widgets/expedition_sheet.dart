@@ -881,47 +881,52 @@ class _ExpeditionViewState extends State<ExpeditionView> {
                   .fold<ExpeditionNode?>(null,
                       (best, n) => best == null || n.row > best.row ? n : best);
 
-              return SingleChildScrollView(
-                controller: _scroll,
-                child: SizedBox(
-                  width: c.maxWidth,
-                  height: _exp.rows * _rowH + 24,
-                  child: Stack(children: [
-                    CustomPaint(
-                      size: Size(c.maxWidth, _exp.rows * _rowH + 24),
-                      painter: _PathPainter(
-                        nodes: _exp.nodes,
-                        positions: positions,
-                        cleared: cleared,
-                        edgeColor: cs.onSurface.withOpacity(.18),
-                        clearedColor: Colors.green.shade600,
+              final canvas = SizedBox(
+                width: c.maxWidth,
+                height: _exp.rows * _rowH + 24,
+                child: Stack(children: [
+                  CustomPaint(
+                    size: Size(c.maxWidth, _exp.rows * _rowH + 24),
+                    painter: _PathPainter(
+                      nodes: _exp.nodes,
+                      positions: positions,
+                      cleared: cleared,
+                      edgeColor: cs.onSurface.withOpacity(.18),
+                      clearedColor: Colors.green.shade600,
+                    ),
+                  ),
+                  for (final n in _exp.nodes)
+                    Positioned(
+                      left: positions[n.id]!.dx - _nodeR,
+                      top: positions[n.id]!.dy - _nodeR,
+                      child: _NodeDot(
+                        node: n,
+                        cleared: cleared.contains(n.id),
+                        reachable: reachable.contains(n.id),
+                        discovered: discovered.contains(n.id),
+                        isFrontier: frontier?.id == n.id,
+                        challengeDone: () {
+                          final ci = map[n.id];
+                          return ci != null &&
+                              ci < challenges.length &&
+                              challenges[ci].done;
+                        }(),
+                        hasChallenge: map.containsKey(n.id),
+                        busy: _busy,
+                        cs: cs,
+                        onTap: () => _tap(n),
                       ),
                     ),
-                    for (final n in _exp.nodes)
-                      Positioned(
-                        left: positions[n.id]!.dx - _nodeR,
-                        top: positions[n.id]!.dy - _nodeR,
-                        child: _NodeDot(
-                          node: n,
-                          cleared: cleared.contains(n.id),
-                          reachable: reachable.contains(n.id),
-                          discovered: discovered.contains(n.id),
-                          isFrontier: frontier?.id == n.id,
-                          challengeDone: () {
-                            final ci = map[n.id];
-                            return ci != null &&
-                                ci < challenges.length &&
-                                challenges[ci].done;
-                          }(),
-                          hasChallenge: map.containsKey(n.id),
-                          busy: _busy,
-                          cs: cs,
-                          onTap: () => _tap(n),
-                        ),
-                      ),
-                  ]),
-                ),
+                ]),
               );
+              // Inline (donjon affiché en permanence dans la cour) : tout le contenu
+              // tient à l'écran, mis à l'échelle pour rentrer (pas de scroll).
+              if (widget.inline) {
+                return Center(
+                  child: FittedBox(fit: BoxFit.scaleDown, child: canvas),
+                );
+              }
+              return SingleChildScrollView(controller: _scroll, child: canvas);
             }),
           ),
         ],
