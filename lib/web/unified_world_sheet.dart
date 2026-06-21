@@ -230,6 +230,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   final ValueNotifier<int> _v2CineTick = ValueNotifier(0);
   final ScrollController _v2HCtrl = ScrollController();
   final ScrollController _v2VCtrl = ScrollController();
+  // ZOOM tactile de la carte V2 (pinch). Le contenu (cellules + overlays) reste en
+  // coords pixel NON scalées (× _kV2Slot) et est mis à l'échelle par un Transform.scale ;
+  // l'espace de SCROLL, lui, est scalé (× _v2Zoom) → culling/caméra multiplient par _v2Zoom.
+  double _v2Zoom = 1.0;
+  double _zoomStart = 1.0; // zoom au début d'un geste de pinch
+  static const double _kZoomMin = 0.5, _kZoomMax = 2.5;
   // PERF — cache de la grille V2 : la fenêtre de cases visibles ne change qu'au
   // franchissement d'une case ; sans ça l'AnimatedBuilder de scroll reconstruirait
   // des centaines de widgets à chaque sous‑pixel de drag/molette. Invalidé à chaque
@@ -2536,7 +2542,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // Centre la caméra sur la case `p` (suivi de l'avatar — AUTO uniquement).
   void _v2CenterOn(Point<int> p) {
     if (!_v2HCtrl.hasClients || !_v2VCtrl.hasClients) return;
-    const slot = _kV2Slot;
+    final slot = _kV2Slot * _v2Zoom; // espace de scroll = échelle zoomée
     final tx = (p.x * slot + slot / 2 - _v2HCtrl.position.viewportDimension / 2)
         .clamp(0.0, _v2HCtrl.position.maxScrollExtent);
     final ty = (p.y * slot + slot / 2 - _v2VCtrl.position.viewportDimension / 2)
@@ -9377,9 +9383,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     if (!_v2HCtrl.hasClients || !_v2VCtrl.hasClients) return;
     final vpW = _v2HCtrl.position.viewportDimension;
     final vpH = _v2VCtrl.position.viewportDimension;
-    final tx = (_posV2.x * _kV2Slot + _kV2Slot / 2 - vpW / 2)
+    final slot = _kV2Slot * _v2Zoom; // espace de scroll scalé par le zoom
+    final tx = (_posV2.x * slot + slot / 2 - vpW / 2)
         .clamp(0.0, _v2HCtrl.position.maxScrollExtent);
-    final ty = (_posV2.y * _kV2Slot + _kV2Slot / 2 - vpH / 2)
+    final ty = (_posV2.y * slot + slot / 2 - vpH / 2)
         .clamp(0.0, _v2VCtrl.position.maxScrollExtent);
     _v2HCtrl.animateTo(tx,
         duration: const Duration(milliseconds: 180), curve: Curves.easeOut);
@@ -9415,16 +9422,40 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             .clamp(0.0, _v2VCtrl.position.maxScrollExtent));
       },
       child: GestureDetector(
-      onPanDown:
-          panelOpen ? null : (_) => _v2TakeControl(), // pan carte = reprise de main
-      onPanUpdate: panelOpen
+      onScaleStart: panelOpen
+          ? null
+          : (_) {
+              _v2TakeControl(); // pan/zoom carte = reprise de main
+              _zoomStart = _v2Zoom;
+            },
+      onScaleUpdate: panelOpen
           ? null
           : (d) {
               if (!_v2HCtrl.hasClients || !_v2VCtrl.hasClients) return;
-              _v2HCtrl.jumpTo((_v2HCtrl.offset - d.delta.dx)
+              // PAN (1 ou 2 doigts) : déplace la carte.
+              _v2HCtrl.jumpTo((_v2HCtrl.offset - d.focalPointDelta.dx)
                   .clamp(0.0, _v2HCtrl.position.maxScrollExtent));
-              _v2VCtrl.jumpTo((_v2VCtrl.offset - d.delta.dy)
+              _v2VCtrl.jumpTo((_v2VCtrl.offset - d.focalPointDelta.dy)
                   .clamp(0.0, _v2VCtrl.position.maxScrollExtent));
+              // PINCH : zoom centré sur le viewport (recadrage post‑frame).
+              if (d.scale != 1.0) {
+                final nz = (_zoomStart * d.scale).clamp(_kZoomMin, _kZoomMax);
+                if ((nz - _v2Zoom).abs() > 0.001) {
+                  final vpW = _v2HCtrl.position.viewportDimension;
+                  final vpH = _v2VCtrl.position.viewportDimension;
+                  // point monde (non scalé) au centre du viewport AVANT le zoom
+                  final cx = (_v2HCtrl.offset + vpW / 2) / _v2Zoom;
+                  final cy = (_v2VCtrl.offset + vpH / 2) / _v2Zoom;
+                  setState(() => _v2Zoom = nz);
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (!_v2HCtrl.hasClients || !_v2VCtrl.hasClients) return;
+                    _v2HCtrl.jumpTo((cx * nz - vpW / 2)
+                        .clamp(0.0, _v2HCtrl.position.maxScrollExtent));
+                    _v2VCtrl.jumpTo((cy * nz - vpH / 2)
+                        .clamp(0.0, _v2VCtrl.position.maxScrollExtent));
+                  });
+                }
+              }
             },
       child: SingleChildScrollView(
         controller: _v2VCtrl,
@@ -9435,8 +9466,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           scrollDirection: Axis.horizontal,
           physics: const NeverScrollableScrollPhysics(),
           child: SizedBox(
-            width: w.cols * _kV2Slot,
-            height: w.rows * _kV2Slot,
+            // Espace de SCROLL = taille scalée par le zoom.
+            width: w.cols * _kV2Slot * _v2Zoom,
+            height: w.rows * _kV2Slot * _v2Zoom,
+            child: Transform.scale(
+              scale: _v2Zoom,
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                // Contenu en coords pixel NON scalées (× _kV2Slot) ; le Transform scale.
+                width: w.cols * _kV2Slot,
+                height: w.rows * _kV2Slot,
           child: Stack(
             children: [
               // GRILLE CULLÉE : seules les cases VISIBLES sont construites
@@ -9558,6 +9597,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               _lairPanelV2(w),
             ],
           ),
+              ), // SizedBox interne (taille naturelle)
+            ), // Transform.scale (zoom)
         ),
         ),
       ),
@@ -9633,17 +9674,19 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // Cases visibles (fenêtre de scroll + marge) → Positioned.
   List<Widget> _visibleCellsV2(WorldLayout w) {
     const slot = _kV2Slot, margin = 2;
+    // L'espace de scroll est scalé par le zoom : 1 tuile = slot × _v2Zoom pixels scalés.
+    final ssl = slot * _v2Zoom;
     // Au 1ᵉʳ frame le viewport n'existe pas encore → on cadre une FENÊTRE autour de
     // l'avatar (et pas TOUTES les cases, qui ferait une frame énorme au spawn).
     final hasC = _v2HCtrl.hasClients && _v2VCtrl.hasClients;
     final vpW = hasC ? _v2HCtrl.position.viewportDimension : 1000.0;
     final vpH = hasC ? _v2VCtrl.position.viewportDimension : 800.0;
-    final offX = hasC ? _v2HCtrl.offset : (_posV2.x * slot - vpW / 2);
-    final offY = hasC ? _v2VCtrl.offset : (_posV2.y * slot - vpH / 2);
-    final x0 = ((offX / slot).floor() - margin).clamp(0, w.cols - 1);
-    final x1 = (((offX + vpW) / slot).ceil() + margin).clamp(0, w.cols - 1);
-    final y0 = ((offY / slot).floor() - margin).clamp(0, w.rows - 1);
-    final y1 = (((offY + vpH) / slot).ceil() + margin).clamp(0, w.rows - 1);
+    final offX = hasC ? _v2HCtrl.offset : (_posV2.x * ssl - vpW / 2);
+    final offY = hasC ? _v2VCtrl.offset : (_posV2.y * ssl - vpH / 2);
+    final x0 = ((offX / ssl).floor() - margin).clamp(0, w.cols - 1);
+    final x1 = (((offX + vpW) / ssl).ceil() + margin).clamp(0, w.cols - 1);
+    final y0 = ((offY / ssl).floor() - margin).clamp(0, w.rows - 1);
+    final y1 = (((offY + vpH) / ssl).ceil() + margin).clamp(0, w.rows - 1);
     // Tant que la FENÊTRE de tuiles ne change pas (scroll sous‑pixel), on réutilise
     // les widgets déjà construits → zéro rebuild de case pendant un drag fluide.
     final win = (x0: x0, y0: y0, x1: x1, y1: y1);
@@ -10054,11 +10097,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               if (_v2HCtrl.hasClients &&
                   _v2VCtrl.hasClients &&
                   _v2HCtrl.position.hasViewportDimension) {
+                final ssl = _kV2Slot * _v2Zoom; // tuile en pixels scalés (scroll)
                 vp = Rect.fromLTWH(
-                  _v2HCtrl.offset / _kV2Slot * cell,
-                  _v2VCtrl.offset / _kV2Slot * cell,
-                  _v2HCtrl.position.viewportDimension / _kV2Slot * cell,
-                  _v2VCtrl.position.viewportDimension / _kV2Slot * cell,
+                  _v2HCtrl.offset / ssl * cell,
+                  _v2VCtrl.offset / ssl * cell,
+                  _v2HCtrl.position.viewportDimension / ssl * cell,
+                  _v2VCtrl.position.viewportDimension / ssl * cell,
                 );
               }
               return CustomPaint(
