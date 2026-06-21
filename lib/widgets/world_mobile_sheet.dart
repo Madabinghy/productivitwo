@@ -120,15 +120,30 @@ class _WorldMobileListState extends State<_WorldMobileList> {
 
   @override
   Widget build(BuildContext context) {
-    final domains = logic.state.activeDomains;
+    // Onglet Combat : on n'affiche QUE les domaines qui ont au moins un nuisible
+    // ACTIF (routine/activité/tâche en retard, PV > 0) → on ne voit que ce qu'il faut
+    // combattre. Les domaines à jour (rien à combattre) sont masqués.
+    final enemyDomains = <String>{};
+    for (final e in logic.backlogEnemies()) {
+      if (e.hp <= 0) continue;
+      final dom = logic.enemyDomainId(e.type, e.id);
+      if (dom != null) enemyDomains.add(dom);
+    }
+    final domains = logic.state.activeDomains
+        .where((d) => enemyDomains.contains(d.id))
+        .toList();
     return Column(
       children: [
         const SizedBox(height: 12),
         Expanded(
           child: domains.isEmpty
               ? const Center(
-                  child: Text('Aucun domaine actif.',
-                      style: TextStyle(color: Colors.white38)))
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text('Rien à combattre — tout est à jour ! 🎉',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white38)),
+                  ))
               : ListView.separated(
                   padding: const EdgeInsets.fromLTRB(14, 6, 14, 24),
                   itemCount: domains.length,
