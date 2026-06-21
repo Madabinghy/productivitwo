@@ -72,6 +72,10 @@ class _GamificationHub extends StatelessWidget {
           ),
           Expanded(
             child: TabBarView(
+              // Le swipe horizontal des onglets entre en conflit avec le pan de la
+              // carte (onglet Monde) : on désactive le swipe → les onglets se
+              // changent au tap des chips, et la carte récupère le drag.
+              physics: const NeverScrollableScrollPhysics(),
               children: [
                 // ⚔️ Combat : l'action (backlog + cartes + combats en cours)
                 GoldSheetBody(
