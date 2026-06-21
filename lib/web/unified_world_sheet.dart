@@ -21,6 +21,7 @@ import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/widgets/backlog_combat.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
 import 'package:productivitwo_v1/widgets/activity_detail_sheet.dart';
+import 'package:productivitwo_v1/widgets/expedition_sheet.dart';
 import 'package:productivitwo_v1/web/invasion_defense_sheet.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/web/assistant_widget.dart' show assistantOverlaySuppressed;
@@ -6354,6 +6355,39 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     return n;
   }
 
+  // Marqueur DONJON 🏔️ : entrée de l'aventure (montée en niveaux). Tap → ouvre le
+  // graphe d'expédition. L'objectif est en haut (ascension).
+  Widget _donjonMarker() {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: () => showExpeditionSheet(context, logic, sync),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+          decoration: BoxDecoration(
+            color: const Color(0xFF14110F).withOpacity(.92),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFF7FB3FF), width: 1.4),
+            boxShadow: const [
+              BoxShadow(
+                  color: Color(0x66000000), blurRadius: 8, offset: Offset(0, 2)),
+            ],
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: const [
+            Text('🏔️', style: TextStyle(fontSize: 16)),
+            SizedBox(width: 7),
+            Text('Donjon',
+                style: TextStyle(
+                    color: Color(0xFFAFCBFF),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800)),
+          ]),
+        ),
+      ),
+    );
+  }
+
   // Bouton « Défendre le château 🔥 » : lance la séquence qui VIDE les chargeurs
   // (l'avatar marche de canon en canon et tire les flammes accumulées par l'effort).
   // Cliquer ailleurs pendant la séquence l'interrompt (_onTapV2 → _v2TakeControl).
@@ -6473,6 +6507,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         child: CircularProgressIndicator(color: _kBlue)))
                 : Stack(children: [
                     Positioned.fill(child: _contentV2()),
+                    // Donjon 🏔️ : entrée de l'aventure (montée en niveaux) → ouvre le
+                    // graphe d'expédition. Haut-GAUCHE de la map (zone libre).
+                    if (!widget.mobile)
+                      Positioned(top: 10, left: 10, child: _donjonMarker()),
                     Positioned(
                         top: 10,
                         right: 10,
