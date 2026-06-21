@@ -811,8 +811,13 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
           Expanded(
             child: LayoutBuilder(builder: (context, c) {
               final laneW = c.maxWidth / _exp.lanes;
-              Offset posOf(ExpeditionNode n) =>
-                  Offset(n.lane * laneW + laneW / 2, n.row * _rowH + _rowH / 2);
+              // Donjon = ASCENSION : l'OBJECTIF (finish) est EN HAUT et le départ en
+              // bas → on inverse la rangée verticalement (maxRow - row).
+              final maxRow =
+                  _exp.nodes.fold<int>(0, (m, n) => n.row > m ? n.row : m);
+              Offset posOf(ExpeditionNode n) => Offset(
+                  n.lane * laneW + laneW / 2,
+                  (maxRow - n.row) * _rowH + _rowH / 2);
               final positions = {for (final n in _exp.nodes) n.id: posOf(n)};
               final frontier = cleared
                   .map((id) => _exp.byId(id))
