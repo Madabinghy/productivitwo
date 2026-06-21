@@ -6362,26 +6362,28 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
 
   // Marqueur DONJON 🏔️ : entrée de l'aventure (montée en niveaux). Tap → ouvre le
   // graphe d'expédition. L'objectif est en haut (ascension).
+  // Ouvre l'expédition (donjon). Partagé par le bouton‑raccourci et la tuile‑donjon
+  // intégrée à la carte. Fin de niveau → un boss est lâché dans un domaine.
+  Future<void> _openDonjon() async {
+    final before = logic.state.bossInvasions.toSet();
+    await showExpeditionSheet(context, logic, sync);
+    if (!mounted) return;
+    setState(_populateV2Araignees);
+    final added = logic.state.bossInvasions.toSet().difference(before);
+    if (added.isNotEmpty) {
+      final dom = added.first;
+      _toast('🕷️ Un boss s\'échappe du donjon vers ${_domainName(dom)} !',
+          _kEnemy);
+      _v2CenterOnDomainZone(dom);
+    }
+  }
+
   Widget _donjonMarker() {
     return Material(
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        onTap: () async {
-          final before = logic.state.bossInvasions.toSet();
-          await showExpeditionSheet(context, logic, sync);
-          if (!mounted) return;
-          setState(_populateV2Araignees);
-          // Fin de niveau → un boss a été lâché : cadre le domaine envahi + annonce.
-          final added = logic.state.bossInvasions.toSet().difference(before);
-          if (added.isNotEmpty) {
-            final dom = added.first;
-            _toast(
-                '🕷️ Un boss s\'échappe du donjon vers ${_domainName(dom)} !',
-                _kEnemy);
-            _v2CenterOnDomainZone(dom);
-          }
-        },
+        onTap: _openDonjon,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
           decoration: BoxDecoration(
@@ -8830,6 +8832,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _closeV2Panel();
       return;
     }
+    // Donjon 🏔️ (tuile en haut de la cour) → ouvre l'expédition, comme le bouton.
+    if (w.donjonAt != null && w.donjonAt!.x == x && w.donjonAt!.y == y) {
+      await _openDonjon();
+      return;
+    }
     // Parchemin 📜 → l'avatar monte dessus et le grand dashboard projets s'ouvre.
     if (_v2Parchemins.containsKey(id)) {
       await _onParchemin(x, y);
@@ -9517,7 +9524,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   Widget _cellV2(int x, int y) {
     final w = _wv2!;
     final id = '${x}_$y';
-    final revealed = _revealed.contains(id) || _showCoords;
+    // Le donjon est un repère fixe (comme les dashboards en haut de la cour) :
+    // toujours visible, jamais masqué par le brouillard.
+    final isDonjon =
+        w.donjonAt != null && w.donjonAt!.x == x && w.donjonAt!.y == y;
+    final revealed = _revealed.contains(id) || _showCoords || isDonjon;
     final isAvatar = _posV2.x == x && _posV2.y == y;
     const slot = _kV2Slot, inner = slot - 3;
     if (!revealed) {
@@ -9747,6 +9758,27 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 ),
               ],
             );
+    }
+    // Donjon 🏔️ intégré à la carte : en haut de la cour, au‑dessus des domaines.
+    // Clic = ouvre l'expédition (montée en niveaux). Doublé par le bouton‑raccourci.
+    if (isDonjon) {
+      bg = const Color(0xFF3A2E5A).withOpacity(.45);
+      child = Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          Text('🏔️', style: TextStyle(fontSize: inner * 0.72)),
+          Positioned(
+            bottom: -2,
+            child: Text('Donjon',
+                style: TextStyle(
+                    fontSize: inner * 0.22,
+                    height: 1,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white.withOpacity(.9))),
+          ),
+        ],
+      );
     }
     // Clone FANTÔME (transparent) : termine la cinématique canon après la reprise de
     // main du user. Masqué sous l'avatar réel s'ils tombent sur la même case.
