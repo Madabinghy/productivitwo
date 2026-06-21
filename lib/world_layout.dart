@@ -87,6 +87,7 @@ class WorldLayout {
   final Point<int> start;
   final int courLeft, courRight; // bande X de la COUR centrale (courRight exclusif)
   final Point<int>? donjonAt; // tuile du donjon, en haut de la cour (au‑dessus des domaines)
+  final Point<int>? lairAt; // repère du boss, en bas de la cour (symétrique au donjon)
   WorldLayout({
     required this.cols,
     required this.rows,
@@ -98,6 +99,7 @@ class WorldLayout {
     required this.courRight,
     this.decor = const {},
     this.donjonAt,
+    this.lairAt,
   }) : byDomain = {for (final c in castles) c.domainId: c};
 
   bool inBounds(int x, int y) => x >= 0 && x < cols && y >= 0 && y < rows;
@@ -127,6 +129,10 @@ const int _kMargin = 2;
 // permanence le donjon (vue ExpeditionView). Les châteaux/cour sont décalés vers
 // le bas d'autant ; le bas du panneau donjon tombe pile au sommet des châteaux.
 const int _kDonjonRows = 13;
+// Bande RÉSERVÉE en BAS de la map (sous les châteaux), symétrique à la bande donjon :
+// y est affiché en permanence le repère du boss (carte overworld). Le bas du panneau
+// tombe pile sous les châteaux.
+const int _kLairRows = _kDonjonRows;
 const int _kRightExt = 7; // extérieur à DROITE : d'où viennent les nuisibles + noms
 
 // Routines en haut, séparateur, activités en bas (comme l'intérieur).
@@ -300,8 +306,9 @@ WorldLayout buildWorld(List<DomainSpec> domains, {int seed = 0}) {
       ? 0
       : col.fold<int>(0, (s, d) => s + _blockH(d)) - (col.length - 1);
   final hR = colHeight(rightDomains), hL = colHeight(leftDomains);
-  // + bande donjon réservée en haut (au‑dessus des châteaux).
-  final worldRows = _kMargin * 2 + _kDonjonRows + (hR > hL ? hR : hL);
+  // + bande donjon réservée en haut + bande repère boss en bas (sous les châteaux).
+  final worldRows =
+      _kMargin * 2 + _kDonjonRows + (hR > hL ? hR : hL) + _kLairRows;
 
   // Largeur : [ext gauche][bloc GAUCHE miroir][COUR][bloc DROITE normal][ext droite].
   const courW = 5;
@@ -371,6 +378,9 @@ WorldLayout buildWorld(List<DomainSpec> domains, {int seed = 0}) {
   // Donjon : ancré en HAUT de la bande réservée ; le panneau (hauteur _kDonjonRows)
   // descend jusqu'au sommet des châteaux.
   final donjonAt = Point(bridgeX, _kMargin);
+  // Repère du boss : ancré en HAUT de la bande basse (symétrique au donjon) ; le
+  // panneau overworld (hauteur _kLairRows) descend jusqu'au bas de la map.
+  final lairAt = Point(bridgeX, worldRows - _kMargin - _kLairRows);
 
   return WorldLayout(
       cols: worldCols,
@@ -382,7 +392,8 @@ WorldLayout buildWorld(List<DomainSpec> domains, {int seed = 0}) {
       courLeft: courL,
       courRight: dBlockL,
       decor: decor,
-      donjonAt: donjonAt);
+      donjonAt: donjonAt,
+      lairAt: lairAt);
 }
 
 /// Décor PUREMENT VISUEL, déterministe (même monde → même décor). Posé sur le

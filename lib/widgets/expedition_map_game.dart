@@ -35,12 +35,22 @@ Future<void> showExpeditionGame(
   );
 }
 
+/// Carte overworld EMBARQUÉE (mode inline) : la grille seule, mise à l'échelle pour
+/// rentrer dans la bande (pas de modale, pas de scroll). Utilisée comme « repère du
+/// boss » affiché en permanence en bas de la map monde web.
+Widget expeditionGameInline(AppLogic logic, FirestoreSync sync) =>
+    _ExpeditionGame(logic: logic, sync: sync, inline: true);
+
 class _ExpeditionGame extends StatefulWidget {
   final AppLogic logic;
   final FirestoreSync sync;
   final int? huntLevel;
+  final bool inline;
   const _ExpeditionGame(
-      {required this.logic, required this.sync, this.huntLevel});
+      {required this.logic,
+      required this.sync,
+      this.huntLevel,
+      this.inline = false});
   @override
   State<_ExpeditionGame> createState() => _ExpeditionGameState();
 }
@@ -834,7 +844,7 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
       String raw, String type, String itemId) async {
     await showBacklogCombat(context, logic, sync, type, itemId,
         onChanged: _pruneDeadBacklog, onLaunchedTimer: () {
-      if (mounted) Navigator.pop(context);
+      if (mounted && !widget.inline) Navigator.pop(context);
     });
   }
 
@@ -1049,8 +1059,24 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
     await showExpeditionSheet(context, logic, sync);
     if (!mounted) return;
     // Donjon terminé → niveau débloqué → on referme aussi la carte overworld.
-    if (logic.effectiveLevel() >= target) Navigator.pop(context);
+    if (logic.effectiveLevel() >= target && !widget.inline) {
+      Navigator.pop(context);
+    }
   }
+
+  // Grille de tuiles seule (réutilisée par la modale ET le mode inline).
+  Widget _gridBody(Point<int> pos, ColorScheme cs) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var y = 0; y < _map.rows; y++)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (var x = 0; x < _map.cols; x++) _buildTile(x, y, pos, cs),
+              ],
+            ),
+        ],
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -1058,6 +1084,14 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
     final biome = expeditionBiome(_level);
     final pos = _pos;
     final pests = _livePests;
+
+    // Mode inline (repère du boss embarqué) : la grille seule, mise à l'échelle pour
+    // rentrer dans la bande, sans modale ni scroll, interactivité conservée.
+    if (widget.inline) {
+      return Center(
+        child: FittedBox(fit: BoxFit.scaleDown, child: _gridBody(pos, cs)),
+      );
+    }
 
     return DraggableScrollableSheet(
       initialChildSize: 0.92,
@@ -1149,19 +1183,7 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
             child: Center(
               child: Padding(
                 padding: const EdgeInsets.only(bottom: 24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (var y = 0; y < _map.rows; y++)
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          for (var x = 0; x < _map.cols; x++)
-                            _buildTile(x, y, pos, cs),
-                        ],
-                      ),
-                  ],
-                ),
+                child: _gridBody(pos, cs),
               ),
             ),
           ),
