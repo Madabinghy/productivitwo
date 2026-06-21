@@ -1034,6 +1034,24 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
           duration: Duration(seconds: 2)));
       return;
     }
+    // NOUVELLE BOUCLE (web inline) : le château EST le boss. L'atteindre le déloge → il
+    // s'enfuit envahir le domaine le plus négligé (combat sur la grande map → libération
+    // → niveau +1). Le mobile (modale) garde l'ancien flux ci-dessous (ouvre le donjon).
+    if (widget.inline) {
+      final dom = logic.mostNeglectedDomainId();
+      if (dom != null && !logic.state.bossInvasions.contains(dom)) {
+        logic.state.bossInvasions.add(dom);
+        logic.onChange();
+      }
+      if (!mounted) return;
+      final ds = logic.state.activeDomains.where((x) => x.id == dom);
+      final name = ds.isNotEmpty ? ds.first.name : 'un domaine';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              '🕷️ Boss délogé — il envahit $name ! Va le libérer sur la carte.'),
+          duration: const Duration(seconds: 3)));
+      return;
+    }
     final target = _level; // niveau visé (figé avant le déblocage)
     final go = await showDialog<bool>(
       context: context,
