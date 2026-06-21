@@ -346,6 +346,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // Grand dashboard PROJETS (parchemin) : recouvre village + jardin du domaine.
   // `projectId` = projet affiché à droite (document Gantt). Un tap sur la map referme.
   ({String domainId, String? projectId})? _parchemin;
+  // Donjon ouvert INLINE (panneau ExpeditionView intégré à la map, en haut de la cour).
+  bool _donjonOpen = false;
+  Set<String> _donjonBossBefore = const {}; // invasions avant l'ouverture (diff à la fermeture)
   Point<int>? _cannonSpinAt; // case rampe en cours de spin (null = repos)
   int _cannonSpinStartMs = 0;
   final Map<String, double> _cannonRaise = {}; // tileId tourelle → lever 0..1 (animé)
@@ -2760,7 +2763,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // Un dashboard (jardin / parchemin) ouvert = action user en cours → on NE déclenche
   // PAS les cinématiques auto ; les flammes sont provisionnées sur les canons et
   // déchargées à la fermeture.
-  bool get _v2PanelOpen => _gardenPanel != null || _parchemin != null;
+  bool get _v2PanelOpen =>
+      _gardenPanel != null || _parchemin != null || _donjonOpen;
 
   // Ferme les panneaux V2 et, l'avatar redevenant dispo, décharge les flammes en
   // attente (priorité aux actions user, puis rattrapage).
@@ -6362,14 +6366,27 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
 
   // Marqueur DONJON 🏔️ : entrée de l'aventure (montée en niveaux). Tap → ouvre le
   // graphe d'expédition. L'objectif est en haut (ascension).
-  // Ouvre l'expédition (donjon). Partagé par le bouton‑raccourci et la tuile‑donjon
-  // intégrée à la carte. Fin de niveau → un boss est lâché dans un domaine.
-  Future<void> _openDonjon() async {
-    final before = logic.state.bossInvasions.toSet();
-    await showExpeditionSheet(context, logic, sync);
-    if (!mounted) return;
-    setState(_populateV2Araignees);
-    final added = logic.state.bossInvasions.toSet().difference(before);
+  // Ouvre le donjon INLINE (panneau intégré à la map, comme les dashboards).
+  // Partagé par la tuile‑donjon et le bouton‑raccourci. Fin de niveau → un boss
+  // est lâché dans un domaine (détecté à la fermeture du panneau).
+  void _openDonjon() {
+    if (_donjonOpen) return;
+    _donjonBossBefore = logic.state.bossInvasions.toSet();
+    setState(() => _donjonOpen = true);
+    final d = _wv2?.donjonAt;
+    if (d != null) _v2CenterOn(Point(d.x, d.y + 5)); // cadre le panneau ouvert
+  }
+
+  // Ferme le donjon inline. Repeuple les araignées et, si un boss a été lâché
+  // pendant la session (fin de niveau), l'annonce + cadre le domaine envahi.
+  void _closeDonjon() {
+    if (!_donjonOpen) return;
+    setState(() {
+      _donjonOpen = false;
+      _populateV2Araignees();
+    });
+    final added =
+        logic.state.bossInvasions.toSet().difference(_donjonBossBefore);
     if (added.isNotEmpty) {
       final dom = added.first;
       _toast('🕷️ Un boss s\'échappe du donjon vers ${_domainName(dom)} !',
@@ -6404,6 +6421,51 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     fontSize: 13,
                     fontWeight: FontWeight.w800)),
           ]),
+        ),
+      ),
+    );
+  }
+
+  // Panneau DONJON in‑place : la vue expédition (montée en niveaux) intégrée à la
+  // map, centrée en haut de la cour (au‑dessus des domaines), comme un dashboard.
+  Widget _donjonPanelV2(WorldLayout w) {
+    final d = w.donjonAt;
+    if (d == null) return const SizedBox.shrink();
+    const wT = 9, hT = 13; // taille du panneau en cases
+    final maxLeft = (w.cols - wT).clamp(0, w.cols);
+    final left = (d.x - wT ~/ 2).clamp(0, maxLeft);
+    final top = d.y.clamp(0, w.rows - 1);
+    final h = hT.clamp(1, w.rows - top);
+    return Positioned(
+      left: left * _kV2Slot,
+      top: top * _kV2Slot,
+      width: wT * _kV2Slot,
+      height: h * _kV2Slot,
+      child: Material(
+        color: const Color(0xFF120E1C),
+        elevation: 12,
+        borderRadius: BorderRadius.circular(8),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          // Thème SOMBRE forcé : la vue expédition utilise le textTheme / onSurface
+          // par défaut → sur fond sombre du panneau, il faut un thème dark pour que
+          // textes et icônes restent lisibles quel que soit le thème de l'app web.
+          child: Theme(
+            data: ThemeData(
+              useMaterial3: true,
+              brightness: Brightness.dark,
+              colorScheme: ColorScheme.fromSeed(
+                seedColor: const Color(0xFFD4A017),
+                brightness: Brightness.dark,
+              ),
+            ),
+            child: ExpeditionView(
+              logic: logic,
+              sync: sync,
+              inline: true,
+              onExit: _closeDonjon,
+            ),
+          ),
         ),
       ),
     );
@@ -8827,14 +8889,19 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _v2Walking = false;
     _v2TakeControl(); // clic = reprise de la main (interrompt l'exploration auto)
     final id = '${x}_$y';
+    // Un tap sur la map (hors panneau) referme le donjon inline.
+    if (_donjonOpen) {
+      _closeDonjon();
+      return;
+    }
     // Un tap sur la map referme le dashboard jardin / le parchemin (+ décharge).
     if (_gardenPanel != null || _parchemin != null) {
       _closeV2Panel();
       return;
     }
-    // Donjon 🏔️ (tuile en haut de la cour) → ouvre l'expédition, comme le bouton.
+    // Donjon 🏔️ (tuile en haut de la cour) → ouvre le panneau inline, comme le bouton.
     if (w.donjonAt != null && w.donjonAt!.x == x && w.donjonAt!.y == y) {
-      await _openDonjon();
+      _openDonjon();
       return;
     }
     // Parchemin 📜 → l'avatar monte dessus et le grand dashboard projets s'ouvre.
@@ -9392,6 +9459,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               if (_gardenPanel != null) _gardenPanelV2(w),
               // Grand dashboard PROJETS (parchemin) : village + jardin du domaine.
               if (_parchemin != null) _parcheminPanelV2(w),
+              // Donjon INLINE (expédition) : panneau en haut de la cour.
+              if (_donjonOpen) _donjonPanelV2(w),
             ],
           ),
         ),

@@ -314,6 +314,11 @@ class _DomainGameplayState extends State<_DomainGameplay>
   final Map<String, int> _minuteurShots = {};
   Timer? _minuteurTicker;
   String get _minuteurPrefKey => 'combat_minuteur_${widget.domain.id}';
+  // Activités lancées en CHRONO LIBRE (pas minuteur) : leur session ouverte ne doit
+  // PAS être adoptée comme un décompte par `_adoptOpenSessions` (sinon un faux
+  // minuteur ~10 min apparaît à côté). Persisté → survit à la réouverture du combat.
+  final Set<String> _chronoActIds = {};
+  String get _chronoPrefKey => 'combat_chrono_${widget.domain.id}';
   // (étape C) RATTRAPAGE des complétions faites HORS-APP : à l'ouverture, l'écart
   // entre le PV du jour vu au dernier passage et le PV actuel = des flammes à tirer.
   // La queue décharge ces flammes une à une (cinématique → le PV affiché rattrape) ;
@@ -340,7 +345,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
     _loadModes();
     // Charge les minuteurs persistés PUIS adopte une éventuelle session d'activité
     // déjà ouverte (lancée depuis le web) comme un minuteur en cours.
-    _loadMinuteurs().then((_) {
+    _loadMinuteurs().then((_) => _loadChronos()).then((_) {
       if (mounted) _adoptOpenSessions();
     });
     // Rattrapage des complétions faites hors-app (queue de cinématiques).
@@ -386,6 +391,30 @@ class _DomainGameplayState extends State<_DomainGameplay>
         _minuteurPrefKey,
         jsonEncode(
             _minuteurEnd.map((k, v) => MapEntry(k, v.toIso8601String()))));
+  }
+
+  Future<void> _loadChronos() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_chronoPrefKey);
+    if (raw == null) return;
+    try {
+      _chronoActIds.addAll((jsonDecode(raw) as List).map((e) => '$e'));
+    } catch (_) {}
+  }
+
+  Future<void> _saveChronos() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_chronoPrefKey, jsonEncode(_chronoActIds.toList()));
+  }
+
+  // Marque une activité comme « chrono libre » en cours (pas de décompte adopté).
+  void _markChrono(String actId) {
+    if (_chronoActIds.add(actId)) _saveChronos();
+  }
+
+  // L'activité repasse en minuteur (ou sa session est close) → on l'enlève du set.
+  void _unmarkChrono(String actId) {
+    if (_chronoActIds.remove(actId)) _saveChronos();
   }
 
   void _ensureMinuteurTicker() {
@@ -473,6 +502,14 @@ class _DomainGameplayState extends State<_DomainGameplay>
   // rejouer les tirs des paliers déjà franchis.
   void _adoptOpenSessions() {
     final dom = widget.domain.id;
+    // Élague les chronos dont la session n'est plus ouverte (évite un set qui gonfle).
+    final openActIds = {
+      for (final s in logic.state.sessions)
+        if (s.endAt == null) s.activityId
+    };
+    final pruned = _chronoActIds.length;
+    _chronoActIds.retainWhere(openActIds.contains);
+    if (_chronoActIds.length != pruned) _saveChronos();
     for (final s in logic.state.sessions) {
       if (s.endAt != null) continue;
       Activity? a;
@@ -482,7 +519,10 @@ class _DomainGameplayState extends State<_DomainGameplay>
           break;
         }
       }
-      if (a == null || _minuteurEnd.containsKey(a.id)) continue;
+      // Chrono libre lancé ici → ne pas fabriquer de décompte.
+      if (a == null ||
+          _minuteurEnd.containsKey(a.id) ||
+          _chronoActIds.contains(a.id)) continue;
       // Durée : timerMin défini, sinon estimation (jamais de dialog au chargement).
       final mins = (a.timerMin != null && a.timerMin! > 0)
           ? a.timerMin!
@@ -532,6 +572,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
     mins ??= await _askDuration(it.name);
     if (mins == null || mins < 1 || !mounted) return; // annulé
     final d = mins;
+    _unmarkChrono(actId); // minuteur explicite → pas un chrono libre
     logic.start(actId); // ferme toute session ouverte + en démarre une (temps loggé)
     setState(() {
       _minuteurEnd
@@ -860,6 +901,7 @@ class _DomainGameplayState extends State<_DomainGameplay>
                 'Lie une activité-temps à cette action pour la chronométrer.')));
         return;
       }
+      _markChrono(activityId); // chrono libre → pas de faux décompte adopté
       logic.start(activityId, taskId: taskId, actionId: id);
       logic.onChange();
       if (mounted) Navigator.of(context).maybePop(); // voir le chrono qui tourne
@@ -948,9 +990,11 @@ class _DomainGameplayState extends State<_DomainGameplay>
     }
     logic.start(actId);
     if (timer && logic.launchTimerHook != null && act != null) {
+      _unmarkChrono(actId); // c'est un minuteur, pas un chrono
       logic.launchTimerHook!(logic.challengeDurationFor(act), it.name,
           routineId: routineId);
     } else {
+      _markChrono(actId); // chrono libre → pas de faux décompte à la réouverture
       logic.onChange();
     }
     // Ferme la fiche du domaine pour voir le minuteur/chrono qui tourne.
@@ -1544,10 +1588,12 @@ class _DomainGameplayState extends State<_DomainGameplay>
             final fy = fy0 - arc * sin(pi * u);
             // Orientation : tangente RÉELLE de la parabole (continue) → la boule
             // reste tête en avant sur tout l'arc (montée ET descente), sans saut au
-            // sommet. vx/vy = dérivées de fx/fy selon u ; +pi/2 = offset du sprite.
+            // sommet. vx/vy = dérivées de fx/fy selon u. Le sprite fireball.svg pointe
+            // naturellement vers le BAS‑DROITE (~+45°, tête en bas à droite, traînée
+            // en haut à gauche) → offset −pi/4 pour aligner la tête sur la vitesse.
             final vx = targetX - fx0;
             final vy = -arc * pi * cos(pi * u);
-            final fAngle = atan2(vy, vx) + pi / 2;
+            final fAngle = atan2(vy, vx) - pi / 4;
             return Stack(
               clipBehavior: Clip.none,
               children: [

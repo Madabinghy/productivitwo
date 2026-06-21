@@ -21,23 +21,60 @@ Future<bool> showExpeditionSheet(
   final result = await showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
-    builder: (_) => _ExpeditionSheet(logic: logic, sync: sync),
+    builder: (_) => DraggableScrollableSheet(
+      initialChildSize: 0.9,
+      maxChildSize: 0.95,
+      minChildSize: 0.5,
+      expand: false,
+      builder: (ctx, scroll) => ExpeditionView(
+        logic: logic,
+        sync: sync,
+        scrollController: scroll,
+        onExit: () => Navigator.pop(ctx, true),
+      ),
+    ),
   );
   return result == true;
 }
 
-class _ExpeditionSheet extends StatefulWidget {
+/// Corps du donjon (entête + bannière + carte à nœuds), réutilisable :
+/// - en FEUILLE modale (bouton‑raccourci) via [showExpeditionSheet] ;
+/// - INTÉGRÉ à la map (panneau in‑place, comme les dashboards de jardin) en
+///   passant `inline: true` + un `onExit` qui referme le panneau.
+class ExpeditionView extends StatefulWidget {
   final AppLogic logic;
   final FirestoreSync sync;
-  const _ExpeditionSheet({required this.logic, required this.sync});
+  final bool inline;
+  final VoidCallback? onExit;
+  final ScrollController? scrollController;
+  const ExpeditionView({
+    super.key,
+    required this.logic,
+    required this.sync,
+    this.inline = false,
+    this.onExit,
+    this.scrollController,
+  });
   @override
-  State<_ExpeditionSheet> createState() => _ExpeditionSheetState();
+  State<ExpeditionView> createState() => _ExpeditionViewState();
 }
 
-class _ExpeditionSheetState extends State<_ExpeditionSheet> {
+class _ExpeditionViewState extends State<ExpeditionView> {
   AppLogic get logic => widget.logic;
   FirestoreSync get sync => widget.sync;
   bool _busy = false;
+  ScrollController? _ownScroll;
+  ScrollController get _scroll =>
+      widget.scrollController ?? (_ownScroll ??= ScrollController());
+
+  // Referme le donjon : callback inline, sinon pop de la feuille modale.
+  void _exit() {
+    if (widget.onExit != null) {
+      widget.onExit!();
+    } else if (mounted) {
+      Navigator.pop(context);
+    }
+  }
 
   int get _level => logic.effectiveLevel() + 1; // niveau VISÉ (déblocage)
   int get _mapLevel => logic.effectiveLevel(); // identité de la carte (affichage)
@@ -56,6 +93,12 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
       logic.onChange();
       sync.setExpeditionDonjonLevel(_level);
     }
+  }
+
+  @override
+  void dispose() {
+    _ownScroll?.dispose();
+    super.dispose();
   }
 
   /// Défis auto-validés (ordre = stockage). Index → état {label,progress,done}.
@@ -106,7 +149,7 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
       logic.state.expeditionDonjonLevel = 0;
       logic.onChange();
       await sync.setExpeditionDonjonLevel(0);
-      if (mounted) Navigator.pop(context, true); // → showExpeditionSheet retourne true
+      if (mounted) _exit(); // → referme le donjon (feuille ou panneau inline)
       return;
     }
     if (!_exp.reachable(_cleared).contains(node.id)) return;
@@ -188,7 +231,7 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
           routineId: routine.id,
           expeditionNodeId: node.id,
           expeditionBonus: bonus);
-      if (mounted) Navigator.pop(context); // ferme le donjon → on voit le minuteur
+      if (mounted) _exit(); // ferme le donjon → on voit le minuteur
       return;
     }
     if (mounted) {
@@ -679,7 +722,7 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
         ],
       ),
     );
-    if (mounted) Navigator.pop(context);
+    if (mounted) _exit();
   }
 
   void _showDiscovered(Set<String> discovered) {
@@ -745,15 +788,12 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
       }
     }
 
-    return DraggableScrollableSheet(
-      initialChildSize: 0.9,
-      maxChildSize: 0.95,
-      minChildSize: 0.5,
-      expand: false,
-      builder: (_, scroll) => Column(
+    return Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+            padding: widget.inline
+                ? const EdgeInsets.fromLTRB(12, 10, 6, 4)
+                : const EdgeInsets.fromLTRB(20, 16, 20, 4),
             child: Row(children: [
               Text(biome.emoji, style: const TextStyle(fontSize: 22)),
               const SizedBox(width: 8),
@@ -777,6 +817,14 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
                 label: const Text('Défis'),
                 style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
               ),
+              if (widget.inline)
+                InkWell(
+                  onTap: _exit,
+                  child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child:
+                          Icon(Icons.close, color: Colors.white60, size: 18)),
+                ),
             ]),
           ),
           // Bannière du défi en cours.
@@ -832,7 +880,7 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
                       (best, n) => best == null || n.row > best.row ? n : best);
 
               return SingleChildScrollView(
-                controller: scroll,
+                controller: _scroll,
                 child: SizedBox(
                   width: c.maxWidth,
                   height: _exp.rows * _rowH + 24,
@@ -875,8 +923,7 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
             }),
           ),
         ],
-      ),
-    );
+      );
   }
 }
 
