@@ -123,6 +123,10 @@ const int _kInnerW = _kVillageCols + _kGardenCols + _kCastleCols; // 25
 // que la mini‑app dashboard (qui recouvre le jardin) soit lisible/utilisable.
 const int _kMinInnerRows = 10;
 const int _kMargin = 2;
+// Bande RÉSERVÉE en haut de la map (au‑dessus des châteaux) : y est affiché en
+// permanence le donjon (vue ExpeditionView). Les châteaux/cour sont décalés vers
+// le bas d'autant ; le bas du panneau donjon tombe pile au sommet des châteaux.
+const int _kDonjonRows = 13;
 const int _kRightExt = 7; // extérieur à DROITE : d'où viennent les nuisibles + noms
 
 // Routines en haut, séparateur, activités en bas (comme l'intérieur).
@@ -296,7 +300,8 @@ WorldLayout buildWorld(List<DomainSpec> domains, {int seed = 0}) {
       ? 0
       : col.fold<int>(0, (s, d) => s + _blockH(d)) - (col.length - 1);
   final hR = colHeight(rightDomains), hL = colHeight(leftDomains);
-  final worldRows = _kMargin * 2 + (hR > hL ? hR : hL);
+  // + bande donjon réservée en haut (au‑dessus des châteaux).
+  final worldRows = _kMargin * 2 + _kDonjonRows + (hR > hL ? hR : hL);
 
   // Largeur : [ext gauche][bloc GAUCHE miroir][COUR][bloc DROITE normal][ext droite].
   const courW = 5;
@@ -311,19 +316,21 @@ WorldLayout buildWorld(List<DomainSpec> domains, {int seed = 0}) {
       [for (int x = 0; x < worldCols; x++) WtTile.terrain]
   ];
 
-  // Pont vertical CENTRAL (dans la cour) — relie les deux colonnes.
+  // Pont vertical CENTRAL (dans la cour) — relie les deux colonnes. Démarre SOUS la
+  // bande donjon réservée.
   final bridgeX = courL + courW ~/ 2;
-  for (var y = _kMargin; y < worldRows - _kMargin; y++) {
+  for (var y = _kMargin + _kDonjonRows; y < worldRows - _kMargin; y++) {
     grid[y][bridgeX] = WtTile.bridge;
   }
 
+  // Châteaux empilés SOUS la bande donjon (décalés de _kDonjonRows vers le bas).
   final castles = <CastleBlock>[];
-  var topR = _kMargin;
+  var topR = _kMargin + _kDonjonRows;
   for (final d in rightDomains) {
     castles.add(_carveBlock(grid, d, dBlockL, topR, bridgeX, mirror: false));
     topR += _blockH(d) - 1;
   }
-  var topL = _kMargin;
+  var topL = _kMargin + _kDonjonRows;
   for (final d in leftDomains) {
     castles.add(_carveBlock(grid, d, gBlockL, topL, bridgeX, mirror: true));
     topL += _blockH(d) - 1;
@@ -361,8 +368,9 @@ WorldLayout buildWorld(List<DomainSpec> domains, {int seed = 0}) {
   // Décor cosmétique en DERNIER (lit la grille finale, n'écrase rien de jouable).
   final decor = _buildDecor(grid, castles, worldCols, worldRows, rng);
 
-  // Donjon : en HAUT de la cour, juste au‑dessus des domaines les plus hauts.
-  final donjonAt = Point(bridgeX, _kMargin - 1 < 0 ? 0 : _kMargin - 1);
+  // Donjon : ancré en HAUT de la bande réservée ; le panneau (hauteur _kDonjonRows)
+  // descend jusqu'au sommet des châteaux.
+  final donjonAt = Point(bridgeX, _kMargin);
 
   return WorldLayout(
       cols: worldCols,

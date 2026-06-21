@@ -817,7 +817,9 @@ class _ExpeditionViewState extends State<ExpeditionView> {
                 label: const Text('Défis'),
                 style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
               ),
-              if (widget.inline)
+              // Bouton fermer seulement si un onExit est fourni (le donjon affiché en
+              // permanence dans la bande de la cour passe onExit:null → pas de croix).
+              if (widget.inline && widget.onExit != null)
                 InkWell(
                   onTap: _exit,
                   child: const Padding(
