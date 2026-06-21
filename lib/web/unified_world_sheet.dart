@@ -6401,75 +6401,17 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     }
   }
 
-  // Bascule le MODE COUR‑DONJON (Phase 1) : ON → déverse les étapes de TOUS les
-  // domaines dans la cour ; OFF → cour normale. Recadre sur la case 🏔️ à l'entrée.
-  void _toggleDonjonMode() {
-    setState(() {
-      _donjonMode = !_donjonMode;
-      if (_donjonMode) {
-        _populateDonjonSteps();
-      } else {
-        _v2DonjonSteps.clear();
-        _v2SousDonjon.clear();
-      }
-    });
-    if (_donjonMode) {
-      final d = _wv2?.donjonAt;
-      if (d != null) _v2CenterOn(Point(d.x, d.y + 6));
-    }
-  }
-
-  // Déverse les étapes (sous‑actions de tâches + actions libres) de chaque domaine
-  // dans sa bande verticale de la cour, sur les colonnes hors‑pont. Pose aussi une
-  // entrée « sous‑donjon » au bord de cour à hauteur du centre du domaine.
-  void _populateDonjonSteps() {
-    _v2DonjonSteps.clear();
-    _v2SousDonjon.clear();
-    final w = _wv2;
-    if (w == null) return;
-    final bridgeX = w.courLeft + (w.courRight - w.courLeft) ~/ 2;
-    // Les domaines GAUCHE et DROITE partagent la même bande verticale → on répartit
-    // les colonnes de la cour de part et d'autre du pont (gauche = domaines mirror).
-    final leftCols = [for (var x = w.courLeft; x < bridgeX; x++) x];
-    final rightCols = [for (var x = bridgeX + 1; x < w.courRight; x++) x];
-    for (final c in w.castles) {
-      final top = c.bounds.top + 1;
-      final bottom = c.bounds.top + c.bounds.height - 2;
-      if (bottom < top) continue;
-      final cols = c.mirror ? leftCols : rightCols;
-      if (cols.isEmpty) continue;
-      // Entrée « sous‑donjon » : colonne adjacente au pont, en haut de la bande.
-      final entranceX = c.mirror ? cols.last : cols.first;
-      _v2SousDonjon['${entranceX}_$top'] = c.domainId;
-      final steps = logic.domainTodoSteps(c.domainId);
-      if (steps.isEmpty) continue;
-      // Balayage ligne par ligne dans la bande ; cap = nb de cases dispo.
-      var i = 0;
-      outer:
-      for (var y = top; y <= bottom; y++) {
-        for (final x in cols) {
-          if (x == entranceX && y == top) continue; // case d'entrée réservée
-          if (i >= steps.length) break outer;
-          final s = steps[i++];
-          _v2DonjonSteps['${x}_$y'] = (
-            actionId: s.actionId,
-            title: s.title,
-            parent: s.parent,
-            kind: s.kind,
-            shielded: s.shielded,
-            neglectedDays: s.neglectedDays,
-          );
-        }
-      }
-    }
-  }
-
   Widget _donjonMarker() {
     return Material(
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        onTap: _toggleDonjonMode,
+        // Le donjon est désormais affiché en permanence en haut : le bouton recadre
+        // simplement la caméra dessus (plus de bascule de mode pile).
+        onTap: () {
+          final d = _wv2?.donjonAt;
+          if (d != null) _v2CenterOn(d);
+        },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
           decoration: BoxDecoration(
@@ -6504,11 +6446,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   Widget _donjonPanelV2(WorldLayout w) {
     final d = w.donjonAt;
     if (d == null) return const SizedBox.shrink();
-    const wT = 9, hT = 13; // taille du panneau en cases
+    const wT = 9; // largeur du panneau en cases (centré sur le pont)
+    // Hauteur = la BANDE RÉSERVÉE en haut : du donjon (d.y) jusqu'au sommet du 1ᵉʳ
+    // château → le bas du panneau tombe pile au‑dessus des châteaux.
+    final firstCastleTop = w.castles.isEmpty
+        ? w.rows
+        : w.castles.map((c) => c.bounds.top).reduce((a, b) => a < b ? a : b);
     final maxLeft = (w.cols - wT).clamp(0, w.cols);
     final left = (d.x - wT ~/ 2).clamp(0, maxLeft);
     final top = d.y.clamp(0, w.rows - 1);
-    final h = hT.clamp(1, w.rows - top);
+    final h = (firstCastleTop - top).clamp(1, w.rows - top);
     return Positioned(
       left: left * _kV2Slot,
       top: top * _kV2Slot,
@@ -6536,7 +6483,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               logic: logic,
               sync: sync,
               inline: true,
-              onExit: _closeDonjon,
+              onExit: null, // affiché en permanence → pas de bouton fermer
             ),
           ),
         ),
@@ -8972,9 +8919,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _closeV2Panel();
       return;
     }
-    // Donjon 🏔️ (tuile en haut de la cour) → bascule le MODE cour‑donjon.
+    // Donjon : la tuile 🏔️ est sous le panneau affiché en permanence ; un tap éventuel
+    // recadre simplement la caméra (plus de bascule de mode pile).
     if (w.donjonAt != null && w.donjonAt!.x == x && w.donjonAt!.y == y) {
-      _toggleDonjonMode();
+      _v2CenterOn(w.donjonAt!);
       return;
     }
     // En mode donjon, un tap sur une étape recadre simplement (Phase 1 : pas de
@@ -9538,8 +9486,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               if (_gardenPanel != null) _gardenPanelV2(w),
               // Grand dashboard PROJETS (parchemin) : village + jardin du domaine.
               if (_parchemin != null) _parcheminPanelV2(w),
-              // Donjon INLINE (expédition) : panneau en haut de la cour.
-              if (_donjonOpen) _donjonPanelV2(w),
+              // Donjon (vue mobile ExpeditionView) : affiché EN PERMANENCE dans la
+              // bande réservée en haut de la cour, au‑dessus des châteaux.
+              _donjonPanelV2(w),
             ],
           ),
         ),
