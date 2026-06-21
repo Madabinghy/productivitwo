@@ -349,6 +349,21 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // Donjon ouvert INLINE (panneau ExpeditionView intégré à la map, en haut de la cour).
   bool _donjonOpen = false;
   Set<String> _donjonBossBefore = const {}; // invasions avant l'ouverture (diff à la fermeture)
+  // MODE COUR‑DONJON (Phase 1, visuel) : la cour affiche les vraies « étapes » à faire
+  // (sous‑actions de tâches + actions libres d'activités), groupées par domaine à leur
+  // hauteur. Activé en montant sur la case 🏔️ ou via le bouton Donjon.
+  bool _donjonMode = false;
+  final Map<
+      String,
+      ({
+        String actionId,
+        String title,
+        String parent,
+        String kind,
+        bool shielded,
+        int neglectedDays
+      })> _v2DonjonSteps = {}; // tuileId → étape
+  final Map<String, String> _v2SousDonjon = {}; // tuileId d'entrée → domainId
   Point<int>? _cannonSpinAt; // case rampe en cours de spin (null = repos)
   int _cannonSpinStartMs = 0;
   final Map<String, double> _cannonRaise = {}; // tileId tourelle → lever 0..1 (animé)
@@ -6364,18 +6379,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     return n;
   }
 
-  // Marqueur DONJON 🏔️ : entrée de l'aventure (montée en niveaux). Tap → ouvre le
-  // graphe d'expédition. L'objectif est en haut (ascension).
-  // Ouvre le donjon INLINE (panneau intégré à la map, comme les dashboards).
-  // Partagé par la tuile‑donjon et le bouton‑raccourci. Fin de niveau → un boss
-  // est lâché dans un domaine (détecté à la fermeture du panneau).
-  void _openDonjon() {
-    if (_donjonOpen) return;
-    _donjonBossBefore = logic.state.bossInvasions.toSet();
-    setState(() => _donjonOpen = true);
-    final d = _wv2?.donjonAt;
-    if (d != null) _v2CenterOn(Point(d.x, d.y + 5)); // cadre le panneau ouvert
-  }
+  // Marqueur DONJON 🏔️ : entrée de l'aventure. Tap → bascule le mode cour‑donjon.
+  // (Le panneau inline d'expédition `_donjonPanelV2` reste en place mais débranché ;
+  // il sera retiré en Phase 3 une fois le mode cour‑donjon validé.)
 
   // Ferme le donjon inline. Repeuple les araignées et, si un boss a été lâché
   // pendant la session (fin de niveau), l'annonce + cadre le domaine envahi.
@@ -6395,18 +6401,85 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     }
   }
 
+  // Bascule le MODE COUR‑DONJON (Phase 1) : ON → déverse les étapes de TOUS les
+  // domaines dans la cour ; OFF → cour normale. Recadre sur la case 🏔️ à l'entrée.
+  void _toggleDonjonMode() {
+    setState(() {
+      _donjonMode = !_donjonMode;
+      if (_donjonMode) {
+        _populateDonjonSteps();
+      } else {
+        _v2DonjonSteps.clear();
+        _v2SousDonjon.clear();
+      }
+    });
+    if (_donjonMode) {
+      final d = _wv2?.donjonAt;
+      if (d != null) _v2CenterOn(Point(d.x, d.y + 6));
+    }
+  }
+
+  // Déverse les étapes (sous‑actions de tâches + actions libres) de chaque domaine
+  // dans sa bande verticale de la cour, sur les colonnes hors‑pont. Pose aussi une
+  // entrée « sous‑donjon » au bord de cour à hauteur du centre du domaine.
+  void _populateDonjonSteps() {
+    _v2DonjonSteps.clear();
+    _v2SousDonjon.clear();
+    final w = _wv2;
+    if (w == null) return;
+    final bridgeX = w.courLeft + (w.courRight - w.courLeft) ~/ 2;
+    // Les domaines GAUCHE et DROITE partagent la même bande verticale → on répartit
+    // les colonnes de la cour de part et d'autre du pont (gauche = domaines mirror).
+    final leftCols = [for (var x = w.courLeft; x < bridgeX; x++) x];
+    final rightCols = [for (var x = bridgeX + 1; x < w.courRight; x++) x];
+    for (final c in w.castles) {
+      final top = c.bounds.top + 1;
+      final bottom = c.bounds.top + c.bounds.height - 2;
+      if (bottom < top) continue;
+      final cols = c.mirror ? leftCols : rightCols;
+      if (cols.isEmpty) continue;
+      // Entrée « sous‑donjon » : colonne adjacente au pont, en haut de la bande.
+      final entranceX = c.mirror ? cols.last : cols.first;
+      _v2SousDonjon['${entranceX}_$top'] = c.domainId;
+      final steps = logic.domainTodoSteps(c.domainId);
+      if (steps.isEmpty) continue;
+      // Balayage ligne par ligne dans la bande ; cap = nb de cases dispo.
+      var i = 0;
+      outer:
+      for (var y = top; y <= bottom; y++) {
+        for (final x in cols) {
+          if (x == entranceX && y == top) continue; // case d'entrée réservée
+          if (i >= steps.length) break outer;
+          final s = steps[i++];
+          _v2DonjonSteps['${x}_$y'] = (
+            actionId: s.actionId,
+            title: s.title,
+            parent: s.parent,
+            kind: s.kind,
+            shielded: s.shielded,
+            neglectedDays: s.neglectedDays,
+          );
+        }
+      }
+    }
+  }
+
   Widget _donjonMarker() {
     return Material(
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        onTap: _openDonjon,
+        onTap: _toggleDonjonMode,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
           decoration: BoxDecoration(
             color: const Color(0xFF14110F).withOpacity(.92),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFF7FB3FF), width: 1.4),
+            border: Border.all(
+                color: _donjonMode
+                    ? const Color(0xFFFFC83D)
+                    : const Color(0xFF7FB3FF),
+                width: 1.4),
             boxShadow: const [
               BoxShadow(
                   color: Color(0x66000000), blurRadius: 8, offset: Offset(0, 2)),
@@ -8899,9 +8972,15 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _closeV2Panel();
       return;
     }
-    // Donjon 🏔️ (tuile en haut de la cour) → ouvre le panneau inline, comme le bouton.
+    // Donjon 🏔️ (tuile en haut de la cour) → bascule le MODE cour‑donjon.
     if (w.donjonAt != null && w.donjonAt!.x == x && w.donjonAt!.y == y) {
-      _openDonjon();
+      _toggleDonjonMode();
+      return;
+    }
+    // En mode donjon, un tap sur une étape recadre simplement (Phase 1 : pas de
+    // franchissement). Le détail est au survol souris.
+    if (_donjonMode && _v2DonjonSteps.containsKey(id)) {
+      _v2CenterOn(Point(x, y));
       return;
     }
     // Parchemin 📜 → l'avatar monte dessus et le grand dashboard projets s'ouvre.
@@ -9839,7 +9918,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           Text('🏔️', style: TextStyle(fontSize: inner * 0.72)),
           Positioned(
             bottom: -2,
-            child: Text('Donjon',
+            child: Text(_donjonMode ? 'Sortir' : 'Donjon',
                 style: TextStyle(
                     fontSize: inner * 0.22,
                     height: 1,
@@ -9848,6 +9927,24 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           ),
         ],
       );
+    }
+    // Mode cour‑donjon : entrée « sous‑donjon » d'un domaine (sur le pont, à sa hauteur).
+    if (_donjonMode && _v2SousDonjon.containsKey(id)) {
+      bg = const Color(0xFF3A2E5A).withOpacity(.40);
+      child = Text('🏯', style: TextStyle(fontSize: inner * 0.6));
+    }
+    // Mode cour‑donjon : une ÉTAPE (sous‑action de tâche ou action libre) déversée
+    // dans la cour. Négligée (> 7 j) = toile sur fond ennemi ; sous bouclier = ✨.
+    if (_donjonMode && _v2DonjonSteps.containsKey(id)) {
+      final st = _v2DonjonSteps[id]!;
+      if (st.shielded) {
+        bg = const Color(0xFF2E7D5A).withOpacity(.30);
+        child = Text('✨', style: TextStyle(fontSize: inner * 0.58));
+      } else {
+        bg = _kEnemy.withOpacity(.28);
+        child = Text(st.neglectedDays >= 9999 ? '🎯' : '🕸️',
+            style: TextStyle(fontSize: inner * 0.58));
+      }
     }
     // Clone FANTÔME (transparent) : termine la cinématique canon après la reprise de
     // main du user. Masqué sous l'avatar réel s'ils tombent sur la même case.
@@ -9884,7 +9981,17 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     );
     // Tooltips : serpent (titre + PV) / ligne de calendrier (nom).
     String? tip;
-    if (pest != null && tile == WtTile.garden) {
+    if (_donjonMode && _v2DonjonSteps.containsKey(id)) {
+      final st = _v2DonjonSteps[id]!;
+      final statut = st.shielded
+          ? '✨ vue il y a ${st.neglectedDays} j'
+          : (st.neglectedDays >= 9999
+              ? '🎯 jamais traitée'
+              : '🕸️ négligée depuis ${st.neglectedDays} j');
+      tip = '${st.title}\n${st.parent}\n$statut';
+    } else if (_donjonMode && _v2SousDonjon.containsKey(id)) {
+      tip = 'Sous‑donjon — ${_domainName(_v2SousDonjon[id]!)}';
+    } else if (pest != null && tile == WtTile.garden) {
       tip = '${logic.enemyItemName(pest.type, pest.id)}\n'
           'PV ${logic.enemyHp(pest.type, pest.id)}/${logic.enemyMaxHp(pest.type, pest.id)}';
     } else if (_v2LaneName[id]?.isNotEmpty ?? false) {

@@ -127,7 +127,100 @@ class AppLogic {
     return best;
   }
 
-  /// Hook posé par l'écran d'accueil pour lancer un minuteur (vraie alarme) depuis
+  /// Une étape du « cour‑donjon » : une chose à faire d'un domaine (sous‑action de
+  /// tâche OU action libre d'activité), avec son statut de bouclier (touchée < 7 j).
+  /// `activityId` = activité‑temps cible pour le chrono (null = pas chronométrable
+  /// directement → liaison à proposer en Phase 2).
+  List<
+      ({
+        String actionId,
+        String title,
+        String parent,
+        String kind, // 'task' | 'own'
+        String? activityId,
+        bool shielded,
+        int neglectedDays
+      })> domainTodoSteps(String domainId) {
+    final out = <({
+      String actionId,
+      String title,
+      String parent,
+      String kind,
+      String? activityId,
+      bool shielded,
+      int neglectedDays
+    })>[];
+
+    int neglect(String actionId) {
+      DateTime? last;
+      for (final s in state.sessions) {
+        if (s.actionId != actionId) continue;
+        final dur = (s.endAt ?? DateTime.now()).difference(s.startAt);
+        if (dur.inMinutes < 5) continue; // seul un vrai créneau « blinde »
+        if (last == null || s.startAt.isAfter(last)) last = s.startAt;
+      }
+      if (last == null) return 9999; // jamais touchée
+      return DateTime.now().difference(last).inDays;
+    }
+
+    // 1) Sous‑actions non faites des projets actifs du domaine.
+    for (final p in currentProjects) {
+      if (p.domainId != domainId) continue;
+      if (p.status == 'archived' || p.status == 'done') continue;
+      for (final t in p.tasks) {
+        if (t.status == 'done' || t.status == 'skipped') continue;
+        for (final a in t.actions) {
+          if (a.done) continue;
+          final n = neglect(a.id);
+          out.add((
+            actionId: a.id,
+            title: a.title,
+            parent: '${t.title} · ${p.title}',
+            kind: 'task',
+            activityId: (a.linkedActivityId ?? '').trim().isEmpty
+                ? null
+                : a.linkedActivityId!.trim(),
+            shielded: n <= 7,
+            neglectedDays: n,
+          ));
+        }
+      }
+    }
+
+    // 2) Actions libres des activités‑temps du domaine (Activity.ownActions).
+    for (final act in activitiesOfDomain(domainId)) {
+      if (act.isHabit) continue;
+      for (final a in act.ownActions) {
+        if (a.done) continue;
+        final n = neglect(a.id);
+        out.add((
+          actionId: a.id,
+          title: a.title,
+          parent: act.name,
+          kind: 'own',
+          activityId: act.id, // l'activité elle‑même porte le chrono
+          shielded: n <= 7,
+          neglectedDays: n,
+        ));
+      }
+    }
+
+    // Les plus négligées d'abord (priorité d'affichage si la cour est petite).
+    out.sort((x, y) => y.neglectedDays.compareTo(x.neglectedDays));
+    return out;
+  }
+
+  /// Action « blindée » = un créneau d'attention (≥ 5 min sur cet `actionId`) dans
+  /// les 7 derniers jours. Sert au statut visuel et au franchissement (Phase 2).
+  bool isActionShieldedByRecency(String actionId) {
+    final since = DateTime.now().subtract(const Duration(days: 7));
+    return state.sessions.any((s) =>
+        s.actionId == actionId &&
+        s.startAt.isAfter(since) &&
+        (s.endAt ?? DateTime.now()).difference(s.startAt).inMinutes >= 5);
+  }
+
+
   /// n'importe quelle feuille modale (ex. mode 5 min du donjon). Null si pas prêt.
   void Function(int minutes, String activityName,
       {String? routineId,
