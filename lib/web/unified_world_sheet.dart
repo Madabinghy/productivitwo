@@ -6368,9 +6368,19 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
         onTap: () async {
+          final before = logic.state.bossInvasions.toSet();
           await showExpeditionSheet(context, logic, sync);
-          // Une fin de niveau a pu lâcher un boss (pendingBossDomain) → on l'applique.
-          if (mounted) setState(_populateV2Araignees);
+          if (!mounted) return;
+          setState(_populateV2Araignees);
+          // Fin de niveau → un boss a été lâché : cadre le domaine envahi + annonce.
+          final added = logic.state.bossInvasions.toSet().difference(before);
+          if (added.isNotEmpty) {
+            final dom = added.first;
+            _toast(
+                '🕷️ Un boss s\'échappe du donjon vers ${_domainName(dom)} !',
+                _kEnemy);
+            _v2CenterOnDomainZone(dom);
+          }
         },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
