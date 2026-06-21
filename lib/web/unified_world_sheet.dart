@@ -21,6 +21,7 @@ import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/widgets/backlog_combat.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
 import 'package:productivitwo_v1/widgets/activity_detail_sheet.dart';
+import 'package:productivitwo_v1/widgets/expedition_sheet.dart';
 import 'package:productivitwo_v1/web/invasion_defense_sheet.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/web/assistant_widget.dart' show assistantOverlaySuppressed;
@@ -845,7 +846,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         _cineActive = false;
         _consumeShurikens(_battleShkStart - _ninjaShurikens);
         final dom = _interiorDomainId;
-        if (dom != null) _v2Dislodged.add(dom); // ne reviendra pas
+        if (dom != null) {
+          _v2Dislodged.add(dom); // ne reviendra pas
+          if (logic.state.bossInvasions.remove(dom)) {
+            logic.onChange(); // boss de donjon vaincu → invasion persistée retirée
+          }
+        }
         _toast('🏰 Araignée délogée ! (toiles détruites)', _kBlue);
         return;
       }
@@ -6354,6 +6360,53 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     return n;
   }
 
+  // Marqueur DONJON 🏔️ : entrée de l'aventure (montée en niveaux). Tap → ouvre le
+  // graphe d'expédition. L'objectif est en haut (ascension).
+  Widget _donjonMarker() {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: () async {
+          final before = logic.state.bossInvasions.toSet();
+          await showExpeditionSheet(context, logic, sync);
+          if (!mounted) return;
+          setState(_populateV2Araignees);
+          // Fin de niveau → un boss a été lâché : cadre le domaine envahi + annonce.
+          final added = logic.state.bossInvasions.toSet().difference(before);
+          if (added.isNotEmpty) {
+            final dom = added.first;
+            _toast(
+                '🕷️ Un boss s\'échappe du donjon vers ${_domainName(dom)} !',
+                _kEnemy);
+            _v2CenterOnDomainZone(dom);
+          }
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+          decoration: BoxDecoration(
+            color: const Color(0xFF14110F).withOpacity(.92),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFF7FB3FF), width: 1.4),
+            boxShadow: const [
+              BoxShadow(
+                  color: Color(0x66000000), blurRadius: 8, offset: Offset(0, 2)),
+            ],
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: const [
+            Text('🏔️', style: TextStyle(fontSize: 16)),
+            SizedBox(width: 7),
+            Text('Donjon',
+                style: TextStyle(
+                    color: Color(0xFFAFCBFF),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800)),
+          ]),
+        ),
+      ),
+    );
+  }
+
   // Bouton « Défendre le château 🔥 » : lance la séquence qui VIDE les chargeurs
   // (l'avatar marche de canon en canon et tire les flammes accumulées par l'effort).
   // Cliquer ailleurs pendant la séquence l'interrompt (_onTapV2 → _v2TakeControl).
@@ -6473,6 +6526,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         child: CircularProgressIndicator(color: _kBlue)))
                 : Stack(children: [
                     Positioned.fill(child: _contentV2()),
+                    // Donjon 🏔️ : entrée de l'aventure (montée en niveaux) → ouvre le
+                    // graphe d'expédition. Haut-GAUCHE de la map (zone libre).
+                    if (!widget.mobile)
+                      Positioned(top: 10, left: 10, child: _donjonMarker()),
                     Positioned(
                         top: 10,
                         right: 10,
@@ -8674,10 +8731,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     final w = _wv2;
     if (w == null) return;
     for (final c in w.castles) {
-      if (_v2Dislodged.contains(c.domainId)) continue; // délogée → ne revient pas
-      // Invasion COLLANTE : dès qu'on atteint N, le domaine reste envahi jusqu'à
-      // ce qu'on l'ait DÉLOGÉE (réduit < N + affrontée).
-      if (_v2InvasionCount(c) >= _kInvasionN) _v2Invaded.add(c.domainId);
+      // BOSS DE DONJON : domaine marqué envahi par la fin d'un niveau (persisté).
+      final boss = logic.state.bossInvasions.contains(c.domainId);
+      // Délogée → ne revient pas… SAUF si un NOUVEAU boss de donjon la vise.
+      if (!boss && _v2Dislodged.contains(c.domainId)) continue;
+      // Invasion COLLANTE : dès qu'on atteint N (ou boss de donjon), le domaine reste
+      // envahi jusqu'à ce qu'on l'ait DÉLOGÉE (affrontée).
+      if (_v2InvasionCount(c) >= _kInvasionN || boss) _v2Invaded.add(c.domainId);
       if (!_v2Invaded.contains(c.domainId)) continue;
       // Case‑séparateur (entre tourelles routines et activités), colonne tourelles.
       final y = c.sepY >= 0
@@ -8691,6 +8751,14 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       // Une toile dans le jardin (marqueur : valide tes routines pour la déloger).
       final g = c.gardenRect;
       _v2Toiles['${g.left + g.width ~/ 2}_${g.top + g.height ~/ 2}'] = c.domainId;
+      // Boss de DONJON : des toiles PARTOUT dans le jardin (semis ~1 case sur 3).
+      if (boss) {
+        for (var gy = g.top; gy < g.top + g.height; gy++) {
+          for (var gx = g.left; gx < g.left + g.width; gx++) {
+            if ((gx + gy) % 3 == 0) _v2Toiles['${gx}_$gy'] = c.domainId;
+          }
+        }
+      }
     }
   }
 

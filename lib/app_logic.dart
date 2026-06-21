@@ -104,6 +104,29 @@ class AppLogic {
   final void Function() onChange;
   AppLogic(this.state, this.onChange);
 
+  /// Domaine ACTIF le plus négligé = celui qui cumule le plus d'araignées/scorpions
+  /// (jours/temps en retard). Sert à diriger le boss du donjon. null = aucun domaine.
+  String? mostNeglectedDomainId() {
+    final domains = state.activeDomains;
+    if (domains.isEmpty) return null;
+    final byDomain = <String, int>{};
+    for (final a in state.activeActivities) {
+      final toks = a.isHabit ? routineWaveTokens(a.id) : activityTimeTokens(a.id);
+      final spiders = toks.where((t) => t.type == 'spider').length;
+      byDomain[a.domainId] = (byDomain[a.domainId] ?? 0) + spiders;
+    }
+    String? best;
+    var bestN = -1;
+    for (final d in domains) {
+      final n = byDomain[d.id] ?? 0;
+      if (n > bestN) {
+        bestN = n;
+        best = d.id;
+      }
+    }
+    return best;
+  }
+
   /// Hook posé par l'écran d'accueil pour lancer un minuteur (vraie alarme) depuis
   /// n'importe quelle feuille modale (ex. mode 5 min du donjon). Null si pas prêt.
   void Function(int minutes, String activityName,

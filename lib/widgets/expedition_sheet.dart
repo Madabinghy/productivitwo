@@ -654,6 +654,13 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
       logic.state.expeditionCleared.clear();
       logic.onChange();
     }
+    // Fin de niveau → un boss s'échappe du donjon vers le domaine le plus négligé :
+    // ajouté aux invasions PERSISTÉES (la map V2 l'envahit + toiles au prochain affichage).
+    final bossDom = logic.mostNeglectedDomainId();
+    if (bossDom != null && !logic.state.bossInvasions.contains(bossDom)) {
+      logic.state.bossInvasions.add(bossDom);
+      logic.onChange();
+    }
     if (!mounted) return;
     showConfetti(context);
     final lvl = logic.userLevelData();
@@ -811,8 +818,13 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
           Expanded(
             child: LayoutBuilder(builder: (context, c) {
               final laneW = c.maxWidth / _exp.lanes;
-              Offset posOf(ExpeditionNode n) =>
-                  Offset(n.lane * laneW + laneW / 2, n.row * _rowH + _rowH / 2);
+              // Donjon = ASCENSION : l'OBJECTIF (finish) est EN HAUT et le départ en
+              // bas → on inverse la rangée verticalement (maxRow - row).
+              final maxRow =
+                  _exp.nodes.fold<int>(0, (m, n) => n.row > m ? n.row : m);
+              Offset posOf(ExpeditionNode n) => Offset(
+                  n.lane * laneW + laneW / 2,
+                  (maxRow - n.row) * _rowH + _rowH / 2);
               final positions = {for (final n in _exp.nodes) n.id: posOf(n)};
               final frontier = cleared
                   .map((id) => _exp.byId(id))
