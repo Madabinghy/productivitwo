@@ -28,11 +28,12 @@ const int _kTorchReveal = 2; // rayon éclairé par une torche (Chebyshev)
 Future<void> showExpeditionGame(
     BuildContext context, AppLogic logic, FirestoreSync sync,
     {int? huntLevel}) {
-  return showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
+  // Plein écran (route) plutôt qu'une feuille modale : l'overworld est portrait
+  // (cols × rows), on lui donne tout l'écran (caméra verticale qui suit l'avatar).
+  return Navigator.of(context).push(MaterialPageRoute(
+    fullscreenDialog: true,
     builder: (_) => _ExpeditionGame(logic: logic, sync: sync, huntLevel: huntLevel),
-  );
+  ));
 }
 
 /// Carte overworld EMBARQUÉE (mode inline) : la grille seule, mise à l'échelle pour
@@ -60,6 +61,37 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
   FirestoreSync get sync => widget.sync;
   final _rng = Random();
   bool _busy = false;
+  // Mobile plein écran : caméra verticale qui suit l'avatar + tuile responsive.
+  final ScrollController _vScroll = ScrollController();
+  double _tilePx = _tile;
+
+  @override
+  void dispose() {
+    _vScroll.dispose();
+    super.dispose();
+  }
+
+  // Recentre la carte sur l'avatar (caméra qui suit) — appelé post-frame à chaque
+  // déplacement. No-op en mode inline (pas de scroll).
+  void _followAvatar() {
+    if (widget.inline || !_vScroll.hasClients) return;
+    final vp = _vScroll.position.viewportDimension;
+    final target = ((_pos.y + 0.5) * _tilePx - vp / 2)
+        .clamp(0.0, _vScroll.position.maxScrollExtent);
+    if ((target - _vScroll.offset).abs() < 1) return;
+    _vScroll.animateTo(target,
+        duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+  }
+
+  Widget _miniBadge(String label, Color fg, Color bg) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+            color: bg.withOpacity(.15), borderRadius: BorderRadius.circular(8)),
+        child: Text(label,
+            style: TextStyle(
+                fontSize: 10, fontWeight: FontWeight.w700, color: fg)),
+      );
+
 
   bool get _hunt => widget.huntLevel != null;
 
@@ -1120,102 +1152,115 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
       );
     }
 
-    return DraggableScrollableSheet(
-      initialChildSize: 0.92,
-      maxChildSize: 0.95,
-      minChildSize: 0.5,
-      expand: false,
-      builder: (_, scroll) => Column(children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
-          child: Row(children: [
-            Text(biome.emoji, style: const TextStyle(fontSize: 22)),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    // Mobile : carte PLEIN ÉCRAN verticale. Tuiles responsives (largeur/cols via
+    // FittedBox), caméra qui suit l'avatar (scroll auto-centré), HUD fin en haut +
+    // barre d'action en bas.
+    final screenW = MediaQuery.of(context).size.width;
+    _tilePx = screenW / _map.cols;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _followAvatar());
+    final hasTreasure = _map.all
+        .any((t) => t.collectibleId != null && !_picked.contains(t.collectibleId));
+    return Scaffold(
+      backgroundColor: cs.surface,
+      body: SafeArea(
+        child: Column(children: [
+          // ── HUD haut (fin) : fermer · biome/niveau · or/armes ──
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 4, 12, 4),
+            child: Row(children: [
+              IconButton(
+                icon: const Icon(Icons.close),
+                tooltip: 'Fermer',
+                onPressed: () => Navigator.of(context).maybePop(),
+              ),
+              Text(biome.emoji, style: const TextStyle(fontSize: 20)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                        _hunt
+                            ? '🏹 Chasse · Niveau $_mapLevel'
+                            : 'Niveau $_mapLevel · ???',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.bold)),
+                    Text(
+                        _hunt
+                            ? 'Traque les nuisibles ${biome.label}'
+                            : 'Explore ${biome.label} jusqu\'au 🏰',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: cs.onSurface.withOpacity(.55))),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(_hunt ? '🏹 Chasse · Niveau $_mapLevel' : 'Niveau $_mapLevel · ???',
-                      style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.bold)),
+                  goldAmount('${logic.state.gold}',
+                      fontSize: 14, weight: FontWeight.bold, color: _kGold),
+                  const SizedBox(height: 1),
                   Text(
-                      _hunt
-                          ? 'Traque les nuisibles ${biome.label} pour leur butin'
-                          : 'Explore ${biome.label} jusqu\'au 🏰',
-                      style: TextStyle(
-                          fontSize: 11.5,
-                          color: cs.onSurface.withOpacity(.55))),
+                      '🔪${logic.weaponsAvailable('couteau')}  🏹${logic.weaponsAvailable('arc')}  🗡️${logic.weaponsAvailable('epee')}',
+                      style: const TextStyle(fontSize: 11)),
                 ],
               ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                goldAmount('${logic.state.gold}',
-                    fontSize: 15, weight: FontWeight.bold, color: _kGold),
-                const SizedBox(height: 2),
-                Text(
-                    '🔪${logic.weaponsAvailable('couteau')}  🏹${logic.weaponsAvailable('arc')}  🗡️${logic.weaponsAvailable('epee')}',
-                    style: const TextStyle(fontSize: 11)),
-              ],
-            ),
-          ]),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Row(children: [
-            Expanded(
-              child: Text(
-                  'Déplacement gratuit · éclairer une case (🔦 ${GoldEconomy.torchCost} or, 1ʳᵉ du jour offerte).'
-                  '${pests > 0 ? ' · $pests nuisible(s) actif(s)' : ''}',
-                  style: TextStyle(
-                      fontSize: 11,
-                      color:
-                          pests > 0 ? cs.error : cs.onSurface.withOpacity(.5))),
-            ),
-            if (_map.all.any((t) =>
-                t.collectibleId != null &&
-                !_picked.contains(t.collectibleId))) ...[
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                    color: const Color(0xFFD4A017).withOpacity(.15),
-                    borderRadius: BorderRadius.circular(8)),
-                child: const Text('✨ Trésors',
-                    style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF8A6D00))),
-              ),
-              const SizedBox(width: 6),
-            ],
-            if (_freeStepAvailable)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(.15),
-                    borderRadius: BorderRadius.circular(8)),
-                child: Text('1ʳᵉ torche offerte ✓',
-                    style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.green.shade700)),
-              ),
-          ]),
-        ),
-        const SizedBox(height: 8),
-        Expanded(
-          child: SingleChildScrollView(
-            controller: scroll,
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 24),
-                child: _gridBody(pos, cs),
+            ]),
+          ),
+          const Divider(height: 1),
+          // ── Carte plein écran, caméra qui suit l'avatar ──
+          Expanded(
+            child: SingleChildScrollView(
+              controller: _vScroll,
+              child: SizedBox(
+                width: screenW,
+                child: FittedBox(
+                  fit: BoxFit.fitWidth,
+                  alignment: Alignment.topCenter,
+                  child: _gridBody(pos, cs),
+                ),
               ),
             ),
           ),
-        ),
-      ]),
+          // ── Barre d'action basse ──
+          Container(
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withOpacity(.25),
+              border:
+                  Border(top: BorderSide(color: cs.onSurface.withOpacity(.08))),
+            ),
+            child: Row(children: [
+              Expanded(
+                child: Text(
+                    'Déplacement gratuit · 🔦 ${GoldEconomy.torchCost} or (1ʳᵉ du jour offerte)'
+                    '${pests > 0 ? ' · $pests à combattre' : ''}',
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: pests > 0
+                            ? cs.error
+                            : cs.onSurface.withOpacity(.6))),
+              ),
+              if (hasTreasure) ...[
+                const SizedBox(width: 6),
+                _miniBadge('✨ Trésors', const Color(0xFF8A6D00),
+                    const Color(0xFFD4A017)),
+              ],
+              if (_freeStepAvailable) ...[
+                const SizedBox(width: 6),
+                _miniBadge('🔦 offerte', Colors.green.shade700, Colors.green),
+              ],
+            ]),
+          ),
+        ]),
+      ),
     );
   }
 }
