@@ -280,16 +280,25 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
   DateTime _parseYmd(String y) => DateTime(int.parse(y.substring(0, 4)),
       int.parse(y.substring(4, 6)), int.parse(y.substring(6, 8)));
 
-  /// Tuile (déterministe par niveau) où poser le gardien : un floor sans
-  /// collectible, vers le milieu du parcours.
+  /// Tuile où poser le gardien : DIRECTEMENT au-dessus du château (chokepoint de
+  /// l'approche du boss). Déplacement 4-directionnel + château en bord bas ⇒ c'est
+  /// l'UNIQUE accès → impossible d'atteindre le boss sans vaincre le gardien (à l'arme :
+  /// l'épée gagnée en finissant le donjon, ou une arme gagnée en farmant du vrai travail).
   String? _guardianTile() {
+    final c = _map.castle;
+    final ax = c.x, ay = c.y - 1; // case juste au-dessus du château
+    if (_map.inBounds(ax, ay) && _map.at(ax, ay).kind == OwTileKind.floor) {
+      return '${ax}_$ay';
+    }
+    // Repli : le floor (sans collectible) le plus proche du château.
     final floors = _map.all
         .where((t) => t.kind == OwTileKind.floor && t.collectibleId == null)
         .toList()
-      ..sort((a, b) => (a.y * 100 + a.x).compareTo(b.y * 100 + b.x));
-    if (floors.isEmpty) return null;
-    final t = floors[(_level * 7 + floors.length ~/ 2) % floors.length];
-    return '${t.x}_${t.y}';
+      ..sort((a, b) {
+        int dist(OwTile t) => (t.x - c.x).abs() + (t.y - c.y).abs();
+        return dist(a).compareTo(dist(b));
+      });
+    return floors.isEmpty ? null : '${floors.first.x}_${floors.first.y}';
   }
 
   List<Point<int>> _neighbors(int x, int y,
