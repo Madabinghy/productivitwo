@@ -86,6 +86,7 @@ class WorldLayout {
   final Map<String, WtDecor> decor; // "x_y" → décor cosmétique (overlay)
   final Point<int> start;
   final int courLeft, courRight; // bande X de la COUR centrale (courRight exclusif)
+  final Point<int>? donjonAt; // tuile du donjon, en haut de la cour (au‑dessus des domaines)
   WorldLayout({
     required this.cols,
     required this.rows,
@@ -96,6 +97,7 @@ class WorldLayout {
     required this.courLeft,
     required this.courRight,
     this.decor = const {},
+    this.donjonAt,
   }) : byDomain = {for (final c in castles) c.domainId: c};
 
   bool inBounds(int x, int y) => x >= 0 && x < cols && y >= 0 && y < rows;
@@ -359,6 +361,9 @@ WorldLayout buildWorld(List<DomainSpec> domains, {int seed = 0}) {
   // Décor cosmétique en DERNIER (lit la grille finale, n'écrase rien de jouable).
   final decor = _buildDecor(grid, castles, worldCols, worldRows, rng);
 
+  // Donjon : en HAUT de la cour, juste au‑dessus des domaines les plus hauts.
+  final donjonAt = Point(bridgeX, _kMargin - 1 < 0 ? 0 : _kMargin - 1);
+
   return WorldLayout(
       cols: worldCols,
       rows: worldRows,
@@ -368,7 +373,8 @@ WorldLayout buildWorld(List<DomainSpec> domains, {int seed = 0}) {
       start: start,
       courLeft: courL,
       courRight: dBlockL,
-      decor: decor);
+      decor: decor,
+      donjonAt: donjonAt);
 }
 
 /// Décor PUREMENT VISUEL, déterministe (même monde → même décor). Posé sur le
