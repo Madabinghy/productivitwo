@@ -349,18 +349,21 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // Donjon ouvert INLINE (panneau ExpeditionView intégré à la map, en haut de la cour).
   bool _donjonOpen = false;
   Set<String> _donjonBossBefore = const {}; // invasions avant l'ouverture (diff à la fermeture)
-  // MODE COUR‑DONJON : le donjon RÉVÈLE un réseau de nœuds (arbre de compétences) sur
-  // le monde existant — tronc central dans la cour + une branche par domaine étalée dans
-  // son village/jardin. Les nœuds = vraies actions (sous‑actions de tâches + actions
-  // libres) ; les serpents (tâches en retard) déjà présents sont reliés au réseau.
-  // Activé en montant sur la case 🏔️ ou via le bouton Donjon.
+  // MODE COUR‑DONJON (Phase 1, visuel) : la cour affiche les vraies « étapes » à faire
+  // (sous‑actions de tâches + actions libres d'activités), groupées par domaine à leur
+  // hauteur. Activé en montant sur la case 🏔️ ou via le bouton Donjon.
   bool _donjonMode = false;
-  final Map<String, _DonjonNode> _donjonNodes = {}; // tuileId → nœud de l'arbre
-  // Tuiles de serpents (tâches en retard) reliées au tronc : connecteurs seulement,
-  // le rendu du serpent reste géré par le bloc nuisible de `_cellV2`.
-  final Set<String> _donjonSerpentTiles = {};
-  final Set<String> _donjonCleared = {}; // tuileIds franchis (action blindée / spine)
-  final Set<String> _donjonReach = {}; // tuileIds atteignables (frontière)
+  final Map<
+      String,
+      ({
+        String actionId,
+        String title,
+        String parent,
+        String kind,
+        bool shielded,
+        int neglectedDays
+      })> _v2DonjonSteps = {}; // tuileId → étape
+  final Map<String, String> _v2SousDonjon = {}; // tuileId d'entrée → domainId
   Point<int>? _cannonSpinAt; // case rampe en cours de spin (null = repos)
   int _cannonSpinStartMs = 0;
   final Map<String, double> _cannonRaise = {}; // tileId tourelle → lever 0..1 (animé)
@@ -6404,12 +6407,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     setState(() {
       _donjonMode = !_donjonMode;
       if (_donjonMode) {
-        _buildDonjonTree();
+        _populateDonjonSteps();
       } else {
-        _donjonNodes.clear();
-        _donjonSerpentTiles.clear();
-        _donjonCleared.clear();
-        _donjonReach.clear();
+        _v2DonjonSteps.clear();
+        _v2SousDonjon.clear();
       }
     });
     if (_donjonMode) {
@@ -6418,162 +6419,46 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     }
   }
 
-  bool _tileInDomain(CastleBlock c, int x, int y) =>
-      x >= c.bounds.left &&
-      x < c.bounds.left + c.bounds.width &&
-      y >= c.bounds.top &&
-      y < c.bounds.top + c.bounds.height;
-
-  // Construit l'arbre du donjon : un TRONC vertical sur le pont (un nœud‑jonction par
-  // domaine + départ 🏳️ en bas + donjon 🏔️ en haut) et une BRANCHE par domaine qui
-  // étale ses actions (`domainTodoSteps`) dans les cases libres de son village/jardin,
-  // du pont vers l'extérieur. Les serpents (tâches en retard) déjà posés sont reliés à
-  // la jonction de leur domaine (connecteur seulement ; rendu/combat inchangés).
-  void _buildDonjonTree() {
-    _donjonNodes.clear();
-    _donjonSerpentTiles.clear();
+  // Déverse les étapes (sous‑actions de tâches + actions libres) de chaque domaine
+  // dans sa bande verticale de la cour, sur les colonnes hors‑pont. Pose aussi une
+  // entrée « sous‑donjon » au bord de cour à hauteur du centre du domaine.
+  void _populateDonjonSteps() {
+    _v2DonjonSteps.clear();
+    _v2SousDonjon.clear();
     final w = _wv2;
     if (w == null) return;
     final bridgeX = w.courLeft + (w.courRight - w.courLeft) ~/ 2;
-    String tid(int x, int y) => '${x}_$y';
-    void put(_DonjonNode n) => _donjonNodes[n.id] = n;
-
-    // 1) Jonctions de tronc : une par DOMAINE, mais deux domaines à la même hauteur
-    // (gauche + droite) PARTAGENT la même tuile de pont → jonction commune (par tuile).
-    final junctions = <({String id, CastleBlock c, int y})>[];
-    var lowestY = w.rows ~/ 2;
+    // Les domaines GAUCHE et DROITE partagent la même bande verticale → on répartit
+    // les colonnes de la cour de part et d'autre du pont (gauche = domaines mirror).
+    final leftCols = [for (var x = w.courLeft; x < bridgeX; x++) x];
+    final rightCols = [for (var x = bridgeX + 1; x < w.courRight; x++) x];
     for (final c in w.castles) {
-      final midY = c.bounds.top + c.bounds.height ~/ 2;
-      final id = tid(bridgeX, midY);
-      if (!_donjonNodes.containsKey(id)) {
-        put(_DonjonNode(
-            id: id,
-            x: bridgeX,
-            y: midY,
-            kind: _DonjonKind.trunk,
-            domainId: c.domainId));
-      }
-      junctions.add((id: id, c: c, y: midY));
-      if (midY > lowestY) lowestY = midY;
-    }
-
-    // 2) Spine : départ 🏳️ (bas) → jonctions UNIQUES (bas → haut) → donjon 🏔️ (haut).
-    final startY = (lowestY + 2).clamp(0, w.rows - 1);
-    final startId = tid(bridgeX, startY);
-    if (!_donjonNodes.containsKey(startId)) {
-      put(_DonjonNode(
-          id: startId, x: bridgeX, y: startY, kind: _DonjonKind.start));
-    }
-    final uniqJ = <int, String>{}; // midY → id (dédoublonne les tuiles partagées)
-    for (final j in junctions) {
-      uniqJ[j.y] = j.id;
-    }
-    final ysDesc = uniqJ.keys.toList()..sort((a, b) => b.compareTo(a)); // bas→haut
-    final spine = <String>[startId, for (final y in ysDesc) uniqJ[y]!];
-    final donjon = w.donjonAt;
-    if (donjon != null) {
-      final fid = tid(donjon.x, donjon.y);
-      if (!_donjonNodes.containsKey(fid)) {
-        put(_DonjonNode(
-            id: fid, x: donjon.x, y: donjon.y, kind: _DonjonKind.finish));
-      }
-      spine.add(fid);
-    }
-    for (var i = 0; i + 1 < spine.length; i++) {
-      if (spine[i] != spine[i + 1]) _donjonNodes[spine[i]]!.next.add(spine[i + 1]);
-    }
-
-    // 3) Branche par domaine.
-    for (final j in junctions) {
-      final c = j.c;
-      // Serpents du domaine → reliés à la jonction (connecteur).
-      for (final e in _v2Pests.entries) {
-        if (e.value.type != 'snake') continue;
-        final parts = e.key.split('_');
-        if (parts.length != 2) continue;
-        final px = int.tryParse(parts[0]) ?? -1;
-        final py = int.tryParse(parts[1]) ?? -1;
-        if (!_tileInDomain(c, px, py)) continue;
-        _donjonNodes[j.id]!.next.add(e.key);
-        _donjonSerpentTiles.add(e.key);
-      }
+      final top = c.bounds.top + 1;
+      final bottom = c.bounds.top + c.bounds.height - 2;
+      if (bottom < top) continue;
+      final cols = c.mirror ? leftCols : rightCols;
+      if (cols.isEmpty) continue;
+      // Entrée « sous‑donjon » : colonne adjacente au pont, en haut de la bande.
+      final entranceX = c.mirror ? cols.last : cols.first;
+      _v2SousDonjon['${entranceX}_$top'] = c.domainId;
       final steps = logic.domainTodoSteps(c.domainId);
       if (steps.isEmpty) continue;
-      // Cases candidates = village/jardin walkables, hors interactives/pest/nœuds,
-      // triées de la cour vers l'extérieur (|x-pont| croissant ; proche jonction d'abord).
-      final cand = <Point<int>>[];
-      for (final rect in [c.villageRect, c.gardenRect]) {
-        for (var y = rect.top; y < rect.top + rect.height; y++) {
-          for (var x = rect.left; x < rect.left + rect.width; x++) {
-            final t = w.at(x, y);
-            if (t != WtTile.village && t != WtTile.garden) continue;
-            final id = tid(x, y);
-            if (_donjonNodes.containsKey(id)) continue;
-            if (_v2Pests.containsKey(id)) continue;
-            if (_v2LaunchPads.contains(id)) continue;
-            if (_v2LaunchPadRoutineId.containsKey(id)) continue;
-            if (_v2LaunchPadActivityId.containsKey(id)) continue;
-            cand.add(Point(x, y));
-          }
-        }
-      }
-      cand.sort((a, b) {
-        final da = (a.x - bridgeX).abs(), db = (b.x - bridgeX).abs();
-        if (da != db) return da.compareTo(db);
-        return (a.y - j.y).abs().compareTo((b.y - j.y).abs());
-      });
-      var prevId = j.id;
-      final n = steps.length < cand.length ? steps.length : cand.length;
-      for (var i = 0; i < n; i++) {
-        final s = steps[i];
-        final pt = cand[i];
-        final id = tid(pt.x, pt.y);
-        put(_DonjonNode(
-          id: id,
-          x: pt.x,
-          y: pt.y,
-          kind: _DonjonKind.action,
-          actionId: s.actionId,
-          activityId: s.activityId,
-          title: s.title,
-          parent: s.parent,
-          domainId: c.domainId,
-          neglectedDays: s.neglectedDays,
-        ));
-        _donjonNodes[prevId]!.next.add(id);
-        prevId = id;
-      }
-    }
-    _recomputeDonjonState();
-  }
-
-  // Recalcule « franchi » (action blindée ≥ 5 min / spine) et « atteignable » (frontière :
-  // un prédécesseur franchi). Dérivé des `Session` — aucun stockage.
-  void _recomputeDonjonState() {
-    _donjonCleared.clear();
-    for (final nd in _donjonNodes.values) {
-      if (nd.kind != _DonjonKind.action) {
-        _donjonCleared.add(nd.id); // tronc/départ/donjon = spine toujours ouvert
-        continue;
-      }
-      if (nd.actionId != null && logic.isActionShieldedByRecency(nd.actionId!)) {
-        _donjonCleared.add(nd.id);
-      }
-    }
-    // Serpent vaincu (PV 0) = franchi (pour la couleur du connecteur).
-    for (final tile in _donjonSerpentTiles) {
-      final pest = _v2Pests[tile];
-      if (pest != null && logic.enemyHp(pest.type, pest.id) <= 0) {
-        _donjonCleared.add(tile);
-      }
-    }
-    _donjonReach.clear();
-    for (final nd in _donjonNodes.values) {
-      if (_donjonCleared.contains(nd.id)) continue;
-      for (final src in _donjonNodes.values) {
-        if (_donjonCleared.contains(src.id) && src.next.contains(nd.id)) {
-          _donjonReach.add(nd.id);
-          break;
+      // Balayage ligne par ligne dans la bande ; cap = nb de cases dispo.
+      var i = 0;
+      outer:
+      for (var y = top; y <= bottom; y++) {
+        for (final x in cols) {
+          if (x == entranceX && y == top) continue; // case d'entrée réservée
+          if (i >= steps.length) break outer;
+          final s = steps[i++];
+          _v2DonjonSteps['${x}_$y'] = (
+            actionId: s.actionId,
+            title: s.title,
+            parent: s.parent,
+            kind: s.kind,
+            shielded: s.shielded,
+            neglectedDays: s.neglectedDays,
+          );
         }
       }
     }
@@ -9092,9 +8977,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _toggleDonjonMode();
       return;
     }
-    // En mode donjon, un tap sur un nœud recadre simplement (Phase A : pas de
-    // franchissement au tap ; un créneau ≥ 5 min blinde le nœud). Détail au survol.
-    if (_donjonMode && _donjonNodes.containsKey(id)) {
+    // En mode donjon, un tap sur une étape recadre simplement (Phase 1 : pas de
+    // franchissement). Le détail est au survol souris.
+    if (_donjonMode && _v2DonjonSteps.containsKey(id)) {
       _v2CenterOn(Point(x, y));
       return;
     }
@@ -9498,8 +9383,6 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     // On arrive ici via build() → l'état a pu changer : on force un recalcul des
     // cases au prochain frame, puis le cache reprend pendant le scroll pur.
     _cachedCells = null;
-    // Mode donjon : rafraîchit franchi/atteignable (les boucliers ont pu changer).
-    if (_donjonMode) _recomputeDonjonState();
     // Exploration : DEUX navigations cohabitent. Drag‑pan au DOIGT (un doigt) via
     // GestureDetector.onPanUpdate, ET scroll 2 doigts / molette via
     // Listener.onPointerSignal (déplace la carte en 2D). Les physics des scrolls
@@ -9555,17 +9438,6 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                   ),
                 ),
               ),
-              // Mode donjon : réseau de connecteurs (arbre) reliant tronc, branches et
-              // serpents. Dessiné au‑dessus des cases (trou autour des nœuds → emojis nets).
-              if (_donjonMode)
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: CustomPaint(
-                      painter: _DonjonLinksPainter(
-                          _donjonNodes, _donjonCleared, _kV2Slot),
-                    ),
-                  ),
-                ),
               // Noms des lignes (routines/activités) à droite, comme dans la grotte.
               ..._v2LaneLabels(w),
               ..._v2ShurikenBadges(w),
@@ -10056,33 +9928,22 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         ],
       );
     }
-    // Mode donjon : nœud de l'arbre. Départ 🏳️ / tronc (pastille) / action (franchi ✅,
-    // atteignable 🎯, verrouillé 🕸️). Le donjon 🏔️ (finish) garde son rendu ci‑dessus ;
-    // les serpents gardent le leur (reliés par les connecteurs).
-    if (_donjonMode && _donjonNodes.containsKey(id)) {
-      final nd = _donjonNodes[id]!;
-      if (nd.kind == _DonjonKind.start) {
-        bg = const Color(0xFF3A2E5A).withOpacity(.45);
-        child = Text('🏳️', style: TextStyle(fontSize: inner * 0.5));
-      } else if (nd.kind == _DonjonKind.trunk) {
-        bg = const Color(0xFF6B4A2A).withOpacity(.55);
-        child = Container(
-          width: inner * 0.34,
-          height: inner * 0.34,
-          decoration: const BoxDecoration(
-              color: Color(0xFFB9A7FF), shape: BoxShape.circle),
-        );
-      } else if (nd.kind == _DonjonKind.action) {
-        if (_donjonCleared.contains(id)) {
-          bg = const Color(0xFF2E7D5A).withOpacity(.32);
-          child = Text('✅', style: TextStyle(fontSize: inner * 0.52));
-        } else if (_donjonReach.contains(id)) {
-          bg = const Color(0xFFE8C13D).withOpacity(.26);
-          child = Text('🎯', style: TextStyle(fontSize: inner * 0.56));
-        } else {
-          bg = _kEnemy.withOpacity(.24);
-          child = Text('🕸️', style: TextStyle(fontSize: inner * 0.56));
-        }
+    // Mode cour‑donjon : entrée « sous‑donjon » d'un domaine (sur le pont, à sa hauteur).
+    if (_donjonMode && _v2SousDonjon.containsKey(id)) {
+      bg = const Color(0xFF3A2E5A).withOpacity(.40);
+      child = Text('🏯', style: TextStyle(fontSize: inner * 0.6));
+    }
+    // Mode cour‑donjon : une ÉTAPE (sous‑action de tâche ou action libre) déversée
+    // dans la cour. Négligée (> 7 j) = toile sur fond ennemi ; sous bouclier = ✨.
+    if (_donjonMode && _v2DonjonSteps.containsKey(id)) {
+      final st = _v2DonjonSteps[id]!;
+      if (st.shielded) {
+        bg = const Color(0xFF2E7D5A).withOpacity(.30);
+        child = Text('✨', style: TextStyle(fontSize: inner * 0.58));
+      } else {
+        bg = _kEnemy.withOpacity(.28);
+        child = Text(st.neglectedDays >= 9999 ? '🎯' : '🕸️',
+            style: TextStyle(fontSize: inner * 0.58));
       }
     }
     // Clone FANTÔME (transparent) : termine la cinématique canon après la reprise de
@@ -10120,21 +9981,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     );
     // Tooltips : serpent (titre + PV) / ligne de calendrier (nom).
     String? tip;
-    if (_donjonMode &&
-        _donjonNodes.containsKey(id) &&
-        _donjonNodes[id]!.kind == _DonjonKind.action) {
-      final nd = _donjonNodes[id]!;
-      final statut = _donjonCleared.contains(id)
-          ? '✅ blindée (créneau ≥ 5 min récent)'
-          : (nd.neglectedDays >= 9999
+    if (_donjonMode && _v2DonjonSteps.containsKey(id)) {
+      final st = _v2DonjonSteps[id]!;
+      final statut = st.shielded
+          ? '✨ vue il y a ${st.neglectedDays} j'
+          : (st.neglectedDays >= 9999
               ? '🎯 jamais traitée'
-              : '🕸️ négligée depuis ${nd.neglectedDays} j');
-      tip = '${nd.title}\n${nd.parent}\n$statut';
-    } else if (_donjonMode &&
-        _donjonNodes.containsKey(id) &&
-        _donjonNodes[id]!.kind == _DonjonKind.trunk &&
-        _donjonNodes[id]!.domainId != null) {
-      tip = 'Donjon — ${_domainName(_donjonNodes[id]!.domainId!)}';
+              : '🕸️ négligée depuis ${st.neglectedDays} j');
+      tip = '${st.title}\n${st.parent}\n$statut';
+    } else if (_donjonMode && _v2SousDonjon.containsKey(id)) {
+      tip = 'Sous‑donjon — ${_domainName(_v2SousDonjon[id]!)}';
     } else if (pest != null && tile == WtTile.garden) {
       tip = '${logic.enemyItemName(pest.type, pest.id)}\n'
           'PV ${logic.enemyHp(pest.type, pest.id)}/${logic.enemyMaxHp(pest.type, pest.id)}';
@@ -10522,81 +10378,4 @@ class _ArrowPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_ArrowPainter old) => false;
-}
-
-// ── MODE DONJON : arbre de compétences ──────────────────────────────────────
-// Un nœud du réseau posé sur une tuile de la grande map. `next` = arêtes (tuileIds,
-// éventuellement vers un serpent hors `_donjonNodes`).
-enum _DonjonKind { start, trunk, action, finish }
-
-class _DonjonNode {
-  final String id; // tuileId "x_y"
-  final int x, y;
-  final _DonjonKind kind;
-  final List<String> next = [];
-  final String? actionId, activityId, title, parent, domainId;
-  final int neglectedDays;
-  _DonjonNode({
-    required this.id,
-    required this.x,
-    required this.y,
-    required this.kind,
-    this.actionId,
-    this.activityId,
-    this.title,
-    this.parent,
-    this.domainId,
-    this.neglectedDays = 0,
-  });
-}
-
-// Connecteurs de l'arbre : trait centre→centre entre chaque nœud et ses `next`
-// (trou autour des extrémités pour ne pas masquer les emojis). Vert = les deux bouts
-// franchis ; violet pâle sinon.
-class _DonjonLinksPainter extends CustomPainter {
-  final Map<String, _DonjonNode> nodes;
-  final Set<String> cleared;
-  final double slot;
-  const _DonjonLinksPainter(this.nodes, this.cleared, this.slot);
-
-  Offset _center(int x, int y) =>
-      Offset(x * slot + slot / 2, y * slot + slot / 2);
-
-  Offset? _centerOf(String id) {
-    final n = nodes[id];
-    if (n != null) return _center(n.x, n.y);
-    final p = id.split('_');
-    if (p.length != 2) return null;
-    final x = int.tryParse(p[0]), y = int.tryParse(p[1]);
-    if (x == null || y == null) return null;
-    return _center(x, y);
-  }
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final r = slot * 0.34;
-    for (final n in nodes.values) {
-      final from = _center(n.x, n.y);
-      for (final nextId in n.next) {
-        final to = _centerOf(nextId);
-        if (to == null) continue;
-        final dir = to - from;
-        final len = dir.distance;
-        if (len <= r * 2) continue;
-        final unit = dir / len;
-        final done = cleared.contains(n.id) && cleared.contains(nextId);
-        final paint = Paint()
-          ..color = done ? const Color(0xCC52D17A) : const Color(0x66B9A7FF)
-          ..strokeWidth = done ? 3.2 : 2.0
-          ..strokeCap = StrokeCap.round;
-        canvas.drawLine(from + unit * r, to - unit * r, paint);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_DonjonLinksPainter old) =>
-      old.nodes != nodes ||
-      old.cleared.length != cleared.length ||
-      old.slot != slot;
 }
