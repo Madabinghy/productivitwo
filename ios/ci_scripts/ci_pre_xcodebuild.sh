@@ -29,21 +29,6 @@ echo "=== Installing Flutter dependencies ==="
 cd "$CI_PRIMARY_REPOSITORY_PATH"
 retry flutter pub get
 
-echo "=== Forcer le build number AU-DESSUS de 437 (plafond hérité de l'ancien Codemagic) ==="
-# Xcode Cloud numérote avec son propre compteur (CI_BUILD_NUMBER ≈ 346), SOUS le plus
-# haut build déjà sur TestFlight (437, issu de Codemagic). Un build qui ne dépasse pas
-# ce plafond n'apparaît jamais comme « le dernier » → invisible aux testeurs. On force
-# donc FLUTTER_BUILD_NUMBER (= CFBundleVersion via Info.plist) bien au-dessus, de façon
-# MONOTONE (CI_BUILD_NUMBER croît à chaque run).
-BN=$(( ${CI_BUILD_NUMBER:-1} + 500 ))
-XCFG="$CI_PRIMARY_REPOSITORY_PATH/ios/Flutter/Generated.xcconfig"
-if grep -q '^FLUTTER_BUILD_NUMBER=' "$XCFG"; then
-  sed -i '' "s/^FLUTTER_BUILD_NUMBER=.*/FLUTTER_BUILD_NUMBER=${BN}/" "$XCFG"
-else
-  echo "FLUTTER_BUILD_NUMBER=${BN}" >> "$XCFG"
-fi
-echo "→ CFBundleVersion forcé à ${BN} (CI_BUILD_NUMBER=${CI_BUILD_NUMBER:-?})"
-
 echo "=== Precaching Flutter iOS artifacts (avec retry) ==="
 retry flutter precache --ios
 
