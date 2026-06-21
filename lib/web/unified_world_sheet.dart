@@ -21,6 +21,7 @@ import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/widgets/backlog_combat.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
 import 'package:productivitwo_v1/widgets/activity_detail_sheet.dart';
+import 'package:productivitwo_v1/widgets/expedition_map_game.dart';
 import 'package:productivitwo_v1/widgets/expedition_sheet.dart';
 import 'package:productivitwo_v1/web/invasion_defense_sheet.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
@@ -6491,6 +6492,53 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     );
   }
 
+  // REPÈRE DU BOSS : carte overworld affichée en permanence dans la bande BASSE
+  // (symétrique au donjon). Verrouillée tant que le donjon n'est pas réussi (tous
+  // les défis relevés) → on n'instancie l'overworld qu'une fois débloqué.
+  Widget _lairPanelV2(WorldLayout w) {
+    final d = w.lairAt;
+    if (d == null) return const SizedBox.shrink();
+    const wT = 9; // largeur du panneau en cases (centré sur le pont)
+    final maxLeft = (w.cols - wT).clamp(0, w.cols);
+    final left = (d.x - wT ~/ 2).clamp(0, maxLeft);
+    final top = d.y.clamp(0, w.rows - 1);
+    // Hauteur = la même bande que le donjon (symétrique en haut/bas).
+    final firstCastleTop = w.castles.isEmpty
+        ? w.rows
+        : w.castles.map((c) => c.bounds.top).reduce((a, b) => a < b ? a : b);
+    final bandH =
+        w.donjonAt != null ? (firstCastleTop - w.donjonAt!.y) : (w.rows - top);
+    final h = bandH.clamp(1, w.rows - top);
+    final unlocked = logic.expeditionChallengesAllDone();
+    return Positioned(
+      left: left * _kV2Slot,
+      top: top * _kV2Slot,
+      width: wT * _kV2Slot,
+      height: h * _kV2Slot,
+      child: Material(
+        color: const Color(0xFF0E1410),
+        elevation: 12,
+        borderRadius: BorderRadius.circular(8),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Theme(
+            data: ThemeData(
+              useMaterial3: true,
+              brightness: Brightness.dark,
+              colorScheme: ColorScheme.fromSeed(
+                seedColor: const Color(0xFFD4A017),
+                brightness: Brightness.dark,
+              ),
+            ),
+            child: unlocked
+                ? expeditionGameInline(logic, sync)
+                : const _LairLocked(),
+          ),
+        ),
+      ),
+    );
+  }
+
   // Bouton « Défendre le château 🔥 » : lance la séquence qui VIDE les chargeurs
   // (l'avatar marche de canon en canon et tire les flammes accumulées par l'effort).
   // Cliquer ailleurs pendant la séquence l'interrompt (_onTapV2 → _v2TakeControl).
@@ -9489,6 +9537,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               // Donjon (vue mobile ExpeditionView) : affiché EN PERMANENCE dans la
               // bande réservée en haut de la cour, au‑dessus des châteaux.
               _donjonPanelV2(w),
+              // Repère du boss (carte overworld) : bande BASSE, symétrique au donjon.
+              // Verrouillé tant que le donjon n'est pas réussi.
+              _lairPanelV2(w),
             ],
           ),
         ),
@@ -10327,4 +10378,36 @@ class _ArrowPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_ArrowPainter old) => false;
+}
+
+// État VERROUILLÉ du repère du boss : tant que le donjon n'est pas réussi (tous les
+// défis relevés), la bande basse affiche un cadenas + la consigne.
+class _LairLocked extends StatelessWidget {
+  const _LairLocked();
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('🔒', style: TextStyle(fontSize: 34)),
+            SizedBox(height: 10),
+            Text('Repère du boss',
+                style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                    color: Colors.white)),
+            SizedBox(height: 6),
+            Text(
+                'Réussis le donjon (tous les défis relevés) pour débloquer '
+                'l\'exploration du repère du boss.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 11.5, color: Colors.white70)),
+          ],
+        ),
+      ),
+    );
+  }
 }
