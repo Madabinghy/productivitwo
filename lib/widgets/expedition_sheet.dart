@@ -691,6 +691,35 @@ class _ExpeditionViewState extends State<ExpeditionView> {
   }
 
   Future<void> _finish() async {
+    // NOUVELLE BOUCLE (web, donjon affiché en bande inline) : franchir le donjon donne
+    // une ARME et débloque le repère du boss (le gate `expeditionChallengesAllDone` est
+    // déjà vrai ici). PAS de level-up ni d'invasion à ce stade → ça vient APRÈS avoir
+    // délogé le boss dans l'overworld puis libéré le domaine. Le mobile (modale) garde
+    // l'ancien flux ci-dessous.
+    if (widget.inline) {
+      const w = 'epee';
+      logic.state.weaponPickups[w] = (logic.state.weaponPickups[w] ?? 0) + 1;
+      await sync.setWeaponPickups(logic.state.weaponPickups);
+      logic.onChange();
+      if (!mounted) return;
+      showConfetti(context);
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('🗡️ Arme obtenue !'),
+          content: const Text(
+              'Tu as relevé tous les défis du donjon. Une épée est forgée : descends '
+              'explorer le repère du boss (en bas de la cour) pour le déloger.'),
+          actions: [
+            FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: _kGold),
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('En route')),
+          ],
+        ),
+      );
+      return;
+    }
     final ok = await sync.completeExpedition(_level);
     if (ok) {
       logic.state.unlockedLevel = _level;

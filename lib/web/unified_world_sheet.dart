@@ -869,6 +869,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           _v2Dislodged.add(dom); // ne reviendra pas
           if (logic.state.bossInvasions.remove(dom)) {
             logic.onChange(); // boss de donjon vaincu → invasion persistée retirée
+            _onBossDomainFreed(); // NOUVELLE BOUCLE : libération → niveau +1
           }
         }
         _toast('🏰 Araignée délogée ! (toiles détruites)', _kBlue);
@@ -8855,6 +8856,21 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       }
     }
     return n;
+  }
+
+  // NOUVELLE BOUCLE BOSS : déloger le boss d'un domaine envahi LIBÈRE le domaine et fait
+  // monter le niveau. Le level-up a migré ici depuis la fin du donjon (`_finish`) :
+  // donjon réussi → arme + repère ; atteindre le boss → invasion ; libérer → niveau +1.
+  Future<void> _onBossDomainFreed() async {
+    final target = logic.effectiveLevel() + 1;
+    final ok = await sync.completeExpedition(target);
+    if (ok) {
+      logic.state.unlockedLevel = target;
+      logic.state.expeditionCleared.clear();
+      logic.onChange();
+    }
+    if (!mounted) return;
+    _toast('🏰 Domaine libéré — niveau $target atteint !', _kGold);
   }
 
   void _populateV2Araignees() {
