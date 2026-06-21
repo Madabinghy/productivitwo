@@ -93,6 +93,7 @@ class AppState {
   String? activeAvatar;        // emoji du skin d'avatar actif sur la carte (null = 🧍)
   int unlockedLevel;           // niveau effectif RÉVÉLÉ (payé) : l'XP rend éligible, on paie pour débloquer le titre/niveau (gate séquentiel)
   List<String> expeditionCleared; // nœuds franchis (V1 donjon, Phase 2) ; vidé à la complétion
+  List<String> bossInvasions; // domaines envahis par un boss de donjon (jusqu'à la victoire)
   // ── Overworld (carte 2D explorable, per-map ; vidés à la complétion) ──
   List<String> expeditionRevealed; // cases éclairées "x_y"
   String? expeditionPos;           // case du perso "x_y"
@@ -228,6 +229,7 @@ class AppState {
     this.activeAvatar,
     this.unlockedLevel = 1,
     List<String>? expeditionCleared,
+    List<String>? bossInvasions,
     List<String>? expeditionRevealed,
     this.expeditionPos,
     List<String>? unifiedRevealed,
@@ -302,6 +304,7 @@ class AppState {
         goldTaskShieldDays = goldTaskShieldDays ?? <String>[],
         goldBoostDays = goldBoostDays ?? <String>[],
         expeditionCleared = expeditionCleared ?? <String>[],
+        bossInvasions = bossInvasions ?? <String>[],
         expeditionRevealed = expeditionRevealed ?? <String>[],
         unifiedRevealed = unifiedRevealed ?? <String>[],
         unifiedTurrets = unifiedTurrets ?? <String>[],
@@ -378,6 +381,7 @@ class AppState {
         'activeAvatar': activeAvatar,
         'unlockedLevel': unlockedLevel,
         'expeditionCleared': expeditionCleared,
+        'bossInvasions': bossInvasions,
         'expeditionRevealed': expeditionRevealed,
         'expeditionPos': expeditionPos,
         'unifiedRevealed': unifiedRevealed,
@@ -536,6 +540,8 @@ class AppState {
       unlockedLevel: (j['unlockedLevel'] as num?)?.toInt() ?? 0,
       expeditionCleared:
           (j['expeditionCleared'] as List?)?.cast<String>() ?? <String>[],
+      bossInvasions:
+          (j['bossInvasions'] as List?)?.cast<String>() ?? <String>[],
       expeditionRevealed:
           (j['expeditionRevealed'] as List?)?.cast<String>() ?? <String>[],
       expeditionPos: j['expeditionPos'] as String?,

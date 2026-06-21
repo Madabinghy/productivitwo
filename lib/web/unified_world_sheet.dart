@@ -196,7 +196,6 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   final Map<String, String> _v2Toiles = {}; // tileId (jardin) → domainId (marqueur)
   final Set<String> _v2Invaded = {}; // domaines envahis (collant : reste tant que pas délogé)
   final Set<String> _v2Dislodged = {}; // domaines délogés (réduits < N) → ne reviennent pas
-  final Set<String> _bossInvasions = {}; // domaines envahis par un BOSS de donjon (forcé)
   final Map<String, String> _v2LaneName = {}; // tileId → nom routine/activité
   // Cinématique V2 : volée de boulets (tourelle → jour) + flashs d'impact.
   final List<_CineFb> _v2Fbs = [];
@@ -849,7 +848,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         final dom = _interiorDomainId;
         if (dom != null) {
           _v2Dislodged.add(dom); // ne reviendra pas
-          _bossInvasions.remove(dom); // boss de donjon vaincu → ne ré-envahit plus
+          if (logic.state.bossInvasions.remove(dom)) {
+            logic.onChange(); // boss de donjon vaincu → invasion persistée retirée
+          }
         }
         _toast('🏰 Araignée délogée ! (toiles détruites)', _kBlue);
         return;
@@ -8719,17 +8720,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _v2Toiles.clear();
     final w = _wv2;
     if (w == null) return;
-    // BOSS DE DONJON : une fin de niveau a posé un domaine cible → on l'envahit (un
-    // nouveau boss peut revenir même sur un domaine déjà délogé).
-    final pending = logic.pendingBossDomain;
-    if (pending != null) {
-      _bossInvasions.add(pending);
-      _v2Dislodged.remove(pending);
-      logic.pendingBossDomain = null;
-    }
     for (final c in w.castles) {
-      final boss = _bossInvasions.contains(c.domainId);
-      if (_v2Dislodged.contains(c.domainId)) continue; // délogée → ne revient pas
+      // BOSS DE DONJON : domaine marqué envahi par la fin d'un niveau (persisté).
+      final boss = logic.state.bossInvasions.contains(c.domainId);
+      // Délogée → ne revient pas… SAUF si un NOUVEAU boss de donjon la vise.
+      if (!boss && _v2Dislodged.contains(c.domainId)) continue;
       // Invasion COLLANTE : dès qu'on atteint N (ou boss de donjon), le domaine reste
       // envahi jusqu'à ce qu'on l'ait DÉLOGÉE (affrontée).
       if (_v2InvasionCount(c) >= _kInvasionN || boss) _v2Invaded.add(c.domainId);

@@ -104,10 +104,6 @@ class AppLogic {
   final void Function() onChange;
   AppLogic(this.state, this.onChange);
 
-  /// Boss du DONJON en attente de lâcher : domaine (le plus négligé) qu'une fin de
-  /// niveau de donjon va faire envahir. Lu une fois par la map V2 (transient).
-  String? pendingBossDomain;
-
   /// Domaine ACTIF le plus négligé = celui qui cumule le plus d'araignées/scorpions
   /// (jours/temps en retard). Sert à diriger le boss du donjon. null = aucun domaine.
   String? mostNeglectedDomainId() {

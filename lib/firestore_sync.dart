@@ -248,6 +248,8 @@ class FirestoreSync {
         unlockedLevel: (meta['unlockedLevel'] as num?)?.toInt() ?? 0,
         expeditionCleared:
             (meta['expeditionCleared'] as List?)?.cast<String>(),
+        bossInvasions:
+            (meta['bossInvasions'] as List?)?.cast<String>(),
         expeditionRevealed:
             (meta['expeditionRevealed'] as List?)?.cast<String>(),
         expeditionPos: meta['expeditionPos'] as String?,
@@ -399,6 +401,7 @@ class FirestoreSync {
       goldBoostDays:         local.goldLifetime >= remote.goldLifetime ? local.goldBoostDays : remote.goldBoostDays,
       unlockedLevel:         local.unlockedLevel >= remote.unlockedLevel ? local.unlockedLevel : remote.unlockedLevel,
       expeditionCleared:     local.goldLifetime >= remote.goldLifetime ? local.expeditionCleared : remote.expeditionCleared,
+      bossInvasions:         local.goldLifetime >= remote.goldLifetime ? local.bossInvasions : remote.bossInvasions,
       expeditionRevealed:    local.goldLifetime >= remote.goldLifetime ? local.expeditionRevealed : remote.expeditionRevealed,
       expeditionPos:         local.goldLifetime >= remote.goldLifetime ? local.expeditionPos : remote.expeditionPos,
       unifiedRevealed:       local.goldLifetime >= remote.goldLifetime ? local.unifiedRevealed : remote.unifiedRevealed,
@@ -530,6 +533,7 @@ class FirestoreSync {
         // Clés du donjon : état quotidien éphémère, pas or-autoritatif → miroir OK.
         'donjonKeysUsed': st.donjonKeysUsed,
         'donjonKeysYmd': st.donjonKeysYmd,
+        'bossInvasions': st.bossInvasions, // boss de donjon en cours (jusqu'à victoire)
         // NB : l'or (gold/goldLifetime/…) est AUTORITATIF en Firestore et écrit
         // uniquement par transaction (applyGoldBatch) → jamais via ce miroir, pour
         // ne pas clobberer un coût appliqué côté web. (meta est écrit en merge.)
