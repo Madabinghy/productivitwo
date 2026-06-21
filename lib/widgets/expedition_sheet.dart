@@ -654,6 +654,9 @@ class _ExpeditionSheetState extends State<_ExpeditionSheet> {
       logic.state.expeditionCleared.clear();
       logic.onChange();
     }
+    // Fin de niveau → un boss s'échappe du donjon vers le domaine le plus négligé
+    // (lu une fois par la map V2 pour y déclencher une invasion + toiles).
+    logic.pendingBossDomain = logic.mostNeglectedDomainId();
     if (!mounted) return;
     showConfetti(context);
     final lvl = logic.userLevelData();

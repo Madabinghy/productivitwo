@@ -196,6 +196,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   final Map<String, String> _v2Toiles = {}; // tileId (jardin) → domainId (marqueur)
   final Set<String> _v2Invaded = {}; // domaines envahis (collant : reste tant que pas délogé)
   final Set<String> _v2Dislodged = {}; // domaines délogés (réduits < N) → ne reviennent pas
+  final Set<String> _bossInvasions = {}; // domaines envahis par un BOSS de donjon (forcé)
   final Map<String, String> _v2LaneName = {}; // tileId → nom routine/activité
   // Cinématique V2 : volée de boulets (tourelle → jour) + flashs d'impact.
   final List<_CineFb> _v2Fbs = [];
@@ -846,7 +847,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         _cineActive = false;
         _consumeShurikens(_battleShkStart - _ninjaShurikens);
         final dom = _interiorDomainId;
-        if (dom != null) _v2Dislodged.add(dom); // ne reviendra pas
+        if (dom != null) {
+          _v2Dislodged.add(dom); // ne reviendra pas
+          _bossInvasions.remove(dom); // boss de donjon vaincu → ne ré-envahit plus
+        }
         _toast('🏰 Araignée délogée ! (toiles détruites)', _kBlue);
         return;
       }
@@ -6362,7 +6366,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        onTap: () => showExpeditionSheet(context, logic, sync),
+        onTap: () async {
+          await showExpeditionSheet(context, logic, sync);
+          // Une fin de niveau a pu lâcher un boss (pendingBossDomain) → on l'applique.
+          if (mounted) setState(_populateV2Araignees);
+        },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
           decoration: BoxDecoration(
@@ -8711,11 +8719,20 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _v2Toiles.clear();
     final w = _wv2;
     if (w == null) return;
+    // BOSS DE DONJON : une fin de niveau a posé un domaine cible → on l'envahit (un
+    // nouveau boss peut revenir même sur un domaine déjà délogé).
+    final pending = logic.pendingBossDomain;
+    if (pending != null) {
+      _bossInvasions.add(pending);
+      _v2Dislodged.remove(pending);
+      logic.pendingBossDomain = null;
+    }
     for (final c in w.castles) {
+      final boss = _bossInvasions.contains(c.domainId);
       if (_v2Dislodged.contains(c.domainId)) continue; // délogée → ne revient pas
-      // Invasion COLLANTE : dès qu'on atteint N, le domaine reste envahi jusqu'à
-      // ce qu'on l'ait DÉLOGÉE (réduit < N + affrontée).
-      if (_v2InvasionCount(c) >= _kInvasionN) _v2Invaded.add(c.domainId);
+      // Invasion COLLANTE : dès qu'on atteint N (ou boss de donjon), le domaine reste
+      // envahi jusqu'à ce qu'on l'ait DÉLOGÉE (affrontée).
+      if (_v2InvasionCount(c) >= _kInvasionN || boss) _v2Invaded.add(c.domainId);
       if (!_v2Invaded.contains(c.domainId)) continue;
       // Case‑séparateur (entre tourelles routines et activités), colonne tourelles.
       final y = c.sepY >= 0
@@ -8729,6 +8746,14 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       // Une toile dans le jardin (marqueur : valide tes routines pour la déloger).
       final g = c.gardenRect;
       _v2Toiles['${g.left + g.width ~/ 2}_${g.top + g.height ~/ 2}'] = c.domainId;
+      // Boss de DONJON : des toiles PARTOUT dans le jardin (semis ~1 case sur 3).
+      if (boss) {
+        for (var gy = g.top; gy < g.top + g.height; gy++) {
+          for (var gx = g.left; gx < g.left + g.width; gx++) {
+            if ((gx + gy) % 3 == 0) _v2Toiles['${gx}_$gy'] = c.domainId;
+          }
+        }
+      }
     }
   }
 
