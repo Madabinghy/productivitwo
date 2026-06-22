@@ -1464,7 +1464,18 @@ class _DomainGameplayState extends State<_DomainGameplay>
                   height: cell,
                   child: Center(
                     child: done
-                        ? const Text('🍃', style: TextStyle(fontSize: 16))
+                        // Jour validé → CASE VALIDÉE (coche verte) au lieu de la feuille.
+                        ? Container(
+                            width: 17,
+                            height: 17,
+                            decoration: BoxDecoration(
+                              color: _kCharge.withOpacity(.28),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: _kCharge, width: 1.2),
+                            ),
+                            child: const Icon(Icons.check_rounded,
+                                size: 12, color: Color(0xFF8DEBA8)),
+                          )
                         : Container(
                             width: 6,
                             height: 6,

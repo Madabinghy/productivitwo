@@ -4355,21 +4355,29 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       );
 
   Widget _laneWeekDot(String type, bool isRoutine, Color col) {
-    final emoji = type == 'spider'
-        ? (isRoutine ? '🕷️' : '🦂')
-        : (type == 'leaf' || type == 'flame')
-            ? '🍃' // jour tenu (feuille/série) — plus de 🔥 (redondant avec le streak)
-            : '';
+    final spider = type == 'spider';
+    // Jour tenu (feuille/série) → CASE VALIDÉE (coche verte) au lieu de la feuille.
+    final done = type == 'leaf' || type == 'flame';
     return Container(
       width: 22,
       height: 22,
       margin: const EdgeInsets.symmetric(horizontal: 2),
       decoration: BoxDecoration(
-        color: type == 'spider' ? Colors.black : col.withOpacity(.30),
+        color: spider
+            ? Colors.black
+            : done
+                ? const Color(0xFF4FC26B).withOpacity(.28)
+                : col.withOpacity(.18),
         borderRadius: BorderRadius.circular(4),
+        border: done
+            ? Border.all(color: const Color(0xFF4FC26B), width: 1.2)
+            : null,
       ),
       alignment: Alignment.center,
-      child: Text(emoji, style: const TextStyle(fontSize: 12)),
+      child: done
+          ? const Icon(Icons.check_rounded, size: 15, color: Color(0xFF8DEBA8))
+          : Text(spider ? (isRoutine ? '🕷️' : '🦂') : '',
+              style: const TextStyle(fontSize: 12)),
     );
   }
 
