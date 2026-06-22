@@ -9760,10 +9760,21 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             child: Transform.scale(
               scale: _v2Zoom,
               alignment: Alignment.topLeft,
-              child: SizedBox(
-                // Contenu en coords pixel NON scalées (× _kV2Slot) ; le Transform scale.
-                width: w.cols * _kV2Slot,
-                height: w.rows * _kV2Slot,
+              // Au dézoom, le SizedBox de SCROLL (× zoom) est plus PETIT que la
+              // taille naturelle → il imposerait des contraintes serrées qui
+              // rapetissent le SizedBox interne et feraient CLIPPER le Stack
+              // (droite/bas coupés). L'OverflowBox relâche les contraintes pour
+              // que le contenu garde sa taille naturelle ; le Transform scale.
+              child: OverflowBox(
+                alignment: Alignment.topLeft,
+                minWidth: 0,
+                minHeight: 0,
+                maxWidth: double.infinity,
+                maxHeight: double.infinity,
+                child: SizedBox(
+                  // Contenu en coords pixel NON scalées (× _kV2Slot) ; le Transform scale.
+                  width: w.cols * _kV2Slot,
+                  height: w.rows * _kV2Slot,
           child: Stack(
             children: [
               // GRILLE CULLÉE : seules les cases VISIBLES sont construites
@@ -9885,7 +9896,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               _lairPanelV2(w),
             ],
           ),
-              ), // SizedBox interne (taille naturelle)
+                ), // SizedBox interne (taille naturelle)
+              ), // OverflowBox (relâche les contraintes de zoom)
             ), // Transform.scale (zoom)
         ),
         ),
