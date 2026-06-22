@@ -2609,7 +2609,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     const base = 124.0, knob = 54.0;
     const knobR = (base - knob) / 2;
     return Positioned(
-      left: 18,
+      right: 18,
       bottom: 24,
       child: GestureDetector(
         onPanStart: (d) {
@@ -3386,7 +3386,36 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // ── Panneau JARDIN in‑place ────────────────────────────────────────────────
   // Recouvre la bande `gardenRect` du domaine de l'avatar : combat (BacklogCombatPanel)
   // ou mini‑app dashboard des routines/activités du domaine.
+  // Corps du dashboard de domaine pour le PLEIN ÉCRAN mobile (+ croix de fermeture).
+  Widget _mobileDashBody() {
+    final w = _wv2;
+    final gp = _gardenPanel;
+    if (w == null || gp == null) return const SizedBox.shrink();
+    final c = w.byDomain[gp.domainId];
+    if (c == null) return const SizedBox.shrink();
+    final col = domainColor(gp.domainId, logic.state.activeDomains) ?? _kGold;
+    final body = (gp.mode == 'pestDash' &&
+            gp.pestType != null &&
+            gp.laneId != null)
+        ? _pestDashV2(gp.pestType!, gp.laneId!, col)
+        : _routineDashV2(c, col);
+    return Column(children: [
+      Align(
+        alignment: Alignment.centerRight,
+        child: IconButton(
+          icon: const Icon(Icons.close, color: Colors.white70),
+          tooltip: 'Fermer',
+          onPressed: _closeV2Panel,
+        ),
+      ),
+      Expanded(child: body),
+    ]);
+  }
+
   Widget _gardenPanelV2(WorldLayout w) {
+    // Mobile : le dashboard est rendu en PLEIN ÉCRAN ailleurs (_mobileDashBody) → ici
+    // (panneau « taille jardin » dans l'espace scalé de la carte) on n'affiche rien.
+    if (widget.mobile) return const SizedBox.shrink();
     final gp = _gardenPanel!;
     final c = w.byDomain[gp.domainId];
     if (c == null) return const SizedBox.shrink();
@@ -6769,10 +6798,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     Positioned.fill(child: _contentV2()),
                     // Joystick mobile (bas‑gauche) : déplace l'avatar pas à pas.
                     if (widget.mobile) _v2Joystick(),
-                    // Donjon 🏔️ : entrée de l'aventure (montée en niveaux) → ouvre le
-                    // graphe d'expédition. Haut-GAUCHE de la map (zone libre).
-                    if (!widget.mobile)
-                      Positioned(top: 10, left: 10, child: _donjonMarker()),
+                    // Donjon 🏔️ : recadre la caméra sur le donjon (affiché en bande en
+                    // haut). Ré-exposé sur mobile (CTA). Haut-GAUCHE de la map.
+                    Positioned(top: 10, left: 10, child: _donjonMarker()),
                     Positioned(
                         top: 10,
                         right: 10,
@@ -6819,6 +6847,17 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                                     child: _combatPanel(),
                                   ),
                                 )),
+                    // Dashboard de domaine : PLEIN ÉCRAN sur mobile (le panneau
+                    // « taille jardin » est illisible au téléphone) + croix.
+                    if (widget.mobile &&
+                        _gardenPanel != null &&
+                        _gardenPanel!.mode != 'combat')
+                      Positioned.fill(
+                        child: Material(
+                          color: const Color(0xFF0E1714),
+                          child: SafeArea(child: _mobileDashBody()),
+                        ),
+                      ),
                   ]))
             : ((_loading || t == null || w == null)
                 ? const Center(
@@ -9543,7 +9582,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                   .clamp(0.0, _v2VCtrl.position.maxScrollExtent));
               // PINCH : zoom centré sur le viewport (recadrage post‑frame).
               if (d.scale != 1.0) {
-                final nz = (_zoomStart * d.scale).clamp(_kZoomMin, _kZoomMax);
+                final w0 = _wv2;
+                // Sensibilité réduite : on amortit l'écart de pinch.
+                final damp = 1 + (d.scale - 1) * 0.5;
+                // Min zoom = remplir la largeur (sinon zone noire à droite au dézoom).
+                final fitW = w0 != null
+                    ? _v2HCtrl.position.viewportDimension / (w0.cols * _kV2Slot)
+                    : _kZoomMin;
+                final lo = (fitW > _kZoomMin ? fitW : _kZoomMin)
+                    .clamp(_kZoomMin, _kZoomMax);
+                final nz = (_zoomStart * damp).clamp(lo, _kZoomMax);
                 if ((nz - _v2Zoom).abs() > 0.001) {
                   final vpW = _v2HCtrl.position.viewportDimension;
                   final vpH = _v2VCtrl.position.viewportDimension;
@@ -9777,7 +9825,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
 
   // Cases visibles (fenêtre de scroll + marge) → Positioned.
   List<Widget> _visibleCellsV2(WorldLayout w) {
-    const slot = _kV2Slot, margin = 2;
+    const slot = _kV2Slot;
+    // Marge ADAPTATIVE : au dézoom, plus de tuiles tiennent à l'écran → on élargit
+    // la fenêtre construite pour éviter des bords noirs (cases non dessinées).
+    final margin = (3 / _v2Zoom).ceil().clamp(2, 10);
     // L'espace de scroll est scalé par le zoom : 1 tuile = slot × _v2Zoom pixels scalés.
     final ssl = slot * _v2Zoom;
     // Au 1ᵉʳ frame le viewport n'existe pas encore → on cadre une FENÊTRE autour de
