@@ -2707,12 +2707,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     final curY = _posV2.y;
     for (final c in w.castles) {
       for (final l in c.lanes) {
-        if (!l.isRoutine || done.contains(l.id)) continue;
-        if (_availableEmbers(l.id) <= 0) continue;
-        // RÈGLE : on ne défend QUE le PASSÉ. Une lane dont la seule araignée est
-        // AUJOURD'HUI n'est pas défendable — le streak ne sert QU'À la reconquête ;
-        // aujourd'hui se règle en FAISANT la routine (sinon le streak casse).
-        if (yyyymmdd(logic.routineCatchUpDay(l.id)) == today) continue;
+        if (done.contains(l.id)) continue;
+        // RÈGLE : on ne défend QUE le PASSÉ (aujourd'hui se règle en FAISANT la routine
+        // / en loggant du temps). Routines : chargeur+réserve. Activités‑temps : avance.
+        if (l.isRoutine) {
+          if (_availableEmbers(l.id) <= 0) continue;
+          if (yyyymmdd(logic.routineCatchUpDay(l.id)) == today) continue;
+        } else {
+          if (_timeTurretAmmo(l.id).avail <= 0) continue;
+          if (_timeCatchUpIndex(l.id) < 0) continue;
+        }
         final dy = l.y - curY;
         if (dir < 0 && dy > 0) continue;
         if (dir > 0 && dy < 0) continue;
@@ -2758,13 +2762,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         if (_v2UserControl || !mounted) break;
         final now = DateTime.now();
         final today = DateTime(now.year, now.month, now.day);
-        final ammo = _turretAmmo(lane.id);
-        // Étage 1 : le CHARGEUR (effort du jour) part en premier.
-        await _fireBacklogStage(lane, mirror, today, ammo.charger);
-        // Étage 2 : la RÉSERVE de streak tire ensuite (petite transition entre salves).
-        if (ammo.reserve > 0 && mounted && !_v2UserControl) {
-          await Future.delayed(const Duration(milliseconds: 500));
-          await _fireBacklogStage(lane, mirror, today, ammo.reserve);
+        if (lane.isRoutine) {
+          final ammo = _turretAmmo(lane.id);
+          // Étage 1 : le CHARGEUR (effort du jour) part en premier.
+          await _fireBacklogStage(lane, mirror, today, ammo.charger);
+          // Étage 2 : la RÉSERVE de streak tire ensuite (transition entre salves).
+          if (ammo.reserve > 0 && mounted && !_v2UserControl) {
+            await Future.delayed(const Duration(milliseconds: 500));
+            await _fireBacklogStage(lane, mirror, today, ammo.reserve);
+          }
+        } else {
+          // Activité‑temps : draine l'avance (minutes) sur le retard passé.
+          await _fireTimeBacklog(lane, mirror, today);
         }
         done.add(lane.id);
       }
@@ -2803,6 +2812,42 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       // Recadre sur la trajectoire du boulet (mi-chemin tourelle → cible) pour que
       // la boule de feu reste visible sans recentrage manuel (qui interromprait la
       // séquence et ferait disparaître le projectile).
+      _v2CenterOn(Point((lane.turretX + col) ~/ 2, lane.y));
+      _fireV2Bolt(col, lane.y, lane.turretX,
+          dur: _kV2ExploreBoltDur, cellId: '${col}_${lane.y}');
+      if (mounted) setState(() {});
+      await Future.delayed(
+          Duration(milliseconds: (_kV2ExploreBoltDur * 1000).round() + 300));
+    }
+  }
+
+  // Décharge d'une tourelle d'ACTIVITÉ‑TEMPS : draine l'AVANCE (minutes), plus vieux
+  // jour d'abord. Chaque tir vise UNE araignée et lui retire jusqu'à ses PV (en
+  // minutes) ; la dernière peut n'être que BLESSÉE (crédit partiel). 1 crédit
+  // Redemption('time') par tir = des minutes reconquises sur ce jour passé. Le pool est
+  // figé en début de salve (les crédits posés le décrémentent localement, pas via
+  // _timeTurretAmmo, pour éviter le double comptage).
+  Future<void> _fireTimeBacklog(LaneRow lane, bool mirror, DateTime today) async {
+    var pool = _timeTurretAmmo(lane.id).avail; // minutes dispo
+    while (pool > 0 && mounted && !_v2UserControl) {
+      final idx = _timeCatchUpIndex(lane.id);
+      if (idx < 0) break; // plus de retard passé à viser
+      final toks = logic.activityTimeTokens(lane.id);
+      if (idx >= toks.length || toks[idx].type != 'spider') break;
+      final hp = toks[idx].hp;
+      final dmg = pool < hp ? pool : hp; // jusqu'aux PV de l'araignée
+      final target = today.subtract(Duration(days: 6 - idx));
+      final r = Redemption(
+        activityId: lane.id,
+        type: 'time',
+        targetDate: yyyymmdd(target),
+        amount: dmg,
+        sourceDate: yyyymmdd(today),
+      );
+      logic.state.redemptions.add(r); // optimiste → araignée suivante recalculée
+      sync.saveRedemption(r);
+      pool -= dmg;
+      final col = mirror ? lane.dayX0 + (6 - idx) : lane.dayX0 + idx;
       _v2CenterOn(Point((lane.turretX + col) ~/ 2, lane.y));
       _fireV2Bolt(col, lane.y, lane.turretX,
           dur: _kV2ExploreBoltDur, cellId: '${col}_${lane.y}');
@@ -3640,9 +3685,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   }
 
   // Éditeur d'objectif/jour (goalMin) directement sur le web (pas besoin du mobile).
+  // Tap = ±1 min (réglage fin) · appui long = ±15 min (réglage rapide).
   Widget _timeTargetEditor(Activity a, Color col) {
-    Widget btn(IconData ic, VoidCallback onTap) => InkWell(
+    Widget btn(IconData ic, VoidCallback onTap, VoidCallback onLongPress) =>
+        InkWell(
           onTap: onTap,
+          onLongPress: onLongPress,
           borderRadius: BorderRadius.circular(20),
           child: Container(
             padding: const EdgeInsets.all(6),
@@ -3658,19 +3706,21 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               fontSize: 12,
               fontWeight: FontWeight.w700)),
       const Spacer(),
-      btn(Icons.remove_rounded, () => _setGoalMin(a, a.goalMin - 15)),
+      btn(Icons.remove_rounded, () => _setGoalMin(a, a.goalMin - 1),
+          () => _setGoalMin(a, a.goalMin - 15)),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Text(_fmtHM(a.goalMin),
             style: TextStyle(
                 color: col, fontWeight: FontWeight.w900, fontSize: 15)),
       ),
-      btn(Icons.add_rounded, () => _setGoalMin(a, a.goalMin + 15)),
+      btn(Icons.add_rounded, () => _setGoalMin(a, a.goalMin + 1),
+          () => _setGoalMin(a, a.goalMin + 15)),
     ]);
   }
 
-  // Change l'objectif/jour par pas de 15 min, persiste, et rafraîchit le monde
-  // (les scorpions/PV dépendent de la cible).
+  // Change l'objectif/jour (tap ±1 min, appui long ±15 min), persiste, et rafraîchit le
+  // monde (les scorpions/PV dépendent de la cible).
   void _setGoalMin(Activity a, int v) {
     final nv = v < 0 ? 0 : (v > 24 * 60 ? 24 * 60 : v);
     if (nv == a.goalMin) return;
@@ -6548,6 +6598,57 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     return a.charger + a.reserve;
   }
 
+  // ── Munitions des tourelles d'ACTIVITÉ‑TEMPS ──
+  // Munition = l'AVANCE (solde 7 j positif : temps loggué − objectif), MOINS ce qui a
+  // déjà été tiré (reconquêtes 'time' déjà posées sur la fenêtre). En MINUTES : c'est
+  // le « contenu » dépensable sur le retard passé. Affiché en TRANCHES de la cible du
+  // jour (1 flamme = goalMin) ; une tranche PARTIELLE compte quand même pour une flamme
+  // qui tirera son contenu réel.
+  ({int avail, int flames, int goalMin}) _timeTurretAmmo(String activityId) {
+    Activity? a;
+    for (final x in logic.state.activeActivities) {
+      if (x.id == activityId) {
+        a = x;
+        break;
+      }
+    }
+    if (a == null || a.isHabit || a.goalMin <= 0) {
+      return (avail: 0, flames: 0, goalMin: 0);
+    }
+    final goal = a.goalMin;
+    final s = logic.timeSliding(activityId, 7);
+    final surplus = s.doneMin - s.targetMin; // avance (peut être négatif)
+    final now = DateTime.now();
+    final t0 = DateTime(now.year, now.month, now.day);
+    final lo = yyyymmdd(t0.subtract(const Duration(days: 6)));
+    final hi = yyyymmdd(t0);
+    var fired = 0;
+    for (final r in logic.state.redemptions) {
+      if (r.active &&
+          r.type == 'time' &&
+          r.activityId == activityId &&
+          r.targetDate.compareTo(lo) >= 0 &&
+          r.targetDate.compareTo(hi) <= 0) {
+        fired += r.amount;
+      }
+    }
+    final avail = (surplus - fired) < 0 ? 0 : (surplus - fired);
+    // ceil : une tranche partielle (< goalMin) compte quand même pour 1 flamme.
+    final flames = avail <= 0 ? 0 : ((avail + goal - 1) ~/ goal);
+    return (avail: avail, flames: flames, goalMin: goal);
+  }
+
+  // Index (0 = il y a 6 j … 5 = hier) de la plus VIEILLE araignée PASSÉE d'une activité‑
+  // temps, ou -1 si aucune. Aujourd'hui (index 6) est EXCLU : on ne reconquiert QUE le
+  // passé (aujourd'hui se règle en loggant du temps).
+  int _timeCatchUpIndex(String activityId) {
+    final toks = logic.activityTimeTokens(activityId);
+    for (var j = 0; j < 6 && j < toks.length; j++) {
+      if (toks[j].type == 'spider') return j;
+    }
+    return -1;
+  }
+
   // Durée en h/min : 90 → « 1h30 », 50 → « 50min », 120 → « 2h ».
   static String _fmtHM(int min) {
     if (min >= 60) {
@@ -6600,10 +6701,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     );
   }
 
-  // Total des braises dépensables (routines en retard) → libellé + visibilité bouton.
-  // IMPORTANT : on balaie les MÊMES lanes que la décharge (_nextDefendableLane :
-  // lanes de château du monde), pas logic.state.activeActivities — sinon le bouton
-  // peut rester caché alors que la décharge a du travail (ensembles divergents).
+  // Total des tirs dépensables (routines en retard + tranches d'avance des activités‑
+  // temps) → libellé + visibilité bouton. IMPORTANT : on balaie les MÊMES lanes que la
+  // décharge (_nextDefendableLane : lanes de château du monde), pas
+  // logic.state.activeActivities — sinon le bouton peut rester caché alors que la
+  // décharge a du travail (ensembles divergents).
   int _totalDefendEmbers() {
     final w = _wv2;
     if (w == null) return 0;
@@ -6612,9 +6714,14 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     var n = 0;
     for (final c in w.castles) {
       for (final l in c.lanes) {
-        if (!l.isRoutine || !seen.add(l.id)) continue;
-        if (yyyymmdd(logic.routineCatchUpDay(l.id)) == today) continue; // pas de retard
-        n += _availableEmbers(l.id);
+        if (!seen.add(l.id)) continue;
+        if (l.isRoutine) {
+          if (yyyymmdd(logic.routineCatchUpDay(l.id)) == today) continue; // pas de retard
+          n += _availableEmbers(l.id);
+        } else {
+          if (_timeCatchUpIndex(l.id) < 0) continue; // pas de retard passé à viser
+          n += _timeTurretAmmo(l.id).flames; // tranches d'avance dispo
+        }
       }
     }
     return n;
@@ -10119,18 +10226,33 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             ),
           );
         } else if (_v2LaunchPadActivityId[id] != null) {
-          // Activité‑temps : pastille de SOLDE (temps loggué − objectif sur 7 j).
+          // Activité‑temps : MUNITION (🔥 flammes = tranches d'avance dépensables) au‑
+          // dessus, puis pastille de SOLDE (temps loggué − objectif sur 7 j).
           bg = const Color(0xFFE8C13D).withOpacity(.16);
           final aid = _v2LaunchPadActivityId[id]!;
           final s = logic.timeSliding(aid, 7);
           final delta = s.doneMin - s.targetMin;
+          final tammo = _timeTurretAmmo(aid);
+          final badges = <Widget>[];
+          if (tammo.flames > 0) {
+            badges.add(Tooltip(
+              message: 'Munition : ${tammo.flames} flamme(s) · '
+                  '${_fmtHM(tammo.avail)} d\'avance\n'
+                  '1 flamme = ${tammo.goalMin}min (cible du jour). '
+                  'Tire sur le retard passé, plus vieux d\'abord.',
+              child: _rampBadge(
+                  '🔥', tammo.flames, const Color(0xFFFF8A3D), inner),
+            ));
+            badges.add(SizedBox(height: inner * 0.08));
+          }
+          badges.add(Tooltip(
+            message: 'Solde de temps (7 j) : ${_fmtDelta(delta)}\n'
+                'Temps loggué vs objectif sur la fenêtre glissante 7 jours.',
+            child: _soldeBadge(delta, inner),
+          ));
           child = FittedBox(
             fit: BoxFit.scaleDown,
-            child: Tooltip(
-              message: 'Solde de temps (7 j) : ${_fmtDelta(delta)}\n'
-                  'Temps loggué vs objectif sur la fenêtre glissante 7 jours.',
-              child: _soldeBadge(delta, inner),
-            ),
+            child: Column(mainAxisSize: MainAxisSize.min, children: badges),
           );
         } else if (_v2LaunchPads.contains(id)) {
           // Rampe de lancement (☢️) : un cran plus loin dans le jardin.
