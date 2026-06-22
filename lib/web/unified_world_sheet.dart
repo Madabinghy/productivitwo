@@ -6601,13 +6601,21 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   }
 
   // Total des braises dépensables (routines en retard) → libellé + visibilité bouton.
+  // IMPORTANT : on balaie les MÊMES lanes que la décharge (_nextDefendableLane :
+  // lanes de château du monde), pas logic.state.activeActivities — sinon le bouton
+  // peut rester caché alors que la décharge a du travail (ensembles divergents).
   int _totalDefendEmbers() {
+    final w = _wv2;
+    if (w == null) return 0;
     final today = yyyymmdd(DateTime.now());
+    final seen = <String>{};
     var n = 0;
-    for (final a in logic.state.activeActivities) {
-      if (!a.isHabit) continue;
-      if (yyyymmdd(logic.routineCatchUpDay(a.id)) == today) continue; // pas de retard
-      n += _availableEmbers(a.id);
+    for (final c in w.castles) {
+      for (final l in c.lanes) {
+        if (!l.isRoutine || !seen.add(l.id)) continue;
+        if (yyyymmdd(logic.routineCatchUpDay(l.id)) == today) continue; // pas de retard
+        n += _availableEmbers(l.id);
+      }
     }
     return n;
   }
