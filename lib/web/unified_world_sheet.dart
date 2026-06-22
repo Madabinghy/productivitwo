@@ -2735,8 +2735,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         _combatBusy ||
         _v2Walking ||
         _canonCine ||
-        _v2PanelOpen ||
-        widget.mobile) return;
+        _v2PanelOpen) return;
     _v2AutoExploring = true;
     _v2UserControl = false;
     final done = <String>{};
@@ -6681,7 +6680,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // (l'avatar marche de canon en canon et tire les flammes accumulées par l'effort).
   // Cliquer ailleurs pendant la séquence l'interrompt (_onTapV2 → _v2TakeControl).
   Widget _defendCastleButton() {
-    if (widget.mobile || _v2AutoExploring || _v2PanelOpen) {
+    if (_v2AutoExploring || _v2PanelOpen) {
       return const SizedBox.shrink();
     }
     final n = _totalDefendEmbers();
