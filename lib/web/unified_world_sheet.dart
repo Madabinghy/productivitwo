@@ -236,6 +236,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   double _v2Zoom = 1.0;
   double _zoomStart = 1.0; // zoom au début d'un geste de pinch
   static const double _kZoomMin = 0.5, _kZoomMax = 2.5;
+  // Joystick mobile (déplacement pas-à-pas de l'avatar). _joyKnob = offset du pouce
+  // (px) depuis le centre ; _joyDx/_joyDy = direction 4-dir courante ; timer = répétition.
+  Timer? _joyTimer;
+  Offset _joyKnob = Offset.zero;
+  int _joyDx = 0, _joyDy = 0;
   // PERF — cache de la grille V2 : la fenêtre de cases visibles ne change qu'au
   // franchissement d'une case ; sans ça l'AnimatedBuilder de scroll reconstruirait
   // des centaines de widgets à chaque sous‑pixel de drag/molette. Invalidé à chaque
@@ -1927,6 +1932,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     }
     _timer?.cancel();
     _gameTicker?.dispose();
+    _joyTimer?.cancel();
     _v2HCtrl.dispose();
     _v2VCtrl.dispose();
     _v2CineTick.dispose();
@@ -2551,6 +2557,102 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         duration: const Duration(milliseconds: 120), curve: Curves.linear);
     _v2VCtrl.animateTo(ty,
         duration: const Duration(milliseconds: 120), curve: Curves.linear);
+  }
+
+  // ── JOYSTICK MOBILE ────────────────────────────────────────────────────────
+  // Un pas dans la direction (dx,dy) : avance l'avatar d'une tuile si walkable
+  // (révèle + recadre + déclenche l'entrée de domaine, comme une marche normale).
+  void _v2JoyStep(int dx, int dy) {
+    final w = _wv2;
+    if (w == null || _inInterior || _v2Walking) return;
+    final nx = _posV2.x + dx, ny = _posV2.y + dy;
+    if (!w.inBounds(nx, ny) || !w.walkable(nx, ny)) return;
+    setState(() {
+      _posV2 = Point(nx, ny);
+      _revealAroundV2(Point(nx, ny));
+    });
+    _v2CheckDomainEntry();
+    _v2CenterOn(Point(nx, ny));
+  }
+
+  // Met à jour le knob + la direction 4-dir à partir de la position du pouce.
+  void _joyTick(Offset local, double base, double knobR) {
+    final c = base / 2;
+    var v = Offset(local.dx - c, local.dy - c);
+    if (v.distance > knobR) v = v / v.distance * knobR;
+    int dx = 0, dy = 0;
+    if (v.distance >= 10) {
+      if (v.dx.abs() > v.dy.abs()) {
+        dx = v.dx > 0 ? 1 : -1;
+      } else {
+        dy = v.dy > 0 ? 1 : -1;
+      }
+    }
+    setState(() {
+      _joyKnob = v;
+      _joyDx = dx;
+      _joyDy = dy;
+    });
+  }
+
+  void _joyEnd() {
+    _joyTimer?.cancel();
+    _joyTimer = null;
+    setState(() {
+      _joyKnob = Offset.zero;
+      _joyDx = 0;
+      _joyDy = 0;
+    });
+  }
+
+  Widget _v2Joystick() {
+    const base = 124.0, knob = 54.0;
+    const knobR = (base - knob) / 2;
+    return Positioned(
+      left: 18,
+      bottom: 24,
+      child: GestureDetector(
+        onPanStart: (d) {
+          _v2TakeControl();
+          _joyTick(d.localPosition, base, knobR);
+          _joyTimer?.cancel();
+          _joyTimer = Timer.periodic(const Duration(milliseconds: 170), (_) {
+            if (_joyDx != 0 || _joyDy != 0) _v2JoyStep(_joyDx, _joyDy);
+          });
+        },
+        onPanUpdate: (d) => _joyTick(d.localPosition, base, knobR),
+        onPanEnd: (_) => _joyEnd(),
+        onPanCancel: _joyEnd,
+        child: Container(
+          width: base,
+          height: base,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.black.withOpacity(.30),
+            border: Border.all(color: Colors.white24, width: 1.5),
+          ),
+          child: Stack(children: [
+            Positioned(
+              left: knobR + _joyKnob.dx,
+              top: knobR + _joyKnob.dy,
+              child: Container(
+                width: knob,
+                height: knob,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withOpacity(.85),
+                  boxShadow: const [
+                    BoxShadow(color: Colors.black54, blurRadius: 6)
+                  ],
+                ),
+                child: const Icon(Icons.open_with,
+                    size: 22, color: Colors.black54),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
   }
 
   // Recentre la caméra sur la zone d'un dashboard de domaine (jardin, + village
@@ -6665,6 +6767,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         child: CircularProgressIndicator(color: _kBlue)))
                 : Stack(children: [
                     Positioned.fill(child: _contentV2()),
+                    // Joystick mobile (bas‑gauche) : déplace l'avatar pas à pas.
+                    if (widget.mobile) _v2Joystick(),
                     // Donjon 🏔️ : entrée de l'aventure (montée en niveaux) → ouvre le
                     // graphe d'expédition. Haut-GAUCHE de la map (zone libre).
                     if (!widget.mobile)
@@ -9735,7 +9839,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     // toujours visible, jamais masqué par le brouillard.
     final isDonjon =
         w.donjonAt != null && w.donjonAt!.x == x && w.donjonAt!.y == y;
-    final revealed = _revealed.contains(id) || _showCoords || isDonjon;
+    // Mobile : pas de brouillard de guerre (tout révélé) → carte lisible d'emblée.
+    final revealed =
+        widget.mobile || _revealed.contains(id) || _showCoords || isDonjon;
     final isAvatar = _posV2.x == x && _posV2.y == y;
     const slot = _kV2Slot, inner = slot - 3;
     if (!revealed) {

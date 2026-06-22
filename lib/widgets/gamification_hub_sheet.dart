@@ -21,7 +21,9 @@ Future<void> showGamificationHub(
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    showDragHandle: true,
+    // Pas de drag-to-dismiss : le drag vertical sur la carte (onglet Monde) fermait
+    // le sheet. Fermeture via la croix (cf. _GamificationHub).
+    enableDrag: false,
     builder: (_) => FractionallySizedBox(
       heightFactor: 0.92,
       child: _GamificationHub(
@@ -51,25 +53,36 @@ class _GamificationHub extends StatelessWidget {
       length: 4,
       child: Column(
         children: [
-          TabBar(
-            isScrollable: true,
-            tabAlignment: TabAlignment.center,
-            labelColor: cs.primary,
-            unselectedLabelColor: cs.onSurface.withValues(alpha: .55),
-            indicatorColor: cs.primary,
-            tabs: [
-              const Tab(text: '⚔️ Combat'),
-              Tab(
-                child: Row(mainAxisSize: MainAxisSize.min, children: const [
-                  GoldIcon(size: 15),
-                  SizedBox(width: 5),
-                  Text('Mon or'),
-                ]),
+          Row(children: [
+            Expanded(
+              child: TabBar(
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
+                labelColor: cs.primary,
+                unselectedLabelColor: cs.onSurface.withValues(alpha: .55),
+                indicatorColor: cs.primary,
+                tabs: [
+                  const Tab(text: '⚔️ Combat'),
+                  Tab(
+                    child:
+                        Row(mainAxisSize: MainAxisSize.min, children: const [
+                      GoldIcon(size: 15),
+                      SizedBox(width: 5),
+                      Text('Mon or'),
+                    ]),
+                  ),
+                  const Tab(text: '📊 Progrès'),
+                  const Tab(text: '🌍 Monde'),
+                ],
               ),
-              const Tab(text: '📊 Progrès'),
-              const Tab(text: '🌍 Monde'),
-            ],
-          ),
+            ),
+            // Croix de fermeture (le drag-dismiss du sheet est désactivé).
+            IconButton(
+              icon: const Icon(Icons.close),
+              tooltip: 'Fermer',
+              onPressed: () => Navigator.of(context).maybePop(),
+            ),
+          ]),
           Expanded(
             child: TabBarView(
               // Le swipe horizontal des onglets entre en conflit avec le pan de la
